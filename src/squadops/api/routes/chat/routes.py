@@ -106,12 +106,12 @@ def _resolve_agent(request: Request, agent_id: str) -> dict:
 # =============================================================================
 
 
-@router.post("/{agent_id}")
+@router.post("/{agent_id}", response_class=StreamingResponse)
 async def send_chat_message(
     agent_id: str,
     body: ChatMessageRequest,
     request: Request,
-):
+) -> StreamingResponse:
     """Send a message to an agent and stream the response (P3-RC1, P3-RC4).
 
     1. Validates agent has a2a_messaging_enabled
@@ -231,7 +231,7 @@ async def send_chat_message(
 
 
 @router.get("/sessions/{session_id}/messages")
-async def get_session_messages(session_id: str, request: Request):
+async def get_session_messages(session_id: str, request: Request) -> list[ChatMessageDTO]:
     """Get message history for a session, ordered chronologically. Only its owner reads it."""
     chat_repo = _get_chat_repo(request)
 
@@ -254,7 +254,7 @@ async def get_session_messages(session_id: str, request: Request):
 
 
 @router.get("/{agent_id}/sessions")
-async def list_agent_sessions(agent_id: str, request: Request):
+async def list_agent_sessions(agent_id: str, request: Request) -> list[ChatSessionDTO]:
     """List chat sessions for an agent+user pair."""
     _resolve_agent(request, agent_id)
 
@@ -275,7 +275,7 @@ async def list_agent_sessions(agent_id: str, request: Request):
 
 
 @agents_router.get("/messaging")
-async def list_messaging_agents(request: Request):
+async def list_messaging_agents(request: Request) -> list[MessagingAgentDTO]:
     """List all agents with messaging enabled."""
     return [
         MessagingAgentDTO(

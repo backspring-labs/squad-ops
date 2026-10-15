@@ -189,6 +189,38 @@ class ControlLogEntryResponse(BaseModel):
     launch_id: str | None
 
 
+class LedgerEntryResponse(BaseModel):
+    """One proposal version in the ledger (§9.4): its submission, then its ruling, its cycle's
+    outcome and its classification as each is recorded."""
+
+    proposal_id: str
+    version: int
+    content_hash: str
+    baseline_tree: str
+    cycle_id: str
+    run_id: str
+    submitted_at: str
+    ruling: dict[str, Any] | None = None
+    outcome: dict[str, Any] | None = None
+    classification: dict[str, Any] | None = None
+
+
+class PackageMaterializedResponse(BaseModel):
+    """The evidence package and digest a materialization stored (§14, #1710)."""
+
+    identity: str
+    package_artifact_id: str
+    digest_artifact_id: str
+
+
+class PackageDigestResponse(BaseModel):
+    """The latest stored evidence package's identity and its digest's text."""
+
+    identity: str | None
+    digest_artifact_id: str
+    digest: str
+
+
 class ControlResultResponse(BaseModel):
     """What an applied (or replayed) control operation left."""
 

@@ -10,8 +10,7 @@ from __future__ import annotations
 import asyncio
 import logging
 
-from fastapi import APIRouter, Depends, Request
-from fastapi.responses import JSONResponse
+from fastapi import APIRouter, Depends, Request, Response
 
 from squadops.api.cycle_schemas import (
     ModelSpecResponse,
@@ -32,19 +31,19 @@ _CACHE_HEADERS = {"Cache-Control": "public, max-age=300"}
 
 
 @router.get("", dependencies=[Depends(require_scopes(Scope.CYCLES_READ))])
-async def list_models():
+async def list_models(response: Response) -> list[ModelSpecResponse]:
     """Return all model registry entries."""
     from squadops.llm.model_registry import MODEL_SPECS
 
-    specs = [
+    response.headers.update(_CACHE_HEADERS)
+    return [
         ModelSpecResponse(
             name=spec.name,
             context_window=spec.context_window,
             default_max_completion=spec.default_max_completion,
-        ).model_dump()
+        )
         for spec in MODEL_SPECS.values()
     ]
-    return JSONResponse(content=specs, headers=_CACHE_HEADERS)
 
 
 def _llm_port_supporting(request: Request, capability: str):
@@ -76,7 +75,7 @@ def _llm_port_supporting(request: Request, capability: str):
 
 
 @router.get("/pulled", dependencies=[Depends(require_scopes(Scope.CYCLES_READ))])
-async def list_pulled_models(request: Request):
+async def list_pulled_models(request: Request) -> list[PulledModelResponse]:
     """List locally pulled models with active profile cross-reference."""
     from squadops.llm.model_registry import MODEL_SPECS
 
@@ -124,13 +123,13 @@ async def list_pulled_models(request: Request):
                     if spec
                     else None
                 ),
-            ).model_dump()
+            )
         )
     return results
 
 
 @router.post("/pull", status_code=202, dependencies=[Depends(require_scopes(Scope.CYCLES_WRITE))])
-async def pull_model(request: Request, body: PullModelRequest):
+async def pull_model(request: Request, body: PullModelRequest) -> PullStatusResponse:
     """Start pulling a model in the background. Returns 202 with pull_id."""
     from squadops.api.runtime.pull_tracker import (
         complete_pull_job,
@@ -154,11 +153,11 @@ async def pull_model(request: Request, body: PullModelRequest):
         pull_id=job.pull_id,
         model_name=job.model_name,
         status=job.status,
-    ).model_dump()
+    )
 
 
 @router.get("/pull/{pull_id}/status", dependencies=[Depends(require_scopes(Scope.CYCLES_READ))])
-async def pull_status(pull_id: str):
+async def pull_status(pull_id: str) -> PullStatusResponse:
     """Poll the status of a model pull job."""
     from squadops.api.runtime.pull_tracker import get_pull_job
 
@@ -171,11 +170,15 @@ async def pull_status(pull_id: str):
         model_name=job.model_name,
         status=job.status,
         error=job.error,
-    ).model_dump()
+    )
 
 
-@router.delete("/{model_name:path}", dependencies=[Depends(require_scopes(Scope.CYCLES_WRITE))])
-async def delete_model(request: Request, model_name: str):
+@router.delete(
+    "/{model_name:path}",
+    status_code=204,
+    dependencies=[Depends(require_scopes(Scope.CYCLES_WRITE))],
+)
+async def delete_model(request: Request, model_name: str) -> None:
     """Delete a locally pulled model."""
     from squadops.llm.exceptions import LLMConnectionError, LLMModelNotFoundError
 
@@ -183,7 +186,6 @@ async def delete_model(request: Request, model_name: str):
 
     try:
         await port.delete_model(model_name)
-        return {"status": "deleted", "model_name": model_name}
     except LLMModelNotFoundError as e:
         raise http_error(404, "MODEL_NOT_FOUND", f"Model '{model_name}' not found locally") from e
     except LLMConnectionError as e:

@@ -17,6 +17,13 @@ import logging
 from fastapi import APIRouter, HTTPException, Request
 
 from squadops.api.errors import http_error, server_error
+from squadops.api.platform_schemas import (
+    ActivityResponse,
+    AgentHealthResponse,
+    HostResponse,
+    InfraProbeResponse,
+    RuntimeStateResponse,
+)
 from squadops.api.runtime.agent_labels import get_role_label
 from squadops.campaigns.box import (
     DISK_FLOOR_BYTES,
@@ -36,7 +43,7 @@ def _get_health_checker(request: Request):
 
 
 @router.get("/infra")
-async def health_infra(request: Request):
+async def health_infra(request: Request) -> list[InfraProbeResponse]:
     """Run all infrastructure probes concurrently."""
     hc = _get_health_checker(request)
     results = await asyncio.gather(
@@ -50,11 +57,11 @@ async def health_infra(request: Request):
         hc.check_langfuse(),
         hc.check_keycloak(),
     )
-    return list(results)
+    return [InfraProbeResponse.model_validate(r) for r in results]
 
 
 @router.get("/host")
-async def health_host(request: Request):
+async def health_host(request: Request) -> HostResponse:
     """The machine the deploy runs on (#2204): its resources against the box's floors, each
     engine's loaded models, and the box in SIP-0109's terms. Numbers and states only: this lane is
     unauthenticated, so no process name, command line, path or deploy identifier. A source that
@@ -76,65 +83,67 @@ async def health_host(request: Request):
         if snap is None
         else [None if r.loaded is None else [m.name for m in r.loaded] for r in snap.readings]
     )
-    return {
-        "host": host,
-        "floors": {
-            "memory_available_before_load_bytes": MEMORY_FLOOR_BEFORE_LOAD_BYTES,
-            "memory_available_after_load_bytes": MEMORY_FLOOR_AFTER_LOAD_BYTES,
-            "disk_available_bytes": DISK_FLOOR_BYTES,
-        },
-        "limits": {
-            "board_temperature_warn_celsius": BOARD_TEMPERATURE_WARN_CELSIUS,
-            "board_temperature_critical_celsius": BOARD_TEMPERATURE_CRITICAL_CELSIUS,
-        },
-        # #2204b: each reading against its limit, decided here so the console only colours it.
-        "verdicts": host_verdicts(
-            host,
-            loaded,
-            memory_floor_before_load=MEMORY_FLOOR_BEFORE_LOAD_BYTES,
-            memory_floor_after_load=MEMORY_FLOOR_AFTER_LOAD_BYTES,
-            disk_floor=DISK_FLOOR_BYTES,
-        ),
-        "engines": (
-            None
-            if snap is None
-            else [
-                {
-                    "engine": r.engine,
-                    "loaded": None if r.loaded is None else [m.name for m in r.loaded],
-                }
-                for r in snap.readings
-            ]
-        ),
-        "box": (
-            None
-            if snap is None
-            else {
-                "quiet": snap.quietness.quiet,
-                "lease": (
-                    None
-                    if snap.lease is None
-                    else {
-                        "holder": snap.lease.holder.value,
-                        "expires_at": (
-                            snap.lease.expires_at.isoformat() if snap.lease.expires_at else None
-                        ),
+    return HostResponse.model_validate(
+        {
+            "host": host,
+            "floors": {
+                "memory_available_before_load_bytes": MEMORY_FLOOR_BEFORE_LOAD_BYTES,
+                "memory_available_after_load_bytes": MEMORY_FLOOR_AFTER_LOAD_BYTES,
+                "disk_available_bytes": DISK_FLOOR_BYTES,
+            },
+            "limits": {
+                "board_temperature_warn_celsius": BOARD_TEMPERATURE_WARN_CELSIUS,
+                "board_temperature_critical_celsius": BOARD_TEMPERATURE_CRITICAL_CELSIUS,
+            },
+            # #2204b: each reading against its limit, decided here so the console only colours it.
+            "verdicts": host_verdicts(
+                host,
+                loaded,
+                memory_floor_before_load=MEMORY_FLOOR_BEFORE_LOAD_BYTES,
+                memory_floor_after_load=MEMORY_FLOOR_AFTER_LOAD_BYTES,
+                disk_floor=DISK_FLOOR_BYTES,
+            ),
+            "engines": (
+                None
+                if snap is None
+                else [
+                    {
+                        "engine": r.engine,
+                        "loaded": None if r.loaded is None else [m.name for m in r.loaded],
                     }
-                ),
-            }
-        ),
-    }
+                    for r in snap.readings
+                ]
+            ),
+            "box": (
+                None
+                if snap is None
+                else {
+                    "quiet": snap.quietness.quiet,
+                    "lease": (
+                        None
+                        if snap.lease is None
+                        else {
+                            "holder": snap.lease.holder.value,
+                            "expires_at": (
+                                snap.lease.expires_at.isoformat() if snap.lease.expires_at else None
+                            ),
+                        }
+                    ),
+                }
+            ),
+        }
+    )
 
 
 @router.get("/agents")
-async def health_agents(request: Request):
+async def health_agents(request: Request) -> list[AgentHealthResponse]:
     """Get agent health status."""
     hc = _get_health_checker(request)
-    return await hc.get_agent_status()
+    return [AgentHealthResponse.model_validate(a) for a in await hc.get_agent_status()]
 
 
 @router.get("/agents/status/{agent_id}")
-async def get_agent_status_by_id(request: Request, agent_id: str):
+async def get_agent_status_by_id(request: Request, agent_id: str) -> AgentHealthResponse:
     """Get a single agent's status."""
     hc = _get_health_checker(request)
     try:
@@ -166,28 +175,30 @@ async def get_agent_status_by_id(request: Request, agent_id: str):
         role = info.get("role", "unknown")
 
         deployed = (await hc.deployed_revisions() or {}).get(row["agent_id"])
-        return {
-            "agent_id": row["agent_id"],
-            "agent_name": hc._get_display_name(row["agent_id"]),
-            "role": role,
-            "role_label": get_role_label(role),
-            # SIP-0089 posture + canonical health (None when no runtime row) — #231
-            "mode": row["mode"],
-            "runtime_status": row["runtime_status"],
-            "lifecycle_state": lifecycle_state,
-            "version": row["version"],
-            "revision": row["revision"],
-            # #1720: the latest deploy record's revision for this agent's service, and whether
-            # the agent still runs it.
-            "deployed_revision": deployed,
-            "revision_matches_deploy": revision_matches_deploy(row["revision"], deployed),
-            "tps": row["tps"],
-            "memory_count": row.get("memory_count", 0) or 0,
-            "last_seen": (
-                row["last_heartbeat"].isoformat() + "Z" if row["last_heartbeat"] else None
-            ),
-            "current_task_id": row["current_task_id"],
-        }
+        return AgentHealthResponse.model_validate(
+            {
+                "agent_id": row["agent_id"],
+                "agent_name": hc._get_display_name(row["agent_id"]),
+                "role": role,
+                "role_label": get_role_label(role),
+                # SIP-0089 posture + canonical health (None when no runtime row) — #231
+                "mode": row["mode"],
+                "runtime_status": row["runtime_status"],
+                "lifecycle_state": lifecycle_state,
+                "version": row["version"],
+                "revision": row["revision"],
+                # #1720: the latest deploy record's revision for this agent's service, and whether
+                # the agent still runs it.
+                "deployed_revision": deployed,
+                "revision_matches_deploy": revision_matches_deploy(row["revision"], deployed),
+                "tps": row["tps"],
+                "memory_count": row.get("memory_count", 0) or 0,
+                "last_seen": (
+                    row["last_heartbeat"].isoformat() + "Z" if row["last_heartbeat"] else None
+                ),
+                "current_task_id": row["current_task_id"],
+            }
+        )
     except HTTPException:
         raise
     except Exception as e:
@@ -195,7 +206,7 @@ async def get_agent_status_by_id(request: Request, agent_id: str):
 
 
 @router.get("/agents/{agent_id}/runtime-state")
-async def get_agent_runtime_state(request: Request, agent_id: str):
+async def get_agent_runtime_state(request: Request, agent_id: str) -> RuntimeStateResponse:
     """Return the SIP-0089 AgentRuntimeState for an agent.
 
     Returns 404 if no row exists yet (agent has not heartbeated since the
@@ -212,11 +223,11 @@ async def get_agent_runtime_state(request: Request, agent_id: str):
         raise http_error(
             404, "RUNTIME_STATE_NOT_FOUND", f"No runtime state for agent_id={agent_id}"
         )
-    return state
+    return RuntimeStateResponse.model_validate(state)
 
 
 @router.get("/agents/{agent_id}/activity")
-async def get_agent_current_activity(request: Request, agent_id: str):
+async def get_agent_current_activity(request: Request, agent_id: str) -> ActivityResponse:
     """Return the agent's current (active) RuntimeActivity (SIP-0089 §4.7).
 
     Returns 404 when the agent has no active activity (idle), or when the
@@ -229,7 +240,7 @@ async def get_agent_current_activity(request: Request, agent_id: str):
         raise server_error(request, "Failed to read activity", e, logger) from e
     if activity is None:
         raise http_error(404, "ACTIVITY_NOT_FOUND", f"No active activity for agent_id={agent_id}")
-    return activity
+    return ActivityResponse.model_validate(activity)
 
 
 # NOTE: POST /health/agents/status and PUT /health/agents/status/{agent_id}

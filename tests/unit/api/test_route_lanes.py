@@ -13,9 +13,14 @@ from __future__ import annotations
 import ast
 import importlib
 from pathlib import Path
+from typing import Any, get_args, get_origin
 
 import pytest
 from fastapi import APIRouter
+from fastapi.datastructures import DefaultPlaceholder
+from fastapi.responses import JSONResponse
+from fastapi.routing import APIRoute
+from pydantic import BaseModel
 
 pytestmark = [pytest.mark.domain_api]
 
@@ -194,3 +199,88 @@ def test_the_scan_finds_each_plain_form(tmp_path):
         "raise HTTPException(status_code=404, detail=error_body('X', 'gone'))\n"
     )
     assert _plain_error_bodies(source, tmp_path) == [f"routes.py:{n}" for n in (1, 2, 3, 4, 5)]
+
+
+def _api_routes() -> list[tuple[str, APIRoute]]:
+    return [
+        (name, route)
+        for name, router in _registered_routers()
+        for route in router.routes
+        if isinstance(route, APIRoute)
+    ]
+
+
+def _undeclared_body(route: APIRoute) -> str | None:
+    """Why a route's success body is undeclared, or None when it is (#1976).
+
+    A JSON body is a model, a list of one or a map of one: OpenAPI can then describe it, and a
+    client can read what the route promises. A body that isn't JSON (a download, a stream, plain
+    text) declares its class instead, and a 204 has no body (FastAPI refuses a 204 with a model).
+    An optional model is a model that may be null."""
+    cls = route.response_class
+    if not isinstance(cls, DefaultPlaceholder) and not issubclass(cls, JSONResponse):
+        return None if route.response_model is None else "a non-JSON body with a JSON model"
+    if route.status_code == 204:
+        return None
+    model = route.response_model
+    if model is None:
+        return "no response model"
+    origin, args = get_origin(model), get_args(model)
+    if origin is list and len(args) == 1:
+        model = args[0]
+    elif origin is dict and len(args) == 2 and args[0] is str:
+        model = args[1]
+    elif type(None) in args and len(args) == 2:
+        model = next(a for a in args if a is not type(None))
+    if isinstance(model, type) and issubclass(model, BaseModel):
+        return None
+    return f"an untyped body ({route.response_model!r})"
+
+
+def test_every_route_declares_its_response():
+    """#1976, the standard's rule 6. Bug caught: a route whose body OpenAPI can't describe, so a
+    client learns its fields by reading the handler. 62 of 85 routes declared none, and the memory
+    routes declared `dict[str, Any]`, which documents nothing."""
+    undeclared = [
+        f"{name}: {sorted(route.methods)} {route.path}: {why}"
+        for name, route in _api_routes()
+        if (why := _undeclared_body(route))
+    ]
+    assert not undeclared, "routes with an undeclared body:\n  " + "\n  ".join(undeclared)
+
+
+def test_a_delete_answers_204():
+    """#1976, rule 6: a delete answers 204 with no body (the owner's ruling, 2026-10-14)."""
+    wrong = [
+        f"{name}: {route.path} answers {route.status_code}"
+        for name, route in _api_routes()
+        if "DELETE" in route.methods and route.status_code != 204
+    ]
+    assert not wrong, "\n".join(wrong)
+
+
+class _Thing(BaseModel):
+    name: str
+
+
+@pytest.mark.parametrize(
+    ("declared", "why"),
+    [
+        ({"response_model": _Thing}, None),
+        ({"response_model": list[_Thing]}, None),
+        ({"response_model": dict[str, _Thing]}, None),
+        ({"response_class": __import__("fastapi").responses.PlainTextResponse}, None),
+        ({"status_code": 204}, None),
+        ({}, "no response model"),
+        ({"response_model": dict[str, Any]}, "an untyped body"),
+        ({"response_model": list[dict[str, Any]]}, "an untyped body"),
+        ({"response_model": _Thing | None}, None),
+        ({"response_model": dict | None}, "an untyped body"),
+    ],
+)
+def test_the_declaration_check_reads_each_form(declared, why):
+    router = APIRouter()
+    router.add_api_route("/x", lambda: None, methods=["GET"], **declared)
+    [route] = router.routes
+    found = _undeclared_body(route)
+    assert (found is None) if why is None else found.startswith(why)

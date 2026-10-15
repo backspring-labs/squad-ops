@@ -185,13 +185,13 @@ class TestCreateRunWorkloadType:
 
     def test_create_run_without_workload_type(self, client):
         resp = client.post("/api/v1/projects/hello_squad/cycles/cyc_001/runs")
-        assert resp.status_code == 200
+        assert resp.status_code == 201
         body = resp.json()
         assert body["workload_type"] is None
 
     def test_create_run_with_workload_type(self, client):
         resp = client.post("/api/v1/projects/hello_squad/cycles/cyc_001/runs?workload_type=framing")
-        assert resp.status_code == 200
+        assert resp.status_code == 201
         body = resp.json()
         assert body["workload_type"] == "framing"
 
@@ -230,7 +230,7 @@ class TestCreateRunPositionalResolution:
             _existing_run(1, "completed", "framing"),
         ]
         resp = client.post("/api/v1/projects/hello_squad/cycles/cyc_001/runs")
-        assert resp.status_code == 200
+        assert resp.status_code == 201
         assert resp.json()["workload_type"] == "implementation"
 
     def test_cancelled_runs_do_not_advance_position(self, client, mock_cycle_registry):
@@ -240,7 +240,7 @@ class TestCreateRunPositionalResolution:
             _existing_run(2, "cancelled", "implementation"),
         ]
         resp = client.post("/api/v1/projects/hello_squad/cycles/cyc_001/runs")
-        assert resp.status_code == 200
+        assert resp.status_code == 201
         assert resp.json()["workload_type"] == "implementation"
 
     def test_all_prior_runs_cancelled_resolves_position_zero(self, client, mock_cycle_registry):
@@ -250,7 +250,7 @@ class TestCreateRunPositionalResolution:
             _existing_run(2, "cancelled", None),
         ]
         resp = client.post("/api/v1/projects/hello_squad/cycles/cyc_001/runs")
-        assert resp.status_code == 200
+        assert resp.status_code == 201
         assert resp.json()["workload_type"] == "framing"
 
     def test_retry_after_failure_resolves_to_the_failed_runs_workload(
@@ -267,7 +267,7 @@ class TestCreateRunPositionalResolution:
             _existing_run(2, "failed", "implementation"),
         ]
         resp = client.post("/api/v1/projects/hello_squad/cycles/cyc_001/runs")
-        assert resp.status_code == 200
+        assert resp.status_code == 201
         assert resp.json()["workload_type"] == "implementation"
 
     def test_out_of_bounds_with_untyped_latest_run_still_rejected(
@@ -298,7 +298,7 @@ class TestCreateRunPositionalResolution:
         resp = client.post(
             "/api/v1/projects/hello_squad/cycles/cyc_001/runs?workload_type=implementation"
         )
-        assert resp.status_code == 200
+        assert resp.status_code == 201
         assert resp.json()["workload_type"] == "implementation"
 
     def test_legacy_cycle_with_runs_stays_none(self, client, mock_cycle_registry):
@@ -310,5 +310,5 @@ class TestCreateRunPositionalResolution:
             _existing_run(3, "completed"),
         ]
         resp = client.post("/api/v1/projects/hello_squad/cycles/cyc_001/runs")
-        assert resp.status_code == 200
+        assert resp.status_code == 201
         assert resp.json()["workload_type"] is None

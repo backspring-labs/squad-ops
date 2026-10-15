@@ -45,6 +45,18 @@ Documentation (`/docs`, `/openapi.json`, `/redoc`) is exposed only when
    `{"error": {"code", "message", "details"}}` envelope, built by `squadops.api.errors`. A
    server failure gives what failed and the request id, never the exception's text, which is
    logged with it (#1976). `test_route_lanes.py` refuses a plain-string body.
+6. **Every route declares its response, and its success status says what happened** (#1976; the
+   owner's ruling of 2026-10-14):
+   - **A JSON body is a model,** a list of one or a map of one: the route's return annotation, which
+     FastAPI reads as its `response_model`. A body that isn't JSON (a download, a stream, plain text)
+     declares its `response_class` instead.
+   - **A model written over a dict a producer builds** (the health checker's readings, a memory
+     record's `to_dict()`) mirrors it with `extra="allow"`, so a field the producer gains first still
+     reaches the client. A test holds each model to its producer.
+   - **A create answers 201,** a job started in the background 202, and **a delete 204 with no
+     body.** The CLI reads a 204 as done.
+
+   `test_route_lanes.py` refuses an undeclared body and a delete that doesn't answer 204.
 
 ## Audit of the surface — 2026-09-06
 

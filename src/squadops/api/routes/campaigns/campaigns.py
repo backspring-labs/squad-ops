@@ -39,6 +39,9 @@ from squadops.api.campaign_schemas import (
     LeaseRequest,
     LeaseResponse,
     LeaseResultResponse,
+    LedgerEntryResponse,
+    PackageDigestResponse,
+    PackageMaterializedResponse,
     ResumeRequest,
 )
 from squadops.api.errors import error_body
@@ -173,7 +176,7 @@ async def launch_pending(request: Request, result: TransitionResult) -> list[str
 # ---------------------------------------------------------------------------------------------
 
 
-@router.post("")
+@router.post("", status_code=201)
 async def create_campaign(
     request: Request,
     body: CampaignCreateRequest,
@@ -403,7 +406,7 @@ async def read_ledger(
     request: Request,
     campaign_id: str,
     identity: Identity | None = Depends(require_scopes(Scope.CAMPAIGNS_READ)),
-) -> list[dict]:
+) -> list[LedgerEntryResponse]:
     """The proposal ledger (§9.4), read from the control log: per proposal version, its
     submission, its ruling, its cycle's outcome and its classification."""
     import dataclasses
@@ -412,7 +415,8 @@ async def read_ledger(
 
     await _registry(request).get_campaign(campaign_id)
     return [
-        dataclasses.asdict(e) for e in ledger(await _registry(request).control_log(campaign_id))
+        LedgerEntryResponse(**dataclasses.asdict(e))
+        for e in ledger(await _registry(request).control_log(campaign_id))
     ]
 
 
@@ -756,7 +760,7 @@ async def materialize_package(
     request: Request,
     campaign_id: str,
     identity: Identity | None = Depends(require_scopes(Scope.CAMPAIGNS_MANAGE)),
-) -> dict:
+) -> PackageMaterializedResponse:
     """Materialize the campaign's evidence package and digest now (§14, #1710): a projection
     of its records, idempotent by identity. A campaign's close materializes it on its own."""
     from squadops.api.runtime.deps import get_campaign_progress
@@ -765,11 +769,9 @@ async def materialize_package(
     pkg_identity, package_id, digest_id = await get_campaign_progress(request).materialize_package(
         campaign_id
     )
-    return {
-        "identity": pkg_identity,
-        "package_artifact_id": package_id,
-        "digest_artifact_id": digest_id,
-    }
+    return PackageMaterializedResponse(
+        identity=pkg_identity, package_artifact_id=package_id, digest_artifact_id=digest_id
+    )
 
 
 @router.get("/{campaign_id}/package")
@@ -777,7 +779,7 @@ async def read_package(
     request: Request,
     campaign_id: str,
     identity: Identity | None = Depends(require_scopes(Scope.CAMPAIGNS_READ)),
-) -> dict:
+) -> PackageDigestResponse:
     """The latest stored evidence package's identity and its digest (the morning read)."""
     from squadops.api.runtime.deps import get_artifact_vault
     from squadops.campaigns.progress import EVIDENCE_ARTIFACT_TYPE
@@ -806,11 +808,11 @@ async def read_package(
             },
         )
     ref, content = await vault.retrieve(digests[-1].artifact_id)
-    return {
-        "identity": ref.metadata.get("identity"),
-        "digest_artifact_id": ref.artifact_id,
-        "digest": content.decode("utf-8"),
-    }
+    return PackageDigestResponse(
+        identity=ref.metadata.get("identity"),
+        digest_artifact_id=ref.artifact_id,
+        digest=content.decode("utf-8"),
+    )
 
 
 # ---------------------------------------------------------------------------------------------

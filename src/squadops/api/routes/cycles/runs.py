@@ -11,6 +11,8 @@ from fastapi import APIRouter, BackgroundTasks, Depends, Request
 from squadops.api.cycle_schemas import (
     CheckpointSummaryResponse,
     GateDecisionRequest,
+    RunCancelResponse,
+    RunResponse,
     RunResumeRequest,
 )
 from squadops.api.middleware.auth import require_scopes
@@ -83,14 +85,14 @@ def _resolve_retry_workload_type(cycle: Cycle, existing_runs: list[Run]) -> str 
     return workload_sequence[position]["type"]
 
 
-@router.post("", dependencies=[Depends(require_scopes(Scope.CYCLES_WRITE))])
+@router.post("", status_code=201, dependencies=[Depends(require_scopes(Scope.CYCLES_WRITE))])
 async def create_run(
     request: Request,
     project_id: str,
     cycle_id: str,
     background_tasks: BackgroundTasks,
     workload_type: str | None = None,
-):
+) -> RunResponse:
     """Create a new Run (retry) for an existing Cycle and enqueue its execution.
 
     Mirrors ``cycles create`` / ``resume_run``: the new run is dispatched
@@ -159,7 +161,7 @@ async def create_run(
 @router.get("", dependencies=[Depends(require_scopes(Scope.CYCLES_READ))])
 async def list_runs(
     request: Request, project_id: str, cycle_id: str, workload_type: str | None = None
-):
+) -> list[RunResponse]:
     from squadops.api.runtime.deps import get_cycle_registry
 
     registry = get_cycle_registry(request)
@@ -168,7 +170,7 @@ async def list_runs(
 
 
 @router.get("/{run_id}", dependencies=[Depends(require_scopes(Scope.CYCLES_READ))])
-async def get_run(request: Request, project_id: str, cycle_id: str, run_id: str):
+async def get_run(request: Request, project_id: str, cycle_id: str, run_id: str) -> RunResponse:
     from squadops.api.runtime.deps import get_cycle_registry
 
     registry = get_cycle_registry(request)
@@ -177,7 +179,9 @@ async def get_run(request: Request, project_id: str, cycle_id: str, run_id: str)
 
 
 @router.post("/{run_id}/cancel", dependencies=[Depends(require_scopes(Scope.CYCLES_WRITE))])
-async def cancel_run(request: Request, project_id: str, cycle_id: str, run_id: str):
+async def cancel_run(
+    request: Request, project_id: str, cycle_id: str, run_id: str
+) -> RunCancelResponse:
     from squadops.api.runtime.deps import get_cycle_registry
 
     registry = get_cycle_registry(request)
@@ -210,14 +214,14 @@ async def cancel_run(request: Request, project_id: str, cycle_id: str, run_id: s
     leases_released = await release_cancelled_run_leases(request, cycle_id, [run_id])
     activities_ended = await abort_cancelled_cycle_activities(request, cycle_id)
 
-    return {
-        "status": "cancelled",
-        "run_id": run_id,
-        "prefect_flow_runs_cancelled": cancelled,
-        "focus_leases_released": leases_released,
-        "activities_ended": activities_ended,
-        "agents_notified": agents_notified,
-    }
+    return RunCancelResponse(
+        status="cancelled",
+        run_id=run_id,
+        prefect_flow_runs_cancelled=cancelled,
+        focus_leases_released=leases_released,
+        activities_ended=activities_ended,
+        agents_notified=agents_notified,
+    )
 
 
 async def _gate_scopes(request: Request, gate_name: str) -> Identity | None:
@@ -291,7 +295,7 @@ async def gate_decision(
     body: GateDecisionRequest,
     request: Request,
     identity: Identity | None = Depends(_gate_scopes),
-):
+) -> RunResponse:
     from squadops.api.runtime.deps import get_cycle_registry
 
     registry = get_cycle_registry(request)
@@ -367,7 +371,7 @@ async def resume_run(
     run_id: str,
     background_tasks: BackgroundTasks,
     body: RunResumeRequest | None = None,
-):
+) -> RunResponse:
     """Resume a paused or failed run (SIP-0079).
 
     Resumes from the latest checkpoint when one exists; a run PAUSED before any
@@ -447,7 +451,9 @@ async def resume_run(
 
 
 @router.get("/{run_id}/checkpoints", dependencies=[Depends(require_scopes(Scope.CYCLES_READ))])
-async def list_checkpoints(request: Request, project_id: str, cycle_id: str, run_id: str):
+async def list_checkpoints(
+    request: Request, project_id: str, cycle_id: str, run_id: str
+) -> list[CheckpointSummaryResponse]:
     """List checkpoints for a run (SIP-0079)."""
     from squadops.api.runtime.deps import get_cycle_registry
 

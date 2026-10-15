@@ -514,6 +514,37 @@ class CheckpointSummaryResponse(BaseModel):
     created_at: datetime
 
 
+class CancellationResponse(BaseModel):
+    """What a cancel tore down, since it bypasses the executor's finalize path: the Prefect flow
+    runs (#77), the focus leases (#529) and the open activities (#561), with the agents told
+    first (#1648)."""
+
+    status: Literal["cancelled"]
+    prefect_flow_runs_cancelled: int
+    focus_leases_released: int
+    activities_ended: int
+    agents_notified: int
+
+
+class RunCancelResponse(CancellationResponse):
+    run_id: str
+
+
+class CycleCancelResponse(CancellationResponse):
+    cycle_id: str
+
+
+class BaselinePromotedResponse(BaseModel):
+    status: Literal["ok"]
+    project_id: str
+    artifact_type: str
+
+
+class ActiveProfileSetResponse(BaseModel):
+    status: Literal["ok"]
+    active_profile_id: str
+
+
 class ErrorDetail(BaseModel):
     code: str
     message: str

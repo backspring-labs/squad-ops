@@ -88,7 +88,7 @@ class TestIngestArtifact:
                 "media_type": "text/markdown",
             },
         )
-        assert resp.status_code == 200
+        assert resp.status_code == 201
         body = resp.json()
         assert body["artifact_type"] == "prd"
         assert body["artifact_id"] == "art_001"

@@ -105,7 +105,7 @@ def client(mock_cycle_registry, mock_artifact_vault, mock_flow_executor, monkeyp
 class TestCreateRun:
     def test_creates_retry_run(self, client):
         resp = client.post("/api/v1/projects/hello_squad/cycles/cyc_001/runs")
-        assert resp.status_code == 200
+        assert resp.status_code == 201
         body = resp.json()
         assert body["run_number"] == 2
         assert body["initiated_by"] == "retry"
@@ -116,7 +116,7 @@ class TestCreateRun:
         the new run (not just create a queued record that never executes).
         TestClient runs background tasks after the response."""
         resp = client.post("/api/v1/projects/hello_squad/cycles/cyc_001/runs")
-        assert resp.status_code == 200
+        assert resp.status_code == 201
         new_run_id = resp.json()["run_id"]
 
         mock_flow_executor.execute_cycle.assert_awaited_once_with("cyc_001", new_run_id, "full")

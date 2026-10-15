@@ -25,13 +25,22 @@ from typing import Any
 from fastapi import APIRouter, Depends, HTTPException, Request
 
 from squadops.api.memory_schemas import (
+    AbsenceRateResponse,
     AnnotationRequest,
+    AnnotationResponse,
     AnnotationReviewRequest,
     ApplicabilityDTO,
+    ApprovalResponse,
     AssessmentRequest,
+    AssessmentResponse,
+    ExposureResponse,
     LessonApprovalRequest,
     LessonDraftRequest,
+    LessonResponse,
+    ObservationResponse,
     RevocationRequest,
+    RevocationResponse,
+    SuppliedTogetherResponse,
 )
 from squadops.api.middleware.auth import require_scopes
 from squadops.auth.models import Identity, Scope
@@ -99,12 +108,14 @@ def _applicability(project_id: str, dto: ApplicabilityDTO) -> Applicability:
         raise _error(422, "VALIDATION_ERROR", str(e)) from e
 
 
-def _lesson(revision: PatternRevision, approvals: list[Approval]) -> dict[str, Any]:
-    return {
-        "revision_id": revision.revision_id,
-        **revision.to_dict(),
-        "approvals": [a.to_dict() for a in approvals if a.revision_id == revision.revision_id],
-    }
+def _lesson(revision: PatternRevision, approvals: list[Approval]) -> LessonResponse:
+    return LessonResponse.model_validate(
+        {
+            "revision_id": revision.revision_id,
+            **revision.to_dict(),
+            "approvals": [a.to_dict() for a in approvals if a.revision_id == revision.revision_id],
+        }
+    )
 
 
 async def _revision(store, project_id: str, revision_id: str) -> PatternRevision:
@@ -119,7 +130,7 @@ async def list_lessons(
     request: Request,
     project_id: str,
     identity: Identity | None = Depends(require_scopes(Scope.MEMORY_READ)),
-) -> list[dict[str, Any]]:
+) -> list[LessonResponse]:
     """Every revision of the project's lessons, by pattern and revision, each with its approvals,
     revoked ones included."""
     store = _store(request)
@@ -133,7 +144,7 @@ async def draft_lesson(
     project_id: str,
     body: LessonDraftRequest,
     identity: Identity | None = Depends(require_scopes(Scope.MEMORY_DRAFT)),
-) -> dict[str, Any]:
+) -> LessonResponse:
     """The auditor's draft, stored as its pattern's next revision. It reaches no task until the
     owner approves it."""
     _actor(identity)
@@ -167,24 +178,26 @@ async def lessons_supplied_together(
     project_id: str,
     revision_id: str,
     identity: Identity | None = Depends(require_scopes(Scope.MEMORY_READ)),
-) -> dict[str, Any]:
+) -> SuppliedTogetherResponse:
     """The approved lessons, in force now, that a task inside the revision's applicability could be
     supplied beside it: the set the auditor's combined check covers before approval (§0.6)."""
     store = _store(request)
     revision = await _revision(store, project_id, revision_id)
     revisions = await store.list_revisions(project_id)
-    return {
-        "revision_id": revision_id,
-        "revision_ids": list(
-            supplied_together(
-                revision.applicability,
-                pattern_id=revision.pattern_id,
-                revisions=revisions,
-                approvals=await store.list_approvals(project_id),
-                at=datetime.now(UTC),
-            )
-        ),
-    }
+    return SuppliedTogetherResponse.model_validate(
+        {
+            "revision_id": revision_id,
+            "revision_ids": list(
+                supplied_together(
+                    revision.applicability,
+                    pattern_id=revision.pattern_id,
+                    revisions=revisions,
+                    approvals=await store.list_approvals(project_id),
+                    at=datetime.now(UTC),
+                )
+            ),
+        }
+    )
 
 
 @router.post("/lessons/{revision_id}/approvals", status_code=201)
@@ -194,7 +207,7 @@ async def approve_lesson(
     revision_id: str,
     body: LessonApprovalRequest,
     identity: Identity | None = Depends(require_scopes(Scope.MEMORY_APPROVE)),
-) -> dict[str, Any]:
+) -> ApprovalResponse:
     """The owner's approval. Refused when it would widen the revision, when it does not record its
     ruling and replay check, or when its combined check did not cover every approved lesson
     supplied beside it or found a conflict (§0.6). It reaches units admitted afterwards (§0.7)."""
@@ -225,7 +238,7 @@ async def approve_lesson(
     except LessonRefused as e:
         raise _error(422, "VALIDATION_ERROR", str(e)) from e
     await store.record_approval(approval)
-    return approval.to_dict()
+    return ApprovalResponse.model_validate(approval.to_dict())
 
 
 @router.post("/approvals/{approval_id}/revocation")
@@ -235,7 +248,7 @@ async def revoke_lesson(
     approval_id: str,
     body: RevocationRequest,
     identity: Identity | None = Depends(require_scopes(Scope.MEMORY_APPROVE)),
-) -> dict[str, Any]:
+) -> RevocationResponse:
     """The owner's revocation. Units admitted afterwards pin without it; the answer names the
     running units that hold it, and apart from them the finished units that ran with it (§0.7,
     D9; #2210)."""
@@ -270,12 +283,14 @@ async def revoke_lesson(
         )
     else:
         next_step = "units admitted from now pin without it; no unit holds it"
-    return {
-        "approval": revoked.to_dict(),
-        "units_holding_it": [_unit(s) for s in live],
-        "finished_units_holding_it": [_unit(s) for s in finished],
-        "next": next_step,
-    }
+    return RevocationResponse.model_validate(
+        {
+            "approval": revoked.to_dict(),
+            "units_holding_it": [_unit(s) for s in live],
+            "finished_units_holding_it": [_unit(s) for s in finished],
+            "next": next_step,
+        }
+    )
 
 
 def _unit(s: Snapshot) -> dict[str, Any]:
@@ -314,17 +329,19 @@ async def list_observations(
     request: Request,
     project_id: str,
     identity: Identity | None = Depends(require_scopes(Scope.MEMORY_READ)),
-) -> list[dict[str, Any]]:
+) -> list[ObservationResponse]:
     """The project's observations, each as projected, with its annotations and the classification
     memory reads for it: the latest reviewed annotation's, or the projected one (§0.4)."""
     store = _store(request)
     annotations = await store.list_annotations(project_id)
     return [
-        {
-            **o.to_dict(),
-            "annotations": [a.to_dict() for a in annotations if a.source_id == o.source_id],
-            "effective_classification": effective_classification(o, annotations).to_dict(),
-        }
+        ObservationResponse.model_validate(
+            {
+                **o.to_dict(),
+                "annotations": [a.to_dict() for a in annotations if a.source_id == o.source_id],
+                "effective_classification": effective_classification(o, annotations).to_dict(),
+            }
+        )
         for o in await store.list_observations(project_id)
     ]
 
@@ -336,7 +353,7 @@ async def annotate_observation(
     source_id: str,
     body: AnnotationRequest,
     identity: Identity | None = Depends(require_scopes(Scope.MEMORY_DRAFT)),
-) -> dict[str, Any]:
+) -> AnnotationResponse:
     """A proposed classification of the observation, stored beside it. The observation is never
     edited, and the annotation classifies nothing until it is reviewed."""
     _actor(identity)
@@ -360,7 +377,7 @@ async def annotate_observation(
     except AnnotationRefused as e:
         raise _error(422, "VALIDATION_ERROR", str(e)) from e
     await store.record_annotation(annotation)
-    return annotation.to_dict()
+    return AnnotationResponse.model_validate(annotation.to_dict())
 
 
 @router.post("/annotations/{annotation_id}/review")
@@ -370,7 +387,7 @@ async def review_annotation(
     annotation_id: str,
     body: AnnotationReviewRequest,
     identity: Identity | None = Depends(require_scopes(Scope.MEMORY_APPROVE)),
-) -> dict[str, Any]:
+) -> AnnotationResponse:
     """The owner's review: from now on the annotation is its observation's classification, and a
     lesson may cite the observation. A review is never rewritten."""
     reviewer = _actor(identity)
@@ -386,7 +403,7 @@ async def review_annotation(
     except AnnotationRefused as e:
         raise _error(409, "ALREADY_REVIEWED", str(e)) from e
     await store.record_annotation_review(reviewed)
-    return reviewed.to_dict()
+    return AnnotationResponse.model_validate(reviewed.to_dict())
 
 
 @router.get("/exposures")
@@ -395,17 +412,21 @@ async def list_exposures(
     project_id: str,
     run_id: str,
     identity: Identity | None = Depends(require_scopes(Scope.MEMORY_READ)),
-) -> list[dict[str, Any]]:
+) -> list[ExposureResponse]:
     """A run's exposures, each with the latest assessment of each target (§0.8 step 7, §0.10)."""
     store = _store(request)
     read = latest(await store.list_assessments(project_id))
     return [
-        {
-            **e.to_dict(),
-            "assessments": [
-                a.to_dict() for (exposure_id, _), a in read.items() if exposure_id == e.exposure_id
-            ],
-        }
+        ExposureResponse.model_validate(
+            {
+                **e.to_dict(),
+                "assessments": [
+                    a.to_dict()
+                    for (exposure_id, _), a in read.items()
+                    if exposure_id == e.exposure_id
+                ],
+            }
+        )
         for e in await store.list_exposures(run_id)
         if e.query.project_id == project_id
     ]
@@ -418,7 +439,7 @@ async def assess_exposure(
     exposure_id: str,
     body: AssessmentRequest,
     identity: Identity | None = Depends(require_scopes(Scope.MEMORY_DRAFT)),
-) -> dict[str, Any]:
+) -> AssessmentResponse:
     """One target's state in the exposure's authored output, by the target's rubric (§0.10). An
     absence is refused unless the output did its required work."""
     assessed_by = _actor(identity)
@@ -442,7 +463,7 @@ async def assess_exposure(
     except AssessmentRefused as e:
         raise _error(422, "VALIDATION_ERROR", str(e)) from e
     await store.record_assessment(assessment)
-    return assessment.to_dict()
+    return AssessmentResponse.model_validate(assessment.to_dict())
 
 
 @router.get("/lessons/absence-rates")
@@ -450,18 +471,20 @@ async def absence_rates(
     request: Request,
     project_id: str,
     identity: Identity | None = Depends(require_scopes(Scope.MEMORY_READ)),
-) -> list[dict[str, Any]]:
+) -> list[AbsenceRateResponse]:
     """``target_absence_rate`` per target, the supplied and unsupplied series apart, over the latest
     assessments of applicable, assessed exposures (§0.10). Observational, not a causal estimate."""
     return [
-        {
-            "pattern_id": r.pattern_id,
-            "supplied": r.supplied,
-            "absent": r.absent,
-            "assessed": r.assessed,
-            "not_applicable": r.not_applicable,
-            "unassessed": r.unassessed,
-            "rate": r.rate,
-        }
+        AbsenceRateResponse.model_validate(
+            {
+                "pattern_id": r.pattern_id,
+                "supplied": r.supplied,
+                "absent": r.absent,
+                "assessed": r.assessed,
+                "not_applicable": r.not_applicable,
+                "unassessed": r.unassessed,
+                "rate": r.rate,
+            }
+        )
         for r in target_absence_rates(await _store(request).list_assessments(project_id))
     ]
