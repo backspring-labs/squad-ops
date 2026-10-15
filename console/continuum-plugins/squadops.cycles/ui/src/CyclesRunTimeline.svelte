@@ -1,4 +1,5 @@
 <script>
+  import { fetchAllPages } from '../../../shared/paging.js';
   import { onMount, onDestroy } from 'svelte';
 
   let { projectId = null, cycleId = null, onSelectRun = null } = $props();
@@ -21,11 +22,12 @@
     loading = true;
     error = null;
     try {
-      const resp = await apiFetch(
+      const listed = await fetchAllPages(
+        apiFetch,
         `${apiBase}/api/v1/projects/${projectId}/cycles/${cycleId}/runs`
       );
-      if (!resp.ok) throw new Error(`Runs: ${resp.status}`);
-      runs = await resp.json();
+      if (!listed.ok) throw new Error(`Runs: ${listed.status}`);
+      runs = listed.items;
       loading = false;
     } catch (err) {
       error = err.message;

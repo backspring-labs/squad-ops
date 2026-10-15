@@ -1,6 +1,7 @@
 <svelte:options customElement="squadops-artifacts-list" />
 
 <script>
+  import { fetchAllPages } from '../../../shared/paging.js';
   import { onMount } from 'svelte';
 
   let artifacts = $state([]);
@@ -27,10 +28,12 @@
       const all = [];
       for (const proj of projList.slice(0, 10)) {
         try {
-          const artResp = await apiFetch(`${apiBase}/api/v1/projects/${proj.project_id}/artifacts`);
-          if (artResp.ok) {
-            const arts = await artResp.json();
-            all.push(...arts.map(a => ({ ...a, project_id: proj.project_id })));
+          const listed = await fetchAllPages(
+            apiFetch,
+            `${apiBase}/api/v1/projects/${proj.project_id}/artifacts`
+          );
+          if (listed.ok) {
+            all.push(...listed.items.map(a => ({ ...a, project_id: proj.project_id })));
           }
         } catch { /* skip */ }
       }
