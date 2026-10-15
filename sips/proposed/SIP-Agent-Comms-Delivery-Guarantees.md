@@ -19,7 +19,7 @@ Proposed
 **Targets:** split (ruled 2026-10-04, `sips/PORTFOLIO.md` §2): the transport hardening is placed in 2.3.0 (#1977), and the duty-gated parts are deferred to 3.x. The gate is: **implemented before any squad does paid external duty/Campaign work over this transport.**
 **Builds on:** SIP-0094 (per-agent reply queues + `subscribe()` primitive, implemented) and #323 (agent comms poll→push migration). SIP-0094 §4 explicitly deferred the agent-side loop as "a follow-up"; #323 was that follow-up. This SIP is the next rung: the transport loop is now correct — the *delivery guarantees around failure* are not.
 **Amends:** SIP-0094 D12 ack policy — scoped per-direction, not revoked (see §5.1).
-**Ruled 2026-10-14 (the owner, on #1977):** §5.1–§5.3a are accepted as #1977's design: bounded redelivery and a dead-letter queue, the death-path rule, publisher confirms and mandatory routing, and consumer idempotency. §5.4, §5.5 and the duty-gated parts are not part of that ruling. **Measured 2026-10-15, before §5.1 was built:** an explicit `nack(requeue=True)` on these classic queues carries no `x-death` and no delivery count (#1977). §5.1's count never advances as written, so its mechanism goes to the owner as an amendment before it ships.
+**Ruled 2026-10-14 (the owner, on #1977):** §5.1–§5.3a are accepted as #1977's design: bounded redelivery and a dead-letter queue, the death-path rule, publisher confirms and mandatory routing, and consumer idempotency. §5.4, §5.5 and the duty-gated parts are not part of that ruling. **Measured 2026-10-15, before §5.1 was built:** an explicit `nack(requeue=True)` on these classic queues carries no `x-death` and no delivery count (#1977). §5.1's count never advances as written. **Amended 2026-10-15 (§5.3b), ruled by the owner:** the bound is the agent's own per-task attempt count in Redis.
 
 ## Delivery ledger (current as of 2026-10-15)
 
@@ -28,8 +28,8 @@ Kept by the rule in CLAUDE.md ("SIP System"): one row per part, updated in the P
 | part | status | where |
 |---|---|---|
 | §5.2 publisher confirms and mandatory routing: a publish the broker cannot route raises into the publish retry | **shipped** | 2.3.0, PR #2323, issue #1977 |
-| §5.1 bounded redelivery and a dead-letter queue (its bound to be amended: the measured `x-death` gap) | **placed** | 2.3.0, #1977 |
-| §5.3 consumer idempotency, with §5.3a's death-path marker replacing the interim redelivery rule | **placed** | 2.3.0, #1977 |
+| §5.1 bounded redelivery and quarantine, as amended by §5.3b (the agent's attempt count, its own dead-letter queue) | **shipped** | 2.3.0, PR #PRNUM, issue #1977 |
+| §5.3 consumer idempotency, with §5.3a's death-path marker replacing the interim redelivery rule (§5.3b) | **shipped** | 2.3.0, PR #PRNUM, issue #1977 |
 | §5.4 deferred redelivery | **unplaced, deliberately**: not part of the owner's ruling of 2026-10-14 | — |
 | §5.5 observability | **unplaced, deliberately**: not part of the owner's ruling of 2026-10-14 | — |
 | the duty-gated parts | **deferred to 3.x (ruled 2026-10-04)**: with the duty cluster | `sips/PORTFOLIO.md` §2 |
@@ -180,6 +180,26 @@ messages while the fatal case remains unbounded.
 converted to `FAILED` and acked: **the configured N-attempt budget collapses to one and the
 message never reaches the DLQ.** §5.1 must therefore land with the death-path marker
 **replacing** the flag-only test in the same change, not beside it.
+
+### 5.3b Amendment: the bound and the quarantine are the agent's (2026-10-15, #1977; ruled by the owner)
+
+**What §5.1 said.** A raising callback is `nack(requeue=True)` while "the broker-maintained `x-death` count" is below N, then `reject(requeue=False)` to a dead-letter exchange, attached to the `*_comms` queues by a broker policy.
+
+**The evidence.** Measured on this deploy's broker (RabbitMQ 3.12.14) before §5.1 was built, through the runtime API's own config. An explicit `nack(requeue=True)` on a classic queue redelivers with `redelivered=True` and **no `x-death` and no delivery count**, three deliveries running (#1977). A requeue isn't a dead-lettering, and a classic queue keeps no count. §5.3a had already measured the same for a consumer's death. So §5.1's count never advances, and a raising handler would be redelivered without bound, the same unbounded shape §5.3a found for a dying one.
+
+**The options put to the owner (#1977):**
+- **(a)** a per-task attempt count in Redis, written before the handler runs;
+- **(b)** converting the eight `*_comms` queues to quorum queues, so the broker counts deliveries (`x-delivery-limit`). That would mean deleting and redeclaring each queue at a deploy.
+
+**The owner chose (a)** (2026-10-15).
+
+**What it means, as built:**
+- **One bound for both failure modes.** Before the handler runs, the agent increments `comms:attempts:{task_id}`, which expires after `comms.delivery.marker_ttl_seconds`. A handler that raises (the subscription now hands the delivery back, `AckPolicy.REDELIVER_ON_FAILURE`) and one that dies (the broker's requeue) are counted alike.
+- **Past `comms.delivery.max_attempts` (3),** the delivery is published to the dead-letter queue (`comms.delivery.dead_letter_queue`, `comms.dlq`) with its reason, a typed `FAILED` goes to the original task id, and the delivery is acked. **The quarantine is the agent's too:** with the bound in the application, no broker dead-lettering is needed. So §5.1's broker policy, its deploy step and its doctor check are dropped. The behaviour is the same on a one-click install, with no broker configuration.
+- **§5.3's completion mark,** `comms:done:{task_id}`, is written after the reply is published. A redelivery of a completed task is acked and logged `duplicate_of_completed_task`, never run again. That closes §5.3a's ack-gap case: a success followed by its own redelivery no longer turns into a `FAILED`.
+- **§5.3a's interim rule is replaced in the same change,** as its acceptance condition requires: a redelivered task is no longer refused on the flag. **It stands in only while the record can't be read** (Redis unreachable), so losing Redis never reopens #1626's crash loop. With the record readable, the flag test is gone, so the budget doesn't collapse to one.
+- **Scope stays task dispatch.** A chat delivery, an unreadable delivery and a control notice are acked as before.
+- **The verification set's `redelivery` row** (`qa_repair_process_killed`) now reads the task run within its attempts, then quarantined and failed: `task_failed_unrun:`. Older logs' `redelivered_task_refused:` lines still count.
 
 ### 5.4 Deferred redelivery (fixes Gap D)
 
