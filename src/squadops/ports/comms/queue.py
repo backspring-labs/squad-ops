@@ -30,7 +30,7 @@ class AckPolicy(StrEnum):
     #: SIP-0094 D12: logged and acked. A reply callback that raises is a waiter's logic error,
     #: and requeuing it would only loop.
     ACK_ALWAYS = "ack_always"
-    #: #1977, §5.1 as amended 2026-10-15: handed back to the broker for redelivery. The bound on
+    #: #1977, §5.1 as amended 2026-10-14: handed back to the broker for redelivery. The bound on
     #: redeliveries is the subscriber's (its attempt count), because the broker keeps no count
     #: for a classic queue's requeue. A callback that returns is acked.
     REDELIVER_ON_FAILURE = "redeliver_on_failure"

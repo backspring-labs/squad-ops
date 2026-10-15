@@ -19,9 +19,9 @@ Proposed
 **Targets:** split (ruled 2026-10-04, `sips/PORTFOLIO.md` §2): the transport hardening is placed in 2.3.0 (#1977), and the duty-gated parts are deferred to 3.x. The gate is: **implemented before any squad does paid external duty/Campaign work over this transport.**
 **Builds on:** SIP-0094 (per-agent reply queues + `subscribe()` primitive, implemented) and #323 (agent comms poll→push migration). SIP-0094 §4 explicitly deferred the agent-side loop as "a follow-up"; #323 was that follow-up. This SIP is the next rung: the transport loop is now correct — the *delivery guarantees around failure* are not.
 **Amends:** SIP-0094 D12 ack policy — scoped per-direction, not revoked (see §5.1).
-**Ruled 2026-10-14 (the owner, on #1977):** §5.1–§5.3a are accepted as #1977's design: bounded redelivery and a dead-letter queue, the death-path rule, publisher confirms and mandatory routing, and consumer idempotency. §5.4, §5.5 and the duty-gated parts are not part of that ruling. **Measured 2026-10-15, before §5.1 was built:** an explicit `nack(requeue=True)` on these classic queues carries no `x-death` and no delivery count (#1977). §5.1's count never advances as written. **Amended 2026-10-15 (§5.3b), ruled by the owner:** the bound is the agent's own per-task attempt count in Redis.
+**Ruled 2026-10-14 (the owner, on #1977):** §5.1–§5.3a are accepted as #1977's design: bounded redelivery and a dead-letter queue, the death-path rule, publisher confirms and mandatory routing, and consumer idempotency. §5.4, §5.5 and the duty-gated parts are not part of that ruling. **Measured 2026-10-14, before §5.1 was built:** an explicit `nack(requeue=True)` on these classic queues carries no `x-death` and no delivery count (#1977). §5.1's count never advances as written. **Amended 2026-10-14 (§5.3b), ruled by the owner:** the bound is the agent's own per-task attempt count in Redis.
 
-## Delivery ledger (current as of 2026-10-15)
+## Delivery ledger (current as of 2026-10-14)
 
 Kept by the rule in CLAUDE.md ("SIP System"): one row per part, updated in the PR that ships or re-places it.
 
@@ -181,7 +181,7 @@ converted to `FAILED` and acked: **the configured N-attempt budget collapses to 
 message never reaches the DLQ.** §5.1 must therefore land with the death-path marker
 **replacing** the flag-only test in the same change, not beside it.
 
-### 5.3b Amendment: the bound and the quarantine are the agent's (2026-10-15, #1977; ruled by the owner)
+### 5.3b Amendment: the bound and the quarantine are the agent's (2026-10-14, #1977; ruled by the owner)
 
 **What §5.1 said.** A raising callback is `nack(requeue=True)` while "the broker-maintained `x-death` count" is below N, then `reject(requeue=False)` to a dead-letter exchange, attached to the `*_comms` queues by a broker policy.
 
@@ -191,7 +191,7 @@ message never reaches the DLQ.** §5.1 must therefore land with the death-path m
 - **(a)** a per-task attempt count in Redis, written before the handler runs;
 - **(b)** converting the eight `*_comms` queues to quorum queues, so the broker counts deliveries (`x-delivery-limit`). That would mean deleting and redeclaring each queue at a deploy.
 
-**The owner chose (a)** (2026-10-15).
+**The owner chose (a)** (2026-10-14).
 
 **What it means, as built:**
 - **One bound for both failure modes.** Before the handler runs, the agent increments `comms:attempts:{task_id}`, which expires after `comms.delivery.marker_ttl_seconds`. A handler that raises (the subscription now hands the delivery back, `AckPolicy.REDELIVER_ON_FAILURE`) and one that dies (the broker's requeue) are counted alike.

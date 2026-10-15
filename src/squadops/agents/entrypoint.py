@@ -791,7 +791,7 @@ class AgentRunner:
     async def _deliver_task(self, message: QueueMessage, payload: dict, metadata: dict) -> None:
         """Run one delivery of a dispatched task, within its attempts (#1977).
 
-        SIP-Agent-Comms-Delivery-Guarantees §5.1, §5.3 and §5.3a, as amended 2026-10-15. The
+        SIP-Agent-Comms-Delivery-Guarantees §5.1, §5.3 and §5.3a, as amended 2026-10-14. The
         broker counts no redelivery of a classic queue, neither a raising handler's requeue nor
         a dying agent's, so the count is this agent's, kept in Redis:
         - **Completed already:** its reply was published and the ack was lost. It's acked as a
