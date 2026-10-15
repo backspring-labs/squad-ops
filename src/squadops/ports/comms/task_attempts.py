@@ -1,6 +1,6 @@
 """What a dispatched task's deliveries leave behind, across agent restarts (#1977).
 
-SIP-Agent-Comms-Delivery-Guarantees §5.1, §5.3 and §5.3a, as amended 2026-10-15. The broker keeps
+SIP-Agent-Comms-Delivery-Guarantees §5.1, §5.3 and §5.3a, as amended 2026-10-14. The broker keeps
 no count of a classic queue's redeliveries: a raising handler's requeue and a dying agent's
 requeue both carry no ``x-death`` (measured, #1977). So the agent keeps the count itself:
 - an **attempt**, counted *before* the handler runs, so a delivery that kills the agent is still

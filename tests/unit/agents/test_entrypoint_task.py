@@ -372,7 +372,7 @@ class TestProcessCommsMessage:
 
 
 class TestADispatchedTaskIsBoundedByItsAttempts:
-    """#1977, SIP-Agent-Comms-Delivery-Guarantees §5.1, §5.3 and §5.3a as amended 2026-10-15.
+    """#1977, SIP-Agent-Comms-Delivery-Guarantees §5.1, §5.3 and §5.3a as amended 2026-10-14.
 
     #1626: the qa agent segfaulted inside a repair handler and was restarted 37 times on the
     same redelivered message. The broker keeps no count of a classic queue's redeliveries,

@@ -226,7 +226,7 @@ class ChatConfig(BaseModel):
 
 class CommsDeliveryConfig(BaseModel):
     """How many times an agent runs one dispatched task, and the record that counts them (#1977;
-    SIP-Agent-Comms-Delivery-Guarantees §5.1, §5.3 and §5.3a, as amended 2026-10-15)."""
+    SIP-Agent-Comms-Delivery-Guarantees §5.1, §5.3 and §5.3a, as amended 2026-10-14)."""
 
     max_attempts: int = Field(
         default=3,

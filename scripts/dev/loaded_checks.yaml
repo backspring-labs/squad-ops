@@ -439,7 +439,8 @@ checks:
       from squadops.cycles.verification_integrity import RunVerdict
       c = EndedCycle("c", CycleKind.INCREMENT, CycleEnding.ASSESSED)
       blk = RunVerdict.BLOCKED_UNVERIFIED
-      print(_pending(c, blk, True, True, True)[0], _pending(c, blk, False, True, True)[0])
+      # #2319 added the already-met argument (row 16); False keeps this row's question unchanged.
+      print(_pending(c, blk, True, True, True, False)[0], _pending(c, blk, False, True, True, False)[0])
     expect: "10 8"
   - id: "2105-runtime"
     what: SIP-0110 slice 1 - the runtime records each authoring seam's envelope through the cycle registry
@@ -858,3 +859,65 @@ checks:
       from squadops.capabilities.handlers import probe_runner
       print(probe_runner.evaluate_expectations({"error_message": "A"}, 409, {"error": {"code": "c", "message": "B"}}))
     expect: "error message 'B' != expected 'A'"
+  - id: "2317-runtime"
+    what: "a create answers 201 and a delete 204, and a route declares its response"
+    container: squadops-runtime-api
+    code: |
+      from squadops.api.routes.cycles.profiles import router as profiles
+      from squadops.api.routes.cycles.runs import router as runs
+      codes = {(m, r.path.rsplit("/", 1)[-1]): r.status_code for r in [*profiles.routes, *runs.routes] for m in r.methods if m in ("POST", "DELETE") and r.path.endswith(("squad-profiles", "{profile_id}", "/runs"))}
+      print(codes[("POST", "squad-profiles")], codes[("DELETE", "{profile_id}")], codes[("POST", "runs")], runs.routes[1].response_model)
+    expect: "201 204 201 list[squadops.api.cycle_schemas.RunResponse]"
+  - id: "2319-runtime"
+    what: "an increment rejected only for criteria already met goes to a new proposal (row 16), not a repair"
+    container: squadops-runtime-api
+    code: |
+      from squadops.campaigns.progress import rejected_only_as_already_met
+      e = {"verdict": "rejected", "blocked": [], "frozen": [], "routes": [], "discriminations": [{"criterion_id": "T5", "met": False, "reason": "no_baseline_failure"}]}
+      print(rejected_only_as_already_met(e), rejected_only_as_already_met({**e, "blocked": ["route /"]}))
+    expect: "True False"
+  - id: "2320-runtime"
+    what: "the cycle registry retries a transient failure, and a run number lost to a concurrent create"
+    container: squadops-runtime-api
+    code: |
+      import inspect
+      from adapters.cycles.postgres_cycle_registry import PostgresCycleRegistry, _RUN_NUMBER_UNIQUE
+      print(_RUN_NUMBER_UNIQUE, list(inspect.signature(PostgresCycleRegistry).parameters))
+    expect: "cycle_runs_cycle_id_run_number_key ['pool', 'retry']"
+  - id: "2321-runtime"
+    what: "the runs, artifacts and campaigns lists page as the cycles list does"
+    container: squadops-runtime-api
+    code: |
+      import inspect
+      from squadops.api.paging import DEFAULT_LIMIT, MAX_LIMIT
+      from squadops.api.routes.cycles import artifacts, runs
+      from squadops.api.routes.campaigns import campaigns
+      print(DEFAULT_LIMIT, MAX_LIMIT, all("page" in inspect.signature(f).parameters for f in (runs.list_runs, artifacts.list_project_artifacts, campaigns.list_campaigns)))
+    expect: "50 500 True"
+  - id: "2323-runtime"
+    what: "a publish the broker cannot route raises into the retry"
+    container: squadops-runtime-api
+    code: |
+      import inspect
+      from adapters.comms.rabbitmq import RabbitMQAdapter
+      print("on_return_raises=True" in inspect.getsource(RabbitMQAdapter._ensure_connection))
+    expect: "True"
+  - id: "2323-agent"
+    what: "an agent's publishes raise when the broker cannot route them"
+    container: squadops-neo
+    code: |
+      import inspect
+      from adapters.comms.rabbitmq import RabbitMQAdapter
+      print("on_return_raises=True" in inspect.getsource(RabbitMQAdapter._ensure_connection))
+    expect: "True"
+  - id: "2324-agent"
+    what: "an agent bounds a dispatched task by its attempts in Redis, and hands a failed delivery back"
+    container: squadops-eve
+    code: |
+      import redis
+      from squadops.agents.entrypoint import AgentRunner
+      from squadops.config.schema import CommsDeliveryConfig
+      from squadops.ports.comms.queue import AckPolicy
+      d = CommsDeliveryConfig()
+      print(redis.__version__, AckPolicy.REDELIVER_ON_FAILURE.value, hasattr(AgentRunner, "_deliver_task"), d.max_attempts, d.dead_letter_queue)
+    expect: "8.1.0 redeliver_on_failure True 3 comms.dlq"

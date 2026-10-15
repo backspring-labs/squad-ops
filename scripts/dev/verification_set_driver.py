@@ -3195,7 +3195,7 @@ AGENT_MARKER_SAMPLES: dict[str, tuple[str, ...]] = {
     ),
     # Rendered: src/squadops/agents/entrypoint.py, a task failed unrun past its attempts (#1977).
     "redelivered_refusals": (
-        "2026-10-15 00:00:00,000 - squadops.agents.entrypoint - ERROR - task_failed_unrun: "
+        "2026-10-14 00:00:00,000 - squadops.agents.entrypoint - ERROR - task_failed_unrun: "
         "task=repair-run_ab12cd34-00-qa.test_repair type=qa.test_repair — 3 deliveries of this "
         "task ran and none completed (each died or raised before its reply), so it was "
         "quarantined to comms.dlq and not run again; the correction budget governs any retry "
