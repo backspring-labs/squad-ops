@@ -1010,3 +1010,13 @@ checks:
       src = inspect.getsource(QATestHandler.handle)
       print(all(hasattr(QATestHandler, s) for s in steps), sum(f"self.{s}(" in src for s in steps), len(src.splitlines()) < 150)
     expect: "True 8 True"
+  - id: "1994-handler-base"
+    what: "the handler base class keeps its acceptance decisions beside the evaluator, its envelope capture and contentless marker are their own steps, and the generic handle uses the shared helpers (#1994, #2335)"
+    container: squadops-neo
+    code: |
+      import inspect
+      from squadops.capabilities.handlers.cycle.base import _CycleTaskHandler as H
+      from squadops.cycles import acceptance_evaluation as ae
+      src = inspect.getsource(H.handle)
+      print(hasattr(ae, "acceptance_check_record") and hasattr(ae, "apply_blocking_matrix"), hasattr(H, "_capture_authoring_envelope") and hasattr(H, "_mark_contentless"), "self._fail_result(" in src and "self._prompt_provenance(" in src)
+    expect: "True True True"
