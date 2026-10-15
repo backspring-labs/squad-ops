@@ -8,9 +8,13 @@ What bugs would these catch?
 - **A new mutual dependency between two packages.** Each pair that imports the other at module level
   today is recorded with why it stands. A new pair fails, and so does a recorded pair that has gone,
   so the record stays the measured graph (the #1969 two-sided pattern).
+- **A stack module reaching up again (#1993).** ``squadops.stacks`` is read by both sides, the cycle
+  domain and the capability handlers, so it imports neither. One upward import, deferred or not,
+  makes a stack change a change to three packages again, which is what the extraction ended.
 
-Only module-level imports count: a function-local import and an ``if TYPE_CHECKING:`` block do not
-run when the module loads.
+The mutual-pair record counts only module-level imports: a function-local import and an
+``if TYPE_CHECKING:`` block do not run when the module loads. The stacks rule counts every import
+statement, since a deferred import is still a dependency: 22 of the 27 that made the old hub were.
 """
 
 from __future__ import annotations
@@ -26,10 +30,14 @@ _SRC = Path(__file__).resolve().parents[3] / "src"
 _TWO_D = "the 2.3 structural batch"
 
 #: Each pair of packages that import each other at module level, measured at #1985, with why it
-#: stands. ``capabilities``/``cycles`` is the one #1985 names: the stacks extraction (#1993) moves
-#: the stack registry out of ``capabilities``, which is most of ``cycles``'s side of it.
+#: stands. ``capabilities``/``cycles`` is the one #1985 names. The stacks extraction (#1993) took its
+#: hub, the stack registry, out of ``capabilities``: ``cycles``'s module-level imports of
+#: ``capabilities`` went from 14 to 8, and the 8 left are task contracts, not stacks.
 KNOWN_MUTUAL: dict[tuple[str, str], str] = {
-    ("capabilities", "cycles"): f"the stack registry sits in capabilities; {_TWO_D} (#1993)",
+    ("capabilities", "cycles"): (
+        "the handlers read the cycle domain; the task plan reads the context-assembly contracts, "
+        "build profiles and reasoning policy, and the pulse models the capability models"
+    ),
     ("campaigns", "capabilities"): f"increment evaluation and the proposal handler; {_TWO_D}",
     ("campaigns", "ports"): "the campaign registry port names campaign models",
     ("capabilities", "ports"): "the capability ports name capability models",
@@ -40,7 +48,8 @@ KNOWN_MUTUAL: dict[tuple[str, str], str] = {
 }
 
 #: How many ``squadops`` modules a leaf may load (#1985 measured 4 for ``cycles.naming`` and 13 for
-#: ``capabilities.scaffold`` once the roots were thinned, against 144 and 143 before).
+#: the scaffold once the roots were thinned, against 144 and 143 before; #1993 moved the scaffold from
+#: ``capabilities`` to ``stacks``, and it still loads 13).
 _LEAF_BOUND = {"squadops.cycles.naming": 10, "squadops.stacks.scaffold": 30}
 
 
@@ -112,3 +121,75 @@ def test_a_leaf_import_loads_a_leafs_worth_of_modules(leaf, bound):
     )
 
     assert loaded <= bound, f"importing {leaf} loads {loaded} squadops modules (bound {bound})"
+
+
+_UPWARD = ("squadops.capabilities", "squadops.cycles")
+
+
+def _upward_imports(tree: ast.Module) -> list[str]:
+    """Every import statement in ``tree`` naming ``capabilities`` or ``cycles``, wherever it sits."""
+    found = []
+    for node in ast.walk(tree):
+        if isinstance(node, ast.ImportFrom) and node.module:
+            names = [node.module, *(f"{node.module}.{a.name}" for a in node.names)]
+        elif isinstance(node, ast.Import):
+            names = [a.name for a in node.names]
+        else:
+            continue
+        if any(n == up or n.startswith(up + ".") for n in names for up in _UPWARD):
+            found.append(f"{node.lineno}: {ast.unparse(node)}")
+    return found
+
+
+def test_the_stacks_import_neither_capabilities_nor_cycles():
+    upward = {
+        str(path.relative_to(_SRC)): hits
+        for path in sorted((_SRC / "squadops" / "stacks").rglob("*.py"))
+        if (hits := _upward_imports(ast.parse(path.read_text())))
+    }
+
+    assert upward == {}, f"stack modules importing capabilities or cycles: {upward}"
+
+
+@pytest.mark.parametrize(
+    ("source", "found"),
+    [
+        ("def f():\n    from squadops.cycles.models import Run\n", 1),
+        ("if TYPE_CHECKING:\n    from squadops.capabilities.models import X\n", 1),
+        ("from squadops import cycles\n", 1),
+        ("import squadops.capabilities.handlers.base as b\n", 1),
+        # A stack-side read of the sandbox's environment contract is allowed, and a module whose
+        # name only starts like an upward one is not upward.
+        ("from squadops.sandbox.environment import get_environment_contract\n", 0),
+        ("from squadops.cyclesx import y\n", 0),
+    ],
+)
+def test_the_stacks_rule_reads_every_form_of_import(source, found):
+    """Bugs caught: a deferred, type-only or package-form import slipping past the stacks rule, and
+    the rule refusing a sibling package whose name begins like ``cycles``."""
+    assert len(_upward_imports(ast.parse(source))) == found
+
+
+def test_loading_the_stacks_loads_neither_capabilities_nor_cycles():
+    """In a fresh interpreter, every stacks module and the one module outside the package a stacks
+    module reads (``sandbox.environment``, deferred in ``rendered_packaging``). Bug caught: an upward
+    route through a package the stacks may import, which the per-statement rule above cannot see."""
+    stacks = sorted(
+        p.stem for p in (_SRC / "squadops" / "stacks").glob("*.py") if p.stem != "__init__"
+    )
+    code = (
+        "import importlib, sys\n"
+        f"for m in {stacks!r}: importlib.import_module('squadops.stacks.' + m)\n"
+        "import squadops.sandbox.environment\n"
+        f"print(sorted(m for m in sys.modules if m.startswith({_UPWARD!r})))"
+    )
+    loaded = subprocess.run(
+        [sys.executable, "-c", code],
+        capture_output=True,
+        text=True,
+        check=True,
+        env={"PYTHONPATH": str(_SRC)},
+    ).stdout.strip()
+
+    assert "scaffold" in stacks  # the glob found the package
+    assert loaded == "[]", f"loading the stacks loads: {loaded}"
