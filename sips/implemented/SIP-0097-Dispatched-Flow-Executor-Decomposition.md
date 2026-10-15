@@ -220,3 +220,39 @@ Slices 3–5 may reorder if a conflict with in-flight work demands it; slices 1�
 2. Post-arc rename: once dispatch has left the class, rename `DispatchedFlowExecutor`/`dispatched_flow_executor.py` to reflect its orchestrator role (candidate: `RunOrchestrator`). Explicitly **after** the final slice, as its own PR, sequenced with (or absorbing) the #168 residue sweep so there is one rename debt, not two. `FlowExecutionPort` keeps its name — the port describes the contract, which doesn't change.
 
 (Resolved in rev 2, formerly open: `ResolvedAgentConfig` placement → `src/squadops/cycles/agent_config.py` (§6.5); `RunLedger` placement → domain value object in `src/squadops/cycles/run_ledger.py` with append-only mutation and immutable read accessors (§6.6).)
+
+---
+
+## 14. Post-implementation amendment (2026-10-15): the orchestration moves to the domain, as `squadops.execution` (#1992)
+
+**What changed.** §6.1–§6.4 file each collaborator as an adapter, and §6.5 calls the shared control
+types "adapter-internal, NOT domain", in `adapters/cycles/execution_errors.py`. From 2.3 (#1992, PR
+#2327) the executor, every collaborator in §6, the error module and the rest of the cycle
+orchestration live in `src/squadops/execution/`. The boundary set doesn't change: the same
+collaborators, the same seams, the cancellation rule and §6.6's state rule. Only the layer they sit in
+changes.
+- **The control types** are still not domain vocabulary, and still not in `src/squadops/cycles/`. They
+  are the orchestration's own control flow, in the orchestration's package.
+- **The domain hoists of §6.5** (`run_report_builder`, `failure_evidence`, `agent_config`) and
+  `RunLedger` stay in `src/squadops/cycles/`.
+- **§13's rename question** is untouched.
+
+**Why.** Filing the orchestration as an adapter made it the layering's one exception. It imports no
+infrastructure: every collaborator the executor holds is a port (registry, vault, queue, tracker, bus,
+activity, assignment, focus lease). Its two adapter imports were the dispatcher, which moved with it,
+and the no-op event bus, which moved to `squadops.ports.events.noop` beside the comms no-op. The 2.3
+plan's R6 resolves the exception (`docs/architecture/overview.md`, "Where code goes").
+
+**Why a top-level package.** #1992 named `squadops.cycles.execution`. There, five imports in the
+workload gate and the correction runner, of the campaign's gate, escalations, models, plan-review tier
+and proposed behaviours, make `cycles` and `campaigns` import each other. The executor's imports of its
+ports make `cycles` and `ports` do the same, since the ports read the cycle models and the cycle domain
+reads its ports only for type checking. `test_package_import_direction.py`, which counts module-level
+imports, refused both pairs on the first build. As `squadops.execution` it imports `cycles`, `campaigns`, `capabilities` and `stacks`, none of
+them imports it, and it forms no mutual pair.
+
+**Evidence.** PR #2327: the sorted line diff of the move commit (every changed line outside the new
+package is an import line once the module path is normalized), the direction guard with `KNOWN_MUTUAL`
+unchanged, and the composition-roots guard (no module in `src/` imports `adapters` outside the roots).
+
+**Ruled by** the owner, 2026-10-15 (#1992, comment 6188687208).
