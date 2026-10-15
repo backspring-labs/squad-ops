@@ -14,42 +14,61 @@ from fastapi.testclient import TestClient
 from squadops.api.routes.platform_health import router
 
 
+def _probe(component: str, status: str) -> dict:
+    """A probe's reading, shaped as HealthChecker.check_* builds it."""
+    return {
+        "component": component,
+        "type": "Service",
+        "status": status,
+        "version": "Unknown",
+        "purpose": "the probe's purpose",
+        "notes": "",
+    }
+
+
+def _agent(agent_id: str, name: str, lifecycle_state: str) -> dict:
+    """An agent's row, shaped as HealthChecker.get_agent_status builds it."""
+    return {
+        "agent_id": agent_id,
+        "agent_name": name,
+        "role": "lead",
+        "role_label": "Lead",
+        "lifecycle_state": lifecycle_state,
+        "mode": "cycle",
+        "runtime_status": "online",
+        "version": "0.9.7",
+        "revision": None,
+        "deployed_revision": None,
+        "revision_matches_deploy": None,
+        "tps": 0,
+        "memory_count": 0,
+        "last_seen": None,
+        "current_task_id": None,
+    }
+
+
 @pytest.fixture()
 def mock_health_checker():
-    """Create a mock HealthChecker."""
+    """Create a mock HealthChecker whose readings are shaped as the real one builds them."""
     hc = MagicMock()
     hc.pg_pool = MagicMock()
     hc._heartbeat_is_fresh = MagicMock(return_value=True)
     hc._get_display_name = MagicMock(return_value="Max")
+    hc._load_instances = MagicMock(return_value={"max": {"role": "lead", "display_name": "Max"}})
     hc.deployed_revisions = AsyncMock(return_value=None)  # #1720: no deploy recorded
 
-    hc.check_rabbitmq = AsyncMock(return_value={"component": "RabbitMQ", "status": "online"})
-    hc.check_postgres = AsyncMock(return_value={"component": "PostgreSQL", "status": "online"})
-    hc.check_redis = AsyncMock(return_value={"component": "Redis", "status": "online"})
-    hc.check_prefect = AsyncMock(return_value={"component": "Prefect Server", "status": "online"})
-    hc.check_prometheus = AsyncMock(return_value={"component": "Prometheus", "status": "offline"})
-    hc.check_grafana = AsyncMock(return_value={"component": "Grafana", "status": "online"})
-    hc.check_otel_collector = AsyncMock(
-        return_value={"component": "OTel Collector", "status": "online"}
-    )
-    hc.check_langfuse = AsyncMock(return_value={"component": "LangFuse", "status": "online"})
-    hc.check_keycloak = AsyncMock(return_value={"component": "Keycloak", "status": "online"})
+    hc.check_rabbitmq = AsyncMock(return_value=_probe("RabbitMQ", "online"))
+    hc.check_postgres = AsyncMock(return_value=_probe("PostgreSQL", "online"))
+    hc.check_redis = AsyncMock(return_value=_probe("Redis", "online"))
+    hc.check_prefect = AsyncMock(return_value=_probe("Prefect Server", "online"))
+    hc.check_prometheus = AsyncMock(return_value=_probe("Prometheus", "offline"))
+    hc.check_grafana = AsyncMock(return_value=_probe("Grafana", "online"))
+    hc.check_otel_collector = AsyncMock(return_value=_probe("OTel Collector", "online"))
+    hc.check_langfuse = AsyncMock(return_value=_probe("LangFuse", "online"))
+    hc.check_keycloak = AsyncMock(return_value=_probe("Keycloak", "online"))
 
     hc.get_agent_status = AsyncMock(
-        return_value=[
-            {
-                "agent_id": "max",
-                "agent_name": "Max",
-                "network_status": "online",
-                "lifecycle_state": "READY",
-            },
-            {
-                "agent_id": "neo",
-                "agent_name": "Neo",
-                "network_status": "online",
-                "lifecycle_state": "WORKING",
-            },
-        ]
+        return_value=[_agent("max", "Max", "READY"), _agent("neo", "Neo", "WORKING")]
     )
 
     hc.update_agent_status_in_db = AsyncMock(return_value={"status": "updated", "agent_id": "max"})
@@ -195,7 +214,26 @@ class TestAgentCurrentActivity:
         """Bug class: a working agent's current activity must be served as 200 with
         the activity body (the read the CLI/console render)."""
         mock_health_checker.get_current_activity = AsyncMock(
-            return_value={"runtime_activity_id": "act-1", "state": "running", "mode": "cycle"}
+            return_value={
+                "runtime_activity_id": "act-1",
+                "agent_id": "max",
+                "mode": "cycle",
+                "activity_type": "cycle_task",
+                "goal": "build the runs list",
+                "priority": 0,
+                "state": "running",
+                "source_kind": "cycle",
+                "source_ref": "cyc_1",
+                "cycle_id": "cyc_1",
+                "workload_id": None,
+                "task_id": "task-1",
+                "can_pause": False,
+                "can_resume": False,
+                "can_abort": True,
+                "started_at": "2026-10-14T12:00:00+00:00",
+                "paused_at": None,
+                "ended_at": None,
+            }
         )
 
         resp = client.get("/health/agents/max/activity")
@@ -353,3 +391,67 @@ def test_a_server_failure_on_an_unauthenticated_route_names_the_request_never_th
     }
     assert "hunter2" not in resp.text
     assert "req-1976" in caplog.text and "hunter2" in caplog.text
+
+
+def _returned_dict_keys(source: str, function: str) -> list[set[str]]:
+    """The keys of every dict literal ``function`` returns, bare or handed to a model's
+    ``model_validate``, its nested helpers' included."""
+    import ast
+
+    [fn] = [
+        n
+        for n in ast.walk(ast.parse(source))
+        if isinstance(n, ast.FunctionDef | ast.AsyncFunctionDef) and n.name == function
+    ]
+    returned = [n.value for n in ast.walk(fn) if isinstance(n, ast.Return)]
+    dicts = [
+        v.args[0] if isinstance(v, ast.Call) and v.args and isinstance(v.args[0], ast.Dict) else v
+        for v in returned
+    ]
+    return [
+        {k.value for k in d.keys if isinstance(k, ast.Constant)}
+        for d in dicts
+        if isinstance(d, ast.Dict)
+    ]
+
+
+@pytest.mark.parametrize(
+    ("module", "functions", "model"),
+    [
+        (
+            "squadops.api.runtime.health_checker",
+            [
+                "check_rabbitmq",
+                "check_postgres",
+                "check_redis",
+                "check_prefect",
+                "check_prometheus",
+                "check_grafana",
+                "check_otel_collector",
+                "check_langfuse",
+                "check_keycloak",
+            ],
+            "InfraProbeResponse",
+        ),
+        ("squadops.api.runtime.health_checker", ["get_agent_status"], "AgentHealthResponse"),
+        ("squadops.api.runtime.health_checker", ["get_runtime_state"], "RuntimeStateResponse"),
+        ("squadops.api.runtime.health_checker", ["get_current_activity"], "ActivityResponse"),
+        ("squadops.api.routes.platform_health", ["get_agent_status_by_id"], "AgentHealthResponse"),
+    ],
+    ids=["infra", "agents", "runtime-state", "activity", "agent-by-id"],
+)
+def test_each_health_reading_is_built_with_exactly_its_models_fields(module, functions, model):
+    """#1976. These route tests hand the routes shaped mocks, so this reads the real producers.
+    Bugs caught: a reading the checker builds without a field its model requires (the route then
+    answers 500), or with one the model doesn't declare (OpenAPI stops describing it)."""
+    import importlib
+    import inspect
+
+    from squadops.api import platform_schemas
+
+    fields = set(getattr(platform_schemas, model).model_fields)
+    source = inspect.getsource(importlib.import_module(module))
+    built = [keys for f in functions for keys in _returned_dict_keys(source, f)]
+
+    assert len(built) >= len(functions)
+    assert [keys ^ fields for keys in built if keys != fields] == []

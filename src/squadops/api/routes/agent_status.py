@@ -17,6 +17,7 @@ from pydantic import BaseModel
 
 from squadops.api.errors import http_error, server_error
 from squadops.api.middleware.auth import require_scopes
+from squadops.api.platform_schemas import AgentStatusUpdatedResponse
 from squadops.auth.models import Scope
 
 logger = logging.getLogger(__name__)
@@ -56,7 +57,9 @@ def _get_health_checker(request: Request):
 
 
 @router.post("/status", dependencies=[Depends(require_scopes(Scope.AGENTS_WRITE))])
-async def create_or_update_agent_status(request: Request, agent_status: AgentStatusCreate):
+async def create_or_update_agent_status(
+    request: Request, agent_status: AgentStatusCreate
+) -> AgentStatusUpdatedResponse:
     """Create or update agent status (heartbeat endpoint)."""
     hc = _get_health_checker(request)
     agent_id = agent_status.agent_id
@@ -72,23 +75,27 @@ async def create_or_update_agent_status(request: Request, agent_status: AgentSta
         )
 
     try:
-        return await hc.update_agent_status_in_db(
-            {
-                "agent_id": agent_id,
-                "lifecycle_state": agent_status.lifecycle_state,
-                "current_task_id": agent_status.current_task_id,
-                "version": agent_status.version,
-                "revision": agent_status.revision,
-                "tps": agent_status.tps,
-                "memory_count": agent_status.memory_count,
-            }
+        return AgentStatusUpdatedResponse.model_validate(
+            await hc.update_agent_status_in_db(
+                {
+                    "agent_id": agent_id,
+                    "lifecycle_state": agent_status.lifecycle_state,
+                    "current_task_id": agent_status.current_task_id,
+                    "version": agent_status.version,
+                    "revision": agent_status.revision,
+                    "tps": agent_status.tps,
+                    "memory_count": agent_status.memory_count,
+                }
+            )
         )
     except Exception as e:
         raise server_error(request, "Failed to update agent status", e, logger) from e
 
 
 @router.put("/status/{agent_id}", dependencies=[Depends(require_scopes(Scope.AGENTS_WRITE))])
-async def update_agent_status(request: Request, agent_id: str, update: AgentStatusUpdate):
+async def update_agent_status(
+    request: Request, agent_id: str, update: AgentStatusUpdate
+) -> AgentStatusUpdatedResponse:
     """Update agent status fields."""
     hc = _get_health_checker(request)
 
@@ -136,7 +143,7 @@ async def update_agent_status(request: Request, agent_id: str, update: AgentStat
             result = await conn.execute(query, *params)
             if result == "UPDATE 0":
                 raise http_error(404, "AGENT_NOT_FOUND", f"Agent status {agent_id} not found")
-        return {"status": "updated", "agent_id": agent_id}
+        return AgentStatusUpdatedResponse(status="updated", agent_id=agent_id)
     except HTTPException:
         raise
     except Exception as e:
