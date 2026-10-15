@@ -347,6 +347,12 @@ Phase 8's rebuilds, in order:
   (#2340) wasn't exercised live; its tests enter at the executor's acceptance entry. No new seam finding.
 - **R7:** #1994 (deferrable). Its map, `docs/plans/2-3-0-r7-extraction-map.md`: the owner approved
   unit 1's step table on 2026-10-15, and reviews each later unit's before its first extraction PR.
+  - **The qa handler breakup (unit 1): its rebuild and pair, done 2026-10-15.** #2330 and #2331 merged: the qa
+    handler's 481-line `handle` runs as eight named steps, moved and not changed. It was deployed as
+    `dep_c8161efff2a5` from `125c9db6`. Both cycles of the pair were accepted on TensorFold, with the boot audit
+    passing and no intervention (`cyc_213693497a97` 22/22 after three correction rounds, `cyc_1e3c7dfac55b` 18/18
+    after one). Every tracked loaded check answered, its own (`1994-qa-agent`, "True 8 True") among them. No new
+    seam finding.
 - **R8:** #316, once its SIP is accepted.
 - **R9:** Outcome Evaluation's instruments, once their SIP is accepted.
 - **#2204b** at any of them.
