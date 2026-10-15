@@ -1000,3 +1000,13 @@ checks:
       from squadops.ports.events.noop import NoOpCycleEventBus
       print(importlib.util.find_spec("adapters.cycles.dispatched_flow_executor") is None, DispatchedFlowExecutor.__module__, NoOpCycleEventBus.__module__)
     expect: "True squadops.execution.dispatched_flow_executor squadops.ports.events.noop"
+  - id: "1994-qa-agent"
+    what: "the qa handler's handle runs as eight named steps (#1994)"
+    container: squadops-eve
+    code: |
+      import inspect
+      from squadops.capabilities.handlers.cycle.qa_test import QATestHandler
+      steps = ("_compose_user_prompt", "_shape_and_sections", "_generation_request", "_settle_emission", "_validate_suite", "_fold_suite_outcome", "_authenticity_rows", "_suite_outputs")
+      src = inspect.getsource(QATestHandler.handle)
+      print(all(hasattr(QATestHandler, s) for s in steps), sum(f"self.{s}(" in src for s in steps), len(src.splitlines()) < 150)
+    expect: "True 8 True"
