@@ -2,12 +2,13 @@
 
 **Status:** reviewed. The owner approved unit 1's step table on 2026-10-15, and chose to review each
 of units 2–5 at the step before its first extraction PR (#1994, comment 6188687592). It reviewed unit 2's
-on the same day (§4b; #1994, comment 6191733584). The plan owns R7's
+on the same day (§4b; #1994, comment 6191733584), and unit 3's that evening (§4c; #1994, comment
+6204066944). The plan owns R7's
 placement (phase 8, after R6). This map owns each unit's scope, its steps, the data that crosses each
 step, and the proof each PR carries.
 
-**Granularity:** units 1 and 2 are mapped to the step (§4, §4b). Unit 3's step table (§4c) awaits the owner's
-review. Units 4 and 5 are mapped to the block here. Each gets
+**Granularity:** units 1, 2 and 3 are mapped to the step (§4, §4b, §4c). Units 4 and 5 are mapped to the block
+here. Each gets
 its step table in this file, re-measured on the tree it extracts from, and reviewed before its first
 extraction PR. Measured on R6's tree (PR #2327), where units 3 and 4 live after the orchestration
 move, to the top-level `squadops.execution` the owner ruled (#1992, comment 6188687208).
@@ -168,7 +169,12 @@ is 1,665 lines with 42 methods. Four of them are over 100 lines: `_llm_call` (17
 
 **Order:** step 0, then 2a, then 2b with 2c-3, then unit 2's rebuild and regression pair; then #2335.
 
-## 4c. Unit 3: `DispatchedFlowExecutor._execute_task`, step by step (for the owner's review)
+## 4c. Unit 3: `DispatchedFlowExecutor._execute_task`, step by step (reviewed by the owner, 2026-10-15)
+
+**The owner's choices** (2026-10-15 19:00 ET, #1994, comment 6204066944):
+- **the router** lives in `dispatched_flow_executor.py`, beside the executor (3a);
+- **the success tail** is one method, `_after_task_success` (3c);
+- **the dispatch announcement** becomes its own method, `_announce_dispatch` (3d).
 
 Measured on main at `012208ee`: `src/squadops/execution/dispatched_flow_executor.py`, lines 1731–2043,
 313 lines. The method runs one task of the plan. Its blocks:
@@ -239,7 +245,7 @@ Fifteen more are reached through `state`. Two capture rules are behaviour, and t
 - **Outside the router, two call lines change:** `handle_task_outcome=_route_outcome` becomes
   `router.route`, and the abort path's `_record_task_evidence(_last_failed_result.get("result"))` becomes
   `router.record_evidence(router.held.get("result"))`.
-- **Why the same module** (question 1 below): the router calls four of the executor's private methods
+- **Why the same module** (the owner's choice 1): the router calls four of the executor's private methods
   (`_handle_task_outcome`, `_admit_failed_emission`, `_store_kept_progress`, `_failure_recall`) and three
   of this module's names (`record_absent_emission`, `record_task_evidence`, `supply_the_redispatch`). In
   another module, those calls would cross a module boundary into private names, and a test that patches
@@ -253,12 +259,12 @@ the final evidence and resets the failure count on a failed task. It returns the
 **3c: the success tail becomes `_after_task_success`** (1971–2043, 73 lines). It takes `state`, the
 envelope, the result and the run-invariant parameters it reads (`task_idx`, `plan`, `cycle`, `run_id`,
 `flow_run_id`, `profile`, `run_root`, `obs_ctx`, `ledger`, `pulse`). Its four blocks are each one or two
-calls already, so it stays one method (question 2).
+calls already, so it stays one method (the owner's choice 2).
 
 **3d: the dispatch announcement becomes `_announce_dispatch`** (1781–1802). It creates the Prefect task run,
 emits `task.dispatched` and returns the task-run id. This one isn't in §5's block list. It's added because
 it changes for its own reasons (SIP-0087, SIP-0077) and sits between the enrichment and the routing
-(question 3).
+(the owner's choice 3).
 
 **After:** `_execute_task` reads as preconditions, enrich, announce, build the router, dispatch, settle,
 and the success tail: about 100 lines, most of them the signature and the calls' keyword arguments.
@@ -272,16 +278,6 @@ and the success tail: about 100 lines, most of them the signature and the calls'
 
 **The PRs:** step 0; then 3a with 3b (the router and what settles through it); then 3c with 3d; then
 unit 3's rebuild and regression pair.
-
-**Questions for the owner:**
-1. **Should the router live in `dispatched_flow_executor.py`, beside the executor?** The alternative is a
-   new module, `squadops.execution.task_routing`. That shrinks the file, but the router then calls four of
-   the executor's private methods across modules, and three patch targets move. I recommend the same
-   module.
-2. **Should the success tail be one step?** The alternative splits its pulse block (36 lines) into its own
-   method. I recommend one step: each block is already one or two calls.
-3. **Should the dispatch announcement become its own step (3d)?** It isn't in the block list this map
-   carried. I recommend yes.
 
 ## 5. Units 2–5, to the block
 
