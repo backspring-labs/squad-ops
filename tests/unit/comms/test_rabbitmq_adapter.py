@@ -559,3 +559,51 @@ class TestTheRedeliveredFlagReachesTheConsumer:
         out = RabbitMQAdapter._to_queue_message(self._incoming(redelivered=True), "eve_comms")
 
         assert "redelivered" in out.attributes
+
+
+class TestPublisherConfirms:
+    """#1977, SIP-Agent-Comms-Delivery-Guarantees §5.2."""
+
+    async def test_the_channel_raises_a_publish_the_broker_returns(self) -> None:
+        """Bug caught: aio_pika's default ``on_return_raises=False``, under which a mandatory
+        publish the broker could not route resolved as if it were delivered."""
+        adapter = RabbitMQAdapter(url="amqp://test", namespace=None)
+        conn = MagicMock()
+        conn.is_closed = False
+        conn.channel = AsyncMock(return_value=MagicMock(is_closed=False))
+        adapter._connection = conn
+
+        await adapter._ensure_connection()
+
+        assert conn.channel.call_args.kwargs == {
+            "publisher_confirms": True,
+            "on_return_raises": True,
+        }
+
+    async def test_a_returned_publish_is_retried_and_then_a_queue_error(self, monkeypatch) -> None:
+        """A publish returned every time, as aiormq raises it with ``on_return_raises``, goes
+        through the publish retry and ends in ``QueueError``, each try sent as mandatory."""
+        import aiormq.exceptions
+        from pamqp.commands import Basic
+
+        monkeypatch.setattr(rabbitmq_mod, "_PUBLISH_RETRY_BACKOFF", 0)
+        returned = MagicMock(
+            delivery=Basic.Return(
+                reply_code=312, reply_text="NO_ROUTE", exchange="", routing_key="q"
+            )
+        )
+        channel = MagicMock(is_closed=False)
+        channel.default_exchange.publish = AsyncMock(
+            side_effect=aiormq.exceptions.PublishError(returned, None)
+        )
+        queue = MagicMock(channel=channel)
+        queue.name = "q"
+        channel.declare_queue = AsyncMock(return_value=queue)
+        adapter = _make_adapter_with_channel(channel)
+
+        with pytest.raises(QueueError, match="NO_ROUTE"):
+            await adapter.publish("q", "{}")
+
+        calls = channel.default_exchange.publish.await_args_list
+        assert len(calls) == rabbitmq_mod._PUBLISH_MAX_ATTEMPTS
+        assert all(c.kwargs["mandatory"] is True for c in calls)

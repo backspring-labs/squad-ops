@@ -411,3 +411,39 @@ class TestChannelRecovery:
         msgs = await adapter.consume(q, max_messages=1)
         assert [json.loads(m.payload)["task"] for m in msgs] == ["survives-server-close"]
         assert not adapter._channel.is_closed  # rebuilt
+
+
+@pytest.mark.integration
+class TestPublisherConfirms:
+    """#1977, SIP-Agent-Comms-Delivery-Guarantees §5.2, against a real broker."""
+
+    @pytest_asyncio.fixture
+    async def adapter(self, rabbitmq_container):
+        a = RabbitMQAdapter(url=rabbitmq_container.get_connection_url(), namespace=None)
+        yield a
+        await a.close()
+
+    @pytest.mark.asyncio
+    async def test_a_publish_to_a_queue_gone_under_it_is_returned_redeclared_and_delivered(
+        self, adapter, rabbitmq_container
+    ):
+        """Bug caught: a publish the broker could not route, resolved as if it were delivered. The
+        adapter's cached queue was deleted on the broker (by another connection, so the adapter's
+        channel is untouched). Before §5.2 the first publish vanished; now it is returned, raises
+        into the retry, the queue is declared again, and the message arrives."""
+        import aio_pika
+
+        name = "sip1977_confirms_gone_queue"
+        await _drain(adapter, name)
+        other = await aio_pika.connect(rabbitmq_container.get_connection_url())
+        try:
+            channel = await other.channel()
+            await channel.queue_delete(name)
+        finally:
+            await other.close()
+
+        await adapter.publish(name, json.dumps({"probe": "returned then delivered"}))
+        received = await adapter.consume(name, max_messages=1)
+
+        assert [json.loads(m.payload) for m in received] == [{"probe": "returned then delivered"}]
+        await adapter.ack(received[0])
