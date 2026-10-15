@@ -46,6 +46,7 @@ from typing import TYPE_CHECKING, Any
 from adapters.cycles.execution_errors import _CancellationError
 from adapters.cycles.task_naming import build_task_name
 from squadops.comms.run_cancellation import RUN_ID_METADATA_KEY
+from squadops.comms.task_delivery import DISPATCH_ID_METADATA_KEY
 from squadops.comms.task_replay import DISPATCH_BOOT_METADATA_KEY
 from squadops.cycles.llm_usage import RunUsage, RunUsageAccumulator
 from squadops.cycles.run_loop_summary import revision_forms_of
@@ -451,6 +452,8 @@ class TaskDispatcher:
         # its handler by the same value this side waits on — not by its model-call timeout.
         # #1648: and its run, so the agent can drop it when that run is cancelled. #1929: and
         # this process's boot, so a task finished for an earlier boot is answered, not re-run.
+        # #2333: and this send's own id, so the agent tells the broker's redelivery of it from
+        # this process's next send of the same task, which is a fresh execution.
         envelope = dataclasses.replace(
             envelope,
             timeout=self._task_timeout,
@@ -458,6 +461,7 @@ class TaskDispatcher:
                 **(envelope.metadata or {}),
                 RUN_ID_METADATA_KEY: run_id,
                 DISPATCH_BOOT_METADATA_KEY: self._boot,
+                DISPATCH_ID_METADATA_KEY: uuid.uuid4().hex,
             },
         )
 

@@ -29,19 +29,19 @@ class _Attempts(TaskAttemptsPort):
         self.done: set[str] = set()
         self.down = down
 
-    async def completed(self, task_id: str) -> bool:
+    async def completed(self, key: str) -> bool:
         if self.down:
             raise ConnectionError("redis unreachable")
-        return task_id in self.done
+        return key in self.done
 
-    async def begin_attempt(self, task_id: str) -> int:
+    async def begin_attempt(self, key: str) -> int:
         if self.down:
             raise ConnectionError("redis unreachable")
-        self.attempts[task_id] = self.attempts.get(task_id, 0) + 1
-        return self.attempts[task_id]
+        self.attempts[key] = self.attempts.get(key, 0) + 1
+        return self.attempts[key]
 
-    async def mark_completed(self, task_id: str) -> None:
-        self.done.add(task_id)
+    async def mark_completed(self, key: str) -> None:
+        self.done.add(key)
 
 
 pytestmark = [pytest.mark.domain_agents]
