@@ -253,7 +253,8 @@ class CommsConfig(BaseModel):
     redis: RedisConfig = Field(..., description="Redis configuration")
     chat: ChatConfig = Field(default_factory=ChatConfig, description="Console chat's tunables")
     delivery: CommsDeliveryConfig = Field(
-        default_factory=CommsDeliveryConfig, description="A dispatched task's delivery bound (#1977)"
+        default_factory=CommsDeliveryConfig,
+        description="A dispatched task's delivery bound (#1977)",
     )
 
 

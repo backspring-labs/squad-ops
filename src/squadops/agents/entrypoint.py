@@ -873,6 +873,8 @@ class AgentRunner:
             "delivery": payload,
         }
         try:
+            if self._queue is None:
+                raise RuntimeError("no queue to quarantine on")
             await self._queue.publish(queue, json.dumps(record))
             logger.error(
                 "task_quarantined: task=%s queue=%s — %s",
