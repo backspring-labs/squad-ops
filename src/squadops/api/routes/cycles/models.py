@@ -20,7 +20,16 @@ from squadops.api.cycle_schemas import (
 )
 from squadops.api.errors import http_error, server_error
 from squadops.api.middleware.auth import require_scopes
+from squadops.api.runtime.deps import get_llm_port, get_squad_profile_port
+from squadops.api.runtime.pull_tracker import (
+    complete_pull_job,
+    create_pull_job,
+    fail_pull_job,
+    get_pull_job,
+)
 from squadops.auth.models import Scope
+from squadops.llm.exceptions import LLMConnectionError, LLMModelNotFoundError
+from squadops.llm.model_registry import MODEL_SPECS
 from squadops.ports.llm.provider import LLMCapability
 
 logger = logging.getLogger(__name__)
@@ -33,7 +42,6 @@ _CACHE_HEADERS = {"Cache-Control": "public, max-age=300"}
 @router.get("", dependencies=[Depends(require_scopes(Scope.CYCLES_READ))])
 async def list_models(response: Response) -> list[ModelSpecResponse]:
     """Return all model registry entries."""
-    from squadops.llm.model_registry import MODEL_SPECS
 
     response.headers.update(_CACHE_HEADERS)
     return [
@@ -58,7 +66,6 @@ def _llm_port_supporting(request: Request, capability: str):
     manage models. What changes is that the reason is a declared capability
     rather than a vendor name.
     """
-    from squadops.api.runtime.deps import get_llm_port
 
     try:
         port = get_llm_port(request)
@@ -77,7 +84,6 @@ def _llm_port_supporting(request: Request, capability: str):
 @router.get("/pulled", dependencies=[Depends(require_scopes(Scope.CYCLES_READ))])
 async def list_pulled_models(request: Request) -> list[PulledModelResponse]:
     """List locally pulled models with active profile cross-reference."""
-    from squadops.llm.model_registry import MODEL_SPECS
 
     port = _llm_port_supporting(request, LLMCapability.MODEL_LISTING)
 
@@ -91,8 +97,6 @@ async def list_pulled_models(request: Request) -> list[PulledModelResponse]:
     # Cross-reference against active squad profile
     active_agents: dict[str, list[str]] = {}  # model -> [agent_id, ...]
     try:
-        from squadops.api.runtime.deps import get_squad_profile_port
-
         profile_port = get_squad_profile_port(request)
         active_id = await profile_port.get_active_profile_id()
         if active_id:
@@ -131,11 +135,6 @@ async def list_pulled_models(request: Request) -> list[PulledModelResponse]:
 @router.post("/pull", status_code=202, dependencies=[Depends(require_scopes(Scope.CYCLES_WRITE))])
 async def pull_model(request: Request, body: PullModelRequest) -> PullStatusResponse:
     """Start pulling a model in the background. Returns 202 with pull_id."""
-    from squadops.api.runtime.pull_tracker import (
-        complete_pull_job,
-        create_pull_job,
-        fail_pull_job,
-    )
 
     port = _llm_port_supporting(request, LLMCapability.MODEL_MANAGEMENT)
     job = create_pull_job(body.name)
@@ -159,7 +158,6 @@ async def pull_model(request: Request, body: PullModelRequest) -> PullStatusResp
 @router.get("/pull/{pull_id}/status", dependencies=[Depends(require_scopes(Scope.CYCLES_READ))])
 async def pull_status(pull_id: str) -> PullStatusResponse:
     """Poll the status of a model pull job."""
-    from squadops.api.runtime.pull_tracker import get_pull_job
 
     job = get_pull_job(pull_id)
     if not job:
@@ -180,7 +178,6 @@ async def pull_status(pull_id: str) -> PullStatusResponse:
 )
 async def delete_model(request: Request, model_name: str) -> None:
     """Delete a locally pulled model."""
-    from squadops.llm.exceptions import LLMConnectionError, LLMModelNotFoundError
 
     port = _llm_port_supporting(request, LLMCapability.MODEL_MANAGEMENT)
 

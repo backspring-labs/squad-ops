@@ -52,17 +52,42 @@ if TYPE_CHECKING:
     from squadops.capabilities.handlers.context import ExecutionContext
     from squadops.telemetry.models import PromptLayerMetadata
 
-from squadops.capabilities.disputed_checks import split_disputed_checks
+from squadops.capabilities.anchored_edits import (
+    apply_anchored_edits,
+    editable_file_lines,
+    parse_anchored_edits,
+    revision_form_reading,
+    strip_edit_blocks,
+    verbatim_block,
+)
+from squadops.capabilities.context_assembly import authoring_seam_of
+from squadops.capabilities.disputed_checks import (
+    failing_row_identities,
+    row_file,
+    split_disputed_checks,
+)
 from squadops.capabilities.handlers.cycle.validation import (
     ValidationResult,
     _build_typed_check_evaluation_artifact,
     _classify_file,
 )
 from squadops.capabilities.handlers.emission_log import log_emission_shape
-from squadops.capabilities.handlers.fault_injection import held_through_pass
+from squadops.capabilities.handlers.fault_injection import held_through_pass, planted_rows
 from squadops.capabilities.handlers.fault_injection import hold as hold_fault
 from squadops.capabilities.handlers.fault_injection import inject as inject_fault
+from squadops.capabilities.handlers.fenced_parser import cut_final_block, extract_fenced_files
+from squadops.cycles.emission_integrity import (
+    SIGNATURE_CAP_EXHAUSTED,
+    classify_empty_emission,
+    emission_retry_reason_line,
+    no_fenced_blocks_failure,
+)
+from squadops.cycles.task_outcome import FailureClassification, TaskOutcome
+from squadops.cycles.verification_normalize import row_is_blocking_failure
+from squadops.memory.authoring_envelope import capture_envelope
 from squadops.stacks.development_profiles import get_development_profile
+from squadops.telemetry.llm_metrics import record_llm_call
+from squadops.telemetry.models import PromptLayer, PromptLayerMetadata, build_generation_record
 
 logger = logging.getLogger(__name__)
 
@@ -130,8 +155,6 @@ def failing_check_lines(checks: Any) -> list[str]:
     identity and reason, then every type error it carried — or, when it carried none, the tail
     of what the build printed. The summary a pass was shown before ("Typed checks failed: N of
     M") named no check and no error."""
-    from squadops.capabilities.anchored_edits import verbatim_block
-    from squadops.capabilities.disputed_checks import failing_row_identities
 
     lines: list[str] = []
     for row in checks or ():
@@ -431,7 +454,6 @@ class _CycleTaskHandler(CapabilityHandler):
                 marker.get("signature") or "none",
             )
             return user_prompt
-        from squadops.cycles.emission_integrity import emission_retry_reason_line
 
         expected = [
             str(e)
@@ -808,8 +830,6 @@ class _CycleTaskHandler(CapabilityHandler):
         """The files a pass is shown and may edit (SIP-0086 §12a change 3): each file a
         blocking-failed row names that the task already produced. A missing file has no current
         content to show; it is emitted whole."""
-        from squadops.capabilities.disputed_checks import row_file
-        from squadops.cycles.verification_normalize import row_is_blocking_failure
 
         produced = {str(a.get("name")) for a in artifacts if a.get("name")}
         named = [
@@ -832,8 +852,6 @@ class _CycleTaskHandler(CapabilityHandler):
         always had, and no edit form."""
         if renderer is None:
             return self._build_self_eval_prompt(validation, artifacts), {}
-        from squadops.capabilities.anchored_edits import editable_file_lines, verbatim_block
-        from squadops.capabilities.disputed_checks import failing_row_identities
 
         names = [str(a.get("name")) for a in artifacts if a.get("name")]
         variables = {
@@ -884,12 +902,6 @@ class _CycleTaskHandler(CapabilityHandler):
         """A pass's files: its edits applied to the files it was shown, in one transaction
         (SIP-0107 §14), beside the files it emitted whole — or nothing from it when the
         transaction is refused. A response with no edit fence is read as it always was."""
-        from squadops.capabilities.anchored_edits import (
-            apply_anchored_edits,
-            parse_anchored_edits,
-            strip_edit_blocks,
-        )
-        from squadops.capabilities.handlers.fenced_parser import extract_fenced_files
 
         parse = parse_anchored_edits(source)
         body = strip_edit_blocks(source) if parse.found else source
@@ -941,8 +953,6 @@ class _CycleTaskHandler(CapabilityHandler):
         was offered (SIP-0086 §12a change 3, recorded like a repair's — SIP-0107 §46k, §46o). Its
         own marker, so a pass never counts as a repair in §46a's per-cell count."""
         import json
-
-        from squadops.capabilities.anchored_edits import revision_form_reading
 
         outputs: dict[str, Any] = {"artifacts": new_artifacts}
         if edit_record is not None:
@@ -1010,7 +1020,6 @@ class _CycleTaskHandler(CapabilityHandler):
         evaluation (1.8.2 plan §4.1 ``false-criterion``). The row is judged like any other —
         the pass that follows sees it, and may dispute it — and the summary is recounted, so a
         planted failure reads as the check failure it imitates."""
-        from squadops.capabilities.handlers.fault_injection import planted_rows
 
         validation = await self._validate_output(
             inputs, artifacts, typed_error_counts=typed_error_counts
@@ -1062,7 +1071,6 @@ class _CycleTaskHandler(CapabilityHandler):
         (#670 / RC-9b). Returns the final validation and artifact set; banks the pass
         count as ``self_eval_passes``.
         """
-        from squadops.capabilities.handlers.fenced_parser import extract_fenced_files
 
         system_prompt, user_prompt, content = transcript
         # SIP-0086 §12a change 1: the depth is the request profile's, required. It was read
@@ -1163,7 +1171,6 @@ class _CycleTaskHandler(CapabilityHandler):
         model its own output instead of re-rolling blind and the locus classifier reads a
         producing-side signal.
         """
-        from squadops.cycles.emission_integrity import no_fenced_blocks_failure
 
         self._log_no_fenced_blocks(content)
         return self._fail_result(
@@ -1227,7 +1234,6 @@ class _CycleTaskHandler(CapabilityHandler):
         ledger supersedes per ``(check_id, subject)``, so a check that only ever appears
         when it fails can never be superseded by its own later pass.
         """
-        from squadops.cycles.task_outcome import FailureClassification, TaskOutcome
 
         if validation.passed:
             outputs["outcome_class"] = TaskOutcome.SUCCESS
@@ -1311,7 +1317,6 @@ class _CycleTaskHandler(CapabilityHandler):
         # prompt-layer identity is passed rather than derived — its system layer is
         # `{role}-system`, not `{role}-cycle-system`, and #929 named re-grouping these
         # traces a data decision rather than a refactor.
-        from squadops.telemetry.models import PromptLayer, PromptLayerMetadata
 
         try:
             response, content = await self._llm_call(
@@ -1390,7 +1395,6 @@ class _CycleTaskHandler(CapabilityHandler):
             # construction rather than by the `content.strip()` proxy, which flagged a
             # paragraph of intent as a success and sent it to the correction loop with no
             # marker and therefore no retry.
-            from squadops.cycles.emission_integrity import no_fenced_blocks_failure
 
             outputs["emission_failure"] = no_fenced_blocks_failure(
                 len(content),
@@ -1650,9 +1654,6 @@ class _CycleTaskHandler(CapabilityHandler):
         """The authoring replay envelope for this task's first call (SIP-0110 §0.11), as a dict."""
         from datetime import UTC, datetime
 
-        from squadops.capabilities.context_assembly import authoring_seam_of
-        from squadops.memory.authoring_envelope import capture_envelope
-
         task_type = context.authoring_task_type or str(self._task_type)
         seam = authoring_seam_of(task_type)
         if seam is None:  # the executor sets the inputs only for a seam; never guess one
@@ -1711,7 +1712,6 @@ class _CycleTaskHandler(CapabilityHandler):
         half a file as written. So the cut block is dropped (``cut`` names its opening line), the
         closed blocks before it are kept, and, once per call, the call is asked again with the
         fact. A call at the cap whose blocks all closed was not cut, and is returned as it is."""
-        from squadops.capabilities.handlers.fenced_parser import cut_final_block
 
         cap = chat_kwargs.get("max_tokens")
         if not content or not reached_cap(response.completion_tokens, cap, response.termination):
@@ -1761,10 +1761,6 @@ class _CycleTaskHandler(CapabilityHandler):
         cap, is not a cap exhaustion and answers None; so does a handler with no renderer to
         state the fact from its asset.
         """
-        from squadops.cycles.emission_integrity import (
-            SIGNATURE_CAP_EXHAUSTED,
-            classify_empty_emission,
-        )
 
         cap = chat_kwargs.get("max_tokens")
         if (
@@ -1847,7 +1843,6 @@ class _CycleTaskHandler(CapabilityHandler):
         if metrics is not None and chat_response is not None:
             # #2204: the same numbers as metrics, so they are kept over time, not only logged.
             # Telemetry never fails the task it measures (MetricsPort's non-blocking contract).
-            from squadops.telemetry.llm_metrics import record_llm_call
 
             try:
                 record_llm_call(
@@ -1863,12 +1858,6 @@ class _CycleTaskHandler(CapabilityHandler):
                 logger.debug("llm call metrics not recorded", exc_info=True)
         llm_obs = getattr(context.ports, "llm_observability", None)
         if llm_obs and context.correlation_context:
-            from squadops.telemetry.models import (
-                PromptLayer,
-                PromptLayerMetadata,
-                build_generation_record,
-            )
-
             gen_record = build_generation_record(
                 model=resolved_model or context.ports.llm.default_model,
                 prompt_text=prompt,

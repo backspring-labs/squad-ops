@@ -20,6 +20,7 @@ if "pytest" not in sys.modules:
     _repo_root = Path(__file__).resolve().parents[3]
     load_dotenv(_repo_root / ".env", override=False)
 
+from squadops import __version__
 from squadops.cli.commands.agent import app as agent_app
 from squadops.cli.commands.artifacts import artifacts_app, baseline_app
 from squadops.cli.commands.assignment import app as assignment_app
@@ -45,8 +46,6 @@ app = typer.Typer(
 def _version_callback(value: bool) -> None:
     """Print version and exit when --version is passed."""
     if value:
-        from squadops import __version__
-
         typer.echo(f"squadops {__version__}")
         raise typer.Exit()
 

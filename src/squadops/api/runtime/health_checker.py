@@ -20,6 +20,7 @@ import httpx
 import yaml
 
 from squadops.api.runtime.agent_labels import get_role_label
+from squadops.api.runtime.host_reading import read_host
 from squadops.cycles.deploy_record import revision_matches_deploy
 from squadops.ports.cycles.deploy_registry import DeployRegistryPort
 from squadops.ports.runtime.activity import RuntimeActivityPort
@@ -563,7 +564,6 @@ class HealthChecker:
 
     async def read_host_resources(self) -> dict[str, float | None]:
         """The host's resources, from Prometheus (#2204): each ``None`` when unknown."""
-        from squadops.api.runtime.host_reading import read_host
 
         return await read_host(self._client, self._config.observability.prometheus.url)
 

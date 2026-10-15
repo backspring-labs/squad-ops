@@ -26,13 +26,16 @@ from typing import TYPE_CHECKING, Any
 
 import yaml
 
+from squadops.capabilities.handlers.build_profiles import get_profile
 from squadops.cycles.acceptance_check_spec import (
     ALLOWED_SEVERITIES,
     CHECK_SPECS,
     PLAN_PROSE_CONTRACT_DIVERGENCE,
     argv_matches_safelist,
     command_safelist_names,
+    derived_check_names,
     normalize_route,
+    regex_target_is_document,
     reserved_keys_for,
 )
 from squadops.cycles.agent_config import served_roles
@@ -368,6 +371,7 @@ class ImplementationPlan:
         pin. Logic lives in ``framing_consistency`` (pure, cross-artifact);
         this method is the seam the plan-gate validators and the #686
         author-teaching classification both discover."""
+        # deferred (name): this module defines its own validate_manifest_plan_consistency
         from squadops.cycles.framing_consistency import validate_manifest_plan_consistency
 
         return validate_manifest_plan_consistency(manifest, self)
@@ -493,7 +497,6 @@ class ImplementationPlan:
             return []
         if not any(task.task_type in _BUILDER_ROLE_BUILD_TASK_TYPES for task in self.tasks):
             return []
-        from squadops.capabilities.handlers.build_profiles import get_profile
 
         try:
             profile = get_profile(profile_name)
@@ -519,7 +522,6 @@ class ImplementationPlan:
         """Yield ``(task, criterion, target)`` for every ``regex_match`` criterion
         that targets a non-document file — the #464 violation shared by the fatal
         scope check and the soft-violation collector."""
-        from squadops.cycles.acceptance_check_spec import regex_target_is_document
 
         for task in self.tasks:
             for criterion in task.acceptance_criteria:
@@ -723,6 +725,7 @@ class ImplementationPlan:
         """
         import re as _re
 
+        # deferred (name): this module defines its own resolve_contract_refs
         from squadops.cycles.task_plan import resolve_contract_refs
 
         # #629 (A6/D2): the ADVISORY status-code rule — its own identity so its
@@ -969,6 +972,7 @@ class ImplementationPlan:
         """
         if not footprint:
             return []
+        # deferred (pair): cycles and campaigns would import each other at load
         from squadops.campaigns.change_request import in_footprint
 
         return [
@@ -990,7 +994,6 @@ class ImplementationPlan:
         Returns:
             List of validation error strings (empty = valid), one per unplanned criterion.
         """
-        from squadops.tasks.task_types import authors_qa_suite
 
         planned = {
             artifact
@@ -1162,7 +1165,6 @@ class ImplementationPlan:
         This method exists so the rule has a validator to be *bound* to in
         `plan_authoring_rules.AUTHOR_FACING`, and so a caller can log the audit trail.
         """
-        from squadops.cycles.acceptance_check_spec import derived_check_names
 
         derived = derived_check_names()
         return [

@@ -129,7 +129,8 @@ async def test_a_capture_that_fails_never_fails_the_authoring():
     ports = _ctx(_fenced(_REFERENCE)).ports
 
     with patch(
-        "squadops.memory.authoring_envelope.capture_envelope", side_effect=RuntimeError("boom")
+        "squadops.capabilities.handlers.cycle.base.capture_envelope",
+        side_effect=RuntimeError("boom"),
     ):
         result = await _executor(StrategyProposeIncrementHandler(), ports).execute(
             _dispatched(TaskType.STRATEGY_PROPOSE_INCREMENT, _inputs())

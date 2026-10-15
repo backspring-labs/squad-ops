@@ -21,6 +21,7 @@ from squadops.memory.authoring_envelope import json_safe
 from squadops.orchestration.handler_registry import HandlerNotFoundError, HandlerRegistry
 from squadops.ports.capabilities.executor import CapabilityExecutor
 from squadops.tasks.models import TaskEnvelope, TaskResult, TaskResultStatus
+from squadops.telemetry.models import CorrelationContext
 
 if TYPE_CHECKING:
     from squadops.agents.base import PortsBundle
@@ -144,7 +145,6 @@ class HandlerExecutor(CapabilityExecutor):
                 )
 
             # Create execution context with correlation for LangFuse tracing
-            from squadops.telemetry.models import CorrelationContext
 
             corr_ctx = CorrelationContext.from_envelope(
                 envelope,

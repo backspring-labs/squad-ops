@@ -31,6 +31,8 @@ from __future__ import annotations
 
 from collections.abc import Callable
 
+from squadops.sandbox.environment import get_environment_contract
+
 #: The header every rendered packaging file carries, in that file's comment syntax.
 _OWNED = (
     "Rendered by the scaffold from the stack's environment contract (#598). Frozen — do not edit."
@@ -39,7 +41,6 @@ _OWNED = (
 
 def _tool_version(stack: str, tool: str) -> str:
     """The declared version prefix of ``tool`` for ``stack``; raises when it is not declared."""
-    from squadops.sandbox.environment import get_environment_contract
 
     versions = dict(get_environment_contract(stack).required_tools)
     if tool not in versions:
@@ -48,7 +49,6 @@ def _tool_version(stack: str, tool: str) -> str:
 
 
 def _app_port(stack: str) -> int:
-    from squadops.sandbox.environment import get_environment_contract
 
     return get_environment_contract(stack).app_port
 

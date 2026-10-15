@@ -17,6 +17,7 @@ from squadops.orchestration.handler_executor import HandlerExecutor
 from squadops.orchestration.handler_registry import HandlerRegistry
 from squadops.tasks.models import TaskEnvelope, TaskResult, TaskResultStatus
 from squadops.telemetry.models import CorrelationContext, StructuredEvent
+from squadops.telemetry.noop import NoOpLLMObservabilityAdapter
 
 if TYPE_CHECKING:
     from squadops.agents.base import PortsBundle
@@ -109,8 +110,6 @@ class AgentOrchestrator:
 
         # SIP-0061: always inject the NoOp when None — the domain's null object (#154).
         if llm_observability is None:
-            from squadops.telemetry.noop import NoOpLLMObservabilityAdapter
-
             llm_observability = NoOpLLMObservabilityAdapter()
         self._llm_observability = llm_observability
 

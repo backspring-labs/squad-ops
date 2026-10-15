@@ -146,7 +146,7 @@ class TestResolveTokenCachedFile:
             client_id="cli",
             grant_type="password",
         )
-        with patch("squadops.cli.auth.refresh_access_token", return_value=refreshed):
+        with patch("squadops.cli.config.refresh_access_token", return_value=refreshed):
             token = resolve_token(CLIConfig())
         assert token == "refreshed_access"
 
@@ -178,5 +178,5 @@ class TestResolveTokenCachedFile:
                 grant_type="password",
             )
         )
-        with patch("squadops.cli.auth.refresh_access_token", return_value=None):
+        with patch("squadops.cli.config.refresh_access_token", return_value=None):
             assert resolve_token(CLIConfig()) is None

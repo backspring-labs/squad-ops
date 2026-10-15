@@ -42,6 +42,7 @@ from squadops.campaigns.models import (
 from squadops.cycles.cycle_assessment import RejectionRecord
 from squadops.cycles.failure_attribution import AttributionClass, FailureEvent, compose
 from squadops.cycles.models import Cycle, GateDecisionValue, Run
+from squadops.cycles.replay import parse_replay_declaration
 from squadops.cycles.run_loop_summary import RunLoopSummary
 
 
@@ -142,8 +143,8 @@ class Observation:
 
 def ineligibility(cycle: Cycle) -> str | None:
     """Why ``cycle`` produces no observation, or ``None`` when it does (§0.3)."""
+    # deferred (pair): memory and capabilities would import each other at load
     from squadops.capabilities.handlers.fault_injection import DECLARATION_KEY
-    from squadops.cycles.replay import parse_replay_declaration
 
     overrides = cycle.execution_overrides or {}
     if overrides.get(DECLARATION_KEY):
@@ -268,6 +269,7 @@ def _failure_shapes(failed_detail: Sequence[tuple[str, str]]) -> dict[str, Any]:
     """Each failing case's shape, by the table of the runner that ran it (§0.4, D14): an observed
     signature, never a cause. A case no row matches is recorded with no shape: unclassified."""
     # Local: the runner's tables sit in capabilities, which imports this package.
+    # deferred (pair): memory and capabilities would import each other at load
     from squadops.capabilities.handlers.test_runner import (
         FAILURE_SHAPE_TABLE_VERSION,
         failure_shape_of,

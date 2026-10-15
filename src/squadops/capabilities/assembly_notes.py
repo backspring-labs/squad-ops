@@ -35,6 +35,7 @@ answer. The legacy profiles keep them optional.
 
 from __future__ import annotations
 
+from squadops.sandbox.environment import get_environment_contract
 from squadops.stacks.rendered_packaging import render_packaging
 from squadops.stacks.scaffold import qa_test_namespace_for_stack
 
@@ -68,7 +69,6 @@ def already_supplied_lines(stack: str) -> tuple[str, ...]:
     stack with no environment contract, which is the honest answer for the legacy
     profiles: nothing is declared, so nothing can be claimed as already supplied.
     """
-    from squadops.sandbox.environment import get_environment_contract
 
     try:
         contract = get_environment_contract(stack)

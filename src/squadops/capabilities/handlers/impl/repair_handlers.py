@@ -17,18 +17,44 @@ from __future__ import annotations
 import logging
 from typing import TYPE_CHECKING, Any
 
-from squadops.capabilities.anchored_edits import editable_file_lines, verbatim_block
+from squadops.campaigns.proposed_behaviours import is_outlet_file
+from squadops.capabilities.anchored_edits import (
+    EMISSION_FAILURE_ANCHORED_EDIT_REFUSED,
+    EMISSION_FAILURE_WHOLE_FILE_REFUSED,
+    REVISION_REFUSED_FAILURES,
+    apply_anchored_edits,
+    editable_file_lines,
+    parse_anchored_edits,
+    revision_form_reading,
+    strip_edit_blocks,
+    verbatim_block,
+    whole_file_refusal_line,
+    whole_file_refusals,
+)
 from squadops.capabilities.context_assembly import (
     REPAIR_FAILED_ARTIFACTS_KEY,
     scaffold_shell_paths,
 )
 from squadops.capabilities.disputed_checks import failing_row_identities
 from squadops.capabilities.handlers.cross_cycle_lessons import cross_cycle_lessons_section
+from squadops.capabilities.handlers.cycle.fill_mode_brief import (
+    render_fill_mode_section,
+    render_repair_fill_section,
+)
 from squadops.capabilities.handlers.cycle_tasks import _classify_file, _CycleTaskHandler
 from squadops.capabilities.handlers.fenced_parser import extract_fenced_files
 from squadops.capabilities.handlers.increment_test_scope import increment_test_scope_section
+from squadops.capabilities.verification_scaffold_fill import (
+    apply_followup_fills,
+    merge_fills,
+    parse_fill_emission,
+    recover_fills,
+    strip_fill_blocks,
+)
+from squadops.cycles.contract_expectations import expectation_lines, prose_criteria
 from squadops.cycles.failure_evidence import failing_case_lines, failing_cases_from_evidence
 from squadops.cycles.verification_integrity import ResultStatus
+from squadops.cycles.write_authorization import normalize_ws_path
 from squadops.stacks.development_profiles import (
     effective_development_profile,
     get_development_profile,
@@ -277,7 +303,6 @@ class _RepairPromptMixin:
         prior_outputs: dict[str, Any] | None,
         inputs: dict[str, Any],
     ) -> dict[str, str]:
-        from squadops.cycles.contract_expectations import expectation_lines, prose_criteria
 
         criteria = inputs.get("acceptance_criteria") or []
         # pf-31 Fix A2: typed criteria render ONLY through the authoritative
@@ -467,8 +492,6 @@ class _RepairPromptMixin:
         """
         import json
 
-        from squadops.capabilities.anchored_edits import revision_form_reading
-
         outputs = getattr(result, "outputs", None)
         if not isinstance(outputs, dict):
             return
@@ -523,7 +546,6 @@ class _RepairPromptMixin:
         renderer = getattr(context.ports, "request_renderer", None)
         if renderer is None:
             return {}
-        from squadops.cycles.write_authorization import normalize_ws_path
 
         editable = self._anchorable_files(inputs)
         if editable:
@@ -572,7 +594,6 @@ class _RepairPromptMixin:
         rule applied to every file, deploy D's Next.js qa repair had no scoped path to the one
         assertion it had to fix and re-emitted the whole suite, unread as a whole-file response
         because nothing had been offered)."""
-        from squadops.cycles.write_authorization import normalize_ws_path
 
         base = self._repair_base_files(inputs)
         shells = self._scaffold_shell_paths(inputs)
@@ -642,15 +663,6 @@ class _RepairPromptMixin:
         files the response emitted whole — or none apply, and the response yields nothing but
         the refusal (SIP-0107 §14, §21).
         """
-        from squadops.capabilities.anchored_edits import (
-            EMISSION_FAILURE_ANCHORED_EDIT_REFUSED,
-            EMISSION_FAILURE_WHOLE_FILE_REFUSED,
-            apply_anchored_edits,
-            parse_anchored_edits,
-            strip_edit_blocks,
-            whole_file_refusal_line,
-            whole_file_refusals,
-        )
 
         parse = parse_anchored_edits(content)
         emitted = self._build_artifacts_from_content(
@@ -708,7 +720,6 @@ class _RepairPromptMixin:
         too stands: the step returns the refusal, the round is spent, and the next response
         consumes an attempt. Without a renderer the retry cannot say why, so it is not made.
         """
-        from squadops.capabilities.anchored_edits import REVISION_REFUSED_FAILURES
 
         outputs = getattr(result, "outputs", None)
         if not isinstance(outputs, dict):
@@ -854,10 +865,6 @@ class _RepairPromptMixin:
         renderer = getattr(context.ports, "request_renderer", None)
         if renderer is None:
             return ""
-        from squadops.capabilities.handlers.cycle.fill_mode_brief import (
-            render_fill_mode_section,
-            render_repair_fill_section,
-        )
 
         brief = await render_fill_mode_section(
             renderer, inputs.get("verification_scaffold"), inputs.get("expected_artifacts") or []
@@ -908,7 +915,6 @@ class _RepairPromptMixin:
         renderer = getattr(context.ports, "request_renderer", None)
         if renderer is None:
             return ""
-        from squadops.cycles.contract_expectations import expectation_lines
 
         lines = expectation_lines(inputs.get("acceptance_criteria"))
         if not lines:
@@ -1258,8 +1264,6 @@ class _RepairPromptMixin:
                 "` ```language:path/to/file `:\n" + _format_bullets(expected)
             )
 
-        from squadops.cycles.contract_expectations import expectation_lines, prose_criteria
-
         criteria = inputs.get("acceptance_criteria") or []
         typed_lines = expectation_lines(criteria)
         if typed_lines:
@@ -1375,10 +1379,6 @@ class QATestRepairHandler(_RepairPromptMixin, _CycleTaskHandler):
         the shell guard discards and roll 6 of the 1.6.4 set banked eight of. The
         merge into the shells happens in :meth:`handle`, where the scaffold is known.
         """
-        from squadops.capabilities.verification_scaffold_fill import (
-            parse_fill_emission,
-            strip_fill_blocks,
-        )
 
         fills = parse_fill_emission(content)
         fill_artifacts = [
@@ -1404,8 +1404,6 @@ class QATestRepairHandler(_RepairPromptMixin, _CycleTaskHandler):
         ``proposed_behaviours.yaml`` in its emission is kept out of its artifacts, so it reaches
         no tree, and its evidence names it."""
         if isinstance(result.outputs, dict):
-            from squadops.campaigns.proposed_behaviours import is_outlet_file
-
             emitted = list(result.outputs.get("artifacts") or [])
             ignored = [a for a in emitted if is_outlet_file(str(a.get("name") or ""))]
             if ignored:
@@ -1441,12 +1439,6 @@ def _merge_repair_fills(
     failed shell by name and the retest runs it. A whole-shell rewrite emitted as a
     path fence is dropped and recorded, as on every other qa path.
     """
-    from squadops.capabilities.verification_scaffold_fill import (
-        apply_followup_fills,
-        merge_fills,
-        parse_fill_emission,
-        recover_fills,
-    )
 
     record = VerificationScaffoldManifest.from_dict(scaffold_input["manifest"])
     shell_paths = {f.path for f in record.files}

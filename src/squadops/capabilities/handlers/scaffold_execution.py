@@ -29,6 +29,7 @@ import shutil
 import tempfile
 from dataclasses import dataclass
 
+from squadops.capabilities.handlers.test_runner import _materialize_files
 from squadops.core.bounded_run import run_bounded
 
 logger = logging.getLogger(__name__)
@@ -162,7 +163,6 @@ async def run_skeleton_execution_gate(
     stubs the suite MUST fail (SIP-0098 §7); the report's failure *types* are the verdict.
     Never raises.
     """
-    from squadops.capabilities.handlers.test_runner import _materialize_files
 
     scaffold_paths = [f["name"] for f in scaffold_files]
     workspace = tempfile.mkdtemp(prefix="scaffold_gate_")

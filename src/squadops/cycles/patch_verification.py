@@ -39,6 +39,7 @@ from squadops.cycles.acceptance_evaluation import (
     split_acceptance_criteria,
 )
 from squadops.cycles.bound_scaffold_record import BoundScaffoldRecord
+from squadops.cycles.check_registry import CHECK_REQUIRED_FILES, required_files_row
 from squadops.cycles.emission_integrity import (
     unresolved_import_summary,
     unresolved_imports,
@@ -330,6 +331,7 @@ def candidate_revision_id(
     workspace_files: Mapping[str, Any] | None, artifacts: Sequence[Mapping[str, Any]] | None
 ) -> str:
     """The candidate's identity: ``compute_revision_id`` over :func:`candidate_files`."""
+    # deferred (pair): cycles and sandbox would import each other at load
     from squadops.sandbox.models import compute_revision_id
 
     return compute_revision_id(candidate_files(workspace_files, artifacts))
@@ -737,8 +739,6 @@ def _required_files_record(
     """
     from pathlib import PurePosixPath
 
-    from squadops.cycles.check_registry import CHECK_REQUIRED_FILES, required_files_row
-
     names = [str(name) for name in (required_files or []) if str(name)]
     if not names:
         return None
@@ -872,6 +872,7 @@ async def verify_patched_artifacts(
     records: list[PatchCheckRecord] = []
     # #734 Slice A: name the exact workspace mapping evaluated below — computed
     # from the parameter (the post-filter mapping handed in), never store state.
+    # deferred (pair): cycles and sandbox would import each other at load
     from squadops.sandbox.models import compute_revision_id
 
     revision_id = compute_revision_id(workspace_files or {})

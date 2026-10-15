@@ -23,7 +23,16 @@ from squadops.tasks.task_types import TaskType
 
 if TYPE_CHECKING:
     from squadops.capabilities.handlers.context import ExecutionContext
+from squadops.capabilities.handlers._plan_authoring import (
+    INCREMENT_SURFACES,
+    render_surfaces,
+    retry_yaml_call,
+)
 from squadops.capabilities.handlers.planning.base import _PlanningTaskHandler
+from squadops.cycles.plan_authoring_brief import PlanAuthoringBrief
+from squadops.cycles.plan_guidance import PlanGuidance
+from squadops.cycles.proposal_failure import ProposalFailure
+from squadops.cycles.proposed_role_tasks import ProposedRoleTasks
 
 _PROPOSAL_MAX_ATTEMPTS_DEFAULT = 2
 
@@ -45,8 +54,6 @@ def _extract_brief_id_from_prior_outputs(prior_outputs: dict[str, Any] | None) -
     if not brief_yaml:
         return None
     try:
-        from squadops.cycles.plan_authoring_brief import PlanAuthoringBrief
-
         return PlanAuthoringBrief.from_yaml(brief_yaml).brief_id
     except ValueError:
         return None
@@ -221,10 +228,6 @@ class _ProposeBaseHandler(_PlanningTaskHandler):
         managed asset (#448); the plan gate refuses what these teach, so they teach first."""
         if self._proposer_role not in ("development", "qa"):
             return ""
-        from squadops.capabilities.handlers._plan_authoring import (
-            INCREMENT_SURFACES,
-            render_surfaces,
-        )
 
         return await render_surfaces(renderer, inputs, INCREMENT_SURFACES)
 
@@ -233,7 +236,6 @@ class _ProposeBaseHandler(_PlanningTaskHandler):
         context: ExecutionContext,
         inputs: dict[str, Any],
     ) -> HandlerResult:
-        from squadops.capabilities.handlers._plan_authoring import retry_yaml_call
 
         start_time = time.perf_counter()
 
@@ -397,7 +399,6 @@ class _ProposeBaseHandler(_PlanningTaskHandler):
         The "failure" is captured inside the artifact, not at the
         HandlerResult layer.
         """
-        from squadops.cycles.proposal_failure import ProposalFailure
 
         failure = ProposalFailure(
             proposer_role=self._proposer_role,
@@ -455,7 +456,6 @@ class DevelopmentProposePlanTasksHandler(_ProposeBaseHandler):
         yaml_content: str | None,
         expected_brief_id: str | None,
     ) -> tuple[Any | None, str | None]:
-        from squadops.cycles.proposed_role_tasks import ProposedRoleTasks
 
         if yaml_content is None:
             return (
@@ -495,7 +495,6 @@ class QaProposePlanTasksHandler(_ProposeBaseHandler):
         yaml_content: str | None,
         expected_brief_id: str | None,
     ) -> tuple[Any | None, str | None]:
-        from squadops.cycles.proposed_role_tasks import ProposedRoleTasks
 
         if yaml_content is None:
             return (
@@ -552,7 +551,6 @@ class StrategyProposePlanGuidanceHandler(_ProposeBaseHandler):
         yaml_content: str | None,
         expected_brief_id: str | None,
     ) -> tuple[Any | None, str | None]:
-        from squadops.cycles.plan_guidance import PlanGuidance
 
         if yaml_content is None:
             return (

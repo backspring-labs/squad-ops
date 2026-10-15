@@ -43,6 +43,8 @@ from squadops.api.memory_schemas import (
     SuppliedTogetherResponse,
 )
 from squadops.api.middleware.auth import require_scopes
+from squadops.api.routes.cycles.mapping import cycle_status_of
+from squadops.api.runtime.deps import get_campaign_registry, get_cycle_registry, get_memory_store
 from squadops.auth.models import Identity, Scope
 from squadops.campaigns.models import CampaignState
 from squadops.cycles.models import CycleStatus
@@ -79,7 +81,6 @@ def _error(status: int, code: str, message: str) -> HTTPException:
 
 
 def _store(request: Request):
-    from squadops.api.runtime.deps import get_memory_store
 
     store = get_memory_store(request)
     if store is None:
@@ -310,8 +311,6 @@ async def _still_runs(request: Request, s: Snapshot) -> bool:
     """Whether the unit that pinned ``s`` still runs: a campaign not completed, or a cycle whose
     status, read the way the cycle route reads it, has not ended. A unit that can't be read counts
     as running: an emergency revocation names one unit too many rather than miss one (#2210)."""
-    from squadops.api.routes.cycles.mapping import cycle_status_of
-    from squadops.api.runtime.deps import get_campaign_registry, get_cycle_registry
 
     try:
         if s.unit_kind is UnitKind.CAMPAIGN:

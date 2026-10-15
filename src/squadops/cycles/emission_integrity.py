@@ -20,6 +20,8 @@ import ast
 from pathlib import Path
 from typing import Any
 
+from squadops.capabilities.handlers.emission_log import classify_fences
+
 
 def _python_artifact_name(art: Any) -> str | None:
     if not isinstance(art, dict):
@@ -118,6 +120,7 @@ def reached_cap(
     if termination is not None:
         # Imported here: this module sits under the pure decisions, whose import closure
         # stays off the port packages (test_pure_decisions_do_no_io.py). It is a constant.
+        # deferred (pure): it would load squadops.llm.models into cycles.cycle_assessment
         from squadops.llm.models import Termination
 
         return termination == Termination.LENGTH
@@ -183,8 +186,6 @@ def no_fenced_blocks_failure(
         ),
     }
     if content is not None:
-        from squadops.capabilities.handlers.emission_log import classify_fences
-
         marker["fences"] = classify_fences(content)
         marker["head"] = " ".join(str(content)[:160].split())
     return marker

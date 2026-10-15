@@ -38,6 +38,17 @@ from __future__ import annotations
 import logging
 from typing import TYPE_CHECKING
 
+from squadops.cycles.lifecycle import (
+    TERMINAL_STATES,
+    WorkloadStranding,
+    classify_workload_stranding,
+    derive_cycle_status,
+)
+from squadops.cycles.models import CycleNotFoundError, CycleStatus, RunNotFoundError, RunStatus
+from squadops.runtime import reasons
+from squadops.runtime.activity_reaper import reap_stale_activities
+from squadops.runtime.focus_reaper import reap_stale_leases, reap_stranded_cycle_modes
+
 if TYPE_CHECKING:
     from squadops.ports.cycles.cycle_registry import CycleRegistryPort
     from squadops.ports.cycles.project_registry import ProjectRegistryPort
@@ -76,10 +87,6 @@ async def reap_stranded_leases(
     if coordinator is None or focus_lease_port is None:
         return 0
     try:
-        from squadops.cycles.lifecycle import TERMINAL_STATES
-        from squadops.cycles.models import RunNotFoundError, RunStatus
-        from squadops.runtime import reasons
-        from squadops.runtime.focus_reaper import reap_stale_leases
 
         async def _owner_cannot_be_executing(run_id: str) -> bool:
             try:
@@ -128,8 +135,6 @@ async def reap_stranded_modes(
     if coordinator is None or state_port is None:
         return 0
     try:
-        from squadops.runtime.focus_reaper import reap_stranded_cycle_modes
-
         reaped = await reap_stranded_cycle_modes(coordinator, state_port)
         if reaped:
             logger.warning(
@@ -163,9 +168,6 @@ async def reap_stranded_activities(
     if activity_port is None:
         return 0
     try:
-        from squadops.cycles.lifecycle import derive_cycle_status
-        from squadops.cycles.models import CycleNotFoundError, CycleStatus
-        from squadops.runtime.activity_reaper import reap_stale_activities
 
         async def _owner_cannot_be_dispatching(cycle_id: str | None) -> bool:
             if cycle_id is None:
@@ -208,7 +210,6 @@ async def _ended_through_the_boundary(
 ) -> bool:
     """Whether the cycle's recorded ending (#1860) is its latest live run's: the cycle reached
     the completion boundary there, so nothing after that run was ever owed."""
-    from squadops.cycles.models import RunStatus
 
     end = await cycle_registry.get_cycle_end(cycle_id)
     live = [r for r in runs if r.status != RunStatus.CANCELLED.value]
@@ -218,8 +219,6 @@ async def _ended_through_the_boundary(
 async def _sweep_cycle(cycle_registry: CycleRegistryPort, project_id: str, cycle) -> bool:
     """One cycle of the stranded-cycle sweep: logs what it finds, and returns whether the cycle
     is STRANDED (the count the sweep reports)."""
-    from squadops.cycles.lifecycle import WorkloadStranding, classify_workload_stranding
-    from squadops.cycles.models import RunStatus
 
     stranded = False
     sequence = cycle.resolved_config().get("workload_sequence") or []

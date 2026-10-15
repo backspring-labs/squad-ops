@@ -18,10 +18,17 @@ from squadops.api.cycle_schemas import (
 from squadops.api.middleware.auth import require_scopes
 from squadops.api.paging import Page, page
 from squadops.api.routes.cycles.mapping import compute_workload_progress, run_to_response
+from squadops.api.runtime.deps import (
+    get_artifact_vault,
+    get_cycle_event_bus,
+    get_cycle_registry,
+    get_flow_executor,
+)
 from squadops.auth.models import Identity, Scope
 from squadops.campaigns.gate import INCREMENT_RULING_GATE, ruling_transition
 from squadops.campaigns.models import ProposalBinding
 from squadops.cycles.gate_attribution import compose_decided_by
+from squadops.cycles.gate_decisions import record_gate_decision
 from squadops.cycles.lifecycle import (
     TERMINAL_STATES,
     compute_config_hash,
@@ -37,8 +44,10 @@ from squadops.cycles.models import (
     RunStatus,
     RunTerminalError,
     ValidationError,
+    validate_waiver_request,
     validate_workload_type,
 )
+from squadops.events.types import EventType
 from squadops.ports.cycles.artifact_vault import ArtifactVaultPort
 
 logger = logging.getLogger(__name__)
@@ -99,7 +108,6 @@ async def create_run(
     Mirrors ``cycles create`` / ``resume_run``: the new run is dispatched
     server-side (not just recorded), so a retry actually re-runs (#133).
     """
-    from squadops.api.runtime.deps import get_cycle_registry
 
     validated_wt = validate_workload_type(workload_type)
     registry = get_cycle_registry(request)
@@ -124,8 +132,6 @@ async def create_run(
     created = await registry.create_run(run)
 
     # SIP-0077: run.created
-    from squadops.api.runtime.deps import get_cycle_event_bus
-    from squadops.events.types import EventType
 
     get_cycle_event_bus(request).emit(
         EventType.RUN_CREATED,
@@ -147,7 +153,6 @@ async def create_run(
     # the run record alone never ran it (only cycle-create/resume dispatched).
     # Mirrors resume_run; execute_cycle re-runs the §2.5 duty guard, so a
     # still-active hard-duty window simply re-defers.
-    from squadops.api.runtime.deps import get_flow_executor
 
     background_tasks.add_task(
         get_flow_executor(request).execute_cycle,
@@ -168,7 +173,6 @@ async def list_runs(
     page: Page = Depends(page),
 ) -> list[RunResponse]:
     """A page of the cycle's runs, in run order (#1976)."""
-    from squadops.api.runtime.deps import get_cycle_registry
 
     registry = get_cycle_registry(request)
     runs = await registry.list_runs(
@@ -179,7 +183,6 @@ async def list_runs(
 
 @router.get("/{run_id}", dependencies=[Depends(require_scopes(Scope.CYCLES_READ))])
 async def get_run(request: Request, project_id: str, cycle_id: str, run_id: str) -> RunResponse:
-    from squadops.api.runtime.deps import get_cycle_registry
 
     registry = get_cycle_registry(request)
     run = await registry.get_run(run_id)
@@ -190,7 +193,6 @@ async def get_run(request: Request, project_id: str, cycle_id: str, run_id: str)
 async def cancel_run(
     request: Request, project_id: str, cycle_id: str, run_id: str
 ) -> RunCancelResponse:
-    from squadops.api.runtime.deps import get_cycle_registry
 
     registry = get_cycle_registry(request)
     # The run state machine gained a COMPLETED -> CANCELLED edge so the executor can
@@ -209,6 +211,7 @@ async def cancel_run(
     # finalize would have torn down has to be torn down here: the Prefect
     # flow run (#77), the focus leases the run holds (#529), and the cycle's
     # open activity rows (#561).
+    # deferred (cycle): api.routes.cycles.cancellation loads this module
     from squadops.api.routes.cycles.cancellation import (
         abort_cancelled_cycle_activities,
         cancel_orphaned_flow_runs,
@@ -255,6 +258,7 @@ async def _rule_increment(
     nothing. Returns whether the gate decision is still to be recorded: a repeated ruling
     replays its row, and records the decision only if the first attempt never did.
     """
+    # deferred (cycle): api.routes.campaigns.campaigns loads this module
     from squadops.api.routes.campaigns.campaigns import actor_from, apply_control
 
     reason = (body.notes or "").strip()
@@ -304,7 +308,6 @@ async def gate_decision(
     request: Request,
     identity: Identity | None = Depends(_gate_scopes),
 ) -> RunResponse:
-    from squadops.api.runtime.deps import get_cycle_registry
 
     registry = get_cycle_registry(request)
 
@@ -329,8 +332,6 @@ async def gate_decision(
     # validated against the run's own unverified disclosure — a waiver
     # records above the evidence and can never touch a check that ran.
     if body.waived_checks or body.waiver_reason:
-        from squadops.cycles.models import validate_waiver_request
-
         summary = await registry.get_run_verification_summary(run_id)
         unverified_ids = {u.check_id for u in summary.unverified} if summary is not None else None
         waiver_error = validate_waiver_request(
@@ -355,8 +356,6 @@ async def gate_decision(
     )
     # #1986: one recorder for every decider: the row, the promotion an approval implies
     # (SIP-0086), and one `gate.decided` shape (SIP-0077 §7.3).
-    from squadops.api.runtime.deps import get_cycle_event_bus
-    from squadops.cycles.gate_decisions import record_gate_decision
 
     updated = await record_gate_decision(
         registry,
@@ -387,7 +386,6 @@ async def resume_run(
     start. Re-execution is enqueued so the run actually proceeds — flipping status
     alone does not re-run the executor.
     """
-    from squadops.api.runtime.deps import get_cycle_registry
 
     registry = get_cycle_registry(request)
 
@@ -422,8 +420,6 @@ async def resume_run(
     updated = await registry.update_run_status(run_id, RunStatus.RUNNING)
 
     # SIP-0077: run.resumed
-    from squadops.api.runtime.deps import get_cycle_event_bus
-    from squadops.events.types import EventType
 
     resume_reason = body.resume_reason if body else None
     get_cycle_event_bus(request).emit(
@@ -446,7 +442,6 @@ async def resume_run(
     # the resume source: it resumes from the latest checkpoint if one exists,
     # else restarts the plan from the beginning, and re-runs the §2.5 duty
     # guard (a still-active hard-duty window simply re-defers).
-    from squadops.api.runtime.deps import get_flow_executor
 
     background_tasks.add_task(
         get_flow_executor(request).execute_cycle,
@@ -463,7 +458,6 @@ async def list_checkpoints(
     request: Request, project_id: str, cycle_id: str, run_id: str
 ) -> list[CheckpointSummaryResponse]:
     """List checkpoints for a run (SIP-0079)."""
-    from squadops.api.runtime.deps import get_cycle_registry
 
     registry = get_cycle_registry(request)
     checkpoints = await registry.list_checkpoints(run_id)
@@ -484,7 +478,6 @@ def _artifact_vault_or_none(request: Request, run_id: str) -> ArtifactVaultPort 
     A missing vault never fails the decision: it is recorded, and promotion is skipped
     with a warning (``gate_promotion.promote_run_artifacts``).
     """
-    from squadops.api.runtime.deps import get_artifact_vault
 
     try:
         return get_artifact_vault(request)

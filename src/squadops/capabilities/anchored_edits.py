@@ -70,7 +70,7 @@ from squadops.cycles.revision_transaction import (
     base_revision_id,
     resolve_and_apply,
 )
-from squadops.cycles.structural_resolution import resolve_entity, syntax_error
+from squadops.cycles.structural_resolution import entity_selectors, resolve_entity, syntax_error
 from squadops.cycles.write_authorization import WriteGrant, normalize_ws_path
 
 #: The fence language that marks an anchored-edit block (``edit:<path>``).
@@ -294,7 +294,6 @@ def editable_file_lines(
     entities its resolver can address, read from the same base the edits resolve against so a
     listed selector is one the transaction will find, and how many were listed for it. A file
     no resolver reads, or one that does not parse, is listed without entities."""
-    from squadops.cycles.structural_resolution import entity_selectors
 
     lines: list[str] = []
     offered: dict[str, int] = {}

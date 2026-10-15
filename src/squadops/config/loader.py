@@ -19,6 +19,7 @@ from squadops.config.fingerprint import config_fingerprint
 from squadops.config.path_resolver import PathResolver
 from squadops.config.redaction import redact_config
 from squadops.config.schema import AppConfig, SecretsConfig
+from squadops.core.secrets import SecretManager
 from squadops.ports.secrets import SecretProvider
 
 logger = logging.getLogger(__name__)
@@ -538,7 +539,6 @@ def load_config(
         secrets_config = None
 
     # Scan secrets section for secret:// references (hard fail if found)
-    from squadops.core.secrets import SecretManager
 
     if secrets_config_dict:
         has_secrets_in_secrets = SecretManager.has_secret_references(

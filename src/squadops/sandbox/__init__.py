@@ -1,56 +1,7 @@
-"""Execution sandbox domain (SIP-0102 — Ephemeral Application Sandbox)."""
+"""Execution sandbox domain (SIP-0102 — Ephemeral Application Sandbox).
 
-from squadops.sandbox.evidence import OperationEvidenceJournal, result_to_dict
-from squadops.sandbox.models import (
-    BuildResult,
-    DiagnosticsResult,
-    InstallResult,
-    OperationName,
-    OperationResult,
-    OperationStatus,
-    PatchResult,
-    ProbeResult,
-    RevisionOrigin,
-    StartResult,
-    StopResult,
-    TestRunResult,
-    WorkspaceRevision,
-    compute_revision_id,
-    is_deliverable_failure,
-)
-from squadops.sandbox.noop import NoOpExecutionSandbox
-from squadops.sandbox.service import SandboxService
-from squadops.sandbox.workspace import (
-    AlreadySeededError,
-    StaleBaseRevisionError,
-    WorkspaceEscapeError,
-    WorkspaceStore,
-    WorkspaceStoreError,
-)
-
-__all__ = [
-    "AlreadySeededError",
-    "BuildResult",
-    "DiagnosticsResult",
-    "SandboxService",
-    "InstallResult",
-    "NoOpExecutionSandbox",
-    "OperationEvidenceJournal",
-    "OperationName",
-    "OperationResult",
-    "OperationStatus",
-    "PatchResult",
-    "ProbeResult",
-    "RevisionOrigin",
-    "StaleBaseRevisionError",
-    "StartResult",
-    "StopResult",
-    "TestRunResult",
-    "WorkspaceEscapeError",
-    "WorkspaceRevision",
-    "WorkspaceStore",
-    "WorkspaceStoreError",
-    "compute_revision_id",
-    "is_deliverable_failure",
-    "result_to_dict",
-]
+#2062: the package re-exports nothing (#1985's rule). It re-exported the no-op sandbox and the
+service, which import ``squadops.ports.sandbox``; the port imports ``squadops.sandbox.models``, which
+runs this root first. So a process whose first import was the port failed on a partially initialized
+module. Import from the module that defines a name.
+"""

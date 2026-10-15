@@ -15,7 +15,26 @@ from collections.abc import Iterable, Mapping
 from dataclasses import dataclass
 from typing import Any
 
-from squadops.cycles.scaffold_integrity_evidence import STAGE_ARTIFACT_STORAGE
+from squadops.capabilities.verification_scaffold_fill import (
+    SHELL_VIOLATION_REGION,
+    shell_emission_violation,
+)
+from squadops.cycles.bound_scaffold_record import build_bound_record
+from squadops.cycles.fill_slot_integrity import divergence_summary, restore_declared_status_codes
+from squadops.cycles.scaffold_integrity_evidence import (
+    STAGE_ARTIFACT_STORAGE,
+    frozen_path_evidence,
+    shell_region_evidence,
+    unauthorized_slot_evidence,
+)
+from squadops.cycles.task_outcome import ContractComplianceViolation
+from squadops.cycles.write_authorization import (
+    AuthzDecision,
+    WorkspaceOwnership,
+    WriteAuthorization,
+    WriteGrant,
+    normalize_ws_path,
+)
 from squadops.stacks.scaffold import is_scaffoldable_stack
 
 logger = logging.getLogger(__name__)
@@ -101,8 +120,8 @@ def bound_record_or_none(interface_manifest: Any, run_id: str, resolved_config: 
     if interface_manifest is None:
         return None
     try:
+        # deferred (pair): cycles and campaigns would import each other at load
         from squadops.campaigns.increment_tree import increment_footprint
-        from squadops.cycles.bound_scaffold_record import build_bound_record
 
         if not is_scaffoldable_stack(getattr(interface_manifest, "stack", "")):
             return None
@@ -136,11 +155,6 @@ def _producer_authorization(envelope: Any, bound_record: Any) -> Any:
     — it could be a deliverable or a file the scaffold never declared — except net-new source
     from a grant that may not author it.
     """
-    from squadops.cycles.write_authorization import (
-        WorkspaceOwnership,
-        WriteAuthorization,
-        WriteGrant,
-    )
 
     grant_for = {
         "qa": WriteGrant.for_qa,
@@ -159,7 +173,6 @@ def _shell_map(bound_record: Any) -> dict[str, Any]:
     role-independent: the rule is what the bytes are, not who emitted them (§4.3's "any
     role, any locus"). Empty for unopted stacks and pre-P4 bound records (no region
     enforcement; the file-level rules are unchanged)."""
-    from squadops.cycles.write_authorization import normalize_ws_path
 
     scaffold_record = getattr(bound_record, "verification_scaffold", None)
     if scaffold_record is None:
@@ -173,10 +186,6 @@ def _shell_map(bound_record: Any) -> dict[str, Any]:
 
 def _shell_verdict(shell: Any, art: dict) -> tuple[str, str] | None:
     """The region verdict for one emission against its bound shell, or None = legal."""
-    from squadops.capabilities.verification_scaffold_fill import (
-        SHELL_VIOLATION_REGION,
-        shell_emission_violation,
-    )
 
     content = art.get("content")
     if not isinstance(content, str):
@@ -190,7 +199,6 @@ def enforcement_instruction(record: Any) -> str | None:
     One selector for both call sites (executor + correction runner), keyed on the
     violation code so the vocabulary and its transports cannot drift apart.
     """
-    from squadops.cycles.task_outcome import ContractComplianceViolation
 
     if record.violation_code == ContractComplianceViolation.FROZEN_PATH_EMISSION:
         return frozen_emission_instruction(record)
@@ -297,7 +305,6 @@ def enforce_frozen_ownership(
     source under test to agree with its own test (the pf-26 class, one step past ``main.py``).
     QA emissions in its namespace, and undeclared paths (deliverables like ``test_report.md``),
     pass through. Non-QA producers are unaffected here (frozen-path drop only)."""
-    from squadops.cycles.write_authorization import normalize_ws_path
 
     frozen = {n for fa in bound_record.frozen if (n := normalize_ws_path(fa.path)) is not None}
     shells = _shell_map(bound_record)
@@ -368,7 +375,6 @@ def _classify(
     authz: Any,
 ) -> str:
     """One artifact's enforcement disposition (records shell verdicts as a side table)."""
-    from squadops.cycles.write_authorization import AuthzDecision
 
     if norm is not None and norm in frozen:
         return _DISP_DROP_FROZEN
@@ -412,11 +418,6 @@ def _drop_evidence(
     scaffold's seeded artifact for frozen paths and shells, the owning producer's
     stored version for slot lanes — remains the workspace copy.
     """
-    from squadops.cycles.scaffold_integrity_evidence import (
-        frozen_path_evidence,
-        shell_region_evidence,
-        unauthorized_slot_evidence,
-    )
 
     common = {
         "producer_task_id": envelope.task_id,
@@ -468,11 +469,6 @@ def _restore_fill_slot_ownership(
     content = art.get("content")
     if not seed or not isinstance(content, str):
         return art
-
-    from squadops.cycles.fill_slot_integrity import (
-        divergence_summary,
-        restore_declared_status_codes,
-    )
 
     corrected, divergences = restore_declared_status_codes(seed, content)
     if divergences:

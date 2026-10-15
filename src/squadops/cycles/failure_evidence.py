@@ -11,6 +11,7 @@ import re
 from collections.abc import Iterable
 from typing import TYPE_CHECKING, Any
 
+from squadops.capabilities.disputed_checks import mark_contested
 from squadops.cycles.acceptance_check_spec import (
     CHECK_ADDITIVE_CONTAINMENT,
     CHECK_ASSERTION_KINDS,
@@ -22,8 +23,15 @@ from squadops.cycles.check_registry import (
     CHECK_NO_STUB_FALLBACK_TESTS,
 )
 from squadops.cycles.emission_integrity import extraction_loss_suspected
+from squadops.cycles.scaffold_evidence import (
+    CLASS_APP_CONTRACT,
+    CLASS_FILL,
+    CLASS_INFRASTRUCTURE,
+    CLASS_SCAFFOLD_INVALID,
+)
 from squadops.cycles.verification_integrity import ResultStatus
 from squadops.cycles.verification_normalize import row_is_blocking_failure
+from squadops.cycles.write_authorization import normalize_ws_path
 
 #: Check rows whose failure means the suite contradicts a declaration (the contract's
 #: pinned statuses, the manifest's field kinds, the manifest's DOM anchors — #668) — the
@@ -209,7 +217,6 @@ def mark_contested_rows(evidence: dict[str, Any], disputes: Any) -> None:
     """
     if not disputes:
         return
-    from squadops.capabilities.disputed_checks import mark_contested
 
     validation = evidence["validation_result"]
     checks, unmatched = mark_contested(validation.get("checks"), disputes)
@@ -382,7 +389,6 @@ def suite_files_named_unanimously(
     """
     if not isinstance(failure_analysis, dict) or not isinstance(decision_outputs, dict):
         return []
-    from squadops.cycles.write_authorization import normalize_ws_path
 
     implicated = [
         normalize_ws_path(str(f)) for f in (failure_analysis.get("implicated_files") or []) if f
@@ -644,12 +650,6 @@ def _locus_from_scaffold_classification(failure_evidence: dict[str, Any]) -> str
     summary = failure_evidence.get("scaffold_evidence")
     if not isinstance(summary, dict):
         return None
-    from squadops.cycles.scaffold_evidence import (
-        CLASS_APP_CONTRACT,
-        CLASS_FILL,
-        CLASS_INFRASTRUCTURE,
-        CLASS_SCAFFOLD_INVALID,
-    )
 
     classes = summary.get("failure_classes") or {}
     if classes.get(CLASS_APP_CONTRACT):

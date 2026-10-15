@@ -27,6 +27,8 @@ from collections.abc import Iterable
 from dataclasses import dataclass
 from typing import Any
 
+from squadops.tasks import task_types as _tt
+
 # External tooling identifiers a deployment must provision for a check to
 # execute. This is the cross-process axis the later SIP-0095 preflight parity
 # and doctor verification category consume: the frontend build runs in the qa
@@ -168,7 +170,6 @@ def checks_a_run_can_subject(task_types: Iterable[object]) -> frozenset[str]:
     owes; the remainder is disclosed as required-but-not-owed, never silently dropped
     (§6.6.3: silence is not green, and a check the profile requires is named on every run).
     """
-    from squadops.tasks import task_types as _tt
 
     types = tuple(task_types)
     return frozenset(
@@ -187,7 +188,6 @@ def framework_rows_owed(task_type: object) -> tuple[str, ...]:
     SIP-0096 reads as `subject_missing`, and it blocked two counted rolls whose apps
     booted.
     """
-    from squadops.tasks import task_types as _tt
 
     return tuple(
         check

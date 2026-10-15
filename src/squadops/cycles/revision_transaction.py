@@ -208,6 +208,7 @@ class RegionResolver(Protocol):
 def base_revision_id(base_files: Mapping[str, str]) -> str:
     """The identity of a base tree — ``compute_revision_id``, the same content addressing every
     revision in the framework uses."""
+    # deferred (pair): cycles and sandbox would import each other at load
     from squadops.sandbox.models import compute_revision_id
 
     return compute_revision_id(base_files)
@@ -340,6 +341,7 @@ def resolve_and_apply(
             preservation=proof,
         )
 
+    # deferred (name): this module defines its own candidate_revision_id
     from squadops.cycles.patch_verification import candidate_revision_id
 
     changed = [

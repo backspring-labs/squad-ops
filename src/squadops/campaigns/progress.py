@@ -26,6 +26,7 @@ from typing import Any
 
 from squadops.auth.models import Role
 from squadops.campaigns.acceptance import DiscriminationReason, Held
+from squadops.campaigns.change_request import load_stored_change_request
 from squadops.campaigns.continuation import (
     CampaignCounters,
     ContinuationDecision,
@@ -77,6 +78,10 @@ from squadops.campaigns.models import (
     PlanGate,
 )
 from squadops.campaigns.prior_cycle import prior_cycle_brief
+from squadops.campaigns.proposed_behaviours import (
+    QA_PROPOSED_BEHAVIOURS_ARTIFACT_TYPE,
+    merged_entries,
+)
 from squadops.capabilities.handlers.fault_injection import seed as fault_seed
 from squadops.contracts.cycle_request_profiles import load_profile
 from squadops.cycles.contract_derivation import (
@@ -1036,7 +1041,6 @@ class CampaignProgress:
         this promotion attempt as any other vault or registry read in ``_promote`` does, and the
         re-hearing retries it. It never degrades to ids only: a degraded first attempt and a
         complete replay were one key with two bindings, refused, and the campaign never decided."""
-        from squadops.campaigns.change_request import load_stored_change_request
 
         seed = await increment_seed(self._vault, self._cycles, cycle, run)
         if seed is None or seed.change_request_ref is None:
@@ -1152,10 +1156,6 @@ class CampaignProgress:
         and replayed after a restart, so a vault read that fails raises, failing this attempt as
         any other read in a launch does, and the re-hearing retries it. It never launches
         without them."""
-        from squadops.campaigns.proposed_behaviours import (
-            QA_PROPOSED_BEHAVIOURS_ARTIFACT_TYPE,
-            merged_entries,
-        )
 
         contents: list[str] = []
         for cycle_id in cycle_ids:

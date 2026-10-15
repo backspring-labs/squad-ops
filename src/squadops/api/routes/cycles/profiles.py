@@ -20,6 +20,7 @@ from squadops.api.cycle_schemas import (
 )
 from squadops.api.middleware.auth import require_scopes
 from squadops.api.routes.cycles.mapping import profile_to_response
+from squadops.api.runtime.deps import get_llm_port, get_squad_profile_port
 from squadops.auth.models import Scope
 from squadops.cycles.models import (
     AgentProfileEntry,
@@ -79,8 +80,6 @@ async def _check_model_availability(
     Never silently produce zero warnings as if validation passed.
     """
     try:
-        from squadops.api.runtime.deps import get_llm_port
-
         llm = get_llm_port(request)
     except RuntimeError:
         logger.debug("LLM port not configured — skipping model availability check")
@@ -101,7 +100,6 @@ async def _check_model_availability(
 
 @router.get("", dependencies=[Depends(require_scopes(Scope.CYCLES_READ))])
 async def list_profiles(request: Request) -> list[SquadProfileResponse]:
-    from squadops.api.runtime.deps import get_squad_profile_port
 
     port = get_squad_profile_port(request)
     profiles = await port.list_profiles()
@@ -111,7 +109,6 @@ async def list_profiles(request: Request) -> list[SquadProfileResponse]:
 
 @router.get("/active", dependencies=[Depends(require_scopes(Scope.CYCLES_READ))])
 async def get_active_profile(request: Request) -> SquadProfileResponse:
-    from squadops.api.runtime.deps import get_squad_profile_port
 
     port = get_squad_profile_port(request)
     profile = await port.get_active_profile()
@@ -122,7 +119,6 @@ async def get_active_profile(request: Request) -> SquadProfileResponse:
 async def set_active_profile(
     request: Request, body: SetActiveProfileRequest
 ) -> ActiveProfileSetResponse:
-    from squadops.api.runtime.deps import get_squad_profile_port
 
     port = get_squad_profile_port(request)
     await port.set_active_profile(body.profile_id)
@@ -131,7 +127,6 @@ async def set_active_profile(
 
 @router.post("", status_code=201, dependencies=[Depends(require_scopes(Scope.CYCLES_WRITE))])
 async def create_profile(request: Request, body: ProfileCreateRequest) -> SquadProfileResponse:
-    from squadops.api.runtime.deps import get_squad_profile_port
 
     agents = _validate_agent_request(body.agents)
     profile_id = slugify_profile_name(body.name)
@@ -155,7 +150,6 @@ async def create_profile(request: Request, body: ProfileCreateRequest) -> SquadP
 async def update_profile(
     request: Request, profile_id: str, body: ProfileUpdateRequest
 ) -> SquadProfileResponse:
-    from squadops.api.runtime.deps import get_squad_profile_port
 
     agents = None
     if body.agents is not None:
@@ -185,7 +179,6 @@ async def update_profile(
 async def clone_profile(
     request: Request, profile_id: str, body: ProfileCloneRequest
 ) -> SquadProfileResponse:
-    from squadops.api.runtime.deps import get_squad_profile_port
 
     port = get_squad_profile_port(request)
     source = await port.get_profile(profile_id)
@@ -207,7 +200,6 @@ async def clone_profile(
     "/{profile_id}", status_code=204, dependencies=[Depends(require_scopes(Scope.CYCLES_WRITE))]
 )
 async def delete_profile(request: Request, profile_id: str) -> None:
-    from squadops.api.runtime.deps import get_squad_profile_port
 
     port = get_squad_profile_port(request)
     await port.delete_profile(profile_id)
@@ -215,7 +207,6 @@ async def delete_profile(request: Request, profile_id: str) -> None:
 
 @router.post("/{profile_id}/activate", dependencies=[Depends(require_scopes(Scope.CYCLES_WRITE))])
 async def activate_profile(request: Request, profile_id: str) -> SquadProfileResponse:
-    from squadops.api.runtime.deps import get_squad_profile_port
 
     port = get_squad_profile_port(request)
     profile = await port.activate_profile(profile_id)
@@ -224,7 +215,6 @@ async def activate_profile(request: Request, profile_id: str) -> SquadProfileRes
 
 @router.get("/{profile_id}", dependencies=[Depends(require_scopes(Scope.CYCLES_READ))])
 async def get_profile(request: Request, profile_id: str) -> SquadProfileResponse:
-    from squadops.api.runtime.deps import get_squad_profile_port
 
     port = get_squad_profile_port(request)
     profile = await port.get_profile(profile_id)

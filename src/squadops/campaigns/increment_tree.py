@@ -15,7 +15,12 @@ import logging
 from collections.abc import Mapping
 from typing import Any
 
+from squadops.campaigns.change_request import derive_footprint_from, load_stored_change_request
+from squadops.capabilities.handlers.planning.proposal import CHANGE_REQUEST_ARTIFACT_TYPE
+from squadops.cycles.contract_derivation import CONTRACT_ARTIFACT_TYPE
 from squadops.cycles.delivered_tree import StoredArtifact, delivered_files
+from squadops.cycles.manifest_authoring import MANIFEST_ARTIFACT_TYPE
+from squadops.cycles.models import RunStatus, WorkloadType
 from squadops.cycles.vault_reads import retrieve_or_absent
 from squadops.stacks.scaffold import InterfaceManifest, criterion_test_path, scaffold_stack_for
 from squadops.stacks.scaffold_contract import create_request_body
@@ -87,7 +92,6 @@ def increment_footprint(resolved_config: Any, candidate: Any) -> tuple[str, ...]
     """The files an increment may touch (§7.2): derived from the accepted manifest its launch
     carries and the candidate manifest its framing binds to, exactly as the change request's
     footprint was. ``None`` for any cycle that is not an increment."""
-    from squadops.campaigns.change_request import derive_footprint_from
 
     baseline = increment_baseline(resolved_config)
     if candidate is None or baseline is None:
@@ -115,8 +119,6 @@ async def approved_change_request(vault: Any, cycle: Any) -> str | None:
 
     An increment's framing without its change request is refused, not framed as a new
     application: the approved change is the framed objective, and nothing replaces it."""
-    from squadops.campaigns.change_request import load_stored_change_request
-    from squadops.capabilities.handlers.planning.proposal import CHANGE_REQUEST_ARTIFACT_TYPE
 
     if increment_baseline(cycle.resolved_config()) is None:
         return None
@@ -153,10 +155,6 @@ async def increment_seed(vault: Any, registry: Any, cycle: Any, completed_run: A
     of an ordinary cycle: the framing binds to it, and the implementation's skeleton, accepted
     tree and contract all hang from it (#1842). Read from the registry and the vault, never from
     the previous workload's forwarding, so a restart's rebuild (#434) forwards the same."""
-    from squadops.capabilities.handlers.planning.proposal import CHANGE_REQUEST_ARTIFACT_TYPE
-    from squadops.cycles.contract_derivation import CONTRACT_ARTIFACT_TYPE
-    from squadops.cycles.manifest_authoring import MANIFEST_ARTIFACT_TYPE
-    from squadops.cycles.models import RunStatus, WorkloadType
 
     if increment_baseline(cycle.resolved_config()) is None:
         return None
@@ -202,7 +200,6 @@ class CriterionFile:
 def increment_criterion_files(change_request: str, stack: str) -> tuple[CriterionFile, ...]:
     """Each new criterion of the approved change request, with its file on ``stack``
     (``scaffold.criterion_test_path``). The document is the stored one, hash-checked."""
-    from squadops.campaigns.change_request import load_stored_change_request
 
     request = load_stored_change_request(change_request)
     return tuple(
@@ -373,7 +370,6 @@ def retired_criteria(change_request: str) -> tuple[str, ...]:
     """The frozen criteria an approved change request retires, or whose verifier it replaces
     (§8.1): either way the old bundle is no longer frozen. A replacement's new bundle is frozen
     from the candidate (``replaced_criterion_files``)."""
-    from squadops.campaigns.change_request import load_stored_change_request
 
     request = load_stored_change_request(change_request)
     return tuple(sorted({r.criterion_id for r in (*request.retires, *request.replaces_verifiers)}))
@@ -386,7 +382,6 @@ def replaced_criterion_files(
     test file its launch pinned, as ``(criterion_id, path)``: the new verifier is written where
     the old one was, and its bundle frozen from the candidate there. A replacement of a criterion
     this launch did not pin names no file, and is none."""
-    from squadops.campaigns.change_request import load_stored_change_request
 
     request = load_stored_change_request(change_request)
     pinned = {
@@ -428,7 +423,6 @@ def increment_test_scope(
     pin from before #1938 carries none, and its statement is ``""``."""
     if not change_request or increment_baseline(resolved_config) is None:
         return None
-    from squadops.campaigns.change_request import load_stored_change_request
 
     request = load_stored_change_request(change_request)
     block = resolved_config.get("campaign_proposal") or {}

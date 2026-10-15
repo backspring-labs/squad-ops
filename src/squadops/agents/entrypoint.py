@@ -26,9 +26,27 @@ import sys
 from collections.abc import Awaitable, Iterable
 from typing import TYPE_CHECKING, Any
 
+from squadops import __version__ as SQUADOPS_VERSION
+from squadops._version import resolve_git_sha
+from squadops.agents import readiness
+from squadops.agents.base import PortsBundle
+from squadops.comms.run_cancellation import RUN_ID_METADATA_KEY, cancelled_run_ids, control_queue
 from squadops.comms.task_replay import DISPATCH_BOOT_METADATA_KEY, FinishedTasks
+from squadops.config import load_config
+from squadops.config.path_resolver import PathResolver
+from squadops.llm.models import LLMRequest
 from squadops.ports.comms.queue import AckPolicy
-from squadops.tasks.models import TaskEnvelope, TaskResultStatus
+from squadops.prompts.assembler import PromptAssembler
+from squadops.prompts.registry_check import verify_registry_serves_shipped_assets
+from squadops.prompts.renderer import RequestTemplateRenderer
+from squadops.tasks.models import TaskEnvelope, TaskResult, TaskResultStatus
+from squadops.telemetry.context import use_correlation_context, use_run_ids
+from squadops.telemetry.models import (
+    CorrelationContext,
+    PromptLayer,
+    PromptLayerMetadata,
+    build_generation_record,
+)
 
 # Configure logging early.
 # LOG_LEVEL (and HEARTBEAT_INTERVAL below) are bare-env
@@ -65,7 +83,6 @@ if TYPE_CHECKING:
 def _base_path_candidate(relative: str) -> tuple:
     """``relative`` under the repository base ``PathResolver`` resolves (#1991: the one reader of
     ``SQUADOPS_BASE_PATH``), or nothing when it resolves none."""
-    from squadops.config.path_resolver import PathResolver
 
     try:
         return (PathResolver.get_base_path() / relative,)
@@ -266,9 +283,8 @@ class AgentRunner:
 
         Bootstraps the system, connects to queue, and starts consuming tasks.
         """
-        from squadops.agents import readiness
+        # deferred (pair): agents and bootstrap would import each other at load
         from squadops.bootstrap.secrets import secret_provider_for
-        from squadops.config import load_config
 
         # #1691: a restarted process never inherits its predecessor's readiness mark — the
         # health check reads this agent as ready only once its own heartbeat loop marks it.
@@ -412,9 +428,11 @@ class AgentRunner:
 
         Creates all port adapters and bootstraps the system.
         """
+        # deferred (pair): agents and bootstrap would import each other at load
         from squadops.bootstrap import SystemConfig, create_system
+
+        # deferred (pair): agents and bootstrap would import each other at load
         from squadops.bootstrap.secrets import secret_provider_for
-        from squadops.config import load_config
 
         # Reuse config loaded by start(); only load if invoked standalone.
         if self._config is None:
@@ -459,7 +477,6 @@ class AgentRunner:
             create_telemetry_provider,
         )
         from adapters.tools.factory import create_filesystem_provider
-        from squadops.prompts.assembler import PromptAssembler
 
         # Create LLM adapter. The model is the instance's (instances.yaml), else the config's
         # (SQUADOPS__LLM__MODEL). #1991: an ``LLM_MODEL`` override sat between them, set by
@@ -504,7 +521,6 @@ class AgentRunner:
         request_renderer = None
         try:
             from adapters.prompts.factory import create_prompt_asset_source
-            from squadops.prompts.renderer import RequestTemplateRenderer
 
             provider = config.prompts.asset_source_provider
             if provider == "langfuse":
@@ -536,8 +552,6 @@ class AgentRunner:
         # not a degraded renderer to fall back from (that fallback is the #1110 blindness),
         # it is the wrong deploy, and the agent must say so before it takes a task.
         if request_renderer is not None and config.prompts.asset_source_provider == "langfuse":
-            from squadops.prompts.registry_check import verify_registry_serves_shipped_assets
-
             await verify_registry_serves_shipped_assets(
                 asset_source, role=self.role, provider="langfuse"
             )
@@ -584,8 +598,6 @@ class AgentRunner:
                     build_agent_card,
                 )
                 from adapters.comms.chat_executor import ChatAgentExecutor
-                from squadops import __version__ as SQUADOPS_VERSION
-                from squadops.agents.base import PortsBundle
 
                 # 1. Build PortsBundle without messaging
                 ports_without_messaging = PortsBundle(
@@ -682,7 +694,6 @@ class AgentRunner:
         )
         # #1648: the control queue, consumed beside the comms queue — a cancel notice must
         # reach this agent while its comms consumer is busy with the task it cancels.
-        from squadops.comms.run_cancellation import control_queue
 
         control = await self._queue.subscribe(
             control_queue(self.agent_id),
@@ -723,8 +734,6 @@ class AgentRunner:
         callback: a malformed control message is logged and acked."""
         import json
         import time
-
-        from squadops.comms.run_cancellation import cancelled_run_ids
 
         try:
             run_ids = cancelled_run_ids(json.loads(message.payload))
@@ -953,8 +962,6 @@ class AgentRunner:
             if self.system and self.system.ports.llm:
                 import time
 
-                from squadops.llm.models import LLMRequest
-
                 # Get role-specific system prompt from PromptService
                 system_prompt = self._build_system_prompt()
 
@@ -971,13 +978,6 @@ class AgentRunner:
                 # Record generation in LangFuse (SIP-0061)
                 llm_obs = self.system.ports.llm_observability
                 if llm_obs is not None:
-                    from squadops.telemetry.models import (
-                        CorrelationContext,
-                        PromptLayer,
-                        PromptLayerMetadata,
-                        build_generation_record,
-                    )
-
                     ctx = CorrelationContext(
                         cycle_id=f"chat-{session_id or correlation_id}",
                         task_id=f"chat-{correlation_id}",
@@ -1051,8 +1051,6 @@ class AgentRunner:
         """
         import json
 
-        from squadops.tasks.models import TaskResult, TaskResultStatus
-
         # Read the fields straight from the envelope dict rather than constructing a
         # TaskEnvelope: a delivery is failed here exactly when it can't be trusted to run, so
         # this must not depend on the envelope being well-formed enough to build. A failure
@@ -1101,8 +1099,6 @@ class AgentRunner:
         """
         import json
 
-        from squadops.tasks.models import TaskEnvelope, TaskResult
-
         envelope_data = payload.get("payload", {})
         reply_queue = metadata.get("reply_queue")
 
@@ -1119,7 +1115,6 @@ class AgentRunner:
 
         # #1648: a task of a run already cancelled is dropped before it runs. Acked (the
         # subscription acks after this returns), never replied to: nothing awaits it.
-        from squadops.comms.run_cancellation import RUN_ID_METADATA_KEY
 
         run_id = (envelope.metadata or {}).get(RUN_ID_METADATA_KEY)
         if self._cancelled_runs.is_cancelled(run_id):
@@ -1150,8 +1145,6 @@ class AgentRunner:
 
         # Build correlation context for LLM-observability tracing and
         # task-scoped log forwarding (SIP-0087).
-        from squadops.telemetry.context import use_correlation_context, use_run_ids
-        from squadops.telemetry.models import CorrelationContext
 
         ctx = CorrelationContext.from_envelope(
             envelope,
@@ -1241,7 +1234,6 @@ class AgentRunner:
 
         Reports agent status to the health dashboard.
         """
-        from squadops.agents import readiness
 
         # Operational default (see the LOG_LEVEL note) — intentional tuning knob,
         # not masked required config (#333). Read where the health check ages the mark.
@@ -1272,9 +1264,6 @@ class AgentRunner:
         """Send a single heartbeat."""
         if not self._heartbeat_reporter:
             return
-
-        from squadops import __version__ as SQUADOPS_VERSION
-        from squadops._version import resolve_git_sha
 
         await self._heartbeat_reporter.send_status(
             agent_id=self.agent_id,

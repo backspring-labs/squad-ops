@@ -143,7 +143,7 @@ class TestAgentsWriteGuard:
                 return_value=mock_health_checker,
             ),
             patch(
-                "squadops.api.runtime.deps.get_authz_port",
+                "squadops.api.middleware.auth.get_authz_port",
                 return_value=KeycloakAuthzAdapter(),
             ),
         ):
@@ -179,7 +179,7 @@ class TestAgentsWriteGuard:
     def test_put_is_guarded_too(self, mock_health_checker):
         client = _guarded_client(mock_health_checker, None)
         with patch(
-            "squadops.api.runtime.deps.get_authz_port",
+            "squadops.api.middleware.auth.get_authz_port",
             return_value=KeycloakAuthzAdapter(),
         ):
             resp = client.put("/api/v1/agents/status/max", json={"lifecycle_state": "WORKING"})

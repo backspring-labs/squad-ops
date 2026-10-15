@@ -1579,7 +1579,7 @@ class TestQAContractProbeEmission:
         )
         captured = {}
         monkeypatch.setattr(
-            "squadops.capabilities.handlers.probe_runner.run_probes",
+            "squadops.capabilities.handlers.cycle.qa_test.run_probes",
             self._fake_run_probes(captured),
         )
 
@@ -1603,7 +1603,7 @@ class TestQAContractProbeEmission:
         )
         captured = {}
         monkeypatch.setattr(
-            "squadops.capabilities.handlers.probe_runner.run_probes",
+            "squadops.capabilities.handlers.cycle.qa_test.run_probes",
             self._fake_run_probes(captured),
         )
         handler = QATestHandler()
@@ -1648,7 +1648,7 @@ class TestQAContractProbeEmission:
         # run's rollup under-counts contract-criterion coverage.
         captured = {}
         monkeypatch.setattr(
-            "squadops.capabilities.handlers.probe_runner.run_probes",
+            "squadops.capabilities.handlers.cycle.qa_test.run_probes",
             self._fake_run_probes(captured),
         )
         handler = QATestHandler()
@@ -1688,7 +1688,7 @@ class TestQAContractProbeEmission:
         )
         captured = {}
         monkeypatch.setattr(
-            "squadops.capabilities.handlers.probe_runner.run_probes",
+            "squadops.capabilities.handlers.cycle.qa_test.run_probes",
             self._fake_run_probes(captured),
         )
         handler = QATestHandler()
@@ -1712,7 +1712,7 @@ class TestQAContractProbeEmission:
         def explode(workspace, probes):
             raise AssertionError("run_probes must not be called without contract_probes")
 
-        monkeypatch.setattr("squadops.capabilities.handlers.probe_runner.run_probes", explode)
+        monkeypatch.setattr("squadops.capabilities.handlers.cycle.qa_test.run_probes", explode)
         handler = QATestHandler()
         result = await handler.handle(mock_context, qa_inputs)
 
@@ -2068,7 +2068,7 @@ class TestRetestProbesPatchedTree:
             return [ProbeOutcome("vc-probe-runs", "passed", None)]
 
         monkeypatch.setattr(
-            "squadops.capabilities.handlers.probe_runner.run_probes", fake_run_probes
+            "squadops.capabilities.handlers.cycle.qa_test.run_probes", fake_run_probes
         )
         handler = QATestHandler()
         await handler.handle(

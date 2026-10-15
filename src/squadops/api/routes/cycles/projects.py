@@ -11,6 +11,7 @@ from squadops.api.cycle_schemas import ProjectResponse
 from squadops.api.errors import http_error
 from squadops.api.middleware.auth import require_scopes
 from squadops.api.routes.cycles.mapping import project_to_response
+from squadops.api.runtime.deps import get_project_registry
 from squadops.auth.models import Scope
 
 router = APIRouter(prefix="/api/v1/projects", tags=["projects"])
@@ -18,7 +19,6 @@ router = APIRouter(prefix="/api/v1/projects", tags=["projects"])
 
 @router.get("", dependencies=[Depends(require_scopes(Scope.CYCLES_READ))])
 async def list_projects(request: Request) -> list[ProjectResponse]:
-    from squadops.api.runtime.deps import get_project_registry
 
     registry = get_project_registry(request)
     projects = await registry.list_projects()
@@ -27,7 +27,6 @@ async def list_projects(request: Request) -> list[ProjectResponse]:
 
 @router.get("/{project_id}", dependencies=[Depends(require_scopes(Scope.CYCLES_READ))])
 async def get_project(request: Request, project_id: str) -> ProjectResponse:
-    from squadops.api.runtime.deps import get_project_registry
 
     registry = get_project_registry(request)
     project = await registry.get_project(project_id)
@@ -45,7 +44,6 @@ async def get_project_prd_content(request: Request, project_id: str) -> PlainTex
     Best-effort: returns 404 if prd_path is not configured or the file is not
     readable (e.g. containerized deployment where the PRD lives on the host).
     """
-    from squadops.api.runtime.deps import get_project_registry
 
     registry = get_project_registry(request)
     project = await registry.get_project(project_id)

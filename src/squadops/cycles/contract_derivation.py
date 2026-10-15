@@ -28,6 +28,7 @@ from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any
 from uuid import uuid4
 
+from squadops.cycles.models import ArtifactRef
 from squadops.cycles.vault_reads import retrieve_or_absent
 from squadops.stacks.scaffold import InterfaceManifest
 from squadops.stacks.scaffold_contract import emit_contract_yaml
@@ -140,7 +141,6 @@ async def derive_and_store_contract(
     The stored artifact records that it was derived rather than ingested, so a later
     reader can tell where it came from without the type differing.
     """
-    from squadops.cycles.models import ArtifactRef
 
     content = derive_contract_bytes(manifest_content)
     ref = ArtifactRef(

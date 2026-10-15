@@ -43,7 +43,7 @@ async def _run(monkeypatch, result: _Result):
     async def _fake(*_a, **_kw):
         return result
 
-    monkeypatch.setattr("squadops.capabilities.handlers.test_runner.run_build_validation", _fake)
+    monkeypatch.setattr("squadops.capabilities.handlers.cycle.qa_test.run_build_validation", _fake)
     return await QATestHandler._run_test_suite(_Capability(), {"a.ts": "x"}, [])
 
 

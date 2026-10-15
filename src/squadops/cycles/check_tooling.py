@@ -18,6 +18,7 @@ from __future__ import annotations
 import logging
 from pathlib import Path
 
+from squadops.config.path_resolver import PathResolver
 from squadops.cycles.check_registry import TOOL_NODE
 
 logger = logging.getLogger(__name__)
@@ -36,7 +37,6 @@ def _find_instances_dir() -> Path | None:
     Mirrors ``entrypoint``'s instances.yaml lookup so the resolver agrees with
     where the roster actually lives in each runtime.
     """
-    from squadops.config.path_resolver import PathResolver
 
     base: tuple[Path, ...]
     try:

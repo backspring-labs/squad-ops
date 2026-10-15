@@ -31,6 +31,8 @@ from squadops.campaigns.change_request import (
     validate_proposal,
 )
 from squadops.campaigns.prior_cycle import brief_lines
+from squadops.campaigns.proposed_behaviours import proposal_lines
+from squadops.capabilities.handlers._plan_authoring import retry_yaml_call
 from squadops.capabilities.handlers.base import HandlerEvidence, HandlerResult
 from squadops.capabilities.handlers.cross_cycle_lessons import cross_cycle_lessons_section
 from squadops.capabilities.handlers.planning.base import _PlanningTaskHandler
@@ -125,7 +127,6 @@ async def _context_sections(
     proposed = block.get("qa_proposed_behaviours") or []
     if proposed:
         # #1884: what the last increment's qa author proposed instead of testing.
-        from squadops.campaigns.proposed_behaviours import proposal_lines
 
         section = await renderer.render(
             "request.proposal_qa_proposed_behaviours",
@@ -153,7 +154,6 @@ class StrategyProposeIncrementHandler(_PlanningTaskHandler):
     _request_template_id = "request.strategy_propose_increment"
 
     async def handle(self, context: ExecutionContext, inputs: dict[str, Any]) -> HandlerResult:
-        from squadops.capabilities.handlers._plan_authoring import retry_yaml_call
 
         start_time = time.perf_counter()
         renderer = getattr(context.ports, "request_renderer", None)

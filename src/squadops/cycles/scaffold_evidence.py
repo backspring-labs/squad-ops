@@ -35,6 +35,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any
 
+from squadops.cycles.verification_integrity import ResultStatus
 from squadops.stacks.verification_scaffold import ScaffoldSpineError, parse_slot_regions
 
 # The SIP §5 failure classes.
@@ -106,6 +107,7 @@ def classify_shell_failures(
     dev round; a misroute toward qa invites the suite to be rewritten to agree with a
     broken app.
     """
+    # deferred (pure): it would load asyncio into cycles.cycle_assessment
     from squadops.capabilities.handlers.scaffold_execution import _is_assertion_failure
 
     shell_records = {f.path: f for f in scaffold_manifest.files}
@@ -291,7 +293,6 @@ def correlate(
     Different criterion ids are never merged; observations without a criterion id
     (fill/generator/infrastructure classes) are never pulled into a finding.
     """
-    from squadops.cycles.verification_integrity import ResultStatus
 
     # Probe rows speak ResultStatus (probe_runner emits its literals) — compare against
     # the owning vocabulary, never raw strings (#380).

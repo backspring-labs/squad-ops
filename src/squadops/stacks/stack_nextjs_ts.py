@@ -324,6 +324,7 @@ def _harness_test_source(manifest: Any) -> str:
     declared table via `TABLES`, which additionally demonstrates the accessor the fill briefs
     point authors at.
     """
+    # deferred (cycle): stacks.scaffold loads this module
     from squadops.stacks.scaffold import root_persisted_entities
 
     # #1087: the first ROOT-PERSISTED table, not the first declared entity. On
@@ -431,6 +432,7 @@ def _store_source(manifest: Any) -> str:
     A manifest declaring no entities keeps an open signature: there is no union to derive,
     and ``never`` would make the store unusable rather than safe.
     """
+    # deferred (cycle): stacks.scaffold loads this module
     from squadops.stacks.scaffold import root_persisted_entities
 
     entities = (

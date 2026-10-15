@@ -132,7 +132,6 @@ class CampaignLaunchService:
 
         Only at startup: a later drain would find successor runs this process is already
         executing. Returns the cycles taken up."""
-        from squadops.cycles.models import RunStatus
 
         cycles = self._creation.cycle_registry
         taken_up = []

@@ -31,13 +31,21 @@ from squadops.api.cycle_schemas import CycleCancelResponse
 from squadops.api.runtime.deps import (
     get_activity_port,
     get_cancel_queue_port,
+    get_cycle_event_bus,
+    get_cycle_registry,
     get_focus_lease_port,
     get_runtime_coordinator,
     get_workflow_tracker,
 )
+from squadops.comms.run_cancellation import control_queue, run_cancelled_notice
+from squadops.cycles.flow_runs import end_open_flow_runs
 from squadops.cycles.lifecycle import TERMINAL_STATES
 from squadops.cycles.models import RunStatus
 from squadops.cycles.naming import flow_run_name
+from squadops.events.types import EventType
+from squadops.runtime import reasons
+from squadops.runtime.activity_reaper import abort_cycle_activities
+from squadops.runtime.focus_reaper import release_owner_leases
 
 logger = logging.getLogger(__name__)
 
@@ -50,8 +58,6 @@ async def cancel_orphaned_flow_runs(
     if not run_ids:
         return 0
     try:
-        from squadops.cycles.flow_runs import end_open_flow_runs
-
         tracker = get_workflow_tracker(request)
         names = [flow_run_name(project_id, cycle_id, rid) for rid in run_ids]
         flow_run_ids = await end_open_flow_runs(tracker, names, status=RunStatus.CANCELLED)
@@ -85,8 +91,6 @@ async def release_cancelled_run_leases(request: Request, cycle_id: str, run_ids:
     focus_lease = get_focus_lease_port(request)
     if coordinator is None or focus_lease is None or not run_ids:
         return 0
-    from squadops.runtime import reasons
-    from squadops.runtime.focus_reaper import release_owner_leases
 
     released = 0
     for run_id in run_ids:
@@ -123,8 +127,6 @@ async def notify_agents_of_cancel(request: Request, cycle_id: str, run_ids: list
     if queue is None or not run_ids:
         return 0
     import json
-
-    from squadops.comms.run_cancellation import control_queue, run_cancelled_notice
 
     agents: set[str] = set()
     activity_port = get_activity_port(request)
@@ -179,8 +181,6 @@ async def abort_cancelled_cycle_activities(request: Request, cycle_id: str) -> i
     activity_port = get_activity_port(request)
     if activity_port is None:
         return 0
-    from squadops.runtime import reasons
-    from squadops.runtime.activity_reaper import abort_cycle_activities
 
     try:
         aborted = await abort_cycle_activities(
@@ -209,14 +209,11 @@ async def cancel_cycle_by_the_existing_path(
     The one cancel path: the cycle route calls it, and so does a campaign's abort (SIP-0109
     §12a: "the running cycle is cancelled by the existing path").
     """
-    from squadops.api.runtime.deps import get_cycle_registry
 
     registry = get_cycle_registry(request)
     await registry.cancel_cycle(cycle_id)
 
     # SIP-0077: cycle.cancelled
-    from squadops.api.runtime.deps import get_cycle_event_bus
-    from squadops.events.types import EventType
 
     get_cycle_event_bus(request).emit(
         EventType.CYCLE_CANCELLED,

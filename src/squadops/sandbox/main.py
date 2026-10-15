@@ -58,6 +58,7 @@ def secret_manager_from_env() -> SecretManager | None:
     values = _section_from_env(_SECRETS_PREFIX, SecretsConfig.model_fields)
     if not values:
         return None
+    # deferred (pair): sandbox and bootstrap would import each other at load
     from squadops.bootstrap.secrets import secret_provider_for
 
     secrets = SecretsConfig.model_validate(values)

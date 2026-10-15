@@ -41,6 +41,7 @@ from dataclasses import dataclass
 from enum import Enum
 from typing import Any
 
+from squadops.capabilities.handlers.impl._json_extraction import _find_first_balanced_object
 from squadops.stacks.development_profiles import effective_development_profile
 from squadops.tasks.task_types import TaskType
 
@@ -92,9 +93,6 @@ def _false_source_claim(content: str) -> str:
     prose half). ``classification`` is left alone so the object still validates. No
     object → unchanged, which ``inject`` reports as DID NOT BITE.
     """
-    from squadops.capabilities.handlers.impl._json_extraction import (
-        _find_first_balanced_object,
-    )
 
     obj_text = _find_first_balanced_object(content)
     if obj_text is None:

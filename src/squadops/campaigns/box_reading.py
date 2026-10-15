@@ -26,6 +26,8 @@ from squadops.campaigns.box import (
     box_quietness,
     launch_verdict,
 )
+from squadops.cycles.models import CycleStatus, RunStatus
+from squadops.ports.llm.provider import LLMCapability
 
 
 def declared_models(record: Any) -> tuple[Model, ...]:
@@ -39,7 +41,6 @@ def declared_models(record: Any) -> tuple[Model, ...]:
 async def read_engines(engines: Mapping[str, Any]) -> tuple[EngineReading, ...]:
     """Each engine's resident models, by name, through its port. Every engine is read, and a
     failure is that engine's reading, not the caller's exception."""
-    from squadops.ports.llm.provider import LLMCapability
 
     readings: list[EngineReading] = []
     for name, port in engines.items():
@@ -108,7 +109,6 @@ class BoxReader:
     async def runs_in_flight(self) -> tuple[str, ...]:
         """Every run executing on the box now, by id. A run waiting at a gate or queued to start
         is not in flight: a queued run's start waits on the lease."""
-        from squadops.cycles.models import CycleStatus, RunStatus
 
         running: list[str] = []
         for project in await self._projects.list_projects():

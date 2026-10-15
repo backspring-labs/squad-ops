@@ -14,6 +14,7 @@ from __future__ import annotations
 from collections.abc import Sequence
 from typing import Any
 
+from squadops.capabilities.verification_scaffold_fill import coverage_inventory_lines
 from squadops.stacks.scaffold import error_envelope_lines
 from squadops.stacks.verification_scaffold import VerificationScaffoldManifest
 
@@ -36,7 +37,6 @@ async def render_fill_mode_section(
     files = scaffold_input.get("files") or []
     if renderer is None or not manifest_dict or not files:
         return ""
-    from squadops.capabilities.verification_scaffold_fill import coverage_inventory_lines
 
     record = VerificationScaffoldManifest.from_dict(manifest_dict)
     slot_lines = "\n".join(f"- {line}" for line in coverage_inventory_lines(record))

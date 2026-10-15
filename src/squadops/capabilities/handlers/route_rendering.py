@@ -25,6 +25,7 @@ from typing import TYPE_CHECKING, Any
 
 import httpx
 
+from squadops.campaigns.increment_tree import route_param
 from squadops.core.bounded_run import run_bounded_sync, stop_group
 
 if TYPE_CHECKING:
@@ -177,7 +178,6 @@ def _reachable_path(
 ) -> str | None:
     """The concrete path to read ``route`` at, or ``None`` when its page cannot be reached: a
     parameter with no seed, or a seed the app refused or answered without an ``id``."""
-    from squadops.campaigns.increment_tree import route_param
 
     if not any(route_param(s) is not None for s in route.split("/")):
         return route

@@ -18,6 +18,7 @@ from pydantic import BaseModel
 from squadops.api.errors import http_error, server_error
 from squadops.api.middleware.auth import require_scopes
 from squadops.api.platform_schemas import AgentStatusUpdatedResponse
+from squadops.api.runtime.deps import get_health_checker
 from squadops.auth.models import Scope
 
 logger = logging.getLogger(__name__)
@@ -51,7 +52,6 @@ _VALID_LIFECYCLE_STATES = {"STARTING", "READY", "WORKING", "BLOCKED", "CRASHED",
 
 
 def _get_health_checker(request: Request):
-    from squadops.api.runtime.deps import get_health_checker
 
     return get_health_checker(request)
 

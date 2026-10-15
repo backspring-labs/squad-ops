@@ -24,6 +24,8 @@ from squadops.capabilities.handlers.cycle.validation import (
     _PRD_COVERAGE_DISCIPLINE_SECTION,
     _rewrite_manifest_identifiers,
 )
+from squadops.capabilities.handlers.fenced_parser import extract_fenced_files
+from squadops.cycles.implementation_plan import ImplementationPlan
 
 logger = logging.getLogger(__name__)
 
@@ -240,8 +242,6 @@ class GovernanceReviewHandler(_CycleTaskHandler):
         invent. We log when the LLM-emitted value disagreed so the
         substitution remains observable.
         """
-        from squadops.capabilities.handlers.fenced_parser import extract_fenced_files
-        from squadops.cycles.implementation_plan import ImplementationPlan
 
         extracted = extract_fenced_files(content)
         manifest_files = [f for f in extracted if f["filename"] == "implementation_plan.yaml"]

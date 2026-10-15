@@ -22,10 +22,14 @@ from typing import Any
 from squadops.campaigns.change_request import (
     ProposalContext,
     apply_manifest_delta,
+    load_stored_change_request,
     stored_change_request,
     validate_proposal,
 )
+from squadops.contracts.cycle_request_profiles import cycle_request_body
 from squadops.cycles.contract_derivation import derive_contract_bytes
+from squadops.cycles.cycle_assessment import IndicatorState
+from squadops.cycles.models import GateDecisionValue
 
 #: The scenario's proposal identity: one request, one version, every time.
 REFERENCE_PROPOSAL_ID = "ref_capacity_limit"
@@ -129,7 +133,6 @@ def reference_proposal_request(
     """The cycle request for the proposal half (§11a; §24af): ``campaign-proposal`` carrying the
     build half's block under its own proposal id. Nothing is seeded (no candidate manifest, no
     contract, no change request), because nothing is built."""
-    from squadops.contracts.cycle_request_profiles import cycle_request_body
 
     return cycle_request_body(
         REFERENCE_PROPOSAL_PROFILE,
@@ -144,8 +147,6 @@ def rated_proposal(change_request: str | None, rating: str | None) -> dict[str, 
     it. Read from the stored documents only; a rating bound to another version than the stored
     change request is reported as such, never as this proposal's rating."""
     import yaml
-
-    from squadops.campaigns.change_request import load_stored_change_request
 
     if change_request is None:
         return {"read": False, "reason": "the proposal cycle stored no change request"}
@@ -220,7 +221,6 @@ def mechanism_report(
 
 
 def _gate(run: Mapping[str, Any]) -> dict[str, Any]:
-    from squadops.cycles.models import GateDecisionValue
 
     decisions = list(run.get("gate_decisions") or ())
     last = decisions[-1] if decisions else {}
@@ -259,7 +259,6 @@ def _indicator(indicator: Mapping[str, Any] | None) -> Any:
     """An assessment indicator in its three states (#1445): its value when observed, ``none``
     when it was asked and there were none, and ``not recorded`` with the reason otherwise — an
     absence is never read as either of the first two."""
-    from squadops.cycles.cycle_assessment import IndicatorState
 
     state = (indicator or {}).get("state")
     if state == IndicatorState.OBSERVED:

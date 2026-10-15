@@ -20,7 +20,9 @@ from squadops.tasks.task_types import TaskType
 
 if TYPE_CHECKING:
     from squadops.capabilities.handlers.context import ExecutionContext
+from squadops.capabilities.handlers._plan_authoring import retry_yaml_call
 from squadops.capabilities.handlers.planning.base import _PlanningTaskHandler
+from squadops.cycles.plan_authoring_brief import PlanAuthoringBrief
 
 _BRIEF_MAX_ATTEMPTS_DEFAULT = 2
 
@@ -49,8 +51,6 @@ class GovernancePreparePlanAuthoringBriefHandler(_PlanningTaskHandler):
         context: ExecutionContext,
         inputs: dict[str, Any],
     ) -> HandlerResult:
-        from squadops.capabilities.handlers._plan_authoring import retry_yaml_call
-        from squadops.cycles.plan_authoring_brief import PlanAuthoringBrief
 
         start_time = time.perf_counter()
 

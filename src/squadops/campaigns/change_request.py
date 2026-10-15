@@ -26,6 +26,9 @@ from typing import Any
 
 import yaml
 
+from squadops.cycles.acceptance_check_spec import parse_method_path
+from squadops.cycles.manifest_gates import assess_winnability
+from squadops.cycles.verification_contract import VerificationContract
 from squadops.stacks.scaffold import (
     MANIFEST_ELEMENT_KEYS,
     InterfaceManifest,
@@ -489,8 +492,6 @@ def validate_proposal(authored: dict, context: ProposalContext) -> ProposalVerdi
             None, (ProposalRefusal(RefusalKind.DELTA_DOES_NOT_FIT, str(e)), *refusals)
         )
 
-    from squadops.cycles.manifest_gates import assess_winnability
-
     for finding in assess_winnability(candidate, context.expected_stack):
         refusals.append(
             ProposalRefusal(RefusalKind.MANIFEST_GATES, f"{finding.proof}: {finding.detail}")
@@ -611,8 +612,6 @@ def _unbuildable_surface_refusals(
     frozen error module renders that code's status and declared message, and the scaffold
     regenerates it from the candidate manifest, so the change is built outside the serving
     file."""
-    from squadops.cycles.acceptance_check_spec import parse_method_path
-    from squadops.cycles.verification_contract import VerificationContract
 
     before, after = InterfaceManifest.from_yaml(baseline), InterfaceManifest.from_yaml(candidate)
     owners = VerificationContract.from_dict(emit_contract_dict(after)).endpoint_owners()

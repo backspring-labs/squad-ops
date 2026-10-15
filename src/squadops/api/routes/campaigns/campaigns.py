@@ -47,9 +47,30 @@ from squadops.api.campaign_schemas import (
 from squadops.api.errors import error_body
 from squadops.api.middleware.auth import holds_scopes, require_scopes
 from squadops.api.paging import Page, page
+from squadops.api.routes.cycles.cancellation import cancel_cycle_by_the_existing_path
+from squadops.api.routes.cycles.mapping import cycle_status_of
+from squadops.api.runtime.deps import (
+    get_artifact_vault,
+    get_audit_port,
+    get_box_reader,
+    get_campaign_launch,
+    get_campaign_progress,
+    get_campaign_registry,
+    get_cycle_event_bus,
+    get_cycle_registry,
+    get_memory_store,
+)
 from squadops.auth.models import Identity, Role, Scope
 from squadops.campaigns import lifecycle
-from squadops.campaigns.escalation import Escalation
+from squadops.campaigns.continuation import PendingAction
+from squadops.campaigns.escalation import Escalation, answer_refusal, answer_transition, escalations
+from squadops.campaigns.gate import increment_sequence_refusal
+from squadops.campaigns.launch_blocking import (
+    escalated_by_a_blocked_launch,
+    escalated_by_a_refused_launch,
+)
+from squadops.campaigns.launch_requests import start_transition
+from squadops.campaigns.ledger import ledger
 from squadops.campaigns.models import (
     Campaign,
     CampaignDefinition,
@@ -62,10 +83,19 @@ from squadops.campaigns.models import (
     ControlOperation,
     ControlOperationRefused,
     ControlOutcome,
+    ProposalClassification,
     ResumeReservedToOwner,
     TransitionResult,
 )
+from squadops.campaigns.progress import (
+    EVIDENCE_ARTIFACT_TYPE,
+    CannotLaunch,
+    held_action,
+    owner_held,
+)
+from squadops.campaigns.projection import project
 from squadops.cycles.models import CycleStatus
+from squadops.memory.pinning import pin_campaign
 
 logger = logging.getLogger(__name__)
 
@@ -92,7 +122,6 @@ def actor_from(identity: Identity | None) -> tuple[str, str]:
 
 
 def _registry(request: Request):
-    from squadops.api.runtime.deps import get_campaign_registry
 
     return get_campaign_registry(request)
 
@@ -100,7 +129,6 @@ def _registry(request: Request):
 def _ports(request: Request) -> tuple:
     """The audit port and the event bus, each ``None`` when unwired: a missing projection, not
     an error."""
-    from squadops.api.runtime.deps import get_audit_port, get_cycle_event_bus
 
     try:
         audit = get_audit_port(request)
@@ -116,7 +144,6 @@ def _ports(request: Request) -> tuple:
 def _project_to_audit(request: Request, entry: ControlLogEntry, identity: Identity | None) -> None:
     """A refused row, to the security audit (§13): the route's own projection, with the
     caller's identity type and request id. Fail-open."""
-    from squadops.campaigns.projection import project
 
     audit, _events = _ports(request)
     project(
@@ -132,7 +159,6 @@ def _project_to_audit(request: Request, entry: ControlLogEntry, identity: Identi
 def _project(request: Request, result: TransitionResult, identity: Identity | None) -> None:
     """An applied row, to the audit and the event bus (§13), by the one builder every writer
     uses (``squadops.campaigns.projection``). A replay projects nothing new."""
-    from squadops.campaigns.projection import project
 
     if result.replayed:
         return
@@ -165,7 +191,6 @@ async def launch_pending(request: Request, result: TransitionResult) -> list[str
     died before launching. A launch the drain could not make names nothing, and stays pending."""
     if result.intent is None:
         return []
-    from squadops.api.runtime.deps import get_campaign_launch
 
     await get_campaign_launch(request).drain()
     intent = await _registry(request).get_launch_intent(result.intent.launch_id)
@@ -266,7 +291,6 @@ async def start_campaign(
     """The start (§17), the owner's or the supervisor's (#1940): the draft moves to calibrating, its calibration cycle's launch
     intent written in the same row (§12b), and the cycle is launched by the cycle-create path.
     A campaign that is not a draft refuses the start as stale, and the refusal is recorded."""
-    from squadops.campaigns.launch_requests import start_transition
 
     actor, role = actor_from(identity)
     campaign = await _registry(request).get_campaign(campaign_id)
@@ -293,9 +317,6 @@ async def _pin_memory(request: Request, campaign) -> None:
     Repeated (a replayed start, a restart), it returns the first pin."""
     from datetime import UTC, datetime
 
-    from squadops.api.runtime.deps import get_memory_store
-    from squadops.memory.pinning import pin_campaign
-
     store = get_memory_store(request)
     if store is None:
         return
@@ -317,7 +338,6 @@ async def classify_proposal(
     """The supervisor's classification of what went wrong with a proposal version (§9.4): a
     record, accepted after the campaign has ended. A version never submitted to the gate cannot
     be classified."""
-    from squadops.campaigns.models import ProposalClassification
 
     try:
         classification = ProposalClassification(body.classification)
@@ -364,7 +384,6 @@ async def list_escalations(
 ) -> list[EscalationResponse]:
     """The plan-review tier's escalations (§24bj, §24bk), each in its state, with its late
     answer when one is recorded."""
-    from squadops.campaigns.escalation import escalations
 
     campaign = await _registry(request).get_campaign(campaign_id)
     return [
@@ -385,7 +404,6 @@ async def answer_escalation(
     accepted after the campaign ended, answering each decision it names by its id. It never reopens
     the campaign or resumes the parked cycle. A later tier campaign's proposal launch carries a
     compatible answer into its manifest, and its plan gate checks the plan still carries it."""
-    from squadops.campaigns.escalation import answer_refusal, answer_transition, escalations
 
     campaign = await _registry(request).get_campaign(campaign_id)
     found = next(
@@ -416,8 +434,6 @@ async def read_ledger(
     """The proposal ledger (§9.4), read from the control log: per proposal version, its
     submission, its ruling, its cycle's outcome and its classification."""
     import dataclasses
-
-    from squadops.campaigns.ledger import ledger
 
     await _registry(request).get_campaign(campaign_id)
     return [
@@ -458,9 +474,6 @@ async def resume_campaign(
 
     Anything else refuses the resume as stale, and the refusal is recorded.
     """
-    from squadops.api.runtime.deps import get_campaign_progress
-    from squadops.campaigns.continuation import PendingAction
-    from squadops.campaigns.progress import CannotLaunch, held_action, owner_held
 
     actor, role = actor_from(identity)
     registry = _registry(request)
@@ -476,7 +489,6 @@ async def resume_campaign(
             named = PendingAction(body.action)
         except ValueError as e:
             raise HTTPException(422, _validation(f"unknown action {body.action!r}")) from e
-    from squadops.campaigns.launch_blocking import escalated_by_a_refused_launch
 
     refused = escalated_by_a_refused_launch(campaign, log)
     if refused is not None:
@@ -504,8 +516,6 @@ async def resume_campaign(
         result = await apply_control(request, campaign_id, transition, identity)
         return _result(result, launched_cycles=await _retry_launch(request, launch_id, result))
     if campaign.state is CampaignState.ESCALATED and named is None:
-        from squadops.campaigns.launch_blocking import escalated_by_a_blocked_launch
-
         if escalated_by_a_blocked_launch(campaign, log):
             # §9.3 (#1802): the launch it escalated over is still pending. The owner's word
             # returns it to launch_blocked, re-attempted at once and counted afresh.
@@ -580,7 +590,6 @@ async def acquire_lease(
     the box (``run_in_flight``), or while another supervisor holds it (``box_held``). While it
     holds the box, every cycle launch is refused and every run start waits.
     """
-    from squadops.api.runtime.deps import get_box_reader
 
     campaign = await _registry(request).get_campaign(campaign_id)
     if body.expires_in_s > campaign.policy.lease_expiry_s:
@@ -672,7 +681,7 @@ def _require_profiles(policy: CampaignPolicy) -> None:
     """Every request profile the policy names must exist, and the proposal profile must reach
     the increment ruling: a campaign whose launches could never be built, or whose increments
     could never be ruled, is refused at its creation, not discovered at its first launch."""
-    from squadops.campaigns.gate import increment_sequence_refusal
+    # deferred (pair): api and contracts would import each other at load
     from squadops.contracts.cycle_request_profiles import load_profile
 
     profiles = {}
@@ -693,8 +702,6 @@ async def _materialize_after_close(request: Request, campaign_id: str) -> None:
     failure is logged loudly, and ``POST …/package`` materializes it later from the same
     records."""
     try:
-        from squadops.api.runtime.deps import get_campaign_progress
-
         await get_campaign_progress(request).materialize_package(campaign_id)
     except Exception:
         logger.exception("campaign_package_not_materialized", extra={"campaign_id": campaign_id})
@@ -704,7 +711,6 @@ async def _retry_launch(request: Request, launch_id: str, result: TransitionResu
     """After the owner's resume of a refused launch (#1971): drain, so the pending intent is
     attempted again now, and name its cycle when it launched. When it was refused again it names
     none, and the drain's own row has escalated the campaign anew. A replay drains nothing."""
-    from squadops.api.runtime.deps import get_campaign_launch
 
     if result.replayed:
         return []
@@ -769,7 +775,6 @@ async def materialize_package(
 ) -> PackageMaterializedResponse:
     """Materialize the campaign's evidence package and digest now (§14, #1710): a projection
     of its records, idempotent by identity. A campaign's close materializes it on its own."""
-    from squadops.api.runtime.deps import get_campaign_progress
 
     await _registry(request).get_campaign(campaign_id)  # 404 before anything is written
     pkg_identity, package_id, digest_id = await get_campaign_progress(request).materialize_package(
@@ -787,8 +792,6 @@ async def read_package(
     identity: Identity | None = Depends(require_scopes(Scope.CAMPAIGNS_READ)),
 ) -> PackageDigestResponse:
     """The latest stored evidence package's identity and its digest (the morning read)."""
-    from squadops.api.runtime.deps import get_artifact_vault
-    from squadops.campaigns.progress import EVIDENCE_ARTIFACT_TYPE
 
     campaign = await _registry(request).get_campaign(campaign_id)
     vault = get_artifact_vault(request)
@@ -874,9 +877,6 @@ def _paused_from(log: list[ControlLogEntry]) -> CampaignState | None:
 
 async def _cancel_launched_cycles(request: Request, campaign_id: str) -> list[str]:
     """Cancel, by the existing path, each cycle the campaign launched that has not ended."""
-    from squadops.api.routes.cycles.cancellation import cancel_cycle_by_the_existing_path
-    from squadops.api.routes.cycles.mapping import cycle_status_of
-    from squadops.api.runtime.deps import get_cycle_registry
 
     cycles = get_cycle_registry(request)
     cancelled: list[str] = []

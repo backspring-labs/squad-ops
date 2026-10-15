@@ -45,6 +45,8 @@ from dataclasses import dataclass, field
 from enum import StrEnum
 from typing import TYPE_CHECKING, Any
 
+from squadops.cycles.replay import parse_replay_declaration
+
 if TYPE_CHECKING:
     from squadops.cycles.cycle_assessment import (
         AssessorIdentity,
@@ -248,7 +250,6 @@ def _replay_of(cycle: Cycle) -> str | None:
     """What a replayed cycle replays, or ``None`` for a cycle that is not one. A declaration
     too malformed to parse still declares a replay, so it is refused too: a half-declared replay
     is never read as an ordinary run (``replay.parse_replay_declaration``)."""
-    from squadops.cycles.replay import parse_replay_declaration
 
     try:
         request = parse_replay_declaration(cycle.execution_overrides or {})
