@@ -8,18 +8,21 @@ freezes the experiment manifest, and runs each case in the agent container of it
 
     python scripts/dev/run_authoring_replay.py --experiment proposals-v1 \\
         --envelope env_… [--envelope …] | --run run_… [--task-type strategy.propose_increment] \\
-        --rubric lesson.criterion_already_satisfied@1 \\
+        --rubric lesson.criterion_already_satisfied@3 \\
         [--lessons lessons.yaml] [--static-guidance guidance.md] \\
         [--generations 3] [--seed 7] [--validity-only]
 
 ``lessons.yaml`` is a list of ``{revision_id, text, cited_observations: [source ids]}``. A manifest is
-frozen: rerunning a named experiment with anything changed is refused; name a new one.
+frozen: rerunning a named experiment with anything changed is refused; name a new one. A rubric the
+repository holds (``replay_rubrics/``, each file headed by its id and version) is pinned by its text:
+the manifest records the named version's hash, and a version no file holds is refused (#2313).
 """
 
 from __future__ import annotations
 
 import argparse
 import json
+import re
 import subprocess
 import sys
 import tempfile
@@ -29,6 +32,8 @@ from pathlib import Path
 _HERE = Path(__file__).resolve().parent
 _REPO = _HERE.parents[1]
 _POSTGRES = "squadops-postgres"
+_RUBRICS = _HERE / "replay_rubrics"
+_RUBRIC_HEADER = re.compile(r"# Rubric `(?P<name>[^`@]+)@(?P<version>[^`]+)`")
 sys.path.insert(0, str(_HERE))
 from verify_authoring_envelopes import _container_for  # noqa: E402
 
@@ -146,6 +151,28 @@ def _run_in(container: str, payload: dict) -> list[dict]:
     return [json.loads(line) for line in done.stdout.splitlines() if line.strip()]
 
 
+def rubric_text(rubric_id: str) -> str | None:
+    """The text a rubric id's version names, or None for a label no rubric file holds (#2313).
+
+    Each file's first line names the rubric and the version it holds, so an id names a text, not a
+    label: a held rubric named at a version no file holds is refused, since its outputs would be
+    read by another version's text."""
+    name, _, version = rubric_id.rpartition("@")
+    held: dict[str, Path] = {}
+    for path in sorted(_RUBRICS.glob("*.md")):
+        header = _RUBRIC_HEADER.fullmatch(path.read_text(encoding="utf-8").partition("\n")[0])
+        if header and header["name"] == name:
+            held[header["version"]] = path
+    if not held:
+        return None
+    if version not in held:
+        raise SystemExit(
+            f"--rubric {rubric_id}: the repository holds {name} at "
+            f"{', '.join('@' + v for v in sorted(held))}; a version is read by its own text"
+        )
+    return held[version].read_text(encoding="utf-8")
+
+
 def plan(args, envelopes: list[dict], lessons: list) -> tuple[dict, dict]:
     """The frozen manifest and each case's eligible lessons, by evidence time."""
     from squadops.memory.replay import Arm, manifest, temporal_validity
@@ -183,6 +210,7 @@ def plan(args, envelopes: list[dict], lessons: list) -> tuple[dict, dict]:
         lessons=lessons,
         static_guidance=static,
         rubric=args.rubric,
+        rubric_text=rubric_text(args.rubric),
         framework_git_sha=args.framework_git_sha,
         excluded=excluded,
     )

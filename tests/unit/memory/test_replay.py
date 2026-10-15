@@ -163,6 +163,7 @@ def test_an_experiments_identity_moves_with_its_inputs_and_not_with_its_clock():
             lessons=[ReplayLesson("pat_a@1", text, ())],
             static_guidance="",
             rubric="r@1",
+            rubric_text=None,
             framework_git_sha="99d4a11e",
         )
 
