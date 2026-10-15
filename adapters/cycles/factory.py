@@ -54,9 +54,7 @@ def create_cycle_registry(provider: str, **kwargs) -> CycleRegistryPort:
         from adapters.cycles.postgres_cycle_registry import PostgresCycleRegistry
         from adapters.persistence.transient import TransientRetry
 
-        return PostgresCycleRegistry(
-            pool=pool, retry=TransientRetry(retry.attempts, retry.backoff_seconds)
-        )
+        return PostgresCycleRegistry(pool=pool, retry=TransientRetry.of(retry))
     raise ValueError(f"Unknown cycle registry provider: {provider}")
 
 

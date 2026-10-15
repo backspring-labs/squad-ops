@@ -104,6 +104,16 @@ def _cycle_insert_args(cycle: Cycle) -> tuple:
     )
 
 
+#: The unique index a concurrent ``create_run`` loses its run number on (#1976).
+_RUN_NUMBER_UNIQUE = "cycle_runs_cycle_id_run_number_key"
+
+
+class _RunNumberTaken(Exception):
+    """Another ``create_run`` committed this run number first (#1976). Each transaction reads the
+    highest number in its own snapshot, taken before the other committed, so the second insert
+    meets the unique index. Its next try reads a fresh snapshot."""
+
+
 class PostgresCycleRegistry(CycleRegistryPort):
     """Postgres-backed CycleRegistryPort implementation. ``retry`` takes each connection and runs
     each transaction again on a transient failure (#1976, ``adapters/persistence/transient.py``)."""
@@ -251,25 +261,37 @@ class PostgresCycleRegistry(CycleRegistryPort):
             )
 
             # Insert with allocated run_number (caller's run_number is ignored)
-            await conn.execute(
-                "INSERT INTO cycle_runs "
-                "(run_id, cycle_id, run_number, status, initiated_by, "
-                "resolved_config_hash, resolved_config_ref, workload_type) "
-                "VALUES ($1,$2,$3,$4,$5,$6,$7,$8)",
-                run.run_id,
-                run.cycle_id,
-                next_num,
-                run.status,
-                run.initiated_by,
-                run.resolved_config_hash,
-                run.resolved_config_ref,
-                run.workload_type,
-            )
+            try:
+                await conn.execute(
+                    "INSERT INTO cycle_runs "
+                    "(run_id, cycle_id, run_number, status, initiated_by, "
+                    "resolved_config_hash, resolved_config_ref, workload_type) "
+                    "VALUES ($1,$2,$3,$4,$5,$6,$7,$8)",
+                    run.run_id,
+                    run.cycle_id,
+                    next_num,
+                    run.status,
+                    run.initiated_by,
+                    run.resolved_config_hash,
+                    run.resolved_config_ref,
+                    run.workload_type,
+                )
+            except asyncpg.UniqueViolationError as err:
+                if err.constraint_name == _RUN_NUMBER_UNIQUE:
+                    raise _RunNumberTaken(f"run number {next_num} of {run.cycle_id}") from err
+                raise
             return next_num
 
-        # #1976: serializable, so a concurrent allocation can be rolled back (40001); the
-        # transaction then runs again and allocates the next number.
-        next_num = await self._retry.transaction(self._pool, work, isolation="serializable")
+        # #1976: two runs created at once read the same highest number. The second insert meets
+        # the unique index (seen on CI's Postgres) or is rolled back (40001), and its transaction
+        # runs again on a fresh snapshot and takes the next number.
+        try:
+            next_num = await self._retry.transaction(
+                self._pool, work, isolation="serializable", lost_race=(_RunNumberTaken,)
+            )
+        except _RunNumberTaken as taken:
+            # The unique violation itself, once the tries are spent.
+            raise (taken.__cause__ or taken) from None
         return dataclasses.replace(run, run_number=next_num)
 
     async def get_run(self, run_id: str) -> Run:

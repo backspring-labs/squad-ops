@@ -29,6 +29,8 @@ async def report(dsn: str, vault_dir: Path, minimum: int) -> int:
     from adapters.cycles.postgres_cycle_registry import PostgresCycleRegistry
     from adapters.memory.cross_cycle import InMemoryCrossCycleMemoryStore
     from adapters.persistence.pool import create_pool
+    from adapters.persistence.transient import TransientRetry
+    from squadops.config.schema import DBRetryConfig
     from squadops.memory.reconcile import reconcile_campaign, reconcile_cycle
     from squadops.memory.repeats import repeated_signatures
 
@@ -37,7 +39,7 @@ async def report(dsn: str, vault_dir: Path, minimum: int) -> int:
         dsn, min_size=1, max_size=2, server_settings={"default_transaction_read_only": "on"}
     )
     try:
-        registry = PostgresCycleRegistry(pool=pool)
+        registry = PostgresCycleRegistry(pool=pool, retry=TransientRetry.of(DBRetryConfig()))
         campaigns = PostgresCampaignRegistry(pool)
         vault = FilesystemArtifactVault(base_dir=vault_dir)
         store = InMemoryCrossCycleMemoryStore()

@@ -37,6 +37,8 @@ async def snapshot(dsn: str, vault_dir: Path) -> dict[str, dict]:
     from adapters.cycles.filesystem_artifact_vault import FilesystemArtifactVault
     from adapters.cycles.postgres_cycle_registry import PostgresCycleRegistry
     from adapters.persistence.pool import create_pool
+    from adapters.persistence.transient import TransientRetry
+    from squadops.config.schema import DBRetryConfig
     from squadops.cycles.cycle_assessment import AssessorIdentity, assess
     from squadops.cycles.cycle_outcome import resolve_cycle_outcome
 
@@ -47,7 +49,7 @@ async def snapshot(dsn: str, vault_dir: Path) -> dict[str, dict]:
         dsn, min_size=1, max_size=2, server_settings={"default_transaction_read_only": "on"}
     )
     try:
-        registry = PostgresCycleRegistry(pool=pool)
+        registry = PostgresCycleRegistry(pool=pool, retry=TransientRetry.of(DBRetryConfig()))
         vault = FilesystemArtifactVault(base_dir=vault_dir)
         assessor = AssessorIdentity(framework_version="snapshot", git_sha="snapshot")
         async with pool.acquire() as conn:

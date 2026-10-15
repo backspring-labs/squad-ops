@@ -376,7 +376,7 @@ class _CrashAfterCreate(PostgresCycleRegistry):
 
 async def test_a_crash_after_creation_is_found_by_the_next_drain(campaigns, pool):
     decided = await campaigns.transition(CID, _launching("k-decide"))
-    cycles = _CrashAfterCreate(pool=pool)
+    cycles = _CrashAfterCreate(pool=pool, retry=ONE_TRY)
 
     with pytest.raises(RuntimeError, match="injected"):
         await CampaignLauncher(campaigns, cycles, _build, actor="l1", box_verdict=quiet_box).drain()

@@ -37,7 +37,9 @@ async def main(dsn: str, vault_dir: str, campaign_id: str) -> int:
     from adapters.cycles.filesystem_artifact_vault import FilesystemArtifactVault
     from adapters.cycles.postgres_cycle_registry import PostgresCycleRegistry
     from adapters.persistence.pool import create_pool
+    from adapters.persistence.transient import TransientRetry
     from squadops.campaigns.progress import CampaignProgress
+    from squadops.config.schema import DBRetryConfig
 
     if dsn == "config":
         from squadops.bootstrap.secrets import secret_provider_for
@@ -48,7 +50,7 @@ async def main(dsn: str, vault_dir: str, campaign_id: str) -> int:
         dsn, min_size=1, max_size=2, server_settings={"default_transaction_read_only": "on"}
     )
     try:
-        cycles = PostgresCycleRegistry(pool=pool)
+        cycles = PostgresCycleRegistry(pool=pool, retry=TransientRetry.of(DBRetryConfig()))
         lookup = CampaignProgress.__new__(CampaignProgress)
         lookup._vault, lookup._cycles = FilesystemArtifactVault(base_dir=vault_dir), cycles
         async with pool.acquire() as conn:

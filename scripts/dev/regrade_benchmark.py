@@ -46,7 +46,9 @@ from adapters.cycles.memory_deploy_registry import MemoryDeployRegistry  # noqa:
 from adapters.cycles.postgres_cycle_registry import PostgresCycleRegistry  # noqa: E402
 from adapters.cycles.postgres_deploy_registry import PostgresDeployRegistry  # noqa: E402
 from adapters.persistence.pool import create_pool  # noqa: E402
+from adapters.persistence.transient import TransientRetry  # noqa: E402
 from squadops._version import resolve_version  # noqa: E402
+from squadops.config.schema import DBRetryConfig  # noqa: E402
 from squadops.cycles.benchmark_registry import (  # noqa: E402
     benchmark_rolls,
     capture_document,
@@ -118,8 +120,13 @@ async def _read_only_registry(dsn: str):
     else:
         deploys = PostgresDeployRegistry(pool)
     if has_run_summaries is None:
-        return pool, RegistryWithoutRunSummaries(pool), deploys, [NO_RUN_SUMMARY_TABLE, *notes]
-    return pool, PostgresCycleRegistry(pool), deploys, notes
+        return (
+            pool,
+            RegistryWithoutRunSummaries(pool, TransientRetry.of(DBRetryConfig())),
+            deploys,
+            [NO_RUN_SUMMARY_TABLE, *notes],
+        )
+    return pool, PostgresCycleRegistry(pool, TransientRetry.of(DBRetryConfig())), deploys, notes
 
 
 def _line(record: dict) -> str:

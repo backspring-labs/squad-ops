@@ -52,6 +52,12 @@ class TransientRetry:
     attempts: int
     backoff_seconds: float
 
+    @classmethod
+    def of(cls, config: Any) -> TransientRetry:
+        """From a ``db.retry`` config section (``squadops.config.schema.DBRetryConfig``): the one
+        way a policy is built, so its defaults live in the config alone."""
+        return cls(config.attempts, config.backoff_seconds)
+
     def __post_init__(self) -> None:
         if self.attempts < 1:
             raise ValueError(f"attempts must be at least 1, got {self.attempts}")
@@ -85,15 +91,19 @@ class TransientRetry:
         work: Callable[[Any], Awaitable[T]],
         *,
         isolation: str | None = None,
+        lost_race: tuple[type[BaseException], ...] = (),
     ) -> T:
         """``work(conn)`` inside one transaction, run again from its start when Postgres rolled it
-        back. ``work`` must do nothing outside the connection it is handed."""
+        back. ``work`` must do nothing outside the connection it is handed. ``lost_race`` names the
+        caller's own errors that mean the same: the transaction lost a race and rolled back, so
+        running it again on a fresh snapshot can succeed."""
         options = {"isolation": isolation} if isolation else {}
+        retried = ROLLED_BACK + lost_race
         for attempt in range(1, self.attempts + 1):
             try:
                 async with self.acquire(pool) as conn, conn.transaction(**options):
                     return await work(conn)
-            except ROLLED_BACK as error:
+            except retried as error:
                 if attempt == self.attempts:
                     raise
                 await self._pause(attempt, error, "transaction")

@@ -326,6 +326,45 @@ class TestPostgresCycleRegistry:
         assert conn.execute.await_count == 1  # the insert, from the second try only
         assert conn.transaction.call_args.kwargs == {"isolation": "serializable"}
 
+    @pytest.mark.parametrize(
+        ("constraint", "attempts", "outcome"),
+        [
+            ("cycle_runs_cycle_id_run_number_key", 2, 4),
+            ("cycle_runs_cycle_id_run_number_key", 1, asyncpg.UniqueViolationError),
+            ("cycle_runs_pkey", 2, asyncpg.UniqueViolationError),
+        ],
+        ids=[
+            "the-number-taken-is-allocated-again",
+            "tries-spent",
+            "a-duplicate-run-id-is-never-retried",
+        ],
+    )
+    async def test_a_run_number_another_create_took_first_is_allocated_again(
+        self, conn, pool, constraint, attempts, outcome
+    ):
+        """#1976, as CI's Postgres showed: two runs created at once read the same highest number
+        in their own snapshots, and the second insert meets the unique index. Bugs caught: that
+        race handed to the caller; or a duplicate run id, a caller's error, retried as if it
+        were one."""
+        from adapters.cycles.postgres_cycle_registry import PostgresCycleRegistry
+
+        taken = asyncpg.UniqueViolationError("duplicate key value violates unique constraint")
+        taken.constraint_name = constraint
+        conn.fetchrow.return_value = {"cancelled": False}
+        conn.fetchval.side_effect = [3, 4]
+        conn.execute.side_effect = [taken, None]
+        registry = PostgresCycleRegistry(
+            pool, TransientRetry(attempts=attempts, backoff_seconds=0.0)
+        )
+
+        if outcome is asyncpg.UniqueViolationError:
+            with pytest.raises(asyncpg.UniqueViolationError) as raised:
+                await registry.create_run(_RUN)
+            assert raised.value is taken
+            assert conn.execute.await_count == 1
+        else:
+            assert (await registry.create_run(_RUN)).run_number == outcome
+
     async def test_a_status_write_whose_connection_was_lost_is_never_sent_again(self, conn, pool):
         """#1976: the update may have committed before the connection dropped, so the registry
         raises it rather than writing again, even with tries to spare."""

@@ -39,8 +39,10 @@ async def report(dsn: str, project: str) -> int:
     from adapters.cycles.postgres_cycle_registry import PostgresCycleRegistry
     from adapters.memory.cross_cycle import PostgresCrossCycleMemoryStore
     from adapters.persistence.pool import create_pool
+    from adapters.persistence.transient import TransientRetry
     from squadops.campaigns.gate import RETURNING_DECISIONS
     from squadops.campaigns.models import ControlOperation, ControlOutcome
+    from squadops.config.schema import DBRetryConfig
     from squadops.memory.assessment import target_absence_rates
     from squadops.memory.indicators import (
         BuildState,
@@ -55,7 +57,7 @@ async def report(dsn: str, project: str) -> int:
     )
     try:
         store = PostgresCrossCycleMemoryStore(pool=pool)
-        registry = PostgresCycleRegistry(pool=pool)
+        registry = PostgresCycleRegistry(pool=pool, retry=TransientRetry.of(DBRetryConfig()))
         campaigns = PostgresCampaignRegistry(pool)
         exposures = await store.list_project_exposures(project)
         by_cycle: dict[str, list] = {}
