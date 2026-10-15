@@ -1288,31 +1288,12 @@ class _CycleTaskHandler(CapabilityHandler):
                 self._handler_name,
                 exc,
             )
-            duration_ms = (time.perf_counter() - start_time) * 1000
-            evidence = HandlerEvidence.create(
-                handler_name=self._handler_name,
-                task_type=self._task_type,
-                duration_ms=duration_ms,
-                inputs_hash=self._hash_dict(inputs),
-            )
-            return HandlerResult(
-                success=False,
-                outputs={},
-                _evidence=evidence,
-                error=str(exc),
-            )
+            return self._fail_result(start_time, inputs, str(exc))
 
         prd_summary = str(prd)[:80] if prd else "(no PRD)"
 
         # SIP-0084 §10: build prompt provenance for artifact traceability
-        provenance: dict[str, Any] = {
-            "system_prompt_bundle_hash": assembled.assembly_hash,
-        }
-        if renderer is not None and rendered is not None:
-            provenance["request_template_id"] = rendered.template_id
-            provenance["request_template_version"] = rendered.template_version
-            provenance["request_render_hash"] = rendered.render_hash
-            provenance["prompt_environment"] = "production"
+        provenance = self._prompt_provenance(assembled, rendered)
 
         artifacts, response_outputs = self._artifacts_from_response(content, inputs)
         outputs = {
