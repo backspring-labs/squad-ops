@@ -334,7 +334,11 @@ Phase 8's rebuilds, in order:
   - **The owner counted the second pair as R5's exit (2026-10-15):** neither finding is in R5's changes. #2340
     (option (a): a probe still failing for a new reason, with nothing new failing, is progress) and #2341 ship in
     their own rebuild after R6's pair.
-- **R6:** #1992 (deferrable).
+- **R6:** #1992 (deferrable). **The rebuild and its pair: done 2026-10-15.** #2327 merged (closing #1992): the
+  cycle orchestration moves to the top-level `squadops.execution` (the owner's ruling, SIP-0097 §14). It was deployed
+  as `dep_59af9bbbc3dd` from `8cc3f8b3`. Both cycles of the pair were accepted on TensorFold, with the boot audit
+  passing and no intervention (`cyc_73198e1cc055` 20/20, `cyc_90af2aa1c71c` 16/16). Every tracked loaded check
+  answered, R6's own among them. No new seam finding.
 - **R7:** #1994 (deferrable). Its map, `docs/plans/2-3-0-r7-extraction-map.md`: the owner approved
   unit 1's step table on 2026-10-15, and reviews each later unit's before its first extraction PR.
 - **R8:** #316, once its SIP is accepted.
