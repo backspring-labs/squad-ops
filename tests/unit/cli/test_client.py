@@ -55,7 +55,7 @@ class TestAPIClientConstruction:
 
     def test_no_auth_header_when_no_token(self, monkeypatch):
         monkeypatch.delenv("SQUADOPS_TOKEN", raising=False)
-        monkeypatch.setattr("squadops.cli.auth.load_cached_token", lambda: None)
+        monkeypatch.setattr("squadops.cli.config.load_cached_token", lambda: None)
         api = APIClient(CLIConfig())
         assert "authorization" not in api._client.headers
         api.close()

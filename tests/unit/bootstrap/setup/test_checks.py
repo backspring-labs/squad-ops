@@ -786,7 +786,7 @@ class TestVerificationChecks:
     """SIP-0096 §8 doctor verification category: does the deployment provision the
     tooling each tooling-backed framework check needs? (create-time-preflight parity)."""
 
-    _R = "squadops.cycles.check_tooling.resolve_provisioned_tooling"
+    _R = "squadops.bootstrap.setup.checks.resolve_provisioned_tooling"
 
     def test_provisioned_tooling_passes(self):
         with patch(self._R, return_value=frozenset({"node"})):

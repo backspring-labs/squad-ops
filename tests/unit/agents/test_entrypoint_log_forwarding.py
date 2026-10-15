@@ -114,7 +114,7 @@ async def test_start_failure_after_install_tears_down_port():
     runner.role = "dev"
 
     with (
-        patch("squadops.config.load_config", return_value=cfg),
+        patch("squadops.agents.entrypoint.load_config", return_value=cfg),
         patch(_PREFECT_FWD_PATCH, return_value=fake_forwarder),
         patch(
             "adapters.observability.healthcheck_http.HealthCheckHttpReporter",

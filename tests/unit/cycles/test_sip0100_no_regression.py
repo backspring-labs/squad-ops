@@ -10,7 +10,6 @@ from __future__ import annotations
 
 from pathlib import Path
 
-import squadops.cycles.bound_scaffold_record as bsr
 from adapters.cycles.dispatched_flow_executor import DispatchedFlowExecutor
 from squadops.stacks.scaffold import InterfaceManifest
 
@@ -82,7 +81,7 @@ def test_binding_error_fails_open_documented_d3_deviation(monkeypatch):
     def _boom(*a, **k):
         raise RuntimeError("binding blew up")
 
-    monkeypatch.setattr(bsr, "build_bound_record", _boom)
+    monkeypatch.setattr("squadops.cycles.scaffold_enforcement.build_bound_record", _boom)
     # A scaffoldable stack (so binding IS attempted) whose build then raises → fail-open None.
     result = DispatchedFlowExecutor._build_bound_record_for_run(
         object(), _scaffoldable_minimal(), "r", {}

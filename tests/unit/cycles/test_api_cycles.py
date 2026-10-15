@@ -634,7 +634,9 @@ class TestCycleRouteScopeEnforcement:
             scopes=(Scope.CYCLES_READ,),
         )
         app = self._auth_app(identity)
-        with patch("squadops.api.runtime.deps.get_authz_port", return_value=KeycloakAuthzAdapter()):
+        with patch(
+            "squadops.api.middleware.auth.get_authz_port", return_value=KeycloakAuthzAdapter()
+        ):
             client = TestClient(app)
             resp = client.post(
                 "/api/v1/projects/hello_squad/cycles/cyc_001/cancel",
@@ -653,7 +655,9 @@ class TestCycleRouteScopeEnforcement:
             user_id="x", display_name="x", roles=(Role.VIEWER,), scopes=(Scope.CYCLES_READ,)
         )
         app = self._auth_app(identity)
-        with patch("squadops.api.runtime.deps.get_authz_port", return_value=KeycloakAuthzAdapter()):
+        with patch(
+            "squadops.api.middleware.auth.get_authz_port", return_value=KeycloakAuthzAdapter()
+        ):
             client = TestClient(app)
             resp = client.get("/api/v1/projects/hello_squad/cycles", headers={})
         assert resp.status_code == 401

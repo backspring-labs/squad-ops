@@ -121,7 +121,7 @@ class TestMiddlewareInvariants:
         # Patch deps to return None
         from unittest.mock import patch
 
-        with patch("squadops.api.runtime.deps.get_auth_port", return_value=None):
+        with patch("squadops.api.middleware.auth.get_auth_port", return_value=None):
             resp = client.get("/protected", headers={"Authorization": "Bearer token"})
             assert resp.status_code == 503
             assert "x-request-id" in resp.headers

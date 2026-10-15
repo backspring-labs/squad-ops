@@ -52,7 +52,7 @@ def test_versions_and_port_come_from_the_environment_contract(monkeypatch):
         )
         return dataclasses.replace(contract, required_tools=tools, app_port=8100)
 
-    monkeypatch.setattr(environment, "get_environment_contract", bumped)
+    monkeypatch.setattr("squadops.stacks.rendered_packaging.get_environment_contract", bumped)
     react = {f["name"]: f["content"] for f in render_packaging("fullstack_fastapi_react")}
     nextjs = {f["name"]: f["content"] for f in render_packaging("nextjs_ts")}
 

@@ -35,7 +35,9 @@ def _pytest_runner(monkeypatch):
             source_files, test_files, timeout_seconds=timeout_seconds
         )
 
-    monkeypatch.setattr(test_runner, "run_suite", run_suite)
+    monkeypatch.setattr(
+        "squadops.capabilities.handlers.cycle.evaluate_increment.run_suite", run_suite
+    )
 
 
 def _inputs(**overrides) -> dict:
@@ -76,14 +78,14 @@ async def test_a_criterion_that_fails_on_the_accepted_app_and_passes_on_the_cand
 @pytest.fixture
 def pages(monkeypatch):
     """What the candidate's pages render, in place of standing it up with a browser."""
-    from squadops.capabilities.handlers import route_rendering
-
     rendered: dict = {}
 
     def render_routes(files, routes, seeds, **_):
         return {route: rendered.get(route) for route in routes}
 
-    monkeypatch.setattr(route_rendering, "render_routes", render_routes)
+    monkeypatch.setattr(
+        "squadops.capabilities.handlers.cycle.evaluate_increment.render_routes", render_routes
+    )
     return rendered
 
 

@@ -276,7 +276,8 @@ class TestTokenResolution:
         calls, auth = env
         auth.save_token(self._token("stale", expires_in=-3600))
         monkeypatch.setattr(
-            auth, "refresh_access_token", lambda t: self._token("fresh", expires_in=300)
+            "squadops.cli.config.refresh_access_token",
+            lambda t: self._token("fresh", expires_in=300),
         )
 
         got = build_release_package.cycle_evidence(["cyc_1"], "http://api", "proj")[0]
@@ -291,7 +292,7 @@ class TestTokenResolution:
         non-interactive login with the driver's credentials, never `--keycloak-url`."""
         calls, auth = env
         auth.save_token(self._token("stale", expires_in=-3600))
-        monkeypatch.setattr(auth, "refresh_access_token", lambda t: None)
+        monkeypatch.setattr("squadops.cli.config.refresh_access_token", lambda t: None)
         monkeypatch.setenv("SQUADOPS_DRIVER_USER", "maint")
         monkeypatch.setenv("SQUADOPS_DRIVER_PASSWORD", "pw-1")
         calls["on_login"] = self._token("logged-in", expires_in=300)
@@ -316,7 +317,7 @@ class TestTokenResolution:
         def _no_refresh(token):
             raise AssertionError("refreshed a current token")
 
-        monkeypatch.setattr(auth, "refresh_access_token", _no_refresh)
+        monkeypatch.setattr("squadops.cli.config.refresh_access_token", _no_refresh)
 
         build_release_package.cycle_evidence(["cyc_1"], "http://api", "proj")
 

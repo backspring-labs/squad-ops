@@ -106,9 +106,11 @@ def _no_real_runner(monkeypatch):
     async def _passed(framework, sources, tests, timeout_seconds=None):
         return RunTestsResult(executed=True, exit_code=0, runner="vitest", suite_broken=False)
 
-    monkeypatch.setattr("squadops.capabilities.handlers.test_runner.run_build_validation", _passed)
     monkeypatch.setattr(
-        "squadops.capabilities.handlers.probe_runner.run_probes", lambda *a, **kw: []
+        "squadops.capabilities.handlers.cycle.qa_test.run_build_validation", _passed
+    )
+    monkeypatch.setattr(
+        "squadops.capabilities.handlers.cycle.qa_test.run_probes", lambda *a, **kw: []
     )
 
 

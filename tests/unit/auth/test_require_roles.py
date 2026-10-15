@@ -79,7 +79,7 @@ class TestRequireRoles:
 
         app = _make_app_with_roles(auth_port, authz_port)
 
-        with patch("squadops.api.runtime.deps.get_authz_port", return_value=authz_port):
+        with patch("squadops.api.middleware.auth.get_authz_port", return_value=authz_port):
             client = TestClient(app)
             resp = client.get(
                 "/admin-only",
@@ -103,7 +103,7 @@ class TestRequireRoles:
 
         app = _make_app_with_roles(auth_port, authz_port)
 
-        with patch("squadops.api.runtime.deps.get_authz_port", return_value=authz_port):
+        with patch("squadops.api.middleware.auth.get_authz_port", return_value=authz_port):
             client = TestClient(app)
             resp = client.get(
                 "/admin-only",
@@ -130,7 +130,7 @@ class TestRequireScopes:
 
         app = _make_app_with_roles(auth_port, authz_port)
 
-        with patch("squadops.api.runtime.deps.get_authz_port", return_value=authz_port):
+        with patch("squadops.api.middleware.auth.get_authz_port", return_value=authz_port):
             client = TestClient(app)
             resp = client.get(
                 "/write-cycles",
@@ -153,7 +153,7 @@ class TestRequireScopes:
 
         app = _make_app_with_roles(auth_port, authz_port)
 
-        with patch("squadops.api.runtime.deps.get_authz_port", return_value=authz_port):
+        with patch("squadops.api.middleware.auth.get_authz_port", return_value=authz_port):
             client = TestClient(app)
             resp = client.get(
                 "/write-cycles",

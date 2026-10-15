@@ -166,7 +166,7 @@ async def test_the_one_off_loads_the_deploys_config_as_the_runtime_does(monkeypa
         )
 
     pool = AsyncMock()
-    monkeypatch.setattr("squadops.config.load_config", load_config)
+    monkeypatch.setattr("squadops.api.runtime.record_deploy.load_config", load_config)
     monkeypatch.setattr("adapters.persistence.pool.create_pool", AsyncMock(return_value=pool))
     monkeypatch.setattr(
         "adapters.cycles.factory.create_squad_profile_port", lambda *a, **k: _profiles([])
@@ -294,7 +294,7 @@ async def test_the_check_loads_the_deploys_config_and_reads_the_registry_it_sele
         )
 
     pool = AsyncMock()
-    monkeypatch.setattr("squadops.config.load_config", load_config)
+    monkeypatch.setattr("squadops.api.runtime.record_deploy.load_config", load_config)
     monkeypatch.setattr("adapters.persistence.pool.create_pool", AsyncMock(return_value=pool))
 
     record, stale = await recorder.compose_and_check(_RUNNING)

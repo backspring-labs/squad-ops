@@ -123,6 +123,6 @@ class TestRequireAuth:
         app = self._build_app()  # No getter
         client = TestClient(app)
 
-        with patch("squadops.api.runtime.deps.get_auth_port", return_value=mock_port):
+        with patch("squadops.api.middleware.auth.get_auth_port", return_value=mock_port):
             resp = client.get("/protected", headers={"Authorization": "Bearer tok"})
             assert resp.status_code == 200

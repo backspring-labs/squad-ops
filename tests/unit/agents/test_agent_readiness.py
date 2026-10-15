@@ -77,7 +77,7 @@ async def test_a_start_the_startup_guard_refuses_never_reads_as_ready(mark_file)
     )
 
     with (
-        patch("squadops.config.load_config", return_value=MagicMock()),
+        patch("squadops.agents.entrypoint.load_config", return_value=MagicMock()),
         pytest.raises(RuntimeError, match="Prompt registry unavailable"),
     ):
         await runner.start()

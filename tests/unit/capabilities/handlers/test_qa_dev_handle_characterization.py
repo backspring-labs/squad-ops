@@ -141,7 +141,7 @@ async def _run(handler, responses, inputs, monkeypatch, caplog, suite=None) -> d
         return suite if suite is not None else _suite_result()
 
     monkeypatch.setattr(
-        "squadops.capabilities.handlers.test_runner.run_build_validation", _fake_build_validation
+        "squadops.capabilities.handlers.cycle.qa_test.run_build_validation", _fake_build_validation
     )
     # The typed checks that shell out (tsc, the npm frontend build) skip as
     # `missing_tooling` where the tool is absent and execute where it is present, so the
