@@ -313,7 +313,27 @@ Phase 8's rebuilds, in order:
   as `dep_fd13cc434ac7` from `8f98c070`. Both cycles of the pair were accepted on TensorFold, with the boot audit
   passing and no intervention (`cyc_6178d14156b8`, `cyc_18f12f4be0e3`), and every tracked loaded check answered,
   R4's seven among them. No new seam finding.
-- **R5:** #2062 with #1993.
+- **R5:** #2062 with #1993. **The rebuild and its pairs: done 2026-10-15.** #2325 and #2326 merged (closing #1993
+  and #2062) and deployed as `dep_2c758b8ae9a1` from `c255017a`, with every tracked loaded check answering, R5's four
+  among them.
+  - **The first pair found a defect in R4's code** (#2333). The agent's delivery record (#2324) was keyed by the
+    task id alone. So when the runtime sent a task again under its own id, for a retry or for the re-run after a
+    failed patch retest, the agent took the send for a duplicate and never ran or answered it. The React cycle
+    (`cyc_8bf1b636acf9`) waited out its per-task wait three times and was rejected, 20 of 21. The Next.js cycle
+    (`cyc_682692645b2a`) was accepted.
+  - **#2334 fixed it:** the record is kept per send (SIP-Agent-Comms-Delivery-Guarantees §5.3c, ruled by the
+    owner). It was deployed as `dep_5fedb4ac415c` from `7cc1990d`.
+  - **The second pair, on that deploy:** every tracked loaded check answered, R5's four and #2334's two among them.
+    - **React** (`cyc_df5860e79d36`) was accepted 21/21 on TensorFold, with the boot audit passing and no
+      intervention.
+    - **Next.js** (`cyc_8174805a98ca`) was rejected, 11/16. The developer's route stored a run without an `id`.
+      The repair added it and cleared six of seven failures, but #1522's rule discarded it: the probe it half-fixed
+      now failed for a different reason, the list's order, and the rule read that as a failure the repair added
+      (#2340). The re-send #2334 fixed ran live here and was answered in about two minutes. #2341 is the retest's
+      log line, which hid the failed probe.
+  - **The owner counted the second pair as R5's exit (2026-10-15):** neither finding is in R5's changes. #2340
+    (option (a): a probe still failing for a new reason, with nothing new failing, is progress) and #2341 ship in
+    their own rebuild after R6's pair.
 - **R6:** #1992 (deferrable).
 - **R7:** #1994 (deferrable). Its map, `docs/plans/2-3-0-r7-extraction-map.md`: the owner approved
   unit 1's step table on 2026-10-15, and reviews each later unit's before its first extraction PR.
