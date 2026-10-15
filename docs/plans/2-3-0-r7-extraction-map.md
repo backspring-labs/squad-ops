@@ -198,7 +198,9 @@ Twelve values reach the three closures by capture: the executor, `state`, `envel
 Fifteen more are reached through `state`. Two capture rules are behaviour, and the move keeps both:
 - **`consecutive_failures` is a snapshot.** `_route_outcome` binds `state.routing.consecutive_failures` as a
   default, so every routing decision in this task sees the count from before the first dispatch, not
-  the live one.
+  the live one. Found while writing step 0: nothing ever raises the count and nothing reads it, so
+  SIP-0079's `max_consecutive_failures` is enforced by nothing (#2348, filed for the owner). The
+  move keeps the snapshot as code, and step 0 pins the value handed over.
 - **The held result is one dict, shared.** `_handle_task_outcome` writes the verified patch into it
   (`patched_result_holder`), and the swap after dispatch pops it from the same object.
 
