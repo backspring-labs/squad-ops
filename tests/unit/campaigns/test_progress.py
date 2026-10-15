@@ -1867,3 +1867,158 @@ async def test_a_diagnostic_increment_launches_on_a_baseline_that_asks_and_carri
         "unchanged": INJECTED_QUESTION_ID not in baseline and open_decisions(baseline) == (),
     }
     assert [k for k, held in seen.items() if held] == [expected]
+
+
+def _rejection(*discriminations: tuple[str, str], **parts) -> bytes:
+    """An increment evaluation that rejected, each new criterion ``(id, reason)``."""
+    return json.dumps(
+        {
+            "verdict": "rejected",
+            "unmet": [f"criterion {c}: {reason}" for c, reason in discriminations],
+            "blocked": [],
+            "discriminations": [
+                {"criterion_id": c, "met": False, "reason": reason, "discriminating": []}
+                for c, reason in discriminations
+            ],
+            "frozen": [],
+            "routes": [{"path": "/", "held": "held", "missing": [], "not_shown": []}],
+            "new_bundles": {},
+            **parts,
+        }
+    ).encode()
+
+
+@pytest.mark.parametrize(
+    ("evaluation", "expected"),
+    [
+        (_rejection(("C1", "no_baseline_failure")), (16, "abandon_and_propose")),
+        (
+            _rejection(("C1", "no_baseline_failure"), ("C2", "fails_on_candidate")),
+            (12, "repair"),
+        ),
+    ],
+    ids=["only-already-met", "one-fails-on-the-candidate"],
+)
+async def test_an_increment_rejected_only_for_criteria_already_met_goes_to_a_new_proposal_told_which(
+    calibrating, stored, evaluation, expected
+):
+    """#2315 (§24bq, row 16), entered at the completion hook on the live shape (the request on the
+    approved proposal run, as #1938's test stores it). Bugs caught: a repair spent on criteria the
+    accepted application already meets, which no rebuild can make fail on the baseline; or the new
+    proposal not told which, so it proposes them again. A criterion that fails on the candidate is
+    the build's to fix, and a repair still follows."""
+    from squadops.campaigns.change_request import (
+        ProposalContext,
+        stored_change_request,
+        validate_proposal,
+    )
+
+    fixtures = Path(__file__).resolve().parents[2] / "fixtures" / "campaigns"
+    request = validate_proposal(
+        yaml.safe_load((fixtures / "reference-capacity-change-request.yaml").read_text()),
+        ProposalContext(
+            "prop_cap",
+            1,
+            "sha-accepted",
+            (fixtures / "baseline-cyc_7a4b7a6fbf0e-interface_manifest.yaml").read_text(),
+            "fullstack_fastapi_react",
+            ("backend/**", "frontend/**"),
+            (),
+        ),
+    ).change_request
+    stored["art_candidate"] = (
+        _ref("art_candidate", "interface_manifest.yaml", "interface_manifest", -2),
+        MANIFEST.encode(),
+    )
+    stored["art_cr"] = (
+        _ref("art_cr", "change_request.yaml", "change_request", -1),
+        stored_change_request(request).encode(),
+    )
+    stored["art_eval"] = (
+        _ref("art_eval", "increment_evaluation.json", "increment_evaluation", 20),
+        evaluation,
+    )
+    w, run = await calibrating(RunVerdict.ACCEPTED)
+    await w.end("cyc_cal", run, CycleStopReason.SEQUENCE_COMPLETED)
+    block = {
+        "proposal_id": "prop_cap",
+        "version": 1,
+        "baseline_tree": (await w.campaigns.get_campaign(CID)).accepted.identity,
+        "accepted_cycle_id": "cyc_cal",
+        "baseline_manifest": MANIFEST,
+    }
+    increment_run = await w.launched_cycle(
+        "increment",
+        "cyc_inc",
+        "implementation",
+        "completed",
+        overrides={"campaign_proposal": block},
+    )
+    await w.cycles.create_run(
+        Run(
+            run_id="run_prop",
+            cycle_id="cyc_inc",
+            run_number=0,
+            status="completed",
+            initiated_by="system",
+            resolved_config_hash="cfg",
+            workload_type="proposal",
+        )
+    )
+    await w.end("cyc_inc", increment_run, CycleStopReason.SEQUENCE_COMPLETED)
+
+    decision = (await w.campaigns.control_log(CID))[-1]
+    assert (decision.binding["row"], decision.binding["action"]) == expected
+    if expected[0] == 16:
+        *_, launched = await w.campaigns.launch_intents(CID)
+        block = launched.cycle_request["body"]["execution_overrides"]["campaign_proposal"]
+        assert launched.cycle_kind is CycleKind.INCREMENT
+        assert block["abandoned_increment"]["already_met"] == [
+            {
+                "criterion_id": "C1",
+                "statement": "A run created with capacity 2 is returned with capacity 2",
+                "surface": "POST /runs",
+            }
+        ]
+
+
+@pytest.mark.parametrize(
+    ("evaluation", "only"),
+    [
+        (None, False),
+        (json.loads(_rejection(("C1", "no_baseline_failure"))), True),
+        (
+            json.loads(
+                _rejection(("C1", "no_baseline_failure"), blocked=["route /: not rendered"])
+            ),
+            False,
+        ),
+        (
+            json.loads(
+                _rejection(
+                    ("C1", "no_baseline_failure"),
+                    frozen=[{"criterion_id": "T1", "held": "broken", "detail": "it failed"}],
+                )
+            ),
+            False,
+        ),
+        (
+            json.loads(
+                _rejection(
+                    ("C1", "no_baseline_failure"),
+                    routes=[{"path": "/", "held": "broken", "missing": ["x"], "not_shown": []}],
+                )
+            ),
+            False,
+        ),
+        (json.loads(_rejection(("C1", "no_baseline_failure"), verdict="accepted")), False),
+    ],
+    ids=["none", "only-already-met", "blocked", "frozen-broken", "route-missing", "accepted"],
+)
+def test_a_rejection_is_already_met_only_when_nothing_else_stands_in_it(evaluation, only):
+    """#2315: row 16 skips the repair, so it must hold only when no repair could help. Bug caught:
+    an increment whose frozen criterion broke, or whose route is missing, abandoned unrepaired
+    because one of its new criteria was also met already."""
+    from squadops.campaigns.progress import rejected_only_as_already_met
+
+    assert rejected_only_as_already_met(evaluation) is only

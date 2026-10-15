@@ -141,6 +141,15 @@ def brief_lines(brief: Any) -> str:
     for name in (*BRIEF_INDICATORS, "primary_cause"):
         if name in brief:
             lines.append(f"- {name.replace('_', ' ')}: {_value(brief[name])}")
+    met = brief.get("already_met") or ()
+    if met:
+        # #2315: its evaluation found these already met. Each one's test passed on the accepted
+        # application before the change, so it could show nothing the change did.
+        lines.append("\nAlready met by the accepted application, before this change:")
+    for criterion in met:
+        surface = f" on `{criterion['surface']}`" if criterion.get("surface") else ""
+        statement = criterion.get("statement") or "(no statement recorded)"
+        lines.append(f"- `{criterion['criterion_id']}`{surface}: {statement}")
     why = brief.get("why_failed") or ()
     if why:
         lines.append("\nWhy each failed, as its run recorded it:")

@@ -55,6 +55,10 @@ class EndedCycle:
     #: §8: an increment's own acceptance — its evaluation's verdict, or ``blocked_unverified``
     #: when the evaluation was never written. ``None`` for every other cycle.
     increment_verdict: RunVerdict | None = None
+    #: #2315 (§24bq): its evaluation rejected it only for criteria the accepted application
+    #: already meets — nothing blocked, nothing else unmet. A repair rebuilds the candidate, and
+    #: those criteria's tests pass on the accepted tree whatever the candidate does.
+    rejected_only_as_already_met: bool = False
 
 
 def cycle_verdict(latest: CycleAssessment, cycle: EndedCycle) -> RunVerdict | None:
@@ -206,10 +210,17 @@ def campaign_continuation_decision(
     retries_remain = counters.retry_cycles < policy.max_retry_cycles_per_increment
     environment = primary is AttributionClass.ENVIRONMENT_OR_INFRASTRUCTURE_FAILURE
     rejected = verdict is RunVerdict.REJECTED and cycle.ending is CycleEnding.ASSESSED
-    # Rows 13 and 15: this decision abandons the increment, and the abandonment counts as
+    # Row 16 (#2315): the build passed its own verification, and its increment was rejected only
+    # for criteria the accepted application already meets. No repair can change that.
+    already_met = (
+        rejected
+        and cycle.rejected_only_as_already_met
+        and latest_verdict(latest) is RunVerdict.ACCEPTED
+    )
+    # Rows 13, 15 and 16: this decision abandons the increment, and the abandonment counts as
     # unaccepted at this decision, so the one that reaches the limit stops rather than proposing
     # once more (#2294). A parked calibration never reaches row 4: row 2 ends the campaign.
-    abandons = (rejected and not environment and not repairs_remain) or (
+    abandons = (rejected and not environment and (already_met or not repairs_remain)) or (
         cycle.ending is CycleEnding.PARKED
     )
 
@@ -233,7 +244,7 @@ def campaign_continuation_decision(
         return stop(4, CampaignOutcome.FAILURE, TerminalCause.NO_PROGRESS)
 
     # Step 2: the pending action.
-    row, action = _pending(cycle, verdict, environment, repairs_remain, retries_remain)
+    row, action = _pending(cycle, verdict, environment, repairs_remain, retries_remain, already_met)
     if not action.guardable:
         return ContinuationDecision(cycle.cycle_id, row, action=action)
 
@@ -254,6 +265,7 @@ def _pending(
     environment: bool,
     repairs_remain: bool,
     retries_remain: bool,
+    already_met: bool,
 ) -> tuple[int, PendingAction]:
     if cycle.kind is CycleKind.CALIBRATION:
         return 5, PendingAction.PROPOSE
@@ -274,6 +286,10 @@ def _pending(
     if verdict is RunVerdict.BLOCKED_UNVERIFIED:
         return (8, PendingAction.REPAIR) if repairs_remain else (9, PendingAction.ESCALATE)
     if verdict is RunVerdict.REJECTED:
+        # Row 16 (#2315, §24bq), asked before row 12: a rejection only for criteria the accepted
+        # application already meets is abandoned for a new proposal, told which they are.
+        if already_met:
+            return 16, PendingAction.ABANDON_AND_PROPOSE
         if repairs_remain:
             return 12, PendingAction.REPAIR
         return 13, PendingAction.ABANDON_AND_PROPOSE

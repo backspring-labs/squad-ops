@@ -373,3 +373,21 @@ def test_a_row_written_before_rounds_were_recorded_has_none_to_show():
 
     assert correction_rounds([_loop(None)]) == []
     assert "correction_rounds" not in prior_cycle_brief(_failed(), (), [_loop(None)])
+
+
+def test_the_criteria_already_met_are_shown_with_what_each_asserts():
+    """#2315. Bug caught: the next proposal shown only that the last increment was abandoned, not
+    that its criteria were met already, so it proposes the same behaviour again."""
+    lines = brief_lines(
+        {
+            "cycle_id": "cyc_inc",
+            "already_met": [
+                {"criterion_id": "T5", "statement": "The view shows the text", "surface": "/r"},
+                {"criterion_id": "T6"},
+            ],
+        }
+    )
+
+    assert "Already met by the accepted application, before this change:" in lines
+    assert "- `T5` on `/r`: The view shows the text" in lines
+    assert "- `T6`: (no statement recorded)" in lines
