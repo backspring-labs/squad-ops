@@ -528,3 +528,48 @@ class TestProvenanceRecording:
         prov = result.outputs["prompt_provenance"]
         assert prov["system_prompt_bundle_hash"] == "sha256:test_planning_assembly"
         assert "request_template_id" not in prov
+
+
+class TestTheGenericHandlesProvenanceAndFailure:
+    """#2335 replaces the generic ``handle``'s inline prompt record and model-failure result
+    with the base class's own helpers. Pinned on the code before the swap.
+
+    Bugs caught: the record gaining the template fields with no renderer, or losing them with
+    one; a failed call whose result carries outputs, loses the error, or banks evidence under
+    another handler, task type or inputs hash."""
+
+    @pytest.mark.parametrize("with_renderer", [True, False], ids=["renderer", "no-renderer"])
+    async def test_the_prompt_record_names_the_template_only_when_one_rendered(self, with_renderer):
+        ctx = _mock_context(renderer=_mock_renderer("the request") if with_renderer else None)
+
+        result = await StrategyAnalyzeHandler().handle(ctx, {"prd": "Build a game"})
+
+        expected = {"system_prompt_bundle_hash": "sha256:test_assembly"}
+        if with_renderer:
+            expected |= {
+                "request_template_id": "test",
+                "request_template_version": "1",
+                "request_render_hash": RenderedRequest.compute_hash("the request"),
+                "prompt_environment": "production",
+            }
+        assert result.outputs["prompt_provenance"] == expected
+
+    async def test_a_failed_model_call_is_a_bare_failure_with_its_evidence(self):
+        from squadops.llm.exceptions import LLMTimeoutError
+
+        ctx = _mock_context()
+        ctx.ports.llm.chat_stream_with_usage = AsyncMock(side_effect=LLMTimeoutError("boom"))
+        handler = StrategyAnalyzeHandler()
+        inputs = {"prd": "Build a game"}
+
+        result = await handler.handle(ctx, inputs)
+
+        evidence = result.evidence
+        assert (result.success, result.outputs, result.error) == (False, {}, "boom")
+        assert (
+            evidence.handler_name,
+            evidence.task_type,
+            evidence.inputs_hash,
+            evidence.outputs_hash,
+        ) == (handler._handler_name, handler._task_type, handler._hash_dict(inputs), "")
+        assert evidence.duration_ms >= 0
