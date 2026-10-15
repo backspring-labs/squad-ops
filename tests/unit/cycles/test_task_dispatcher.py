@@ -11,6 +11,7 @@ the SIP-0094 no-pending-future-leak invariants.
 from __future__ import annotations
 
 import asyncio
+import dataclasses
 import json
 from datetime import UTC, datetime
 from unittest.mock import AsyncMock, MagicMock, call, patch
@@ -19,6 +20,9 @@ import pytest
 
 from adapters.cycles.execution_errors import _CancellationError
 from adapters.cycles.task_dispatcher import TaskDispatcher
+from squadops.comms.queue_message import QueueMessage
+from squadops.config.schema import CommsDeliveryConfig
+from squadops.ports.comms.task_attempts import TaskAttemptsPort
 from squadops.tasks.models import TaskEnvelope, TaskResult
 
 NOW = datetime(2026, 1, 15, 12, 0, 0, tzinfo=UTC)
@@ -1103,3 +1107,84 @@ class TestARestartedRuntimesRedispatchIsAnsweredNotRerun:
 
         assert runs == [1, 1, 2]  # the copy is answered, the retry runs
         assert replies[1] == replies[0]  # with the reply the original sent
+
+
+class _SendRecord(TaskAttemptsPort):
+    """The agent's delivery record (#1977), held in this process."""
+
+    def __init__(self) -> None:
+        self.attempts: dict[str, int] = {}
+        self.done: set[str] = set()
+
+    async def completed(self, key: str) -> bool:
+        return key in self.done
+
+    async def begin_attempt(self, key: str) -> int:
+        self.attempts[key] = self.attempts.get(key, 0) + 1
+        return self.attempts[key]
+
+    async def mark_completed(self, key: str) -> None:
+        self.done.add(key)
+
+
+class TestTheRuntimesNextSendOfATaskIsNotARedelivery:
+    """#2333, across the real boundary and through the agent's comms path, where its delivery
+    record (#1977, SIP-Agent-Comms-Delivery-Guarantees §5.3c) reads each delivery. The runtime
+    sends a task again under its own id for a fresh execution: a retry, or the original task's
+    re-run after a correction round's patch retest fails. The broker delivers one send again when
+    its ack is lost.
+
+    Bug caught: the record keyed by the task id alone, so the runtime's next send of a task that
+    had replied once was acked as a duplicate, never run and never answered, and the runtime
+    waited out its per-task wait (R5's pair, 2026-10-15: three times on one roll, and two
+    correction rounds briefed on a timeout instead of the failing suite). And the
+    over-correction: a broker redelivery of a send that completed, run again."""
+
+    @staticmethod
+    def _delivered(message: dict, n: int, *, redelivered: bool) -> QueueMessage:
+        return QueueMessage(
+            message_id=str(n),
+            queue_name="neo_comms",
+            payload=json.dumps(message),
+            receipt_handle=str(n),
+            attributes={"redelivered": redelivered},
+        )
+
+    async def test_each_send_runs_or_is_answered_and_a_redelivery_of_one_is_not_run(
+        self, mock_queue, reply_router
+    ):
+        envelope = TaskEnvelope(
+            task_id="task_abc",
+            agent_id="neo",
+            cycle_id="cyc_001",
+            pulse_id="p1",
+            project_id="proj_001",
+            task_type="qa.test",
+            correlation_id="corr",
+            causation_id="cause",
+            trace_id="trace",
+            span_id="span",
+        )
+        before = TaskDispatcher(queue=mock_queue, reply_router=reply_router, task_timeout=5.0)
+        restarted = TaskDispatcher(queue=mock_queue, reply_router=reply_router, task_timeout=5.0)
+        agent = TestARestartedRuntimesRedispatchIsAnsweredNotRerun._agent()
+        agent._task_attempts = _SendRecord()
+        agent._delivery = CommsDeliveryConfig()
+        sent = TestARestartedRuntimesRedispatchIsAnsweredNotRerun._sent
+
+        runs, replies = [], []
+        deliveries = []
+        for n, dispatcher in enumerate((before, before, restarted), start=1):
+            deliveries.append(
+                self._delivered(await sent(dispatcher, mock_queue, envelope), n, redelivered=False)
+            )
+        # the first send, its re-run from the same runtime, and a restarted runtime's copy; then
+        # the broker hands the re-run back, its ack lost
+        deliveries.append(dataclasses.replace(deliveries[1], attributes={"redelivered": True}))
+        for delivery in deliveries:
+            await agent._process_comms_message(delivery)
+            runs.append(agent.system.orchestrator.submit_task.await_count)
+            replies.append(agent._queue.publish.await_count)
+
+        assert runs == [1, 2, 2, 2]  # the re-run runs; the copy is answered; the redelivery isn't
+        assert replies == [1, 2, 3, 3]

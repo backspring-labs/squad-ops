@@ -19,9 +19,9 @@ Proposed
 **Targets:** split (ruled 2026-10-04, `sips/PORTFOLIO.md` §2): the transport hardening is placed in 2.3.0 (#1977), and the duty-gated parts are deferred to 3.x. The gate is: **implemented before any squad does paid external duty/Campaign work over this transport.**
 **Builds on:** SIP-0094 (per-agent reply queues + `subscribe()` primitive, implemented) and #323 (agent comms poll→push migration). SIP-0094 §4 explicitly deferred the agent-side loop as "a follow-up"; #323 was that follow-up. This SIP is the next rung: the transport loop is now correct — the *delivery guarantees around failure* are not.
 **Amends:** SIP-0094 D12 ack policy — scoped per-direction, not revoked (see §5.1).
-**Ruled 2026-10-14 (the owner, on #1977):** §5.1–§5.3a are accepted as #1977's design: bounded redelivery and a dead-letter queue, the death-path rule, publisher confirms and mandatory routing, and consumer idempotency. §5.4, §5.5 and the duty-gated parts are not part of that ruling. **Measured 2026-10-14, before §5.1 was built:** an explicit `nack(requeue=True)` on these classic queues carries no `x-death` and no delivery count (#1977). §5.1's count never advances as written. **Amended 2026-10-14 (§5.3b), ruled by the owner:** the bound is the agent's own per-task attempt count in Redis.
+**Ruled 2026-10-14 (the owner, on #1977):** §5.1–§5.3a are accepted as #1977's design: bounded redelivery and a dead-letter queue, the death-path rule, publisher confirms and mandatory routing, and consumer idempotency. §5.4, §5.5 and the duty-gated parts are not part of that ruling. **Measured 2026-10-14, before §5.1 was built:** an explicit `nack(requeue=True)` on these classic queues carries no `x-death` and no delivery count (#1977). §5.1's count never advances as written. **Amended 2026-10-14 (§5.3b), ruled by the owner:** the bound is the agent's own per-task attempt count in Redis. **Amended 2026-10-15 (§5.3c), ruled by the owner (#2333):** the record is kept per send, not per task, because the runtime sends a task again under its own id for a fresh execution.
 
-## Delivery ledger (current as of 2026-10-14)
+## Delivery ledger (current as of 2026-10-15)
 
 Kept by the rule in CLAUDE.md ("SIP System"): one row per part, updated in the PR that ships or re-places it.
 
@@ -29,7 +29,7 @@ Kept by the rule in CLAUDE.md ("SIP System"): one row per part, updated in the P
 |---|---|---|
 | §5.2 publisher confirms and mandatory routing: a publish the broker cannot route raises into the publish retry | **shipped** | 2.3.0, PR #2323, issue #1977 |
 | §5.1 bounded redelivery and quarantine, as amended by §5.3b (the agent's attempt count, its own dead-letter queue) | **shipped** | 2.3.0, PR #2324, issue #1977 |
-| §5.3 consumer idempotency, with §5.3a's death-path marker replacing the interim redelivery rule (§5.3b) | **shipped** | 2.3.0, PR #2324, issue #1977 |
+| §5.3 consumer idempotency, with §5.3a's death-path marker replacing the interim redelivery rule (§5.3b) | **shipped** | 2.3.0, PR #2324, issue #1977; kept per send by §5.3c, PR #2334, issue #2333 |
 | §5.4 deferred redelivery | **unplaced, deliberately**: not part of the owner's ruling of 2026-10-14 | — |
 | §5.5 observability | **unplaced, deliberately**: not part of the owner's ruling of 2026-10-14 | — |
 | the duty-gated parts | **deferred to 3.x (ruled 2026-10-04)**: with the duty cluster | `sips/PORTFOLIO.md` §2 |
@@ -200,6 +200,26 @@ message never reaches the DLQ.** §5.1 must therefore land with the death-path m
 - **§5.3a's interim rule is replaced in the same change,** as its acceptance condition requires: a redelivered task is no longer refused on the flag. **It stands in only while the record can't be read** (Redis unreachable), so losing Redis never reopens #1626's crash loop. With the record readable, the flag test is gone, so the budget doesn't collapse to one.
 - **Scope stays task dispatch.** A chat delivery, an unreadable delivery and a control notice are acked as before.
 - **The verification set's `redelivery` row** (`qa_repair_process_killed`) now reads the task run within its attempts, then quarantined and failed: `task_failed_unrun:`. Older logs' `redelivered_task_refused:` lines still count.
+
+### 5.3c Amendment: the record is kept per send, not per task (2026-10-15, #2333; ruled by the owner)
+
+**What §5.3 and §5.3b said.** The completion mark is `comms:done:{task_id}`, and the attempt count `comms:attempts:{task_id}`: both keyed by the task id.
+
+**The evidence.** R5's regression pair (the 2.3 plan, phase 8): the React shakeout `cyc_8bf1b636acf9`, on `dep_2c758b8ae9a1`. The runtime sends a task again under its own id for a fresh execution: `dispatch_with_retry`'s retry, and the original task's re-run after a correction round's patch retest fails. #1929 had already found that a task id can't tell those apart (`squadops/comms/task_replay.py`). Keyed by the task id, each of those sends was taken for a redelivery of the first one. It was acked as `duplicate_of_completed_task`, and never run or answered:
+- the runtime waited out its per-task wait (1800 s) three times on one roll;
+- two of the three correction rounds were briefed on a timeout instead of the failing suite;
+- the roll was rejected.
+
+The same check also silenced #1929's case, a restarted runtime asking again for a task the agent had finished, because it runs before #1929's replay. R4's pair never sent a task twice, so neither showed there.
+
+**What it means, as built:**
+- **The dispatcher stamps each send with its own id:** `dispatch_id`, in the envelope's metadata, beside #1929's `dispatch_boot`.
+- **The record is keyed by the task id and that id** (`squadops.comms.task_delivery.delivery_key`): `comms:attempts:{task_id}@{dispatch_id}` and `comms:done:{task_id}@{dispatch_id}`. A broker redelivery is the same message, so once its send completed it's still a duplicate, and each one still counts against the bound.
+- **A send that carries no id** (from a runtime built before this change) keeps the task-id key.
+
+**What it costs.** The bound is now per send. A task whose every delivery kills its agent is quarantined after three deliveries of one send. The runtime's next send of it, when its retry budget sends one, gets three more. So the total is bounded by the runtime's retry budget and the cycle's correction budget, never left to the broker: #1626's 37 restarts were all on one send.
+
+**Ruled by the owner, 2026-10-15** (on PR #2334): accepted, with the per-send bound.
 
 ### 5.4 Deferred redelivery (fixes Gap D)
 

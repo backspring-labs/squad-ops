@@ -31,6 +31,7 @@ from squadops._version import resolve_git_sha
 from squadops.agents import readiness
 from squadops.agents.base import PortsBundle
 from squadops.comms.run_cancellation import RUN_ID_METADATA_KEY, cancelled_run_ids, control_queue
+from squadops.comms.task_delivery import delivery_key
 from squadops.comms.task_replay import DISPATCH_BOOT_METADATA_KEY, FinishedTasks
 from squadops.config import load_config
 from squadops.config.path_resolver import PathResolver
@@ -802,7 +803,9 @@ class AgentRunner:
 
         SIP-Agent-Comms-Delivery-Guarantees §5.1, §5.3 and §5.3a, as amended 2026-10-14. The
         broker counts no redelivery of a classic queue, neither a raising handler's requeue nor
-        a dying agent's, so the count is this agent's, kept in Redis:
+        a dying agent's, so the count is this agent's, kept in Redis. **It is kept per send**
+        (§5.3c, #2333): the runtime sends a task again under its own id for a fresh execution,
+        and that send is new work, never a redelivery of the last one.
         - **Completed already:** its reply was published and the ack was lost. It's acked as a
           duplicate and never run again (§5.3).
         - **Past its attempts:** it's quarantined to the dead-letter queue and failed with a typed
@@ -824,6 +827,8 @@ class AgentRunner:
             )
             return
 
+        key = delivery_key(task_id, envelope_data.get("metadata"))
+
         # As ``_cancelled_runs``: a runner built without __init__ has no record, and is treated as
         # one whose record can't be read.
         attempts = getattr(self, "_task_attempts", None)
@@ -831,15 +836,16 @@ class AgentRunner:
         try:
             if attempts is None or delivery is None:
                 raise RuntimeError("no delivery record is configured")
-            if await attempts.completed(task_id):
+            if await attempts.completed(key):
                 logger.warning(
-                    "duplicate_of_completed_task: task=%s — its reply was published and its ack "
-                    "lost, so this redelivery is acked and not run again (#1977, §5.3)",
+                    "duplicate_of_completed_task: task=%s delivery=%s — its reply was published "
+                    "and its ack lost, so this redelivery is acked and not run again (#1977, §5.3)",
                     task_id,
+                    key,
                     extra={"agent_id": self.agent_id, "task_id": task_id},
                 )
                 return
-            attempt = await attempts.begin_attempt(task_id)
+            attempt = await attempts.begin_attempt(key)
         except Exception:
             logger.exception(
                 "task_attempts_unreadable: task=%s — §5.3a's rule stands in: a redelivered task is "
@@ -895,17 +901,20 @@ class AgentRunner:
         except Exception:
             logger.exception("task_quarantine_failed: task=%s — %s", record["task_id"], reason)
 
-    async def _mark_completed(self, task_id: str) -> None:
-        """Record that ``task_id``'s reply was published (§5.3). A failure is logged: the worst
-        it costs is one duplicate run of a task whose ack is also lost."""
+    async def _mark_completed(self, envelope: TaskEnvelope) -> None:
+        """Record that this send of ``envelope``'s task has its reply published (§5.3, §5.3c). A
+        failure is logged: the worst it costs is one duplicate run of a task whose ack is also
+        lost."""
         attempts = getattr(self, "_task_attempts", None)
         if attempts is None:
             return
         try:
-            await attempts.mark_completed(task_id)
+            await attempts.mark_completed(delivery_key(envelope.task_id, envelope.metadata))
         except Exception:
             logger.exception(
-                "task_completion_unrecorded: task=%s", task_id, extra={"agent_id": self.agent_id}
+                "task_completion_unrecorded: task=%s",
+                envelope.task_id,
+                extra={"agent_id": self.agent_id},
             )
 
     def _build_system_prompt(self) -> str:
@@ -1140,7 +1149,7 @@ class AgentRunner:
             )
             if reply_queue:
                 await self._queue.publish(reply_queue, replay)
-            await self._mark_completed(envelope.task_id)
+            await self._mark_completed(envelope)
             return
 
         # Build correlation context for LLM-observability tracing and
@@ -1227,7 +1236,7 @@ class AgentRunner:
             )
         # #1977, §5.3: only after the reply is out. A redelivery of this task from now on (its
         # ack lost) is answered as a duplicate, never run again.
-        await self._mark_completed(envelope.task_id)
+        await self._mark_completed(envelope)
 
     async def _heartbeat_loop(self) -> None:
         """Send periodic heartbeats.

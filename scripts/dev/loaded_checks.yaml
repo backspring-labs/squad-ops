@@ -921,3 +921,21 @@ checks:
       d = CommsDeliveryConfig()
       print(redis.__version__, AckPolicy.REDELIVER_ON_FAILURE.value, hasattr(AgentRunner, "_deliver_task"), d.max_attempts, d.dead_letter_queue)
     expect: "8.1.0 redeliver_on_failure True 3 comms.dlq"
+  - id: "2333-runtime"
+    what: "the runtime stamps each send of a task with its own id"
+    container: squadops-runtime-api
+    code: |
+      import inspect
+      from adapters.cycles.task_dispatcher import TaskDispatcher
+      from squadops.comms.task_delivery import DISPATCH_ID_METADATA_KEY
+      print(DISPATCH_ID_METADATA_KEY, "DISPATCH_ID_METADATA_KEY: uuid.uuid4().hex" in inspect.getsource(TaskDispatcher._publish_and_await))
+    expect: "dispatch_id True"
+  - id: "2333-agent"
+    what: "an agent keeps its delivery record per send, so the runtime's next send of a task runs"
+    container: squadops-eve
+    code: |
+      import inspect
+      from squadops.agents.entrypoint import AgentRunner
+      from squadops.comms.task_delivery import delivery_key
+      print(delivery_key("t", {"dispatch_id": "d"}), delivery_key("t", {}), "delivery_key(task_id" in inspect.getsource(AgentRunner._deliver_task))
+    expect: "t@d t True"
