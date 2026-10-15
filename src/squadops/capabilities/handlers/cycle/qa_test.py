@@ -66,6 +66,12 @@ from squadops.capabilities.handlers.cycle.validation import (
 )
 from squadops.capabilities.reasoning_policy import reasoning_kwargs, resolve_reasoning_level
 from squadops.cycles.failure_evidence import failing_case_lines
+from squadops.stacks.scaffold import (
+    app_invocation_for,
+    is_qa_test_path_for_stack,
+    scaffold_stack_for,
+)
+from squadops.stacks.verification_scaffold import VerificationScaffoldManifest
 
 logger = logging.getLogger(__name__)
 
@@ -207,7 +213,6 @@ def _qa_owned_for(inputs: dict[str, Any]) -> Callable[[str], bool]:
     from the same ``resolved_config`` the boot and self-mocking seams read (#822, #1126);
     an unknown stack owns nothing, so no defect is stamped qa-owned.
     """
-    from squadops.stacks.scaffold import is_qa_test_path_for_stack, scaffold_stack_for
 
     stack = scaffold_stack_for(inputs.get("resolved_config"))
     return lambda path: is_qa_test_path_for_stack(path, stack)
@@ -785,7 +790,6 @@ class QATestHandler(_CycleTaskHandler):
         from squadops.capabilities.handlers.probe_runner import probe_check_rows, run_probes
         from squadops.cycles.patch_verification import materialize_artifacts
         from squadops.cycles.verification_contract import Probe
-        from squadops.stacks.scaffold import scaffold_stack_for
 
         probes = []
         for entry in raw:
@@ -910,7 +914,6 @@ class QATestHandler(_CycleTaskHandler):
         unknown stack: the self-mocking detector then judges nothing and its row is
         banked with an EMPTY inspected inventory (#986) — "did not look", never "clean".
         """
-        from squadops.stacks.scaffold import app_invocation_for, scaffold_stack_for
 
         return app_invocation_for(scaffold_stack_for(inputs.get("resolved_config")))
 
@@ -1377,7 +1380,6 @@ class QATestHandler(_CycleTaskHandler):
             measure_assertion_strength,
             merge_fills,
         )
-        from squadops.stacks.verification_scaffold import VerificationScaffoldManifest
 
         record = VerificationScaffoldManifest.from_dict(scaffold_input["manifest"])
         shell_paths = {f.path for f in record.files}
@@ -1449,7 +1451,6 @@ class QATestHandler(_CycleTaskHandler):
             classify_shell_failures,
             correlate,
         )
-        from squadops.stacks.verification_scaffold import VerificationScaffoldManifest
 
         record = VerificationScaffoldManifest.from_dict(scaffold_input["manifest"])
         dispositions = {

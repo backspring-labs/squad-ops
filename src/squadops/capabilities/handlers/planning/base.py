@@ -22,6 +22,8 @@ from squadops.capabilities.handlers.cycle import _CycleTaskHandler
 from squadops.capabilities.handlers.prior_cycle import prior_cycle_section
 from squadops.llm.exceptions import LLMError
 from squadops.llm.models import ChatMessage
+from squadops.stacks.scaffold import scaffold_stack_for
+from squadops.stacks.stack_narratives import stack_narrative
 
 if TYPE_CHECKING:
     from squadops.capabilities.handlers.context import ExecutionContext
@@ -136,8 +138,6 @@ class _PlanningTaskHandler(_CycleTaskHandler):
         Empty for a cycle with no scaffoldable ``build_profile``: a free-form generation cycle
         has no stack to be decided for it, and asserting one would be a fiction.
         """
-        from squadops.stacks.scaffold import scaffold_stack_for
-        from squadops.stacks.stack_narratives import stack_narrative
 
         stack = scaffold_stack_for(inputs.get("resolved_config"))
         if not stack:

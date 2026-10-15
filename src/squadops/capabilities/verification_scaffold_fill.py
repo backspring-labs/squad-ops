@@ -70,6 +70,7 @@ from squadops.stacks.verification_scaffold import (
     ScaffoldValidationError,
     VerificationScaffoldManifest,
     parse_slot_regions,
+    slot_body_span,
     spine_hash,
 )
 from squadops.tasks.task_types import TaskType
@@ -472,7 +473,6 @@ def merge_fills(
         resolve_and_apply,
     )
     from squadops.cycles.write_authorization import WriteGrant
-    from squadops.stacks.verification_scaffold import slot_body_span
 
     declared = {slot.slot_id for f in record.files for slot in f.slots}
     duplicate_set = set(emission.duplicates)

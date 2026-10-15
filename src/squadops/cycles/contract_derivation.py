@@ -29,6 +29,8 @@ from typing import TYPE_CHECKING, Any
 from uuid import uuid4
 
 from squadops.cycles.vault_reads import retrieve_or_absent
+from squadops.stacks.scaffold import InterfaceManifest
+from squadops.stacks.scaffold_contract import emit_contract_yaml
 
 if TYPE_CHECKING:  # pragma: no cover - typing only
     from collections.abc import Iterable
@@ -111,8 +113,6 @@ def derive_contract_bytes(manifest_content: str) -> bytes:
     author mode, because an operator who seeded a manifest asked for bind mode and an
     unbound green would carry none of the criteria they expected.
     """
-    from squadops.stacks.scaffold import InterfaceManifest
-    from squadops.stacks.scaffold_contract import emit_contract_yaml
 
     try:
         manifest = InterfaceManifest.from_yaml(manifest_content)

@@ -55,6 +55,8 @@ from squadops.cycles.source_termination import (
     SCANNABLE_EXTENSIONS,
     check_termination,
 )
+from squadops.stacks.client_surface import ClientSurface
+from squadops.stacks.scaffold import app_invocation_for
 
 logger = logging.getLogger(__name__)
 
@@ -2170,7 +2172,6 @@ class ClientMockSurfaceCheck(BaseCheck):
             mock_surface_findings,
             mock_surface_observations,
         )
-        from squadops.stacks.client_surface import ClientSurface
 
         rel = str(params["file"])
         surface = ClientSurface.from_params(params.get("client"))
@@ -2222,7 +2223,6 @@ class AdditiveContainmentCheck(BaseCheck):
         stack: str | None = None,
     ) -> CheckOutcome:
         from squadops.capabilities.additive_containment import containment_findings
-        from squadops.stacks.scaffold import app_invocation_for
 
         rel = str(params["file"])
         invocation = app_invocation_for(str(params.get("stack") or ""))

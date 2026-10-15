@@ -26,6 +26,15 @@ from typing import Any
 
 import yaml
 
+from squadops.stacks.scaffold import (
+    MANIFEST_ELEMENT_KEYS,
+    InterfaceManifest,
+    expand,
+    qa_test_namespace,
+    undefined_manifest_keys,
+)
+from squadops.stacks.scaffold_contract import emit_contract_dict
+
 # =============================================================================
 # The shape (§7.2)
 # =============================================================================
@@ -391,7 +400,6 @@ def derive_footprint(baseline_manifest: str, candidate_manifest: str) -> tuple[s
     """The files the change may touch: each product file whose expansion differs between the
     accepted manifest and the delta's (added, changed or removed), plus the stack's qa test
     namespace as ``<dir>**`` patterns. Sorted, so equal deltas give equal footprints."""
-    from squadops.stacks.scaffold import InterfaceManifest
 
     return derive_footprint_from(
         InterfaceManifest.from_yaml(baseline_manifest),
@@ -402,7 +410,6 @@ def derive_footprint(baseline_manifest: str, candidate_manifest: str) -> tuple[s
 def derive_footprint_from(before: Any, after: Any) -> tuple[str, ...]:
     """``derive_footprint`` over parsed manifests: the one derivation, for a caller that
     already holds them."""
-    from squadops.stacks.scaffold import expand, qa_test_namespace
 
     old = {f["name"]: f["content"] for f in expand(before)}
     new = {f["name"]: f["content"] for f in expand(after)}
@@ -571,7 +578,6 @@ def _undefined_key_refusals(request: ChangeRequest) -> list[ProposalRefusal]:
     """#2205: a key the interface manifest does not define is refused by name. The parser drops
     it silently, so the footprint would be derived from a manifest without it, and a change that
     lived only there (2.2's `messages:` under an endpoint) would derive no file to build it in."""
-    from squadops.stacks.scaffold import MANIFEST_ELEMENT_KEYS, undefined_manifest_keys
 
     refusals = []
     for op in request.manifest_delta:
@@ -607,8 +613,6 @@ def _unbuildable_surface_refusals(
     file."""
     from squadops.cycles.acceptance_check_spec import parse_method_path
     from squadops.cycles.verification_contract import VerificationContract
-    from squadops.stacks.scaffold import InterfaceManifest
-    from squadops.stacks.scaffold_contract import emit_contract_dict
 
     before, after = InterfaceManifest.from_yaml(baseline), InterfaceManifest.from_yaml(candidate)
     owners = VerificationContract.from_dict(emit_contract_dict(after)).endpoint_owners()

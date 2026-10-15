@@ -114,6 +114,18 @@ from squadops.cycles.verification_normalize import normalize_task_checks
 from squadops.events.types import EventType
 from squadops.ports.comms.queue import QueueError
 from squadops.ports.cycles.flow_execution import FlowExecutionPort
+from squadops.stacks.scaffold import (
+    InterfaceManifest,
+    expand,
+    is_scaffoldable_stack,
+    verification_scaffold_for,
+)
+from squadops.stacks.verification_scaffold_emission import (
+    VERIFICATION_SCAFFOLD_MANIFEST_ARTIFACT_TYPE,
+    VERIFICATION_SCAFFOLD_MANIFEST_FILENAME,
+    emit_verification_scaffold,
+)
+from squadops.stacks.verification_scaffold_gate import validate_execution_readiness
 from squadops.tasks.models import TaskEnvelope, TaskResult, TaskResultStatus
 from squadops.tasks.task_types import (
     TaskType,
@@ -2077,7 +2089,6 @@ class DispatchedFlowExecutor(FlowExecutionPort):
         must not expand or carry skeleton files. (Pre-#496 this was unreachable:
         forwarding only populated ``plan_artifact_refs`` after framing completed.)
         """
-        from squadops.stacks.scaffold import InterfaceManifest
 
         if getattr(run, "workload_type", None) == "framing":
             return None
@@ -2124,7 +2135,6 @@ class DispatchedFlowExecutor(FlowExecutionPort):
         yields ``[]`` and the run proceeds on today's non-scaffolded path.
         """
         from squadops.capabilities.handlers.build_profiles import get_profile
-        from squadops.stacks.scaffold import is_scaffoldable_stack
 
         if not is_scaffoldable_stack(manifest.stack):
             return []
@@ -2214,15 +2224,6 @@ class DispatchedFlowExecutor(FlowExecutionPort):
         (P4), not a file the app tree should carry. It is reachable by run id +
         artifact type.
         """
-        from squadops.stacks.scaffold import expand, verification_scaffold_for
-        from squadops.stacks.verification_scaffold_emission import (
-            VERIFICATION_SCAFFOLD_MANIFEST_ARTIFACT_TYPE,
-            VERIFICATION_SCAFFOLD_MANIFEST_FILENAME,
-            emit_verification_scaffold,
-        )
-        from squadops.stacks.verification_scaffold_gate import (
-            validate_execution_readiness,
-        )
 
         if not verification_scaffold_for(manifest.stack):
             return []
@@ -2442,7 +2443,6 @@ class DispatchedFlowExecutor(FlowExecutionPort):
             find_interface_manifest,
         )
         from squadops.cycles.verification_contract import VerificationContract
-        from squadops.stacks.scaffold import InterfaceManifest
 
         contract, _manifest = current
         if contract is not None or self._is_bind_mode(cycle):
@@ -4178,7 +4178,6 @@ class DispatchedFlowExecutor(FlowExecutionPort):
         Returns ``InterfaceManifest`` or ``None``; unreadable/unparseable is not fatal,
         the prompt simply falls back to today's shape.
         """
-        from squadops.stacks.scaffold import InterfaceManifest
 
         content = await self._load_seeded_manifest_content(cycle)
         if content is None:

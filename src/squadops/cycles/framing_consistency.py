@@ -45,6 +45,12 @@ from __future__ import annotations
 import re
 from typing import TYPE_CHECKING
 
+from squadops.stacks.scaffold import (
+    brief_carries_success_status_for,
+    skeleton_pins_success_status_for,
+    success_status_for,
+)
+
 if TYPE_CHECKING:
     from squadops.cycles.implementation_plan import ImplementationPlan
     from squadops.stacks.scaffold import Endpoint, InterfaceManifest
@@ -66,7 +72,6 @@ def _enforced_success_status(ep: Endpoint) -> int | None:
     GETs derive no status probe, so there is nothing to enforce and nothing to
     contradict.
     """
-    from squadops.stacks.scaffold import success_status_for
 
     if ep.method.upper() != "POST":
         return ep.success_status  # declared-only for non-POST; None = unchecked
@@ -116,10 +121,6 @@ def validate_manifest_plan_consistency(
 
     Returns error strings in the plan-validation vocabulary (empty = pass).
     """
-    from squadops.stacks.scaffold import (
-        brief_carries_success_status_for,
-        skeleton_pins_success_status_for,
-    )
 
     errors: list[str] = []
     lines = _plan_text_lines(plan)

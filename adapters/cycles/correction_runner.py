@@ -81,6 +81,7 @@ from squadops.cycles.task_outcome import (
     CorrectionTerminationReason,
 )
 from squadops.events.types import EventType
+from squadops.stacks.scaffold import error_seam_instructions, model_surface_instructions
 from squadops.tasks.models import TaskEnvelope, TaskResultStatus
 from squadops.tasks.task_types import TaskType
 
@@ -248,10 +249,6 @@ def _inject_deterministic_evidence(
     """
     from squadops.cycles.contract_expectations import expectation_lines
     from squadops.cycles.interface_conformance import detect_interface_drift
-    from squadops.stacks.scaffold import (
-        error_seam_instructions,
-        model_surface_instructions,
-    )
 
     drift = detect_interface_drift(
         interface_manifest,

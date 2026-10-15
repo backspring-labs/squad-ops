@@ -47,6 +47,7 @@ from squadops.cycles.verification_contract import (
     resolve_probe_path,
 )
 from squadops.cycles.verification_integrity import ResultStatus
+from squadops.stacks.scaffold import probe_profile_for
 
 logger = logging.getLogger(__name__)
 
@@ -139,7 +140,6 @@ def profile_for_stack(stack: str) -> ExecutionProfile | None:
     skip and SIP-0096 declines to credit them — but "boot the wrong thing and let it fail" is
     a diagnosis the reader has to reconstruct, and a declared refusal is one they are handed.
     """
-    from squadops.stacks.scaffold import probe_profile_for
 
     name = probe_profile_for(stack)
     return _PROFILES.get(name) if name else None

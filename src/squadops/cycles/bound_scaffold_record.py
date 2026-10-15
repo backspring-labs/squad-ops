@@ -20,7 +20,10 @@ from squadops.stacks.scaffold import (
     expand,
     fill_slot_paths,
     qa_test_namespace,
+    verification_scaffold_for,
 )
+from squadops.stacks.verification_scaffold import VerificationScaffoldManifest
+from squadops.stacks.verification_scaffold_emission import emit_verification_scaffold
 
 
 def _normalize(path: str) -> str:
@@ -139,7 +142,6 @@ class BoundScaffoldRecord:
 def _scaffold_record_from(raw: dict | None):
     if not raw:
         return None
-    from squadops.stacks.verification_scaffold import VerificationScaffoldManifest
 
     return VerificationScaffoldManifest.from_dict(raw)
 
@@ -152,15 +154,10 @@ def _derive_verification_scaffold(manifest: InterfaceManifest):
     losing frozen-file enforcement to a region-level derivation bug would widen the
     attack surface exactly when something is already wrong.
     """
-    from squadops.stacks.scaffold import verification_scaffold_for
 
     if not verification_scaffold_for(manifest.stack):
         return None
     try:
-        from squadops.stacks.verification_scaffold_emission import (
-            emit_verification_scaffold,
-        )
-
         return emit_verification_scaffold(manifest).manifest
     except Exception:  # pragma: no cover - defensive; seed-time already validated
         import logging

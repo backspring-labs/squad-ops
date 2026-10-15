@@ -62,6 +62,7 @@ from squadops.capabilities.handlers.emission_log import log_emission_shape
 from squadops.capabilities.handlers.fault_injection import held_through_pass
 from squadops.capabilities.handlers.fault_injection import hold as hold_fault
 from squadops.capabilities.handlers.fault_injection import inject as inject_fault
+from squadops.stacks.development_profiles import get_development_profile
 
 logger = logging.getLogger(__name__)
 
@@ -502,8 +503,6 @@ class _CycleTaskHandler(CapabilityHandler):
         instead of inventing a number.
         """
         try:
-            from squadops.stacks.development_profiles import get_development_profile
-
             return get_development_profile(self._task_type).max_completion_tokens
         except Exception:
             return None

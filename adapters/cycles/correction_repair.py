@@ -37,6 +37,7 @@ from squadops.capabilities.lesson_supply import supply_for_cycle
 from squadops.cycles.agent_config import resolve_agent_config
 from squadops.cycles.scaffold_enforcement import name_producer
 from squadops.cycles.task_plan import repair_steps_for
+from squadops.stacks.development_profiles import matches_test_file_patterns, test_file_patterns_for
 from squadops.tasks.models import TaskEnvelope
 
 if TYPE_CHECKING:
@@ -832,7 +833,6 @@ def _apply_emission_ownership_veto(
     untouched, mirroring the targeting veto's scope exactly.
     """
     from squadops.cycles.task_plan import own_artifact_role
-    from squadops.stacks.development_profiles import matches_test_file_patterns
 
     owner = own_artifact_role(failed_task_type)
     if owner is None or step_role == owner:
@@ -1153,7 +1153,6 @@ class CorrectionRepair:
                 # verification runs on the un-patched original, and the
                 # validated repair is discarded by re-dispatch.
                 from squadops.cycles.patch_verification import rebase_artifact_paths
-                from squadops.stacks.development_profiles import test_file_patterns_for
 
                 rebased = rebase_artifact_paths(
                     [a for a in step_artifacts if isinstance(a, dict)],

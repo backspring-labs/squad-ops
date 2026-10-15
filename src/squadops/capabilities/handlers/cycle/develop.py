@@ -33,6 +33,7 @@ from squadops.capabilities.handlers.cycle.validation import (
     _estimate_min_artifacts,
 )
 from squadops.capabilities.reasoning_policy import reasoning_kwargs, resolve_reasoning_level
+from squadops.stacks.scaffold import is_scaffoldable_stack
 
 logger = logging.getLogger(__name__)
 
@@ -697,11 +698,6 @@ class DevelopmentDevelopHandler(_CycleTaskHandler):
         ``ApiError(code, message)`` — and paid a correction to undo it. Same data, same
         transport, one step earlier.
         """
-        from squadops.stacks.development_profiles import (
-            effective_development_profile,
-            get_development_profile,
-        )
-        from squadops.stacks.scaffold import is_scaffoldable_stack
 
         stack = str(self._resolved_config.get("build_profile") or "")
         if not is_scaffoldable_stack(stack):

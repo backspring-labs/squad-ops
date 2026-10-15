@@ -28,6 +28,17 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass
 
+from squadops.stacks.scaffold import (
+    InterfaceManifest,
+    expand,
+    fill_slot_paths,
+    verification_scaffold_for,
+)
+from squadops.stacks.scaffold_contract import emit_contract_dict
+from squadops.stacks.success_status import derived_success_status as _seam
+from squadops.stacks.verification_scaffold_emission import emit_verification_scaffold
+from squadops.stacks.verification_scaffold_gate import assess_execution_readiness
+
 #: Stable finding classes. Typed rather than free text so M6's authoring failure
 #: taxonomy can attribute a rejection without parsing prose — the "one vocabulary, not
 #: three" intention from the post-1.5 reconciliation, applied before there is anything
@@ -101,7 +112,6 @@ def assess_winnability(
     a seeded cycle and the gate's own adversarial fixtures have no cycle config to compare
     against, and inventing a mismatch for them would reject manifests that are correct.
     """
-    from squadops.stacks.scaffold import InterfaceManifest
 
     try:
         manifest = InterfaceManifest.from_yaml(manifest_content)
@@ -150,7 +160,6 @@ def assess_schema(manifest_content: str) -> tuple[WinnabilityFinding, ...]:
     ``decisions[].warrant``. §5b Correction 3 ruled per-entry citation would bloat
     authoring for little gate value, and the schema has no field for it anyway.
     """
-    from squadops.stacks.scaffold import InterfaceManifest
 
     try:
         manifest = InterfaceManifest.from_yaml(manifest_content)
@@ -240,7 +249,6 @@ def _expander_findings(manifest) -> list[WinnabilityFinding]:
     the cycle would 'succeed' having produced nothing (the pf-26 wrong-root class, one
     level up from where it was found).
     """
-    from squadops.stacks.scaffold import expand, fill_slot_paths
 
     try:
         expand(manifest)
@@ -287,7 +295,6 @@ def _contract_findings(manifest) -> list[WinnabilityFinding]:
     """
     from squadops.cycles.acceptance_check_spec import CHECK_SPECS, is_check_applicable
     from squadops.cycles.verification_contract import VerificationContract
-    from squadops.stacks.scaffold_contract import emit_contract_dict
 
     try:
         contract = emit_contract_dict(manifest)
@@ -359,12 +366,9 @@ def _scaffold_findings(manifest) -> list[WinnabilityFinding]:
     derivation refusal, or emitted bytes that fail the execution-readiness gate — each a
     run-setup death (SIP-0104 §4.4) converted into a free framing re-roll (#522).
     """
-    from squadops.stacks.scaffold import expand, verification_scaffold_for
 
     if not verification_scaffold_for(str(getattr(manifest, "stack", "") or "")):
         return []
-    from squadops.stacks.verification_scaffold_emission import emit_verification_scaffold
-    from squadops.stacks.verification_scaffold_gate import assess_execution_readiness
 
     try:
         tree = expand(manifest)
@@ -539,7 +543,6 @@ def _status_findings(manifest) -> list[WinnabilityFinding]:
 def derived_success_status(method: str, path: str) -> int | None:
     """The contract's default for an undeclared status — re-exported from the one home
     of the rule (``stacks.scaffold``, #772) so the gates keep their name for it."""
-    from squadops.stacks.success_status import derived_success_status as _seam
 
     return _seam(method, path)
 

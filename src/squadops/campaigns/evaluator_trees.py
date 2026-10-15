@@ -28,6 +28,8 @@ from collections.abc import Iterable, Mapping
 from dataclasses import dataclass
 from enum import StrEnum
 
+from squadops.stacks.scaffold import qa_test_namespace_for_stack, test_config_files_for_stack
+
 # =============================================================================
 # Trees
 # =============================================================================
@@ -81,10 +83,6 @@ class TestSurface:
 
     @classmethod
     def for_stack(cls, stack: str) -> TestSurface:
-        from squadops.stacks.scaffold import (
-            qa_test_namespace_for_stack,
-            test_config_files_for_stack,
-        )
 
         return cls(qa_test_namespace_for_stack(stack), test_config_files_for_stack(stack))
 

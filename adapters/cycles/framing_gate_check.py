@@ -33,6 +33,7 @@ from squadops.cycles.rejection_baseline import (
     RejectionClassifier,
 )
 from squadops.cycles.vault_reads import retrieve_or_absent
+from squadops.stacks.scaffold import InterfaceManifest, scaffold_stack_for
 
 logger = logging.getLogger(__name__)
 
@@ -255,8 +256,6 @@ class FramingGateCheck:
         # framing for free, not fail a run at dispatch (see the ownership note above).
         if interface_content is not None and parsed_plan is not None:
             try:
-                from squadops.stacks.scaffold import InterfaceManifest
-
                 parsed_manifest = InterfaceManifest.from_yaml(interface_content)
             except Exception:
                 logger.warning(
@@ -491,7 +490,6 @@ class FramingGateCheck:
         rejection, not a warning read once and ignored. The manifest's own parse
         failures are already reported by ``_validate_interface_manifest``; here a
         parse failure is a no-op to avoid a duplicate rejection."""
-        from squadops.stacks.scaffold import InterfaceManifest
 
         try:
             manifest = InterfaceManifest.from_yaml(interface_content)
@@ -567,7 +565,6 @@ class FramingGateCheck:
             approved_change_request,
             increment_criterion_files,
         )
-        from squadops.stacks.scaffold import scaffold_stack_for
 
         try:
             document = await approved_change_request(self._artifact_vault, cycle)
@@ -586,7 +583,6 @@ class FramingGateCheck:
         """The increment's footprint, or ``None`` for a cycle that is not an increment (or
         whose candidate manifest cannot be read, which the manifest's own nets report)."""
         from squadops.campaigns.increment_tree import increment_baseline, increment_footprint
-        from squadops.stacks.scaffold import InterfaceManifest
 
         if increment_baseline(cycle.resolved_config()) is None:
             return None

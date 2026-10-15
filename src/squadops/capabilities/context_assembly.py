@@ -30,6 +30,14 @@ from typing import Any
 
 from squadops.campaigns.proposed_behaviours import QA_PROPOSED_BEHAVIOURS_ARTIFACT_TYPE
 from squadops.memory.authoring_envelope import AuthoringSeam
+from squadops.stacks.response_shape import response_surface_instructions
+from squadops.stacks.scaffold import (
+    client_surface_instructions,
+    error_seam_instructions,
+    frozen_surface_index_lines,
+    model_surface_instructions,
+    testid_surface_instructions,
+)
 from squadops.tasks.task_types import TaskType
 
 # ---------------------------------------------------------------------------
@@ -629,14 +637,6 @@ def manifest_surface_fragments(
         return {}
     # #1029 lives in the module that owns the derivation, not in scaffold.py: the
     # response floor already has one home and a second copy would be a second answer.
-    from squadops.stacks.response_shape import response_surface_instructions
-    from squadops.stacks.scaffold import (
-        client_surface_instructions,
-        error_seam_instructions,
-        frozen_surface_index_lines,
-        model_surface_instructions,
-        testid_surface_instructions,
-    )
 
     derivations = {
         SURFACE_ERROR_CONTRACT: error_seam_instructions,

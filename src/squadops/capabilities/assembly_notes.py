@@ -35,6 +35,9 @@ answer. The legacy profiles keep them optional.
 
 from __future__ import annotations
 
+from squadops.stacks.rendered_packaging import render_packaging
+from squadops.stacks.scaffold import qa_test_namespace_for_stack
+
 #: The builder's optional notes document. One name, in one place — the failure mode this
 #: replaces was a filename appearing in five registries.
 ASSEMBLY_NOTES_DOCUMENT = "assembly_notes.md"
@@ -66,7 +69,6 @@ def already_supplied_lines(stack: str) -> tuple[str, ...]:
     profiles: nothing is declared, so nothing can be claimed as already supplied.
     """
     from squadops.sandbox.environment import get_environment_contract
-    from squadops.stacks.scaffold import qa_test_namespace_for_stack
 
     try:
         contract = get_environment_contract(stack)
@@ -83,7 +85,6 @@ def already_supplied_lines(stack: str) -> tuple[str, ...]:
     # to the builder as a decision about the deliverable's own container, which it is not.
     lines.append(f"- where the application listens — port `{contract.app_port}`")
     # #598: the packaging the scaffold renders is a declaration too.
-    from squadops.stacks.rendered_packaging import render_packaging
 
     try:
         packaged = ", ".join(f"`{item['name']}`" for item in render_packaging(stack))

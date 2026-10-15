@@ -35,6 +35,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any
 
+from squadops.stacks.verification_scaffold import ScaffoldSpineError, parse_slot_regions
+
 # The SIP §5 failure classes.
 CLASS_SCAFFOLD_INVALID = "scaffold_invalid"
 CLASS_APP_CONTRACT = "app_contract"
@@ -105,7 +107,6 @@ def classify_shell_failures(
     broken app.
     """
     from squadops.capabilities.handlers.scaffold_execution import _is_assertion_failure
-    from squadops.stacks.verification_scaffold import ScaffoldSpineError, parse_slot_regions
 
     shell_records = {f.path: f for f in scaffold_manifest.files}
     if not runner_executed:
@@ -233,7 +234,6 @@ def _app_raise_under_spine(
     Anything the frames cannot settle keeps the mechanical reading: no frames, a raise in the
     shell itself, the shell's frame inside a slot, or merged content that does not parse.
     """
-    from squadops.stacks.verification_scaffold import ScaffoldSpineError, parse_slot_regions
 
     frames = [f for f in row.get("frames") or () if isinstance(f, dict)]
     if not frames or merged_content is None:
