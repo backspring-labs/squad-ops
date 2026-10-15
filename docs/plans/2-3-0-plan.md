@@ -296,7 +296,9 @@ Phase 8's rebuilds, in order:
   diagnostic's pre-registration is #2296. **The diagnostic: done 2026-10-14.** Every reading held on `dep_c627c2873c3c`,
   after three defects it found were fixed (#2293, #2302, #2304); the readings are on #2279.
 - **#2202, then #2205:** each with its own pre-registered before/after comparison on the chosen engine (a targeted set,
-  or one campaign), before it is batched with anything else.
+  or one campaign), before it is batched with anything else. **#2202's comparison: done 2026-10-14.** #2276 merged
+  between its arms, and #2309 before the after arm's re-run (its pre-registration's §9). Every reading reached held,
+  and the proposer's wasn't exercised; the readings are on #2202. It found #2308 (fixed by #2309) and #2310.
 - **#2208,** its rubric version pinned.
 - **R4:** #1976 and #1977.
 - **R5:** #2062 with #1993.

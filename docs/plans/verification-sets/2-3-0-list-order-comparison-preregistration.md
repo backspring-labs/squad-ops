@@ -144,3 +144,52 @@ been the same on #2309, and the difference between the arms is still #2276's.
 
 **#2205's comparison** runs its before arm on this same deploy, as its pre-registration's §3 says ("the deploy #2202's
 after arm runs on").
+
+## 10. Result
+
+Recorded 2026-10-14. The readings, with their evidence, are on #2202. The records are under
+`var/verification_sets/2-3-0-list-order/`.
+
+**Before #2276** (`cmp_ed8000dfb94f`, on `dep_c627c2873c3c` from `8dded804`): B1–B4 held.
+- No manifest declared an order. The increment's manifest put it only in `GET /runs`'s summary, and no contract had an
+  ordered probe.
+- The proposal carried the order as criterion T1, with `backend/routes.py` in its footprint.
+- The build sorted, and T1's test checked it.
+- **The replay** of the increment, against the contract #2276 derives with its claimed order declared, passed all six
+  probes. The before calibration, replayed the same way as a control, failed the ordered probe with insertion order,
+  so the replay discriminates.
+- **As §5 anticipated,** the before arm didn't show the defect live. The window's `cyc_03b6f8ef0749` remains its
+  evidence.
+
+**After #2276, first run** (`cmp_f59a69f07bc0`, on `dep_4dbbbb990e74` from `f34b9df9`): stopped at its calibration.
+- A1, A2 and A5 held. The ordered probe caught insertion order, and the calibration was rejected.
+- No correction round followed (#2308, §9), so A4 held only in part, and A3 wasn't reached.
+
+**After #2276 and #2309, the re-run** (`cmp_a47189e4e061`, on `dep_0eafe15d5819` from `7eb661e3`): A1, A2, A4 and A5
+held; A3 wasn't exercised.
+- **A1, A2:** the calibration declared `order: {field: datetime, direction: asc}` on `GET /runs`, with a decision as
+  its warrant. Its contract derived `vc-probe-runs-ordered`, with seeds. The increment kept both.
+- **A4:** neo's fill returned insertion order, and the probe failed. eve failed the task, and a correction round
+  repaired `backend/routes.py` with a one-line `sorted(…, key=lambda r: r.datetime)`. The retest passed.
+- **A5:** both runs' verification list the ordered probe as executed and passed. Both replays pass with the cycle's
+  own contract.
+  - The increment's replay first failed every backend probe with 501, an audit defect: the boot audit assembled the
+    increment's run alone, which holds the scaffold's stub for the file the increment left alone (#2310).
+  - With its fix (PR #2311), the audit assembles the accepted tree and passes.
+- **A3:** the calibration had already declared and built the order, so the proposer had none left to declare. It
+  proposed showing each run's datetime in its row, with the view as its footprint. That is the reverse of the 2.2
+  window, where a proposer proposed an order the manifest only claimed.
+
+**What the comparison shows.**
+- **Before #2276,** an ordering was checked only where an increment's own criterion test happened to check it, and
+  the manifest carried it as prose.
+- **After it,** the order is structure: the author declared it, the contract derived its probe, and the probe caught a
+  build that ignored it. With #2309, the correction loop repaired the serving code. No cycle was accepted with a
+  declared order its list didn't honour.
+
+**Defects found on the way:**
+- **#2308,** fixed by #2309: a failing contract probe never engaged correction, since #1223.
+- **#2310,** with its fix in PR #2311: the boot audit assembled a campaign increment from its own run.
+
+**Not read live:** the proposer's teaching (A3), because no increment had an order left to declare. It is covered by
+#2276's unit tests.
