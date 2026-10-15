@@ -1,11 +1,12 @@
 # 2.3 R7: the largest-units extraction map (#1994)
 
 **Status:** reviewed. The owner approved unit 1's step table on 2026-10-15, and chose to review each
-of units 2–5 at the step before its first extraction PR (#1994, comment 6188687592). The plan owns R7's
+of units 2–5 at the step before its first extraction PR (#1994, comment 6188687592). It reviewed unit 2's
+on the same day (§4b; #1994, comment 6191733584). The plan owns R7's
 placement (phase 8, after R6). This map owns each unit's scope, its steps, the data that crosses each
 step, and the proof each PR carries.
 
-**Granularity:** unit 1 is mapped to the step. Units 2–5 are mapped to the block here. Each gets
+**Granularity:** units 1 and 2 are mapped to the step (§4, §4b). Units 3–5 are mapped to the block here. Each gets
 its step table in this file, re-measured on the tree it extracts from, and reviewed before its first
 extraction PR. Measured on R6's tree (PR #2327), where units 3 and 4 live after the orchestration
 move, to the top-level `squadops.execution` the owner ruled (#1992, comment 6188687208).
@@ -87,9 +88,88 @@ Each carries the proof in §3.
 a dict on the `_QAEmission` carrier, which is frozen in its binding, not its contents, as `RunState`'s
 lists are (1.7.5 §4 step 6). The PR names it.
 
+## 4b. Unit 2: `_CycleTaskHandler`, step by step (reviewed by the owner, 2026-10-15)
+
+**The owner's choices** (2026-10-15, #1994, comment 6191733584):
+- **the acceptance-criteria check:** the smaller move, 2a below. Only its two decisions leave the class;
+- **the model-call method:** only the authoring-envelope capture is pulled out, 2b below;
+- **the two inline copies of existing helpers** (2c-1, 2c-2): replaced in a separate PR, #2335, after
+  this unit's move, so the move's line diff stays a pure move.
+
+Measured on main at `c255017a`. Unit 1 doesn't touch `base.py`, so these lines hold after it. The class
+is 1,665 lines with 42 methods. Four of them are over 100 lines: `_llm_call` (177),
+`_evaluate_typed_acceptance` (158), `handle` (147) and `_self_evaluate` (109).
+
+**Step 0, its own PR: a characterization of `_evaluate_typed_acceptance`.**
+- **What it captures:** a golden beside the existing two, recording what the method banks:
+  - every field of each check row;
+  - the `missing` list;
+  - `typed_error_counts` afterwards.
+- **The cases:**
+  - severity (error, warning) against status (passed, failed, error, skipped);
+  - a skip because config is off, and a skip for any other reason;
+  - authored checks and framework-injected ones;
+  - the prose and unparseable rows;
+  - the empty-criteria return;
+  - an evaluator error's third strike, which is escalated and appends nothing.
+- **How it runs:** it enters at `QATestHandler()._evaluate_typed_acceptance`, as two existing tests do. It
+  uses real criteria on a real workspace and never patches the evaluator, so 2a can move code without
+  editing the test.
+
+**2a: the typed-acceptance loop body becomes two functions beside the evaluator**
+(`squadops.cycles.acceptance_evaluation`, which holds `evaluate_criterion`).
+
+| step | lines (now) | becomes | takes | returns |
+|---|---|---|---|---|
+| 2a-1 | 717–749 | `acceptance_check_record` | the criterion, its outcome, the check index, whether it was authored, the subtask index | the check row, its evidence-gap flag included (#423) |
+| 2a-2 | 766–781 | `apply_blocking_matrix` | the criterion, its outcome, `missing`, `typed_error_counts` | whether the error is past its second strike. It appends to `missing` and counts the strike as now (RC-9, RC-9a, RC-9b), and the handler logs the escalation as now |
+
+- **Two lines change rather than move,** and the PR lists them. The loop's `continue` for a
+  non-error severity becomes the function's `return False`. The escalation call stays in the
+  handler, under `if apply_blocking_matrix(…)`, because it's the handler's log.
+- **Where it departs from §5:** the method itself stays the handler's. That covers the split, the injected
+  criteria, the workspace, the per-check log and the loop.
+  - It needs `_framework_injected_criteria`, which lives in `base.py` and is imported from there by two
+    test files.
+  - Moving the method into `cycles` would make `cycles` import the handler module, or move that function
+    and edit those tests.
+  - The two pieces that are decisions move. The method drops to about 70 lines.
+
+**2b: `_llm_call`.** One step: the authoring-envelope capture (1523–1539, SIP-0110 §0.11) becomes
+`_capture_authoring_envelope`. It runs once before the call loop, and it changes for its own reason.
+- **The call loop stays as it is.** It's the one post-call sequence #929 made on purpose. Of its 177
+  lines, 37 are the docstring and about 45 are comments giving reasons.
+- **Splitting it would separate the cap-exhausted retry from the accounting and the record,** which have
+  to count the discarded call too (1.8.2 item 2). Size alone isn't the criterion (§2).
+
+**2c: the generic `handle`.**
+
+| step | lines (now) | becomes |
+|---|---|---|
+| 2c-1 | 1339–1357 | the model call's failure: `return self._fail_result(start_time, inputs, str(exc))` after the warning |
+| 2c-2 | 1361–1369 | the provenance: `self._prompt_provenance(assembled, rendered)` |
+| 2c-3 | 1383–1406 | `_mark_contentless`: the empty-or-contentless emission's marker (#998, #1372) |
+
+- **2c-1 and 2c-2 are not new steps.** Each replaces an inline copy with an existing helper that builds
+  the same thing.
+  - `_fail_result` builds the same evidence, empty outputs and error.
+  - `_prompt_provenance` builds the same dict. Its condition, `rendered is not None`, is the same as the
+    copy's `renderer is not None and rendered is not None`, because `rendered` is set only when there is a
+    renderer.
+- **The line diff would show each copy's lines as gone,** so the PR that replaces them sets each one beside
+  the helper's body, line for line. **The owner chose a separate PR** (#2335): this unit's move leaves
+  both copies where they are, and 2c here is 2c-3 alone.
+
+**Not on unit 2's table:**
+- `_self_evaluate` (109): a loop of named calls already.
+- `_record_generation` (92): one record built field by field.
+- The other 37 methods: none over 60 lines.
+
+**Order:** step 0, then 2a, then 2b with 2c-3, then unit 2's rebuild and regression pair; then #2335.
+
 ## 5. Units 2–5, to the block
 
-**Unit 2: `_CycleTaskHandler`.** The template method and its hooks in one class:
+**Unit 2: `_CycleTaskHandler`** (mapped to the step in §4b). The template method and its hooks in one class:
 - **`_evaluate_typed_acceptance`** leaves the class for a collaborator beside the typed-check
   evaluator. Its loop body becomes one function that builds a check record and one that applies RC-9's
   blocking matrix. The handler keeps the call.
