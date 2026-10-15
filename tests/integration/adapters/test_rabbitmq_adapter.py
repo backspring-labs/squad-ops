@@ -10,6 +10,7 @@ import pytest
 import pytest_asyncio
 
 from adapters.comms.rabbitmq import RabbitMQAdapter
+from squadops.ports.comms.queue import AckPolicy
 from squadops.ports.secrets import SecretProvider
 
 
@@ -297,7 +298,9 @@ class TestNativeSubscribeIntegration:
             if len(received) >= total:
                 all_in.set()
 
-        handle = await adapter.subscribe(queue_name, on_message=on_message)
+        handle = await adapter.subscribe(
+            queue_name, on_message=on_message, ack_policy=AckPolicy.ACK_ALWAYS
+        )
         try:
             for i in range(total):
                 await adapter.publish(queue_name, json.dumps({"i": i}))
@@ -336,8 +339,12 @@ class TestNativeSubscribeIntegration:
             beta.append(m.payload)
             _check_done()
 
-        h_alpha = await adapter.subscribe(q_alpha, on_message=on_alpha)
-        h_beta = await adapter.subscribe(q_beta, on_message=on_beta)
+        h_alpha = await adapter.subscribe(
+            q_alpha, on_message=on_alpha, ack_policy=AckPolicy.ACK_ALWAYS
+        )
+        h_beta = await adapter.subscribe(
+            q_beta, on_message=on_beta, ack_policy=AckPolicy.ACK_ALWAYS
+        )
         try:
             for i in range(per_queue):
                 await adapter.publish(q_alpha, json.dumps({"who": "alpha", "i": i}))
