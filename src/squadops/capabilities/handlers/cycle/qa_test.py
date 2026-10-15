@@ -85,7 +85,11 @@ from squadops.capabilities.handlers.stub_detection import (
     inspected_js_test_paths,
     inspected_python_test_paths,
 )
-from squadops.capabilities.handlers.test_runner import failed_tests_pass_row, run_build_validation
+from squadops.capabilities.handlers.test_runner import (
+    RunTestsResult,
+    failed_tests_pass_row,
+    run_build_validation,
+)
 from squadops.capabilities.reasoning_policy import reasoning_kwargs, resolve_reasoning_level
 from squadops.capabilities.verification_scaffold_fill import (
     apply_followup_fills,
@@ -540,8 +544,9 @@ class _QARequest:
 @dataclasses.dataclass(frozen=True)
 class _QAEmission:
     """What step 1d settles (#1994). Frozen in its binding, not its contents: the verdict half
-    appends to ``artifacts``, adds to ``evidence_extra`` and marks ``retake_form``, as
-    ``RunState``'s lists are (1.7.5 §4 step 6)."""
+    adds to ``evidence_extra`` and marks ``retake_form``, as ``RunState``'s lists are (1.7.5 §4
+    step 6). ``artifacts`` is the list as 1d settled it. Step 1e reads it, and the steps after it
+    take the list 1e returns, since self-evaluation and the outlet replace it."""
 
     content: str
     artifacts: list[dict[str, Any]]
@@ -1812,12 +1817,7 @@ class QATestHandler(_CycleTaskHandler):
         )
         if isinstance(request, HandlerResult):
             return request
-        assembled, system_prompt = request.assembled, request.system_prompt
-        user_prompt, messages, chat_kwargs = (
-            request.user_prompt,
-            request.messages,
-            request.chat_kwargs,
-        )
+        messages, chat_kwargs = request.messages, request.chat_kwargs
 
         try:
             response, content = await self._llm_call(
@@ -1846,67 +1846,14 @@ class QATestHandler(_CycleTaskHandler):
         )
         if isinstance(emission, HandlerResult):
             return emission
-        content, artifacts = emission.content, emission.artifacts
-        evidence_extra, retake_form = emission.evidence_extra, emission.retake_form
+        evidence_extra = emission.evidence_extra
 
         # SIP-0086: Output validation + self-evaluation
         output_validation_enabled = resolved_config.get("output_validation", False)
 
-        # #670 / RC-9b: shared across self-eval passes so per-criterion
-        # evaluator-error counts accumulate (2-strikes escalation), dev parity
-        typed_error_counts: dict[str, int] = {}
-
-        if output_validation_enabled:
-            validation = await self._validated(
-                context, inputs, artifacts, typed_error_counts=typed_error_counts
-            )
-
-            # Self-evaluation loop
-            if not validation.passed:
-                # #946: this branch is the SOLE trigger for a second model call, and
-                # nothing recorded which check opened it. The run summary afterwards
-                # showed 29/29 accepted, so the failure was unreadable from stored state
-                # — a whole extra generation, invisible in the record it produced. Roll 1
-                # burned 3,574 tokens here (68% of the qa task's wall clock) and the only
-                # way to learn why was to reconstruct it by hand from artifacts.
-                #
-                # Log the failing checks by name, not the count. "1 check failed" sends a
-                # reader back to the artifacts, which is the state this exists to end.
-                # `expected_artifacts` in particular fails for a reason fill mode makes
-                # invisible (#947): the plan's chosen filename is demoted while the check
-                # still hard-requires it.
-                failing = failing_check_names(validation.checks)
-                logger.info(
-                    "qa_test_handler self_eval trigger: failing_checks=%s missing=%s summary=%r",
-                    failing or ["<none named>"],
-                    validation.missing_components,
-                    validation.summary,
-                )
-                before_passes = {str(a.get("name")) for a in artifacts}
-                validation, artifacts = await self._self_evaluate(
-                    context,
-                    inputs,
-                    validation=validation,
-                    artifacts=artifacts,
-                    evidence_extra=evidence_extra,
-                    typed_error_counts=typed_error_counts,
-                    transcript=(system_prompt, user_prompt, content),
-                    chat_kwargs=chat_kwargs,
-                    started=start_time,
-                    rendered=rendered,
-                    followup=shape,
-                )
-                artifacts = self._authorized(artifacts, inputs, evidence_extra)
-                if retake_form is not None:
-                    # #1727 (the owner's ruling): the transaction is the re-take plus the pass
-                    # that completed it, each part named — the edit above, and what the pass
-                    # added, so an edit-only count stays derivable.
-                    retake_form["completed_by_self_eval"] = sorted(
-                        {str(a.get("name")) for a in artifacts} - before_passes
-                    )
-        else:
-            validation = ValidationResult(passed=True, summary="Validation disabled")
-        artifacts, validation = _settle_outlet(artifacts, validation, evidence_extra)
+        validation, artifacts = await self._validate_suite(
+            context, inputs, prompt, request, emission, shape, output_validation_enabled, start_time
+        )
 
         # Run generated tests and build report — on what the task will store (#1109).
         extracted = self._suite_files(artifacts)
@@ -1925,168 +1872,16 @@ class QATestHandler(_CycleTaskHandler):
         # causing pytest to collect 0 tests) must surface as SEMANTIC_FAILURE
         # so the correction protocol activates.
         if output_validation_enabled and not (test_result.executed and test_result.tests_passed):
-            if test_result.executed:
-                detail = f"tests_failed:exit_{test_result.exit_code}"
-                fail_note = f"Tests failed (exit {test_result.exit_code})"
-            else:
-                reason = test_result.error or "runner_error"
-                detail = f"tests_not_executed:{reason}"
-                fail_note = f"Tests not executed: {reason}"
-
-            validation.checks.append(
-                failed_tests_pass_row(test_result, qa_owned=_qa_owned_for(inputs))
-            )
-            validation.passed = False
-            validation.missing_components.append(detail)
-            validation.summary = (
-                fail_note
-                if validation.summary in ("", "All checks passed")
-                else f"{validation.summary}; {fail_note}"
-            )
-            if validation.checks:
-                passed_count = sum(1 for c in validation.checks if c["passed"])
-                validation.coverage_ratio = passed_count / len(validation.checks)
+            self._fold_suite_outcome(validation, test_result, inputs)
 
         if output_validation_enabled:
-            # #276: a generated test that hides a broken entrypoint import behind
-            # an ImportError fallback validates a stub app, not the deliverable —
-            # so `tests_passed` above can be falsely green (the stub collects and
-            # passes). Flag it so acceptance fails and the correction loop
-            # regenerates the test against the real module.
-
-            stub_offenders = detect_stub_fallback_tests(artifacts)
-            validation.checks.append(
-                _authenticity_row(
-                    CHECK_NO_STUB_FALLBACK_TESTS,
-                    stub_offenders,
-                    inspected_python_test_paths(artifacts),
-                )
-            )
-            if stub_offenders:
-                validation.passed = False
-                validation.missing_components.append(
-                    f"stub_fallback_tests:{','.join(stub_offenders)}"
-                )
-                note = (
-                    "Generated test masks the real entrypoint behind an "
-                    f"ImportError stub: {', '.join(stub_offenders)}"
-                )
-                validation.summary = (
-                    note
-                    if validation.summary in ("", "All checks passed")
-                    else f"{validation.summary}; {note}"
-                )
-
-            # #915: the TypeScript sibling, and worse — a stub-fallback suite fails
-            # loudly because a reconstruction misbehaves, while a self-mocking suite
-            # asserts what it told its own mock to return and therefore PASSES. Fills
-            # cannot do this (the frozen spine invokes the handler and enforcement
-            # rejects edits to it); additive files carried the rule only as prose.
-            invocation = self._app_invocation(inputs)
-            mock_offenders = detect_self_mocking_tests(artifacts, invocation)
-            mock_paths = [path for path, _ in mock_offenders]
-            validation.checks.append(
-                _authenticity_row(
-                    CHECK_NO_SELF_MOCKING_TESTS,
-                    mock_paths,
-                    inspected_js_test_paths(artifacts, invocation),
-                )
-            )
-            if mock_offenders:
-                validation.passed = False
-                validation.missing_components.append(f"self_mocking_tests:{','.join(mock_paths)}")
-                note = "Generated test never invokes the application: " + "; ".join(
-                    f"{path} {reason}" for path, reason in mock_offenders
-                )
-                validation.summary = (
-                    note
-                    if validation.summary in ("", "All checks passed")
-                    else f"{validation.summary}; {note}"
-                )
-
-            # Both authenticity rows now bank unconditionally, so the ratio moves on a
-            # clean pass too — recompute once here rather than only on the failure legs.
-            if validation.checks:
-                passed_count = sum(1 for c in validation.checks if c.get("passed"))
-                validation.coverage_ratio = passed_count / len(validation.checks)
-
-            evidence_extra["validation_result"] = self._validation_record(validation)
-
-            # Issue #114: emit per-task typed-check evaluation artifact for
-            # the gate evaluator. Same shape/semantics as the dev handler.
-            tce_artifact = self._build_typed_check_evaluation_artifact(
-                validation.checks,
-                inputs.get("subtask_index"),
-                self._task_type,
-                inputs.get("workspace_revision_id"),
-            )
+            tce_artifact = self._authenticity_rows(validation, artifacts, inputs, evidence_extra)
             if tce_artifact is not None:
                 artifacts.append(tce_artifact)
 
-        if test_result.tests_passed:
-            test_suffix = ", all tests passed"
-        elif test_result.executed:
-            test_suffix = f", tests failed (exit code {test_result.exit_code})"
-        else:
-            test_suffix = f", tests not run: {test_result.error}" if test_result.error else ""
-
-        outputs: dict[str, Any] = {
-            "summary": f"[qa] Generated {len(artifacts) - 1} test file(s){test_suffix}",
-            "role": self._role,
-            "artifacts": artifacts,
-            # #431: generated-vs-stored accounting for extraction-loss diagnosis
-            "emission_stats": _emission_stats(len(content), artifacts),
-            "test_result": {
-                "executed": test_result.executed,
-                "exit_code": test_result.exit_code,
-                "tests_passed": test_result.tests_passed,
-                "test_file_count": test_result.test_file_count,
-                "source_file_count": test_result.source_file_count,
-                "summary": test_result.summary,
-            },
-            "prompt_provenance": self._prompt_provenance(assembled, rendered),
-        }
-
-        # Phase 6: outcome classification, and the validation evidence on BOTH branches
-        # (#597, #1271 — register entry 46).
-        self._attach_outcome(outputs, validation, evidence_extra)
-
-        # #407: record the fullstack frontend build as a first-class SIP-0096
-        # check on BOTH the pass and fail paths. run_build_validation folds a
-        # frontend skip/failure into the combined result, so without this a
-        # required frontend_build that never executed (Node absent, #306) would
-        # read green — the SIP-0070 D13 false-green. A *passing* fullstack run
-        # must record frontend_build=passed too, or requiring it would false-block.
-        # Runs after the classification above so it isn't overwritten by the
-        # failure-path validation_result assignment.
-        fb = test_result.frontend_build
-        if fb is not None:
-            vr = outputs.setdefault("validation_result", {})
-            vr.setdefault("checks", []).append(_frontend_build_row(fb))
-
-        # SIP-0098 98.5: execute seeded behavioral probes and append their rows
-        # (both verdict paths, like frontend_build above — additive evidence).
-        await self._append_contract_probe_rows(inputs, outputs)
-        probe_failure = self._fail_task_on_failing_probes(outputs)
-        if probe_failure:
-            validation = dataclasses.replace(
-                validation,
-                passed=False,
-                summary=(
-                    probe_failure if validation.passed else f"{validation.summary}; {probe_failure}"
-                ),
-            )
-        await self._record_lint(outputs, sources)
-
-        # SIP-0104 P5: the scaffold evidence, after the probes (register entry 43).
-        shape.append_evidence(outputs, test_result, artifacts)
-
-        if retake_form is not None:
-            # SIP-0107 §20 on the re-take path (#1727): the identity of exactly the set this
-            # re-take's suite and checks read, which storage proves it stores.
-
-            outputs[RETAKE_EVALUATED_REVISION_KEY] = candidate_revision_id(None, artifacts)
-
+        outputs, validation = await self._suite_outputs(
+            inputs, prompt, request, emission, shape, validation, artifacts, test_result
+        )
         return self._finish(start_time, inputs, outputs, validation, evidence_extra)
 
     async def _compose_user_prompt(
@@ -2353,6 +2148,272 @@ class QATestHandler(_CycleTaskHandler):
             evidence_extra=evidence_extra,
             retake_form=retake_form,
         )
+
+    async def _validate_suite(
+        self,
+        context: ExecutionContext,
+        inputs: dict[str, Any],
+        prompt: _QAPrompt,
+        request: _QARequest,
+        emission: _QAEmission,
+        shape: _WholeFileTests,
+        output_validation_enabled: bool,
+        start_time: float,
+    ) -> tuple[ValidationResult, list[dict[str, Any]]]:
+        """Step 1e (#1994): the emission's validation, the self-evaluation pass it opens when a check
+        fails, and the outlet settled; returns the validation and the artifacts the suite runs on.
+        """
+        content, artifacts = emission.content, emission.artifacts
+        evidence_extra, retake_form = emission.evidence_extra, emission.retake_form
+        system_prompt, user_prompt = request.system_prompt, request.user_prompt
+        chat_kwargs, rendered = request.chat_kwargs, prompt.rendered
+
+        # #670 / RC-9b: shared across self-eval passes so per-criterion
+        # evaluator-error counts accumulate (2-strikes escalation), dev parity
+        typed_error_counts: dict[str, int] = {}
+
+        if output_validation_enabled:
+            validation = await self._validated(
+                context, inputs, artifacts, typed_error_counts=typed_error_counts
+            )
+
+            # Self-evaluation loop
+            if not validation.passed:
+                # #946: this branch is the SOLE trigger for a second model call, and
+                # nothing recorded which check opened it. The run summary afterwards
+                # showed 29/29 accepted, so the failure was unreadable from stored state
+                # — a whole extra generation, invisible in the record it produced. Roll 1
+                # burned 3,574 tokens here (68% of the qa task's wall clock) and the only
+                # way to learn why was to reconstruct it by hand from artifacts.
+                #
+                # Log the failing checks by name, not the count. "1 check failed" sends a
+                # reader back to the artifacts, which is the state this exists to end.
+                # `expected_artifacts` in particular fails for a reason fill mode makes
+                # invisible (#947): the plan's chosen filename is demoted while the check
+                # still hard-requires it.
+                failing = failing_check_names(validation.checks)
+                logger.info(
+                    "qa_test_handler self_eval trigger: failing_checks=%s missing=%s summary=%r",
+                    failing or ["<none named>"],
+                    validation.missing_components,
+                    validation.summary,
+                )
+                before_passes = {str(a.get("name")) for a in artifacts}
+                validation, artifacts = await self._self_evaluate(
+                    context,
+                    inputs,
+                    validation=validation,
+                    artifacts=artifacts,
+                    evidence_extra=evidence_extra,
+                    typed_error_counts=typed_error_counts,
+                    transcript=(system_prompt, user_prompt, content),
+                    chat_kwargs=chat_kwargs,
+                    started=start_time,
+                    rendered=rendered,
+                    followup=shape,
+                )
+                artifacts = self._authorized(artifacts, inputs, evidence_extra)
+                if retake_form is not None:
+                    # #1727 (the owner's ruling): the transaction is the re-take plus the pass
+                    # that completed it, each part named — the edit above, and what the pass
+                    # added, so an edit-only count stays derivable.
+                    retake_form["completed_by_self_eval"] = sorted(
+                        {str(a.get("name")) for a in artifacts} - before_passes
+                    )
+        else:
+            validation = ValidationResult(passed=True, summary="Validation disabled")
+        artifacts, validation = _settle_outlet(artifacts, validation, evidence_extra)
+        return validation, artifacts
+
+    def _fold_suite_outcome(
+        self, validation: ValidationResult, test_result: RunTestsResult, inputs: dict[str, Any]
+    ) -> None:
+        """Step 1f (#1994): a suite that failed, or never ran, folded into the validation, which it
+        mutates."""
+        if test_result.executed:
+            detail = f"tests_failed:exit_{test_result.exit_code}"
+            fail_note = f"Tests failed (exit {test_result.exit_code})"
+        else:
+            reason = test_result.error or "runner_error"
+            detail = f"tests_not_executed:{reason}"
+            fail_note = f"Tests not executed: {reason}"
+
+        validation.checks.append(failed_tests_pass_row(test_result, qa_owned=_qa_owned_for(inputs)))
+        validation.passed = False
+        validation.missing_components.append(detail)
+        validation.summary = (
+            fail_note
+            if validation.summary in ("", "All checks passed")
+            else f"{validation.summary}; {fail_note}"
+        )
+        if validation.checks:
+            passed_count = sum(1 for c in validation.checks if c["passed"])
+            validation.coverage_ratio = passed_count / len(validation.checks)
+
+    def _authenticity_rows(
+        self,
+        validation: ValidationResult,
+        artifacts: list[dict[str, Any]],
+        inputs: dict[str, Any],
+        evidence_extra: dict[str, Any],
+    ) -> dict | None:
+        """Step 1g (#1994): the two authenticity rows (stub fallbacks, self-mocking suites) and the
+        coverage ratio, folded into the validation, which it mutates; the validation recorded as
+        evidence; and the typed-check evaluation artifact, if there is one."""
+        # #276: a generated test that hides a broken entrypoint import behind
+        # an ImportError fallback validates a stub app, not the deliverable —
+        # so `tests_passed` above can be falsely green (the stub collects and
+        # passes). Flag it so acceptance fails and the correction loop
+        # regenerates the test against the real module.
+
+        stub_offenders = detect_stub_fallback_tests(artifacts)
+        validation.checks.append(
+            _authenticity_row(
+                CHECK_NO_STUB_FALLBACK_TESTS,
+                stub_offenders,
+                inspected_python_test_paths(artifacts),
+            )
+        )
+        if stub_offenders:
+            validation.passed = False
+            validation.missing_components.append(f"stub_fallback_tests:{','.join(stub_offenders)}")
+            note = (
+                "Generated test masks the real entrypoint behind an "
+                f"ImportError stub: {', '.join(stub_offenders)}"
+            )
+            validation.summary = (
+                note
+                if validation.summary in ("", "All checks passed")
+                else f"{validation.summary}; {note}"
+            )
+
+        # #915: the TypeScript sibling, and worse — a stub-fallback suite fails
+        # loudly because a reconstruction misbehaves, while a self-mocking suite
+        # asserts what it told its own mock to return and therefore PASSES. Fills
+        # cannot do this (the frozen spine invokes the handler and enforcement
+        # rejects edits to it); additive files carried the rule only as prose.
+        invocation = self._app_invocation(inputs)
+        mock_offenders = detect_self_mocking_tests(artifacts, invocation)
+        mock_paths = [path for path, _ in mock_offenders]
+        validation.checks.append(
+            _authenticity_row(
+                CHECK_NO_SELF_MOCKING_TESTS,
+                mock_paths,
+                inspected_js_test_paths(artifacts, invocation),
+            )
+        )
+        if mock_offenders:
+            validation.passed = False
+            validation.missing_components.append(f"self_mocking_tests:{','.join(mock_paths)}")
+            note = "Generated test never invokes the application: " + "; ".join(
+                f"{path} {reason}" for path, reason in mock_offenders
+            )
+            validation.summary = (
+                note
+                if validation.summary in ("", "All checks passed")
+                else f"{validation.summary}; {note}"
+            )
+
+        # Both authenticity rows now bank unconditionally, so the ratio moves on a
+        # clean pass too — recompute once here rather than only on the failure legs.
+        if validation.checks:
+            passed_count = sum(1 for c in validation.checks if c.get("passed"))
+            validation.coverage_ratio = passed_count / len(validation.checks)
+
+        evidence_extra["validation_result"] = self._validation_record(validation)
+
+        # Issue #114: emit per-task typed-check evaluation artifact for
+        # the gate evaluator. Same shape/semantics as the dev handler.
+        tce_artifact = self._build_typed_check_evaluation_artifact(
+            validation.checks,
+            inputs.get("subtask_index"),
+            self._task_type,
+            inputs.get("workspace_revision_id"),
+        )
+        return tce_artifact
+
+    async def _suite_outputs(
+        self,
+        inputs: dict[str, Any],
+        prompt: _QAPrompt,
+        request: _QARequest,
+        emission: _QAEmission,
+        shape: _WholeFileTests,
+        validation: ValidationResult,
+        artifacts: list[dict[str, Any]],
+        test_result: RunTestsResult,
+    ) -> tuple[dict[str, Any], ValidationResult]:
+        """Step 1h (#1994): the task's outputs, with the outcome, the frontend build's row, the
+        contract probes, the lint and the scaffold evidence; returns them, and the validation after
+        a failing probe is folded in."""
+        rendered, sources = prompt.rendered, prompt.sources
+        content, evidence_extra = emission.content, emission.evidence_extra
+        assembled, retake_form = request.assembled, emission.retake_form
+
+        if test_result.tests_passed:
+            test_suffix = ", all tests passed"
+        elif test_result.executed:
+            test_suffix = f", tests failed (exit code {test_result.exit_code})"
+        else:
+            test_suffix = f", tests not run: {test_result.error}" if test_result.error else ""
+
+        outputs: dict[str, Any] = {
+            "summary": f"[qa] Generated {len(artifacts) - 1} test file(s){test_suffix}",
+            "role": self._role,
+            "artifacts": artifacts,
+            # #431: generated-vs-stored accounting for extraction-loss diagnosis
+            "emission_stats": _emission_stats(len(content), artifacts),
+            "test_result": {
+                "executed": test_result.executed,
+                "exit_code": test_result.exit_code,
+                "tests_passed": test_result.tests_passed,
+                "test_file_count": test_result.test_file_count,
+                "source_file_count": test_result.source_file_count,
+                "summary": test_result.summary,
+            },
+            "prompt_provenance": self._prompt_provenance(assembled, rendered),
+        }
+
+        # Phase 6: outcome classification, and the validation evidence on BOTH branches
+        # (#597, #1271 — register entry 46).
+        self._attach_outcome(outputs, validation, evidence_extra)
+
+        # #407: record the fullstack frontend build as a first-class SIP-0096
+        # check on BOTH the pass and fail paths. run_build_validation folds a
+        # frontend skip/failure into the combined result, so without this a
+        # required frontend_build that never executed (Node absent, #306) would
+        # read green — the SIP-0070 D13 false-green. A *passing* fullstack run
+        # must record frontend_build=passed too, or requiring it would false-block.
+        # Runs after the classification above so it isn't overwritten by the
+        # failure-path validation_result assignment.
+        fb = test_result.frontend_build
+        if fb is not None:
+            vr = outputs.setdefault("validation_result", {})
+            vr.setdefault("checks", []).append(_frontend_build_row(fb))
+
+        # SIP-0098 98.5: execute seeded behavioral probes and append their rows
+        # (both verdict paths, like frontend_build above — additive evidence).
+        await self._append_contract_probe_rows(inputs, outputs)
+        probe_failure = self._fail_task_on_failing_probes(outputs)
+        if probe_failure:
+            validation = dataclasses.replace(
+                validation,
+                passed=False,
+                summary=(
+                    probe_failure if validation.passed else f"{validation.summary}; {probe_failure}"
+                ),
+            )
+        await self._record_lint(outputs, sources)
+
+        # SIP-0104 P5: the scaffold evidence, after the probes (register entry 43).
+        shape.append_evidence(outputs, test_result, artifacts)
+
+        if retake_form is not None:
+            # SIP-0107 §20 on the re-take path (#1727): the identity of exactly the set this
+            # re-take's suite and checks read, which storage proves it stores.
+
+            outputs[RETAKE_EVALUATED_REVISION_KEY] = candidate_revision_id(None, artifacts)
+        return outputs, validation
 
     def _authorized(
         self, artifacts: list[dict], inputs: dict[str, Any], evidence_extra: dict[str, Any]
