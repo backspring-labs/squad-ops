@@ -311,7 +311,8 @@ Phase 8's rebuilds, in order:
 - **R4:** #1976 and #1977, with #2315 (placed by the owner, 2026-10-14).
 - **R5:** #2062 with #1993.
 - **R6:** #1992 (deferrable).
-- **R7:** #1994 (deferrable).
+- **R7:** #1994 (deferrable). Its map, for the owner's review before the first extraction:
+  `docs/plans/2-3-0-r7-extraction-map.md`.
 - **R8:** #316, once its SIP is accepted.
 - **R9:** Outcome Evaluation's instruments, once their SIP is accepted.
 - **#2204b** at any of them.
