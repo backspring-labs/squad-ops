@@ -528,3 +528,34 @@ ruling (§5c.9, extension point declared as `INPUT_CONTRACT_EXTENSION_POINTS`), 
 The window's replay (pre-registration §12, PR #2207) also showed the cost on the proposal side. A proposer read the decision as built and proposed other scope.
 
 **Who ruled it.** The owner placed #2202 in the adopted 2.3 plan (§2, output quality, phase 8). The design is the issue's first remedy, posted on #2202 on 2026-10-13. The owner rules it by approving this PR.
+
+## Post-implementation amendment (2026-10-14): an error's message is declared on its code (#2205)
+
+**What changed.** An error code in `error_contract.codes` may declare its message text: `duplicate_participant: { http:
+409, message: "A participant with this name has already joined this run." }`. Before this, the manifest had no element
+for an error's wording, so a change to it mapped to no file and couldn't be built (#2205, gap 3).
+- **The frozen error module renders a declared message word for word,** whatever message the raise passes, on both
+  stacks. On FastAPI it also does so for the validation handler's `validation_error`. A code that declares none keeps the
+  raise's own message.
+- **The derived rejection probes assert it** (`error_message` beside `error_code`, SIP-0098 §14), so every cycle derived
+  from the manifest holds the build to it, and every later increment keeps it until a change declares another.
+- **A change to an error's wording** is a `modify` of its `error_code`. The scaffold regenerates the frozen module from
+  the candidate manifest, so the change is built there, and an endpoint criterion on a code the change rewrites is not
+  refused for its serving file (SIP-0109 §24bo).
+- **A repair is shown the declared messages** with the error seam's instructions, so it never rewords one.
+- **It is in the canonical projection only when declared,** so every manifest written before it keeps its hash, and
+  each stack's generated module is byte for byte what it was.
+
+**What it leaves alone.** The envelope's shape is still the blueprint's (#795). A message is declared per code, not per
+endpoint: one code's wording is the same wherever it is raised. A situation that needs different wording needs its own
+code.
+
+**Evidence.** The 2.2 window's campaign 4 proposal (`prop_5af48f5f739c` v1) asked for three exact messages and put
+them under `messages:` in three endpoint definitions, a key the manifest didn't define. With the messages declared on
+the codes instead, the same proposal passes the rails, and its footprint holds `backend/errors.py`
+(`test_the_windows_messages_declared_on_their_codes_are_built_by_the_error_module`). The generated FastAPI module,
+behind a real app, returns the declared message for a raise that passes other wording
+(`test_the_fastapi_module_renders_a_declared_message_whatever_the_raise_passes`).
+
+**Who ruled it.** The owner, 2026-10-14, choosing (a) of #2205's gap 3: "the error contract carries the message, which
+every later increment must then keep word for word". The rest is the implementer's, in PR #2275.

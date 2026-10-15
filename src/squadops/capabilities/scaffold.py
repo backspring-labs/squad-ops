@@ -190,6 +190,11 @@ class Endpoint:
 class ErrorCode:
     code: str
     http: int
+    #: #2205 gap 3 (the owner's ruling, 2026-10-14): the contract may declare an error's message
+    #: text. The frozen error module then renders it word for word, whatever message the raise
+    #: passes, so every later increment keeps it until a change declares another. ``None``: the
+    #: raise's own message, as before.
+    message: str | None = None
 
 
 @dataclass(frozen=True)
@@ -508,8 +513,12 @@ class InterfaceManifest:
                 "error_contract": (
                     {
                         "shape": self.api.error_contract.shape,
+                        # A declared message is written only when there is one, so a manifest
+                        # that declares none hashes as it did before #2205.
                         "codes": [
-                            {"code": c.code, "http": c.http} for c in self.api.error_contract.codes
+                            {"code": c.code, "http": c.http}
+                            | ({"message": c.message} if c.message is not None else {})
+                            for c in self.api.error_contract.codes
                         ],
                     }
                     if self.api.error_contract
@@ -658,6 +667,53 @@ def _parse_provenance(raw: Any) -> Provenance | None:
     )
 
 
+#: The keys each manifest element's parser reads (``_parse_entity``, ``_parse_api``,
+#: ``_parse_frontend``). ``from_dict`` drops any other key without a word, so a change request
+#: whose delta carries one would be built from a manifest that silently lost it (#2205): the
+#: rails refuse it by name instead. Named by ``DeltaTarget``'s values, plus the entity's fields.
+#: ``test_each_declared_key_is_one_the_parser_reads`` holds this table to the parsers.
+#:
+#: **Derived from the element's dataclass, not kept by hand.** A field added to ``Endpoint`` (as
+#: #2202's ``order`` is) is a key its parser reads, and a hand-kept list would go on refusing it
+#: in every change request that declared it. The exceptions are named: ``has_default`` is derived
+#: from whether ``default`` was written, and a request shape's and an error code's ``name`` and
+#: ``code`` are the mapping keys they sit under, not keys of their definitions.
+def _definition_keys(cls: type, *, not_written: tuple[str, ...] = ()) -> frozenset[str]:
+    import dataclasses
+
+    return frozenset(f.name for f in dataclasses.fields(cls)) - set(not_written)
+
+
+MANIFEST_ELEMENT_KEYS: dict[str, frozenset[str]] = {
+    "entity": _definition_keys(Entity),
+    "entity_field": _definition_keys(ManifestField, not_written=("has_default",)),
+    "request_shape": _definition_keys(RequestShape, not_written=("name",)),
+    "endpoint": _definition_keys(Endpoint),
+    "client_route": _definition_keys(Route),
+    "error_code": _definition_keys(ErrorCode, not_written=("code",)),
+}
+#: An element whose definition nests others, by the key that holds them and the nested kind.
+_NESTED_MANIFEST_KEYS: dict[str, tuple[str, str]] = {"entity": ("fields", "entity_field")}
+
+
+def undefined_manifest_keys(element: str, definition: Any) -> list[str]:
+    """The keys of one element's ``definition`` the manifest does not define, as written there:
+    ``messages``, or ``fields[status].label`` for an entity field's. Empty for a definition that
+    is not a mapping (the delta's own fit check refuses that)."""
+    if not isinstance(definition, dict):
+        return []
+    found = sorted(str(k) for k in set(definition) - MANIFEST_ELEMENT_KEYS[element])
+    if element in _NESTED_MANIFEST_KEYS:
+        holder, kind = _NESTED_MANIFEST_KEYS[element]
+        for item in definition.get(holder) or []:
+            if isinstance(item, dict):
+                found += [
+                    f"{holder}[{item.get('name')}].{k}"
+                    for k in sorted(set(item) - MANIFEST_ELEMENT_KEYS[kind])
+                ]
+    return found
+
+
 def _parse_entity(raw: dict[str, Any]) -> Entity:
     fields = []
     for f in raw.get("fields", []):
@@ -708,7 +764,15 @@ def _parse_api(raw: dict[str, Any]) -> Api:
     error_contract = None
     if ec_raw:
         codes = tuple(
-            ErrorCode(code=str(code), http=int((spec or {}).get("http", 400)))
+            ErrorCode(
+                code=str(code),
+                http=int((spec or {}).get("http", 400)),
+                message=(
+                    str((spec or {})["message"])
+                    if (spec or {}).get("message") is not None
+                    else None
+                ),
+            )
             for code, spec in (ec_raw.get("codes", {}) or {}).items()
         )
         error_contract = ErrorContract(shape=str(ec_raw.get("shape", "")), codes=codes)
@@ -970,6 +1034,15 @@ def error_seam_for(stack: str) -> ErrorSeam | None:
     return known.error_seam if known else None
 
 
+def declared_error_messages(manifest: InterfaceManifest | None) -> dict[str, str]:
+    """Each error code's declared message, by code (#2205 gap 3): what the frozen error module
+    renders and the derived probes assert. Empty when the contract declares none."""
+    contract = manifest.api.error_contract if manifest is not None else None
+    return {
+        c.code: c.message for c in (contract.codes if contract else ()) if c.message is not None
+    }
+
+
 class ConventionKind(StrEnum):
     """A rule a stack's frozen bytes decide, told to a campaign proposal (#1962). Each kind names
     its prose asset, ``request.proposal_convention_<kind>``: the data is the stack's, the words are
@@ -1085,6 +1158,20 @@ def error_seam_instructions(manifest: InterfaceManifest | None) -> list[str]:
             f"HTTP status and renders the pinned envelope"
         ),
         f"valid error codes (code → HTTP status, mapped by frozen `{seam.module}`): {code_map}",
+    ] + _declared_message_instructions(manifest, seam)
+
+
+def _declared_message_instructions(
+    manifest: InterfaceManifest | None, seam: ErrorSeam
+) -> list[str]:
+    """#2205 gap 3: a declared message is the contract's, so a repair never rewords it."""
+    messages = declared_error_messages(manifest)
+    if not messages:
+        return []
+    shown = ", ".join(f"`{code}` → {text!r}" for code, text in messages.items())
+    return [
+        f"declared error messages, rendered word for word by frozen `{seam.module}` whatever "
+        f"message the raise passes: {shown}"
     ]
 
 

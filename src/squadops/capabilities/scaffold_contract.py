@@ -361,13 +361,29 @@ def _pack_for(stack: str) -> CriteriaPack:
     return pack
 
 
+def _error_expect(manifest: InterfaceManifest, status: int, code: str) -> dict[str, Any]:
+    """A rejection probe's expectation: the status and the code, and the code's message when the
+    contract declares one (#2205 gap 3), so every cycle holds the build to its wording."""
+    from squadops.capabilities.scaffold import declared_error_messages
+
+    expect: dict[str, Any] = {"status": status, "error_code": code}
+    message = declared_error_messages(manifest).get(code)
+    if message is not None:
+        expect["error_message"] = message
+    return expect
+
+
 def _coverage_expectations(manifest: InterfaceManifest) -> list[str]:
     out: list[str] = []
     eps = ", ".join(f"{ep.method} {ep.path}" for ep in manifest.api.endpoints)
     if eps:
         out.append(f"happy path for each endpoint: {eps}")
     if manifest.api.error_contract:
-        out.extend(f"{code.code} -> HTTP {code.http}" for code in manifest.api.error_contract.codes)
+        out.extend(
+            f"{code.code} -> HTTP {code.http}"
+            + (f", message {code.message!r}" if code.message is not None else "")
+            for code in manifest.api.error_contract.codes
+        )
     out.append("tests are order-independent; module-level state reset per test")
     return out
 
@@ -524,10 +540,7 @@ def _probes(manifest: InterfaceManifest, pack: CriteriaPack) -> list[dict[str, A
                             "path": ep.path,
                             "json": dict.fromkeys(body_fields, ""),
                         },
-                        "expect": {
-                            "status": expected_rejection,
-                            "error_code": "validation_error",
-                        },
+                        "expect": _error_expect(manifest, expected_rejection, "validation_error"),
                         "guards": "scaffold",
                     }
                 )
@@ -580,7 +593,7 @@ def _probes(manifest: InterfaceManifest, pack: CriteriaPack) -> list[dict[str, A
                                 "path": child.path,
                                 "json": child_body,
                             },
-                            "expect": {"status": 409, "error_code": conflict_codes[0]},
+                            "expect": _error_expect(manifest, 409, conflict_codes[0]),
                         }
                     )
 

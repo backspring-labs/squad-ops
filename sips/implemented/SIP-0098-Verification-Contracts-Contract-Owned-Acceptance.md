@@ -241,3 +241,19 @@ This SIP is the structural closure of the 2026-07 hardening arc: #464/#472 (voca
 **Unchanged:** `contract_version` stays 1. The field is omitted when empty, so every contract emitted before it round-trips byte for byte. The Next.js scaffold generator moved to version 9; a manifest that declares no order emits what version 8 emitted.
 
 **Evidence and who ruled it.** As in SIP-0103's amendment of the same date.
+
+## 14. Post-implementation amendment (2026-10-14): a declared error message is expected word for word (#2205)
+
+**What changed.** §6.4's expectations gain `error_message`, beside `error_code`: the envelope's `error.message` must
+equal it exactly. `probe_runner.evaluate_expectations` judges it for the in-cycle runner and the boot audit alike
+(#1079's rule: one judge for one contract).
+
+**The producer** is a message the manifest's error contract declares for a code (SIP-0103's amendment of 2026-10-14).
+Each derived rejection probe whose code declares one carries it: the blank-input probe and the duplicate probe. The
+behaviour lines QA is shown name it.
+
+**Unchanged:** `contract_version` stays 1, and the key is written only when a message is declared, so every contract
+derived before it is byte for byte what it was. The Next.js test shells don't assert the message; the probes do.
+
+**Who ruled it.** The owner's ruling on #2205's gap 3 (2026-10-14) put the message in the contract. That a contract
+element is probed follows from §6.4, so the implementer applied it.

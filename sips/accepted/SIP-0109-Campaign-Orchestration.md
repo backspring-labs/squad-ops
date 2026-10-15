@@ -3325,6 +3325,38 @@ retry (`max_proposal_run_retries`)". The plan's §6 records that misreading, and
 to build no in-cycle retry, to give `max_proposal_run_retries` this meaning, to pause past it as
 rejected proposals in a row do, and to amend §9.5 accordingly. It is recorded on #2231.
 
+### 24bo. The rails refuse an undefined manifest key, and a criterion no build may meet (2026-10-13, §7.2, #2205; implementer's reading, for the owner)
+
+**What changed.** §7.2's rails derived the footprint from the manifest the delta produces, but two things passed
+unseen. The 2.2 window's campaign 4 proposal `prop_5af48f5f739c` v1 had both, and only the supervisor's reading of
+its footprint caught them:
+- **An undefined key.** The proposer put each error's message under `messages:` in three endpoint definitions.
+  `InterfaceManifest.from_dict` reads only the keys it knows and dropped it without a word, so the footprint was
+  derived without it. Now the rails refuse it as `undefined_key`, naming each key as written (an entity field's as
+  `fields[<name>].<key>`) and listing the keys that element does declare. The table of declared keys
+  (`scaffold.MANIFEST_ELEMENT_KEYS`) sits beside the parsers, and a test holds it to them.
+- **A criterion no build may meet.** Its three criteria named endpoints served by `backend/routes.py`, which the
+  delta left unchanged, so the footprint excluded it, and every write there would have been dropped
+  (`write_authorization`) or refused at the plan gate. Now an endpoint criterion whose serving file is outside the
+  footprint is refused as `surface_outside_footprint`, naming the criterion and the file. The serving file is the
+  contract's own `endpoint_owners`, the relation every repair aims by.
+  - A client-route criterion is not checked this way. A view's behaviour can be served by the endpoints it calls, so a
+    view outside the footprint does not show the criterion unbuildable.
+  - Neither rail adds to `nothing_to_build`, which already names the cause when a delta changes no product file.
+
+**The third gap, ruled.** #2205's third gap was whether the manifest can declare an error's message text, and without
+it a message-only change had no buildable delta. The owner ruled on 2026-10-14 that the error contract carries it
+(SIP-0103's amendment of that date). So a change to an error's wording is a `modify` of its `error_code`, and the
+footprint holds the frozen error module the scaffold regenerates. `surface_outside_footprint` therefore doesn't refuse
+an endpoint criterion when the endpoint declares a code whose contract the delta changes, because the regenerated
+module builds that change outside the serving file.
+
+**The evidence:** the proposal's stored document and the accepted manifest it was proposed against
+(`tests/fixtures/campaigns/`). Through the rails they now draw three `undefined_key` refusals (`messages`, each by its
+endpoint) and three `surface_outside_footprint` refusals (T1–T3, each served by `backend/routes.py`). The reference
+change request, whose delta does change `backend/routes.py`, still passes. The same proposal with its messages declared
+on the codes passes the rails, with `backend/errors.py` in its footprint.
+
 ### 24bp. A park's abandonment counts at its own decision, as a rejection's does (2026-10-13, §9.5, §10 rows 4, 13 and 15, §24bj, #2294; implementer's correction, for the owner)
 
 **What main did.** Row 4 stops a campaign when the unaccepted increments plus the abandonment this decision would make

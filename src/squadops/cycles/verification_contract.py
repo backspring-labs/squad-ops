@@ -609,6 +609,9 @@ class VerificationContract:
             error_code = probe.expect.get("error_code")
             if error_code:
                 line += f" (error_code: {error_code})"
+            error_message = probe.expect.get("error_message")
+            if error_message is not None:
+                line += f" (error message, word for word: {error_message!r})"
             lines.append(line)
         lines.extend(str(exp) for exp in self.behavioral.suite.coverage_expectations)
         return lines
