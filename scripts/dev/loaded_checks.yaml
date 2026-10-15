@@ -974,3 +974,20 @@ checks:
       import squadops.capabilities.handlers.cycle.qa_test as qa
       print(first, hasattr(qa, "run_probes"), hasattr(qa, "run_build_validation"))
     expect: "0 True True"
+  - id: "2340-runtime"
+    what: "a declared contract probe compares without its reason when a failed retest is weighed as progress"
+    container: squadops-runtime-api
+    code: |
+      from squadops.cycles.correction_signature import RetestReduction
+      before = frozenset({("p", "", "missing id"), ("tests_pass", "t.ts", "failed;test=a")})
+      after = frozenset({("p", "", "not ordered")})
+      print(sorted(RetestReduction(before, after, frozenset({"p"})).cleared), len(RetestReduction(before, after).cleared))
+    expect: "[('tests_pass', 't.ts', 'failed;test=a')] 2"
+  - id: "2341-runtime"
+    what: "the retest's verdict text names a failed probe, whose row carries a status and no passed"
+    container: squadops-runtime-api
+    code: |
+      import inspect
+      from squadops.execution.patch_acceptance import PatchAcceptance
+      print("row_is_blocking_failure(row)" in inspect.getsource(PatchAcceptance._retest_patched_suite))
+    expect: "True"
