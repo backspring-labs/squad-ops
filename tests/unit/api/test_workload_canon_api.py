@@ -172,12 +172,18 @@ class TestListRunsWorkloadFilter:
         mock_cycle_registry.list_runs.return_value = [run]
         resp = client.get("/api/v1/projects/hello_squad/cycles/cyc_001/runs")
         assert resp.status_code == 200
-        mock_cycle_registry.list_runs.assert_called_once_with("cyc_001", workload_type=None)
+        mock_cycle_registry.list_runs.assert_called_once_with(
+            "cyc_001", workload_type=None, limit=50, offset=0
+        )
 
     def test_with_workload_type_filter(self, client, mock_cycle_registry):
-        resp = client.get("/api/v1/projects/hello_squad/cycles/cyc_001/runs?workload_type=framing")
+        resp = client.get(
+            "/api/v1/projects/hello_squad/cycles/cyc_001/runs?workload_type=framing&limit=2&offset=1"
+        )
         assert resp.status_code == 200
-        mock_cycle_registry.list_runs.assert_called_once_with("cyc_001", workload_type="framing")
+        mock_cycle_registry.list_runs.assert_called_once_with(
+            "cyc_001", workload_type="framing", limit=2, offset=1
+        )
 
 
 class TestCreateRunWorkloadType:

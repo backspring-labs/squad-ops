@@ -8,7 +8,7 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import Any
 
-from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, Request
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Request
 
 from squadops import __version__ as SQUADOPS_VERSION
 from squadops._version import resolve_git_sha
@@ -23,6 +23,7 @@ from squadops.api.cycle_schemas import (
     ProposalRatingResponse,
 )
 from squadops.api.middleware.auth import require_scopes
+from squadops.api.paging import Page, page
 from squadops.api.routes.cycles.mapping import assessment_to_response, cycle_to_response
 from squadops.auth.models import Identity, Scope
 from squadops.cycles.check_tooling import resolve_provisioned_tooling
@@ -595,15 +596,16 @@ async def list_cycles(
     request: Request,
     project_id: str,
     status: CycleStatus | None = None,
-    limit: int = Query(50, ge=1, le=500),
-    offset: int = Query(0, ge=0),
+    page: Page = Depends(page),
 ) -> list[CycleResponse]:
     """A page of the project's cycles, newest first; ``status`` filters before the page
     (#1891). A full page means there may be more: ask again from ``offset + limit``."""
     from squadops.api.runtime.deps import get_cycle_registry
 
     registry = get_cycle_registry(request)
-    cycles = await registry.list_cycles(project_id, status=status, limit=limit, offset=offset)
+    cycles = await registry.list_cycles(
+        project_id, status=status, limit=page.limit, offset=page.offset
+    )
     # The page's runs in one read (#1976): one query per cycle made a page of 500 cost 501.
     runs = await registry.list_runs_for_cycles([c.cycle_id for c in cycles])
     return [cycle_to_response(c, runs[c.cycle_id]) for c in cycles]

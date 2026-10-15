@@ -297,3 +297,34 @@ async def test_unknown_ids_raise_their_not_found_errors(registry):
         await registry.control_log("cmp_missing00000")
     with pytest.raises(LaunchIntentNotFoundError):
         await registry.mark_launch_intent_launched("lnc_missing00000", "cyc_1", actor="l1")
+
+
+async def test_a_page_of_campaigns_is_newest_first():
+    """#1976: the campaigns route pages through ``list_campaigns``. Bug caught: a page cut from
+    insertion order, so a page did not hold the newest campaigns."""
+    from datetime import timedelta
+
+    from tests.unit.campaigns.builders import T0
+
+    reg = MemoryCampaignRegistry()
+    for n, campaign_id in enumerate(
+        ("cmp_old0000000001", "cmp_new0000000003", "cmp_mid0000000002")
+    ):
+        created_at = T0 + timedelta(hours={0: 0, 1: 2, 2: 1}[n])
+        await reg.create_campaign(
+            campaign(campaign_id, created_at=created_at),
+            actor="owner",
+            actor_role="owner",
+            reason="r",
+            idempotency_key=f"create-{campaign_id}",
+        )
+
+    every = await reg.list_campaigns("group_run")
+    page = await reg.list_campaigns("group_run", limit=1, offset=1)
+
+    assert [c.campaign_id for c in every] == [
+        "cmp_new0000000003",
+        "cmp_mid0000000002",
+        "cmp_old0000000001",
+    ]
+    assert [c.campaign_id for c in page] == ["cmp_mid0000000002"]

@@ -109,10 +109,12 @@ class CycleRegistryPort(ABC):
         cycle_id: str,
         *,
         workload_type: str | None = None,
-        limit: int = 50,
+        limit: int | None = None,
         offset: int = 0,
     ) -> list[Run]:
-        """List runs for a cycle, with optional workload_type filter and pagination."""
+        """A cycle's runs in run order, optionally of one workload type. ``limit`` ``None`` is every
+        run, as an internal reader needs; the runs route pages with its own (#1976: a default of 50
+        silently cut every internal reader's list at 50)."""
 
     @abstractmethod
     async def list_runs_for_cycles(

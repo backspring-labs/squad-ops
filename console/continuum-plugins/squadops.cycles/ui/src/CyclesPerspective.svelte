@@ -19,6 +19,7 @@
   5. After creating cycle -> set to new cycle_id + run_id from response
 -->
 <script>
+  import { fetchAllPages } from '../../../shared/paging.js';
   import { onMount, onDestroy } from 'svelte';
   import CyclesList from './CyclesList.svelte';
   import CyclesRunTimeline from './CyclesRunTimeline.svelte';
@@ -127,16 +128,16 @@
       selectedCycleDetail = null;
     }
 
-    // Auto-select latest run
+    // Auto-select the latest run: the highest run number, whatever the list's order (#1976:
+    // the list is in run order, so its first item was the first run, not the latest).
     try {
-      const resp = await apiFetch(
+      const listed = await fetchAllPages(
+        apiFetch,
         `${apiBase}/api/v1/projects/${projectId}/cycles/${cycleId}/runs`
       );
-      if (resp.ok) {
-        const runs = await resp.json();
-        if (runs.length > 0) {
-          selection.active_run_id = runs[0].run_id;
-        }
+      if (listed.ok && listed.items.length > 0) {
+        const latest = listed.items.reduce((a, b) => (b.run_number > a.run_number ? b : a));
+        selection.active_run_id = latest.run_id;
       }
     } catch {
       // Non-critical
@@ -167,12 +168,8 @@
       const url = runId
         ? `${apiBase}/api/v1/projects/${projectId}/cycles/${cycleId}/runs/${runId}/artifacts`
         : `${apiBase}/api/v1/projects/${projectId}/cycles/${cycleId}/artifacts`;
-      const resp = await apiFetch(url);
-      if (resp.ok) {
-        docArtifacts = await resp.json();
-      } else {
-        docArtifacts = [];
-      }
+      const listed = await fetchAllPages(apiFetch, url);
+      docArtifacts = listed.ok ? listed.items : [];
     } catch {
       docArtifacts = [];
     }

@@ -24,6 +24,7 @@ from squadops.cli.output import (
     print_success,
     print_table,
 )
+from squadops.cli.paging import limit_option, offset_option, say_when_full
 from squadops.cycles.delivered_tree import StoredArtifact, delivered_files
 
 
@@ -52,14 +53,19 @@ def list_runs(
     ctx: typer.Context,
     project_id: str = typer.Argument(...),
     cycle_id: str = typer.Argument(...),
+    limit: int = limit_option("Runs"),
+    offset: int = offset_option("in run order"),
 ):
-    """List runs for a cycle."""
+    """List a page of a cycle's runs, in run order."""
     fmt = ctx.obj.get("format", "table") if ctx.obj else "table"
     quiet = ctx.obj.get("quiet", False) if ctx.obj else False
 
     try:
         client = _get_client(ctx)
-        data = client.get(f"/api/v1/projects/{project_id}/cycles/{cycle_id}/runs")
+        data = client.get(
+            f"/api/v1/projects/{project_id}/cycles/{cycle_id}/runs",
+            params={"limit": limit, "offset": offset},
+        )
         client.close()
     except CLIError as e:
         print_error(str(e))
@@ -85,14 +91,20 @@ def list_runs(
             rows,
             quiet=quiet,
         )
+        if not quiet:
+            say_when_full(len(data), limit, offset)
 
 
 @app.command("ls", hidden=True)
 def list_runs_alias(
-    ctx: typer.Context, project_id: str = typer.Argument(...), cycle_id: str = typer.Argument(...)
+    ctx: typer.Context,
+    project_id: str = typer.Argument(...),
+    cycle_id: str = typer.Argument(...),
+    limit: int = limit_option("Runs"),
+    offset: int = offset_option("in run order"),
 ):
     """Alias for list."""
-    list_runs(ctx, project_id, cycle_id)
+    list_runs(ctx, project_id, cycle_id, limit, offset)
 
 
 @app.command("show")

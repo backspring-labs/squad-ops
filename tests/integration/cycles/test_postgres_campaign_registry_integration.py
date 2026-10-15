@@ -574,3 +574,36 @@ async def test_the_holder_gives_the_box_back_and_the_lease_reads_back_as_the_squ
     )
     lease = await PostgresCampaignRegistry(pool=pool).box_lease()
     assert (lease.holder, lease.held_by, lease.expires_at) == (LeaseHolder.SQUAD, "squadops", None)
+
+
+async def test_a_page_of_campaigns_is_newest_first_on_postgres(pool):
+    """#1976, through the real registry: ``LIMIT``/``OFFSET`` over ``created_at DESC``, and no
+    limit is every campaign. Bug caught: a page cut before the order, or a missing limit read as
+    zero rows."""
+    from datetime import timedelta
+
+    from tests.unit.campaigns.builders import T0
+
+    reg = PostgresCampaignRegistry(pool=pool)
+    for hours, campaign_id in (
+        (0, "cmp_pgold0000001"),
+        (2, "cmp_pgnew0000003"),
+        (1, "cmp_pgmid0000002"),
+    ):
+        await reg.create_campaign(
+            campaign(campaign_id, project_id=PROJECT, created_at=T0 + timedelta(hours=hours)),
+            actor="owner",
+            actor_role="owner",
+            reason="r",
+            idempotency_key=f"create-{campaign_id}",
+        )
+
+    every = await reg.list_campaigns(PROJECT)
+    page = await reg.list_campaigns(PROJECT, limit=1, offset=1)
+
+    assert [c.campaign_id for c in every] == [
+        "cmp_pgnew0000003",
+        "cmp_pgmid0000002",
+        "cmp_pgold0000001",
+    ]
+    assert [c.campaign_id for c in page] == ["cmp_pgmid0000002"]

@@ -92,12 +92,25 @@ Every router registered in `src/squadops/api/runtime/main.py`:
 ## Paging a list (#1891)
 
 A list route that can outgrow one response takes `limit` (a stated default and a maximum) and
-`offset`, and returns its page newest first. A filter applies **before** the page: `?status=failed`
-is the newest failed cycles, never the failed ones among the newest `limit`. A full page means
-there may be more, so ask again from `offset + limit`. The response stays the bare list; no total
-is returned, because a derived filter would have to read the whole history to count it. The cycles
-list (`GET /api/v1/projects/{project_id}/cycles`, default 50, maximum 500) is the first route on
-this convention, and the CLI says so when a page is full.
+`offset`, and returns its page in the list's stated order. That is newest first for a time-ordered
+list, and in sequence for a list whose items form one (a cycle's runs, in run order). A filter
+applies **before** the page: `?status=failed` is the newest failed cycles, never the failed ones
+among the newest `limit`. A full page means there may be more, so ask again from `offset + limit`.
+The response stays the bare list; no total is returned, because a derived filter would have to read
+the whole history to count it.
+
+The lists on this convention, each with default 50 and maximum 500 (`squadops.api.paging`):
+- **the cycles list** (#1891, the first), newest first;
+- **a cycle's runs**, in run order (#1976);
+- **the artifact lists** (a project's, a cycle's, a run's), newest first by `created_at`, then by
+  id, so a page is stable (#1976);
+- **a project's campaigns**, newest first (#1976).
+
+Only a route pages. A port's list method takes `limit=None` for every item, which an internal
+reader needs. A default of 50 on `list_runs` once cut every internal reader at 50 without a word.
+The CLI says when a page is full (`squadops.cli.paging`). A console view that needs a whole list
+pages through it (`console/continuum-plugins/shared/paging.js`), and
+`tests/unit/console/test_paged_lists.py` refuses a bare fetch of one.
 
 ## Adding a route — the checklist
 

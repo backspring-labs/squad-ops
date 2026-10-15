@@ -19,6 +19,7 @@ from squadops.campaigns.models import ControlOperation
 from squadops.cli.client import CLIError
 from squadops.cli.client import get_client as _get_client
 from squadops.cli.output import print_detail, print_error, print_json, print_success, print_table
+from squadops.cli.paging import limit_option, offset_option, say_when_full
 
 app = typer.Typer(name="campaigns", help="Create, read and control campaigns (SIP-0109)")
 
@@ -94,15 +95,20 @@ def create_campaign(
 def list_campaigns(
     ctx: typer.Context,
     project_id: str = typer.Option(..., "--project", "-p"),
+    limit: int = limit_option("Campaigns"),
+    offset: int = offset_option("newest first"),
 ):
-    """List a project's campaigns, newest first."""
-    data = _call(ctx, "get", "/api/v1/campaigns", params={"project_id": project_id})
+    """List a page of a project's campaigns, newest first."""
+    params = {"project_id": project_id, "limit": limit, "offset": offset}
+    data = _call(ctx, "get", "/api/v1/campaigns", params=params)
     fmt, quiet = _fmt(ctx)
     if fmt == "json":
         print_json(data)
         return
     rows = [[c["campaign_id"], c["state"], c.get("outcome") or "", c["updated_at"]] for c in data]
     print_table(["Campaign ID", "State", "Outcome", "Updated"], rows, quiet=quiet)
+    if not quiet:
+        say_when_full(len(data), limit, offset)
 
 
 @app.command("show")

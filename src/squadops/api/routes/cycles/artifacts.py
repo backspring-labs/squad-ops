@@ -15,6 +15,7 @@ from squadops.api.cycle_schemas import (
     BaselinePromoteRequest,
 )
 from squadops.api.middleware.auth import require_scopes
+from squadops.api.paging import Page, page
 from squadops.api.routes.cycles.mapping import artifact_to_response
 from squadops.auth.models import Scope
 from squadops.cycles.models import (
@@ -177,6 +178,7 @@ async def list_project_artifacts(
     project_id: str,
     artifact_type: str | None = None,
     promotion_status: str | None = None,
+    page: Page = Depends(page),
 ) -> list[ArtifactRefResponse]:
     from squadops.api.runtime.deps import get_artifact_vault
 
@@ -190,6 +192,8 @@ async def list_project_artifacts(
         project_id=project_id,
         artifact_type=artifact_type,
         promotion_status=promotion_status,
+        limit=page.limit,
+        offset=page.offset,
     )
     return [artifact_to_response(r) for r in refs]
 
@@ -203,6 +207,7 @@ async def list_cycle_artifacts(
     project_id: str,
     cycle_id: str,
     promotion_status: str | None = None,
+    page: Page = Depends(page),
 ) -> list[ArtifactRefResponse]:
     from squadops.api.runtime.deps import get_artifact_vault
 
@@ -216,6 +221,8 @@ async def list_cycle_artifacts(
         project_id=project_id,
         cycle_id=cycle_id,
         promotion_status=promotion_status,
+        limit=page.limit,
+        offset=page.offset,
     )
     return [artifact_to_response(r) for r in refs]
 
@@ -230,6 +237,7 @@ async def list_run_artifacts(
     cycle_id: str,
     run_id: str,
     promotion_status: str | None = None,
+    page: Page = Depends(page),
 ) -> list[ArtifactRefResponse]:
     from squadops.api.runtime.deps import get_artifact_vault
 
@@ -244,6 +252,8 @@ async def list_run_artifacts(
         cycle_id=cycle_id,
         run_id=run_id,
         promotion_status=promotion_status,
+        limit=page.limit,
+        offset=page.offset,
     )
     return [artifact_to_response(r) for r in refs]
 

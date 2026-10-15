@@ -19,6 +19,7 @@ from squadops.cli.output import (
     print_success,
     print_table,
 )
+from squadops.cli.paging import limit_option, offset_option, say_when_full
 
 artifacts_app = typer.Typer(name="artifacts", help="Manage artifacts")
 baseline_app = typer.Typer(name="baseline", help="Manage baseline artifacts")
@@ -129,8 +130,10 @@ def list_artifacts(
     cycle_id: str | None = typer.Option(None, "--cycle", help="Filter by cycle ID"),
     run_id: str | None = typer.Option(None, "--run", help="Filter by run ID (requires --cycle)"),
     artifact_type: str | None = typer.Option(None, "--type", help="Filter by artifact type"),
+    limit: int = limit_option("Artifacts"),
+    offset: int = offset_option("newest first"),
 ):
-    """List artifacts for a project.
+    """List a page of a project's artifacts, newest first.
 
     Selection rule: if --cycle and --run provided, uses run-scoped endpoint.
     If only --cycle provided, uses cycle-scoped endpoint.
@@ -145,14 +148,18 @@ def list_artifacts(
 
     try:
         client = _get_client(ctx)
+        page: dict = {"limit": limit, "offset": offset}
         if cycle_id and run_id:
             data = client.get(
-                f"/api/v1/projects/{project_id}/cycles/{cycle_id}/runs/{run_id}/artifacts"
+                f"/api/v1/projects/{project_id}/cycles/{cycle_id}/runs/{run_id}/artifacts",
+                params=page,
             )
         elif cycle_id:
-            data = client.get(f"/api/v1/projects/{project_id}/cycles/{cycle_id}/artifacts")
+            data = client.get(
+                f"/api/v1/projects/{project_id}/cycles/{cycle_id}/artifacts", params=page
+            )
         else:
-            params = {}
+            params = dict(page)
             if artifact_type:
                 params["artifact_type"] = artifact_type
             data = client.get(f"/api/v1/projects/{project_id}/artifacts", params=params)
@@ -174,6 +181,8 @@ def list_artifacts(
             for a in data
         ]
         print_table(["Artifact ID", "Type", "Filename", "Size"], rows, quiet=quiet)
+        if not quiet:
+            say_when_full(len(data), limit, offset)
 
 
 @artifacts_app.command("ls", hidden=True)

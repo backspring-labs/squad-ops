@@ -49,8 +49,11 @@ class ArtifactVaultPort(ABC):
         run_id: str | None = None,
         artifact_type: str | None = None,
         promotion_status: str | None = None,
+        limit: int | None = None,
+        offset: int = 0,
     ) -> list[ArtifactRef]:
-        """List artifacts with optional filters."""
+        """Artifacts matching the filters, newest first by ``created_at`` (then by id), so a page is
+        stable (#1976). ``limit`` ``None`` is every one; the artifact routes page with their own."""
 
     @abstractmethod
     async def set_baseline(self, project_id: str, artifact_type: str, artifact_id: str) -> None:
