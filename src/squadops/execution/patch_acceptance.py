@@ -42,6 +42,7 @@ from squadops.cycles.correction_signature import (
     retest_reduction,
 )
 from squadops.cycles.failure_evidence import build_failure_evidence
+from squadops.cycles.implementation_plan import resolve_criteria_for_files
 from squadops.cycles.patch_verification import (
     EXECUTED_IN_RUNTIME_API,
     FILE_ABSENT_REASONS,
@@ -54,7 +55,9 @@ from squadops.cycles.patch_verification import (
     supersede_evidence_artifacts,
     verify_patched_artifacts,
 )
+from squadops.cycles.scaffold_enforcement import named_producer
 from squadops.cycles.scaffold_integrity_evidence import STAGE_PATCH_VERIFICATION
+from squadops.cycles.verification_contract import VerificationContract
 from squadops.execution.execution_errors import _ExecutionError
 from squadops.stacks.development_profiles import (
     collected_test_patterns_for,
@@ -455,8 +458,6 @@ class PatchAcceptance:
         # patch (``cyc_375bdea6e140``). An artifact naming no producer is refused loudly:
         # judged under the failed task's grants it would be that defect again, silently.
         if bound_record is not None:
-            from squadops.cycles.scaffold_enforcement import named_producer
-
             unnamed = [
                 str(a.get("name") or a.get("path") or "(unnamed)")
                 for a in repair_artifacts
@@ -528,9 +529,6 @@ class PatchAcceptance:
         file_owned: list[Any] = []
         if interface_manifest is not None:
             try:
-                from squadops.cycles.implementation_plan import resolve_criteria_for_files
-                from squadops.cycles.verification_contract import VerificationContract
-
                 file_owned = resolve_criteria_for_files(
                     VerificationContract.from_dict(emit_contract_dict(interface_manifest)),
                     [a.get("name") for a in patched_artifacts if isinstance(a, dict)],

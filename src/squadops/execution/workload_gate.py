@@ -26,6 +26,7 @@ from hashlib import sha256
 from typing import Any
 from uuid import uuid4
 
+from squadops.campaigns.change_request import apply_manifest_delta, load_stored_change_request
 from squadops.campaigns.escalation import (
     EscalationIdentity,
     escalations,
@@ -53,10 +54,15 @@ from squadops.campaigns.plan_review_tier import (
     plan_review_tier,
 )
 from squadops.capabilities.handlers.planning.proposal import CHANGE_REQUEST_ARTIFACT_TYPE
+from squadops.cycles.contract_derivation import SEEDED_MANIFEST_FILENAME, derive_and_store_contract
 from squadops.cycles.cycle_end import CycleStopReason
 from squadops.cycles.gate_decisions import record_gate_decision
 from squadops.cycles.gate_promotion import promote_run_artifacts
-from squadops.cycles.manifest_authoring import cited_late_answers, open_decisions
+from squadops.cycles.manifest_authoring import (
+    MANIFEST_ARTIFACT_TYPE,
+    cited_late_answers,
+    open_decisions,
+)
 from squadops.cycles.models import (
     APPROVING_DECISIONS,
     ArtifactRef,
@@ -773,16 +779,6 @@ class WorkloadGate:
 
         Re-entering the gate after a restart finds the seed already stored and stores nothing.
         """
-        from squadops.campaigns.change_request import (
-            apply_manifest_delta,
-            load_stored_change_request,
-        )
-        from squadops.cycles.contract_derivation import (
-            SEEDED_MANIFEST_FILENAME,
-            derive_and_store_contract,
-        )
-        from squadops.cycles.gate_promotion import promote_run_artifacts
-        from squadops.cycles.manifest_authoring import MANIFEST_ARTIFACT_TYPE
 
         stored = await self._artifact_vault.list_artifacts(run_id=run.run_id)
         if any(r.metadata.get("producing_task_type") == INCREMENT_SEED_PRODUCER for r in stored):

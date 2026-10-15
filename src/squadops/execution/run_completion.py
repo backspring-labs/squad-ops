@@ -26,12 +26,17 @@ from hashlib import sha256
 from typing import TYPE_CHECKING, Any, Literal
 from uuid import uuid4
 
+from squadops.cycles.check_registry import checks_a_run_can_subject
 from squadops.cycles.failure_attribution import TerminalKind
+from squadops.cycles.flow_runs import end_open_flow_runs
 from squadops.cycles.llm_usage import RunUsage
 from squadops.cycles.models import ArtifactRef, RunStatus
+from squadops.cycles.naming import flow_run_name
+from squadops.cycles.replay import REPLAY_COMPATIBILITY_ELEMENTS, parse_replay_declaration
 from squadops.cycles.run_loop_summary import RunLoopSummary, RunTerminalDecision
 from squadops.cycles.run_report_builder import build_run_report
 from squadops.cycles.verification_integrity import (
+    ReplayProvenance,
     RunVerificationSummary,
     aggregate_verification,
 )
@@ -44,6 +49,7 @@ from squadops.execution.execution_errors import (
 )
 from squadops.ports.comms.queue import QueueError
 from squadops.runtime.activity_reaper import abort_cycle_activities
+from squadops.telemetry.models import StructuredEvent
 
 if TYPE_CHECKING:
     from squadops.cycles.models import Cycle
@@ -222,8 +228,6 @@ class RunCompletion:
         the run's own, which ``finalize`` has just ended with the run's status."""
         if self._workflow_tracker is None:
             return
-        from squadops.cycles.flow_runs import end_open_flow_runs
-        from squadops.cycles.naming import flow_run_name
 
         project_id = cycle.project_id if cycle is not None else None
         if project_id is None and self._cycle_registry is not None:
@@ -274,8 +278,6 @@ class RunCompletion:
         """
         # LangFuse: close cycle trace
         if self._llm_observability and obs_ctx:
-            from squadops.telemetry.models import StructuredEvent
-
             self._llm_observability.record_event(
                 obs_ctx,
                 StructuredEvent(
@@ -400,8 +402,6 @@ class RunCompletion:
             if declared:
                 required_check_ids = tuple(declared)
         if plan is not None and required_check_ids:
-            from squadops.cycles.check_registry import checks_a_run_can_subject
-
             can_subject = checks_a_run_can_subject(e.task_type for e in plan)
             required_not_owed = tuple(c for c in required_check_ids if c not in can_subject)
             required_check_ids = tuple(c for c in required_check_ids if c in can_subject)
@@ -440,11 +440,6 @@ class RunCompletion:
         prefix evidence is still inherited. Best-effort like the report itself;
         never raises.
         """
-        from squadops.cycles.replay import (
-            REPLAY_COMPATIBILITY_ELEMENTS,
-            parse_replay_declaration,
-        )
-        from squadops.cycles.verification_integrity import ReplayProvenance
 
         try:
             if cycle is None:

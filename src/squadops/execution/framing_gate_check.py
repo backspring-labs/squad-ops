@@ -23,8 +23,17 @@ from hashlib import sha256
 from typing import Any
 from uuid import uuid4
 
+from squadops.campaigns.increment_tree import (
+    approved_change_request,
+    increment_baseline,
+    increment_criterion_files,
+    increment_footprint,
+    increment_frozen_files,
+)
+from squadops.cycles.authoring_failure import assess_authoring_outcome
 from squadops.cycles.contract_derivation import CONTRACT_ARTIFACT_TYPE, SEEDED_MANIFEST_FILENAME
 from squadops.cycles.frozen_check_validation import frozen_check_violations
+from squadops.cycles.implementation_plan import ImplementationPlan
 from squadops.cycles.manifest_authoring import MANIFEST_ARTIFACT_TYPE
 from squadops.cycles.models import PLAN_JUDGED_WORKLOADS, ArtifactRef, Cycle
 from squadops.cycles.rejection_baseline import (
@@ -95,8 +104,6 @@ class FramingGateCheck:
         # increment gate authors a change request, and would always read as a collapsed framing.
         if getattr(run, "workload_type", None) not in PLAN_JUDGED_WORKLOADS:
             return []
-
-        from squadops.cycles.implementation_plan import ImplementationPlan
 
         errors: list[str] = []
         interface_content: str | None = None
@@ -527,7 +534,6 @@ class FramingGateCheck:
         on ``classifier`` (SIP-0108 §4.2) — the blocking ones, since an advisory proof refuses
         nothing — so the refusal is read by which proofs failed, never by parsing this note.
         """
-        from squadops.cycles.authoring_failure import assess_authoring_outcome
 
         outcome = assess_authoring_outcome(content)
         if not outcome.rejected:
@@ -540,10 +546,6 @@ class FramingGateCheck:
     async def _increment_frozen_files(self, cycle: Cycle) -> tuple[tuple[str, str], ...]:
         """The frozen criteria files the plan may not write (§8.1): the launch's pins, less what
         the approved change retires. ``()`` for any other cycle; never raises (#473)."""
-        from squadops.campaigns.increment_tree import (
-            approved_change_request,
-            increment_frozen_files,
-        )
 
         try:
             document = await approved_change_request(self._artifact_vault, cycle)
@@ -561,10 +563,6 @@ class FramingGateCheck:
         request the run was forwarded; ``()`` for any other cycle. The gate never raises
         (#473): a framing run without its change request could not have been provisioned, so
         an unreadable one here is logged and the rule skipped."""
-        from squadops.campaigns.increment_tree import (
-            approved_change_request,
-            increment_criterion_files,
-        )
 
         try:
             document = await approved_change_request(self._artifact_vault, cycle)
@@ -582,7 +580,6 @@ class FramingGateCheck:
     async def _increment_footprint(self, cycle: Cycle, run_manifest: str | None) -> Any:
         """The increment's footprint, or ``None`` for a cycle that is not an increment (or
         whose candidate manifest cannot be read, which the manifest's own nets report)."""
-        from squadops.campaigns.increment_tree import increment_baseline, increment_footprint
 
         if increment_baseline(cycle.resolved_config()) is None:
             return None

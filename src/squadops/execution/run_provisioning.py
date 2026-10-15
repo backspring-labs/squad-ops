@@ -24,6 +24,7 @@ from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from typing import Any
 
+from squadops.campaigns.increment_tree import approved_change_request, starting_tree_refs
 from squadops.capabilities.lesson_supply import supply_for_cycle
 from squadops.cycles.models import Cycle, RunStatus, WorkloadType
 from squadops.cycles.task_plan import generate_task_plan
@@ -169,8 +170,6 @@ class RunProvisioning:
         # implementation's evaluation judges the criteria it names (§8).
         change_request = None
         if run.workload_type in (WorkloadType.FRAMING, WorkloadType.IMPLEMENTATION):
-            from squadops.campaigns.increment_tree import approved_change_request
-
             change_request = await approved_change_request(self._artifact_vault, cycle)
 
         plan = generate_task_plan(
@@ -249,7 +248,6 @@ class RunProvisioning:
                 # (#881); only what the increment adds stays a stub.
                 # #1876: never its scaffold-frozen files, which the skeleton above regenerated
                 # from the candidate manifest.
-                from squadops.campaigns.increment_tree import starting_tree_refs
 
                 seed_artifact_refs.extend(
                     await starting_tree_refs(

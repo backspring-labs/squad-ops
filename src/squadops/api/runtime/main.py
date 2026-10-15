@@ -61,6 +61,8 @@ from squadops.campaigns.projection import ProjectingCampaignRegistry
 from squadops.config import config_fingerprint, load_config, redact_config
 from squadops.config.schema import AppConfig
 from squadops.cycles.cycle_assessment import AssessorIdentity
+from squadops.execution.cycle_evidence import assess_cycle
+from squadops.execution.reply_router import ReplyRouter
 from squadops.memory.reconcile import reconcile_recent
 
 from .deps import PORT_SLOTS
@@ -387,7 +389,6 @@ async def _init_cycle_subsystem(state, config, pool) -> None:
     # SIP-0094: per-agent reply-queue router. Holds one long-lived
     # subscription per agent (opened lazily on first dispatch) and resolves
     # task futures. Stopped during shutdown (D13).
-    from squadops.execution.reply_router import ReplyRouter
 
     state.reply_router = ReplyRouter(queue_adapter)
 
@@ -473,7 +474,6 @@ async def _init_cycle_subsystem(state, config, pool) -> None:
     from functools import partial
 
     from adapters.memory.recall import create_failure_recall
-    from squadops.execution.cycle_evidence import assess_cycle
 
     # SIP-0109 §13 (step 6): every row a non-route writer commits — the gate's submission, the
     # completion boundary's promotion and decision, the launcher's mark — is projected to the
