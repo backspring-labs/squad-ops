@@ -153,6 +153,14 @@ class TestDeleteModel:
         assert resp.status_code == 204
         assert resp.content == b""
 
+    def test_the_clis_client_reads_the_delete_as_done(self, client):
+        """#1976, wiring: the CLI's own client against the route. Bug caught: a 204 the CLI
+        reports as an unexpected response, so `squadops models delete` fails on a delete it made."""
+        from squadops.cli.client import APIClient
+        from squadops.cli.config import CLIConfig
+
+        assert APIClient(CLIConfig(), client=client).delete("/api/v1/models/qwen2.5:7b") == {}
+
     def test_not_found(self, client, mock_llm_port):
         from squadops.llm.exceptions import LLMModelNotFoundError
 

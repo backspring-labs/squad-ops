@@ -181,6 +181,12 @@ class TestErrorMapping:
             api.get("/test")
         assert "req-abc-123" in str(exc_info.value)
 
+    def test_a_204_is_success_with_no_body(self):
+        """#1976: a delete answers 204 with no body. Bug caught: the CLI reporting a delete it just
+        made as an unexpected response, because it parsed every success as JSON."""
+        api = _make_api_client_with_response(204, body=None)
+        assert api.delete("/api/v1/models/qwen2.5:7b") == {}
+
     def test_json_parse_failure(self):
         api = _make_api_client_with_response(200, body=None)
         with pytest.raises(CLIError) as exc_info:

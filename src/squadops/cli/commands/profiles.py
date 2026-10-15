@@ -220,13 +220,14 @@ def delete_profile(ctx: typer.Context, profile_id: str = typer.Argument(...)):
 
     try:
         client = _get_client(ctx)
-        data = client.delete(f"/api/v1/squad-profiles/{profile_id}")
+        client.delete(f"/api/v1/squad-profiles/{profile_id}")
         client.close()
     except CLIError as e:
         print_error(str(e))
         raise typer.Exit(code=e.exit_code) from e
 
     if fmt == "json":
-        print_json(data)
+        # The route answers 204 with no body (#1976), so the CLI states what it did.
+        print_json({"status": "deleted", "profile_id": profile_id})
     else:
         print_success(f"Deleted profile: {profile_id}")

@@ -142,6 +142,8 @@ class APIClient:
         """Parse JSON response or raise CLIError for error status codes."""
         if response.status_code >= 400:
             self._handle_error_status(response)
+        if response.status_code == 204:
+            return {}  # a delete answers 204 with no body (#1976)
         try:
             return response.json()
         except Exception:
