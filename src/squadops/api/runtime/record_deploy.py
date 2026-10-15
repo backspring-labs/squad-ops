@@ -30,6 +30,8 @@ from collections.abc import Mapping
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any
 
+from squadops.bootstrap.secrets import secret_provider_for
+from squadops.config import load_config
 from squadops.cycles.deploy_record import (
     DeployFactsError,
     DeployRecord,
@@ -140,8 +142,6 @@ async def _deploy_config_and_pool() -> tuple[AppConfig, asyncpg.Pool]:
     references, which only a secret provider resolves (the 1.9 deploy's first record failed on
     exactly this)."""
     from adapters.persistence.pool import create_pool
-    from squadops.bootstrap.secrets import secret_provider_for
-    from squadops.config import load_config
 
     config = load_config(secret_provider_factory=secret_provider_for)
     return config, await create_pool(config.db.url, min_size=1, max_size=2)

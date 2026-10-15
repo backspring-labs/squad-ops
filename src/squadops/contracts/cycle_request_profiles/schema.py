@@ -11,6 +11,7 @@ from __future__ import annotations
 from pydantic import BaseModel, Field, field_validator
 
 from squadops.api.cycle_schemas import CycleCreateRequest
+from squadops.cycles.check_registry import framework_check_ids
 
 # Ground truth for allowed default keys — derived from the server DTO (D9).
 _ALLOWED_DEFAULT_KEYS = set(CycleCreateRequest.model_fields.keys())
@@ -112,7 +113,6 @@ def _validate_required_checks(defaults: dict) -> None:
 
     # Reject unknown ids only after the shape is sound (so shape errors report
     # first). Imported locally to keep the contracts schema import-light.
-    from squadops.cycles.check_registry import framework_check_ids
 
     known = framework_check_ids()
     unknown = sorted(c for c in checks if c not in known)

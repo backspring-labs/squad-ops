@@ -30,6 +30,8 @@ from collections.abc import Sequence
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
+from squadops.stacks.stack_nextjs_ts_tests import derive_scaffold_behaviors
+
 if TYPE_CHECKING:  # pragma: no cover - annotations only
     from squadops.stacks.scaffold import InterfaceManifest
 
@@ -159,7 +161,6 @@ def derive_scaffold_coverage(manifest: InterfaceManifest) -> ScaffoldCoverage:
     ``summarize_coverage`` directly with the behaviours it already holds rather than
     paying for a second derivation.
     """
-    from squadops.stacks.stack_nextjs_ts_tests import derive_scaffold_behaviors
 
     behaviors, probes = derive_scaffold_behaviors(manifest)
     return summarize_coverage(

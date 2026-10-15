@@ -17,7 +17,7 @@ from squadops.campaigns.models import (
     CycleKind,
     LaunchRequest,
 )
-from squadops.contracts.cycle_request_profiles import cycle_request_body
+from squadops.contracts.cycle_request_profiles import cycle_request_body, load_profile
 
 
 def calibration_launch(campaign: Campaign) -> LaunchRequest:
@@ -132,7 +132,6 @@ def bound_launch(
     repair runs the build alone. It carries the increment's
     ``campaign_proposal`` block and the approved seeds, so every increment seam reads it as the
     increment it continues."""
-    from squadops.contracts.cycle_request_profiles import load_profile
 
     policy = campaign.policy
     keep = BOUND_WORKLOADS[kind]

@@ -22,6 +22,7 @@ from dataclasses import dataclass, replace
 from pathlib import Path
 
 from squadops.core.bounded_run import run_bounded
+from squadops.cycles.patch_verification import materialize
 from squadops.stacks.app_invocation import JS_SUITE_SUFFIXES
 from squadops.stacks.development_profiles import TEST_FRAMEWORK_BOTH, TEST_FRAMEWORK_VITEST
 
@@ -121,7 +122,6 @@ def _materialize_files(
     typed-acceptance / patch-verify workspaces share ONE write path — 0.1 found these were separate
     and that this one (the pf-26 pytest workspace) bypassed the chokepoint. Behavior-preserving
     today (no authorization passed); ownership authorization is wired in 2.4."""
-    from squadops.cycles.patch_verification import materialize
 
     materialize(files, workspace)
 

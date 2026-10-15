@@ -40,7 +40,9 @@ from squadops.cycles.acceptance_check_spec import (
     is_check_applicable,
 )
 from squadops.cycles.agent_config import resolve_agent_config, served_roles, serves_role
+from squadops.cycles.bound_scaffold_record import _normalize
 from squadops.cycles.failure_evidence import FailureLocus
+from squadops.cycles.fill_slot_integrity import declared_route_signatures
 from squadops.cycles.implementation_plan import (
     ImplementationPlan,
     TypedCheck,
@@ -1150,8 +1152,6 @@ def _fill_slot_signature_criteria(
     assignment stay restore-owned (SIP-0100), deliberately outside this check."""
     if not authors_source(task_type) or interface_manifest is None:
         return []
-    from squadops.cycles.bound_scaffold_record import _normalize
-    from squadops.cycles.fill_slot_integrity import declared_route_signatures
 
     if not is_scaffoldable_stack(getattr(interface_manifest, "stack", "")):
         return []

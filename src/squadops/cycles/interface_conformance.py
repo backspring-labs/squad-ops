@@ -26,6 +26,8 @@ from collections.abc import Iterable
 from dataclasses import dataclass
 from typing import Any
 
+from squadops.cycles.write_authorization import normalize_ws_path
+
 _ROUTE_METHODS = {"get", "post", "put", "patch", "delete"}
 # Pydantic/class internals that are not interface fields even if annotated.
 _NON_FIELD_NAMES = {"model_config"}
@@ -39,7 +41,6 @@ def _without_frozen(contents: dict[str, str], frozen_paths: Iterable[str] | None
     """
     if not frozen_paths:
         return contents
-    from squadops.cycles.write_authorization import normalize_ws_path
 
     frozen = {n for p in frozen_paths if (n := normalize_ws_path(str(p))) is not None}
     if not frozen:

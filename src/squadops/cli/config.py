@@ -12,6 +12,8 @@ import tomllib
 from dataclasses import dataclass
 from pathlib import Path
 
+from squadops.cli.auth import is_expired, load_cached_token, refresh_access_token, save_token
+
 
 @dataclass
 class CLIConfig:
@@ -98,12 +100,6 @@ def resolve_token(config: CLIConfig, token_flag: str | None = None) -> str | Non
     if env_token:
         return env_token
     # 3. Cached token file (with auto-refresh)
-    from squadops.cli.auth import (
-        is_expired,
-        load_cached_token,
-        refresh_access_token,
-        save_token,
-    )
 
     cached = load_cached_token()
     if cached is not None:

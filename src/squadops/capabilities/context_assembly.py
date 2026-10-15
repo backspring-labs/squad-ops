@@ -29,6 +29,7 @@ from dataclasses import dataclass
 from typing import Any
 
 from squadops.campaigns.proposed_behaviours import QA_PROPOSED_BEHAVIOURS_ARTIFACT_TYPE
+from squadops.cycles.write_authorization import normalize_ws_path
 from squadops.memory.authoring_envelope import AuthoringSeam
 from squadops.stacks.response_shape import response_surface_instructions
 from squadops.stacks.scaffold import (
@@ -536,7 +537,6 @@ def scaffold_shell_paths(inputs: Mapping[str, Any]) -> set[str]:
     scaffold = inputs.get("verification_scaffold")
     if not isinstance(scaffold, Mapping):
         return set()
-    from squadops.cycles.write_authorization import normalize_ws_path
 
     shells: set[str] = set()
     for key in ("files", "current_files"):

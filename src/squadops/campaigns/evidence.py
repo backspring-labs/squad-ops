@@ -21,7 +21,9 @@ from dataclasses import dataclass
 from enum import Enum
 from typing import Any
 
+from squadops.campaigns.escalation import ANSWERABLE, EscalationState, escalations
 from squadops.campaigns.models import CampaignState, ControlOperation, ControlOutcome
+from squadops.campaigns.scorecard import scorecard_lines
 
 #: Bumped when the package's shape changes; a reader checks it before reading further.
 #: 2: each cycle carries its runs' revision forms (#1710).
@@ -140,7 +142,6 @@ def digest(doc: dict) -> str:
         _proposals(rows) or ["- no proposal reached the increment gate"]
     )
     # #1960: what each increment cost, from the package alone.
-    from squadops.campaigns.scorecard import scorecard_lines
 
     lines += ["", "## Per increment", ""] + scorecard_lines(doc)
     lines += ["", "## Cycles", "", "| cycle | kind | ending | verdict | decided | attribution |"]
@@ -165,8 +166,6 @@ def _escalations_of(campaign: dict, rows: list[dict]):
     projection the gate and the sweep use."""
     from datetime import datetime
     from types import SimpleNamespace
-
-    from squadops.campaigns.escalation import escalations
 
     ops = {
         ControlOperation.ESCALATION_OPENED,
@@ -205,7 +204,6 @@ def _escalation_lines(campaign: dict, rows: list[dict]) -> list[str]:
 def _escalation_asks(campaign: dict, rows: list[dict]) -> list[str]:
     """What the owner is asked about the tier's escalations: a pending one is answered at its gate
     before the bound parks it; an expired or cancelled one with no answer can be answered late."""
-    from squadops.campaigns.escalation import ANSWERABLE, EscalationState
 
     asks = []
     for e in _escalations_of(campaign, rows):

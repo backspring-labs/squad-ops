@@ -32,7 +32,11 @@ from squadops.capabilities.handlers.cycle.validation import (
     _detect_stubs,
     _estimate_min_artifacts,
 )
+from squadops.capabilities.handlers.fenced_parser import extract_fenced_files
 from squadops.capabilities.reasoning_policy import reasoning_kwargs, resolve_reasoning_level
+from squadops.capabilities.source_containment import assess_source_containment
+from squadops.cycles.contract_expectations import expectation_lines, prose_criteria
+from squadops.cycles.emission_integrity import emission_stats
 from squadops.stacks.scaffold import is_scaffoldable_stack
 
 logger = logging.getLogger(__name__)
@@ -316,7 +320,6 @@ class DevelopmentDevelopHandler(_CycleTaskHandler):
         Falls back to unrendered plain text only when no renderer is wired
         (the same degraded path ``_build_dev_prompt`` has always had).
         """
-        from squadops.cycles.contract_expectations import expectation_lines, prose_criteria
 
         focus = inputs["subtask_focus"]
         description = str(inputs.get("subtask_description", "") or "")
@@ -424,7 +427,6 @@ class DevelopmentDevelopHandler(_CycleTaskHandler):
         context: ExecutionContext,
         inputs: dict[str, Any],
     ) -> HandlerResult:
-        from squadops.capabilities.handlers.fenced_parser import extract_fenced_files
 
         start_time = time.perf_counter()
 
@@ -621,7 +623,6 @@ class DevelopmentDevelopHandler(_CycleTaskHandler):
         # #431: generated-vs-stored accounting (primary response; a self-eval
         # merge changes artifacts, and the stats stay honest against the
         # response that produced the bulk of them)
-        from squadops.cycles.emission_integrity import emission_stats
 
         outputs["emission_stats"] = emission_stats(len(content), artifacts)
 
@@ -633,7 +634,6 @@ class DevelopmentDevelopHandler(_CycleTaskHandler):
         # Landing verified rather than assumed: #1052 put its findings in
         # `execution_evidence`, which nothing persists (#999), and called them "banked".
         # `outputs` reaches `build_failure_evidence`, which carries this key explicitly.
-        from squadops.capabilities.source_containment import assess_source_containment
 
         outputs["source_containment"] = assess_source_containment(artifacts)
 

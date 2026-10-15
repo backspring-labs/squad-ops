@@ -11,6 +11,7 @@ from __future__ import annotations
 from datetime import datetime
 from typing import TYPE_CHECKING, Any
 
+from squadops.memory.declarations import memory_disabled
 from squadops.memory.lessons import RecallPolicy, Snapshot, UnitKind, pin
 
 if TYPE_CHECKING:
@@ -48,7 +49,6 @@ async def pin_standalone_cycle(
 ) -> Snapshot | None:
     """A standalone cycle's pin at its creation (§0.7), or ``None`` for a campaign's cycle, which
     uses its campaign's snapshot."""
-    from squadops.memory.declarations import memory_disabled
 
     if getattr(cycle, "campaign_id", None):
         return None

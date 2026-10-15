@@ -25,8 +25,35 @@ from squadops.api.cycle_schemas import (
 from squadops.api.middleware.auth import require_scopes
 from squadops.api.paging import Page, page
 from squadops.api.routes.cycles.mapping import assessment_to_response, cycle_to_response
-from squadops.auth.models import Identity, Scope
+from squadops.api.runtime.deps import (
+    assess_cycle_from_stores,
+    get_artifact_vault,
+    get_audit_port,
+    get_box_reader,
+    get_cycle_event_bus,
+    get_cycle_registry,
+    get_deploy_registry,
+    get_flow_executor,
+    get_llm_port,
+    get_memory_store,
+    get_project_registry,
+    get_squad_profile_port,
+)
+from squadops.auth.models import AuditEvent, Identity, Scope
+from squadops.campaigns.change_request import load_stored_change_request
+from squadops.campaigns.proposal_rating import (
+    PROPOSAL_RATING_ARTIFACT_TYPE,
+    PROPOSAL_RATING_FILENAME,
+    rating_document,
+    rating_from_request,
+)
+from squadops.capabilities.handlers.planning.proposal import CHANGE_REQUEST_ARTIFACT_TYPE
 from squadops.cycles.check_tooling import resolve_provisioned_tooling
+from squadops.cycles.contract_derivation import (
+    ContractDerivationError,
+    derive_and_store_contract,
+    load_seeded_manifest_content,
+)
 from squadops.cycles.cycle_outcome import resolve_cycle_outcome
 from squadops.cycles.lifecycle import compute_config_hash
 from squadops.cycles.models import (
@@ -36,6 +63,7 @@ from squadops.cycles.models import (
     Gate,
     PreflightRejectedError,
     Run,
+    RunNotFoundError,
     SquadProfile,
     TaskFlowPolicy,
     ValidationError,
@@ -54,6 +82,13 @@ from squadops.cycles.preflight import (
     required_roles_decision,
     stack_development_profile_decision,
 )
+from squadops.cycles.replay import check_replay_compatibility, parse_replay_declaration
+from squadops.events.types import EventType
+from squadops.memory.pinning import pin_standalone_cycle
+from squadops.ports.llm.provider import LLMCapability
+from squadops.sandbox.environment import get_environment_contract
+from squadops.sandbox.main import sandbox_config_from_env
+from squadops.sandbox.preflight import sandbox_environment_decision
 
 logger = logging.getLogger(__name__)
 
@@ -71,7 +106,6 @@ async def _pulled_model_names(port: Any | None) -> list[str] | None:
     adapter class it is — SIP-0106 §3.2's site 2; the ``isinstance(OllamaAdapter)`` it
     replaces made every non-Ollama provider silently unverifiable (#1157).
     """
-    from squadops.ports.llm.provider import LLMCapability
 
     if port is None:
         logger.info("preflight_model_list_unverifiable", extra={"error": "no LLM port"})
@@ -92,10 +126,6 @@ async def _sandbox_preflight_decision() -> PreflightDecision:
     config ⇒ block (verifiable misconfiguration); unreachable service ⇒ the
     pure decision warns and allows (never block on missing evidence)."""
     import httpx
-
-    from squadops.sandbox.environment import get_environment_contract
-    from squadops.sandbox.main import sandbox_config_from_env
-    from squadops.sandbox.preflight import sandbox_environment_decision
 
     try:
         cfg = sandbox_config_from_env()
@@ -208,11 +238,6 @@ async def _seed_derived_contract(
     manifest raises :class:`PreflightRejectedError`: falling through to author mode
     would hand back a green carrying none of the criteria that were asked for.
     """
-    from squadops.cycles.contract_derivation import (
-        ContractDerivationError,
-        derive_and_store_contract,
-        load_seeded_manifest_content,
-    )
 
     overrides = body.execution_overrides or {}
     if overrides.get("contract_ref"):
@@ -252,11 +277,6 @@ async def _validate_replay_declaration(
     refusal names the failing element. Maintainer-only surface (the declaration
     rides ``execution_overrides``); no-op for normal cycles.
     """
-    from squadops.cycles.models import RunNotFoundError
-    from squadops.cycles.replay import (
-        check_replay_compatibility,
-        parse_replay_declaration,
-    )
 
     try:
         replay_req = parse_replay_declaration(body.execution_overrides or {})
@@ -324,14 +344,6 @@ class CreationPorts:
 
     @classmethod
     def of_request(cls, request: Request) -> "CreationPorts":
-        from squadops.api.runtime.deps import (
-            get_artifact_vault,
-            get_cycle_registry,
-            get_deploy_registry,
-            get_llm_port,
-            get_project_registry,
-            get_squad_profile_port,
-        )
 
         def optional(getter):
             try:
@@ -479,7 +491,6 @@ async def create_cycle(
     names the refusal and its reasons, and the refusal is a security-audit event. A campaign's
     own launches are refused by its launcher instead, as a ``launch_blocked`` row.
     """
-    from squadops.api.runtime.deps import get_box_reader, get_flow_executor
 
     verdict = await get_box_reader(request).verdict()
     if not verdict.allowed:
@@ -508,8 +519,6 @@ async def create_cycle(
     await _pin_memory(request, cycle)
 
     # SIP-0077: cycle.created
-    from squadops.api.runtime.deps import get_cycle_event_bus
-    from squadops.events.types import EventType
 
     get_cycle_event_bus(request).emit(
         EventType.CYCLE_CREATED,
@@ -553,9 +562,6 @@ async def _pin_memory(request: Request, cycle) -> None:
     launch: a pin that fails is logged, the cycle runs, and its seams record recall as failed."""
     from datetime import UTC, datetime
 
-    from squadops.api.runtime.deps import get_memory_store
-    from squadops.memory.pinning import pin_standalone_cycle
-
     store = get_memory_store(request)
     if store is None:
         return
@@ -570,8 +576,6 @@ def _audit_launch_refused(
 ) -> None:
     """A launch the box refused, to the security audit (§9.3). Fail-open: the refusal stands
     whether or not it is recorded."""
-    from squadops.api.runtime.deps import get_audit_port
-    from squadops.auth.models import AuditEvent
 
     audit = get_audit_port(request)
     if audit is None:
@@ -600,7 +604,6 @@ async def list_cycles(
 ) -> list[CycleResponse]:
     """A page of the project's cycles, newest first; ``status`` filters before the page
     (#1891). A full page means there may be more: ask again from ``offset + limit``."""
-    from squadops.api.runtime.deps import get_cycle_registry
 
     registry = get_cycle_registry(request)
     cycles = await registry.list_cycles(
@@ -613,7 +616,6 @@ async def list_cycles(
 
 @router.get("/{cycle_id}", dependencies=[Depends(require_scopes(Scope.CYCLES_READ))])
 async def get_cycle(request: Request, project_id: str, cycle_id: str) -> CycleResponse:
-    from squadops.api.runtime.deps import get_cycle_registry
 
     registry = get_cycle_registry(request)
     cycle = await registry.get_cycle(cycle_id)
@@ -640,7 +642,6 @@ async def get_cycle_assessment(
     evidence is an adapter concern, so the composition root owns it (#154) and this route
     asks the root. Read-only — nothing here writes, and no agent is in the path.
     """
-    from squadops.api.runtime.deps import assess_cycle_from_stores
 
     return assessment_to_response(await assess_cycle_from_stores(request, cycle_id))
 
@@ -662,15 +663,6 @@ async def rate_proposal(
     import hashlib
 
     from squadops.api.routes.campaigns.campaigns import actor_from
-    from squadops.api.runtime.deps import get_artifact_vault, get_cycle_registry
-    from squadops.campaigns.change_request import load_stored_change_request
-    from squadops.campaigns.proposal_rating import (
-        PROPOSAL_RATING_ARTIFACT_TYPE,
-        PROPOSAL_RATING_FILENAME,
-        rating_document,
-        rating_from_request,
-    )
-    from squadops.capabilities.handlers.planning.proposal import CHANGE_REQUEST_ARTIFACT_TYPE
 
     cycle = await get_cycle_registry(request).get_cycle(cycle_id)
     if cycle.campaign_id:

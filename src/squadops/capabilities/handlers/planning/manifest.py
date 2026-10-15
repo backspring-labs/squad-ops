@@ -26,6 +26,7 @@ from typing import TYPE_CHECKING, Any
 
 import yaml
 
+from squadops.capabilities.handlers._plan_authoring import retry_yaml_call
 from squadops.capabilities.handlers.base import HandlerEvidence, HandlerResult
 from squadops.capabilities.handlers.cross_cycle_lessons import cross_cycle_lessons_section
 from squadops.capabilities.handlers.planning.base import _PlanningTaskHandler
@@ -62,7 +63,6 @@ class DevelopmentAuthorManifestHandler(_PlanningTaskHandler):
         context: ExecutionContext,
         inputs: dict[str, Any],
     ) -> HandlerResult:
-        from squadops.capabilities.handlers._plan_authoring import retry_yaml_call
 
         start_time = time.perf_counter()
 

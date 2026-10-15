@@ -39,6 +39,7 @@ from squadops.cycles.acceptance_evaluation import (
     split_acceptance_criteria,
 )
 from squadops.cycles.bound_scaffold_record import BoundScaffoldRecord
+from squadops.cycles.check_registry import CHECK_REQUIRED_FILES, required_files_row
 from squadops.cycles.emission_integrity import (
     unresolved_import_summary,
     unresolved_imports,
@@ -736,8 +737,6 @@ def _required_files_record(
     a qa or dev repair is judged by its contract criteria, not by a file list.
     """
     from pathlib import PurePosixPath
-
-    from squadops.cycles.check_registry import CHECK_REQUIRED_FILES, required_files_row
 
     names = [str(name) for name in (required_files or []) if str(name)]
     if not names:

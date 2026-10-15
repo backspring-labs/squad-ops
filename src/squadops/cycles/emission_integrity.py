@@ -20,6 +20,8 @@ import ast
 from pathlib import Path
 from typing import Any
 
+from squadops.capabilities.handlers.emission_log import classify_fences
+
 
 def _python_artifact_name(art: Any) -> str | None:
     if not isinstance(art, dict):
@@ -183,8 +185,6 @@ def no_fenced_blocks_failure(
         ),
     }
     if content is not None:
-        from squadops.capabilities.handlers.emission_log import classify_fences
-
         marker["fences"] = classify_fences(content)
         marker["head"] = " ".join(str(content)[:160].split())
     return marker

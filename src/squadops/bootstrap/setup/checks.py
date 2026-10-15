@@ -27,6 +27,13 @@ from squadops.bootstrap.database_isolation import (
     TEST_DB_ROLE,
     test_role_dsn,
 )
+from squadops.bootstrap.setup.credentials import (
+    REPO,
+    load_registry,
+    problems,
+    read_env,
+    readable_by_others,
+)
 from squadops.bootstrap.setup.profile import (
     BootstrapProfile,
     DockerService,
@@ -35,6 +42,12 @@ from squadops.bootstrap.setup.profile import (
     OllamaModelExact,
     SystemDep,
 )
+from squadops.cycles.check_registry import FRAMEWORK_CHECKS
+from squadops.cycles.check_tooling import resolve_provisioned_tooling
+from squadops.cycles.models import ProfileNotFoundError
+from squadops.cycles.preflight import model_availability_decision
+from squadops.sandbox.environment import get_environment_contract
+from squadops.sandbox.preflight import sandbox_environment_decision
 
 # ---------------------------------------------------------------------------
 # Result model
@@ -1050,8 +1063,6 @@ def _collect_squad_checks(profile: BootstrapProfile) -> list[CheckResult]:
     # Local imports: only doctor's `squad` category needs these, and this confines
     # the adapter import to the bootstrap-wiring layer (#154).
     from adapters.cycles.config_squad_profile import ConfigSquadProfile
-    from squadops.cycles.models import ProfileNotFoundError
-    from squadops.cycles.preflight import model_availability_decision
 
     pid = profile.squad_profile
     try:
@@ -1313,8 +1324,6 @@ def _collect_verification_checks(profile: BootstrapProfile) -> list[CheckResult]
     reject (§8 parity). Checks with no external tooling are always executable and
     reported only implicitly (nothing to verify). Unresolvable provisioning →
     heuristic pass (never red when it cannot verify — the broker pattern)."""
-    from squadops.cycles.check_registry import FRAMEWORK_CHECKS
-    from squadops.cycles.check_tooling import resolve_provisioned_tooling
 
     provisioned = resolve_provisioned_tooling()
     results: list[CheckResult] = []
@@ -1384,9 +1393,7 @@ def _collect_sandbox_checks(profile: BootstrapProfile) -> list[CheckResult]:
     """Sandbox environment reconciliation — the SAME decision the cycle-create
     preflight applies (SIP-0102 102.2c), rendered as doctor results, so
     doctor and create-time never disagree."""
-    from squadops.sandbox.environment import get_environment_contract
     from squadops.sandbox.main import sandbox_config_from_env
-    from squadops.sandbox.preflight import sandbox_environment_decision
 
     try:
         cfg = sandbox_config_from_env()
@@ -1460,13 +1467,6 @@ def check_deploy_credentials(env_path: Path | None = None) -> CheckResult:
     from ``.env`` or holds a value the repository has committed: the same on every deploy, and
     readable by anyone who can read the repository. Fails first on a ``.env`` that another account
     on the host can read, since it holds every one of them."""
-    from squadops.bootstrap.setup.credentials import (
-        REPO,
-        load_registry,
-        problems,
-        read_env,
-        readable_by_others,
-    )
 
     path = env_path or REPO / ".env"
     found = problems(load_registry(), read_env(path))

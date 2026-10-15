@@ -32,6 +32,7 @@ from typing import TYPE_CHECKING
 
 from squadops.capabilities.context_assembly import authoring_seam_of
 from squadops.capabilities.handlers.fault_injection import PRIOR_ATTEMPTS_KEY
+from squadops.cycles.benchmark_registry import cycle_stack
 from squadops.llm.model_registry import get_model_spec, model_family_of
 from squadops.memory.context import (
     ChatTurn,
@@ -158,7 +159,6 @@ async def supply_for_cycle(
     now: datetime,
 ) -> list[TaskEnvelope]:
     """:func:`supply_lessons` for a run of ``cycle``: its unit and its stack (``cycle_stack``)."""
-    from squadops.cycles.benchmark_registry import cycle_stack
 
     return await supply_lessons(
         envelopes,
@@ -215,7 +215,6 @@ async def supply_the_redispatch(
     says it never got. The first of ``envelopes`` is the task's own; the rest (the enriched copy the
     loop dispatches) are kept equal to it. A task at no consuming seam is left as it is.
     """
-    from squadops.cycles.benchmark_registry import cycle_stack
 
     held = [e for e in envelopes if e is not None]
     if not held:

@@ -11,11 +11,23 @@ import time
 from functools import partial
 from typing import TYPE_CHECKING, Any
 
+from squadops.capabilities.handlers._plan_merger import (
+    build_sole_author_decisions,
+    emit_merge_decisions_yaml,
+    emit_plan_yaml,
+    merge_proposals,
+)
 from squadops.capabilities.handlers.base import (
     HandlerEvidence,
     HandlerResult,
 )
 from squadops.capabilities.handlers.cycle import _CycleTaskHandler
+from squadops.cycles.implementation_plan import ImplementationPlan
+from squadops.cycles.merge_decisions import MissingProposal
+from squadops.cycles.plan_authoring_brief import PlanAuthoringBrief
+from squadops.cycles.plan_guidance import PlanGuidance
+from squadops.cycles.proposal_failure import ProposalFailure
+from squadops.cycles.proposed_role_tasks import ProposedRoleTasks
 from squadops.tasks.task_types import TaskType
 
 if TYPE_CHECKING:
@@ -73,17 +85,6 @@ class GovernanceMergePlanHandler(_CycleTaskHandler):
         inputs: dict[str, Any],
     ) -> HandlerResult:
         start_time = time.perf_counter()
-
-        from squadops.capabilities.handlers._plan_merger import (
-            build_sole_author_decisions,
-            emit_merge_decisions_yaml,
-            emit_plan_yaml,
-            merge_proposals,
-        )
-        from squadops.cycles.merge_decisions import MissingProposal
-        from squadops.cycles.plan_authoring_brief import PlanAuthoringBrief
-        from squadops.cycles.plan_guidance import PlanGuidance
-        from squadops.cycles.proposed_role_tasks import ProposedRoleTasks
 
         prior_outputs = inputs.get("prior_outputs") or {}
         resolved_config = inputs.get("resolved_config") or {}
@@ -191,8 +192,6 @@ class GovernanceMergePlanHandler(_CycleTaskHandler):
         (proposer not in pipeline) returns (None, None) — neither parsed
         content nor a missing-role entry.
         """
-        from squadops.cycles.merge_decisions import MissingProposal
-        from squadops.cycles.proposal_failure import ProposalFailure
 
         if not outcome:
             return None, None
@@ -261,7 +260,6 @@ class GovernanceMergePlanHandler(_CycleTaskHandler):
         from squadops.capabilities.handlers._plan_authoring_service import (
             produce_plan,
         )
-        from squadops.cycles.implementation_plan import ImplementationPlan
 
         sole_author_reason = (
             "no_contributors_configured" if not configured_contributors else "all_proposals_failed"

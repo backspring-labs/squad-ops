@@ -15,6 +15,7 @@ from __future__ import annotations
 import logging
 from typing import TYPE_CHECKING
 
+from squadops.config import get_config
 from squadops.cycles.inert_detection import (
     INERT_CYCLE_THRESHOLD_DEFAULT,
     INERT_LOOKBACK_CYCLES,
@@ -50,7 +51,6 @@ def _configured_inert_threshold() -> int:
     without a loaded config falls back to the same declared default (a drift
     test pins the schema default to the constant).
     """
-    from squadops.config import get_config
 
     try:
         return get_config().cycles.inert_cycle_threshold

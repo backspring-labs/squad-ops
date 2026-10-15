@@ -101,7 +101,6 @@ def slot_element_kinds(manifest: InterfaceManifest) -> dict[str, dict[str, Any]]
     rejected at merge with the declared kind named, before it can gate a repair. Empty
     for a stack that emits no scaffold — nothing to contradict.
     """
-    from squadops.stacks.scaffold import verification_scaffold_for
 
     fn = _SLOT_ELEMENT_KINDS.get(verification_scaffold_for(manifest.stack))
     return fn(manifest) if fn else {}

@@ -23,12 +23,18 @@ if TYPE_CHECKING:
     from squadops.capabilities.handlers.context import ExecutionContext
 
 from squadops.capabilities.assembly_notes import ASSEMBLY_NOTES_DOCUMENT
+from squadops.capabilities.handlers.build_profiles import get_profile
 from squadops.capabilities.handlers.cycle.base import _CycleTaskHandler
 from squadops.capabilities.handlers.cycle.validation import (
     _classify_file,
 )
+from squadops.capabilities.handlers.fenced_parser import extract_fenced_files
 from squadops.capabilities.reasoning_policy import reasoning_kwargs, resolve_reasoning_level
+from squadops.cycles.check_registry import required_files_row
+from squadops.cycles.contract_expectations import expectation_lines, prose_criteria
+from squadops.cycles.emission_integrity import emission_stats, no_fenced_blocks_failure
 from squadops.cycles.models import ArtifactType
+from squadops.cycles.task_outcome import FailureClassification, TaskOutcome
 
 logger = logging.getLogger(__name__)
 
@@ -126,7 +132,6 @@ class BuilderAssembleHandler(_CycleTaskHandler):
         were. Same A2 treatment develop (#588) and qa (#585) got: typed criteria as an
         authoritative block, narrative prose demoted beside it.
         """
-        from squadops.cycles.contract_expectations import expectation_lines, prose_criteria
 
         task_parts: list[str] = []
         focus = str(inputs.get("subtask_focus") or "")
@@ -340,10 +345,6 @@ class BuilderAssembleHandler(_CycleTaskHandler):
         context: ExecutionContext,
         inputs: dict[str, Any],
     ) -> HandlerResult:
-        from squadops.capabilities.handlers.build_profiles import get_profile
-        from squadops.capabilities.handlers.fenced_parser import extract_fenced_files
-        from squadops.cycles.check_registry import required_files_row
-        from squadops.cycles.emission_integrity import emission_stats
 
         start_time = time.perf_counter()
 
@@ -355,7 +356,6 @@ class BuilderAssembleHandler(_CycleTaskHandler):
         # build_profile is a misconfiguration, not something to paper over with an
         # assumed stack; generate_task_plan rejects it before dispatch, and this
         # is the handler-level backstop.
-        from squadops.cycles.task_outcome import FailureClassification, TaskOutcome
 
         profile_name = resolved_config.get("build_profile")
         if not profile_name:
@@ -390,8 +390,6 @@ class BuilderAssembleHandler(_CycleTaskHandler):
         sources = self._get_assembly_inputs(inputs)
 
         if not sources:
-            from squadops.cycles.task_outcome import FailureClassification, TaskOutcome
-
             return self._fail_result(
                 start_time,
                 inputs,
@@ -459,8 +457,6 @@ class BuilderAssembleHandler(_CycleTaskHandler):
         extracted = extract_fenced_files(content)
 
         if not extracted:
-            from squadops.cycles.emission_integrity import no_fenced_blocks_failure
-
             self._log_no_fenced_blocks(content)
             # #1372: the builder had NO emission-retry path. Every other producer that
             # extracts fences banks the `emission_failure` marker here and leaves the

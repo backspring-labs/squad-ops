@@ -25,6 +25,12 @@ from squadops.api.platform_schemas import (
     RuntimeStateResponse,
 )
 from squadops.api.runtime.agent_labels import get_role_label
+from squadops.api.runtime.deps import get_box_reader, get_health_checker
+from squadops.api.runtime.host_reading import (
+    BOARD_TEMPERATURE_CRITICAL_CELSIUS,
+    BOARD_TEMPERATURE_WARN_CELSIUS,
+    host_verdicts,
+)
 from squadops.campaigns.box import (
     DISK_FLOOR_BYTES,
     MEMORY_FLOOR_AFTER_LOAD_BYTES,
@@ -37,7 +43,6 @@ logger = logging.getLogger(__name__)
 
 
 def _get_health_checker(request: Request):
-    from squadops.api.runtime.deps import get_health_checker
 
     return get_health_checker(request)
 
@@ -66,12 +71,6 @@ async def health_host(request: Request) -> HostResponse:
     engine's loaded models, and the box in SIP-0109's terms. Numbers and states only: this lane is
     unauthenticated, so no process name, command line, path or deploy identifier. A source that
     can't be read reports as unknown, never as healthy."""
-    from squadops.api.runtime.deps import get_box_reader
-    from squadops.api.runtime.host_reading import (
-        BOARD_TEMPERATURE_CRITICAL_CELSIUS,
-        BOARD_TEMPERATURE_WARN_CELSIUS,
-        host_verdicts,
-    )
 
     host = await _get_health_checker(request).read_host_resources()
     try:

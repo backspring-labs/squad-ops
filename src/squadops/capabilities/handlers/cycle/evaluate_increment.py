@@ -19,11 +19,25 @@ import time
 from functools import partial
 from typing import TYPE_CHECKING, Any
 
+from squadops.campaigns.acceptance_run import (
+    NewCriterion,
+    evaluate_increment,
+    evaluation_document,
+    frozen_criteria_from,
+)
+from squadops.campaigns.evaluator_trees import FileTree, TestSurface
+from squadops.campaigns.increment_tree import (
+    INCREMENT_EVALUATION_ARTIFACT_TYPE,
+    INCREMENT_EVALUATION_FILENAME,
+)
 from squadops.capabilities.handlers.base import (
     CapabilityHandler,
     HandlerEvidence,
     HandlerResult,
 )
+from squadops.capabilities.handlers.probe_runner import profile_for_stack
+from squadops.capabilities.handlers.route_rendering import render_profile_for, render_routes
+from squadops.capabilities.handlers.test_runner import run_suite
 from squadops.stacks.development_profiles import get_development_profile
 from squadops.stacks.scaffold import (
     development_profile_for,
@@ -49,8 +63,6 @@ async def _rendered(
 ) -> dict[str, frozenset[str] | None]:
     """The test ids each declared route's page rendered (§8.3), by the stack's render profile;
     every route unread (``None``, blocked) for a stack that declares none."""
-    from squadops.capabilities.handlers.probe_runner import profile_for_stack
-    from squadops.capabilities.handlers.route_rendering import render_profile_for, render_routes
 
     if not declared:
         return {}
@@ -85,18 +97,6 @@ class QAEvaluateIncrementHandler(CapabilityHandler):
         return self._task_type
 
     async def handle(self, context: ExecutionContext, inputs: dict[str, Any]) -> HandlerResult:
-        from squadops.campaigns.acceptance_run import (
-            NewCriterion,
-            evaluate_increment,
-            evaluation_document,
-            frozen_criteria_from,
-        )
-        from squadops.campaigns.evaluator_trees import FileTree, TestSurface
-        from squadops.campaigns.increment_tree import (
-            INCREMENT_EVALUATION_ARTIFACT_TYPE,
-            INCREMENT_EVALUATION_FILENAME,
-        )
-        from squadops.capabilities.handlers.test_runner import run_suite
 
         started = time.perf_counter()
         stack = scaffold_stack_for(inputs.get("resolved_config"))

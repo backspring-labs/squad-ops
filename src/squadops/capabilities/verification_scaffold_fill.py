@@ -65,6 +65,15 @@ from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from typing import Any
 
+from squadops.core.hashing import text_sha256
+from squadops.cycles.revision_transaction import (
+    Revision,
+    RevisionOperation,
+    RevisionTransaction,
+    base_revision_id,
+    resolve_and_apply,
+)
+from squadops.cycles.write_authorization import WriteGrant
 from squadops.stacks.verification_scaffold import (
     ScaffoldSpineError,
     ScaffoldValidationError,
@@ -464,15 +473,6 @@ def merge_fills(
     all of them or none. The bytes are the ones this function always produced, so the qa lane
     is the transaction's first proof rather than its first casualty.
     """
-    from squadops.core.hashing import text_sha256
-    from squadops.cycles.revision_transaction import (
-        Revision,
-        RevisionOperation,
-        RevisionTransaction,
-        base_revision_id,
-        resolve_and_apply,
-    )
-    from squadops.cycles.write_authorization import WriteGrant
 
     declared = {slot.slot_id for f in record.files for slot in f.slots}
     duplicate_set = set(emission.duplicates)

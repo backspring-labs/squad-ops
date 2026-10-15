@@ -26,6 +26,7 @@ from squadops.contracts.cycle_request_profiles import (
 )
 from squadops.cycles.cycle_assessment import IndicatorState
 from squadops.cycles.lifecycle import compute_config_hash
+from squadops.cycles.replay import ReplayProvenance, replay_marker_lines
 
 app = typer.Typer(name="cycles", help="Manage experiment cycles")
 
@@ -68,7 +69,6 @@ def _replay_marker_lines_from_detail(data: dict) -> list[str]:
     replay = ((data.get("cycle_outcome") or {}).get("replay")) or None
     if not replay:
         return []
-    from squadops.cycles.replay import ReplayProvenance, replay_marker_lines
 
     return replay_marker_lines(ReplayProvenance.from_dict(replay))
 

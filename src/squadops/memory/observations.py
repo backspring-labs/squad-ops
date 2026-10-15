@@ -42,6 +42,7 @@ from squadops.campaigns.models import (
 from squadops.cycles.cycle_assessment import RejectionRecord
 from squadops.cycles.failure_attribution import AttributionClass, FailureEvent, compose
 from squadops.cycles.models import Cycle, GateDecisionValue, Run
+from squadops.cycles.replay import parse_replay_declaration
 from squadops.cycles.run_loop_summary import RunLoopSummary
 
 
@@ -143,7 +144,6 @@ class Observation:
 def ineligibility(cycle: Cycle) -> str | None:
     """Why ``cycle`` produces no observation, or ``None`` when it does (§0.3)."""
     from squadops.capabilities.handlers.fault_injection import DECLARATION_KEY
-    from squadops.cycles.replay import parse_replay_declaration
 
     overrides = cycle.execution_overrides or {}
     if overrides.get(DECLARATION_KEY):

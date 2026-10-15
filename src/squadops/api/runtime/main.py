@@ -26,6 +26,8 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from adapters.persistence.pool import create_pool
 from squadops import __version__ as SQUADOPS_VERSION
+from squadops._version import resolve_git_sha
+from squadops.api.campaign_launch import CampaignLaunchService
 from squadops.api.error_handlers import register_domain_error_handlers
 from squadops.api.middleware.auth import AuthMiddleware, RequestIDMiddleware
 from squadops.api.routes.agent_status import router as agent_status_router
@@ -43,11 +45,23 @@ from squadops.api.routes.cycles import (
     projects_router,
     runs_router,
 )
+from squadops.api.routes.cycles.cycles import CreationPorts
 from squadops.api.routes.memory import memory_router
 from squadops.api.routes.platform_health import router as platform_health_router
+from squadops.api.runtime.startup_reaps import (
+    detect_stranded_cycles,
+    reap_stranded_activities,
+    reap_stranded_leases,
+    reap_stranded_modes,
+)
 from squadops.bootstrap.secrets import secret_provider_for
+from squadops.campaigns.box_reading import BoxReader
+from squadops.campaigns.progress import CampaignProgress
+from squadops.campaigns.projection import ProjectingCampaignRegistry
 from squadops.config import config_fingerprint, load_config, redact_config
 from squadops.config.schema import AppConfig
+from squadops.cycles.cycle_assessment import AssessorIdentity
+from squadops.memory.reconcile import reconcile_recent
 
 from .deps import PORT_SLOTS
 from .logging_setup import configure_logging
@@ -442,12 +456,6 @@ async def _init_cycle_subsystem(state, config, pool) -> None:
     # wiring gate + terminal predicate (see `startup_reaps`); a held lease
     # (#373) blocks recruitment outright, a live activity row (#672) kills
     # that agent's activity tracking.
-    from squadops.api.runtime.startup_reaps import (
-        detect_stranded_cycles,
-        reap_stranded_activities,
-        reap_stranded_leases,
-        reap_stranded_modes,
-    )
 
     # Lease first: it returns the agents it clears to ambient, so the mode
     # sweep after it sees only the residue with no lease at all (#710).
@@ -464,10 +472,6 @@ async def _init_cycle_subsystem(state, config, pool) -> None:
 
     from adapters.cycles.cycle_evidence import assess_cycle
     from adapters.memory.recall import create_failure_recall
-    from squadops._version import resolve_git_sha
-    from squadops.campaigns.progress import CampaignProgress
-    from squadops.campaigns.projection import ProjectingCampaignRegistry
-    from squadops.cycles.cycle_assessment import AssessorIdentity
 
     # SIP-0109 §13 (step 6): every row a non-route writer commits — the gate's submission, the
     # completion boundary's promotion and decision, the launcher's mark — is projected to the
@@ -547,7 +551,6 @@ async def _init_cycle_subsystem(state, config, pool) -> None:
 
     # SIP-0109 §9.3 (#1802): the box, as every launch path and every lease change reads it.
     # The engine is the configured provider: its resident models are read through its port.
-    from squadops.campaigns.box_reading import BoxReader
 
     state.box_reader = BoxReader(
         campaigns=projected_campaigns,
@@ -558,8 +561,6 @@ async def _init_cycle_subsystem(state, config, pool) -> None:
     )
 
     # SIP-0109 §12b: a campaign's launches become cycles by the cycle-create path itself.
-    from squadops.api.campaign_launch import CampaignLaunchService
-    from squadops.api.routes.cycles.cycles import CreationPorts
 
     state.campaign_launch = CampaignLaunchService(
         campaigns=projected_campaigns,
@@ -728,8 +729,6 @@ async def _reconcile_memory(state) -> None:
     runs, and projecting a record twice adds nothing, so a crash between a record's commit and its
     projection is recovered by the next pass."""
     from datetime import UTC, datetime
-
-    from squadops.memory.reconcile import reconcile_recent
 
     while True:
         await asyncio.sleep(_MEMORY_RECONCILE_INTERVAL_S)

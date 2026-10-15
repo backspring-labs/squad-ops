@@ -21,6 +21,7 @@ from uuid import uuid4
 from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel, Field, model_validator
 
+from squadops.api.runtime.deps import get_assignment_port
 from squadops.runtime.models import (
     Assignment,
     AssignmentType,
@@ -36,7 +37,6 @@ router = APIRouter(prefix="/api/v1", tags=["assignments"])
 
 
 def _get_assignment_port(request: Request):
-    from squadops.api.runtime.deps import get_assignment_port
 
     return get_assignment_port(request)
 

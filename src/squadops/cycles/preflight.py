@@ -31,6 +31,13 @@ from collections.abc import Iterable, Mapping
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any
 
+from squadops.capabilities.handlers.fault_injection import (
+    FAULTS,
+    UnknownFault,
+    UnreachableFault,
+    declared_faults,
+    validate_declaration,
+)
 from squadops.cycles.agent_config import served_roles
 from squadops.cycles.check_registry import get_framework_check
 from squadops.cycles.models import (
@@ -396,13 +403,6 @@ def fault_injection_decision(config: Mapping[str, Any]) -> PreflightDecision:
     A valid declaration warns, loudly, because the one thing a fault-injected cycle must
     never do is be mistaken for a counted roll.
     """
-    from squadops.capabilities.handlers.fault_injection import (
-        FAULTS,
-        UnknownFault,
-        UnreachableFault,
-        declared_faults,
-        validate_declaration,
-    )
 
     names = declared_faults(config)
     if not names:

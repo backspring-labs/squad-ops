@@ -15,7 +15,8 @@ from starlette.middleware.base import BaseHTTPMiddleware, RequestResponseEndpoin
 from starlette.responses import JSONResponse
 
 from squadops.api.errors import error_body, http_error
-from squadops.auth.models import Identity
+from squadops.api.runtime.deps import get_audit_port, get_auth_port, get_authz_port
+from squadops.auth.models import AuditEvent, Identity
 from squadops.ports.auth.authentication import AuthPort
 
 logger = logging.getLogger(__name__)
@@ -95,8 +96,6 @@ class AuthMiddleware(BaseHTTPMiddleware):
         audit_port = self._audit_port
         if audit_port is None:
             try:
-                from squadops.api.runtime.deps import get_audit_port
-
                 audit_port = get_audit_port(request)
             except Exception:
                 pass
@@ -110,8 +109,6 @@ class AuthMiddleware(BaseHTTPMiddleware):
                 _audit_unavailable_warned = True
             return
         try:
-            from squadops.auth.models import AuditEvent
-
             request_id = getattr(request.state, "request_id", None)
             ip_address = request.client.host if request.client else None
             event = AuditEvent(
@@ -189,8 +186,6 @@ class AuthMiddleware(BaseHTTPMiddleware):
         # Resolve auth port: use injected port, or fall back to deps
         auth_port = self._auth_port
         if auth_port is None:
-            from squadops.api.runtime.deps import get_auth_port
-
             auth_port = get_auth_port(request)
 
         if auth_port is None:
@@ -250,8 +245,6 @@ def require_auth(auth_port_getter=None):
         if auth_port_getter:
             auth_port = auth_port_getter()
         else:
-            from squadops.api.runtime.deps import get_auth_port
-
             auth_port = get_auth_port(request)
         if auth_port is None:
             raise http_error(503, "AUTH_UNAVAILABLE", "Authentication service unavailable")
@@ -278,7 +271,6 @@ async def _enforce_access(
     roles/scopes (#150).
     """
     # Import here to avoid circular imports at module level
-    from squadops.api.runtime.deps import get_authz_port
 
     authz = get_authz_port(request)
     if authz is None:
@@ -298,7 +290,6 @@ def holds_scopes(request: Request, *scopes: str) -> bool:
     """Whether the caller holds every one of ``scopes``, by the check :func:`require_scopes`
     makes, for a route whose required scope depends on the resource's state (#1940). True when
     authorization is not configured, since :func:`require_scopes` passes every caller then."""
-    from squadops.api.runtime.deps import get_authz_port
 
     authz = get_authz_port(request)
     if authz is None:

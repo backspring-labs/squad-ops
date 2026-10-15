@@ -52,6 +52,18 @@ from squadops.tasks.task_types import TaskType
 if TYPE_CHECKING:
     from squadops.capabilities.handlers.context import ExecutionContext
 
+from squadops.capabilities.additive_containment import assess_additive_suite
+from squadops.capabilities.anchored_edits import (
+    EMISSION_FAILURE_ANCHORED_EDIT_REFUSED,
+    apply_anchored_edits,
+    editable_file_lines,
+    parse_anchored_edits,
+    revision_form_reading,
+    strip_edit_blocks,
+    verbatim_block,
+)
+from squadops.capabilities.context_assembly import RETAKE_CURRENT_FILES_KEY, scaffold_shell_paths
+from squadops.capabilities.delivered_lint import LINT_READING_VERSION, lint_delivered
 from squadops.capabilities.handlers.cycle.base import SelfEvalFollowup, _CycleTaskHandler
 from squadops.capabilities.handlers.cycle.fill_mode_brief import (
     render_fill_mode_section,
@@ -64,8 +76,38 @@ from squadops.capabilities.handlers.cycle.validation import (
     _detect_stubs,
     _is_test_file,
 )
+from squadops.capabilities.handlers.fenced_parser import extract_fenced_files
+from squadops.capabilities.handlers.probe_runner import probe_check_rows, run_probes
+from squadops.capabilities.handlers.stub_detection import (
+    detect_self_mocking_tests,
+    detect_stub_fallback_tests,
+    inspected_js_test_paths,
+    inspected_python_test_paths,
+)
+from squadops.capabilities.handlers.test_runner import failed_tests_pass_row, run_build_validation
 from squadops.capabilities.reasoning_policy import reasoning_kwargs, resolve_reasoning_level
+from squadops.capabilities.verification_scaffold_fill import (
+    apply_followup_fills,
+    measure_assertion_strength,
+    merge_fills,
+    parse_fill_emission,
+    strip_fill_blocks,
+)
+from squadops.cycles.contract_expectations import expectation_lines, prose_criteria
 from squadops.cycles.failure_evidence import failing_case_lines
+from squadops.cycles.patch_verification import (
+    RETAKE_EVALUATED_REVISION_KEY,
+    candidate_revision_id,
+    materialize_artifacts,
+)
+from squadops.cycles.scaffold_evidence import (
+    build_scaffold_evidence_summary,
+    classify_shell_failures,
+    correlate,
+)
+from squadops.cycles.task_outcome import FailureClassification, TaskOutcome
+from squadops.cycles.verification_contract import Probe
+from squadops.cycles.write_authorization import normalize_ws_path
 from squadops.stacks.scaffold import (
     app_invocation_for,
     is_qa_test_path_for_stack,
@@ -189,7 +231,6 @@ def _drop_unowned_overwrites(
     dropped as unauthorized half a second later. So it is dropped here first, the same way, and
     both read the tree that will be stored. A new path outside the namespace (a deliverable such
     as ``test_report.md``) passes, as storage passes it. Returns ``(kept, dropped paths)``."""
-    from squadops.cycles.write_authorization import normalize_ws_path
 
     owned = _qa_owned_for(inputs)
     held = {
@@ -303,10 +344,6 @@ class _ScaffoldFill(_WholeFileTests):
         return await self._handler._fill_mode_section(context, self._inputs)
 
     def split(self, content: str) -> str:
-        from squadops.capabilities.verification_scaffold_fill import (
-            parse_fill_emission,
-            strip_fill_blocks,
-        )
 
         # Fill fences would otherwise extract as files named "slot-…" — the fill
         # protocol and the additive-file surface must not compete for bytes.
@@ -358,11 +395,6 @@ class _ScaffoldFill(_WholeFileTests):
         # 1.6.5 C (#947): the self-eval's fills go through the SAME merge gate as the
         # primary's — phantom tables (#1087) and element kinds (#1094) included — instead
         # of extracting as files named "slot-…" that the shell guard then discards.
-        from squadops.capabilities.verification_scaffold_fill import (
-            apply_followup_fills,
-            parse_fill_emission,
-            strip_fill_blocks,
-        )
 
         followup_fills = parse_fill_emission(content)
         source = strip_fill_blocks(content)
@@ -701,7 +733,6 @@ class QATestHandler(_CycleTaskHandler):
         """#1937: the evaluated tree's lint and complexity findings, as evidence only. Nothing
         reads them to judge this task: they never touch ``validation_result`` or the outcome,
         and a lint that cannot run is recorded as such, never a failure."""
-        from squadops.capabilities.delivered_lint import LINT_READING_VERSION, lint_delivered
 
         try:
             outputs["lint_findings"] = await asyncio.to_thread(lint_delivered, tree)
@@ -737,8 +768,6 @@ class QATestHandler(_CycleTaskHandler):
         design never meant, and those have opposite repairs. A constant routing every probe
         failure to dev would send half of them to rewrite code that was already correct.
         """
-        from squadops.cycles.task_outcome import FailureClassification, TaskOutcome
-        from squadops.cycles.verification_integrity import ResultStatus
 
         vr = outputs.get("validation_result") or {}
         failing = [
@@ -786,10 +815,6 @@ class QATestHandler(_CycleTaskHandler):
         raw = inputs.get("contract_probes")
         if not raw:
             return
-
-        from squadops.capabilities.handlers.probe_runner import probe_check_rows, run_probes
-        from squadops.cycles.patch_verification import materialize_artifacts
-        from squadops.cycles.verification_contract import Probe
 
         probes = []
         for entry in raw:
@@ -840,7 +865,6 @@ class QATestHandler(_CycleTaskHandler):
         stays framework-agnostic — it passes ``capability.test_framework`` through
         and reads only the generic ``RunTestsResult``.
         """
-        from squadops.capabilities.handlers.test_runner import run_build_validation
 
         source_file_records = [{"path": p, "content": c} for p, c in sources.items()]
         test_file_records = [
@@ -1054,11 +1078,6 @@ class QATestHandler(_CycleTaskHandler):
         A scaffold shell is filled by slot, never edited (the repair's own rule, #1583), so a
         fill-mode re-take is offered only the suite files it wrote beside its shells.
         """
-        from squadops.capabilities.anchored_edits import editable_file_lines, verbatim_block
-        from squadops.capabilities.context_assembly import (
-            RETAKE_CURRENT_FILES_KEY,
-            scaffold_shell_paths,
-        )
 
         suite = inputs.get(RETAKE_CURRENT_FILES_KEY) or {}
         renderer = getattr(context.ports, "request_renderer", None)
@@ -1104,16 +1123,6 @@ class QATestHandler(_CycleTaskHandler):
         if not offered:
             return content, [], None, None
         import json
-
-        from squadops.capabilities.anchored_edits import (
-            EMISSION_FAILURE_ANCHORED_EDIT_REFUSED,
-            apply_anchored_edits,
-            parse_anchored_edits,
-            revision_form_reading,
-            strip_edit_blocks,
-        )
-        from squadops.capabilities.context_assembly import RETAKE_CURRENT_FILES_KEY
-        from squadops.capabilities.handlers.fenced_parser import extract_fenced_files
 
         suite = dict(inputs.get(RETAKE_CURRENT_FILES_KEY) or {})
         parse = parse_anchored_edits(content)
@@ -1345,7 +1354,6 @@ class QATestHandler(_CycleTaskHandler):
         left the evidence describing the primary emission: 1.8.0 deploy A's Next.js
         checkpoint banked ``additive_containment: []`` beside a failed containment row.
         """
-        from squadops.capabilities.additive_containment import assess_additive_suite
 
         # The retreat had TWO halves and the fills are only one. Shakedown #1's passing
         # attempt also dropped an entire additive suite — 81 store calls through TABLES, no
@@ -1376,10 +1384,6 @@ class QATestHandler(_CycleTaskHandler):
         in exactly one disposition; missing and rejected slots render as failing states
         inside the merged shells, attributed to the fill layer.
         """
-        from squadops.capabilities.verification_scaffold_fill import (
-            measure_assertion_strength,
-            merge_fills,
-        )
 
         record = VerificationScaffoldManifest.from_dict(scaffold_input["manifest"])
         shell_paths = {f.path for f in record.files}
@@ -1446,11 +1450,6 @@ class QATestHandler(_CycleTaskHandler):
         Non-blocking, but a diagnostic is not evidence and must not be counted as one
         (SIP-0096 §6.1).
         """
-        from squadops.cycles.scaffold_evidence import (
-            build_scaffold_evidence_summary,
-            classify_shell_failures,
-            correlate,
-        )
 
         record = VerificationScaffoldManifest.from_dict(scaffold_input["manifest"])
         dispositions = {
@@ -1530,7 +1529,6 @@ class QATestHandler(_CycleTaskHandler):
         # generation — eve self-built TestClient(app) on every fresh roll and only
         # her repairs (which get the block) complied. Same A2 treatment the repair
         # prompt received in pf-31 Fix A / pf-33.
-        from squadops.cycles.contract_expectations import expectation_lines, prose_criteria
 
         typed_lines = expectation_lines(acceptance_criteria)
         if typed_lines:
@@ -1638,7 +1636,6 @@ class QATestHandler(_CycleTaskHandler):
                 reason = test_result.error or "runner_error"
                 detail = f"tests_not_executed:{reason}"
                 summary = f"Repaired suite not executed: {reason}"
-            from squadops.capabilities.handlers.test_runner import failed_tests_pass_row
 
             checks.append(failed_tests_pass_row(test_result, qa_owned=_qa_owned_for(inputs)))
             missing.append(detail)
@@ -1647,12 +1644,6 @@ class QATestHandler(_CycleTaskHandler):
 
         # #276 guard holds on the retest path too: a repair must not smuggle a
         # stub-fallback past the correction loop.
-        from squadops.capabilities.handlers.stub_detection import (
-            detect_self_mocking_tests,
-            detect_stub_fallback_tests,
-            inspected_js_test_paths,
-            inspected_python_test_paths,
-        )
 
         stub_offenders = detect_stub_fallback_tests(artifacts)
         checks.append(
@@ -1708,12 +1699,8 @@ class QATestHandler(_CycleTaskHandler):
         }
 
         if passed:
-            from squadops.cycles.task_outcome import TaskOutcome
-
             outputs["outcome_class"] = TaskOutcome.SUCCESS
         else:
-            from squadops.cycles.task_outcome import FailureClassification, TaskOutcome
-
             outputs["outcome_class"] = TaskOutcome.SEMANTIC_FAILURE
             outputs["failure_classification"] = FailureClassification.WORK_PRODUCT
 
@@ -1756,7 +1743,6 @@ class QATestHandler(_CycleTaskHandler):
         context: ExecutionContext,
         inputs: dict[str, Any],
     ) -> HandlerResult:
-        from squadops.capabilities.handlers.fenced_parser import extract_fenced_files
 
         start_time = time.perf_counter()
 
@@ -2078,8 +2064,6 @@ class QATestHandler(_CycleTaskHandler):
                 detail = f"tests_not_executed:{reason}"
                 fail_note = f"Tests not executed: {reason}"
 
-            from squadops.capabilities.handlers.test_runner import failed_tests_pass_row
-
             validation.checks.append(
                 failed_tests_pass_row(test_result, qa_owned=_qa_owned_for(inputs))
             )
@@ -2100,12 +2084,6 @@ class QATestHandler(_CycleTaskHandler):
             # so `tests_passed` above can be falsely green (the stub collects and
             # passes). Flag it so acceptance fails and the correction loop
             # regenerates the test against the real module.
-            from squadops.capabilities.handlers.stub_detection import (
-                detect_self_mocking_tests,
-                detect_stub_fallback_tests,
-                inspected_js_test_paths,
-                inspected_python_test_paths,
-            )
 
             stub_offenders = detect_stub_fallback_tests(artifacts)
             validation.checks.append(
@@ -2237,10 +2215,6 @@ class QATestHandler(_CycleTaskHandler):
         if retake_form is not None:
             # SIP-0107 §20 on the re-take path (#1727): the identity of exactly the set this
             # re-take's suite and checks read, which storage proves it stores.
-            from squadops.cycles.patch_verification import (
-                RETAKE_EVALUATED_REVISION_KEY,
-                candidate_revision_id,
-            )
 
             outputs[RETAKE_EVALUATED_REVISION_KEY] = candidate_revision_id(None, artifacts)
 

@@ -28,6 +28,12 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
+from squadops.capabilities.additive_containment import containment_findings
+from squadops.capabilities.client_mock_surface import (
+    mock_surface_findings,
+    mock_surface_observations,
+)
+from squadops.capabilities.dom_anchor_queries import anchor_findings, anchor_observations
 from squadops.core.bounded_run import run_bounded
 from squadops.cycles.acceptance_check_spec import (
     CHECK_ADDITIVE_CONTAINMENT,
@@ -51,6 +57,7 @@ from squadops.cycles.acceptance_check_spec import (
     parse_method_path_status,
 )
 from squadops.cycles.container_packaging import packaging_findings
+from squadops.cycles.fill_slot_integrity import signature_divergences
 from squadops.cycles.source_termination import (
     SCANNABLE_EXTENSIONS,
     check_termination,
@@ -1265,8 +1272,6 @@ class FillSlotSignatureCheck(BaseCheck):
             # an app gap — never fail the producer for it.
             return CheckOutcome.error(reason="missing_route_declaration")
 
-        from squadops.cycles.fill_slot_integrity import signature_divergences
-
         divergences = signature_divergences(declared, source)
         if divergences:
             return CheckOutcome.failed(
@@ -2113,10 +2118,6 @@ class DomAnchorQueriesCheck(BaseCheck):
         *,
         stack: str | None = None,
     ) -> CheckOutcome:
-        from squadops.capabilities.dom_anchor_queries import (
-            anchor_findings,
-            anchor_observations,
-        )
 
         rel = str(params["file"])
         inventory = {
@@ -2168,10 +2169,6 @@ class ClientMockSurfaceCheck(BaseCheck):
         *,
         stack: str | None = None,
     ) -> CheckOutcome:
-        from squadops.capabilities.client_mock_surface import (
-            mock_surface_findings,
-            mock_surface_observations,
-        )
 
         rel = str(params["file"])
         surface = ClientSurface.from_params(params.get("client"))
@@ -2222,7 +2219,6 @@ class AdditiveContainmentCheck(BaseCheck):
         *,
         stack: str | None = None,
     ) -> CheckOutcome:
-        from squadops.capabilities.additive_containment import containment_findings
 
         rel = str(params["file"])
         invocation = app_invocation_for(str(params.get("stack") or ""))

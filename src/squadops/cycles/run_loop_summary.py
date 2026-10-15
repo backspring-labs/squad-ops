@@ -24,8 +24,11 @@ from collections.abc import Mapping
 from dataclasses import dataclass
 from typing import Any
 
+from squadops.cycles.emission_integrity import EMISSION_FAILURE_KEY
 from squadops.cycles.failure_attribution import TerminalKind
+from squadops.cycles.failure_evidence import classify_failure_locus, derive_failure_category
 from squadops.cycles.llm_usage import RunUsage
+from squadops.cycles.verification_normalize import row_is_blocking_failure
 
 #: The row's contract version. A reader names the version it read.
 RUN_LOOP_SUMMARY_VERSION = 1
@@ -96,7 +99,6 @@ FAILED_DETAIL_LIMIT = 2048
 
 def failed_detail_of(rows: Any) -> tuple[tuple[str, str], ...]:
     """Each blocking failed row's own account of why, ``(check, text)``, in row order (#2028)."""
-    from squadops.cycles.verification_normalize import row_is_blocking_failure
 
     detail = []
     for row in rows or ():
@@ -169,12 +171,6 @@ class RoundFailure:
         cls, task_id: str, round_index: int, failure_evidence: Mapping[str, Any]
     ) -> RoundFailure:
         """The round's failure read off the evidence the round was diagnosed from."""
-        from squadops.cycles.emission_integrity import EMISSION_FAILURE_KEY
-        from squadops.cycles.failure_evidence import (
-            classify_failure_locus,
-            derive_failure_category,
-        )
-        from squadops.cycles.verification_normalize import row_is_blocking_failure
 
         evidence = dict(failure_evidence)
         marker = evidence.get(EMISSION_FAILURE_KEY)

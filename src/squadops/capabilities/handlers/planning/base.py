@@ -13,6 +13,8 @@ import logging
 import time
 from typing import TYPE_CHECKING, Any
 
+from squadops.capabilities.anchored_edits import verbatim_block
+from squadops.capabilities.handlers._plan_authoring import authoring_rules_section
 from squadops.capabilities.handlers.base import (
     HandlerEvidence,
     HandlerResult,
@@ -161,7 +163,6 @@ class _PlanningTaskHandler(_CycleTaskHandler):
         summary of it, so a design or a test strategy for the accepted application is not
         re-derived from its PRD.
         """
-        from squadops.capabilities.anchored_edits import verbatim_block
 
         document = str(inputs.get("increment_change_request") or "")
         if not document.strip():
@@ -183,7 +184,6 @@ class _PlanningTaskHandler(_CycleTaskHandler):
         is the managed asset; which validators are author-facing is the data table in
         ``squadops.cycles.plan_authoring_rules``, and a test binds the two (#448).
         """
-        from squadops.capabilities.handlers._plan_authoring import authoring_rules_section
 
         return await authoring_rules_section(renderer)
 

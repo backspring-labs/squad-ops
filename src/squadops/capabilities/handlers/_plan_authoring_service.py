@@ -24,10 +24,12 @@ import time
 from collections.abc import Awaitable, Callable
 from typing import TYPE_CHECKING, Any
 
+from squadops.campaigns.increment_tree import increment_baseline
 from squadops.capabilities.handlers._plan_authoring import (
     authoring_rules_section,
     contract_surface_sections,
 )
+from squadops.capabilities.handlers.build_profiles import get_profile
 from squadops.capabilities.handlers.cycle_tasks import (
     _PRD_COVERAGE_DISCIPLINE_SECTION,
     _rewrite_manifest_identifiers,
@@ -113,7 +115,6 @@ async def produce_plan(
     # #1868: never in an increment. A builder's artifacts are packaging, which an increment's
     # footprint never holds (the accepted tree's packaging is its starting tree), so any builder
     # task is refused at the plan gate.
-    from squadops.campaigns.increment_tree import increment_baseline
 
     offer_builder = (
         has_builder
@@ -132,7 +133,6 @@ async def produce_plan(
         # profile's required-files floor, not hedge it in description prose —
         # the floor rendered here is the same list validate_builder_floor
         # rejects on (#888), stated as data per the pf-34 pattern.
-        from squadops.capabilities.handlers.build_profiles import get_profile
 
         try:
             profile = get_profile(resolved_config["build_profile"])

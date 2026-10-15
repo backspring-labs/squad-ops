@@ -28,6 +28,10 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass
 
+from squadops.capabilities.error_status import error_convention
+from squadops.cycles.acceptance_check_spec import CHECK_SPECS, is_check_applicable
+from squadops.cycles.framing_consistency import path_pattern
+from squadops.cycles.verification_contract import VerificationContract
 from squadops.stacks.scaffold import (
     InterfaceManifest,
     expand,
@@ -293,8 +297,6 @@ def _contract_findings(manifest) -> list[WinnabilityFinding]:
     answers "is this manifest winnable", a malformed contract is exactly a way for it not to
     be, and a rejection here re-rolls framing for free (#522) instead of failing mid-run.
     """
-    from squadops.cycles.acceptance_check_spec import CHECK_SPECS, is_check_applicable
-    from squadops.cycles.verification_contract import VerificationContract
 
     try:
         contract = emit_contract_dict(manifest)
@@ -571,7 +573,6 @@ def _status_override_findings(manifest) -> list[WinnabilityFinding]:
     Silence is now the safe default and the common case — say nothing and the rule
     decides, so there is one value and nothing to disagree about.
     """
-    from squadops.cycles.framing_consistency import path_pattern
 
     entries = [f"{d.id} {d.choice} {d.warrant} {d.question}" for d in (manifest.decisions or ())]
     findings: list[WinnabilityFinding] = []
@@ -616,7 +617,6 @@ def _error_status_findings(manifest) -> list[WinnabilityFinding]:
     convention is not checked (``capabilities.error_status``). Advisory until its evidence
     promotes it: the author is taught the rule first, and the finding is reported, not refused.
     """
-    from squadops.capabilities.error_status import error_convention
 
     entries = [f"{d.id} {d.choice} {d.warrant} {d.question}" for d in (manifest.decisions or ())]
     findings: list[WinnabilityFinding] = []

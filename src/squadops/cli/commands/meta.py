@@ -8,6 +8,8 @@ import time
 
 import typer
 
+from squadops import __version__
+from squadops.bootstrap.setup.state import read_state
 from squadops.cli import exit_codes
 from squadops.cli.client import APIClient, CLIError
 from squadops.cli.config import load_config
@@ -19,8 +21,6 @@ app = typer.Typer(name="meta", help="Meta commands (version, status)")
 def _get_bootstrap_info() -> dict | None:
     """Read bootstrap state for status display (R11 — never implies current health)."""
     try:
-        from squadops.bootstrap.setup.state import read_state
-
         # Try each known profile — return the first (most recently written) match
         for profile in ("dev-mac", "dev-pc", "local-spark"):
             state = read_state(profile)
@@ -38,7 +38,6 @@ def _get_bootstrap_info() -> dict | None:
 @app.command()
 def version(ctx: typer.Context):
     """Show CLI version (local only; no server call)."""
-    from squadops import __version__
 
     fmt = ctx.obj.get("format", "table") if ctx.obj else "table"
     if fmt == "json":

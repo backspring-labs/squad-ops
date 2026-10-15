@@ -37,9 +37,13 @@ from typing import Any
 import yaml
 
 from squadops.cycles.acceptance_check_spec import (
+    CHECK_ENDPOINT_DEFINED,
+    CHECK_FRONTEND_COMPILES,
     CHECK_SPECS,
     argv_matches_safelist,
     command_safelist_names,
+    normalize_route,
+    parse_method_path,
     regex_target_is_document,
 )
 from squadops.cycles.check_registry import TOOL_NODE, framework_check_ids
@@ -218,7 +222,6 @@ class Probe:
         request, and both sides are rendered from the same manifest endpoints, so
         the placeholder form is what matches.
         """
-        from squadops.cycles.acceptance_check_spec import parse_method_path
 
         method = str(self.request.get("method", "")).strip()
         path = str(self.request.get("path", "")).strip()
@@ -494,10 +497,6 @@ class VerificationContract:
         a well-linted contract has exactly one owner per endpoint, and ``lint()``
         is the gate for that, not this accessor.
         """
-        from squadops.cycles.acceptance_check_spec import (
-            CHECK_ENDPOINT_DEFINED,
-            parse_method_path,
-        )
 
         owners: dict[str, str] = {}
         for ff in self.fill_files:
@@ -530,7 +529,6 @@ class VerificationContract:
         Empty for a contract with no bundler-checked slot, which is the same condition under
         which no ``frontend_build`` row can fail, so the caller's behavior is unchanged.
         """
-        from squadops.cycles.acceptance_check_spec import CHECK_FRONTEND_COMPILES
 
         return tuple(
             ff.path
@@ -624,7 +622,6 @@ class VerificationContract:
         either is contract-correct. Three readers: the
         ``contract_assertions_match`` injection params, the plan-prose status
         lint, and tests — one derivation so they cannot drift."""
-        from squadops.cycles.acceptance_check_spec import normalize_route
 
         pinned: dict[tuple[str, str], set[int]] = {}
         for probe in self.behavioral.probes:
