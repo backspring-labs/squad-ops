@@ -926,7 +926,7 @@ checks:
     container: squadops-runtime-api
     code: |
       import inspect
-      from adapters.cycles.task_dispatcher import TaskDispatcher
+      from squadops.execution.task_dispatcher import TaskDispatcher
       from squadops.comms.task_delivery import DISPATCH_ID_METADATA_KEY
       print(DISPATCH_ID_METADATA_KEY, "DISPATCH_ID_METADATA_KEY: uuid.uuid4().hex" in inspect.getsource(TaskDispatcher._publish_and_await))
     expect: "dispatch_id True"
