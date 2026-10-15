@@ -384,11 +384,11 @@ loaded_checks:
   # neither, and deploy B's first identity read an ERROR from bob for exactly that.
   runtime-api: |-
     import hashlib, pathlib
-    from squadops.capabilities.baseline_stylesheet import BASELINE_CSS
+    from squadops.stacks.baseline_stylesheet import BASELINE_CSS
     from squadops.capabilities.client_mock_surface import mock_surface_findings
     from squadops.capabilities.reasoning_policy import default_reasoning_level
-    from squadops.capabilities.scaffold import InterfaceManifest, expand, fill_slot_paths
-    from squadops.capabilities.stack_fastapi_react import CLIENT_SURFACE
+    from squadops.stacks.scaffold import InterfaceManifest, expand, fill_slot_paths
+    from squadops.stacks.stack_fastapi_react import CLIENT_SURFACE
     from squadops.cycles.check_registry import checks_a_run_can_subject
     from squadops.cycles.manifest_gates import PROOF_INTERFACE_COHERENT, _interface_coherence_findings
     from squadops.cycles.scaffold_integrity_evidence import KIND_ATTEMPTED_EMISSION, STAGE_FAILED_EMISSION
@@ -524,7 +524,7 @@ loaded_checks:
     from squadops._version import resolve_git_sha
     from squadops.capabilities.handlers.build_profiles import get_profile
     from squadops.capabilities.handlers.fault_injection import FAULTS, UnknownFault, validate_declaration
-    from squadops.capabilities.rendered_packaging import render_packaging
+    from squadops.stacks.rendered_packaging import render_packaging
     from squadops.cycles import cycle_outcome, lineage
     from squadops.cycles.correction_signature import carried_failures
     from squadops.cycles.models import Cycle, TaskFlowPolicy
@@ -667,7 +667,7 @@ loaded_checks:
           {f.name for f in _dc.fields(_Cy)} >= {"campaign_id", "kind"}, CampaignLauncher.__name__)
     # 1797: a manifest route's parameter renders in React's router syntax. Control: a route
     # with no parameter is unchanged.
-    from squadops.capabilities.stack_fastapi_react import _router_path
+    from squadops.stacks.stack_fastapi_react import _router_path
     print("1797", _router_path("/runs/{run_id}"), _router_path("/runs"))
     # 1813: a cycle's ending persists its failure records (SIP-0109 §14, §24a). The producer's
     # records carry one unaskable record per unread input; control: no input, no record.
