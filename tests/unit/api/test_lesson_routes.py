@@ -445,3 +445,60 @@ async def test_an_annotation_of_an_unknown_observation_or_by_an_operator_is_refu
     )
 
     assert (unknown.status_code, by_operator.status_code) == (404, 403)
+
+
+async def test_each_memory_body_declares_every_field_its_record_carries(world):
+    """#1976, through the routes. Bug caught: a record that gains a field its response model does
+    not declare. The model passes it on (``extra="allow"``), so no client loses it, but OpenAPI
+    stops describing it. Each body's keys are exactly its model's fields, nested ones included."""
+    from squadops.api import memory_schemas as schemas
+    from squadops.memory.exposures import Exposure
+    from squadops.memory.lessons import RecallDisposition, Recalled
+    from squadops.memory.recall import RecallQuery
+
+    revision_id = world.draft().json()["revision_id"]
+    world.approve(revision_id)
+    annotation_id = world.client.post(
+        f"{BASE}/observations/{world.prose}/annotations", json=ANNOTATION
+    ).json()["annotation_id"]
+    world.client.post(f"{BASE}/annotations/{annotation_id}/review", json={"note": "read"})
+    exposure = Exposure(
+        run_id="run_p",
+        task_id="task-prop",
+        cycle_id="cyc_inc",
+        agent_id="nat",
+        seam="proposal_writing",
+        query=RecallQuery("group_run", "strategy.propose_increment", "strat"),
+        recalled=Recalled("snp_x", RecallDisposition.SUPPLIED).exposure(),
+        recorded_at=datetime.now(UTC),
+    )
+    await world.store.record_exposure(exposure)
+    world.client.post(
+        f"{BASE}/exposures/{exposure.exposure_id}/assessments",
+        json={"pattern_id": "pat_a", "state": "not_applicable", "rubric": "r@1", "evidence": "v1"},
+    )
+    lessons = world.client.get(f"{BASE}/lessons").json()
+    observations = world.client.get(f"{BASE}/observations").json()
+    exposures = world.client.get(f"{BASE}/exposures", params={"run_id": "run_p"}).json()
+
+    bodies = [
+        *((lesson, schemas.LessonResponse) for lesson in lessons),
+        *((lesson["applicability"], schemas.ApplicabilityResponse) for lesson in lessons),
+        *((a, schemas.ApprovalResponse) for lesson in lessons for a in lesson["approvals"]),
+        *((o, schemas.ObservationResponse) for o in observations),
+        *((o["classification"], schemas.ClassificationResponse) for o in observations),
+        *((a, schemas.AnnotationResponse) for o in observations for a in o["annotations"]),
+        *((e, schemas.ExposureResponse) for e in exposures),
+        *((a, schemas.AssessmentResponse) for e in exposures for a in e["assessments"]),
+    ]
+    undeclared = {
+        model.__name__: sorted(set(body) ^ set(model.model_fields))
+        for body, model in bodies
+        if set(body) != set(model.model_fields)
+    }
+    assert {model for _, model in bodies} >= {
+        schemas.ApprovalResponse,
+        schemas.AnnotationResponse,
+        schemas.AssessmentResponse,
+    }
+    assert undeclared == {}

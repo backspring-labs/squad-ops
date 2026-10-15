@@ -138,8 +138,8 @@ def _control(world: _World, op: str, key: str, **extra):
 @pytest.mark.parametrize(
     ("role", "create", "pause", "resume", "abort", "read"),
     [
-        (Role.ADMIN, 200, 200, 200, 200, 200),
-        (Role.CAMPAIGN_SUPERVISOR, 200, 200, 200, 200, 200),
+        (Role.ADMIN, 201, 200, 200, 200, 200),
+        (Role.CAMPAIGN_SUPERVISOR, 201, 200, 200, 200, 200),
         (Role.CAMPAIGN_TRIAGE, 403, 403, 403, 403, 200),
         (Role.OPERATOR, 403, 403, 403, 403, 200),
     ],
@@ -153,8 +153,8 @@ async def test_each_role_holds_exactly_the_operations_the_ruling_gives_it(
     pause; the owner's holds are the next tests'."""
     assert _create(world.as_(_identity(role, user="x"))).status_code == create
     world.as_(_identity(Role.ADMIN))
-    if create != 200:
-        assert _create(world).status_code == 200
+    if create != 201:
+        assert _create(world).status_code == 201
     await world.campaigns.transition("cmp_api000000001", move(CampaignState.CALIBRATING, "k-run"))
     world.as_(_identity(role, user="x"))
     assert world.client.get("/api/v1/campaigns/cmp_api000000001").status_code == read
@@ -208,9 +208,9 @@ async def test_the_creation_row_records_the_definition_file_and_a_replay_needs_t
     other_file = _create(world, definition={**sent, "sha256": "c" * 64})
 
     [created] = await world.campaigns.control_log("cmp_api000000001")
-    assert first.status_code == 200
+    assert first.status_code == 201
     assert created.binding == {"definition": sent}
-    assert (again.status_code, again.json()["replayed"]) == (200, True)
+    assert (again.status_code, again.json()["replayed"]) == (201, True)
     assert other_file.status_code == 409
 
 
@@ -528,7 +528,7 @@ def test_a_campaign_whose_measurement_has_no_reader_is_refused(world):
 
 
 async def _at_the_gate(world: _World) -> None:
-    assert _create(world).status_code == 200
+    assert _create(world).status_code == 201
     for i, state in enumerate(("calibrating", "at_proposal", "awaiting_ruling")):
         await world.campaigns.transition("cmp_api000000001", move(CampaignState(state), f"g{i}"))
 
@@ -594,7 +594,7 @@ async def test_the_owners_resume_of_a_blocked_launch_escalation_retries_the_laun
     from squadops.campaigns.launch_blocking import first_refusal
     from squadops.campaigns.models import CycleKind, LaunchRequest
 
-    assert _create(world).status_code == 200
+    assert _create(world).status_code == 201
     cid = "cmp_api000000001"
     await world.campaigns.transition(cid, move(CampaignState.CALIBRATING, "c"))
     intent = (
@@ -678,7 +678,7 @@ def _answer(
 async def test_a_late_answer_is_recorded_once_against_an_expired_escalation(world):
     """§24bj's ruling 4. Bugs caught: the answer lost, or recorded twice with two texts, so a later
     gate could read either."""
-    assert _create(world).status_code == 200
+    assert _create(world).status_code == 201
     escalation_id = await _escalation(world, ended="expired")
 
     first = _answer(world, escalation_id)
@@ -701,7 +701,7 @@ async def test_a_late_answer_is_recorded_once_against_an_expired_escalation(worl
 async def test_an_answer_after_the_campaign_ended_is_recorded_and_reopens_nothing(world):
     """An escalation pending when its campaign ended reads cancelled, and takes a late answer;
     the campaign stays completed."""
-    assert _create(world).status_code == 200
+    assert _create(world).status_code == 201
     escalation_id = await _escalation(world, ended=None)
     abort = world.client.post(
         "/api/v1/campaigns/cmp_api000000001/abort",
@@ -737,7 +737,7 @@ async def test_a_late_answer_with_nothing_to_answer_is_a_422_and_records_nothing
 ):
     """§24bm adds the last case. Bug caught: an answer attached to a decision the escalation never
     asked, which a later launch would carry into a plan as if the owner had answered it."""
-    assert _create(world).status_code == 200
+    assert _create(world).status_code == 201
     escalation_id = await _escalation(world, ended=ended)
 
     resp = _answer(world, escalation_id if known else "esc_000000000000", answer, decision)

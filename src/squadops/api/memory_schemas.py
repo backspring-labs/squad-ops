@@ -1,4 +1,5 @@
-"""Request bodies for Cross-Cycle Memory's lesson routes (SIP-0110 §0.6, slice 3d)."""
+"""Request and response bodies for Cross-Cycle Memory's lesson routes (SIP-0110 §0.6, slice 3d;
+responses #1976)."""
 
 from __future__ import annotations
 
@@ -101,3 +102,154 @@ class AnnotationReviewRequest(BaseModel):
     note: str = ""
 
     model_config = ConfigDict(extra="forbid")
+
+
+# =============================================================================
+# Responses (#1976). Each mirrors its record's ``to_dict()``, so OpenAPI shows what the route
+# promises. ``extra="allow"`` passes on a field a record gains before its model does, so a client
+# never loses one silently; ``test_memory_response_models.py`` holds each model to its record.
+# Timestamps are the records' ISO strings.
+# =============================================================================
+
+
+class _Record(BaseModel):
+    model_config = ConfigDict(extra="allow")
+
+
+class ApplicabilityResponse(_Record):
+    project_id: str
+    task_types: list[str]
+    roles: list[str]
+    stacks: list[str]
+    model_families: list[str]
+
+
+class ApprovalResponse(_Record):
+    approval_id: str
+    revision_id: str
+    applicability: ApplicabilityResponse
+    approved_by: str
+    approved_at: str
+    replay_check: dict[str, Any]
+    revoked_at: str | None
+    ruling: str
+    combined_check: dict[str, Any]
+    revoked_by: str | None
+    revocation_reason: str | None
+
+
+class LessonResponse(_Record):
+    """One revision of a lesson, with its approvals (revoked ones included)."""
+
+    revision_id: str
+    pattern_id: str
+    revision: int
+    target_behavior: str
+    text: str
+    applicability: ApplicabilityResponse
+    template_id: str
+    template_version: str
+    drafter_model: str
+    drafter_version: str
+    cited_observations: list[str]
+    created_at: str
+    approvals: list[ApprovalResponse]
+
+
+class SuppliedTogetherResponse(BaseModel):
+    revision_id: str
+    revision_ids: list[str]
+
+
+class HoldingUnitResponse(BaseModel):
+    unit_kind: str
+    unit_id: str
+    snapshot_id: str
+    pinned_at: str
+
+
+class RevocationResponse(BaseModel):
+    """The revoked approval, the units holding it (running, then finished) and what to do next."""
+
+    approval: ApprovalResponse
+    units_holding_it: list[HoldingUnitResponse]
+    finished_units_holding_it: list[HoldingUnitResponse]
+    next: str
+
+
+class ClassificationResponse(_Record):
+    vocabulary: str
+    values: list[str]
+    rationale: str | None
+
+
+class AnnotationResponse(_Record):
+    annotation_id: str
+    project_id: str
+    source_id: str
+    classification: ClassificationResponse
+    target_behavior: str | None
+    evidence: dict[str, Any]
+    context: dict[str, Any]
+    annotator: str
+    annotated_at: str
+    reviewed_by: str | None
+    reviewed_at: str | None
+    review_note: str | None
+
+
+class ObservationResponse(_Record):
+    """An observation, its annotations, and the classification they leave in effect."""
+
+    source: str
+    source_id: str
+    project_id: str
+    campaign_id: str | None
+    cycle_id: str | None
+    run_id: str | None
+    task_id: str | None
+    observed_at: str
+    classification: ClassificationResponse
+    evidence: dict[str, Any]
+    annotations: list[AnnotationResponse]
+    effective_classification: ClassificationResponse
+
+
+class AssessmentResponse(_Record):
+    assessment_id: str
+    project_id: str
+    exposure_id: str
+    pattern_id: str
+    state: str
+    required_work_done: bool | None
+    supplied: bool
+    rubric: str
+    evidence: str
+    assessed_by: str
+    assessed_at: str
+
+
+class ExposureResponse(_Record):
+    """One exposure (what a task was supplied) and its latest assessments."""
+
+    exposure_id: str
+    run_id: str
+    task_id: str
+    attempt: int
+    cycle_id: str
+    agent_id: str
+    seam: str
+    query: dict[str, Any]
+    recalled: dict[str, Any]
+    recorded_at: str
+    assessments: list[AssessmentResponse]
+
+
+class AbsenceRateResponse(BaseModel):
+    pattern_id: str
+    supplied: bool
+    absent: int
+    assessed: int
+    not_applicable: int
+    unassessed: int
+    rate: float | None
