@@ -139,3 +139,21 @@ async def test_a_connection_never_made_raises_once_the_tries_are_spent():
 def test_a_retry_that_could_never_run_or_would_not_wait_is_refused(attempts, backoff):
     with pytest.raises(ValueError):
         TransientRetry(attempts=attempts, backoff_seconds=backoff)
+
+
+def test_the_registry_factory_builds_the_retry_from_the_config_and_requires_it():
+    """#1976, wiring: the runtime API hands the factory its ``db.retry`` section. Bugs caught: the
+    configured attempts and pause dropped for a hardcoded policy, or a Postgres registry built with
+    no retry at all."""
+    from unittest.mock import MagicMock
+
+    from adapters.cycles.factory import create_cycle_registry
+    from squadops.config.schema import DBRetryConfig
+
+    registry = create_cycle_registry(
+        "postgres", pool=MagicMock(), retry=DBRetryConfig(attempts=4, backoff_seconds=0.2)
+    )
+
+    assert registry._retry == TransientRetry(attempts=4, backoff_seconds=0.2)
+    with pytest.raises(ValueError, match="retry is required"):
+        create_cycle_registry("postgres", pool=MagicMock())
