@@ -222,6 +222,9 @@ class ExperimentManifest:
     #: The model settings the cases were captured with, by model.
     model_settings: tuple[Mapping[str, Any], ...]
     rubric: str
+    #: The text the rubric's version names, by hash, when the repository holds that rubric (#2313):
+    #: a version is pinned by its text, not its label. None for a label no rubric file holds.
+    rubric_sha256: str | None
     framework_git_sha: str
     excluded: tuple[Mapping[str, Any], ...] = field(default_factory=tuple)
 
@@ -237,6 +240,7 @@ class ExperimentManifest:
             "static_guidance_sha256": self.static_guidance_sha256,
             "model_settings": [dict(m) for m in self.model_settings],
             "rubric": self.rubric,
+            "rubric_sha256": self.rubric_sha256,
             "framework_git_sha": self.framework_git_sha,
             "excluded": [dict(e) for e in self.excluded],
         }
@@ -258,6 +262,7 @@ def manifest(
     lessons: Sequence[ReplayLesson],
     static_guidance: str,
     rubric: str,
+    rubric_text: str | None,
     framework_git_sha: str,
     excluded: Sequence[Mapping[str, Any]] = (),
 ) -> ExperimentManifest:
@@ -286,6 +291,7 @@ def manifest(
         static_guidance_sha256=_sha(static_guidance) if static_guidance else None,
         model_settings=tuple({"model": m, **s} for m, s in sorted(settings.items())),
         rubric=rubric,
+        rubric_sha256=_sha(rubric_text) if rubric_text is not None else None,
         framework_git_sha=framework_git_sha,
         excluded=tuple(excluded),
     )
