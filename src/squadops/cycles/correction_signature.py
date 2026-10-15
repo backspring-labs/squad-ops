@@ -195,22 +195,43 @@ def classify_movement(
     return MOVEMENT_SHIFTED
 
 
+def _progress_identity(
+    element: tuple[str, str, str], probe_ids: frozenset[str]
+) -> tuple[str, str, str]:
+    """An element as the retest comparison sees it: a contract probe's without its reason (#2340).
+
+    A probe stops at its first failed assertion, so a repair that fixes that one moves the
+    probe's reason on to the next ("response missing key(s): ['id']", then the list's order).
+    Compared with its reason, the half-fixed probe reads as a failure the repair added and the
+    repair is discarded. Every other check keeps its reason: a still-failing check whose reason
+    changed may be one the repair broke a new way, which #1522 must not keep.
+    """
+    check_id, subject, _reason = element
+    return (check_id, subject, "") if check_id in probe_ids else element
+
+
 @dataclass(frozen=True)
 class RetestReduction:
     """A repair's retest that cleared some of its round's failures and added none (#1522)."""
 
     before: frozenset[tuple[str, str, str]]
     after: frozenset[tuple[str, str, str]]
+    #: The contract probes compared without their reason (#2340).
+    probe_ids: frozenset[str] = frozenset()
 
     @property
     def cleared(self) -> frozenset[tuple[str, str, str]]:
-        return self.before - self.after
+        still = {_progress_identity(e, self.probe_ids) for e in self.after}
+        return frozenset(
+            e for e in self.before if _progress_identity(e, self.probe_ids) not in still
+        )
 
 
 def retest_reduction(
     round_evidence: dict[str, Any],
     retest_evidence: dict[str, Any],
     retest_evaluated: frozenset[str],
+    probe_ids: frozenset[str] = frozenset(),
 ) -> RetestReduction | None:
     """The retest's failures as ``MOVEMENT_PROGRESS`` against the round's, or ``None`` (#1522).
 
@@ -227,16 +248,40 @@ def retest_reduction(
     - the retest did not evaluate a check the round failed (``retest_evaluated`` holds the
       check ids its rows carry). A failure the retest never looked at would otherwise read as
       cleared.
+
+    ``probe_ids`` names the task's contract probes, compared without their reason (#2340).
+    """
+    return retest_reduction_or_refusal(
+        round_evidence, retest_evidence, retest_evaluated, probe_ids
+    )[0]
+
+
+def retest_reduction_or_refusal(
+    round_evidence: dict[str, Any],
+    retest_evidence: dict[str, Any],
+    retest_evaluated: frozenset[str],
+    probe_ids: frozenset[str] = frozenset(),
+) -> tuple[RetestReduction | None, str]:
+    """``retest_reduction``, with why a retest was not taken as progress when it wasn't (#2340).
+
+    The refusal is a machine reason for the log: ``no_signature`` (a side has no product
+    failure), ``movement=<class>`` (the comparison was not progress), or ``unevaluated=<checks>``
+    (the retest did not look at a check the round failed). Empty for a reduction.
     """
     before = failure_signature(round_evidence)
     after = failure_signature(retest_evidence)
     if not before or not after:
-        return None
-    if classify_movement(before, after) != MOVEMENT_PROGRESS:
-        return None
-    if not {check for check, _, _ in before} <= retest_evaluated:
-        return None
-    return RetestReduction(before=before, after=after)
+        return None, "no_signature"
+    movement = classify_movement(
+        frozenset(_progress_identity(e, probe_ids) for e in before),
+        frozenset(_progress_identity(e, probe_ids) for e in after),
+    )
+    if movement != MOVEMENT_PROGRESS:
+        return None, f"movement={movement}"
+    unevaluated = {check for check, _, _ in before} - retest_evaluated
+    if unevaluated:
+        return None, "unevaluated=" + ",".join(sorted(unevaluated))
+    return RetestReduction(before=before, after=after, probe_ids=probe_ids), ""
 
 
 def carried_failures(
