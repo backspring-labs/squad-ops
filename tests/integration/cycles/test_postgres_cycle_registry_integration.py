@@ -845,6 +845,28 @@ class TestConcurrentRunCreation:
         # At least some must succeed (we expect most to)
         assert successes > 0, "No runs succeeded in 20 iterations"
 
+    async def test_with_the_retry_no_rollback_reaches_the_caller(self, migrated_pool):
+        """#1976, on real Postgres: the same contention through a registry that retries. Bug
+        caught: a serialization failure (40001) handed to the caller as a failed run creation,
+        when running the transaction again allocates the next number. Three at once, twenty
+        times: every creation succeeds, and the numbers are 1 to 60 with none repeated."""
+        from adapters.cycles.postgres_cycle_registry import PostgresCycleRegistry
+
+        registry = PostgresCycleRegistry(
+            pool=migrated_pool, retry=TransientRetry(attempts=6, backoff_seconds=0.01)
+        )
+        cycle = _make_cycle()
+        await registry.create_cycle(cycle)
+
+        numbers: list[int] = []
+        for _ in range(20):
+            created = await asyncio.gather(
+                *[registry.create_run(_make_run(cycle.cycle_id)) for _ in range(3)]
+            )
+            numbers.extend(r.run_number for r in created)
+
+        assert sorted(numbers) == list(range(1, 61))
+
 
 class TestMigrationRunnerIdempotent:
     """run apply_migrations() twice, no error (Plan §3.3 item 7)."""
