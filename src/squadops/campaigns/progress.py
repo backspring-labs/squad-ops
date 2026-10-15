@@ -25,6 +25,7 @@ from datetime import UTC, datetime
 from typing import Any
 
 from squadops.auth.models import Role
+from squadops.campaigns.acceptance import DiscriminationReason, Held
 from squadops.campaigns.continuation import (
     CampaignCounters,
     ContinuationDecision,
@@ -324,6 +325,34 @@ def increment_verdict(
         return RunVerdict.BLOCKED_UNVERIFIED
 
 
+def already_met(evaluation: dict | None) -> tuple[str, ...]:
+    """The new criteria an increment's evaluation found the accepted application already meets
+    (#2315): each unmet only because its test passes on the accepted tree (``no_baseline_failure``,
+    §8.2). Empty without an evaluation."""
+    return tuple(
+        str(d.get("criterion_id"))
+        for d in (evaluation or {}).get("discriminations") or ()
+        if not d.get("met") and d.get("reason") == str(DiscriminationReason.NO_BASELINE_FAILURE)
+    )
+
+
+def rejected_only_as_already_met(evaluation: dict | None) -> bool:
+    """Whether those criteria are the whole of the evaluation's rejection (#2315, §24bq): it
+    rejected, nothing is blocked, every frozen criterion held, every route rendered, and every new
+    criterion it found unmet is already met. Then no repair can change the verdict."""
+    if not evaluation or evaluation.get("verdict") != str(RunVerdict.REJECTED):
+        return False
+    if evaluation.get("blocked"):
+        return False
+    held = str(Held.HELD)
+    if any(f.get("held") != held for f in evaluation.get("frozen") or ()):
+        return False
+    if any(r.get("held") != held for r in evaluation.get("routes") or ()):
+        return False
+    unmet = [d for d in evaluation.get("discriminations") or () if not d.get("met")]
+    return bool(unmet) and len(unmet) == len(already_met(evaluation))
+
+
 def frozen_criteria(log: list) -> tuple[dict, ...]:
     """Every criterion the campaign's promotions froze and none retired (§8.1), from the control
     log, in order."""
@@ -504,7 +533,11 @@ class CampaignProgress:
         if kind in _INCREMENT_KINDS and ending is CycleEnding.ASSESSED:
             evaluation = await self._increment_evaluation(last_run)
         ended = EndedCycle(
-            cycle.cycle_id, kind, ending, increment_verdict(kind, ending, evaluation)
+            cycle.cycle_id,
+            kind,
+            ending,
+            increment_verdict(kind, ending, evaluation),
+            rejected_only_as_already_met(evaluation),
         )
         verdict = cycle_verdict(latest, ended)
 
@@ -974,6 +1007,21 @@ class CampaignProgress:
             )
         return frozen
 
+    async def _already_met_stated(self, cycle: Cycle) -> list[dict]:
+        """#2315: the criteria the abandoned increment's evaluation found the accepted application
+        already meets, each with what it asserts, so the next proposal is told the application does
+        this already. Read from its last run's stored evaluation and approved change request: a
+        function of stored data (#1943), so a read that fails raises and the re-hearing retries."""
+        runs = await self._cycles.list_runs(cycle.cycle_id)
+        if not runs:
+            return []
+        last = max(runs, key=lambda r: r.run_number)
+        ids = already_met(await self._increment_evaluation(last))
+        if not ids:
+            return []
+        stated = await self._criteria_stated(cycle, last)
+        return [{"criterion_id": c, **stated.get(c, {})} for c in ids]
+
     async def _criteria_stated(self, cycle: Cycle, run: Run) -> dict[str, dict]:
         """What each of the increment's criteria asserts (#1938): its statement and surface, from
         the approved change request, frozen beside its bundle. Every later proposal is then told
@@ -1028,8 +1076,13 @@ class CampaignProgress:
         if action is PendingAction.PROPOSE:
             return await self._propose_launch(campaign)
         if action is PendingAction.ABANDON_AND_PROPOSE:
-            # Row 13 (#1692): the fresh proposal is shown why the increment it replaces failed.
+            # Rows 13 and 16 (#1692): the fresh proposal is shown why the increment it replaces
+            # failed, and (#2315) which of its criteria the accepted application already meets.
             abandoned = await self._prior_cycle_brief(cycle, latest) if cycle else None
+            if cycle is not None:
+                met = await self._already_met_stated(cycle)
+                if met:
+                    abandoned = {**(abandoned or {"cycle_id": cycle.cycle_id}), "already_met": met}
             return await self._propose_launch(
                 campaign, abandoned, abandoned_cycle_id=cycle.cycle_id if cycle else None
             )

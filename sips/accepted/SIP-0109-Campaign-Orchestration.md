@@ -115,6 +115,7 @@ Kept by the rule in CLAUDE.md ("SIP System"): one row per part, updated in the P
 | the tier's activation, after 2.2's measurement window closes, and its live reading in the cut's campaign shakeout (the 2.2 plan, steps 10–11) | **shipped** | 2.2.0, issue #1708: activated in the cut's shakeout `cmp_3c22edb866c2`, which decided all 3 of its plan gates `system:plan_review_tier` (the cut pre-registration's P3, §10, PR #2219). The tier diagnostic's calibration escalated on an open question, and the delegate's answer resolved it inside the bound. The timeout half (expiry, the parked cycle, the continuation) is read in unit tests only; its live reading is the next row |
 | the timeout half, read live: the expiry, the parked increment, row 15, the no-progress stop and the late answer, on a diagnostic campaign whose increments ask a question (the `increment_design_asks` seed fault) | **shipped:** 2.3.0, PR #2307, issue #2279. Read live on `dep_c627c2873c3c`, 2026-10-14: every pre-registered reading held, after the reading found #2290, #2301 and #2303 (fixed by #2293, #2302 and #2304) | the 2.3 plan, phase 8, R3's deploy |
 | a park's abandonment counted at its own decision, so a run of parks stops at `max_unaccepted_increments` (§24bp) | **shipped** | 2.3.0, PR #2295, issue #2294 |
+| an increment rejected only for criteria the accepted application already meets is abandoned for a new proposal told which, not repaired (§24bq, row 16) | **shipped** | 2.3.0, PR #2319, issue #2315 |
 | accepted increments' `prd_delta` text to the proposer | **deferred to 2.4** (ruled 2026-10-03, §24ap): "a 2.4 question" | §24ap |
 | escalating a launch the cycle-create preflight refuses | **shipped** (§24ba) | 2.1.0, PR #2052, issue #1971 |
 | re-hearing an ended cycle between restarts | **shipped**: the campaign sweep re-hears on its interval, and a cycle is heard by one hearer at a time | 2.1.0, PR #2038, issue #1972 (§24as) |
@@ -3383,3 +3384,53 @@ written.
 
 **Who ruled it.** Proposed by the implementer, as a correction that makes row 15 match §24bj's text and row 13's precedent.
 The owner rules it with the merge.
+
+### 24bq. A rejection only for criteria already met is abandoned for a new proposal, not repaired (2026-10-14, §8.2, §10 rows 4, 12, 13 and 16, §24w, #2315; ruled by the owner)
+
+**What main did.** Row 12 sent every rejected increment with a repair cycle left to a repair. A repair rebuilds the
+candidate. But a new criterion that is unmet with `no_baseline_failure` (§8.2) is unmet because its test passes on the
+accepted tree, and no rebuild of the candidate changes the baseline run. When those criteria were the whole of the
+rejection, the repair was spent before the outcome it could not change. Row 13 then abandoned the increment, and its
+brief (§24w) carried the cycle's own checks, which had passed, so the next proposal was not told why.
+
+**The evidence.** #2205's after arm (`cmp_fd71a56a9142`, 2026-10-14, on TensorFold):
+- the first proposal's T1–T4 discriminated;
+- its T5 and T6 (the run view shows the server's message) were `no_baseline_failure`, because the accepted view
+  already showed it;
+- row 12 launched a repair (`cyc_bfa3287a2f65`, 5 min), which rewrote every criterion's test and got the same split;
+- row 13 abandoned the increment, and a second proposal, with endpoint criteria only, was accepted.
+
+The readings are on #2205 and the issue is #2315.
+
+**What changed.**
+- **Row 16, asked before row 12:** the cycle's own verification accepted and its increment's evaluation rejected it, and
+  every unmet new criterion is `no_baseline_failure`. Nothing is blocked, every frozen criterion held, and every route
+  rendered. The action is `abandon_and_propose`, whether repair cycles remain or not.
+  - It counts as unaccepted at its own decision, as rows 13 and 15 do (§24bp), so row 4's no-progress stop reads it.
+  - A rejection with any other unmet reason, or a build that also failed its own checks, keeps row 12. A repair can
+    fix those.
+- **§24w's brief** for an abandonment (rows 13 and 16) names the criteria the evaluation found already met, each with
+  its statement and surface from the approved change request. They are shown as "Already met by the accepted
+  application, before this change". Read from stored records (the last run's evaluation and the request), as #1943
+  requires of a launch.
+
+**Evidence.**
+- `tests/unit/campaigns/test_continuation.py::test_a_rejection_only_for_already_met_criteria_is_abandoned_for_a_new_proposal`
+  covers four cases:
+  - row 16 with repairs left;
+  - row 16 with repairs spent;
+  - row 12 when the build's own checks also failed;
+  - row 4 when the abandonment reaches the limit.
+- `tests/unit/campaigns/test_progress.py::test_an_increment_rejected_only_for_criteria_already_met_goes_to_a_new_proposal_told_which`
+  enters at the completion hook with the request on the approved proposal run (#1938's live shape):
+  - row 16, and the next proposal's `abandoned_increment.already_met` carries C1's statement and surface;
+  - with a second criterion that fails on the candidate, row 12.
+- `test_a_rejection_is_already_met_only_when_nothing_else_stands_in_it` checks five evaluations that must not count as
+  already met only: none, blocked, a frozen criterion broken, a route missing, and accepted.
+- Three mutations are caught:
+  - row 16 never firing;
+  - a broken frozen criterion ignored;
+  - the brief left without the criteria.
+
+**Who ruled it.** The owner, 2026-10-14 ("yes"), on the recommendation put on #2315: skip the repair, and tell the
+next proposal which criteria the accepted application already meets.

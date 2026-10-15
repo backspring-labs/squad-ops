@@ -359,3 +359,41 @@ def test_parks_in_a_row_stop_at_the_limit_through_the_counters_the_decision_read
     )
 
     assert (decision.row, decision.outcome or decision.action) == expected
+
+
+@pytest.mark.parametrize(
+    ("cycle_verdict", "count_overrides", "expected"),
+    [
+        # The build passed its own checks, and its criteria were met already: no repair can
+        # change that, so a new proposal follows whether repairs remain or not.
+        (_ACC, {}, (16, PendingAction.ABANDON_AND_PROPOSE, _GO, None)),
+        (_ACC, dict(repair_cycles=1), (16, PendingAction.ABANDON_AND_PROPOSE, _GO, None)),
+        # The build failed its own checks too, and a repair can fix those: row 12 as before.
+        (_REJ, {}, (12, PendingAction.REPAIR, _GO, None)),
+        # Counted as unaccepted at its own decision, as row 13's is (#2294): one before and this
+        # one reach the builders' limit of two.
+        (_ACC, dict(unaccepted_increments=1), (4, CampaignOutcome.FAILURE, None, None)),
+    ],
+    ids=["repairs-remain", "repairs-spent", "its-own-checks-failed", "counts-as-unaccepted"],
+)
+def test_a_rejection_only_for_already_met_criteria_is_abandoned_for_a_new_proposal(
+    cycle_verdict, count_overrides, expected
+):
+    """#2315 (§24bq, row 16). Bug caught: an increment rejected only because its new criteria
+    already pass on the accepted application sent to a repair, which rebuilds the candidate and
+    cannot change a test that passes on the baseline (``cmp_fd71a56a9142``: one repair spent, the
+    same split, then row 13)."""
+    decision = campaign_continuation_decision(
+        CAMPAIGN,
+        counters(**count_overrides),
+        EndedCycle(
+            CYCLE,
+            CycleKind.INCREMENT,
+            CycleEnding.ASSESSED,
+            RunVerdict.REJECTED,
+            rejected_only_as_already_met=True,
+        ),
+        assessment(cycle_verdict),
+    )
+
+    assert shape(decision) == expected
