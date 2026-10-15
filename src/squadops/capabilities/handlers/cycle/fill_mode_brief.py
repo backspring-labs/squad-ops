@@ -14,6 +14,9 @@ from __future__ import annotations
 from collections.abc import Sequence
 from typing import Any
 
+from squadops.stacks.scaffold import error_envelope_lines
+from squadops.stacks.verification_scaffold import VerificationScaffoldManifest
+
 FILL_MODE_TEMPLATE = "request.qa_test_fill_mode_appendix"
 SELF_EVAL_FILL_TEMPLATE = "request.qa_test_self_eval_fill_appendix"
 REPAIR_FILL_TEMPLATE = "request.qa_test_repair_fill_appendix"
@@ -33,8 +36,6 @@ async def render_fill_mode_section(
     files = scaffold_input.get("files") or []
     if renderer is None or not manifest_dict or not files:
         return ""
-    from squadops.capabilities.scaffold import error_envelope_lines
-    from squadops.capabilities.verification_scaffold import VerificationScaffoldManifest
     from squadops.capabilities.verification_scaffold_fill import coverage_inventory_lines
 
     record = VerificationScaffoldManifest.from_dict(manifest_dict)

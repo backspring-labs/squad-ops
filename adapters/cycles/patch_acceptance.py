@@ -56,6 +56,11 @@ from squadops.cycles.patch_verification import (
     verify_patched_artifacts,
 )
 from squadops.cycles.scaffold_integrity_evidence import STAGE_PATCH_VERIFICATION
+from squadops.stacks.development_profiles import (
+    collected_test_patterns_for,
+    matches_test_file_patterns,
+)
+from squadops.stacks.scaffold_contract import emit_contract_dict
 from squadops.tasks.models import TaskResultStatus
 from squadops.tasks.task_types import authors_qa_suite, emits_required_files
 
@@ -193,10 +198,6 @@ def _repaired_suite_files(
     ``backend/tests/test_runs.py`` arrives as ``code`` and a ``type``-keyed rule would
     miss exactly the case this exists for.
     """
-    from squadops.capabilities.development_profiles import (
-        collected_test_patterns_for,
-        matches_test_file_patterns,
-    )
 
     patterns = collected_test_patterns_for(resolved_config)
     if not patterns:
@@ -527,7 +528,6 @@ class PatchAcceptance:
         file_owned: list[Any] = []
         if interface_manifest is not None:
             try:
-                from squadops.capabilities.scaffold_contract import emit_contract_dict
                 from squadops.cycles.implementation_plan import resolve_criteria_for_files
                 from squadops.cycles.verification_contract import VerificationContract
 

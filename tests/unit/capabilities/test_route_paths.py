@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import pytest
 
-from squadops.capabilities.route_paths import PathSegment, path_segments
+from squadops.stacks.route_paths import PathSegment, path_segments
 
 pytestmark = [pytest.mark.domain_capabilities]
 

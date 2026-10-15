@@ -6,13 +6,13 @@ from pathlib import Path
 import pytest
 import yaml
 
-from squadops.capabilities.scaffold import InterfaceManifest, expand
 from squadops.sandbox.environment import (
     FULLSTACK_FASTAPI_REACT,
     EnvironmentContract,
     get_environment_contract,
 )
 from squadops.sandbox.models import OperationName
+from squadops.stacks.scaffold import InterfaceManifest, expand
 
 _MANIFEST_PATH = (
     Path(__file__).resolve().parents[3] / "examples" / "03_group_run" / "interface_manifest.yaml"

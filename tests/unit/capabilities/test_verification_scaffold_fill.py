@@ -11,8 +11,6 @@ from __future__ import annotations
 
 import pytest
 
-from squadops.capabilities.verification_scaffold import ScaffoldValidationError
-from squadops.capabilities.verification_scaffold_emission import emit_verification_scaffold
 from squadops.capabilities.verification_scaffold_fill import (
     DISPOSITION_FILLED,
     DISPOSITION_MISSING,
@@ -25,6 +23,8 @@ from squadops.capabilities.verification_scaffold_fill import (
     parse_fill_emission,
     strip_fill_blocks,
 )
+from squadops.stacks.verification_scaffold import ScaffoldValidationError
+from squadops.stacks.verification_scaffold_emission import emit_verification_scaffold
 from tests.unit.capabilities._stack_fixtures import manifest_for_stack
 
 _CREATE_SLOT = "slot-vc-probe-api-runs"
@@ -376,7 +376,7 @@ class TestElementKindFindings:
         """The gate reads the fact the floor asserts — one derivation. Every behavior with a
         success floor on the reference pins `participants` as objects; rejections carry
         no floor and no kinds."""
-        from squadops.capabilities.verification_scaffold_emission import slot_element_kinds
+        from squadops.stacks.verification_scaffold_emission import slot_element_kinds
 
         kinds = slot_element_kinds(manifest_for_stack("nextjs_ts"))
         assert kinds["slot-vc-probe-api-runs-join"]["participants"]["kind"] == "object"
@@ -487,7 +487,7 @@ class TestRecoverFills:
 
     @pytest.fixture(scope="class")
     def scaffold(self):
-        from squadops.capabilities.verification_scaffold_emission import (
+        from squadops.stacks.verification_scaffold_emission import (
             emit_verification_scaffold,
         )
         from tests.unit.capabilities._stack_fixtures import manifest_for_stack

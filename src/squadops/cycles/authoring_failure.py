@@ -44,6 +44,7 @@ from squadops.cycles.manifest_gates import (
     assess_schema,
     assess_winnability,
 )
+from squadops.stacks.scaffold import InterfaceManifest
 
 #: The manifest is wrong; schema, blueprint and deriver are all fine. Retrying the
 #: authoring stage with rejection context is the right response.
@@ -232,7 +233,6 @@ def _open_questions(manifest_content: str) -> tuple[str, ...]:
     An unparseable manifest has no readable decisions; the parse failure is already a
     finding, so this stays silent rather than adding a second complaint about it.
     """
-    from squadops.capabilities.scaffold import InterfaceManifest
 
     try:
         manifest = InterfaceManifest.from_yaml(manifest_content)

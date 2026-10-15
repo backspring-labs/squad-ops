@@ -31,13 +31,13 @@ from pathlib import Path
 
 import pytest
 
-from squadops.capabilities.scaffold import InterfaceManifest
 from squadops.cycles.manifest_diagnostics import (
     SURFACE_KEYS,
     render,
     structural_diff,
     surface_counts,
 )
+from squadops.stacks.scaffold import InterfaceManifest
 
 pytestmark = [pytest.mark.domain_contracts]
 
@@ -78,7 +78,7 @@ def test_a_shrinking_declared_surface_is_visible_in_the_counts():
     easier green. A window with no size instrument cannot tell a strong roll from a small one."""
     import dataclasses
 
-    from squadops.capabilities.scaffold import Api
+    from squadops.stacks.scaffold import Api
 
     narrowed = dataclasses.replace(
         _AUTHORED,

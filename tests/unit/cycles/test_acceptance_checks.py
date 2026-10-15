@@ -2037,8 +2037,8 @@ class TestUndefinedNamesReplaysTheRollThatCostIt:
 
     @staticmethod
     async def _replay(tmp_path: Path, fixture: str):
-        from squadops.capabilities.stack_nextjs_ts import _TSCONFIG
         from squadops.cycles import acceptance_checks
+        from squadops.stacks.stack_nextjs_ts import _TSCONFIG
 
         acceptance_checks._TSC_OUTPUT_CACHE.clear()
         (tmp_path / "tsconfig.json").write_text(_TSCONFIG)

@@ -14,7 +14,6 @@ from types import SimpleNamespace
 
 import pytest
 
-from squadops.capabilities.verification_scaffold_emission import emit_verification_scaffold
 from squadops.cycles.bound_scaffold_record import BoundScaffoldRecord, build_bound_record
 from squadops.cycles.scaffold_enforcement import (
     enforce_frozen_ownership,
@@ -24,6 +23,7 @@ from squadops.cycles.task_outcome import (
     CONTRACT_COMPLIANCE_ACTIONS,
     ContractComplianceViolation,
 )
+from squadops.stacks.verification_scaffold_emission import emit_verification_scaffold
 from tests.unit.capabilities._stack_fixtures import manifest_for_stack
 
 pytestmark = [pytest.mark.domain_contracts]

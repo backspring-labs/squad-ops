@@ -1813,7 +1813,7 @@ class TestRepairRejectionCarry:
         import dataclasses as _dc
         from pathlib import Path
 
-        from squadops.capabilities.scaffold import InterfaceManifest
+        from squadops.stacks.scaffold import InterfaceManifest
 
         manifest = InterfaceManifest.from_yaml(
             (

@@ -29,6 +29,7 @@ from squadops.capabilities.lesson_supply import supply_for_cycle
 from squadops.cycles.models import Cycle, RunStatus, WorkloadType
 from squadops.cycles.task_plan import generate_task_plan
 from squadops.events.types import EventType
+from squadops.stacks.scaffold import frozen_paths
 
 
 @dataclass
@@ -249,7 +250,6 @@ class RunProvisioning:
                 # #1876: never its scaffold-frozen files, which the skeleton above regenerated
                 # from the candidate manifest.
                 from squadops.campaigns.increment_tree import starting_tree_refs
-                from squadops.capabilities.scaffold import frozen_paths
 
                 seed_artifact_refs.extend(
                     await starting_tree_refs(

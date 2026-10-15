@@ -1924,7 +1924,7 @@ def _table_forms(entity: str) -> list[tuple[str, re.Pattern[str]]]:
     scaffold's ``backend/store.py`` exposes ``<snake>_store`` per root entity, the Next.js
     scaffold's ``lib/store.ts`` exposes ``TABLES.<Entity>`` (also ``TABLES['Entity']``).
     ``_snake`` is the store's own naming rule, imported so the two cannot drift."""
-    from squadops.capabilities.stack_fastapi_react import _snake
+    from squadops.stacks.stack_fastapi_react import _snake
 
     escaped = re.escape(entity)
     return [
@@ -1955,7 +1955,7 @@ def non_root_fixture_tables(manifest_text: str | None, suites: list[tuple[str, s
             "mentions": None,
             "refused": "no interface_manifest.yaml stored for the run",
         }
-    from squadops.capabilities.scaffold import InterfaceManifest, root_persisted_entities
+    from squadops.stacks.scaffold import InterfaceManifest, root_persisted_entities
 
     manifest = InterfaceManifest.from_yaml(manifest_text)
     declared = [e.name for e in (getattr(manifest, "entities", ()) or ())]
@@ -2281,8 +2281,8 @@ Reader = Callable[[str], str | None]
 
 
 def _p0_nextjs_ts(manifest: Any, seeded: Reader) -> dict:
-    from squadops.capabilities.scaffold import root_persisted_entities
-    from squadops.capabilities.stack_nextjs_ts import _ts_type
+    from squadops.stacks.scaffold import root_persisted_entities
+    from squadops.stacks.stack_nextjs_ts import _ts_type
 
     models = seeded("lib/models.ts") or ""
     store = seeded("lib/store.ts") or ""
@@ -2326,8 +2326,8 @@ def _p0_fullstack_fastapi_react(manifest: Any, seeded: Reader) -> dict:
     current deploy ``stores_beyond_roots`` reads ``[]``; on one built before it, the
     per-entity dicts — texture either way, never a verdict.
     """
-    from squadops.capabilities.scaffold import root_persisted_entities
-    from squadops.capabilities.stack_fastapi_react import _py_type
+    from squadops.stacks.scaffold import root_persisted_entities
+    from squadops.stacks.stack_fastapi_react import _py_type
 
     models = seeded("backend/models.py") or ""
     store = seeded("backend/store.py") or ""
@@ -2411,7 +2411,7 @@ def p0_checks(stack: str, manifest: Any, seeded: Reader) -> dict:
 def static_checks(
     cfg: SetConfig, stack: str, cycle_id: str, impl_run: str | None, framing_run: str | None
 ) -> dict:
-    from squadops.capabilities.scaffold import InterfaceManifest
+    from squadops.stacks.scaffold import InterfaceManifest
 
     out: dict = {}
     manifest = None

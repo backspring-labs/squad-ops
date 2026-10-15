@@ -18,11 +18,11 @@ from pathlib import Path
 
 import pytest
 
-from squadops.capabilities.scaffold import InterfaceManifest
-from squadops.capabilities.scaffold_contract import emit_contract_dict
 from squadops.cycles.frozen_check_validation import frozen_check_violations
 from squadops.cycles.implementation_plan import ImplementationPlan
 from squadops.cycles.verification_contract import VerificationContract
+from squadops.stacks.scaffold import InterfaceManifest
+from squadops.stacks.scaffold_contract import emit_contract_dict
 
 pytestmark = [pytest.mark.domain_cycles]
 

@@ -30,9 +30,9 @@ from squadops.capabilities.handlers.planning.manifest import (
     _stamp_provenance,
     _without_authored_provenance,
 )
-from squadops.capabilities.scaffold import InterfaceManifest
 from squadops.cycles.authoring_failure import assess_authoring_outcome
 from squadops.cycles.manifest_authoring import AUTHORED_MODE
+from squadops.stacks.scaffold import InterfaceManifest
 
 pytestmark = [pytest.mark.domain_capabilities]
 

@@ -33,11 +33,11 @@ from squadops.capabilities.handlers.probe_runner import (
     evaluate_expectations,
     run_probes,
 )
-from squadops.capabilities.scaffold import InterfaceManifest, expand
-from squadops.capabilities.scaffold_contract import emit_contract_dict
-from squadops.capabilities.stack_nextjs_ts_tests import _shell_source, derive_scaffold_behaviors
 from squadops.cycles.manifest_gates import PROOF_LINT, PROOF_PARSES, assess_winnability
 from squadops.cycles.verification_contract import Probe, VerificationContract
+from squadops.stacks.scaffold import InterfaceManifest, expand
+from squadops.stacks.scaffold_contract import emit_contract_dict
+from squadops.stacks.stack_nextjs_ts_tests import _shell_source, derive_scaffold_behaviors
 from tests.unit.capabilities._stack_fixtures import manifest_dict_for_stack, manifest_for_stack
 
 pytestmark = [pytest.mark.domain_capabilities]

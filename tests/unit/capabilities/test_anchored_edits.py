@@ -463,7 +463,7 @@ class TestStructuralBlocks:
         """The JSX resolver through the grammar and the transaction, on the file 1.7.5 React
         roll 3 re-emitted whole. Bug caught: the component's export, signature or the lines
         around its body changed by a body replacement."""
-        from squadops.capabilities.scaffold import expand
+        from squadops.stacks.scaffold import expand
         from tests.unit.capabilities._stack_fixtures import manifest_for_stack
 
         view = "frontend/src/views/RunsListView.jsx"

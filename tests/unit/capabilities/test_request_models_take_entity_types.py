@@ -20,7 +20,7 @@ from squadops.campaigns.change_request import (
     apply_manifest_delta,
     validate_proposal,
 )
-from squadops.capabilities.scaffold import InterfaceManifest, expand
+from squadops.stacks.scaffold import InterfaceManifest, expand
 
 _FIXTURES = Path(__file__).resolve().parents[2] / "fixtures" / "campaigns"
 BASELINE = (_FIXTURES / "baseline-cyc_7a4b7a6fbf0e-interface_manifest.yaml").read_text()

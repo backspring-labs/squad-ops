@@ -19,12 +19,12 @@ from __future__ import annotations
 import pytest
 
 import squadops.capabilities.handlers.test_runner as tr
-from squadops.capabilities.development_profiles import TEST_FRAMEWORK_PYTEST
 from squadops.capabilities.handlers.test_runner import (
     RunTestsResult,
     run_backend_import_check,
     run_build_validation,
 )
+from squadops.stacks.development_profiles import TEST_FRAMEWORK_PYTEST
 
 pytestmark = [pytest.mark.domain_capabilities]
 

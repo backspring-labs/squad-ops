@@ -13,10 +13,10 @@ from pathlib import Path
 
 import yaml
 
-from squadops.capabilities.scaffold import InterfaceManifest, expand
-from squadops.capabilities.verification_scaffold_emission import emit_verification_scaffold
 from squadops.core.hashing import text_sha256
 from squadops.cycles.bound_scaffold_record import build_bound_record
+from squadops.stacks.scaffold import InterfaceManifest, expand
+from squadops.stacks.verification_scaffold_emission import emit_verification_scaffold
 from tests.unit.capabilities._stack_fixtures import manifest_for_stack
 
 _REPO = Path(__file__).resolve().parents[3]

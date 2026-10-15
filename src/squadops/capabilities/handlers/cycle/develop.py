@@ -8,10 +8,6 @@ import logging
 import time
 from typing import TYPE_CHECKING, Any
 
-from squadops.capabilities.development_profiles import (
-    effective_development_profile,
-    get_development_profile,
-)
 from squadops.capabilities.disputed_checks import criterion_identities
 from squadops.capabilities.handlers.base import HandlerResult
 from squadops.capabilities.handlers.cross_cycle_lessons import cross_cycle_lessons_section
@@ -19,6 +15,10 @@ from squadops.capabilities.handlers.prior_cycle import prior_cycle_section
 from squadops.capabilities.handlers.prompt_guard import _guard_prompt_size
 from squadops.llm.exceptions import LLMError
 from squadops.llm.models import ChatMessage
+from squadops.stacks.development_profiles import (
+    effective_development_profile,
+    get_development_profile,
+)
 from squadops.tasks.task_types import TaskType
 
 if TYPE_CHECKING:
@@ -33,6 +33,7 @@ from squadops.capabilities.handlers.cycle.validation import (
     _estimate_min_artifacts,
 )
 from squadops.capabilities.reasoning_policy import reasoning_kwargs, resolve_reasoning_level
+from squadops.stacks.scaffold import is_scaffoldable_stack
 
 logger = logging.getLogger(__name__)
 
@@ -697,11 +698,6 @@ class DevelopmentDevelopHandler(_CycleTaskHandler):
         ``ApiError(code, message)`` — and paid a correction to undo it. Same data, same
         transport, one step earlier.
         """
-        from squadops.capabilities.development_profiles import (
-            effective_development_profile,
-            get_development_profile,
-        )
-        from squadops.capabilities.scaffold import is_scaffoldable_stack
 
         stack = str(self._resolved_config.get("build_profile") or "")
         if not is_scaffoldable_stack(stack):

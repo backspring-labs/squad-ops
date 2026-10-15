@@ -266,8 +266,8 @@ class TestEnforcementWiring:
     def test_build_bound_record_seeds_every_fill_slot(self):
         from pathlib import Path
 
-        from squadops.capabilities.scaffold import InterfaceManifest, fill_slot_paths
         from squadops.cycles.bound_scaffold_record import build_bound_record
+        from squadops.stacks.scaffold import InterfaceManifest, fill_slot_paths
 
         path = (
             Path(__file__).resolve().parents[3]

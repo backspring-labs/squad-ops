@@ -20,6 +20,9 @@ models and decisions around them, and `adapters/` implements the ports against r
 - **The runtime-state layer stays pure:** `squadops.runtime` imports neither `adapters` nor
   `squadops.cli`, and its coordinator does not import the event bridges directly
   (`test_forbidden_imports.py`).
+- **The stacks depend on neither side** (#1993, `test_package_import_direction.py`):
+  `squadops.stacks` imports neither `squadops.capabilities` nor `squadops.cycles`, deferred or not,
+  and loading it loads neither. Both sides read it.
 - **Capability handlers and the CLI do not import runtime persistence**
   (`adapters.persistence.runtime`).
 - **Decisions do no I/O** (`test_pure_decisions_do_no_io.py`), and task types are strings at the
@@ -58,8 +61,9 @@ and the evidence package. State lives behind `CampaignRegistryPort`; every contr
 logged transition.
 
 ### `squadops.capabilities`
-Task contracts and their handlers: the per-task-type handlers the agents run, the scaffold and its
-stacks (`scaffold`, `stack_fastapi_react`, `stack_nextjs_ts`), typed acceptance, the context-assembly
+Task contracts and their handlers: the per-task-type handlers the agents run, typed acceptance, the
+qa suite's fill merge (`verification_scaffold_fill`, which opens SIP-0107's revision transaction and
+so stays beside the handlers rather than in `squadops.stacks`), the context-assembly
 contracts that decide what each task is handed (with the supply of Cross-Cycle Memory's approved
 lessons to the four authoring seams they declare, `lesson_supply`), and the workload runner. "Capability" here means a
 task contract, keyed by `task_type` (#922); the package keeps the name (PORTFOLIO Q23).
@@ -129,6 +133,13 @@ A pure coordination layer that depends on ports only, never on adapters.
 ### `squadops.sandbox`
 The execution sandbox domain (SIP-0102): the service that builds and runs a delivered app in
 isolation, and its entrypoint (`squadops.sandbox.main`, a composition root).
+
+### `squadops.stacks`
+The stack registry and its stacks (#1993): the registry and scaffold expander (`scaffold`), each
+stack's module (`stack_fastapi_react`, `stack_nextjs_ts`), the scaffold contract, the verification
+scaffold and its gate, and the leaves they share (type tokens, success status, route paths, the
+rendered packaging). The cycle domain and the capability handlers both read it, so it imports
+neither, and a stack change is a change to this package.
 
 ### `squadops.tasks`
 Task envelopes and results (the A2A message format, with lineage per SIP-031) and the `TaskType`

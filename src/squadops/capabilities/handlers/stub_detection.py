@@ -34,7 +34,7 @@ from __future__ import annotations
 
 import re
 
-from squadops.capabilities.app_invocation import NETWORK_SEAM_FETCH_STUB, AppInvocation
+from squadops.stacks.app_invocation import NETWORK_SEAM_FETCH_STUB, AppInvocation
 
 # Web-app constructors whose presence alongside an import guard signals that the
 # test rebuilt the app inline as a fallback (the stub).
@@ -109,7 +109,7 @@ def detect_stub_fallback_tests(files: list[dict]) -> list[str]:
 
 #: The stack's declaration of how a suite invokes the application, and the shared
 #: fetch-stub half of the network-seam rule (#1126). Defined in the leaf module
-#: ``capabilities.app_invocation`` so the stack modules can declare one without importing
+#: ``stacks.app_invocation`` so the stack modules can declare one without importing
 #: the handler package; re-exported here because this is the detector that applies it.
 __all__ = ["AppInvocation", "NETWORK_SEAM_FETCH_STUB"]
 

@@ -31,9 +31,9 @@ import tempfile
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from squadops.capabilities.scaffold import InterfaceManifest, materialize
 from squadops.cycles.acceptance_checks import get_check
 from squadops.cycles.implementation_plan import TypedCheck
+from squadops.stacks.scaffold import InterfaceManifest, materialize
 
 if TYPE_CHECKING:  # pragma: no cover - typing only
     from squadops.cycles.implementation_plan import ImplementationPlan

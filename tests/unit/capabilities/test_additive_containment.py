@@ -18,7 +18,7 @@ from squadops.capabilities.additive_containment import (
     assess_additive_suite,
     containment_findings,
 )
-from squadops.capabilities.scaffold import app_invocation_for
+from squadops.stacks.scaffold import app_invocation_for
 
 _REPLAYS = Path(__file__).resolve().parents[2] / "fixtures" / "roll_replays"
 NEXTJS = app_invocation_for("nextjs_ts")

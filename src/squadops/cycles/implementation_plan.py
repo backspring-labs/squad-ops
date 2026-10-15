@@ -36,6 +36,16 @@ from squadops.cycles.acceptance_check_spec import (
     reserved_keys_for,
 )
 from squadops.cycles.agent_config import served_roles
+from squadops.stacks.development_profiles import (
+    collected_test_patterns_for,
+    matches_test_file_patterns,
+)
+from squadops.stacks.scaffold import (
+    app_invocation_for,
+    is_qa_test_path_for_stack,
+    qa_test_namespace_for_stack,
+    scaffold_stack_for,
+)
 from squadops.tasks.task_types import TaskType, authors_qa_suite
 
 if TYPE_CHECKING:
@@ -401,11 +411,6 @@ class ImplementationPlan:
         """
         if "tests_pass" not in (resolved_config.get("required_checks") or ()):
             return []
-        from squadops.capabilities.development_profiles import (
-            collected_test_patterns_for,
-            matches_test_file_patterns,
-        )
-        from squadops.capabilities.scaffold import app_invocation_for, scaffold_stack_for
 
         patterns = collected_test_patterns_for(resolved_config)
         stack = scaffold_stack_for(resolved_config)
@@ -932,11 +937,6 @@ class ImplementationPlan:
         Returns:
             List of validation error strings (empty = valid).
         """
-        from squadops.capabilities.scaffold import (
-            is_qa_test_path_for_stack,
-            qa_test_namespace_for_stack,
-            scaffold_stack_for,
-        )
 
         stack = scaffold_stack_for(resolved_config)
         namespace = qa_test_namespace_for_stack(stack) if stack else ()

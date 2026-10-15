@@ -40,13 +40,13 @@ sys.path.insert(0, str(REPO_ROOT / "scripts" / "dev"))
 
 from read_only_vault import ReadOnlyVault  # noqa: E402
 
-from squadops.capabilities.scaffold import InterfaceManifest  # noqa: E402
 from squadops.cycles.contract_derivation import is_interface_manifest  # noqa: E402
 from squadops.cycles.rejection_baseline import (  # noqa: E402
     REJECTION_ARTIFACT_TYPE,
     build_baseline,
     render,
 )
+from squadops.stacks.scaffold import InterfaceManifest  # noqa: E402
 
 
 class BaselineInputUnreadable(RuntimeError):

@@ -34,7 +34,6 @@ import pytest
 
 from adapters.cycles.dispatched_flow_executor import DispatchedFlowExecutor
 from adapters.noop.ports import NoOpFailurePatternRecall
-from squadops.capabilities.scaffold import InterfaceManifest
 from squadops.cycles.contract_derivation import (
     CONTRACT_ARTIFACT_TYPE,
     derive_contract_bytes,
@@ -43,6 +42,7 @@ from squadops.cycles.contract_derivation import (
 from squadops.cycles.implementation_plan import ImplementationPlan
 from squadops.cycles.manifest_authoring import MANIFEST_ARTIFACT_TYPE
 from squadops.cycles.verification_contract import VerificationContract
+from squadops.stacks.scaffold import InterfaceManifest
 from squadops.tasks.models import TaskEnvelope
 
 pytestmark = [pytest.mark.domain_orchestration]
@@ -432,7 +432,7 @@ def test_the_v4_plan_is_the_fixture_the_bug_report_described():
     above would pass while proving nothing."""
     manifest = InterfaceManifest.from_yaml(_MANIFEST)
     plan = ImplementationPlan.from_yaml(_PLAN)
-    from squadops.capabilities.scaffold import fill_slot_paths
+    from squadops.stacks.scaffold import fill_slot_paths
 
     slots = set(fill_slot_paths(manifest))
     claimed = {a for t in plan.tasks for a in t.expected_artifacts}

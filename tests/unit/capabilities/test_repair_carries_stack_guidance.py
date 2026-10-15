@@ -175,7 +175,7 @@ def test_no_handler_names_the_fill_only_asset_directly():
     #: The capability registry is where the asset is DECLARED — stack #1 names its own
     #: template there, which is the whole mechanism. Every other mention is a stack
     #: pinned into shared code.
-    declaration_site = "src/squadops/capabilities/development_profiles.py"
+    declaration_site = "src/squadops/stacks/development_profiles.py"
 
     offenders = []
     for path in sorted((_REPO / "src").rglob("*.py")):
@@ -198,7 +198,7 @@ def test_no_handler_names_the_fill_only_asset_directly():
 def test_the_declaration_site_still_declares_it():
     """The tripwire for the exemption above. If stack #1 stopped declaring its template,
     the sweep would pass vacuously while the mechanism it protects had been removed."""
-    from squadops.capabilities.development_profiles import get_development_profile
+    from squadops.stacks.development_profiles import get_development_profile
 
     assert get_development_profile("fullstack_fastapi_react").fill_only_template == _HARDCODED
 

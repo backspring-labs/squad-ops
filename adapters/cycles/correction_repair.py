@@ -37,6 +37,7 @@ from squadops.capabilities.lesson_supply import supply_for_cycle
 from squadops.cycles.agent_config import resolve_agent_config
 from squadops.cycles.scaffold_enforcement import name_producer
 from squadops.cycles.task_plan import repair_steps_for
+from squadops.stacks.development_profiles import matches_test_file_patterns, test_file_patterns_for
 from squadops.tasks.models import TaskEnvelope
 
 if TYPE_CHECKING:
@@ -831,7 +832,6 @@ def _apply_emission_ownership_veto(
     Same-role steps and task types with no declared owner pass through
     untouched, mirroring the targeting veto's scope exactly.
     """
-    from squadops.capabilities.development_profiles import matches_test_file_patterns
     from squadops.cycles.task_plan import own_artifact_role
 
     owner = own_artifact_role(failed_task_type)
@@ -1152,7 +1152,6 @@ class CorrectionRepair:
                 # the wrong directory otherwise lands as a net-new file, patch
                 # verification runs on the un-patched original, and the
                 # validated repair is discarded by re-dispatch.
-                from squadops.capabilities.development_profiles import test_file_patterns_for
                 from squadops.cycles.patch_verification import rebase_artifact_paths
 
                 rebased = rebase_artifact_paths(

@@ -17,6 +17,8 @@ from typing import Any
 
 from squadops.cycles.delivered_tree import StoredArtifact, delivered_files
 from squadops.cycles.vault_reads import retrieve_or_absent
+from squadops.stacks.scaffold import InterfaceManifest, criterion_test_path, scaffold_stack_for
+from squadops.stacks.scaffold_contract import create_request_body
 
 logger = logging.getLogger(__name__)
 
@@ -86,7 +88,6 @@ def increment_footprint(resolved_config: Any, candidate: Any) -> tuple[str, ...]
     carries and the candidate manifest its framing binds to, exactly as the change request's
     footprint was. ``None`` for any cycle that is not an increment."""
     from squadops.campaigns.change_request import derive_footprint_from
-    from squadops.capabilities.scaffold import InterfaceManifest
 
     baseline = increment_baseline(resolved_config)
     if candidate is None or baseline is None:
@@ -202,7 +203,6 @@ def increment_criterion_files(change_request: str, stack: str) -> tuple[Criterio
     """Each new criterion of the approved change request, with its file on ``stack``
     (``scaffold.criterion_test_path``). The document is the stored one, hash-checked."""
     from squadops.campaigns.change_request import load_stored_change_request
-    from squadops.capabilities.scaffold import criterion_test_path
 
     request = load_stored_change_request(change_request)
     return tuple(
@@ -235,7 +235,6 @@ def increment_evaluation_inputs(
     """What an increment's evaluation task is handed at plan time: the increment's id, each new
     criterion's own file (§8.1) and the routes the candidate declares (§8.3). The two trees are
     the dispatch's: the accepted tree as seeded (#1842) and the candidate as built."""
-    from squadops.capabilities.scaffold import scaffold_stack_for
 
     block = resolved_config.get("campaign_proposal") or {}
     return {
@@ -309,7 +308,6 @@ def route_seeds(manifest: Any) -> dict[str, dict[str, Any]]:
     parameter the created resource's id fills. A route with no such create, or more than one
     parameter, has no seed: its page cannot be reached, so it is never rendered and stays
     ``blocked_unverified``, never passed. A route with no parameter needs none."""
-    from squadops.capabilities.scaffold_contract import create_request_body
 
     api = getattr(manifest, "api", None)
     creates = {

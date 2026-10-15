@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import pytest
 
-from squadops.capabilities.scaffold import (
+from squadops.stacks.scaffold import (
     MANIFEST_ELEMENT_KEYS,
     InterfaceManifest,
     undefined_manifest_keys,

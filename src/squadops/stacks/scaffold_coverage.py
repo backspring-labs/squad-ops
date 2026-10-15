@@ -31,7 +31,7 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:  # pragma: no cover - annotations only
-    from squadops.capabilities.scaffold import InterfaceManifest
+    from squadops.stacks.scaffold import InterfaceManifest
 
 #: A probe's path carries capture placeholders (``/api/runs/{created_id}/join``) while the
 #: manifest declares its own parameter names (``/api/runs/{run_id}/join``). Coverage is a
@@ -159,7 +159,7 @@ def derive_scaffold_coverage(manifest: InterfaceManifest) -> ScaffoldCoverage:
     ``summarize_coverage`` directly with the behaviours it already holds rather than
     paying for a second derivation.
     """
-    from squadops.capabilities.stack_nextjs_ts_tests import derive_scaffold_behaviors
+    from squadops.stacks.stack_nextjs_ts_tests import derive_scaffold_behaviors
 
     behaviors, probes = derive_scaffold_behaviors(manifest)
     return summarize_coverage(

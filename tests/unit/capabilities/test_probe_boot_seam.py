@@ -38,7 +38,6 @@ from pathlib import Path
 
 import pytest
 
-from squadops.capabilities import scaffold
 from squadops.capabilities.handlers import probe_runner as pr
 from squadops.capabilities.handlers.probe_runner import (
     DEFAULT_PROFILE,
@@ -47,8 +46,9 @@ from squadops.capabilities.handlers.probe_runner import (
     profile_for_stack,
     run_probes,
 )
-from squadops.capabilities.scaffold import ScaffoldStack, scaffold_stack_for
 from squadops.cycles.verification_contract import Probe
+from squadops.stacks import scaffold
+from squadops.stacks.scaffold import ScaffoldStack, scaffold_stack_for
 
 pytestmark = [pytest.mark.domain_capabilities]
 

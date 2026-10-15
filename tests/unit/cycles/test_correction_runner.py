@@ -2505,7 +2505,7 @@ class TestCorrectionRunnerStandalone:
         import dataclasses as _dc
         from pathlib import Path
 
-        from squadops.capabilities.scaffold import (
+        from squadops.stacks.scaffold import (
             InterfaceManifest,
             testid_surface_instructions,
         )
@@ -2680,7 +2680,7 @@ class TestCorrectionRunnerStandalone:
         suite beside its fix (outside the dev grant, SIP-0107 step 3)."""
         from pathlib import Path
 
-        from squadops.capabilities.scaffold import InterfaceManifest
+        from squadops.stacks.scaffold import InterfaceManifest
 
         manifest = InterfaceManifest.from_yaml(
             (
@@ -2757,7 +2757,7 @@ class TestCorrectionRunnerStandalone:
             apply_manifest_delta,
             validate_proposal,
         )
-        from squadops.capabilities.scaffold import InterfaceManifest
+        from squadops.stacks.scaffold import InterfaceManifest
 
         fixtures = Path(__file__).parents[2] / "fixtures" / "campaigns"
         baseline = (fixtures / "baseline-cyc_7a4b7a6fbf0e-interface_manifest.yaml").read_text()
@@ -2845,8 +2845,8 @@ class TestCorrectionRunnerStandalone:
         under the producer's own task type was how shk-2's phantom drift was fed."""
         from pathlib import Path
 
-        from squadops.capabilities.scaffold import InterfaceManifest
         from squadops.events.types import EventType as _ET
+        from squadops.stacks.scaffold import InterfaceManifest
 
         manifest = InterfaceManifest.from_yaml(
             (
@@ -2979,7 +2979,7 @@ class TestCorrectionRunnerStandalone:
         target to a file no producer may write."""
         from pathlib import Path
 
-        from squadops.capabilities.scaffold import InterfaceManifest
+        from squadops.stacks.scaffold import InterfaceManifest
 
         manifest = InterfaceManifest.from_yaml(
             (
@@ -4187,7 +4187,7 @@ class TestErrorContractEvidence(TestCorrectionRunnerStandalone):
     async def test_error_contract_injected_when_manifest_present(self, cycle):
         from pathlib import Path as _Path
 
-        from squadops.capabilities.scaffold import InterfaceManifest
+        from squadops.stacks.scaffold import InterfaceManifest
 
         manifest = InterfaceManifest.from_yaml(
             _Path("examples/03_group_run/interface_manifest.yaml").read_text(encoding="utf-8")
@@ -5695,8 +5695,8 @@ class TestSuiteProbeFailuresReachTheOwningSlot:
 
     @staticmethod
     def _nextjs_inputs():
-        from squadops.capabilities.scaffold_contract import emit_contract_dict
         from squadops.cycles.verification_contract import VerificationContract
+        from squadops.stacks.scaffold_contract import emit_contract_dict
         from tests.unit.capabilities._stack_fixtures import manifest_for_stack
 
         contract = VerificationContract.from_dict(
@@ -6225,7 +6225,7 @@ class TestQaOwnedDefectRouting:
             parse_pytest_failure_rows,
             suite_defects,
         )
-        from squadops.capabilities.scaffold import is_qa_test_path_for_stack
+        from squadops.stacks.scaffold import is_qa_test_path_for_stack
 
         text = (self._REPLAYS / report_name).read_text(encoding="utf-8")
         stdout = text.split("## stdout", 1)[1].split("```")[1]
@@ -6832,7 +6832,7 @@ class TestRepairBriefReadout(TestCorrectionRunnerStandalone):
             parse_pytest_failure_rows,
             suite_defects,
         )
-        from squadops.capabilities.scaffold import is_qa_test_path_for_stack
+        from squadops.stacks.scaffold import is_qa_test_path_for_stack
 
         text = (self._REPLAYS / "1-6-5-react-roll-3-round-0-test_report.md").read_text(
             encoding="utf-8"
@@ -6929,7 +6929,7 @@ class TestVitestOwnFrameRoutesToTheQaRepair(TestCorrectionRunnerStandalone):
             parse_vitest_failure_rows,
             suite_defects,
         )
-        from squadops.capabilities.scaffold import is_qa_test_path_for_stack
+        from squadops.stacks.scaffold import is_qa_test_path_for_stack
 
         report = json.loads(
             (self._REPLAYS / "1-7-1-react-roll-4-vitest-report.json").read_text(encoding="utf-8")

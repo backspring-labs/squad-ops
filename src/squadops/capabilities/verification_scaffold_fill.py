@@ -65,11 +65,12 @@ from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from typing import Any
 
-from squadops.capabilities.verification_scaffold import (
+from squadops.stacks.verification_scaffold import (
     ScaffoldSpineError,
     ScaffoldValidationError,
     VerificationScaffoldManifest,
     parse_slot_regions,
+    slot_body_span,
     spine_hash,
 )
 from squadops.tasks.task_types import TaskType
@@ -459,11 +460,10 @@ def merge_fills(
     — the fill, a not-applicable note, or the fill layer's failing state — is one
     region-replacement revision, and the scaffold shells are the base. The transaction carries
     a grant over exactly those shells for ``producer``, resolves every slot through the marker
-    grammar (:func:`~squadops.capabilities.verification_scaffold.slot_body_span`), and applies
+    grammar (:func:`~squadops.stacks.verification_scaffold.slot_body_span`), and applies
     all of them or none. The bytes are the ones this function always produced, so the qa lane
     is the transaction's first proof rather than its first casualty.
     """
-    from squadops.capabilities.verification_scaffold import slot_body_span
     from squadops.core.hashing import text_sha256
     from squadops.cycles.revision_transaction import (
         Revision,

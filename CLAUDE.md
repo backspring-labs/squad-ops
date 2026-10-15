@@ -97,8 +97,8 @@ squadops artifacts list --project <project> --cycle <cycle-id> --run <run-id>  #
 ## Architecture
 
 ### Hexagonal Structure (Ports & Adapters)
-**The map is `docs/architecture/overview.md`:** one entry per package under `src/squadops/` (24) and
-`adapters/` (18), and the layering the guards enforce. `test_architecture_overview.py` fails when a
+**The map is `docs/architecture/overview.md`:** one entry per package under `src/squadops/` (25) and
+`adapters/` (17), and the layering the guards enforce. `test_architecture_overview.py` fails when a
 package and its entry disagree (#1989), so read it rather than a list here.
 - **`src/squadops/`**: the domain (ports, models, decisions, handlers, prompts). **Only the composition
   roots import `adapters.*`** (`squadops.api.runtime`, `squadops.agents.entrypoint`,

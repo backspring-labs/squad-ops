@@ -117,7 +117,7 @@ class TestLoadInterfaceManifestForRun:
 class TestSeedSkeletonArtifacts:
     async def test_seeds_full_skeleton_set_as_source_artifacts(self):
         from squadops.capabilities.handlers.build_profiles import get_profile
-        from squadops.capabilities.scaffold import InterfaceManifest
+        from squadops.stacks.scaffold import InterfaceManifest
 
         manifest = InterfaceManifest.from_yaml(_GROUP_RUN_MANIFEST)
         expected_files = get_profile("fullstack_fastapi_react").expand(manifest)
@@ -138,7 +138,7 @@ class TestSeedSkeletonArtifacts:
         assert all(not Path(r.filename).is_absolute() for r in stored_refs)
 
     async def test_unscaffoldable_stack_seeds_nothing(self):
-        from squadops.capabilities.scaffold import InterfaceManifest
+        from squadops.stacks.scaffold import InterfaceManifest
 
         manifest = InterfaceManifest.from_dict(
             {"version": 1, "kind": "interface_manifest", "project_id": "x", "stack": "django_htmx"}
@@ -155,7 +155,7 @@ class TestSeedVerificationScaffoldArtifacts:
     """SIP-0104 P1: the test scaffold rides the seed act, opt-in gated, loud on failure."""
 
     async def test_opted_in_stack_seeds_shells_and_stores_the_manifest_record(self):
-        from squadops.capabilities.verification_scaffold_emission import (
+        from squadops.stacks.verification_scaffold_emission import (
             emit_verification_scaffold,
         )
         from tests.unit.capabilities._stack_fixtures import manifest_for_stack
@@ -200,16 +200,16 @@ class TestSeedVerificationScaffoldArtifacts:
         and let the failure surface as burned LLM rounds instead of a setup rejection."""
         import pytest
 
-        from squadops.capabilities import verification_scaffold_emission as emission_module
-        from squadops.capabilities.verification_scaffold import ScaffoldValidationError
+        import adapters.cycles.dispatched_flow_executor as executor_module
+        from squadops.stacks.verification_scaffold import ScaffoldValidationError
         from tests.unit.capabilities._stack_fixtures import manifest_for_stack
 
         def _boom(manifest, **kwargs):
             raise ScaffoldValidationError("injected generator defect")
 
-        monkeypatch.setattr(emission_module, "emit_verification_scaffold", _boom)
-        # the executor imports the symbol inside the helper, so patch the module attr
-        # it resolves at call time
+        # the executor imports the symbol at load (#1993), so patch its own binding, which the
+        # helper resolves at call time
+        monkeypatch.setattr(executor_module, "emit_verification_scaffold", _boom)
         executor = _make_executor()
         with pytest.raises(ScaffoldValidationError, match="injected generator defect"):
             await executor._seed_verification_scaffold_artifacts(

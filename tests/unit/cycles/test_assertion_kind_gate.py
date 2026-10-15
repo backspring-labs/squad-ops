@@ -18,8 +18,6 @@ from types import SimpleNamespace
 
 import pytest
 
-from squadops.capabilities.response_shape import declared_field_kinds
-from squadops.capabilities.scaffold import InterfaceManifest
 from squadops.cycles.acceptance_check_spec import CHECK_ASSERTION_KINDS
 from squadops.cycles.acceptance_checks import (
     assertion_literal_kinds_js,
@@ -28,6 +26,8 @@ from squadops.cycles.acceptance_checks import (
 from squadops.cycles.acceptance_evaluation import get_check
 from squadops.cycles.failure_evidence import FailureLocus, classify_failure_locus
 from squadops.cycles.task_plan import _assertion_kind_criteria
+from squadops.stacks.response_shape import declared_field_kinds
+from squadops.stacks.scaffold import InterfaceManifest
 
 pytestmark = [pytest.mark.domain_cycles]
 
@@ -335,7 +335,7 @@ class TestDomAnchorInjection:
 
         import yaml
 
-        from squadops.capabilities.scaffold import InterfaceManifest
+        from squadops.stacks.scaffold import InterfaceManifest
 
         path = (
             Path(__file__).resolve().parents[2]

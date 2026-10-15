@@ -17,10 +17,10 @@ import yaml
 from pydantic import BaseModel
 
 from squadops.capabilities.handlers.probe_runner import evaluate_expectations
-from squadops.capabilities.scaffold import InterfaceManifest, error_seam_instructions
-from squadops.capabilities.scaffold_contract import emit_contract_dict
-from squadops.capabilities.stack_fastapi_react import _errors_source as fastapi_errors
-from squadops.capabilities.stack_nextjs_ts import _errors_source as nextjs_errors
+from squadops.stacks.scaffold import InterfaceManifest, error_seam_instructions
+from squadops.stacks.scaffold_contract import emit_contract_dict
+from squadops.stacks.stack_fastapi_react import _errors_source as fastapi_errors
+from squadops.stacks.stack_nextjs_ts import _errors_source as nextjs_errors
 
 _BASELINE = (
     Path(__file__).parents[2]

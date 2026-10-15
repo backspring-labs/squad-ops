@@ -275,7 +275,7 @@ class TestModelSurfaceReachesTheRepairPrompt:
     def _manifest():
         from pathlib import Path
 
-        from squadops.capabilities.scaffold import InterfaceManifest
+        from squadops.stacks.scaffold import InterfaceManifest
 
         path = (
             Path(__file__).resolve().parents[3]
@@ -287,7 +287,7 @@ class TestModelSurfaceReachesTheRepairPrompt:
 
     def test_evidence_lines_render_into_the_failure_summary(self):
         from squadops.capabilities.handlers.impl.repair_handlers import _format_failure_summary
-        from squadops.capabilities.scaffold import model_surface_instructions
+        from squadops.stacks.scaffold import model_surface_instructions
 
         evidence = {"model_surface": model_surface_instructions(self._manifest())}
 

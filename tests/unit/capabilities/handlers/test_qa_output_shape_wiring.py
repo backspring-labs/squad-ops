@@ -28,11 +28,11 @@ import pytest
 from squadops.agents.base import PortsBundle
 from squadops.bootstrap.handlers import create_handler_registry
 from squadops.capabilities.handlers.test_runner import RunTestsResult
-from squadops.capabilities.scaffold_contract import emit_contract_dict
 from squadops.cycles.task_plan import inject_contract_inputs
 from squadops.cycles.verification_contract import VerificationContract
 from squadops.llm.models import ChatMessage
 from squadops.orchestration.handler_executor import HandlerExecutor
+from squadops.stacks.scaffold_contract import emit_contract_dict
 from squadops.tasks.models import TaskEnvelope
 from squadops.tasks.task_types import TaskType
 from tests.unit.capabilities._stack_fixtures import manifest_for_stack

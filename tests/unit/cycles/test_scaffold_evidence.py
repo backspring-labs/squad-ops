@@ -10,10 +10,6 @@ from __future__ import annotations
 import pytest
 
 from squadops.capabilities.handlers.test_runner import parse_vitest_failure_rows
-from squadops.capabilities.verification_scaffold_emission import (
-    GENERATOR_VERSION,
-    emit_verification_scaffold,
-)
 from squadops.capabilities.verification_scaffold_fill import merge_fills, parse_fill_emission
 from squadops.cycles.scaffold_evidence import (
     CLASS_APP_CONTRACT,
@@ -24,6 +20,10 @@ from squadops.cycles.scaffold_evidence import (
     build_scaffold_evidence_summary,
     classify_shell_failures,
     correlate,
+)
+from squadops.stacks.verification_scaffold_emission import (
+    GENERATOR_VERSION,
+    emit_verification_scaffold,
 )
 from tests.unit.capabilities._stack_fixtures import manifest_for_stack
 

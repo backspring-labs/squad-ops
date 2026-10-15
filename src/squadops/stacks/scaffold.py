@@ -39,38 +39,38 @@ import yaml
 # this module is the manifest model, the parser and the ``ScaffoldStack`` registry. No
 # cycle: the stack modules annotate against ``InterfaceManifest`` under ``TYPE_CHECKING``
 # and import nothing here at runtime.
-from squadops.capabilities.app_invocation import AppInvocation
-from squadops.capabilities.client_surface import ClientSurface
-from squadops.capabilities.stack_fastapi_react import (
+from squadops.stacks.app_invocation import AppInvocation
+from squadops.stacks.client_surface import ClientSurface
+from squadops.stacks.stack_fastapi_react import (
     APP_INVOCATION as _APP_INVOCATION_FASTAPI_REACT,
 )
-from squadops.capabilities.stack_fastapi_react import (
+from squadops.stacks.stack_fastapi_react import (
     CLIENT_SURFACE as _CLIENT_SURFACE_FASTAPI_REACT,
 )
-from squadops.capabilities.stack_fastapi_react import STACK_NAME as _FASTAPI_REACT_NAME
-from squadops.capabilities.stack_fastapi_react import (
+from squadops.stacks.stack_fastapi_react import STACK_NAME as _FASTAPI_REACT_NAME
+from squadops.stacks.stack_fastapi_react import (
     client_surface_lines as _client_surface_lines_fastapi_react,
 )
-from squadops.capabilities.stack_fastapi_react import (
+from squadops.stacks.stack_fastapi_react import (
     expand_fullstack_fastapi_react as _expand_fullstack_fastapi_react,
 )
-from squadops.capabilities.stack_fastapi_react import (
+from squadops.stacks.stack_fastapi_react import (
     fill_slots_fullstack_fastapi_react as _fill_slots_fullstack_fastapi_react,
 )
-from squadops.capabilities.stack_fastapi_react import (
+from squadops.stacks.stack_fastapi_react import (
     store_brief_lines as _store_brief_lines_fastapi_react,
 )
-from squadops.capabilities.stack_nextjs_ts import APP_INVOCATION as _APP_INVOCATION_NEXTJS_TS
-from squadops.capabilities.stack_nextjs_ts import STACK_NAME as _NEXTJS_TS_NAME
-from squadops.capabilities.stack_nextjs_ts import expand_nextjs_ts as _expand_nextjs_ts
-from squadops.capabilities.stack_nextjs_ts import (
+from squadops.stacks.stack_nextjs_ts import APP_INVOCATION as _APP_INVOCATION_NEXTJS_TS
+from squadops.stacks.stack_nextjs_ts import STACK_NAME as _NEXTJS_TS_NAME
+from squadops.stacks.stack_nextjs_ts import expand_nextjs_ts as _expand_nextjs_ts
+from squadops.stacks.stack_nextjs_ts import (
     fill_slots_nextjs_ts as _fill_slots_nextjs_ts,
 )
-from squadops.capabilities.success_status import (  # noqa: F401 — re-exported: the seam's home
+from squadops.stacks.success_status import (  # noqa: F401 — re-exported: the seam's home
     derived_success_status,
     success_status_for,
 )
-from squadops.capabilities.type_tokens import base_type_name
+from squadops.stacks.type_tokens import base_type_name
 
 # Schema v1 is frozen (SIP-0099 phase 99.1): the shape below is the canonical
 # interface-manifest contract the fullstack_fastapi_react expander was proven against
@@ -2054,7 +2054,7 @@ def brief_carries_success_status_for(stack: str) -> bool:
     ``False`` for unknown stacks and unresolvable capabilities — the conservative answer
     when we cannot prove the fact travels is that it does not.
     """
-    from squadops.capabilities.development_profiles import get_development_profile
+    from squadops.stacks.development_profiles import get_development_profile
 
     known = _STACKS.get(stack)
     if known is None or not is_scaffoldable_stack(stack):

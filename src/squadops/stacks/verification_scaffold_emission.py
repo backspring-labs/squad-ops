@@ -25,19 +25,19 @@ from typing import TYPE_CHECKING, Any
 
 import yaml
 
-from squadops.capabilities.scaffold import (
+from squadops.stacks.scaffold import (
     criteria_pack_for,
     expand,
     is_qa_test_path_for_stack,
     qa_test_namespace,
     verification_scaffold_for,
 )
-from squadops.capabilities.stack_nextjs_ts import STACK_NAME as _NEXTJS_TS_NAME
-from squadops.capabilities.stack_nextjs_ts_tests import (
+from squadops.stacks.stack_nextjs_ts import STACK_NAME as _NEXTJS_TS_NAME
+from squadops.stacks.stack_nextjs_ts_tests import (
     emit_nextjs_ts_verification_scaffold,
     slot_element_kinds_nextjs_ts,
 )
-from squadops.capabilities.verification_scaffold import (
+from squadops.stacks.verification_scaffold import (
     SCAFFOLD_MANIFEST_VERSION,
     BehaviorSlot,
     ScaffoldDerivationError,
@@ -48,7 +48,7 @@ from squadops.capabilities.verification_scaffold import (
 )
 
 if TYPE_CHECKING:  # pragma: no cover - annotations only
-    from squadops.capabilities.scaffold import InterfaceManifest
+    from squadops.stacks.scaffold import InterfaceManifest
 
 #: Bump on ANY emission-affecting change (module docstring). Recorded in every manifest.
 #: 2 (#936) — the shell imports `all` alongside `reset`, so a fill can call the helper
@@ -101,7 +101,7 @@ def slot_element_kinds(manifest: InterfaceManifest) -> dict[str, dict[str, Any]]
     rejected at merge with the declared kind named, before it can gate a repair. Empty
     for a stack that emits no scaffold — nothing to contradict.
     """
-    from squadops.capabilities.scaffold import verification_scaffold_for
+    from squadops.stacks.scaffold import verification_scaffold_for
 
     fn = _SLOT_ELEMENT_KINDS.get(verification_scaffold_for(manifest.stack))
     return fn(manifest) if fn else {}

@@ -40,7 +40,7 @@ from squadops.capabilities.handlers.planning.framing import (
     DevelopmentDesignPlanHandler,
     StrategyFrameObjectiveHandler,
 )
-from squadops.capabilities.stack_narratives import stack_narrative
+from squadops.stacks.stack_narratives import stack_narrative
 
 pytestmark = [pytest.mark.domain_capabilities]
 
@@ -107,7 +107,10 @@ async def test_no_section_when_the_cycle_has_no_stack(config):
 async def test_a_registered_stack_with_no_narrative_renders_nothing(monkeypatch):
     """Silence beats an authoritative-looking empty section — a heading with no content reads
     as instruction while teaching nothing."""
-    monkeypatch.setattr("squadops.capabilities.stack_narratives.stack_narrative", lambda s: "")
+    # Patched where the planning handler looks it up: it imports the name at load (#1993).
+    monkeypatch.setattr(
+        "squadops.capabilities.handlers.planning.base.stack_narrative", lambda s: ""
+    )
 
     assert await _section(DevelopmentDesignPlanHandler(), {"build_profile": "nextjs_ts"}) == ""
 
@@ -148,7 +151,7 @@ def test_the_section_is_placed_after_the_prd_it_overrides():
 def test_both_registered_stacks_have_a_narrative():
     """A stack whose narrative is missing silently loses its section — the failure is a
     quieter design, not an error, so it is pinned here."""
-    from squadops.capabilities.scaffold import _STACKS
+    from squadops.stacks.scaffold import _STACKS
 
     for name in _STACKS:
         assert stack_narrative(name), f"stack {name!r} has no profile narrative"

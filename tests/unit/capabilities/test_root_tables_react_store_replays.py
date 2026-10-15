@@ -18,8 +18,8 @@ from pathlib import Path
 
 import pytest
 
-from squadops.capabilities import stack_fastapi_react
-from squadops.capabilities.scaffold import (
+from squadops.stacks import stack_fastapi_react
+from squadops.stacks.scaffold import (
     InterfaceManifest,
     expand,
     model_surface_instructions,

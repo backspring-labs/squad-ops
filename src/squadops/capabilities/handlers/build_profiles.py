@@ -31,6 +31,8 @@ from squadops.capabilities.assembly_notes import (
     ASSEMBLY_NOTES_DOCUMENT,
     assembly_notes_block,
 )
+from squadops.stacks.rendered_packaging import render_packaging
+from squadops.stacks.scaffold import expand as _expand
 
 _NARRATIVES_DIR = Path(_prompts_pkg.__file__).parent / "profile_narratives"
 
@@ -86,7 +88,6 @@ class BuildProfile:
         the scaffold stopped providing. A profile with no rendering (the legacy profiles, which
         have no scaffold) provides nothing.
         """
-        from squadops.capabilities.rendered_packaging import render_packaging
 
         try:
             return tuple(item["name"] for item in render_packaging(self.name))
@@ -171,7 +172,6 @@ class BuildProfile:
         if ``manifest.stack`` has no expander, so profiles without a scaffold need no
         special-casing here. Lazily imported to keep ``scaffold`` a leaf sibling.
         """
-        from squadops.capabilities.scaffold import expand as _expand
 
         return _expand(manifest)
 

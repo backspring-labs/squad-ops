@@ -29,6 +29,12 @@ from squadops.capabilities.handlers.fenced_parser import extract_fenced_files
 from squadops.capabilities.handlers.increment_test_scope import increment_test_scope_section
 from squadops.cycles.failure_evidence import failing_case_lines, failing_cases_from_evidence
 from squadops.cycles.verification_integrity import ResultStatus
+from squadops.stacks.development_profiles import (
+    effective_development_profile,
+    get_development_profile,
+)
+from squadops.stacks.scaffold import is_scaffoldable_stack
+from squadops.stacks.verification_scaffold import VerificationScaffoldManifest
 from squadops.tasks.task_types import TaskType
 
 logger = logging.getLogger(__name__)
@@ -922,11 +928,6 @@ class _RepairPromptMixin:
         renderer = getattr(context.ports, "request_renderer", None)
         if renderer is None:
             return ""
-        from squadops.capabilities.development_profiles import (
-            effective_development_profile,
-            get_development_profile,
-        )
-        from squadops.capabilities.scaffold import is_scaffoldable_stack
 
         resolved_config = inputs.get("resolved_config") or {}
         stack = str(resolved_config.get("build_profile") or "")
@@ -1440,7 +1441,6 @@ def _merge_repair_fills(
     failed shell by name and the retest runs it. A whole-shell rewrite emitted as a
     path fence is dropped and recorded, as on every other qa path.
     """
-    from squadops.capabilities.verification_scaffold import VerificationScaffoldManifest
     from squadops.capabilities.verification_scaffold_fill import (
         apply_followup_fills,
         merge_fills,

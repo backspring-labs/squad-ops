@@ -21,8 +21,9 @@ from collections.abc import Callable, Sequence
 from dataclasses import dataclass, replace
 from pathlib import Path
 
-from squadops.capabilities.app_invocation import JS_SUITE_SUFFIXES
 from squadops.core.bounded_run import run_bounded
+from squadops.stacks.app_invocation import JS_SUITE_SUFFIXES
+from squadops.stacks.development_profiles import TEST_FRAMEWORK_BOTH, TEST_FRAMEWORK_VITEST
 
 logger = logging.getLogger(__name__)
 
@@ -1619,10 +1620,6 @@ async def run_suite(
     dispatch on ``test_framework`` (pytest / vitest / both), which ``run_build_validation``
     wraps with the deliverable's checks. SIP-0109 §8 runs one criterion's tests at a time on
     two trees, where the deliverable's build is judged elsewhere. Never raises."""
-    from squadops.capabilities.development_profiles import (
-        TEST_FRAMEWORK_BOTH,
-        TEST_FRAMEWORK_VITEST,
-    )
 
     if test_framework == TEST_FRAMEWORK_VITEST:
         return await run_node_tests(source_files, test_files, timeout_seconds=timeout_seconds)
@@ -1649,10 +1646,6 @@ async def run_build_validation(
     a missing third-party dep the runner lacks — never turns a passing suite red.
     Returns a ``RunTestsResult`` — never raises.
     """
-    from squadops.capabilities.development_profiles import (
-        TEST_FRAMEWORK_BOTH,
-        TEST_FRAMEWORK_VITEST,
-    )
 
     result = await run_suite(test_framework, source_files, test_files, timeout_seconds)
     if test_framework == TEST_FRAMEWORK_VITEST:

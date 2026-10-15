@@ -34,7 +34,7 @@ from squadops.campaigns.prior_cycle import brief_lines
 from squadops.capabilities.handlers.base import HandlerEvidence, HandlerResult
 from squadops.capabilities.handlers.cross_cycle_lessons import cross_cycle_lessons_section
 from squadops.capabilities.handlers.planning.base import _PlanningTaskHandler
-from squadops.capabilities.scaffold import frozen_conventions_for
+from squadops.stacks.scaffold import frozen_conventions_for
 from squadops.tasks.task_types import TaskType
 
 if TYPE_CHECKING:

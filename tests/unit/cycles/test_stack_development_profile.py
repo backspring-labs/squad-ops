@@ -29,14 +29,14 @@ from __future__ import annotations
 
 import pytest
 
-from squadops.capabilities import scaffold
-from squadops.capabilities.development_profiles import DEVELOPMENT_PROFILES
-from squadops.capabilities.scaffold import (
+from squadops.cycles.preflight import stack_development_profile_decision
+from squadops.stacks import scaffold
+from squadops.stacks.development_profiles import DEVELOPMENT_PROFILES
+from squadops.stacks.scaffold import (
     ScaffoldStack,
     development_profile_for,
     resolve_development_profile,
 )
-from squadops.cycles.preflight import stack_development_profile_decision
 
 pytestmark = [pytest.mark.domain_contracts]
 

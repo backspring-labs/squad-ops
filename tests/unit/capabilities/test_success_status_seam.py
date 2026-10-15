@@ -17,10 +17,10 @@ from types import SimpleNamespace
 import pytest
 import yaml
 
-from squadops.capabilities.scaffold import InterfaceManifest, expand
-from squadops.capabilities.scaffold_contract import emit_contract_dict
-from squadops.capabilities.success_status import derived_success_status, success_status_for
 from squadops.cycles.verification_contract import VerificationContract
+from squadops.stacks.scaffold import InterfaceManifest, expand
+from squadops.stacks.scaffold_contract import emit_contract_dict
+from squadops.stacks.success_status import derived_success_status, success_status_for
 from tests.unit.capabilities._stack_fixtures import manifest_dict_for_stack
 
 pytestmark = [pytest.mark.domain_capabilities]

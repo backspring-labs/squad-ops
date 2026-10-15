@@ -19,8 +19,8 @@ from squadops.capabilities.handlers.impl.repair_handlers import (
     QATestRepairHandler,
     _merge_repair_fills,
 )
-from squadops.capabilities.verification_scaffold_emission import emit_verification_scaffold
 from squadops.capabilities.verification_scaffold_fill import merge_fills, parse_fill_emission
+from squadops.stacks.verification_scaffold_emission import emit_verification_scaffold
 from tests.unit.capabilities._stack_fixtures import manifest_for_stack
 
 pytestmark = [pytest.mark.domain_capabilities]

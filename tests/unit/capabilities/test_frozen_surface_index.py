@@ -18,7 +18,7 @@ from pathlib import Path
 
 import pytest
 
-from squadops.capabilities.scaffold import (
+from squadops.stacks.scaffold import (
     InterfaceManifest,
     expand,
     fill_slot_paths,
@@ -91,7 +91,7 @@ def test_every_frozen_file_appears_and_no_fill_slot_does():
 
 def test_index_tracks_the_expander_rather_than_a_hand_written_description(monkeypatch):
     """Change what the expander emits and the index changes with it."""
-    import squadops.capabilities.scaffold as sc
+    import squadops.stacks.scaffold as sc
 
     monkeypatch.setattr(
         sc,
@@ -165,7 +165,7 @@ def test_package_json_declares_its_dependency_surface():
 
 
 def test_unparseable_python_degrades_to_a_bare_path(monkeypatch):
-    import squadops.capabilities.scaffold as sc
+    import squadops.stacks.scaffold as sc
 
     monkeypatch.setattr(
         sc, "expand", lambda _m: [{"name": "backend/broken.py", "content": "def (:\n"}]
@@ -187,7 +187,7 @@ def test_module_state_is_named_so_a_data_module_does_not_read_as_a_stub():
 
 
 def test_private_module_state_is_omitted():
-    import squadops.capabilities.scaffold as sc
+    import squadops.stacks.scaffold as sc
 
     src = "public: int = 1\n_private: int = 2\n"
     assert sc._python_surface(src) == "module state public: int"

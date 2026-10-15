@@ -22,6 +22,7 @@ from typing import Any
 
 from squadops.cycles.acceptance_checks import CheckOutcome, get_check
 from squadops.cycles.implementation_plan import TypedCheck, _parse_acceptance_criteria
+from squadops.stacks.scaffold import check_stack_for
 
 logger = logging.getLogger(__name__)
 
@@ -68,7 +69,6 @@ def resolve_check_stack(resolved_config: Mapping[str, Any]) -> str | None:
     ``build_profile`` maps through the scaffold's stack registry; else ``None``
     (checks skip with ``unsupported_stack_or_syntax``, today's behavior).
     """
-    from squadops.capabilities.scaffold import check_stack_for
 
     explicit = resolved_config.get("stack")
     if explicit:

@@ -29,8 +29,8 @@ import pytest
 
 from adapters.cycles.correction_runner import CorrectionRunner
 from adapters.noop.ports import NoOpFailurePatternRecall
-from squadops.capabilities.scaffold import InterfaceManifest
 from squadops.cycles.models import AgentProfileEntry, SquadProfile
+from squadops.stacks.scaffold import InterfaceManifest
 from squadops.tasks.models import TaskEnvelope, TaskResult
 
 NOW = datetime(2026, 1, 15, 12, 0, 0, tzinfo=UTC)

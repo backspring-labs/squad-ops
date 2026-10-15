@@ -65,6 +65,10 @@ for file in $CHANGED_FILES; do
         src/squadops/capabilities/*)
             TEST_DIRS="$TEST_DIRS tests/unit/capabilities/"
             ;;
+        src/squadops/stacks/*)
+            # The stack tests predate the package (#1993) and sit beside both of its readers.
+            TEST_DIRS="$TEST_DIRS tests/unit/capabilities/ tests/unit/cycles/"
+            ;;
         src/squadops/api/*)
             TEST_DIRS="$TEST_DIRS tests/unit/api/"
             ;;

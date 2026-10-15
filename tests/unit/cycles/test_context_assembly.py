@@ -106,7 +106,7 @@ def test_repair_contract_threads_the_same_anchor_inventory_under_both_keys():
     surfaces — repairs and retests would then disagree on the DOM contract."""
     from pathlib import Path
 
-    from squadops.capabilities.scaffold import InterfaceManifest, testid_surface_instructions
+    from squadops.stacks.scaffold import InterfaceManifest, testid_surface_instructions
 
     manifest_path = (
         Path(__file__).resolve().parents[3]
@@ -118,7 +118,7 @@ def test_repair_contract_threads_the_same_anchor_inventory_under_both_keys():
     expected_lines = testid_surface_instructions(manifest)
     assert expected_lines, "group_run manifest lost its testid inventory — scenario broken"
 
-    from squadops.capabilities.scaffold import frozen_surface_index_lines
+    from squadops.stacks.scaffold import frozen_surface_index_lines
 
     fragments = ca.manifest_surface_fragments(ca.REPAIR_CONTEXT_CONTRACT, manifest)
 

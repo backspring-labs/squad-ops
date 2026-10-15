@@ -183,10 +183,6 @@
 "src/squadops/capabilities/handlers/test_runner.py\tassignment\tIncompatible types in assignment (expression has type \"tuple[str, str]\", variable has type \"tuple[str, str, str]\")": 1,
 "src/squadops/capabilities/handlers/wrapup_tasks.py\tindex\tValue of type \"dict[Any, Any] | None\" is not indexable": 7,
 "src/squadops/capabilities/handlers/wrapup_tasks.py\toperator\tUnsupported right operand type for in (\"dict[Any, Any] | None\")": 3,
-"src/squadops/capabilities/scaffold.py\tunion-attr\tItem \"None\" of \"ScaffoldStack | None\" has no attribute \"qa_test_namespace\"": 1,
-"src/squadops/capabilities/scaffold_contract.py\tunion-attr\tItem \"None\" of \"RequestShape | None\" has no attribute \"declared_values\"": 1,
-"src/squadops/capabilities/success_status.py\targ-type\tArgument 1 to \"derived_success_status\" has incompatible type \"str | Any | None\"; expected \"str\"": 1,
-"src/squadops/capabilities/verification_scaffold_gate.py\tunion-attr\tItem \"None\" of \"Match[str] | None\" has no attribute \"group\"": 2,
 "src/squadops/cli/commands/meta.py\tassignment\tIncompatible types in assignment (expression has type \"dict[Any, Any]\", variable has type \"list[dict[Any, Any]] | None\")": 2,
 "src/squadops/cli/commands/models.py\tassignment\tIncompatible types in assignment (expression has type \"float\", variable has type \"int\")": 1,
 "src/squadops/cli/commands/runs.py\tassignment\tIncompatible types in assignment (expression has type \"list[str]\", target has type \"str\")": 1,
@@ -257,5 +253,9 @@
 "src/squadops/sandbox/service.py\tunion-attr\tItem \"None\" of \"ExecutionSandboxPort | None\" has no attribute \"read_build_diagnostics\"": 1,
 "src/squadops/sandbox/service.py\tunion-attr\tItem \"None\" of \"ExecutionSandboxPort | None\" has no attribute \"run_backend_tests\"": 1,
 "src/squadops/sandbox/service.py\tunion-attr\tItem \"None\" of \"ExecutionSandboxPort | None\" has no attribute \"start_application\"": 1,
-"src/squadops/sandbox/service.py\tunion-attr\tItem \"None\" of \"ExecutionSandboxPort | None\" has no attribute \"stop_application\"": 1
+"src/squadops/sandbox/service.py\tunion-attr\tItem \"None\" of \"ExecutionSandboxPort | None\" has no attribute \"stop_application\"": 1,
+"src/squadops/stacks/scaffold.py\tunion-attr\tItem \"None\" of \"ScaffoldStack | None\" has no attribute \"qa_test_namespace\"": 1,
+"src/squadops/stacks/scaffold_contract.py\tunion-attr\tItem \"None\" of \"RequestShape | None\" has no attribute \"declared_values\"": 1,
+"src/squadops/stacks/success_status.py\targ-type\tArgument 1 to \"derived_success_status\" has incompatible type \"str | Any | None\"; expected \"str\"": 1,
+"src/squadops/stacks/verification_scaffold_gate.py\tunion-attr\tItem \"None\" of \"Match[str] | None\" has no attribute \"group\"": 2
 }

@@ -28,7 +28,7 @@ The three, by the facts that make each one a defect rather than a style:
 
 **Since #598 this is also the gate on the scaffold's own packaging.** The two scaffolded stacks
 render their Dockerfile (and nginx config, start script and ignore file) from the environment
-contract, frozen (``squadops.capabilities.rendered_packaging``), and
+contract, frozen (``squadops.stacks.rendered_packaging``), and
 ``tests/unit/capabilities/test_rendered_packaging.py`` runs these findings over every rendering.
 The pf-38 and pf-39 replays remain the negative control.
 

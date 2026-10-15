@@ -39,8 +39,8 @@ import pytest
 from squadops.capabilities.handlers.cycle.develop import DevelopmentDevelopHandler
 from squadops.capabilities.handlers.cycle.qa_test import QATestHandler
 from squadops.capabilities.handlers.test_runner import RunTestsResult
-from squadops.capabilities.verification_scaffold_emission import emit_verification_scaffold
 from squadops.llm.models import ChatMessage
+from squadops.stacks.verification_scaffold_emission import emit_verification_scaffold
 from tests.unit.capabilities._stack_fixtures import manifest_for_stack
 
 pytestmark = [pytest.mark.domain_capabilities]

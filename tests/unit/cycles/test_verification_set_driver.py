@@ -226,7 +226,7 @@ class TestSetConfig:
 
 
 def _seeded_reader(stack: str, manifest, tamper=None):
-    import squadops.capabilities.scaffold as sc
+    import squadops.stacks.scaffold as sc
 
     files = {f["name"]: f["content"] for f in sc.expand(manifest)}
     if tamper:
@@ -319,7 +319,7 @@ class TestP0PerStack:
         """1.6.6 R1 (#1125): a field the manifest declares ``required: false, default: null``
         must freeze ``X | None = None``. Five of six 1.6.5 rolls opened on the ``str = None``
         form; the driver read them as P0 held because nothing asserted this."""
-        import squadops.capabilities.scaffold as sc
+        import squadops.stacks.scaffold as sc
 
         raw = manifest_dict_for_stack("fullstack_fastapi_react")
         for ent in raw["entities"]:
@@ -3249,7 +3249,7 @@ class TestTheInstrumentMayNotJudgeWithCodeTheDeployNeverRan:
         def fake_sh(cmd: str, check: bool = True) -> str:
             if "rev-parse" in cmd:
                 return "abc123"
-            return "src/squadops/capabilities/scaffold.py\nadapters/cycles/correction_runner.py"
+            return "src/squadops/stacks/scaffold.py\nadapters/cycles/correction_runner.py"
 
         monkeypatch.setattr(driver, "sh", fake_sh)
         problems = driver.framework_drift_problems(

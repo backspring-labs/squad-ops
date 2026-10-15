@@ -15,16 +15,16 @@ import asyncio
 import pytest
 
 import squadops.capabilities.handlers.test_runner as tr
-from squadops.capabilities.development_profiles import (
-    TEST_FRAMEWORK_BOTH,
-    TEST_FRAMEWORK_PYTEST,
-    TEST_FRAMEWORK_VITEST,
-)
 from squadops.capabilities.handlers.test_runner import (
     BuildCheckResult,
     RunTestsResult,
     run_build_validation,
     run_frontend_build,
+)
+from squadops.stacks.development_profiles import (
+    TEST_FRAMEWORK_BOTH,
+    TEST_FRAMEWORK_PYTEST,
+    TEST_FRAMEWORK_VITEST,
 )
 
 pytestmark = [pytest.mark.domain_capabilities]

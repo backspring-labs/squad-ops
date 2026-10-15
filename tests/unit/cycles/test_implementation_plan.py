@@ -835,9 +835,9 @@ class TestQaArtifactOwnership:
     def _contract():
         from pathlib import Path
 
-        from squadops.capabilities.scaffold import InterfaceManifest
-        from squadops.capabilities.scaffold_contract import emit_contract_dict
         from squadops.cycles.verification_contract import VerificationContract
+        from squadops.stacks.scaffold import InterfaceManifest
+        from squadops.stacks.scaffold_contract import emit_contract_dict
 
         path = (
             Path(__file__).resolve().parents[3]

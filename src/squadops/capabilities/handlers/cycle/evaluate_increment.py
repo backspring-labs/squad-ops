@@ -24,6 +24,12 @@ from squadops.capabilities.handlers.base import (
     HandlerEvidence,
     HandlerResult,
 )
+from squadops.stacks.development_profiles import get_development_profile
+from squadops.stacks.scaffold import (
+    development_profile_for,
+    render_profile_name_for,
+    scaffold_stack_for,
+)
 from squadops.tasks.task_types import TaskType
 
 if TYPE_CHECKING:
@@ -45,7 +51,6 @@ async def _rendered(
     every route unread (``None``, blocked) for a stack that declares none."""
     from squadops.capabilities.handlers.probe_runner import profile_for_stack
     from squadops.capabilities.handlers.route_rendering import render_profile_for, render_routes
-    from squadops.capabilities.scaffold import render_profile_name_for
 
     if not declared:
         return {}
@@ -91,9 +96,7 @@ class QAEvaluateIncrementHandler(CapabilityHandler):
             INCREMENT_EVALUATION_ARTIFACT_TYPE,
             INCREMENT_EVALUATION_FILENAME,
         )
-        from squadops.capabilities.development_profiles import get_development_profile
         from squadops.capabilities.handlers.test_runner import run_suite
-        from squadops.capabilities.scaffold import development_profile_for, scaffold_stack_for
 
         started = time.perf_counter()
         stack = scaffold_stack_for(inputs.get("resolved_config"))

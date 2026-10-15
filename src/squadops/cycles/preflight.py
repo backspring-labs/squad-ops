@@ -40,6 +40,7 @@ from squadops.cycles.models import (
     WorkloadType,
 )
 from squadops.llm.model_registry import get_model_spec
+from squadops.stacks.scaffold import development_profile_for, resolve_development_profile
 
 if TYPE_CHECKING:
     from squadops.cycles.models import SquadProfile
@@ -228,7 +229,6 @@ def stack_development_profile_decision(config: Mapping[str, Any]) -> PreflightDe
     rather than silently deriving, because overriding an explicit config value hides the drift
     instead of ending it — the operator should fix the profile.
     """
-    from squadops.capabilities.scaffold import development_profile_for, resolve_development_profile
 
     if resolve_development_profile(config) is not None:
         return PreflightDecision()

@@ -45,14 +45,14 @@ import tempfile
 from pathlib import Path
 
 from squadops.capabilities.handlers.probe_runner import run_probes
-from squadops.capabilities.scaffold import InterfaceManifest, materialize
-from squadops.capabilities.scaffold_contract import emit_contract_dict, emit_contract_yaml
 from squadops.cycles.verification_contract import VerificationContract
 from squadops.cycles.verification_contract_runner import (
     FILL_BEHAVIOR_MEASURES,
     evaluate_structural,
     structural_criteria,
 )
+from squadops.stacks.scaffold import InterfaceManifest, materialize
+from squadops.stacks.scaffold_contract import emit_contract_dict, emit_contract_yaml
 
 _REPO_ROOT = Path(__file__).resolve().parents[2]
 _DEFAULT_MANIFEST = _REPO_ROOT / "examples" / "03_group_run" / "interface_manifest.yaml"

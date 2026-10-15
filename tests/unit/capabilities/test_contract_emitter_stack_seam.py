@@ -36,9 +36,9 @@ from typing import Any
 
 import pytest
 
-from squadops.capabilities import scaffold, scaffold_contract
-from squadops.capabilities.scaffold import InterfaceManifest, ScaffoldStack
-from squadops.capabilities.scaffold_contract import CriteriaPack, emit_contract_dict
+from squadops.stacks import scaffold, scaffold_contract
+from squadops.stacks.scaffold import InterfaceManifest, ScaffoldStack
+from squadops.stacks.scaffold_contract import CriteriaPack, emit_contract_dict
 
 pytestmark = [pytest.mark.domain_capabilities]
 

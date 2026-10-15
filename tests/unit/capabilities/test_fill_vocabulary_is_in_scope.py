@@ -38,7 +38,7 @@ from pathlib import Path
 
 import pytest
 
-from squadops.capabilities.verification_scaffold_emission import emit_verification_scaffold
+from squadops.stacks.verification_scaffold_emission import emit_verification_scaffold
 from tests.unit.capabilities._stack_fixtures import manifest_for_stack
 
 pytestmark = [pytest.mark.domain_capabilities]
@@ -55,7 +55,7 @@ def _store_exports() -> set[str]:
     ``export const`` matters: `TABLES` is a const, and a ``export function``-only regex
     reported it as unexported while the shell imported it (#967).
     """
-    from squadops.capabilities.scaffold import expand
+    from squadops.stacks.scaffold import expand
 
     expanded = {f["name"]: f["content"] for f in expand(manifest_for_stack("nextjs_ts"))}
     store = next((c for n, c in expanded.items() if n.endswith("lib/store.ts")), "")
@@ -121,7 +121,7 @@ def test_the_store_actually_exports_what_the_shell_imports():
     it — otherwise the shell itself stops compiling, which is worse: it takes the whole
     suite down instead of one slot.
     """
-    from squadops.capabilities.scaffold import expand
+    from squadops.stacks.scaffold import expand
 
     expanded = {f["name"]: f["content"] for f in expand(manifest_for_stack("nextjs_ts"))}
     store = next((c for n, c in expanded.items() if n.endswith("lib/store.ts")), None)

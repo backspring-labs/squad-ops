@@ -25,8 +25,8 @@ from squadops.capabilities.handlers.probe_runner import (
     probe_check_rows,
     run_probes,
 )
-from squadops.capabilities.scaffold import InterfaceManifest, expand
 from squadops.cycles.verification_contract import Probe
+from squadops.stacks.scaffold import InterfaceManifest, expand
 from tests.unit.core.process_watch import ended, forking
 
 pytestmark = [pytest.mark.domain_capabilities]

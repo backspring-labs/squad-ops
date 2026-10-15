@@ -19,10 +19,10 @@ from pathlib import Path
 import pytest
 import yaml
 
-from squadops.capabilities import scaffold, stack_fastapi_react
-from squadops.capabilities.baseline_stylesheet import BASELINE_CSS
 from squadops.capabilities.handlers.build_profiles import get_profile
-from squadops.capabilities.scaffold import InterfaceManifest, expand
+from squadops.stacks import scaffold, stack_fastapi_react
+from squadops.stacks.baseline_stylesheet import BASELINE_CSS
+from squadops.stacks.scaffold import InterfaceManifest, expand
 
 pytestmark = [pytest.mark.domain_capabilities]
 
@@ -603,7 +603,7 @@ def test_qa_test_namespace_is_deterministic_and_bounds_qa_paths():
     """The QA test namespace is deterministic per stack (independent of manifest contents), and
     membership is the write-authority boundary: plan-declared concrete test files fall inside it;
     source files and undeclared top-level paths (the pf-26 shape) do not."""
-    from squadops.capabilities.scaffold import is_qa_test_path, qa_test_namespace
+    from squadops.stacks.scaffold import is_qa_test_path, qa_test_namespace
 
     m = _group_run_manifest()
     assert qa_test_namespace(m) == (
@@ -623,7 +623,7 @@ def test_qa_test_namespace_is_deterministic_and_bounds_qa_paths():
 
 
 def test_qa_test_namespace_rejects_unknown_stack():
-    from squadops.capabilities.scaffold import InterfaceManifest, qa_test_namespace
+    from squadops.stacks.scaffold import InterfaceManifest, qa_test_namespace
 
     bad = InterfaceManifest.from_dict(
         {"version": 1, "kind": "interface_manifest", "project_id": "x", "stack": "cobol_cics"}
@@ -668,7 +668,7 @@ class TestErrorSeamInstructions:
     detail=...) on two consecutive rolls and 500'd every error path."""
 
     def test_lines_derive_from_manifest_error_contract(self):
-        from squadops.capabilities.scaffold import error_seam_instructions
+        from squadops.stacks.scaffold import error_seam_instructions
 
         lines = error_seam_instructions(_group_run_manifest())
         assert len(lines) == 2
@@ -680,7 +680,7 @@ class TestErrorSeamInstructions:
         assert "`validation_error` → 422" in lines[1]
 
     def test_empty_without_error_contract_or_manifest(self):
-        from squadops.capabilities.scaffold import error_seam_instructions
+        from squadops.stacks.scaffold import error_seam_instructions
 
         raw = _raw_manifest()
         raw["api"].pop("error_contract", None)
@@ -719,7 +719,7 @@ class TestDeclaredSuccessStatus:
         reads. If it stayed hardcoded at 201, a manifest declaring anything else would
         emit a contract its own skeleton could never satisfy — the pf-39 defect with
         the numbers changed."""
-        from squadops.capabilities.scaffold_contract import emit_contract_dict
+        from squadops.stacks.scaffold_contract import emit_contract_dict
 
         raw = _raw_manifest()
         for ep in raw["api"]["endpoints"]:
@@ -739,7 +739,7 @@ class TestDeclaredSuccessStatus:
 
     def test_manifest_without_success_status_keeps_the_historical_probe_default(self):
         """Backward compatibility: manifests predating the field still get 201."""
-        from squadops.capabilities.scaffold_contract import emit_contract_dict
+        from squadops.stacks.scaffold_contract import emit_contract_dict
 
         raw = _raw_manifest()
         for ep in raw["api"]["endpoints"]:
@@ -780,7 +780,7 @@ class TestModelSurfaceInstructions:
     """
 
     def test_lines_name_every_model_the_scaffold_emits(self):
-        from squadops.capabilities.scaffold import model_surface_instructions
+        from squadops.stacks.scaffold import model_surface_instructions
 
         manifest = _group_run_manifest()
         lines = model_surface_instructions(manifest)
@@ -804,7 +804,7 @@ class TestModelSurfaceInstructions:
         """pf-45: class names alone did not carry the surface a fill body touches — the
         dev wrote `pace=data.pace` against a model declaring `pace_target`, and every
         POST /runs raised into a 500. The block must name the fields, not just the class."""
-        from squadops.capabilities.scaffold import model_surface_instructions
+        from squadops.stacks.scaffold import model_surface_instructions
 
         blob = " ".join(model_surface_instructions(_group_run_manifest()))
 
@@ -816,7 +816,7 @@ class TestModelSurfaceInstructions:
         """pf-45's second defect: the dev re-declared local store dicts, shadowing
         backend/store.py — reset() then cleared the unused stores and test isolation
         silently broke. The block names the real stores so there is nothing to invent."""
-        from squadops.capabilities.scaffold import model_surface_instructions
+        from squadops.stacks.scaffold import model_surface_instructions
 
         blob = " ".join(model_surface_instructions(_group_run_manifest()))
 
@@ -829,7 +829,7 @@ class TestModelSurfaceInstructions:
         assert "`Participant` have no store" in blob
 
     def test_non_memory_persistence_omits_the_store_line(self):
-        from squadops.capabilities.scaffold import model_surface_instructions
+        from squadops.stacks.scaffold import model_surface_instructions
 
         raw = _raw_manifest()
         raw["persistence"] = "external"
@@ -841,7 +841,7 @@ class TestModelSurfaceInstructions:
     def test_the_names_pf41_invented_are_not_presented_as_valid(self):
         """The five names pf-41's last repair imported do not exist. They may appear in
         the do-not-invent warning, but never in the authoritative list of what exists."""
-        from squadops.capabilities.scaffold import model_surface_instructions
+        from squadops.stacks.scaffold import model_surface_instructions
 
         available = next(
             ln for ln in model_surface_instructions(_group_run_manifest()) if "EXACTLY these" in ln
@@ -852,19 +852,19 @@ class TestModelSurfaceInstructions:
     def test_states_the_module_is_frozen(self):
         """Without this a repair 'fixes' a missing name by editing models.py — which is
         restored by scaffold enforcement, so the repair silently accomplishes nothing."""
-        from squadops.capabilities.scaffold import model_surface_instructions
+        from squadops.stacks.scaffold import model_surface_instructions
 
         assert any("frozen" in ln for ln in model_surface_instructions(_group_run_manifest()))
 
     def test_absent_manifest_contributes_nothing(self):
         """Author mode and non-scaffold stacks inject nothing — additive, like every
         other entry on this transport."""
-        from squadops.capabilities.scaffold import model_surface_instructions
+        from squadops.stacks.scaffold import model_surface_instructions
 
         assert model_surface_instructions(None) == []
 
     def test_manifest_without_entities_or_shapes_contributes_nothing(self):
-        from squadops.capabilities.scaffold import model_surface_instructions
+        from squadops.stacks.scaffold import model_surface_instructions
 
         bare = InterfaceManifest.from_dict(
             {
@@ -942,7 +942,7 @@ class TestScaffoldOwnedStore:
     def test_store_is_frozen_not_a_fill_slot(self):
         """Frozen means scaffold enforcement restores it if a producer rewrites it. If it
         were a fill slot the agent could reintroduce the broken import it was meant to fix."""
-        from squadops.capabilities.scaffold import fill_slot_paths
+        from squadops.stacks.scaffold import fill_slot_paths
 
         assert "backend/store.py" not in fill_slot_paths(_group_run_manifest())
 
@@ -1001,7 +1001,7 @@ class TestFrontendTestHarness:
         assert "MemoryRouter" in harness
 
     def test_harness_files_are_frozen_not_fill_slots(self):
-        from squadops.capabilities.scaffold import fill_slot_paths
+        from squadops.stacks.scaffold import fill_slot_paths
 
         slots = fill_slot_paths(_group_run_manifest())
         assert "frontend/src/__tests__/harness.test.jsx" not in slots
@@ -1393,7 +1393,7 @@ class TestErrorSeamIsPerStack:
         stacks since #795's reconciliation (the nextjs generator's `detail` was the
         odd one out against stack #1 and the reference manifests); the per-stack seam
         stays because module and import genuinely differ."""
-        from squadops.capabilities.scaffold import error_seam_for
+        from squadops.stacks.scaffold import error_seam_for
 
         fastapi = error_seam_for("fullstack_fastapi_react")
         nextjs = error_seam_for("nextjs_ts")
@@ -1410,7 +1410,7 @@ class TestErrorSeamIsPerStack:
         naming it is the point. Next.js has no equivalent attractor, and inventing one
         would teach a nonexistent fact — the clause is omitted instead.
         """
-        from squadops.capabilities.scaffold import error_seam_for
+        from squadops.stacks.scaffold import error_seam_for
 
         assert error_seam_for("fullstack_fastapi_react").framework_exception == "HTTPException"
         assert error_seam_for("nextjs_ts").framework_exception == ""
@@ -1427,7 +1427,7 @@ class TestErrorEnvelopeLines:
         is weaker than showing correct-and-wrong side by side, because the wrong form is
         what the model already believes.
         """
-        from squadops.capabilities.scaffold import error_envelope_lines
+        from squadops.stacks.scaffold import error_envelope_lines
 
         lines = error_envelope_lines("nextjs_ts")
         joined = " ".join(lines)
@@ -1444,7 +1444,7 @@ class TestErrorEnvelopeLines:
         `message` (nextjs's `detail` was the odd one out against stack #1 and the
         reference manifests) — the per-stack seam machinery stays, because module and
         import genuinely differ and a future stack MAY differ on the field again."""
-        from squadops.capabilities.scaffold import error_envelope_lines
+        from squadops.stacks.scaffold import error_envelope_lines
 
         assert '"message"' in " ".join(error_envelope_lines("fullstack_fastapi_react"))
         assert '"message"' in " ".join(error_envelope_lines("nextjs_ts"))
@@ -1453,7 +1453,7 @@ class TestErrorEnvelopeLines:
         """A stack with no declared seam must produce no lines. A guessed envelope is
         worse than silence: the author would assert against a shape nothing emits and
         the failure would look like an application defect."""
-        from squadops.capabilities.scaffold import error_envelope_lines
+        from squadops.stacks.scaffold import error_envelope_lines
 
         assert error_envelope_lines("") == []
         assert error_envelope_lines("some_future_stack") == []
@@ -1469,7 +1469,7 @@ class TestTypeScriptConstSurface:
         Record and not a Map — and asserted a status the map does not contain. Both
         facts are in the frozen source the surface is derived from.
         """
-        from squadops.capabilities.scaffold import _ecmascript_surface
+        from squadops.stacks.scaffold import _ecmascript_surface
 
         rendered = _ecmascript_surface(
             "export const ERROR_STATUS: Record<string, number> = {\n"
@@ -1487,7 +1487,7 @@ class TestTypeScriptConstSurface:
         file. A const built by a call has no literal to show, and an oversized literal
         would crowd out every other line — both degrade to name-and-type, which is still
         strictly more than the bare name."""
-        from squadops.capabilities.scaffold import _ecmascript_surface
+        from squadops.stacks.scaffold import _ecmascript_surface
 
         computed = _ecmascript_surface("export const CONFIG: AppConfig = buildConfig()\n")
         assert "CONFIG: AppConfig" in computed
@@ -1512,7 +1512,7 @@ class TestBriefCarriesSuccessStatus:
     """
 
     def test_the_registered_stacks_report_their_actual_channels(self):
-        from squadops.capabilities.scaffold import (
+        from squadops.stacks.scaffold import (
             brief_carries_success_status_for,
             skeleton_pins_success_status_for,
         )
@@ -1527,7 +1527,7 @@ class TestBriefCarriesSuccessStatus:
     def test_an_unknown_stack_claims_no_channel(self, stack):
         """The conservative answer. Claiming a channel we cannot prove would silence
         the gate on precisely the stack that has no other carrier."""
-        from squadops.capabilities.scaffold import brief_carries_success_status_for
+        from squadops.stacks.scaffold import brief_carries_success_status_for
 
         assert brief_carries_success_status_for(stack) is False
 
@@ -1542,8 +1542,8 @@ class TestBriefCarriesSuccessStatus:
         Mutating this to `return True` left the whole suite green — an unreachable
         guard is exactly the kind that silently stops working when a third stack lands.
         """
-        from squadops.capabilities import scaffold as scaffold_module
-        from squadops.capabilities.development_profiles import get_development_profile
+        from squadops.stacks import scaffold as scaffold_module
+        from squadops.stacks.development_profiles import get_development_profile
 
         real = get_development_profile
 
@@ -1551,7 +1551,7 @@ class TestBriefCarriesSuccessStatus:
             return dc.replace(real(name), fill_only_template="")
 
         monkeypatch.setattr(
-            "squadops.capabilities.development_profiles.get_development_profile", _no_appendix
+            "squadops.stacks.development_profiles.get_development_profile", _no_appendix
         )
         assert scaffold_module.brief_carries_success_status_for("nextjs_ts") is False
 
@@ -1590,8 +1590,8 @@ class TestClientSurfaceLines:
 
         import yaml
 
-        from squadops.capabilities.scaffold import InterfaceManifest, client_surface_instructions
-        from squadops.capabilities.stack_fastapi_react import _API_JS
+        from squadops.stacks.scaffold import InterfaceManifest, client_surface_instructions
+        from squadops.stacks.stack_fastapi_react import _API_JS
 
         replays = Path(__file__).resolve().parents[2] / "fixtures" / "roll_replays"
         manifest = InterfaceManifest.from_dict(
@@ -1613,7 +1613,7 @@ class TestClientSurfaceLines:
 
         import yaml
 
-        from squadops.capabilities.scaffold import InterfaceManifest, client_surface_instructions
+        from squadops.stacks.scaffold import InterfaceManifest, client_surface_instructions
 
         assert client_surface_instructions(None) == []
         replays = Path(__file__).resolve().parents[2] / "fixtures" / "roll_replays"
@@ -1647,8 +1647,8 @@ def test_the_qa_namespace_is_exactly_the_suites_each_stack_seeds():
     A one-directional guard cannot see the error it actually had. This one is the
     biconditional, so neither restatement can survive.
     """
-    from squadops.capabilities.app_invocation import JS_SUITE_SUFFIXES
-    from squadops.capabilities.scaffold import is_qa_test_path_for_stack
+    from squadops.stacks.app_invocation import JS_SUITE_SUFFIXES
+    from squadops.stacks.scaffold import is_qa_test_path_for_stack
     from tests.unit.capabilities._stack_fixtures import manifest_for_stack
 
     py_suite = re.compile(r"(^|/)test_[^/]*\.py$|_test\.py$")
@@ -1684,7 +1684,7 @@ def test_a_bare_namespace_entry_is_a_convention_and_a_path_is_a_location():
     `app/api/runs/route.ts`. Without the rooted reading, `backend/tests/` would match
     `vendor/backend/tests/`, quietly widening the stack that was already correct.
     """
-    from squadops.capabilities.scaffold import within_namespace
+    from squadops.stacks.scaffold import within_namespace
 
     # bare name: a segment at any depth, root included
     assert within_namespace("__tests__/harness.test.ts", "__tests__/")
@@ -1705,7 +1705,7 @@ def test_the_scaffold_emission_guard_refuses_a_shell_in_application_source():
     scaffold shell written into the application's source; with the declaration corrected
     and the guard reading the predicate, it refuses.
     """
-    from squadops.capabilities import verification_scaffold_emission as vse
+    from squadops.stacks import verification_scaffold_emission as vse
     from tests.unit.capabilities._stack_fixtures import manifest_for_stack
 
     manifest = manifest_for_stack("nextjs_ts")
@@ -1716,7 +1716,7 @@ def test_the_scaffold_emission_guard_refuses_a_shell_in_application_source():
 
     from unittest import mock
 
-    from squadops.capabilities.scaffold import verification_scaffold_for
+    from squadops.stacks.scaffold import verification_scaffold_for
 
     declared = verification_scaffold_for("nextjs_ts")
     with mock.patch.dict(
@@ -1755,7 +1755,7 @@ def test_the_stylesheet_is_frozen_never_a_fill_slot():
     scaffold exists to remove — and silently, since an author-written stylesheet still
     builds.
     """
-    from squadops.capabilities.scaffold import fill_slot_paths
+    from squadops.stacks.scaffold import fill_slot_paths
 
     assert "frontend/src/index.css" not in fill_slot_paths(_group_run_manifest())
 

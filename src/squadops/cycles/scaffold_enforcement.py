@@ -16,6 +16,7 @@ from dataclasses import dataclass
 from typing import Any
 
 from squadops.cycles.scaffold_integrity_evidence import STAGE_ARTIFACT_STORAGE
+from squadops.stacks.scaffold import is_scaffoldable_stack
 
 logger = logging.getLogger(__name__)
 
@@ -101,7 +102,6 @@ def bound_record_or_none(interface_manifest: Any, run_id: str, resolved_config: 
         return None
     try:
         from squadops.campaigns.increment_tree import increment_footprint
-        from squadops.capabilities.scaffold import is_scaffoldable_stack
         from squadops.cycles.bound_scaffold_record import build_bound_record
 
         if not is_scaffoldable_stack(getattr(interface_manifest, "stack", "")):

@@ -121,7 +121,7 @@ def test_the_syntax_check_refuses_only_what_the_grammar_reads_and_rejects(path, 
 def test_the_real_react_view_scaffold_addresses_its_component_and_body():
     """On the FastAPI+React scaffold's ``RunsListView.jsx`` — the file 1.7.5 React roll 3
     re-emitted whole on every round (§1.2)."""
-    from squadops.capabilities.scaffold import expand
+    from squadops.stacks.scaffold import expand
     from tests.unit.capabilities._stack_fixtures import manifest_for_stack
 
     files = {f["name"]: f["content"] for f in expand(manifest_for_stack("fullstack_fastapi_react"))}

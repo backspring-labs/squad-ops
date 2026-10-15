@@ -36,8 +36,8 @@ import pathlib
 import pytest
 import yaml
 
-from squadops.capabilities.verification_scaffold import VerificationScaffoldManifest
-from squadops.capabilities.verification_scaffold_emission import (
+from squadops.stacks.verification_scaffold import VerificationScaffoldManifest
+from squadops.stacks.verification_scaffold_emission import (
     GENERATOR_VERSION,
     emit_verification_scaffold,
 )

@@ -11,14 +11,14 @@ from __future__ import annotations
 import pytest
 import yaml
 
-from squadops.capabilities import verification_scaffold_emission as emission_module
-from squadops.capabilities.scaffold import InterfaceManifest, expand, verification_scaffold_for
-from squadops.capabilities.verification_scaffold import (
+from squadops.stacks import verification_scaffold_emission as emission_module
+from squadops.stacks.scaffold import InterfaceManifest, expand, verification_scaffold_for
+from squadops.stacks.verification_scaffold import (
     ScaffoldDerivationError,
     ScaffoldValidationError,
     expanded_tree_hash,
 )
-from squadops.capabilities.verification_scaffold_emission import (
+from squadops.stacks.verification_scaffold_emission import (
     GENERATOR_VERSION,
     VerificationScaffoldEmission,
     emit_verification_scaffold,
@@ -163,7 +163,7 @@ class TestManifestRecord:
         assert record.expanded_tree_hash == expanded_tree_hash(expand(nextjs_manifest))
 
     def test_manifest_yaml_round_trips_through_the_schema(self, emission):
-        from squadops.capabilities.verification_scaffold import VerificationScaffoldManifest
+        from squadops.stacks.verification_scaffold import VerificationScaffoldManifest
 
         loaded = VerificationScaffoldManifest.from_dict(yaml.safe_load(emission.manifest_yaml))
         assert loaded == emission.manifest

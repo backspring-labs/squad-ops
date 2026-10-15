@@ -41,6 +41,7 @@ from dataclasses import dataclass
 from enum import Enum
 from typing import Any
 
+from squadops.stacks.development_profiles import effective_development_profile
 from squadops.tasks.task_types import TaskType
 
 logger = logging.getLogger(__name__)
@@ -777,7 +778,6 @@ def validate_declaration(resolved_config: Mapping[str, Any] | None) -> tuple[str
 
 def _declared_off_stack(names: Sequence[str], resolved_config: Mapping[str, Any] | None) -> list:
     """The declared faults whose stacks exclude this cycle's development profile."""
-    from squadops.capabilities.development_profiles import effective_development_profile
 
     stack = effective_development_profile(resolved_config)
     return sorted(n for n in names if FAULTS[n].stacks and stack not in FAULTS[n].stacks)

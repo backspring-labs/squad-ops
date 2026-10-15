@@ -45,16 +45,16 @@ import re
 
 import pytest
 
-from squadops.capabilities import (
+from squadops.capabilities.handlers import build_profiles, probe_runner
+from squadops.cycles.verification_contract import VerificationContract
+from squadops.sandbox import environment
+from squadops.stacks import (
     development_profiles,
     scaffold,
     scaffold_contract,
     verification_scaffold_emission,
 )
-from squadops.capabilities.handlers import build_profiles, probe_runner
-from squadops.capabilities.scaffold import InterfaceManifest
-from squadops.cycles.verification_contract import VerificationContract
-from squadops.sandbox import environment
+from squadops.stacks.scaffold import InterfaceManifest
 
 pytestmark = [pytest.mark.domain_capabilities]
 
@@ -211,7 +211,7 @@ _GUARD_MODULES = (
     # SIP-0104 P2: the scaffold execution-readiness gate. assess_* is consumed by the
     # winnability boundary, validate_* by the executor's seed path — losing either caller
     # reopens the exact "guard that cannot fire" hole this test exists to close.
-    "src/squadops/capabilities/verification_scaffold_gate.py",
+    "src/squadops/stacks/verification_scaffold_gate.py",
 )
 
 

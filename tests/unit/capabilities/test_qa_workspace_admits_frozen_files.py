@@ -35,11 +35,11 @@ from __future__ import annotations
 
 import pytest
 
-from squadops.capabilities.development_profiles import get_development_profile
 from squadops.capabilities.handlers.build_profiles import get_profile
 from squadops.capabilities.handlers.cycle.qa_test import _is_test_file
 from squadops.capabilities.handlers.cycle_tasks import QATestHandler
-from squadops.capabilities.scaffold import _STACKS, expand, fill_slot_paths
+from squadops.stacks.development_profiles import get_development_profile
+from squadops.stacks.scaffold import _STACKS, expand, fill_slot_paths
 from tests.unit.capabilities._stack_fixtures import manifest_for_stack
 
 pytestmark = [pytest.mark.domain_capabilities]

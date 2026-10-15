@@ -22,7 +22,7 @@ checks:
     what: each stack's frozen conventions, told to the proposer
     container: squadops-nat
     code: |
-      from squadops.capabilities.scaffold import frozen_conventions_for
+      from squadops.stacks.scaffold import frozen_conventions_for
       print(sorted(c.kind.value for c in frozen_conventions_for("nextjs_ts")))
     expect: "['error_envelope', 'undeclared_field_unfixed', 'unset_optional_unfixed']"
   - id: "1884"
@@ -46,7 +46,7 @@ checks:
     container: squadops-runtime-api
     code: |
       import squadops.capabilities.handlers.build_profiles as bp
-      from squadops.capabilities.development_profiles import get_development_profile
+      from squadops.stacks.development_profiles import get_development_profile
       dev, build = get_development_profile("fullstack_fastapi_react"), bp.get_profile("fullstack_fastapi_react")
       print(dev.name, hasattr(dev, "expected_extensions"), hasattr(build, "validation_rules"),
             hasattr(build, "artifact_output_mode"), hasattr(bp, "ARTIFACT_MODE_MULTI_FILE"))
@@ -462,7 +462,7 @@ checks:
     what: a campaign proposer is told what its stack does with a request field the manifest does not declare
     container: squadops-nat
     code: |
-      from squadops.capabilities.scaffold import ConventionKind, frozen_conventions_for
+      from squadops.stacks.scaffold import ConventionKind, frozen_conventions_for
       print(sorted(c.kind.value for c in frozen_conventions_for("fullstack_fastapi_react") if c.kind.value.startswith("undeclared")))
     expect: "['undeclared_field_ignored']"
   - id: "2096-runtime"
@@ -822,7 +822,7 @@ checks:
     code: |
       import dataclasses, inspect
       from squadops.capabilities.handlers import probe_runner
-      from squadops.capabilities.scaffold import Endpoint
+      from squadops.stacks.scaffold import Endpoint
       print("order" in {f.name for f in dataclasses.fields(Endpoint)}, "ordered_by" in inspect.getsource(probe_runner.evaluate_expectations))
     expect: "True True"
   - id: "2202-agent"
@@ -845,9 +845,9 @@ checks:
     what: "a code's declared message reaches the frozen error module and the derived rejection probe"
     container: squadops-runtime-api
     code: |
-      from squadops.capabilities.scaffold import InterfaceManifest
-      from squadops.capabilities.scaffold_contract import emit_contract_dict
-      from squadops.capabilities.stack_fastapi_react import _errors_source
+      from squadops.stacks.scaffold import InterfaceManifest
+      from squadops.stacks.scaffold_contract import emit_contract_dict
+      from squadops.stacks.stack_fastapi_react import _errors_source
       m = InterfaceManifest.from_dict({"version": 1, "kind": "interface_manifest", "project_id": "p", "stack": "fullstack_fastapi_react", "entities": [{"name": "Thing", "fields": [{"name": "name", "type": "str", "required": True}]}], "api": {"request_shapes": {"ThingRequest": {"required": ["name"]}}, "endpoints": [{"method": "POST", "path": "/things", "request": "ThingRequest", "response": "Thing", "errors": ["validation_error"], "success_status": 201}], "error_contract": {"shape": "envelope", "codes": {"validation_error": {"http": 422, "message": "Say which thing."}}}}, "frontend": {"routes": []}})
       probes = [p for p in emit_contract_dict(m)["behavioral"]["probes"] if (p.get("expect") or {}).get("error_message")]
       print("Say which thing." in _errors_source(m), [p["expect"]["error_message"] for p in probes])

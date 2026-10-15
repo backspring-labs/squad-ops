@@ -25,8 +25,8 @@ REPO_ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(REPO_ROOT / "src"))
 sys.path.insert(0, str(REPO_ROOT))
 
-from squadops.capabilities.scaffold import InterfaceManifest  # noqa: E402
 from squadops.cycles.manifest_diagnostics import render, structural_diff  # noqa: E402
+from squadops.stacks.scaffold import InterfaceManifest  # noqa: E402
 
 _DEFAULT_REFERENCE = REPO_ROOT / "examples" / "03_group_run" / "interface_manifest.yaml"
 

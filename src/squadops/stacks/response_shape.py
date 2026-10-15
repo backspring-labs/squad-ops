@@ -36,7 +36,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any
 
-from squadops.capabilities.scaffold import Entity, InterfaceManifest
+from squadops.stacks.scaffold import Entity, InterfaceManifest
 
 #: Manifest primitive tokens → the JavaScript ``typeof`` they must produce. A token
 #: absent here is an entity reference (or a type this pass cannot check), and is

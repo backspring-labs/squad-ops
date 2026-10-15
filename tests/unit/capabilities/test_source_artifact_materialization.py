@@ -10,13 +10,13 @@ from __future__ import annotations
 
 import pytest
 
-from squadops.capabilities.development_profiles import (
+from squadops.capabilities.handlers.cycle_tasks import QATestHandler
+from squadops.stacks.development_profiles import (
     DEVELOPMENT_PROFILES,
     TEST_FRAMEWORK_BOTH,
     TEST_FRAMEWORK_VITEST,
     get_development_profile,
 )
-from squadops.capabilities.handlers.cycle_tasks import QATestHandler
 
 pytestmark = [pytest.mark.domain_capabilities]
 

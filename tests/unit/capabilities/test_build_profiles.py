@@ -267,8 +267,8 @@ class TestProfileSourceOfTruthInvariants:
         themselves — the environment contract's argv and the scaffold's namespace —
         so the test moves with them.
         """
-        from squadops.capabilities.scaffold import qa_test_namespace_for_stack
         from squadops.sandbox.environment import get_environment_contract
+        from squadops.stacks.scaffold import qa_test_namespace_for_stack
 
         prompt = get_profile(stack).full_system_prompt
         contract = get_environment_contract(stack)
