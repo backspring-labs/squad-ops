@@ -1,11 +1,12 @@
 # 2.3 R7: the largest-units extraction map (#1994)
 
 **Status:** reviewed. The owner approved unit 1's step table on 2026-10-15, and chose to review each
-of units 2–5 at the step before its first extraction PR (#1994, comment 6188687592). The plan owns R7's
+of units 2–5 at the step before its first extraction PR (#1994, comment 6188687592). It reviewed unit 2's
+on the same day (§4b; #1994, comment 6191733584). The plan owns R7's
 placement (phase 8, after R6). This map owns each unit's scope, its steps, the data that crosses each
 step, and the proof each PR carries.
 
-**Granularity:** unit 1 is mapped to the step. Units 2–5 are mapped to the block here. Each gets
+**Granularity:** units 1 and 2 are mapped to the step (§4, §4b). Units 3–5 are mapped to the block here. Each gets
 its step table in this file, re-measured on the tree it extracts from, and reviewed before its first
 extraction PR. Measured on R6's tree (PR #2327), where units 3 and 4 live after the orchestration
 move, to the top-level `squadops.execution` the owner ruled (#1992, comment 6188687208).
@@ -87,7 +88,13 @@ Each carries the proof in §3.
 a dict on the `_QAEmission` carrier, which is frozen in its binding, not its contents, as `RunState`'s
 lists are (1.7.5 §4 step 6). The PR names it.
 
-## 4b. Unit 2: `_CycleTaskHandler`, step by step (for the owner's review)
+## 4b. Unit 2: `_CycleTaskHandler`, step by step (reviewed by the owner, 2026-10-15)
+
+**The owner's choices** (2026-10-15, #1994, comment 6191733584):
+- **the acceptance-criteria check:** the smaller move, 2a below. Only its two decisions leave the class;
+- **the model-call method:** only the authoring-envelope capture is pulled out, 2b below;
+- **the two inline copies of existing helpers** (2c-1, 2c-2): replaced in a separate PR, #2335, after
+  this unit's move, so the move's line diff stays a pure move.
 
 Measured on main at `c255017a`. Unit 1 doesn't touch `base.py`, so these lines hold after it. The class
 is 1,665 lines with 42 methods. Four of them are over 100 lines: `_llm_call` (177),
@@ -149,16 +156,16 @@ is 1,665 lines with 42 methods. Four of them are over 100 lines: `_llm_call` (17
   - `_prompt_provenance` builds the same dict. Its condition, `rendered is not None`, is the same as the
     copy's `renderer is not None and rendered is not None`, because `rendered` is set only when there is a
     renderer.
-- **The line diff will show each copy's lines as gone,** so the PR sets each one beside the helper's body,
-  line for line. This is the owner's call: a copy replaced by the identical helper, inside an extraction
-  PR, or filed and done separately.
+- **The line diff would show each copy's lines as gone,** so the PR that replaces them sets each one beside
+  the helper's body, line for line. **The owner chose a separate PR** (#2335): this unit's move leaves
+  both copies where they are, and 2c here is 2c-3 alone.
 
 **Not on unit 2's table:**
 - `_self_evaluate` (109): a loop of named calls already.
 - `_record_generation` (92): one record built field by field.
 - The other 37 methods: none over 60 lines.
 
-**Order:** step 0, then 2a, then 2b with 2c, then unit 2's rebuild and regression pair.
+**Order:** step 0, then 2a, then 2b with 2c-3, then unit 2's rebuild and regression pair; then #2335.
 
 ## 5. Units 2–5, to the block
 
