@@ -299,6 +299,10 @@ Phase 8's rebuilds, in order:
   or one campaign), before it is batched with anything else. **#2202's comparison: done 2026-10-14.** #2276 merged
   between its arms, and #2309 before the after arm's re-run (its pre-registration's §9). Every reading reached held,
   and the proposer's wasn't exercised; the readings are on #2202. It found #2308 (fixed by #2309) and #2310.
+  **#2205's comparison: done 2026-10-14.** #2275 merged between its arms. The before arm's proposer asked for no
+  exact wording, so the defect wasn't exercised there. In the after arm both proposals declared the wording on the
+  error codes, and every reading held: the footprint held the frozen error module, the contract asserted the wording,
+  and the build returned it word for word. The readings are on #2205. It found #2315.
 - **#2208,** its rubric version pinned. **Done 2026-10-14.** @3 merged as #2274 on 2026-10-13. #2313 pins each
   version by its text: an authoring replay's manifest records the named version's hash, a version the repository
   doesn't hold is refused, and @2's text is kept verbatim (`criterion_already_satisfied@2.md`) for the results
