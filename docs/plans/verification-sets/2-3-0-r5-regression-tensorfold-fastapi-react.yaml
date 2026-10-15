@@ -1,10 +1,11 @@
 # 2.3 R5 regression roll — fastapi-react, UNCOUNTED, on R5: the 2.3 plan's phase 8, on TensorFold.
 # R5 carries #1993 (#2325, the stacks leave capabilities for squadops.stacks) and #2062
-# (#2326, the deferred imports hoisted, the 53 kept carrying their reason). Carried from R4's
+# (#2326, the deferred imports hoisted, the 53 kept carrying their reason), and #2334 (#2333: the
+# agent's delivery record kept per send), the fix R5's first pair found. Carried from R4's
 # config of the same stack. What changed:
 # - the name, the records home, and R4's name and deploy in the notes;
-# - the tracked loaded checks: R4's, plus R5's own 4;
-# - the deploy pins: R5's commit and image ids (dep_2c758b8ae9a1, c255017a), read from the running
+# - the tracked loaded checks: R4's, plus R5's own four and #2334's two;
+# - the deploy pins: R5's commit and image ids (dep_5fedb4ac415c, 7cc1990d), read from the running
 #   containers R5's rebuild started.
 # What the roll proves: the stack runs on R5's deploy on TensorFold, and every loaded check
 # answers. The carried config follows.
@@ -268,10 +269,10 @@ gate_notes: >-
   every roll of this set. System plan validation passed; no additional judgment applied.
 # {roll} and {n} are the only substitutions the driver makes.
 launch_notes: >-
-  2.3 R5 FastAPI+React (fullstack_fastapi_react) on TensorFold (the frozen NVFP4 recipe), on dep_2c758b8ae9a1, memory declared disabled — roll {roll} of {n}.
+  2.3 R5 FastAPI+React (fullstack_fastapi_react) on TensorFold (the frozen NVFP4 recipe), on dep_5fedb4ac415c, memory declared disabled — roll {roll} of {n}.
 shakeout_notes: >-
   2.3 R5 FastAPI+React (fullstack_fastapi_react) on TensorFold — NON-COUNTING by declaration before launch: R5's regression roll
-  on dep_2c758b8ae9a1, memory declared disabled. A red belongs to that deploy's changes and is read by its signature.
+  on dep_5fedb4ac415c, memory declared disabled. A red belongs to that deploy's changes and is read by its signature.
 # The line's loaded checks, by their id in scripts/dev/loaded_checks.yaml (recorded as `#<id>`).
 tracked_loaded_checks:
   - "1961"
@@ -378,6 +379,8 @@ tracked_loaded_checks:
   - "1993-agent"
   - "2062-runtime"
   - "2062-agent"
+  - "2333-runtime"
+  - "2333-agent"
 loaded_checks:
   # The prelude's framework surfaces. These run HERE rather than in an agent container
   # because runtime-api seeds the skeleton and ships examples/ — the builder image does
@@ -848,12 +851,12 @@ pins_unmoved_because: >-
   own live_squad_snapshot on 2026-10-13.
   The config-hash pin is not carried: every launch declares memory disabled (D12), an
   execution override, so the hash moves by design; the roll records the hash it launched with.
-frozen_deploy_commit: "c255017a"
+frozen_deploy_commit: "7cc1990d"
 frozen_image_ids:
-  runtime-api: "064e5533dcac"
-  max: "929085df4d50"
-  neo: "5b4e5032437b"
-  nat: "cf8764caac5a"
-  bob: "ef503df0172a"
-  eve: "1fcc14aed317"
-  data: "abd4a68ca560"
+  runtime-api: "abd20e94c885"
+  max: "86834714d16d"
+  neo: "e960b118b3d1"
+  nat: "0fbceafa95ca"
+  bob: "9c55fa4e8f30"
+  eve: "983c6131819a"
+  data: "07c29baee90b"
