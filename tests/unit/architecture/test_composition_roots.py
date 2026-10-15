@@ -153,11 +153,9 @@ _CONSTRUCTION_EXCEPTIONS: dict[str, str] = {
     "ChatRepository": _SUBSTRATE,
     "ChatSessionCache": _SUBSTRATE + " (Redis)",
     "ConfigSquadProfile": _READER,
-    "ReplyRouter": _COMPOSER + " (over the queue port, SIP-0094)",
     "ChatAgentExecutor": _COMPOSER + " (the A2A executor over the agent, SIP-0085)",
     "AgentCardConfig": "a config dataclass, not an adapter — the CamelCase technique over-matches it",
     "LoggingRuntimeEventPublisher": _NOOP + " (logging sink)",
-    "NoOpCycleEventBus": _NOOP,
     "NoOpWorkflowTracker": _NOOP,
     # The one entry that is a factory-shaped gap rather than a category: a vendor (httpx)
     # reporter built directly inside the root's _create_heartbeat_reporter. Tabled so #301

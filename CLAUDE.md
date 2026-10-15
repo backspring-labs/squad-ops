@@ -97,14 +97,14 @@ squadops artifacts list --project <project> --cycle <cycle-id> --run <run-id>  #
 ## Architecture
 
 ### Hexagonal Structure (Ports & Adapters)
-**The map is `docs/architecture/overview.md`:** one entry per package under `src/squadops/` (25) and
+**The map is `docs/architecture/overview.md`:** one entry per package under `src/squadops/` (26) and
 `adapters/` (17), and the layering the guards enforce. `test_architecture_overview.py` fails when a
 package and its entry disagree (#1989), so read it rather than a list here.
 - **`src/squadops/`**: the domain (ports, models, decisions, handlers, prompts). **Only the composition
   roots import `adapters.*`** (`squadops.api.runtime`, `squadops.agents.entrypoint`,
   `squadops.sandbox.main`, `squadops.bootstrap`; #154, `docs/architecture/composition-roots.md`).
-- **`adapters/`**: implementations behind the ports. `adapters/cycles` still holds the cycle
-  orchestration, which moves into the domain in 2.3 (#1992).
+- **`adapters/`**: implementations behind the ports. The cycle orchestration moved out of
+  `adapters/cycles` to `squadops.execution` in 2.3 (#1992); `adapters/cycles` keeps its infrastructure.
 - **`infra/`**: database migrations and DDL.
 
 ### Key Patterns
