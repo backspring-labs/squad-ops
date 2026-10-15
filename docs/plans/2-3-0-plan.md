@@ -258,6 +258,7 @@ Each item is a framework fix, an output-quality change, an instrument or an eval
 | #316 | the request-profile taxonomy | framework | L | phase 8, R8. **Its SIP is accepted first** (Q13: pinned definitions keep resolving old names) |
 | Outcome Evaluation's reporting-only instruments | the yardstick for output-quality work after 2.3 | instrument | M–L | phase 8, R9. **Its SIP is accepted first** (PR #1963) |
 | **#2234** (placed by the owner, 2026-10-11) | the release capture: the delivered-app capture can't seed an app with an empty API base path, and the Prefect capture hangs on a failed flow run | framework (release tooling) | S | phase 8, any slot; before the 2.3 cut captures its package |
+| **#2315** (placed by the owner, 2026-10-14) | a rejected increment whose only unmet criteria the accepted application already meets was sent to a repair that cannot change them, and the next proposal wasn't told which (found by #2205's comparison) | framework (campaign) | S | phase 8, with R4. SIP-0109 §24bq |
 
 ### 2.4 Not in 2.3
 
@@ -307,7 +308,7 @@ Phase 8's rebuilds, in order:
   version by its text: an authoring replay's manifest records the named version's hash, a version the repository
   doesn't hold is refused, and @2's text is kept verbatim (`criterion_already_satisfied@2.md`) for the results
   scored with it.
-- **R4:** #1976 and #1977.
+- **R4:** #1976 and #1977, with #2315 (placed by the owner, 2026-10-14).
 - **R5:** #2062 with #1993.
 - **R6:** #1992 (deferrable).
 - **R7:** #1994 (deferrable).
