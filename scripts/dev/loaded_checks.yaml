@@ -991,3 +991,12 @@ checks:
       from squadops.execution.patch_acceptance import PatchAcceptance
       print("row_is_blocking_failure(row)" in inspect.getsource(PatchAcceptance._retest_patched_suite))
     expect: "True"
+  - id: "1992-runtime"
+    what: "the executor is squadops.execution's, its no-op bus is a port's, and nothing is left under adapters.cycles"
+    container: squadops-runtime-api
+    code: |
+      import importlib.util
+      from squadops.execution.dispatched_flow_executor import DispatchedFlowExecutor
+      from squadops.ports.events.noop import NoOpCycleEventBus
+      print(importlib.util.find_spec("adapters.cycles.dispatched_flow_executor") is None, DispatchedFlowExecutor.__module__, NoOpCycleEventBus.__module__)
+    expect: "True squadops.execution.dispatched_flow_executor squadops.ports.events.noop"
