@@ -1079,9 +1079,10 @@ class CampaignProgress:
             # Rows 13 and 16 (#1692): the fresh proposal is shown why the increment it replaces
             # failed, and (#2315) which of its criteria the accepted application already meets.
             abandoned = await self._prior_cycle_brief(cycle, latest) if cycle else None
-            met = await self._already_met_stated(cycle) if cycle else []
-            if met:
-                abandoned = {**(abandoned or {"cycle_id": cycle.cycle_id}), "already_met": met}
+            if cycle is not None:
+                met = await self._already_met_stated(cycle)
+                if met:
+                    abandoned = {**(abandoned or {"cycle_id": cycle.cycle_id}), "already_met": met}
             return await self._propose_launch(
                 campaign, abandoned, abandoned_cycle_id=cycle.cycle_id if cycle else None
             )
