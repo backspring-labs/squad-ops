@@ -27,7 +27,7 @@ Kept by the rule in CLAUDE.md ("SIP System"): one row per part, updated in the P
 
 | part | status | where |
 |---|---|---|
-| §5.2 publisher confirms and mandatory routing: a publish the broker cannot route raises into the publish retry | **shipped** | 2.3.0, PR #PRNUM, issue #1977 |
+| §5.2 publisher confirms and mandatory routing: a publish the broker cannot route raises into the publish retry | **shipped** | 2.3.0, PR #2323, issue #1977 |
 | §5.1 bounded redelivery and a dead-letter queue (its bound to be amended: the measured `x-death` gap) | **placed** | 2.3.0, #1977 |
 | §5.3 consumer idempotency, with §5.3a's death-path marker replacing the interim redelivery rule | **placed** | 2.3.0, #1977 |
 | §5.4 deferred redelivery | **unplaced, deliberately**: not part of the owner's ruling of 2026-10-14 | — |
