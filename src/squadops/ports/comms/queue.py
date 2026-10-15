@@ -9,6 +9,7 @@ import logging
 import time
 from abc import ABC, abstractmethod
 from collections.abc import Awaitable, Callable
+from enum import StrEnum
 from typing import Any
 
 from squadops.comms.queue_message import QueueMessage
@@ -20,6 +21,19 @@ class QueueError(Exception):
     """The queue could not do what was asked: the broker refused it or was unreachable, after
     the provider's own retries. Declared on the port so a caller can tell a fault in the
     transport from a fault in its own work (#1824)."""
+
+
+class AckPolicy(StrEnum):
+    """What a subscription does with a delivery whose callback raised. Every subscription names
+    one, because the right answer differs by queue (SIP-Agent-Comms-Delivery-Guarantees §5.1)."""
+
+    #: SIP-0094 D12: logged and acked. A reply callback that raises is a waiter's logic error,
+    #: and requeuing it would only loop.
+    ACK_ALWAYS = "ack_always"
+    #: #1977, §5.1 as amended 2026-10-15: handed back to the broker for redelivery. The bound on
+    #: redeliveries is the subscriber's (its attempt count), because the broker keeps no count
+    #: for a classic queue's requeue. A callback that returns is acked.
+    REDELIVER_ON_FAILURE = "redeliver_on_failure"
 
 
 # SIP-0094 D3: canonical declaration args for agent comms/reply queues
@@ -159,9 +173,15 @@ class QueuePort(ABC):
         queue_name: str,
         *,
         on_message: SubscriptionCallback,
+        ack_policy: AckPolicy,
     ) -> SubscriptionHandle:
         """Deliver every message on ``queue_name`` to ``on_message`` until
         cancelled (SIP-0094 D6).
+
+        ``ack_policy`` says what a raising callback's delivery becomes. This default can only
+        ack (``ACK_ALWAYS``): it consumes through :meth:`consume_blocking`, which has no way to
+        hand a delivery back, so ``REDELIVER_ON_FAILURE`` is refused here and a transport that
+        can redeliver overrides this.
 
         This **concrete default** drives a background task that loops on
         :meth:`consume_blocking`, dispatching each delivery to ``on_message``
@@ -191,7 +211,13 @@ class QueuePort(ABC):
 
         Raises:
             QueueError: If the queue cannot be declared.
+            NotImplementedError: For ``REDELIVER_ON_FAILURE``, which this default can't honour.
         """
+        if ack_policy is not AckPolicy.ACK_ALWAYS:
+            raise NotImplementedError(
+                f"{type(self).__name__} cannot redeliver a failed delivery ({ack_policy}); "
+                "only a transport that overrides subscribe() can"
+            )
         await self.ensure_queue(queue_name)
 
         async def _run() -> None:

@@ -13,6 +13,7 @@ from aio_pika import Connection, Message, Queue
 from squadops.comms.queue_message import QueueMessage
 from squadops.ports.comms.queue import (
     REPLY_QUEUE_DECLARE_ARGS,
+    AckPolicy,
     QueueError,
     QueuePort,
     SubscriptionCallback,
@@ -353,6 +354,7 @@ class RabbitMQAdapter(QueuePort):
         queue_name: str,
         *,
         on_message: SubscriptionCallback,
+        ack_policy: AckPolicy,
     ) -> SubscriptionHandle:
         """Native long-lived subscription on ``queue_name`` (SIP-0094 §7).
 
@@ -373,10 +375,12 @@ class RabbitMQAdapter(QueuePort):
         why a separate ``add_close_callback`` re-consume isn't used — that would
         race RobustChannel's own consumer restoration and double-subscribe.
 
-        Callback exceptions are isolated (D12): a raising ``on_message`` is
-        logged, the message is still acked (reply messages are never
-        redelivered), and the consumer keeps running. The queue is declared
-        before consuming (D9).
+        Callback exceptions are isolated: a raising ``on_message`` never stops
+        the consumer. Its delivery is acked under ``ACK_ALWAYS`` (D12: reply
+        messages are never redelivered) and handed back with
+        ``nack(requeue=True)`` under ``REDELIVER_ON_FAILURE`` (#1977, the
+        subscriber bounds the redeliveries). The queue is declared before
+        consuming (D9).
 
         Args:
             queue_name: Queue to subscribe to.
@@ -410,7 +414,7 @@ class RabbitMQAdapter(QueuePort):
                     async with queue.iterator(no_ack=False) as queue_iter:
                         async for message in queue_iter:
                             await self._dispatch_subscription_delivery(
-                                message, on_message, queue_name
+                                message, on_message, queue_name, ack_policy
                             )
                 except asyncio.CancelledError:
                     raise
@@ -433,12 +437,13 @@ class RabbitMQAdapter(QueuePort):
         message: aio_pika.abc.AbstractIncomingMessage,
         on_message: SubscriptionCallback,
         queue_name: str,
+        ack_policy: AckPolicy,
     ) -> None:
-        """Route one native delivery to the callback (D12 isolation), then ack.
+        """Route one native delivery to the callback, then settle it by ``ack_policy``.
 
-        Mirrors the default ``subscribe`` policy: callback failures are logged
-        and the message is acked anyway (reply messages are not redelivered),
-        so a single bad invocation never tears down the consumer.
+        A raising callback never tears down the consumer. Its delivery is acked
+        under ``ACK_ALWAYS`` (D12) and handed back for redelivery under
+        ``REDELIVER_ON_FAILURE`` (#1977). A callback that returns is acked.
         """
         queue_message = self._to_queue_message(message, queue_name)
         try:
@@ -448,6 +453,15 @@ class RabbitMQAdapter(QueuePort):
         except asyncio.CancelledError:
             raise
         except Exception:
+            if ack_policy is AckPolicy.REDELIVER_ON_FAILURE:
+                logger.exception("subscribe: callback raised on %s; handing it back", queue_name)
+                try:
+                    await message.nack(requeue=True)
+                except asyncio.CancelledError:
+                    raise
+                except Exception:
+                    logger.exception("subscribe: nack failed on %s", queue_name)
+                return
             logger.exception("subscribe: callback raised on %s; acking and continuing", queue_name)
         try:
             await message.ack()

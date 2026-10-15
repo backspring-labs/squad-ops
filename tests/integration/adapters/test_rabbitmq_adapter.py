@@ -10,6 +10,7 @@ import pytest
 import pytest_asyncio
 
 from adapters.comms.rabbitmq import RabbitMQAdapter
+from squadops.ports.comms.queue import AckPolicy
 from squadops.ports.secrets import SecretProvider
 
 
@@ -297,7 +298,9 @@ class TestNativeSubscribeIntegration:
             if len(received) >= total:
                 all_in.set()
 
-        handle = await adapter.subscribe(queue_name, on_message=on_message)
+        handle = await adapter.subscribe(
+            queue_name, on_message=on_message, ack_policy=AckPolicy.ACK_ALWAYS
+        )
         try:
             for i in range(total):
                 await adapter.publish(queue_name, json.dumps({"i": i}))
@@ -336,8 +339,12 @@ class TestNativeSubscribeIntegration:
             beta.append(m.payload)
             _check_done()
 
-        h_alpha = await adapter.subscribe(q_alpha, on_message=on_alpha)
-        h_beta = await adapter.subscribe(q_beta, on_message=on_beta)
+        h_alpha = await adapter.subscribe(
+            q_alpha, on_message=on_alpha, ack_policy=AckPolicy.ACK_ALWAYS
+        )
+        h_beta = await adapter.subscribe(
+            q_beta, on_message=on_beta, ack_policy=AckPolicy.ACK_ALWAYS
+        )
         try:
             for i in range(per_queue):
                 await adapter.publish(q_alpha, json.dumps({"who": "alpha", "i": i}))
@@ -447,3 +454,44 @@ class TestPublisherConfirms:
 
         assert [json.loads(m.payload) for m in received] == [{"probe": "returned then delivered"}]
         await adapter.ack(received[0])
+
+
+@pytest.mark.integration
+class TestRedeliverOnFailure:
+    """#1977, the comms subscription's ack policy, against a real broker."""
+
+    @pytest_asyncio.fixture
+    async def adapter(self, rabbitmq_container):
+        a = RabbitMQAdapter(url=rabbitmq_container.get_connection_url(), namespace=None)
+        yield a
+        await a.close()
+
+    @pytest.mark.asyncio
+    async def test_a_delivery_whose_callback_raised_comes_back_once_and_is_then_acked(
+        self, adapter
+    ):
+        """Bug caught: a failed task's delivery acked and lost (D12's ack-always), or handed
+        back in a way the broker never redelivers. The second delivery carries ``redelivered``,
+        the flag the agent falls back on, and the queue is empty after it returns."""
+        from squadops.ports.comms.queue import AckPolicy
+
+        name = "sip1977_redeliver_on_failure"
+        await _drain(adapter, name)
+        seen: list[bool] = []
+        done = asyncio.Event()
+
+        async def on_message(m):
+            seen.append(bool(m.attributes.get("redelivered")))
+            if len(seen) == 1:
+                raise RuntimeError("the task's handler failed")
+            done.set()
+
+        handle = await adapter.subscribe(
+            name, on_message=on_message, ack_policy=AckPolicy.REDELIVER_ON_FAILURE
+        )
+        await adapter.publish(name, json.dumps({"task": "t1"}))
+        await asyncio.wait_for(done.wait(), timeout=10)
+        await handle.cancel()
+
+        assert seen == [False, True]
+        assert await adapter.consume(name, max_messages=1) == []

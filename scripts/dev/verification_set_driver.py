@@ -2633,7 +2633,10 @@ _AGENT_LINE_KEYS = (
     # scope. A seam reading that does not know whether its fault applied credited L4 on a
     # refund the dev's prose answer earned, in a cycle where no qa repair ever ran.
     "fault_injection: ",
-    # 1.8.2 plan §4.1 `redelivery`: the entrypoint refusing a redelivered task (#1627).
+    # 1.8.2 plan §4.1 `redelivery`: the entrypoint failing a task it will not run again: since
+    # #1977, past its attempts (`task_failed_unrun:`); before it, on its first redelivery
+    # (`redelivered_task_refused:`, #1627), read so the older logs still count.
+    "task_failed_unrun: ",
     "redelivered_task_refused: ",
 )
 
@@ -3190,13 +3193,17 @@ AGENT_MARKER_SAMPLES: dict[str, tuple[str, ...]] = {
         "development_develop_handler:self_eval emission shape: chars=2530 completion_tokens=7 "
         "fences={'fill': 0, 'path': 1, 'plain': 0} head='```ts:lib/store.ts export const'",
     ),
-    # Rendered: src/squadops/agents/entrypoint.py, a redelivered task refused (#1627).
+    # Rendered: src/squadops/agents/entrypoint.py, a task failed unrun past its attempts (#1977).
     "redelivered_refusals": (
+        "2026-10-15 00:00:00,000 - squadops.agents.entrypoint - ERROR - task_failed_unrun: "
+        "task=repair-run_ab12cd34-00-qa.test_repair type=qa.test_repair — 3 deliveries of this "
+        "task ran and none completed (each died or raised before its reply), so it was "
+        "quarantined to comms.dlq and not run again; the correction budget governs any retry "
+        "(#1977)",
+        # Before #1977, the first redelivery refused (#1627): the older logs carry this line.
         "2026-09-25 00:00:00,000 - squadops.agents.entrypoint - ERROR - redelivered_task_refused: "
         "task=repair-run_ab12cd34-00-qa.test_repair type=qa.test_repair — a prior delivery was "
-        "not acknowledged, so its completion is UNKNOWN (it may have died, or may have completed "
-        "and replied before the ack); refused at the broker layer and failed for cycle "
-        "governance to decide (SIP §5.3a, #1626)",
+        "not acknowledged, so its completion is UNKNOWN; refused at the broker layer (#1626)",
     ),
     "emissions_logged": (
         "2026-09-23 13:13:44,716 - squadops.capabilities.handlers.emission_log - INFO - "
@@ -3607,9 +3614,11 @@ SEAM_READOUTS: dict[str, tuple[str, tuple[str, ...], Callable[[dict], tuple[bool
             value_at(rec, "loop_texture.contested_rows", []),
         ),
     ),
-    # `redelivery`: the qa repair's process killed; its redelivery refused, not re-run (#1627).
+    # `redelivery`: the qa repair's process killed on each delivery; bounded by its attempts,
+    # then quarantined and failed (#1977; before it, refused on its first redelivery, #1627).
     "qa_repair_process_killed": (
-        "#1627: the killed repair's redelivery was refused as a typed FAILED, not re-run",
+        "#1977: the killed repair ran within its attempts, then was failed as a typed FAILED, "
+        "never re-run without bound",
         ("loop_texture.redelivered_refusals", "loop_texture.faults_applied"),
         lambda rec: (
             len(value_at(rec, "loop_texture.redelivered_refusals", []) or []) >= 1,
@@ -4207,14 +4216,18 @@ def texture_from_agent_lines(agent_lines: list[str]) -> dict:
         m.group("handler") for line in agent_lines if (m := _SELF_EVAL_SHAPE.search(line))
     ]
     out["redelivered_refusals"] = [
-        _field(line, "task") for line in agent_lines if _REDELIVERED_REFUSAL in line
+        _field(line, "task")
+        for line in agent_lines
+        if any(mark in line for mark in _UNRUN_FAILURES)
     ]
     return out
 
 
 #: A self-evaluation pass's own emission-shape line (``<handler>:self_eval emission shape:``).
 _SELF_EVAL_SHAPE = re.compile(r"(?P<handler>\w+):self_eval emission shape:")
-_REDELIVERED_REFUSAL = "redelivered_task_refused: "
+#: A task the entrypoint failed without running it again: since #1977 past its attempts, and
+#: before it (#1627) on its first redelivery, kept so the older logs still read.
+_UNRUN_FAILURES = ("task_failed_unrun: ", "redelivered_task_refused: ")
 
 
 _RETRY_APPENDED = "emission retry feedback appended for"

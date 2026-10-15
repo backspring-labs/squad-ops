@@ -15,7 +15,34 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 from squadops.comms.queue_message import QueueMessage
+from squadops.config.schema import CommsDeliveryConfig
+from squadops.ports.comms.queue import AckPolicy
+from squadops.ports.comms.task_attempts import TaskAttemptsPort
 from squadops.tasks.models import TaskEnvelope, TaskResult
+
+
+class _Attempts(TaskAttemptsPort):
+    """A task delivery record in this process (#1977), or one that can't be read (``down``)."""
+
+    def __init__(self, *, down: bool = False) -> None:
+        self.attempts: dict[str, int] = {}
+        self.done: set[str] = set()
+        self.down = down
+
+    async def completed(self, task_id: str) -> bool:
+        if self.down:
+            raise ConnectionError("redis unreachable")
+        return task_id in self.done
+
+    async def begin_attempt(self, task_id: str) -> int:
+        if self.down:
+            raise ConnectionError("redis unreachable")
+        self.attempts[task_id] = self.attempts.get(task_id, 0) + 1
+        return self.attempts[task_id]
+
+    async def mark_completed(self, task_id: str) -> None:
+        self.done.add(task_id)
+
 
 pytestmark = [pytest.mark.domain_agents]
 
@@ -100,6 +127,26 @@ class TestHandleTaskEnvelope:
         assert submitted.task_id == "task_123"
         assert submitted.task_type == "development.design"
         assert submitted.agent_id == "neo"
+
+    @pytest.mark.parametrize("published", [True, False], ids=["reply-out", "publish-failed"])
+    async def test_a_task_is_marked_completed_only_once_its_reply_is_out(
+        self, runner, published
+    ) -> None:
+        """#1977, §5.3, through the handler the comms path calls. Bugs caught: a task marked
+        completed before its reply, so a redelivery after a lost publish is acked as a duplicate
+        and the cycle hears nothing; or one never marked, so a lost ack re-runs it."""
+        runner._task_attempts = _Attempts()
+        if not published:
+            runner._queue.publish.side_effect = ConnectionError("broker gone")
+        payload = _make_envelope_payload(_sample_envelope(), reply_queue="neo_replies")
+
+        if published:
+            await runner._handle_task_envelope(payload, payload["metadata"])
+        else:
+            with pytest.raises(ConnectionError):
+                await runner._handle_task_envelope(payload, payload["metadata"])
+
+        assert runner._task_attempts.done == ({"task_123"} if published else set())
 
     async def test_publishes_result_to_reply_queue(self, runner) -> None:
         """TaskResult is published to the reply_queue from metadata."""
@@ -195,10 +242,15 @@ class TestConsumeTasksPushConsumer:
 
         # The comms queue, and (#1648) the control queue a cancel notice arrives on — consumed
         # beside it so a notice reaches the agent while the comms consumer is busy.
-        subscribed = {c.args[0]: c.kwargs["on_message"] for c in r._queue.subscribe.await_args_list}
+        # #1977: a comms delivery whose callback raises is handed back for redelivery (its task's
+        # attempts bound it); a control notice is acked whatever its callback does.
+        subscribed = {
+            c.args[0]: (c.kwargs["on_message"], c.kwargs["ack_policy"])
+            for c in r._queue.subscribe.await_args_list
+        }
         assert subscribed == {
-            "neo_comms": r._process_comms_message,
-            "neo_control": r._process_control_message,
+            "neo_comms": (r._process_comms_message, AckPolicy.REDELIVER_ON_FAILURE),
+            "neo_control": (r._process_control_message, AckPolicy.ACK_ALWAYS),
         }
         r._queue.consume.assert_not_awaited()
 
@@ -229,8 +281,9 @@ class TestConsumeTasksPushConsumer:
 
 
 class TestProcessCommsMessage:
-    """`_process_comms_message` — the subscribe() callback — routes actions,
-    never raises, and never acks (the subscription layer owns the ack)."""
+    """`_process_comms_message` — the subscribe() callback — routes actions and never acks (the
+    subscription layer owns the ack). It raises only a task's own failure, which the
+    subscription hands back for redelivery (#1977)."""
 
     def _runner(self):
         from squadops.agents.entrypoint import AgentRunner
@@ -242,6 +295,8 @@ class TestProcessCommsMessage:
             r._queue = AsyncMock()
             r._handle_chat_message = AsyncMock()
             r._handle_task_envelope = AsyncMock()
+            r._task_attempts = _Attempts()
+            r._delivery = CommsDeliveryConfig()
             return r
 
     @staticmethod
@@ -256,7 +311,11 @@ class TestProcessCommsMessage:
 
     async def test_routes_task_action_with_parsed_payload(self) -> None:
         r = self._runner()
-        payload = {"action": "comms.task", "metadata": {"reply_queue": "q"}, "payload": {}}
+        payload = {
+            "action": "comms.task",
+            "metadata": {"reply_queue": "q"},
+            "payload": {"task_id": "t1"},
+        }
 
         await r._process_comms_message(self._message(payload))
 
@@ -294,37 +353,35 @@ class TestProcessCommsMessage:
         r._handle_task_envelope.assert_not_awaited()
         r._handle_chat_message.assert_not_awaited()
 
-    async def test_handler_failure_is_swallowed_and_never_acked_here(self) -> None:
-        """A raising handler must not propagate (the consumer keeps running)
-        and must not trigger an ack from the callback — matching the old poll
-        loop's log-and-ack-anyway policy, with the ack owned upstream."""
+    async def test_a_tasks_failure_is_handed_back_and_a_chats_is_swallowed(self) -> None:
+        """#1977. A task whose handler raised propagates, so the subscription hands the delivery
+        back for redelivery and its attempts bound it. Bug caught: a task's failure acked and
+        lost, as D12's ack-always did. A chat has no task budget to bound it, so its failure is
+        swallowed and acked as before. Neither callback acks here: the subscription owns it."""
         r = self._runner()
         r._handle_task_envelope.side_effect = RuntimeError("handler blew up")
-        payload = {"action": "comms.task", "metadata": {}}
+        r._handle_chat_message.side_effect = RuntimeError("chat blew up")
+        task = {"action": "comms.task", "metadata": {}, "payload": {"task_id": "t1"}}
+        chat = {"action": "comms.chat", "metadata": {}, "payload": {}}
 
-        await r._process_comms_message(self._message(payload))
+        with pytest.raises(RuntimeError, match="handler blew up"):
+            await r._process_comms_message(self._message(task))
+        await r._process_comms_message(self._message(chat))
 
         r._queue.ack.assert_not_awaited()
 
 
-class TestARedeliveredTaskIsRefusedNotRerun:
-    """#1626: the qa agent segfaulted inside a repair handler and was restarted 37 times
-    on the same redelivered message — no record, no handler RESULT reaching the correction /
-    deadlock / repeated-signature machinery, and a `running` row that would have made every
-    later preflight refuse. (`TaskDispatcher`'s task timeout does not need a handler to
-    return; the claim is scoped to the rules that consume a result.)
+class TestADispatchedTaskIsBoundedByItsAttempts:
+    """#1977, SIP-Agent-Comms-Delivery-Guarantees §5.1, §5.3 and §5.3a as amended 2026-10-15.
 
-    SIP-0094 D12 already forbids poison-looping by acking a failing callback, but that is
-    enforceable only when the callback RETURNS. A process that DIES never acks, so the
-    broker requeues.
+    #1626: the qa agent segfaulted inside a repair handler and was restarted 37 times on the
+    same redelivered message. The broker keeps no count of a classic queue's redeliveries,
+    neither a raising handler's requeue nor a dying agent's (measured, #1977), so the agent
+    counts each task's attempts in Redis before the handler runs, marks it completed only after
+    its reply is out, and quarantines and fails it past its attempts. With no readable record,
+    #1627's rule stands in: a redelivered task is failed unrun."""
 
-    `redelivered` proves only that a prior delivery was NOT ACKNOWLEDGED — not that the work
-    did not happen. The ack follows the callback, so the connection can close after the work
-    and its reply succeeded, and the broker may mark a message redelivered that never
-    reached the prior consumer. Completion is UNKNOWN, and the rule follows from the
-    uncertainty rather than from a cause (SIP §5.3a)."""
-
-    def _runner(self):
+    def _runner(self, attempts: _Attempts | None = None):
         from squadops.agents.entrypoint import AgentRunner
 
         with patch.object(AgentRunner, "__init__", lambda self, *a, **kw: None):
@@ -334,6 +391,8 @@ class TestARedeliveredTaskIsRefusedNotRerun:
             r._queue = AsyncMock()
             r._handle_chat_message = AsyncMock()
             r._handle_task_envelope = AsyncMock()
+            r._task_attempts = attempts if attempts is not None else _Attempts()
+            r._delivery = CommsDeliveryConfig(max_attempts=3)
             return r
 
     @staticmethod
@@ -346,94 +405,107 @@ class TestARedeliveredTaskIsRefusedNotRerun:
             attributes={"redelivered": redelivered},
         )
 
+    TASK = "repair-run_4c30fc23-00-qa.test_repair"
     PAYLOAD = {
         "action": "comms.task",
         "metadata": {"reply_queue": "q", "correlation_id": "c1"},
-        "payload": {
-            "task_id": "repair-run_4c30fc23-00-qa.test_repair",
-            "task_type": "qa.test_repair",
-            "correlation_id": "c1",
-        },
+        "payload": {"task_id": TASK, "task_type": "qa.test_repair", "correlation_id": "c1"},
     }
 
-    async def test_a_redelivered_task_is_not_executed_again(self) -> None:
-        """The bug: #1626's handler ran 37 times on the same delivery."""
-        r = self._runner()
+    def _published(self, r) -> dict[str, list[dict]]:
+        out: dict[str, list[dict]] = {}
+        for call in r._queue.publish.await_args_list:
+            out.setdefault(call.args[0], []).append(json.loads(call.args[1]))
+        return out
+
+    async def test_a_task_that_kills_its_agent_runs_within_its_attempts_then_is_failed(self):
+        """The bug: #1626's handler ran 37 times on one delivery. Here each delivery of the task
+        dies (the handler is never seen to finish), so the next one is a redelivery; the
+        attempts are counted in the record that outlives the process. Three run, the fourth is
+        quarantined with why and failed for the cycle to decide."""
+        attempts = _Attempts()
+        for n in range(1, 5):
+            r = self._runner(attempts)  # a fresh process each time: the record is what persists
+            await r._process_comms_message(self._message(self.PAYLOAD, redelivered=n > 1))
+            ran = r._handle_task_envelope.await_count
+
+            if n <= 3:
+                assert (ran, self._published(r)) == (1, {}), f"delivery {n}"
+        assert ran == 0
+        published = self._published(r)
+        [quarantined] = published["comms.dlq"]
+        [failed] = published["q"]
+        assert (quarantined["task_id"], quarantined["reason"]) == (
+            self.TASK,
+            "3 deliveries ran and none completed",
+        )
+        assert quarantined["delivery"] == self.PAYLOAD
+        assert (failed["action"], failed["payload"]["task_id"], failed["payload"]["status"]) == (
+            "comms.task.result",
+            self.TASK,
+            "FAILED",
+        )
+        assert "3 deliveries of this task ran and none completed" in failed["payload"]["error"]
+
+    async def test_a_completed_task_redelivered_is_acked_as_a_duplicate_never_run(self):
+        """§5.3: the work finished and its reply went out, but the ack was lost. Bug caught: the
+        task run a second time, or (as #1627's rule did) answered with a FAILED that races the
+        success it follows."""
+        attempts = _Attempts()
+        attempts.done.add(self.TASK)
+        r = self._runner(attempts)
 
         await r._process_comms_message(self._message(self.PAYLOAD, redelivered=True))
 
         r._handle_task_envelope.assert_not_awaited()
+        r._queue.publish.assert_not_awaited()
+        assert attempts.attempts == {}
 
-    async def test_the_refusal_publishes_a_FAILED_result_naming_the_reason(self) -> None:
-        """The cycle must hear a failed round with a reason, not silence — every
-        rule that consumes a handler RESULT (the correction budget, the #1221 deadlock
-        rule) is starved by a death that produces none."""
-        r = self._runner()
+    @pytest.mark.parametrize("redelivered", [True, False], ids=["redelivered", "first-delivery"])
+    async def test_with_no_readable_record_a_redelivery_is_failed_unrun(self, redelivered):
+        """Redis unreachable. Bug caught: losing the record reopening #1626's crash loop. The
+        rule it replaces stands in: a redelivery proves only that a prior delivery was not
+        acknowledged, so the task is failed, claiming no more than that; a first delivery runs."""
+        r = self._runner(_Attempts(down=True))
 
-        await r._process_comms_message(self._message(self.PAYLOAD, redelivered=True))
+        await r._process_comms_message(self._message(self.PAYLOAD, redelivered=redelivered))
 
-        r._queue.publish.assert_awaited_once()
-        queue, body = r._queue.publish.await_args.args
-        assert queue == "q"
-        sent = json.loads(body)
-        assert sent["action"] == "comms.task.result"
-        assert sent["payload"]["task_id"] == "repair-run_4c30fc23-00-qa.test_repair"
-        assert sent["payload"]["status"] == "FAILED"
-        # the error must claim only what the transport can prove
-        err = sent["payload"]["error"]
-        assert "not acknowledged" in err and "completion is unknown" in err
-        assert "did not return" not in err, "the transport cannot prove the work did not run"
+        if redelivered:
+            r._handle_task_envelope.assert_not_awaited()
+            [failed] = self._published(r)["q"]
+            err = failed["payload"]["error"]
+            assert failed["payload"]["status"] == "FAILED"
+            assert "not acknowledged" in err and "completion is unknown" in err
+        else:
+            r._handle_task_envelope.assert_awaited_once()
+            r._queue.publish.assert_not_awaited()
 
-    async def test_a_malformed_envelope_is_still_refused_with_a_result(self) -> None:
-        """The refusal must not depend on the envelope being well-formed: the whole
-        premise of this path is that the previous attempt died. A refusal that throws
-        leaves the cycle with silence, which is the failure it exists to prevent."""
+    async def test_a_task_with_no_id_is_quarantined_and_failed_not_run(self):
+        """Nothing to count its attempts under, so it can't be bounded. The failure must not
+        depend on the envelope being well-formed: a failure that throws leaves silence."""
         r = self._runner()
         payload = {"action": "comms.task", "metadata": {"reply_queue": "q"}, "payload": {}}
 
-        await r._process_comms_message(self._message(payload, redelivered=True))
+        await r._process_comms_message(self._message(payload, redelivered=False))
 
         r._handle_task_envelope.assert_not_awaited()
-        r._queue.publish.assert_awaited_once()
-        sent = json.loads(r._queue.publish.await_args.args[1])
-        assert sent["payload"]["task_id"] == "unknown"
-        assert sent["payload"]["status"] == "FAILED"
+        published = self._published(r)
+        assert published["comms.dlq"][0]["reason"] == "the envelope carries no task id"
+        assert published["q"][0]["payload"]["task_id"] == "unknown"
+        assert published["q"][0]["payload"]["status"] == "FAILED"
 
-    async def test_a_redelivered_CHAT_delivery_is_not_refused(self) -> None:
-        """Scope is task dispatch only (SIP §5.3a). Chat has no cycle budget to hand a
-        failed round to, and claiming this rule bounds consumer poison loops in general
-        would overstate it."""
-        r = self._runner()
+    async def test_a_redelivered_CHAT_delivery_is_not_counted_or_refused(self):
+        """Scope is task dispatch only (§5.3a): chat has no cycle budget to hand a failed round
+        to, and claiming this bounds consumer poison loops in general would overstate it."""
+        attempts = _Attempts()
+        r = self._runner(attempts)
         chat = {"action": "comms.chat", "metadata": {"correlation_id": "c1"}, "payload": {}}
 
         await r._process_comms_message(self._message(chat, redelivered=True))
 
         r._handle_chat_message.assert_awaited_once()
         r._queue.publish.assert_not_awaited()
-
-    async def test_a_first_delivery_still_runs_normally(self) -> None:
-        """The control: the bound must not cost an ordinary task its first attempt."""
-        r = self._runner()
-
-        await r._process_comms_message(self._message(self.PAYLOAD, redelivered=False))
-
-        r._handle_task_envelope.assert_awaited_once()
-        r._queue.publish.assert_not_awaited()
-
-    async def test_a_message_with_no_redelivered_attribute_runs_normally(self) -> None:
-        """Adapters that do not surface the flag must not have every task refused."""
-        r = self._runner()
-        msg = QueueMessage(
-            message_id="42",
-            queue_name="eve_comms",
-            payload=json.dumps(self.PAYLOAD),
-            receipt_handle="42",
-            attributes={},
-        )
-
-        await r._process_comms_message(msg)
-
-        r._handle_task_envelope.assert_awaited_once()
+        assert attempts.attempts == {}
 
 
 class TestTheHandlerIsBoundedByTheDeclaredWait:

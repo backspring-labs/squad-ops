@@ -22,7 +22,7 @@ import logging
 from typing import Any
 
 from squadops.comms.queue_message import QueueMessage
-from squadops.ports.comms.queue import QueuePort, SubscriptionHandle
+from squadops.ports.comms.queue import AckPolicy, QueuePort, SubscriptionHandle
 from squadops.tasks.models import TaskResult
 
 logger = logging.getLogger(__name__)
@@ -84,6 +84,7 @@ class ReplyRouter:
             handle = await self._queue.subscribe(
                 f"{agent_id}_replies",
                 on_message=self._handle_reply,
+                ack_policy=AckPolicy.ACK_ALWAYS,  # SIP-0094 D12: a reply is never redelivered
             )
             self._subscriptions[agent_id] = handle
             self._subscriptions_opened += 1

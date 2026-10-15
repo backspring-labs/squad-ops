@@ -27,6 +27,7 @@ from collections.abc import Awaitable, Iterable
 from typing import TYPE_CHECKING, Any
 
 from squadops.comms.task_replay import DISPATCH_BOOT_METADATA_KEY, FinishedTasks
+from squadops.ports.comms.queue import AckPolicy
 from squadops.tasks.models import TaskEnvelope, TaskResultStatus
 
 # Configure logging early.
@@ -43,9 +44,21 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
+#: SIP §5.3a's interim rule, which stands in while a task's delivery record can't be read (#1977):
+#: a redelivery proves only that a prior delivery was not acknowledged, never that the work did
+#: not happen, so with no record the task is failed rather than run a second time.
+_REDELIVERED_UNRECORDED = (
+    "redelivered: a prior delivery of this task was not acknowledged, so its completion is "
+    "unknown — it may have died, or may have completed and replied before the ack. With its "
+    "delivery record unreadable it was refused rather than re-run; the correction budget governs "
+    "any retry (SIP §5.3a, #1626)"
+)
+
 if TYPE_CHECKING:
     from squadops.bootstrap.system import SquadOpsSystem
     from squadops.comms.queue_message import QueueMessage
+    from squadops.config.schema import CommsDeliveryConfig
+    from squadops.ports.comms.task_attempts import TaskAttemptsPort
     from squadops.ports.observability import LogForwarderPort
 
 
@@ -211,6 +224,9 @@ class AgentRunner:
         self._queue = None
         self._config = None
         self._log_forwarder: LogForwarderPort | None = None
+        # #1977: a dispatched task's attempts and completion, and the bound on its deliveries.
+        self._task_attempts: TaskAttemptsPort | None = None
+        self._delivery: CommsDeliveryConfig | None = None
 
         # Load instance-specific configuration (required)
         self._instance_config = load_instance_config(self.agent_id)
@@ -430,7 +446,11 @@ class AgentRunner:
         """
         # Import adapter factories
         # Import adapters
-        from adapters.comms.factory import create_a2a_server, create_queue_adapter
+        from adapters.comms.factory import (
+            create_a2a_server,
+            create_queue_adapter,
+            create_task_attempts,
+        )
         from adapters.llm.factory import create_llm_provider
         from adapters.memory.factory import create_memory_provider
         from adapters.prompts import create_prompt_repository
@@ -550,6 +570,10 @@ class AgentRunner:
         # old poll loop's one-at-a-time pickup.
         queue = create_queue_adapter(config.comms, prefetch_count=1)  # #301 (§6.2)
         self._queue = queue  # Store for use in _consume_tasks
+        # #1977: a task's deliveries are bounded by its attempts, kept in Redis so a delivery
+        # that kills this process is still counted.
+        self._task_attempts = create_task_attempts(config.comms)
+        self._delivery = config.comms.delivery
 
         # Conditionally wire A2A messaging (SIP-0085 P2-RC6)
         messaging = None
@@ -647,19 +671,23 @@ class AgentRunner:
         # queue won't create it. Idempotent — safe to call on every boot.
         await self._queue.ensure_queue(replies_queue)
 
-        # The subscription layer owns the ack: each delivery is acked after
-        # _process_comms_message returns — success or failure — preserving the
-        # old poll loop's ack-always policy. subscribe() re-establishes the
-        # consumer itself if the channel drops.
+        # The subscription layer owns the ack: a delivery is acked when
+        # _process_comms_message returns, and handed back for redelivery when it raises (#1977:
+        # a task's own attempt count bounds that). subscribe() re-establishes the consumer
+        # itself if the channel drops.
         subscription = await self._queue.subscribe(
-            comms_queue, on_message=self._process_comms_message
+            comms_queue,
+            on_message=self._process_comms_message,
+            ack_policy=AckPolicy.REDELIVER_ON_FAILURE,
         )
         # #1648: the control queue, consumed beside the comms queue — a cancel notice must
         # reach this agent while its comms consumer is busy with the task it cancels.
         from squadops.comms.run_cancellation import control_queue
 
         control = await self._queue.subscribe(
-            control_queue(self.agent_id), on_message=self._process_control_message
+            control_queue(self.agent_id),
+            on_message=self._process_control_message,
+            ack_policy=AckPolicy.ACK_ALWAYS,
         )
 
         try:
@@ -716,11 +744,11 @@ class AgentRunner:
     async def _process_comms_message(self, message: QueueMessage) -> None:
         """Route one comms delivery to its action handler.
 
-        Callback for the persistent ``subscribe()`` consumer (#323). Never
-        raises: failures are logged with agent context and swallowed, so the
-        subscription acks the message and keeps consuming — the same outcome
-        the old poll loop's ack-on-error path produced. It must not ack
-        either; the subscription layer acks every delivery after this returns.
+        Callback for the persistent ``subscribe()`` consumer (#323), subscribed with
+        ``REDELIVER_ON_FAILURE`` (#1977): returning acks the delivery, raising hands it back for
+        redelivery. Only a dispatched task raises, from :meth:`_deliver_task`, and its attempt
+        count bounds the redeliveries. Anything else is logged and swallowed, so a chat delivery
+        or an unreadable one is acked as before: neither has a task's budget to bound it.
         """
         import json
 
@@ -728,59 +756,147 @@ class AgentRunner:
             payload = json.loads(message.payload)
             action = payload.get("action", "")
             metadata = payload.get("metadata", {})
-
-            logger.info(
-                "Received message",
-                extra={
-                    "agent_id": self.agent_id,
-                    "action": action,
-                    "message_id": message.message_id,
-                },
+        except Exception as e:
+            logger.error(
+                f"Unreadable comms delivery, acked: {e}",
+                extra={"agent_id": self.agent_id, "message_id": message.message_id},
             )
+            return
 
-            # Handle different action types
+        logger.info(
+            "Received message",
+            extra={
+                "agent_id": self.agent_id,
+                "action": action,
+                "message_id": message.message_id,
+            },
+        )
+        if action == "comms.task":
+            await self._deliver_task(message, payload, metadata)
+            return
+        try:
             if action == "comms.chat":
                 await self._handle_chat_message(payload, metadata)
-            elif action == "comms.task":
-                # SIP-0094 D12 says a failing callback is acked because requeuing
-                # "would only poison-loop". That policy is enforceable only when the
-                # callback RETURNS: if the process DIES mid-task the broker never saw an
-                # ack, requeues, and the loop D12 forbids arrives through a door D12 does
-                # not cover. #1626: the qa agent segfaulted inside a repair handler and was
-                # restarted 37 times on the same redelivered message. The provable facts:
-                # no handler result ever reached the correction / deadlock (#1221) /
-                # repeated-signature machinery, the run stayed `running`, and each
-                # restarted agent took the poisoned delivery again. Not every termination
-                # mechanism depends on a handler returning — `TaskDispatcher`'s task
-                # timeout does not — so the claim is scoped to the rules that consume a
-                # handler RESULT.
-                #
-                # `redelivered` proves only that a prior delivery was NOT ACKNOWLEDGED. It
-                # does not prove the work did not happen: the ack follows the callback, so
-                # the connection can close before the callback runs, during the work, or
-                # AFTER the work and its reply succeeded — and the broker may mark a message
-                # redelivered that never reached the prior consumer. The prior delivery's
-                # completion is therefore UNKNOWN.
-                #
-                # With completion unknown the broker layer is the wrong place to decide:
-                # re-executing risks unbudgeted duplicate work and, per #1626, can be fatal
-                # and unbounded; discarding risks losing work. Recording a typed FAILED for
-                # the original task id puts the uncertainty where it can be reasoned about
-                # and leaves the retry to the only layer with a budget and a record.
-                if message.attributes.get("redelivered"):
-                    await self._refuse_redelivered_task(payload, metadata)
-                else:
-                    await self._handle_task_envelope(payload, metadata)
             else:
                 logger.warning(
                     f"Unknown action: {action}",
                     extra={"agent_id": self.agent_id},
                 )
-
         except Exception as e:
             logger.error(
                 f"Failed to process message: {e}",
                 extra={"agent_id": self.agent_id, "message_id": message.message_id},
+            )
+
+    async def _deliver_task(self, message: QueueMessage, payload: dict, metadata: dict) -> None:
+        """Run one delivery of a dispatched task, within its attempts (#1977).
+
+        SIP-Agent-Comms-Delivery-Guarantees §5.1, §5.3 and §5.3a, as amended 2026-10-15. The
+        broker counts no redelivery of a classic queue, neither a raising handler's requeue nor
+        a dying agent's, so the count is this agent's, kept in Redis:
+        - **Completed already:** its reply was published and the ack was lost. It's acked as a
+          duplicate and never run again (§5.3).
+        - **Past its attempts:** it's quarantined to the dead-letter queue and failed with a typed
+          result, so the cycle's correction budget decides any retry (§5.3a's rule, now at the
+          end of the budget). The attempt is counted before the handler runs, so a delivery that
+          kills this process is counted too (#1626: 37 restarts on one delivery).
+        - **Otherwise** it runs. A raise propagates, and the subscription hands it back.
+
+        **A record that can't be read** (Redis unreachable) brings back §5.3a's interim rule: a
+        redelivered task is failed unrun, so losing Redis never reopens the crash loop.
+        """
+        envelope_data = payload.get("payload") or {}
+        task_id = str(envelope_data.get("task_id") or "")
+        if not task_id:
+            # Nothing to count its attempts under, so it can't be bounded: quarantined now.
+            await self._quarantine(payload, "the envelope carries no task id")
+            await self._fail_task_unrun(
+                payload, metadata, "the envelope carries no task id, so it was not run"
+            )
+            return
+
+        # As ``_cancelled_runs``: a runner built without __init__ has no record, and is treated as
+        # one whose record can't be read.
+        attempts = getattr(self, "_task_attempts", None)
+        delivery = getattr(self, "_delivery", None)
+        try:
+            if attempts is None or delivery is None:
+                raise RuntimeError("no delivery record is configured")
+            if await attempts.completed(task_id):
+                logger.warning(
+                    "duplicate_of_completed_task: task=%s — its reply was published and its ack "
+                    "lost, so this redelivery is acked and not run again (#1977, §5.3)",
+                    task_id,
+                    extra={"agent_id": self.agent_id, "task_id": task_id},
+                )
+                return
+            attempt = await attempts.begin_attempt(task_id)
+        except Exception:
+            logger.exception(
+                "task_attempts_unreadable: task=%s — §5.3a's rule stands in: a redelivered task is "
+                "failed unrun",
+                task_id,
+                extra={"agent_id": self.agent_id, "task_id": task_id},
+            )
+            if message.attributes.get("redelivered"):
+                await self._fail_task_unrun(payload, metadata, _REDELIVERED_UNRECORDED)
+            else:
+                await self._handle_task_envelope(payload, metadata)
+            return
+
+        if attempt > delivery.max_attempts:
+            ran = attempt - 1
+            await self._quarantine(payload, f"{ran} deliveries ran and none completed")
+            await self._fail_task_unrun(
+                payload,
+                metadata,
+                f"{ran} deliveries of this task ran and none completed (each died or raised before "
+                f"its reply), so it was quarantined to {delivery.dead_letter_queue} and not run "
+                "again; the correction budget governs any retry (#1977)",
+            )
+            return
+        await self._handle_task_envelope(payload, metadata)
+
+    async def _quarantine(self, payload: dict, reason: str) -> None:
+        """Put a delivery that will not be run on the dead-letter queue, with why (#1977). A
+        failure to publish it is logged: the typed result that follows still reaches the cycle."""
+        import json
+
+        envelope_data = payload.get("payload") or {}
+        delivery = getattr(self, "_delivery", None)
+        queue = delivery.dead_letter_queue if delivery else "comms.dlq"
+        record = {
+            "agent_id": self.agent_id,
+            "task_id": envelope_data.get("task_id"),
+            "task_type": envelope_data.get("task_type"),
+            "reason": reason,
+            "delivery": payload,
+        }
+        try:
+            if self._queue is None:
+                raise RuntimeError("no queue to quarantine on")
+            await self._queue.publish(queue, json.dumps(record))
+            logger.error(
+                "task_quarantined: task=%s queue=%s — %s",
+                record["task_id"],
+                queue,
+                reason,
+                extra={"agent_id": self.agent_id, "task_id": record["task_id"]},
+            )
+        except Exception:
+            logger.exception("task_quarantine_failed: task=%s — %s", record["task_id"], reason)
+
+    async def _mark_completed(self, task_id: str) -> None:
+        """Record that ``task_id``'s reply was published (§5.3). A failure is logged: the worst
+        it costs is one duplicate run of a task whose ack is also lost."""
+        attempts = getattr(self, "_task_attempts", None)
+        if attempts is None:
+            return
+        try:
+            await attempts.mark_completed(task_id)
+        except Exception:
+            logger.exception(
+                "task_completion_unrecorded: task=%s", task_id, extra={"agent_id": self.agent_id}
             )
 
     def _build_system_prompt(self) -> str:
@@ -925,28 +1041,22 @@ class AgentRunner:
                 extra={"agent_id": self.agent_id, "session_id": session_id},
             )
 
-    async def _refuse_redelivered_task(self, payload: dict, metadata: dict) -> None:
-        """Fail a redelivered task instead of running it again (SIP §5.3a, #1626).
+    async def _fail_task_unrun(self, payload: dict, metadata: dict, error: str) -> None:
+        """Answer a task that will not be run with a typed FAILED result, so the cycle hears a
+        failed round with its reason, never silence (SIP §5.3a, #1626, #1977).
 
-        A redelivery means a prior delivery went unacknowledged — **not** that the work did
-        not happen. It may have completed and replied before the connection closed, and the
-        broker may mark a message redelivered that never reached the prior consumer. The
-        prior delivery's completion is UNKNOWN, so this refuses to decide at the broker
-        layer: the round is failed for the original task id and the cycle's recorded budget
-        decides any retry. Running it again is what produced #1626's 37 restarts.
-
-        Scope is task dispatch only; `comms.chat` is untouched. The message is acked by the
-        subscription layer when this returns, which is what stops the loop.
+        Every rule that consumes a handler RESULT (the correction budget, the #1221 deadlock
+        rule) is starved by a delivery that produces none. Scope is task dispatch only;
+        `comms.chat` is untouched. The subscription acks the delivery when this returns.
         """
         import json
 
         from squadops.tasks.models import TaskResult, TaskResultStatus
 
-        # Read the two fields the refusal needs straight from the envelope dict rather
-        # than constructing a TaskEnvelope: the whole point of this path is that the
-        # previous attempt died, so it must not itself depend on the envelope being
-        # well-formed enough to build. A refusal that throws leaves the cycle with
-        # silence, which is the failure it exists to prevent.
+        # Read the fields straight from the envelope dict rather than constructing a
+        # TaskEnvelope: a delivery is failed here exactly when it can't be trusted to run, so
+        # this must not depend on the envelope being well-formed enough to build. A failure
+        # that throws leaves the cycle with silence, which is what it exists to prevent.
         envelope_data = payload.get("payload", {}) or {}
         task_id = str(envelope_data.get("task_id") or "unknown")
         task_type = str(envelope_data.get("task_type") or "unknown")
@@ -954,25 +1064,14 @@ class AgentRunner:
         reply_queue = metadata.get("reply_queue")
 
         logger.error(
-            "redelivered_task_refused: task=%s type=%s — a prior delivery was not "
-            "acknowledged, so its completion is UNKNOWN (it may have died, or may have "
-            "completed and replied before the ack); refused at the broker layer and failed "
-            "for cycle governance to decide (SIP §5.3a, #1626)",
+            "task_failed_unrun: task=%s type=%s — %s",
             task_id,
             task_type,
+            error,
             extra={"agent_id": self.agent_id, "task_id": task_id, "task_type": task_type},
         )
 
-        result = TaskResult(
-            task_id=task_id,
-            status=TaskResultStatus.FAILED,
-            error=(
-                "redelivered: a prior delivery of this task was not acknowledged, so its "
-                "completion is unknown — it may have died, or may have completed and "
-                "replied before the ack. Refused at the broker layer rather than re-run; "
-                "the correction budget governs any retry (SIP §5.3a, #1626)"
-            ),
-        )
+        result = TaskResult(task_id=task_id, status=TaskResultStatus.FAILED, error=error)
         if reply_queue:
             await self._queue.publish(
                 reply_queue,
@@ -986,7 +1085,7 @@ class AgentRunner:
             )
         else:
             logger.warning(
-                "No reply_queue in metadata, refusal result dropped",
+                "No reply_queue in metadata, the failed result dropped",
                 extra={"task_id": task_id},
             )
 
@@ -1046,6 +1145,7 @@ class AgentRunner:
             )
             if reply_queue:
                 await self._queue.publish(reply_queue, replay)
+            await self._mark_completed(envelope.task_id)
             return
 
         # Build correlation context for LLM-observability tracing and
@@ -1132,6 +1232,9 @@ class AgentRunner:
                 "No reply_queue in metadata, result dropped",
                 extra={"task_id": envelope.task_id},
             )
+        # #1977, §5.3: only after the reply is out. A redelivery of this task from now on (its
+        # ack lost) is answered as a duplicate, never run again.
+        await self._mark_completed(envelope.task_id)
 
     async def _heartbeat_loop(self) -> None:
         """Send periodic heartbeats.

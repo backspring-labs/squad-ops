@@ -13,7 +13,7 @@ import pytest
 
 from squadops.comms.queue_message import QueueMessage
 from squadops.ports.comms.noop import NoOpQueuePort
-from squadops.ports.comms.queue import QueuePort
+from squadops.ports.comms.queue import AckPolicy, QueuePort
 
 
 def _msg(i: int, queue: str = "agent-x_replies") -> QueueMessage:
@@ -89,7 +89,9 @@ class TestQueuePortSubscribe:
             received.append(m)
             done.set()
 
-        handle = await provider.subscribe("agent-x_replies", on_message=on_message)
+        handle = await provider.subscribe(
+            "agent-x_replies", on_message=on_message, ack_policy=AckPolicy.ACK_ALWAYS
+        )
         await asyncio.wait_for(done.wait(), timeout=2.0)
         await handle.cancel()
 
@@ -107,7 +109,9 @@ class TestQueuePortSubscribe:
         provider = RecordingQueueProvider([_msg(7)])
         received: list[QueueMessage] = []
 
-        handle = await provider.subscribe("q", on_message=lambda m: received.append(m))
+        handle = await provider.subscribe(
+            "q", on_message=lambda m: received.append(m), ack_policy=AckPolicy.ACK_ALWAYS
+        )
         for _ in range(40):
             if received:
                 break
@@ -131,7 +135,9 @@ class TestQueuePortSubscribe:
             received.append(m)
             second.set()
 
-        handle = await provider.subscribe("q", on_message=on_message)
+        handle = await provider.subscribe(
+            "q", on_message=on_message, ack_policy=AckPolicy.ACK_ALWAYS
+        )
         await asyncio.wait_for(second.wait(), timeout=2.0)
         await handle.cancel()
 
@@ -147,7 +153,9 @@ class TestQueuePortSubscribe:
         provider = RecordingQueueProvider([])
         received: list[QueueMessage] = []
 
-        handle = await provider.subscribe("q", on_message=lambda m: received.append(m))
+        handle = await provider.subscribe(
+            "q", on_message=lambda m: received.append(m), ack_policy=AckPolicy.ACK_ALWAYS
+        )
         await asyncio.sleep(0.1)  # let the loop spin at least once
         await handle.cancel()
         assert handle.active is False
@@ -170,7 +178,9 @@ class TestQueuePortSubscribe:
         received: list[QueueMessage] = []
 
         handle = await provider.subscribe(
-            "agent-x_replies", on_message=lambda m: received.append(m)
+            "agent-x_replies",
+            on_message=lambda m: received.append(m),
+            ack_policy=AckPolicy.ACK_ALWAYS,
         )
         await asyncio.sleep(0.6)  # spans more than one poll cycle
 
@@ -179,3 +189,13 @@ class TestQueuePortSubscribe:
 
         await handle.cancel()
         assert handle.active is False
+
+
+async def test_the_default_subscribe_refuses_to_redeliver_what_it_can_only_ack():
+    """#1977. Bug caught: a subscriber that asked for its failures to be redelivered, given
+    ack-always by a transport whose consume path can't hand a delivery back, so its bound never
+    ran and a failed task's delivery was acked and lost."""
+    with pytest.raises(NotImplementedError, match="cannot redeliver"):
+        await NoOpQueuePort().subscribe(
+            "neo_comms", on_message=lambda m: None, ack_policy=AckPolicy.REDELIVER_ON_FAILURE
+        )

@@ -7069,7 +7069,7 @@ class TestTheDeployADiagnosticsAreReadWhereTheirSeamsWrite:
         runner.agent_id = "eve"
         runner._queue = AsyncMock()
         with caplog.at_level("INFO"):
-            await runner._refuse_redelivered_task(
+            await runner._fail_task_unrun(
                 {
                     "payload": {
                         "task_id": "repair-run_ab12cd34-00-qa.test_repair",
@@ -7077,6 +7077,7 @@ class TestTheDeployADiagnosticsAreReadWhereTheirSeamsWrite:
                     }
                 },
                 {"reply_queue": "eve_replies"},
+                "3 deliveries of this task ran and none completed",
             )
         lines = [
             f"2026-09-25 00:00:00,000 - squadops.agents.entrypoint - ERROR - {r.getMessage()}"
