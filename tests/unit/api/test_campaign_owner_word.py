@@ -101,6 +101,8 @@ class _World:
             campaign_id=CID,
             kind="increment",
         )
+        # It has no runs on record, as the port answers: a list (#2315's brief reads them).
+        cycles.list_runs.return_value = []
         app.state.campaign_progress = CampaignProgress(
             campaigns=self.campaigns,
             cycles=cycles,
