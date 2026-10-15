@@ -55,8 +55,11 @@ class CampaignRegistryPort(ABC):
         """
 
     @abstractmethod
-    async def list_campaigns(self, project_id: str) -> list[Campaign]:
-        """A project's campaigns, newest first by ``created_at``."""
+    async def list_campaigns(
+        self, project_id: str, *, limit: int | None = None, offset: int = 0
+    ) -> list[Campaign]:
+        """A project's campaigns, newest first by ``created_at``. ``limit`` ``None`` is every one;
+        the campaigns route pages with its own (#1976)."""
 
     @abstractmethod
     async def campaigns_in_state(self, state: CampaignState) -> list[Campaign]:

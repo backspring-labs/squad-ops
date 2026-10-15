@@ -78,12 +78,17 @@ class PostgresCampaignRegistry(CampaignRegistryPort):
             raise CampaignNotFoundError(f"Campaign not found: {campaign_id}")
         return _row_to_campaign(row)
 
-    async def list_campaigns(self, project_id: str) -> list[Campaign]:
+    async def list_campaigns(
+        self, project_id: str, *, limit: int | None = None, offset: int = 0
+    ) -> list[Campaign]:
+        # LIMIT NULL is no limit; the id breaks a tie in created_at, so a page is stable.
         async with self._pool.acquire() as conn:
             rows = await conn.fetch(
                 f"SELECT {_CAMPAIGN_COLUMNS} FROM campaigns WHERE project_id = $1 "
-                "ORDER BY created_at DESC",
+                "ORDER BY created_at DESC, campaign_id LIMIT $2 OFFSET $3",
                 project_id,
+                limit,
+                offset,
             )
         return [_row_to_campaign(r) for r in rows]
 

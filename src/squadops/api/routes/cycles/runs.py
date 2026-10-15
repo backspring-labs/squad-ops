@@ -16,6 +16,7 @@ from squadops.api.cycle_schemas import (
     RunResumeRequest,
 )
 from squadops.api.middleware.auth import require_scopes
+from squadops.api.paging import Page, page
 from squadops.api.routes.cycles.mapping import compute_workload_progress, run_to_response
 from squadops.auth.models import Identity, Scope
 from squadops.campaigns.gate import INCREMENT_RULING_GATE, ruling_transition
@@ -160,12 +161,19 @@ async def create_run(
 
 @router.get("", dependencies=[Depends(require_scopes(Scope.CYCLES_READ))])
 async def list_runs(
-    request: Request, project_id: str, cycle_id: str, workload_type: str | None = None
+    request: Request,
+    project_id: str,
+    cycle_id: str,
+    workload_type: str | None = None,
+    page: Page = Depends(page),
 ) -> list[RunResponse]:
+    """A page of the cycle's runs, in run order (#1976)."""
     from squadops.api.runtime.deps import get_cycle_registry
 
     registry = get_cycle_registry(request)
-    runs = await registry.list_runs(cycle_id, workload_type=workload_type)
+    runs = await registry.list_runs(
+        cycle_id, workload_type=workload_type, limit=page.limit, offset=page.offset
+    )
     return [run_to_response(r) for r in runs]
 
 

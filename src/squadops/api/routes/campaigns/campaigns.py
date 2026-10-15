@@ -46,6 +46,7 @@ from squadops.api.campaign_schemas import (
 )
 from squadops.api.errors import error_body
 from squadops.api.middleware.auth import holds_scopes, require_scopes
+from squadops.api.paging import Page, page
 from squadops.auth.models import Identity, Role, Scope
 from squadops.campaigns import lifecycle
 from squadops.campaigns.escalation import Escalation
@@ -227,9 +228,14 @@ async def create_campaign(
 async def list_campaigns(
     request: Request,
     project_id: str,
+    page: Page = Depends(page),
     identity: Identity | None = Depends(require_scopes(Scope.CAMPAIGNS_READ)),
 ) -> list[CampaignResponse]:
-    return [_campaign(c) for c in await _registry(request).list_campaigns(project_id)]
+    """A page of the project's campaigns, newest first (#1976)."""
+    found = await _registry(request).list_campaigns(
+        project_id, limit=page.limit, offset=page.offset
+    )
+    return [_campaign(c) for c in found]
 
 
 @router.get("/{campaign_id}")

@@ -151,7 +151,7 @@ class MemoryCycleRegistry(CycleRegistryPort):
         cycle_id: str,
         *,
         workload_type: str | None = None,
-        limit: int = 50,
+        limit: int | None = None,
         offset: int = 0,
     ) -> list[Run]:
         results = [
@@ -159,7 +159,7 @@ class MemoryCycleRegistry(CycleRegistryPort):
         ]
         if workload_type is not None:
             results = [r for r in results if r.workload_type == workload_type]
-        return results[offset : offset + limit]
+        return results[offset:] if limit is None else results[offset : offset + limit]
 
     async def list_runs_for_cycles(
         self, cycle_ids: Sequence[str], *, limit_per_cycle: int = 50

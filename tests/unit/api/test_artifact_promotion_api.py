@@ -123,12 +123,16 @@ class TestPromoteArtifactRoute:
 
 class TestArtifactListFilterRoute:
     def test_list_with_promotion_status_filter(self, client, mock_vault):
-        resp = client.get("/api/v1/projects/proj_001/artifacts?promotion_status=working")
+        resp = client.get(
+            "/api/v1/projects/proj_001/artifacts?promotion_status=working&limit=5&offset=10"
+        )
         assert resp.status_code == 200
         mock_vault.list_artifacts.assert_called_once_with(
             project_id="proj_001",
             artifact_type=None,
             promotion_status="working",
+            limit=5,
+            offset=10,
         )
 
     def test_list_without_filter(self, client, mock_vault):
@@ -138,6 +142,8 @@ class TestArtifactListFilterRoute:
             project_id="proj_001",
             artifact_type=None,
             promotion_status=None,
+            limit=50,
+            offset=0,
         )
 
     def test_invalid_promotion_status_returns_422(self, client):

@@ -157,8 +157,10 @@ class ProjectingCampaignRegistry(CampaignRegistryPort):
     async def get_campaign(self, campaign_id: str) -> Campaign:
         return await self._inner.get_campaign(campaign_id)
 
-    async def list_campaigns(self, project_id: str) -> list[Campaign]:
-        return await self._inner.list_campaigns(project_id)
+    async def list_campaigns(
+        self, project_id: str, *, limit: int | None = None, offset: int = 0
+    ) -> list[Campaign]:
+        return await self._inner.list_campaigns(project_id, limit=limit, offset=offset)
 
     async def campaigns_in_state(self, state: CampaignState) -> list[Campaign]:
         return await self._inner.campaigns_in_state(state)

@@ -48,10 +48,14 @@ class MemoryCampaignRegistry(CampaignRegistryPort):
     async def get_campaign(self, campaign_id: str) -> Campaign:
         return copy.deepcopy(self._campaign(campaign_id))
 
-    async def list_campaigns(self, project_id: str) -> list[Campaign]:
+    async def list_campaigns(
+        self, project_id: str, *, limit: int | None = None, offset: int = 0
+    ) -> list[Campaign]:
         found = [c for c in self._campaigns.values() if c.project_id == project_id]
+        found.sort(key=lambda c: c.campaign_id)
         found.sort(key=lambda c: c.created_at, reverse=True)
-        return copy.deepcopy(found)
+        page = found[offset:] if limit is None else found[offset : offset + limit]
+        return copy.deepcopy(page)
 
     async def campaigns_in_state(self, state: CampaignState) -> list[Campaign]:
         found = [c for c in self._campaigns.values() if c.state is state]

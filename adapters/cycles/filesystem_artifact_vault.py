@@ -182,6 +182,8 @@ class FilesystemArtifactVault(ArtifactVaultPort):
         run_id: str | None = None,
         artifact_type: str | None = None,
         promotion_status: str | None = None,
+        limit: int | None = None,
+        offset: int = 0,
     ) -> list[ArtifactRef]:
         results: list[ArtifactRef] = []
         if not self._base_dir.exists():
@@ -200,8 +202,12 @@ class FilesystemArtifactVault(ArtifactVaultPort):
         self._collect_artifacts(
             scan_dir, results, project_id, cycle_id, run_id, artifact_type, promotion_status
         )
-
-        return results
+        # #1976: newest first, then by id, so a page is stable. The walk's order is the
+        # filesystem's. Timestamps compare as ISO text, as progress sorts them: text never raises
+        # on a naive timestamp beside an aware one.
+        results.sort(key=lambda r: r.artifact_id)
+        results.sort(key=lambda r: str(r.created_at), reverse=True)
+        return results[offset:] if limit is None else results[offset : offset + limit]
 
     async def set_baseline(self, project_id: str, artifact_type: str, artifact_id: str) -> None:
         # Verify artifact exists via index

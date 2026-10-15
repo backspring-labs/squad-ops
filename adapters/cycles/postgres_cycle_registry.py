@@ -283,7 +283,7 @@ class PostgresCycleRegistry(CycleRegistryPort):
         cycle_id: str,
         *,
         workload_type: str | None = None,
-        limit: int = 50,
+        limit: int | None = None,  # LIMIT NULL is every run (#1976)
         offset: int = 0,
     ) -> list[Run]:
         async with self._pool.acquire() as conn:
