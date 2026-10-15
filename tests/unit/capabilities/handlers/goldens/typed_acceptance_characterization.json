@@ -1,0 +1,1763 @@
+{
+ "authored_overrides_injected": {
+  "checks": [
+   {
+    "check": "earlier_row"
+   },
+   {
+    "actual": {
+     "file": "main.py",
+     "undefined": [
+      {
+       "line": 1,
+       "name": "undefined_thing"
+      }
+     ]
+    },
+    "check": "acceptance:undefined_names",
+    "check_index": 0,
+    "criterion_id": null,
+    "description": "",
+    "evidence_gap": false,
+    "params": {
+     "file": "main.py"
+    },
+    "passed": true,
+    "reason": "undefined name(s): undefined_thing (line 1)",
+    "severity": "warning",
+    "status": "failed",
+    "task_index": null
+   },
+   {
+    "actual": {
+     "file": "main.py"
+    },
+    "check": "acceptance:unterminated_source",
+    "check_index": 1,
+    "criterion_id": null,
+    "description": "",
+    "evidence_gap": false,
+    "params": {
+     "file": "main.py"
+    },
+    "passed": true,
+    "reason": "ok",
+    "severity": "error",
+    "status": "passed",
+    "task_index": null
+   }
+  ],
+  "log": [
+   {
+    "level": "DEBUG",
+    "logger": "squadops.capabilities.handlers.cycle.base",
+    "message": "typed_acceptance_check subtask=None check=undefined_names severity=warning status=failed blocking=False reason=undefined name(s): undefined_thing (line 1)"
+   },
+   {
+    "level": "DEBUG",
+    "logger": "squadops.capabilities.handlers.cycle.base",
+    "message": "typed_acceptance_check subtask=None check=unterminated_source severity=error status=passed blocking=False reason=ok"
+   }
+  ],
+  "missing": [
+   "earlier_entry"
+  ],
+  "typed_error_counts": {}
+ },
+ "authored_skip_missing_tooling": {
+  "checks": [
+   {
+    "check": "earlier_row"
+   },
+   {
+    "actual": {
+     "missing_module": "tsc"
+    },
+    "check": "acceptance:undefined_names",
+    "check_index": 0,
+    "criterion_id": null,
+    "description": "",
+    "evidence_gap": true,
+    "params": {
+     "file": "src/App.jsx"
+    },
+    "passed": false,
+    "reason": "missing_tooling",
+    "severity": "error",
+    "status": "skipped",
+    "task_index": null
+   },
+   {
+    "actual": {},
+    "check": "acceptance:declared_imports",
+    "check_index": 1,
+    "criterion_id": null,
+    "description": "",
+    "evidence_gap": false,
+    "params": {
+     "file": "src/App.jsx"
+    },
+    "passed": true,
+    "reason": "no_package_json_above_file",
+    "severity": "error",
+    "status": "skipped",
+    "task_index": null
+   },
+   {
+    "actual": {
+     "file": "src/App.jsx"
+    },
+    "check": "acceptance:unterminated_source",
+    "check_index": 2,
+    "criterion_id": null,
+    "description": "",
+    "evidence_gap": false,
+    "params": {
+     "file": "src/App.jsx"
+    },
+    "passed": true,
+    "reason": "ok",
+    "severity": "error",
+    "status": "passed",
+    "task_index": null
+   }
+  ],
+  "log": [
+   {
+    "level": "DEBUG",
+    "logger": "squadops.capabilities.handlers.cycle.base",
+    "message": "typed_acceptance_check subtask=None check=undefined_names severity=error status=skipped blocking=False reason=missing_tooling"
+   },
+   {
+    "level": "DEBUG",
+    "logger": "squadops.capabilities.handlers.cycle.base",
+    "message": "typed_acceptance_check subtask=None check=declared_imports severity=error status=skipped blocking=False reason=no_package_json_above_file"
+   },
+   {
+    "level": "DEBUG",
+    "logger": "squadops.capabilities.handlers.cycle.base",
+    "message": "typed_acceptance_check subtask=None check=unterminated_source severity=error status=passed blocking=False reason=ok"
+   }
+  ],
+  "missing": [
+   "earlier_entry"
+  ],
+  "typed_error_counts": {}
+ },
+ "command_acceptance_off": {
+  "checks": [
+   {
+    "check": "earlier_row"
+   },
+   {
+    "actual": {
+     "found": [
+      "GET /users"
+     ],
+     "missing": [
+      "POST /users"
+     ]
+    },
+    "check": "acceptance:endpoint_defined",
+    "check_index": 0,
+    "criterion_id": null,
+    "description": "the users endpoint",
+    "evidence_gap": false,
+    "params": {
+     "file": "main.py",
+     "methods_paths": [
+      "POST /users"
+     ]
+    },
+    "passed": false,
+    "reason": "endpoints_missing",
+    "severity": "error",
+    "status": "failed",
+    "task_index": null
+   },
+   {
+    "actual": {},
+    "check": "acceptance:command_exit_zero",
+    "check_index": 1,
+    "criterion_id": null,
+    "description": "the command runs",
+    "evidence_gap": false,
+    "params": {
+     "argv": [
+      "python",
+      "-c",
+      "print(1)"
+     ]
+    },
+    "passed": true,
+    "reason": "command_acceptance_checks_disabled",
+    "severity": "error",
+    "status": "skipped",
+    "task_index": null
+   },
+   {
+    "actual": {
+     "file": "main.py"
+    },
+    "check": "acceptance:undefined_names",
+    "check_index": 2,
+    "criterion_id": null,
+    "description": "",
+    "evidence_gap": false,
+    "params": {
+     "file": "main.py"
+    },
+    "passed": true,
+    "reason": "ok",
+    "severity": "error",
+    "status": "passed",
+    "task_index": null
+   },
+   {
+    "actual": {
+     "file": "main.py"
+    },
+    "check": "acceptance:unterminated_source",
+    "check_index": 3,
+    "criterion_id": null,
+    "description": "",
+    "evidence_gap": false,
+    "params": {
+     "file": "main.py"
+    },
+    "passed": true,
+    "reason": "ok",
+    "severity": "error",
+    "status": "passed",
+    "task_index": null
+   }
+  ],
+  "log": [
+   {
+    "level": "INFO",
+    "logger": "squadops.capabilities.handlers.cycle.base",
+    "message": "typed_acceptance_check subtask=None check=endpoint_defined severity=error status=failed blocking=True reason=endpoints_missing"
+   },
+   {
+    "level": "DEBUG",
+    "logger": "squadops.capabilities.handlers.cycle.base",
+    "message": "typed_acceptance_check subtask=None check=command_exit_zero severity=error status=skipped blocking=False reason=command_acceptance_checks_disabled"
+   },
+   {
+    "level": "DEBUG",
+    "logger": "squadops.capabilities.handlers.cycle.base",
+    "message": "typed_acceptance_check subtask=None check=undefined_names severity=error status=passed blocking=False reason=ok"
+   },
+   {
+    "level": "DEBUG",
+    "logger": "squadops.capabilities.handlers.cycle.base",
+    "message": "typed_acceptance_check subtask=None check=unterminated_source severity=error status=passed blocking=False reason=ok"
+   }
+  ],
+  "missing": [
+   "earlier_entry",
+   "acceptance:the users endpoint"
+  ],
+  "typed_error_counts": {}
+ },
+ "error_error": {
+  "checks": [
+   {
+    "check": "earlier_row"
+   },
+   {
+    "actual": {
+     "argv": [
+      "python",
+      "-c",
+      "print(1)"
+     ]
+    },
+    "check": "acceptance:command_exit_zero",
+    "check_index": 0,
+    "criterion_id": null,
+    "description": "the command runs",
+    "evidence_gap": false,
+    "params": {
+     "argv": [
+      "python",
+      "-c",
+      "print(1)"
+     ]
+    },
+    "passed": false,
+    "reason": "command_not_in_safelist",
+    "severity": "error",
+    "status": "error",
+    "task_index": null
+   },
+   {
+    "actual": {
+     "file": "main.py"
+    },
+    "check": "acceptance:undefined_names",
+    "check_index": 1,
+    "criterion_id": null,
+    "description": "",
+    "evidence_gap": false,
+    "params": {
+     "file": "main.py"
+    },
+    "passed": true,
+    "reason": "ok",
+    "severity": "error",
+    "status": "passed",
+    "task_index": null
+   },
+   {
+    "actual": {
+     "file": "main.py"
+    },
+    "check": "acceptance:unterminated_source",
+    "check_index": 2,
+    "criterion_id": null,
+    "description": "",
+    "evidence_gap": false,
+    "params": {
+     "file": "main.py"
+    },
+    "passed": true,
+    "reason": "ok",
+    "severity": "error",
+    "status": "passed",
+    "task_index": null
+   }
+  ],
+  "log": [
+   {
+    "level": "INFO",
+    "logger": "squadops.capabilities.handlers.cycle.base",
+    "message": "typed_acceptance_check subtask=None check=command_exit_zero severity=error status=error blocking=True reason=command_not_in_safelist"
+   },
+   {
+    "level": "DEBUG",
+    "logger": "squadops.capabilities.handlers.cycle.base",
+    "message": "typed_acceptance_check subtask=None check=undefined_names severity=error status=passed blocking=False reason=ok"
+   },
+   {
+    "level": "DEBUG",
+    "logger": "squadops.capabilities.handlers.cycle.base",
+    "message": "typed_acceptance_check subtask=None check=unterminated_source severity=error status=passed blocking=False reason=ok"
+   }
+  ],
+  "missing": [
+   "earlier_entry",
+   "evaluator-error:command_exit_zero: command_not_in_safelist"
+  ],
+  "typed_error_counts": {
+   "edf74fe54962a7ed": 1
+  }
+ },
+ "error_failed": {
+  "checks": [
+   {
+    "check": "earlier_row"
+   },
+   {
+    "actual": {
+     "found": [
+      "GET /users"
+     ],
+     "missing": [
+      "POST /users"
+     ]
+    },
+    "check": "acceptance:endpoint_defined",
+    "check_index": 0,
+    "criterion_id": null,
+    "description": "the users endpoint",
+    "evidence_gap": false,
+    "params": {
+     "file": "main.py",
+     "methods_paths": [
+      "POST /users"
+     ]
+    },
+    "passed": false,
+    "reason": "endpoints_missing",
+    "severity": "error",
+    "status": "failed",
+    "task_index": null
+   },
+   {
+    "actual": {
+     "file": "main.py"
+    },
+    "check": "acceptance:undefined_names",
+    "check_index": 1,
+    "criterion_id": null,
+    "description": "",
+    "evidence_gap": false,
+    "params": {
+     "file": "main.py"
+    },
+    "passed": true,
+    "reason": "ok",
+    "severity": "error",
+    "status": "passed",
+    "task_index": null
+   },
+   {
+    "actual": {
+     "file": "main.py"
+    },
+    "check": "acceptance:unterminated_source",
+    "check_index": 2,
+    "criterion_id": null,
+    "description": "",
+    "evidence_gap": false,
+    "params": {
+     "file": "main.py"
+    },
+    "passed": true,
+    "reason": "ok",
+    "severity": "error",
+    "status": "passed",
+    "task_index": null
+   }
+  ],
+  "log": [
+   {
+    "level": "INFO",
+    "logger": "squadops.capabilities.handlers.cycle.base",
+    "message": "typed_acceptance_check subtask=None check=endpoint_defined severity=error status=failed blocking=True reason=endpoints_missing"
+   },
+   {
+    "level": "DEBUG",
+    "logger": "squadops.capabilities.handlers.cycle.base",
+    "message": "typed_acceptance_check subtask=None check=undefined_names severity=error status=passed blocking=False reason=ok"
+   },
+   {
+    "level": "DEBUG",
+    "logger": "squadops.capabilities.handlers.cycle.base",
+    "message": "typed_acceptance_check subtask=None check=unterminated_source severity=error status=passed blocking=False reason=ok"
+   }
+  ],
+  "missing": [
+   "earlier_entry",
+   "acceptance:the users endpoint"
+  ],
+  "typed_error_counts": {}
+ },
+ "error_failed_no_description": {
+  "checks": [
+   {
+    "check": "earlier_row"
+   },
+   {
+    "actual": {
+     "found": [
+      "GET /users"
+     ],
+     "missing": [
+      "POST /users"
+     ]
+    },
+    "check": "acceptance:endpoint_defined",
+    "check_index": 0,
+    "criterion_id": null,
+    "description": "",
+    "evidence_gap": false,
+    "params": {
+     "file": "main.py",
+     "methods_paths": [
+      "POST /users"
+     ]
+    },
+    "passed": false,
+    "reason": "endpoints_missing",
+    "severity": "error",
+    "status": "failed",
+    "task_index": null
+   },
+   {
+    "actual": {
+     "file": "main.py"
+    },
+    "check": "acceptance:undefined_names",
+    "check_index": 1,
+    "criterion_id": null,
+    "description": "",
+    "evidence_gap": false,
+    "params": {
+     "file": "main.py"
+    },
+    "passed": true,
+    "reason": "ok",
+    "severity": "error",
+    "status": "passed",
+    "task_index": null
+   },
+   {
+    "actual": {
+     "file": "main.py"
+    },
+    "check": "acceptance:unterminated_source",
+    "check_index": 2,
+    "criterion_id": null,
+    "description": "",
+    "evidence_gap": false,
+    "params": {
+     "file": "main.py"
+    },
+    "passed": true,
+    "reason": "ok",
+    "severity": "error",
+    "status": "passed",
+    "task_index": null
+   }
+  ],
+  "log": [
+   {
+    "level": "INFO",
+    "logger": "squadops.capabilities.handlers.cycle.base",
+    "message": "typed_acceptance_check subtask=None check=endpoint_defined severity=error status=failed blocking=True reason=endpoints_missing"
+   },
+   {
+    "level": "DEBUG",
+    "logger": "squadops.capabilities.handlers.cycle.base",
+    "message": "typed_acceptance_check subtask=None check=undefined_names severity=error status=passed blocking=False reason=ok"
+   },
+   {
+    "level": "DEBUG",
+    "logger": "squadops.capabilities.handlers.cycle.base",
+    "message": "typed_acceptance_check subtask=None check=unterminated_source severity=error status=passed blocking=False reason=ok"
+   }
+  ],
+  "missing": [
+   "earlier_entry",
+   "acceptance:endpoint_defined"
+  ],
+  "typed_error_counts": {}
+ },
+ "error_passed": {
+  "checks": [
+   {
+    "check": "earlier_row"
+   },
+   {
+    "actual": {
+     "found": [
+      "GET /users"
+     ]
+    },
+    "check": "acceptance:endpoint_defined",
+    "check_index": 0,
+    "criterion_id": null,
+    "description": "the users endpoint",
+    "evidence_gap": false,
+    "params": {
+     "file": "main.py",
+     "methods_paths": [
+      "GET /users"
+     ]
+    },
+    "passed": true,
+    "reason": "ok",
+    "severity": "error",
+    "status": "passed",
+    "task_index": null
+   },
+   {
+    "actual": {
+     "file": "main.py"
+    },
+    "check": "acceptance:undefined_names",
+    "check_index": 1,
+    "criterion_id": null,
+    "description": "",
+    "evidence_gap": false,
+    "params": {
+     "file": "main.py"
+    },
+    "passed": true,
+    "reason": "ok",
+    "severity": "error",
+    "status": "passed",
+    "task_index": null
+   },
+   {
+    "actual": {
+     "file": "main.py"
+    },
+    "check": "acceptance:unterminated_source",
+    "check_index": 2,
+    "criterion_id": null,
+    "description": "",
+    "evidence_gap": false,
+    "params": {
+     "file": "main.py"
+    },
+    "passed": true,
+    "reason": "ok",
+    "severity": "error",
+    "status": "passed",
+    "task_index": null
+   }
+  ],
+  "log": [
+   {
+    "level": "DEBUG",
+    "logger": "squadops.capabilities.handlers.cycle.base",
+    "message": "typed_acceptance_check subtask=None check=endpoint_defined severity=error status=passed blocking=False reason=ok"
+   },
+   {
+    "level": "DEBUG",
+    "logger": "squadops.capabilities.handlers.cycle.base",
+    "message": "typed_acceptance_check subtask=None check=undefined_names severity=error status=passed blocking=False reason=ok"
+   },
+   {
+    "level": "DEBUG",
+    "logger": "squadops.capabilities.handlers.cycle.base",
+    "message": "typed_acceptance_check subtask=None check=unterminated_source severity=error status=passed blocking=False reason=ok"
+   }
+  ],
+  "missing": [
+   "earlier_entry"
+  ],
+  "typed_error_counts": {}
+ },
+ "error_second_strike": {
+  "checks": [
+   {
+    "check": "earlier_row"
+   },
+   {
+    "actual": {
+     "argv": [
+      "python",
+      "-c",
+      "print(1)"
+     ]
+    },
+    "check": "acceptance:command_exit_zero",
+    "check_index": 0,
+    "criterion_id": null,
+    "description": "the command runs",
+    "evidence_gap": false,
+    "params": {
+     "argv": [
+      "python",
+      "-c",
+      "print(1)"
+     ]
+    },
+    "passed": false,
+    "reason": "command_not_in_safelist",
+    "severity": "error",
+    "status": "error",
+    "task_index": null
+   }
+  ],
+  "log": [
+   {
+    "level": "INFO",
+    "logger": "squadops.capabilities.handlers.cycle.base",
+    "message": "typed_acceptance_check subtask=None check=command_exit_zero severity=error status=error blocking=True reason=command_not_in_safelist"
+   }
+  ],
+  "missing": [
+   "earlier_entry",
+   "evaluator-error:command_exit_zero: command_not_in_safelist"
+  ],
+  "typed_error_counts": {
+   "edf74fe54962a7ed": 2
+  }
+ },
+ "error_skipped_unsupported": {
+  "checks": [
+   {
+    "check": "earlier_row"
+   },
+   {
+    "actual": {},
+    "check": "acceptance:endpoint_defined",
+    "check_index": 0,
+    "criterion_id": null,
+    "description": "the users endpoint",
+    "evidence_gap": true,
+    "params": {
+     "file": "main.py",
+     "methods_paths": [
+      "GET /users"
+     ]
+    },
+    "passed": false,
+    "reason": "unsupported_stack_or_syntax",
+    "severity": "error",
+    "status": "skipped",
+    "task_index": null
+   },
+   {
+    "actual": {
+     "file": "main.py"
+    },
+    "check": "acceptance:undefined_names",
+    "check_index": 1,
+    "criterion_id": null,
+    "description": "",
+    "evidence_gap": false,
+    "params": {
+     "file": "main.py"
+    },
+    "passed": true,
+    "reason": "ok",
+    "severity": "error",
+    "status": "passed",
+    "task_index": null
+   },
+   {
+    "actual": {
+     "file": "main.py"
+    },
+    "check": "acceptance:unterminated_source",
+    "check_index": 2,
+    "criterion_id": null,
+    "description": "",
+    "evidence_gap": false,
+    "params": {
+     "file": "main.py"
+    },
+    "passed": true,
+    "reason": "ok",
+    "severity": "error",
+    "status": "passed",
+    "task_index": null
+   }
+  ],
+  "log": [
+   {
+    "level": "DEBUG",
+    "logger": "squadops.capabilities.handlers.cycle.base",
+    "message": "typed_acceptance_check subtask=None check=endpoint_defined severity=error status=skipped blocking=False reason=unsupported_stack_or_syntax"
+   },
+   {
+    "level": "DEBUG",
+    "logger": "squadops.capabilities.handlers.cycle.base",
+    "message": "typed_acceptance_check subtask=None check=undefined_names severity=error status=passed blocking=False reason=ok"
+   },
+   {
+    "level": "DEBUG",
+    "logger": "squadops.capabilities.handlers.cycle.base",
+    "message": "typed_acceptance_check subtask=None check=unterminated_source severity=error status=passed blocking=False reason=ok"
+   }
+  ],
+  "missing": [
+   "earlier_entry"
+  ],
+  "typed_error_counts": {}
+ },
+ "error_third_strike": {
+  "checks": [
+   {
+    "check": "earlier_row"
+   },
+   {
+    "actual": {
+     "argv": [
+      "python",
+      "-c",
+      "print(1)"
+     ]
+    },
+    "check": "acceptance:command_exit_zero",
+    "check_index": 0,
+    "criterion_id": null,
+    "description": "the command runs",
+    "evidence_gap": false,
+    "params": {
+     "argv": [
+      "python",
+      "-c",
+      "print(1)"
+     ]
+    },
+    "passed": false,
+    "reason": "command_not_in_safelist",
+    "severity": "error",
+    "status": "error",
+    "task_index": null
+   }
+  ],
+  "log": [
+   {
+    "level": "INFO",
+    "logger": "squadops.capabilities.handlers.cycle.base",
+    "message": "typed_acceptance_check subtask=None check=command_exit_zero severity=error status=error blocking=True reason=command_not_in_safelist"
+   },
+   {
+    "actual": {
+     "argv": [
+      "python",
+      "-c",
+      "print(1)"
+     ]
+    },
+    "check": "command_exit_zero",
+    "fingerprint": "edf74fe54962a7ed",
+    "level": "WARNING",
+    "logger": "squadops.capabilities.handlers.cycle.base",
+    "message": "typed_check_evaluator_error_escalated",
+    "reason": "command_not_in_safelist",
+    "severity": "error"
+   }
+  ],
+  "missing": [
+   "earlier_entry"
+  ],
+  "typed_error_counts": {
+   "edf74fe54962a7ed": 3
+  }
+ },
+ "identity_fields": {
+  "checks": [
+   {
+    "check": "earlier_row"
+   },
+   {
+    "actual": {
+     "found": [
+      "GET /users"
+     ]
+    },
+    "check": "acceptance:endpoint_defined",
+    "check_index": 0,
+    "criterion_id": "vc-users-listed",
+    "description": "",
+    "evidence_gap": false,
+    "params": {
+     "file": "main.py",
+     "methods_paths": [
+      "GET /users"
+     ]
+    },
+    "passed": true,
+    "reason": "ok",
+    "severity": "error",
+    "status": "passed",
+    "task_index": 3
+   },
+   {
+    "actual": {
+     "file": "main.py"
+    },
+    "check": "acceptance:undefined_names",
+    "check_index": 1,
+    "criterion_id": null,
+    "description": "",
+    "evidence_gap": false,
+    "params": {
+     "file": "main.py"
+    },
+    "passed": true,
+    "reason": "ok",
+    "severity": "error",
+    "status": "passed",
+    "task_index": 3
+   },
+   {
+    "actual": {
+     "file": "main.py"
+    },
+    "check": "acceptance:unterminated_source",
+    "check_index": 2,
+    "criterion_id": null,
+    "description": "",
+    "evidence_gap": false,
+    "params": {
+     "file": "main.py"
+    },
+    "passed": true,
+    "reason": "ok",
+    "severity": "error",
+    "status": "passed",
+    "task_index": 3
+   }
+  ],
+  "log": [
+   {
+    "level": "DEBUG",
+    "logger": "squadops.capabilities.handlers.cycle.base",
+    "message": "typed_acceptance_check subtask=3 check=endpoint_defined severity=error status=passed blocking=False reason=ok"
+   },
+   {
+    "level": "DEBUG",
+    "logger": "squadops.capabilities.handlers.cycle.base",
+    "message": "typed_acceptance_check subtask=3 check=undefined_names severity=error status=passed blocking=False reason=ok"
+   },
+   {
+    "level": "DEBUG",
+    "logger": "squadops.capabilities.handlers.cycle.base",
+    "message": "typed_acceptance_check subtask=3 check=unterminated_source severity=error status=passed blocking=False reason=ok"
+   }
+  ],
+  "missing": [
+   "earlier_entry"
+  ],
+  "typed_error_counts": {}
+ },
+ "info_failed": {
+  "checks": [
+   {
+    "check": "earlier_row"
+   },
+   {
+    "actual": {
+     "found": [
+      "GET /users"
+     ],
+     "missing": [
+      "POST /users"
+     ]
+    },
+    "check": "acceptance:endpoint_defined",
+    "check_index": 0,
+    "criterion_id": null,
+    "description": "the users endpoint",
+    "evidence_gap": false,
+    "params": {
+     "file": "main.py",
+     "methods_paths": [
+      "POST /users"
+     ]
+    },
+    "passed": true,
+    "reason": "endpoints_missing",
+    "severity": "info",
+    "status": "failed",
+    "task_index": null
+   },
+   {
+    "actual": {
+     "file": "main.py"
+    },
+    "check": "acceptance:undefined_names",
+    "check_index": 1,
+    "criterion_id": null,
+    "description": "",
+    "evidence_gap": false,
+    "params": {
+     "file": "main.py"
+    },
+    "passed": true,
+    "reason": "ok",
+    "severity": "error",
+    "status": "passed",
+    "task_index": null
+   },
+   {
+    "actual": {
+     "file": "main.py"
+    },
+    "check": "acceptance:unterminated_source",
+    "check_index": 2,
+    "criterion_id": null,
+    "description": "",
+    "evidence_gap": false,
+    "params": {
+     "file": "main.py"
+    },
+    "passed": true,
+    "reason": "ok",
+    "severity": "error",
+    "status": "passed",
+    "task_index": null
+   }
+  ],
+  "log": [
+   {
+    "level": "DEBUG",
+    "logger": "squadops.capabilities.handlers.cycle.base",
+    "message": "typed_acceptance_check subtask=None check=endpoint_defined severity=info status=failed blocking=False reason=endpoints_missing"
+   },
+   {
+    "level": "DEBUG",
+    "logger": "squadops.capabilities.handlers.cycle.base",
+    "message": "typed_acceptance_check subtask=None check=undefined_names severity=error status=passed blocking=False reason=ok"
+   },
+   {
+    "level": "DEBUG",
+    "logger": "squadops.capabilities.handlers.cycle.base",
+    "message": "typed_acceptance_check subtask=None check=unterminated_source severity=error status=passed blocking=False reason=ok"
+   }
+  ],
+  "missing": [
+   "earlier_entry"
+  ],
+  "typed_error_counts": {}
+ },
+ "injected_failed": {
+  "checks": [
+   {
+    "check": "earlier_row"
+   },
+   {
+    "actual": {
+     "file": "main.py",
+     "undefined": [
+      {
+       "line": 1,
+       "name": "undefined_thing"
+      }
+     ]
+    },
+    "check": "acceptance:undefined_names",
+    "check_index": 0,
+    "criterion_id": null,
+    "description": "",
+    "evidence_gap": false,
+    "params": {
+     "file": "main.py"
+    },
+    "passed": false,
+    "reason": "undefined name(s): undefined_thing (line 1)",
+    "severity": "error",
+    "status": "failed",
+    "task_index": null
+   },
+   {
+    "actual": {
+     "file": "main.py"
+    },
+    "check": "acceptance:unterminated_source",
+    "check_index": 1,
+    "criterion_id": null,
+    "description": "",
+    "evidence_gap": false,
+    "params": {
+     "file": "main.py"
+    },
+    "passed": true,
+    "reason": "ok",
+    "severity": "error",
+    "status": "passed",
+    "task_index": null
+   }
+  ],
+  "log": [
+   {
+    "level": "INFO",
+    "logger": "squadops.capabilities.handlers.cycle.base",
+    "message": "typed_acceptance_check subtask=None check=undefined_names severity=error status=failed blocking=True reason=undefined name(s): undefined_thing (line 1)"
+   },
+   {
+    "level": "DEBUG",
+    "logger": "squadops.capabilities.handlers.cycle.base",
+    "message": "typed_acceptance_check subtask=None check=unterminated_source severity=error status=passed blocking=False reason=ok"
+   }
+  ],
+  "missing": [
+   "earlier_entry",
+   "acceptance:undefined_names"
+  ],
+  "typed_error_counts": {}
+ },
+ "injected_skip_missing_tooling": {
+  "checks": [
+   {
+    "check": "earlier_row"
+   },
+   {
+    "actual": {},
+    "check": "acceptance:declared_imports",
+    "check_index": 0,
+    "criterion_id": null,
+    "description": "",
+    "evidence_gap": false,
+    "params": {
+     "file": "src/App.jsx"
+    },
+    "passed": true,
+    "reason": "no_package_json_above_file",
+    "severity": "error",
+    "status": "skipped",
+    "task_index": null
+   },
+   {
+    "actual": {
+     "missing_module": "tsc"
+    },
+    "check": "acceptance:undefined_names",
+    "check_index": 1,
+    "criterion_id": null,
+    "description": "",
+    "evidence_gap": false,
+    "params": {
+     "file": "src/App.jsx"
+    },
+    "passed": true,
+    "reason": "missing_tooling",
+    "severity": "error",
+    "status": "skipped",
+    "task_index": null
+   },
+   {
+    "actual": {
+     "file": "src/App.jsx"
+    },
+    "check": "acceptance:unterminated_source",
+    "check_index": 2,
+    "criterion_id": null,
+    "description": "",
+    "evidence_gap": false,
+    "params": {
+     "file": "src/App.jsx"
+    },
+    "passed": true,
+    "reason": "ok",
+    "severity": "error",
+    "status": "passed",
+    "task_index": null
+   }
+  ],
+  "log": [
+   {
+    "level": "DEBUG",
+    "logger": "squadops.capabilities.handlers.cycle.base",
+    "message": "typed_acceptance_check subtask=None check=declared_imports severity=error status=skipped blocking=False reason=no_package_json_above_file"
+   },
+   {
+    "level": "DEBUG",
+    "logger": "squadops.capabilities.handlers.cycle.base",
+    "message": "typed_acceptance_check subtask=None check=undefined_names severity=error status=skipped blocking=False reason=missing_tooling"
+   },
+   {
+    "level": "DEBUG",
+    "logger": "squadops.capabilities.handlers.cycle.base",
+    "message": "typed_acceptance_check subtask=None check=unterminated_source severity=error status=passed blocking=False reason=ok"
+   }
+  ],
+  "missing": [
+   "earlier_entry"
+  ],
+  "typed_error_counts": {}
+ },
+ "nothing_to_evaluate": {
+  "checks": [
+   {
+    "check": "earlier_row"
+   }
+  ],
+  "log": [],
+  "missing": [
+   "earlier_entry"
+  ],
+  "typed_error_counts": {}
+ },
+ "prose_and_unparseable": {
+  "checks": [
+   {
+    "check": "earlier_row"
+   },
+   {
+    "check": "acceptance_criteria_prose",
+    "criteria": [
+     "Users can be listed"
+    ],
+    "evaluation": "included_in_evidence",
+    "passed": true
+   },
+   {
+    "check": "acceptance_criteria_unparseable",
+    "criteria": [
+     "{'check': 'no_such_check', 'params': {}}",
+     "42"
+    ],
+    "evaluation": "unparseable_not_evaluated",
+    "passed": true
+   }
+  ],
+  "log": [
+   {
+    "level": "WARNING",
+    "logger": "squadops.cycles.acceptance_evaluation",
+    "message": "split_acceptance_criteria: unparseable criterion {'check': 'no_such_check', 'params': {}}"
+   },
+   {
+    "level": "WARNING",
+    "logger": "squadops.cycles.acceptance_evaluation",
+    "message": "split_acceptance_criteria: unsupported criterion type int: 42"
+   }
+  ],
+  "missing": [
+   "earlier_entry"
+  ],
+  "typed_error_counts": {}
+ },
+ "typed_acceptance_off": {
+  "checks": [
+   {
+    "check": "earlier_row"
+   },
+   {
+    "actual": {},
+    "check": "acceptance:endpoint_defined",
+    "check_index": 0,
+    "criterion_id": null,
+    "description": "the users endpoint",
+    "evidence_gap": false,
+    "params": {
+     "file": "main.py",
+     "methods_paths": [
+      "GET /users"
+     ]
+    },
+    "passed": true,
+    "reason": "typed_acceptance_disabled",
+    "severity": "error",
+    "status": "skipped",
+    "task_index": null
+   },
+   {
+    "actual": {},
+    "check": "acceptance:command_exit_zero",
+    "check_index": 1,
+    "criterion_id": null,
+    "description": "the command runs",
+    "evidence_gap": false,
+    "params": {
+     "argv": [
+      "python",
+      "-c",
+      "print(1)"
+     ]
+    },
+    "passed": true,
+    "reason": "typed_acceptance_disabled",
+    "severity": "error",
+    "status": "skipped",
+    "task_index": null
+   },
+   {
+    "actual": {},
+    "check": "acceptance:undefined_names",
+    "check_index": 2,
+    "criterion_id": null,
+    "description": "",
+    "evidence_gap": false,
+    "params": {
+     "file": "main.py"
+    },
+    "passed": true,
+    "reason": "typed_acceptance_disabled",
+    "severity": "error",
+    "status": "skipped",
+    "task_index": null
+   },
+   {
+    "actual": {},
+    "check": "acceptance:unterminated_source",
+    "check_index": 3,
+    "criterion_id": null,
+    "description": "",
+    "evidence_gap": false,
+    "params": {
+     "file": "main.py"
+    },
+    "passed": true,
+    "reason": "typed_acceptance_disabled",
+    "severity": "error",
+    "status": "skipped",
+    "task_index": null
+   }
+  ],
+  "log": [
+   {
+    "level": "DEBUG",
+    "logger": "squadops.capabilities.handlers.cycle.base",
+    "message": "typed_acceptance_check subtask=None check=endpoint_defined severity=error status=skipped blocking=False reason=typed_acceptance_disabled"
+   },
+   {
+    "level": "DEBUG",
+    "logger": "squadops.capabilities.handlers.cycle.base",
+    "message": "typed_acceptance_check subtask=None check=command_exit_zero severity=error status=skipped blocking=False reason=typed_acceptance_disabled"
+   },
+   {
+    "level": "DEBUG",
+    "logger": "squadops.capabilities.handlers.cycle.base",
+    "message": "typed_acceptance_check subtask=None check=undefined_names severity=error status=skipped blocking=False reason=typed_acceptance_disabled"
+   },
+   {
+    "level": "DEBUG",
+    "logger": "squadops.capabilities.handlers.cycle.base",
+    "message": "typed_acceptance_check subtask=None check=unterminated_source severity=error status=skipped blocking=False reason=typed_acceptance_disabled"
+   }
+  ],
+  "missing": [
+   "earlier_entry"
+  ],
+  "typed_error_counts": {}
+ },
+ "warning_error": {
+  "checks": [
+   {
+    "check": "earlier_row"
+   },
+   {
+    "actual": {
+     "argv": [
+      "python",
+      "-c",
+      "print(1)"
+     ]
+    },
+    "check": "acceptance:command_exit_zero",
+    "check_index": 0,
+    "criterion_id": null,
+    "description": "the command runs",
+    "evidence_gap": false,
+    "params": {
+     "argv": [
+      "python",
+      "-c",
+      "print(1)"
+     ]
+    },
+    "passed": true,
+    "reason": "command_not_in_safelist",
+    "severity": "warning",
+    "status": "error",
+    "task_index": null
+   },
+   {
+    "actual": {
+     "file": "main.py"
+    },
+    "check": "acceptance:undefined_names",
+    "check_index": 1,
+    "criterion_id": null,
+    "description": "",
+    "evidence_gap": false,
+    "params": {
+     "file": "main.py"
+    },
+    "passed": true,
+    "reason": "ok",
+    "severity": "error",
+    "status": "passed",
+    "task_index": null
+   },
+   {
+    "actual": {
+     "file": "main.py"
+    },
+    "check": "acceptance:unterminated_source",
+    "check_index": 2,
+    "criterion_id": null,
+    "description": "",
+    "evidence_gap": false,
+    "params": {
+     "file": "main.py"
+    },
+    "passed": true,
+    "reason": "ok",
+    "severity": "error",
+    "status": "passed",
+    "task_index": null
+   }
+  ],
+  "log": [
+   {
+    "level": "DEBUG",
+    "logger": "squadops.capabilities.handlers.cycle.base",
+    "message": "typed_acceptance_check subtask=None check=command_exit_zero severity=warning status=error blocking=False reason=command_not_in_safelist"
+   },
+   {
+    "level": "DEBUG",
+    "logger": "squadops.capabilities.handlers.cycle.base",
+    "message": "typed_acceptance_check subtask=None check=undefined_names severity=error status=passed blocking=False reason=ok"
+   },
+   {
+    "level": "DEBUG",
+    "logger": "squadops.capabilities.handlers.cycle.base",
+    "message": "typed_acceptance_check subtask=None check=unterminated_source severity=error status=passed blocking=False reason=ok"
+   }
+  ],
+  "missing": [
+   "earlier_entry"
+  ],
+  "typed_error_counts": {}
+ },
+ "warning_failed": {
+  "checks": [
+   {
+    "check": "earlier_row"
+   },
+   {
+    "actual": {
+     "found": [
+      "GET /users"
+     ],
+     "missing": [
+      "POST /users"
+     ]
+    },
+    "check": "acceptance:endpoint_defined",
+    "check_index": 0,
+    "criterion_id": null,
+    "description": "the users endpoint",
+    "evidence_gap": false,
+    "params": {
+     "file": "main.py",
+     "methods_paths": [
+      "POST /users"
+     ]
+    },
+    "passed": true,
+    "reason": "endpoints_missing",
+    "severity": "warning",
+    "status": "failed",
+    "task_index": null
+   },
+   {
+    "actual": {
+     "file": "main.py"
+    },
+    "check": "acceptance:undefined_names",
+    "check_index": 1,
+    "criterion_id": null,
+    "description": "",
+    "evidence_gap": false,
+    "params": {
+     "file": "main.py"
+    },
+    "passed": true,
+    "reason": "ok",
+    "severity": "error",
+    "status": "passed",
+    "task_index": null
+   },
+   {
+    "actual": {
+     "file": "main.py"
+    },
+    "check": "acceptance:unterminated_source",
+    "check_index": 2,
+    "criterion_id": null,
+    "description": "",
+    "evidence_gap": false,
+    "params": {
+     "file": "main.py"
+    },
+    "passed": true,
+    "reason": "ok",
+    "severity": "error",
+    "status": "passed",
+    "task_index": null
+   }
+  ],
+  "log": [
+   {
+    "level": "DEBUG",
+    "logger": "squadops.capabilities.handlers.cycle.base",
+    "message": "typed_acceptance_check subtask=None check=endpoint_defined severity=warning status=failed blocking=False reason=endpoints_missing"
+   },
+   {
+    "level": "DEBUG",
+    "logger": "squadops.capabilities.handlers.cycle.base",
+    "message": "typed_acceptance_check subtask=None check=undefined_names severity=error status=passed blocking=False reason=ok"
+   },
+   {
+    "level": "DEBUG",
+    "logger": "squadops.capabilities.handlers.cycle.base",
+    "message": "typed_acceptance_check subtask=None check=unterminated_source severity=error status=passed blocking=False reason=ok"
+   }
+  ],
+  "missing": [
+   "earlier_entry"
+  ],
+  "typed_error_counts": {}
+ },
+ "warning_passed": {
+  "checks": [
+   {
+    "check": "earlier_row"
+   },
+   {
+    "actual": {
+     "found": [
+      "GET /users"
+     ]
+    },
+    "check": "acceptance:endpoint_defined",
+    "check_index": 0,
+    "criterion_id": null,
+    "description": "the users endpoint",
+    "evidence_gap": false,
+    "params": {
+     "file": "main.py",
+     "methods_paths": [
+      "GET /users"
+     ]
+    },
+    "passed": true,
+    "reason": "ok",
+    "severity": "warning",
+    "status": "passed",
+    "task_index": null
+   },
+   {
+    "actual": {
+     "file": "main.py"
+    },
+    "check": "acceptance:undefined_names",
+    "check_index": 1,
+    "criterion_id": null,
+    "description": "",
+    "evidence_gap": false,
+    "params": {
+     "file": "main.py"
+    },
+    "passed": true,
+    "reason": "ok",
+    "severity": "error",
+    "status": "passed",
+    "task_index": null
+   },
+   {
+    "actual": {
+     "file": "main.py"
+    },
+    "check": "acceptance:unterminated_source",
+    "check_index": 2,
+    "criterion_id": null,
+    "description": "",
+    "evidence_gap": false,
+    "params": {
+     "file": "main.py"
+    },
+    "passed": true,
+    "reason": "ok",
+    "severity": "error",
+    "status": "passed",
+    "task_index": null
+   }
+  ],
+  "log": [
+   {
+    "level": "DEBUG",
+    "logger": "squadops.capabilities.handlers.cycle.base",
+    "message": "typed_acceptance_check subtask=None check=endpoint_defined severity=warning status=passed blocking=False reason=ok"
+   },
+   {
+    "level": "DEBUG",
+    "logger": "squadops.capabilities.handlers.cycle.base",
+    "message": "typed_acceptance_check subtask=None check=undefined_names severity=error status=passed blocking=False reason=ok"
+   },
+   {
+    "level": "DEBUG",
+    "logger": "squadops.capabilities.handlers.cycle.base",
+    "message": "typed_acceptance_check subtask=None check=unterminated_source severity=error status=passed blocking=False reason=ok"
+   }
+  ],
+  "missing": [
+   "earlier_entry"
+  ],
+  "typed_error_counts": {}
+ },
+ "warning_skipped_unsupported": {
+  "checks": [
+   {
+    "check": "earlier_row"
+   },
+   {
+    "actual": {},
+    "check": "acceptance:endpoint_defined",
+    "check_index": 0,
+    "criterion_id": null,
+    "description": "the users endpoint",
+    "evidence_gap": false,
+    "params": {
+     "file": "main.py",
+     "methods_paths": [
+      "GET /users"
+     ]
+    },
+    "passed": true,
+    "reason": "unsupported_stack_or_syntax",
+    "severity": "warning",
+    "status": "skipped",
+    "task_index": null
+   },
+   {
+    "actual": {
+     "file": "main.py"
+    },
+    "check": "acceptance:undefined_names",
+    "check_index": 1,
+    "criterion_id": null,
+    "description": "",
+    "evidence_gap": false,
+    "params": {
+     "file": "main.py"
+    },
+    "passed": true,
+    "reason": "ok",
+    "severity": "error",
+    "status": "passed",
+    "task_index": null
+   },
+   {
+    "actual": {
+     "file": "main.py"
+    },
+    "check": "acceptance:unterminated_source",
+    "check_index": 2,
+    "criterion_id": null,
+    "description": "",
+    "evidence_gap": false,
+    "params": {
+     "file": "main.py"
+    },
+    "passed": true,
+    "reason": "ok",
+    "severity": "error",
+    "status": "passed",
+    "task_index": null
+   }
+  ],
+  "log": [
+   {
+    "level": "DEBUG",
+    "logger": "squadops.capabilities.handlers.cycle.base",
+    "message": "typed_acceptance_check subtask=None check=endpoint_defined severity=warning status=skipped blocking=False reason=unsupported_stack_or_syntax"
+   },
+   {
+    "level": "DEBUG",
+    "logger": "squadops.capabilities.handlers.cycle.base",
+    "message": "typed_acceptance_check subtask=None check=undefined_names severity=error status=passed blocking=False reason=ok"
+   },
+   {
+    "level": "DEBUG",
+    "logger": "squadops.capabilities.handlers.cycle.base",
+    "message": "typed_acceptance_check subtask=None check=unterminated_source severity=error status=passed blocking=False reason=ok"
+   }
+  ],
+  "missing": [
+   "earlier_entry"
+  ],
+  "typed_error_counts": {}
+ },
+ "workspace_then_candidate": {
+  "checks": [
+   {
+    "check": "earlier_row"
+   },
+   {
+    "actual": {
+     "found": [
+      "GET /users"
+     ]
+    },
+    "check": "acceptance:endpoint_defined",
+    "check_index": 0,
+    "criterion_id": null,
+    "description": "",
+    "evidence_gap": false,
+    "params": {
+     "file": "routes.py",
+     "methods_paths": [
+      "GET /users"
+     ]
+    },
+    "passed": true,
+    "reason": "ok",
+    "severity": "error",
+    "status": "passed",
+    "task_index": null
+   },
+   {
+    "actual": {
+     "found": [],
+     "missing": [
+      "GET /users"
+     ]
+    },
+    "check": "acceptance:endpoint_defined",
+    "check_index": 1,
+    "criterion_id": null,
+    "description": "the users endpoint",
+    "evidence_gap": false,
+    "params": {
+     "file": "main.py",
+     "methods_paths": [
+      "GET /users"
+     ]
+    },
+    "passed": false,
+    "reason": "endpoints_missing",
+    "severity": "error",
+    "status": "failed",
+    "task_index": null
+   },
+   {
+    "actual": {
+     "file": "main.py"
+    },
+    "check": "acceptance:undefined_names",
+    "check_index": 2,
+    "criterion_id": null,
+    "description": "",
+    "evidence_gap": false,
+    "params": {
+     "file": "main.py"
+    },
+    "passed": true,
+    "reason": "ok",
+    "severity": "error",
+    "status": "passed",
+    "task_index": null
+   },
+   {
+    "actual": {
+     "file": "main.py"
+    },
+    "check": "acceptance:unterminated_source",
+    "check_index": 3,
+    "criterion_id": null,
+    "description": "",
+    "evidence_gap": false,
+    "params": {
+     "file": "main.py"
+    },
+    "passed": true,
+    "reason": "ok",
+    "severity": "error",
+    "status": "passed",
+    "task_index": null
+   }
+  ],
+  "log": [
+   {
+    "level": "DEBUG",
+    "logger": "squadops.capabilities.handlers.cycle.base",
+    "message": "typed_acceptance_check subtask=None check=endpoint_defined severity=error status=passed blocking=False reason=ok"
+   },
+   {
+    "level": "INFO",
+    "logger": "squadops.capabilities.handlers.cycle.base",
+    "message": "typed_acceptance_check subtask=None check=endpoint_defined severity=error status=failed blocking=True reason=endpoints_missing"
+   },
+   {
+    "level": "DEBUG",
+    "logger": "squadops.capabilities.handlers.cycle.base",
+    "message": "typed_acceptance_check subtask=None check=undefined_names severity=error status=passed blocking=False reason=ok"
+   },
+   {
+    "level": "DEBUG",
+    "logger": "squadops.capabilities.handlers.cycle.base",
+    "message": "typed_acceptance_check subtask=None check=unterminated_source severity=error status=passed blocking=False reason=ok"
+   }
+  ],
+  "missing": [
+   "earlier_entry",
+   "acceptance:the users endpoint"
+  ],
+  "typed_error_counts": {}
+ }
+}
