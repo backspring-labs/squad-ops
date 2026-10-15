@@ -19,6 +19,7 @@ from squadops.cli.output import (
     print_success,
     print_table,
 )
+from squadops.cli.paging import limit_option, offset_option, say_when_full
 from squadops.contracts.cycle_request_profiles import (
     cycle_request_body,
     load_profile,
@@ -177,8 +178,8 @@ def list_cycles(
     ctx: typer.Context,
     project_id: str = typer.Argument(...),
     status: str | None = typer.Option(None, "--status", help="Filter by status"),
-    limit: int = typer.Option(50, "--limit", min=1, max=500, help="Cycles per page"),
-    offset: int = typer.Option(0, "--offset", min=0, help="Skip this many, newest first"),
+    limit: int = limit_option("Cycles"),
+    offset: int = offset_option("newest first"),
 ):
     """List a page of a project's cycles, newest first (--status filters before the page)."""
     fmt = ctx.obj.get("format", "table") if ctx.obj else "table"
@@ -209,9 +210,8 @@ def list_cycles(
             for c in data
         ]
         print_table(["Cycle ID", "Status", "Strategy", "Created"], rows, quiet=quiet)
-        if len(data) == limit and not quiet:
-            # #1891: a full page is not the project's history; say so rather than end silently.
-            typer.echo(f"{limit} shown; there may be more: --offset {offset + limit}")
+        if not quiet:
+            say_when_full(len(data), limit, offset)
 
 
 @app.command("ls", hidden=True)
@@ -219,8 +219,8 @@ def list_cycles_alias(
     ctx: typer.Context,
     project_id: str = typer.Argument(...),
     status: str | None = typer.Option(None, "--status"),
-    limit: int = typer.Option(50, "--limit", min=1, max=500),
-    offset: int = typer.Option(0, "--offset", min=0),
+    limit: int = limit_option("Cycles"),
+    offset: int = offset_option("newest first"),
 ):
     """Alias for list."""
     list_cycles(ctx, project_id, status, limit, offset)
