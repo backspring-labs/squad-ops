@@ -376,6 +376,7 @@ v1.6.0 could record zero code drift; v1.6.2 could not, and said so.
 - **Lanes:** authenticated, managed REST resources → `/api/v1/<resource>` (default home for anything new). `/health/*` = read-only, unauthenticated operational probes/heartbeats **only** — never a writable business resource (it's the only no-auth lane). `/auth/*` = identity. **Do not add `/api/v2`** — extend v1.
 - A new prefix/variant is a deliberate, justified decision, never a default. "It doesn't collide" is not a justification.
 - Known route deviations: none recorded (`test_route_lanes.py`'s `KNOWN_DEVIATIONS` is empty; #219 closed). Every error body is the standard envelope, built by `squadops.api.errors`; a server failure gives the request id, never the exception's text (#1976). `test_route_lanes.py` refuses a plain string.
+- Every route declares its response: a model (its return annotation), or a `response_class` for a body that isn't JSON. A create answers 201 and a delete 204 with no body (the standard's rule 6, #1976). `test_route_lanes.py` refuses an undeclared body.
 
 **Typed checks (adding or binding one)**: a criterion is evaluated in more places than the
 one you are adding it for. Before binding a check onto a task's artifacts, table every seam

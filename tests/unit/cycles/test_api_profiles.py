@@ -135,7 +135,7 @@ class TestCreateProfile:
                 ],
             },
         )
-        assert resp.status_code == 200
+        assert resp.status_code == 201
         body = resp.json()
         assert body["profile_id"] == "test-profile"
         assert body["name"] == "Test Profile"
@@ -245,7 +245,7 @@ class TestCreateProfile:
                 ],
             },
         )
-        assert resp.status_code == 200
+        assert resp.status_code == 201
         assert len(resp.json()["warnings"]) == 1
         assert "unpulled-model:latest" in resp.json()["warnings"][0]
 
@@ -265,7 +265,7 @@ class TestCreateProfile:
                 ],
             },
         )
-        assert resp.status_code == 200
+        assert resp.status_code == 201
         assert resp.json()["warnings"] == []
 
     def test_skips_warnings_when_ollama_unreachable(self, client, mock_llm_port):
@@ -284,7 +284,7 @@ class TestCreateProfile:
                 ],
             },
         )
-        assert resp.status_code == 200
+        assert resp.status_code == 201
         assert resp.json()["warnings"] == []
 
 
@@ -311,7 +311,7 @@ class TestCloneProfile:
             "/api/v1/squad-profiles/full/clone",
             json={"name": "Cloned Squad"},
         )
-        assert resp.status_code == 200
+        assert resp.status_code == 201
         assert resp.json()["profile_id"] == "cloned-squad"
 
     def test_source_not_found(self, client, mock_squad_profile):
@@ -326,8 +326,8 @@ class TestCloneProfile:
 class TestDeleteProfile:
     def test_deletes_profile(self, client):
         resp = client.delete("/api/v1/squad-profiles/full")
-        assert resp.status_code == 200
-        assert resp.json()["status"] == "deleted"
+        assert resp.status_code == 204
+        assert resp.content == b""
 
     def test_not_found(self, client, mock_squad_profile):
         mock_squad_profile.delete_profile.side_effect = ProfileNotFoundError("Not found")

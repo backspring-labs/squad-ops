@@ -122,7 +122,7 @@ class TestCreateCycle:
                 "task_flow_policy": {"mode": "sequential"},
             },
         )
-        assert resp.status_code == 200
+        assert resp.status_code == 201
         body = resp.json()
         assert body["project_id"] == "hello_squad"
         assert body["run_number"] == 1
@@ -139,7 +139,7 @@ class TestCreateCycle:
                 "squad_profile_id": "full",
             },
         )
-        assert resp.status_code == 200
+        assert resp.status_code == 201
         assert resp.json()["prd_ref"] is None
 
     def test_create_cycle_unknown_project(self, client, mock_project_registry):
@@ -164,7 +164,7 @@ class TestCreateCycle:
                 },
             },
         )
-        assert resp.status_code == 200
+        assert resp.status_code == 201
         run = mock_cycle_registry.create_run.call_args[0][0]
         assert run.workload_type == "framing"
 
@@ -174,7 +174,7 @@ class TestCreateCycle:
             "/api/v1/projects/hello_squad/cycles",
             json={"squad_profile_id": "full"},
         )
-        assert resp.status_code == 200
+        assert resp.status_code == 201
         run = mock_cycle_registry.create_run.call_args[0][0]
         assert run.workload_type is None
 
@@ -202,7 +202,7 @@ class TestCreateCycleCodeLineage:
             "/api/v1/projects/hello_squad/cycles",
             json={"squad_profile_id": "full", "request_profile": "selftest"},
         )
-        assert resp.status_code == 200, resp.text
+        assert resp.status_code == 201, resp.text
 
     def test_the_route_stamps_the_version_and_the_image_commit(
         self, client, mock_cycle_registry, monkeypatch
@@ -291,7 +291,7 @@ class TestCreateCycleDeployLineage:
             json={"squad_profile_id": "full", "request_profile": "selftest"},
         )
 
-        assert resp.status_code == 200, resp.text
+        assert resp.status_code == 201, resp.text
         (cycle,) = mock_cycle_registry.create_cycle.call_args[0]
         assert cycle.deploy_id == "dep_latest"
         record = await deploys.get(cycle.deploy_id)
@@ -303,7 +303,7 @@ class TestCreateCycleDeployLineage:
             json={"squad_profile_id": "full", "request_profile": "selftest"},
         )
 
-        assert resp.status_code == 200, resp.text
+        assert resp.status_code == 201, resp.text
         (cycle,) = mock_cycle_registry.create_cycle.call_args[0]
         assert cycle.deploy_id is None
 
@@ -667,7 +667,7 @@ class TestCreateCyclePreflight:
     def test_full_squad_with_unverifiable_models_is_allowed(self, client):
         """Roles satisfied + LLM backend unreachable (None) → warn-and-allow → 200."""
         resp = client.post("/api/v1/projects/hello_squad/cycles", json=self._REQUEST)
-        assert resp.status_code == 200
+        assert resp.status_code == 201
 
     def test_an_unnamed_sandbox_provider_refuses_the_create_before_persist(
         self, client, mock_cycle_registry, monkeypatch
@@ -730,14 +730,14 @@ class TestCreateCyclePreflight:
             new=AsyncMock(return_value=["gpt-4:latest"]),
         ):
             resp = client.post("/api/v1/projects/hello_squad/cycles", json=self._REQUEST)
-        assert resp.status_code == 200
+        assert resp.status_code == 201
 
     def test_warn_and_allow_surfaces_the_warning_on_the_response(self, client):
         """Phase 4: an unreachable backend (None) → created, but the response carries a
         `model_unverifiable` warning so the operator isn't left in the dark."""
         # no LLM port is wired in this test → _pulled_model_names() returns None
         resp = client.post("/api/v1/projects/hello_squad/cycles", json=self._REQUEST)
-        assert resp.status_code == 200
+        assert resp.status_code == 201
         warnings = resp.json()["warnings"]
         # Availability is this test's subject. #1145 added a second, independent check
         # (model_unregistered), and `gpt-4` is a stand-in with no MODEL_SPECS entry, so
@@ -753,7 +753,7 @@ class TestCreateCyclePreflight:
             new=AsyncMock(return_value=["gpt-4:latest"]),
         ):
             resp = client.post("/api/v1/projects/hello_squad/cycles", json=self._REQUEST)
-        assert resp.status_code == 200
+        assert resp.status_code == 201
         # Scoped to availability for the reason above: `gpt-4` is pulled here but has no
         # MODEL_SPECS entry, which #1145's check reports separately and correctly.
         assert [w for w in resp.json()["warnings"] if w["code"] != "model_unregistered"] == []
@@ -833,7 +833,7 @@ class TestCreateReadsTheBox:
         [
             ("qwen3.8:27b", _DECLARED, True, 409, "supervisor_holds_the_box"),
             ("qwen2.5:3b-instruct", "9" * 64, False, 409, "box_not_quiet"),
-            ("qwen3.8:27b", _DECLARED, False, 200, None),
+            ("qwen3.8:27b", _DECLARED, False, 201, None),
         ],
         ids=["the-supervisor-holds-it", "a-crew-model-is-resident", "quiet"],
     )
@@ -992,7 +992,7 @@ class TestCreatePinsTheMemorySnapshot:
         resp = client.post(self._URL, json={**self._REQUEST, **declared})
 
         snapshot = await store.get_snapshot(UnitKind.CYCLE, resp.json()["cycle_id"])
-        assert resp.status_code == 200
+        assert resp.status_code == 201
         assert snapshot.disabled is disabled
         carried = [e.revision.revision_id for e in snapshot.entries]
         assert carried == ([] if disabled else [lesson.revision_id])
@@ -1024,6 +1024,6 @@ class TestCreatePinsTheMemorySnapshot:
 
         resp = client.post(self._URL, json=self._REQUEST)
 
-        assert resp.status_code == 200
+        assert resp.status_code == 201
         mock_cycle_registry.create_run.assert_called_once()
         assert "memory_snapshot_not_pinned" in caplog.text
