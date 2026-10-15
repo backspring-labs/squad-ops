@@ -16,6 +16,7 @@ import pytest
 import pytest_asyncio
 
 from adapters.persistence.pool import create_pool
+from adapters.persistence.transient import TransientRetry
 from squadops.cycles.models import (
     Cycle,
     CycleStatus,
@@ -31,6 +32,9 @@ from squadops.cycles.models import (
     ValidationError,
 )
 from tests.integration.conftest import integration_postgres_dsn
+
+#: #1976: one try, so a test sees the registry's own behaviour, never a retry.
+ONE_TRY = TransientRetry(attempts=1, backoff_seconds=0.0)
 
 pytestmark = [pytest.mark.docker, pytest.mark.domain_orchestration]
 
@@ -118,7 +122,7 @@ async def registry(migrated_pool):
     """Fresh PostgresCycleRegistry backed by real Postgres."""
     from adapters.cycles.postgres_cycle_registry import PostgresCycleRegistry
 
-    return PostgresCycleRegistry(pool=migrated_pool)
+    return PostgresCycleRegistry(pool=migrated_pool, retry=ONE_TRY)
 
 
 def _make_cycle(**overrides) -> Cycle:
@@ -922,7 +926,7 @@ class TestPersistenceAcrossAdapterRestart:
         from adapters.cycles.postgres_cycle_registry import PostgresCycleRegistry
 
         # Adapter instance 1: create data
-        registry1 = PostgresCycleRegistry(pool=migrated_pool)
+        registry1 = PostgresCycleRegistry(pool=migrated_pool, retry=ONE_TRY)
         cycle = _make_cycle()
         await registry1.create_cycle(cycle)
         run = _make_run(cycle.cycle_id)
@@ -930,7 +934,7 @@ class TestPersistenceAcrossAdapterRestart:
         await registry1.update_run_status(created_run.run_id, RunStatus.RUNNING)
 
         # "Restart": create a completely new adapter instance
-        registry2 = PostgresCycleRegistry(pool=migrated_pool)
+        registry2 = PostgresCycleRegistry(pool=migrated_pool, retry=ONE_TRY)
 
         # Verify cycle survives
         fetched_cycle = await registry2.get_cycle(cycle.cycle_id)

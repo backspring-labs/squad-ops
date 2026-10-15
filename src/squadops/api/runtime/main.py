@@ -319,11 +319,18 @@ async def _init_cycle_subsystem(state, config, pool) -> None:
         create_squad_profile_port,
     )
     from adapters.cycles.workflow_tracker_factory import create_workflow_tracker
+    from adapters.persistence.transient import TransientRetry
 
     project_registry = create_project_registry("config")
+    # #1976: a transient database failure is retried inside the registry, never by its callers.
+    db_retry = TransientRetry(config.db.retry.attempts, config.db.retry.backoff_seconds)
     cycle_registry = create_cycle_registry(
         config.cycles.registry_provider,
-        **({"pool": pool} if config.cycles.registry_provider == "postgres" else {}),
+        **(
+            {"pool": pool, "retry": db_retry}
+            if config.cycles.registry_provider == "postgres"
+            else {}
+        ),
     )
     # #1720: the deploy records live beside the cycles, chosen by the same selector.
     deploy_registry = create_deploy_registry(

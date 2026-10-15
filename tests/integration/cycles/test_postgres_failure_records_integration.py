@@ -18,10 +18,14 @@ import pytest_asyncio
 
 from adapters.cycles.postgres_cycle_registry import PostgresCycleRegistry
 from adapters.persistence.pool import create_pool
+from adapters.persistence.transient import TransientRetry
 from squadops.cycles.failure_attribution import FailureEvent
 from squadops.cycles.failure_records import failure_records
 from squadops.cycles.models import Cycle, TaskFlowPolicy
 from tests.integration.conftest import integration_postgres_dsn
+
+#: #1976: one try, so a test sees the registry's own behaviour, never a retry.
+ONE_TRY = TransientRetry(attempts=1, backoff_seconds=0.0)
 
 pytestmark = [pytest.mark.docker, pytest.mark.domain_orchestration]
 
@@ -83,7 +87,7 @@ async def registry():
             )
         await conn.execute("DELETE FROM cycle_runs WHERE cycle_id = $1", "cyc_fr1")
         await conn.execute("DELETE FROM cycle_registry WHERE project_id = $1", PROJECT)
-    reg = PostgresCycleRegistry(pool=pool)
+    reg = PostgresCycleRegistry(pool=pool, retry=ONE_TRY)
     await reg.create_cycle(
         Cycle(
             cycle_id="cyc_fr1",

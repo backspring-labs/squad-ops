@@ -58,6 +58,19 @@ class PoolConfig(BaseModel):
     timeout_seconds: int = Field(default=30, ge=1, description="Pool timeout in seconds")
 
 
+class DBRetryConfig(BaseModel):
+    """Retry on a transient database error inside the Postgres adapters (#1976): a connection that
+    could not be made, or a transaction Postgres rolled back (a serialization failure or a
+    deadlock). Never a whole method, and never a connection lost mid-statement."""
+
+    attempts: int = Field(
+        default=3, ge=1, le=10, description="Tries for a transient failure, the first included"
+    )
+    backoff_seconds: float = Field(
+        default=0.05, ge=0, le=5, description="The first pause between tries; it doubles each time"
+    )
+
+
 class MigrationConfig(BaseModel):
     """Migration execution configuration."""
 
@@ -91,6 +104,9 @@ class DBConfig(BaseModel):
     )
     ssl: SSLConfig | None = Field(default=None, description="SSL/TLS configuration")
     pool: PoolConfig | None = Field(default=None, description="Connection pool configuration")
+    retry: DBRetryConfig = Field(
+        default_factory=DBRetryConfig, description="Retry on a transient database error (#1976)"
+    )
     migrations: MigrationConfig | None = Field(
         default=None, description="Migration execution configuration"
     )
