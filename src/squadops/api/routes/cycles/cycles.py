@@ -14,8 +14,10 @@ from squadops import __version__ as SQUADOPS_VERSION
 from squadops._version import resolve_git_sha
 from squadops.api.cycle_schemas import (
     CycleAssessmentResponse,
+    CycleCancelResponse,
     CycleCreateRequest,
     CycleCreateResponse,
+    CycleResponse,
     PreflightWarningDTO,
     ProposalRatingRequest,
     ProposalRatingResponse,
@@ -459,14 +461,14 @@ async def prepare_cycle(
     return PreparedCycle(cycle, first_run(cycle, initiated_by=initiated_by), preflight_warnings)
 
 
-@router.post("")
+@router.post("", status_code=201)
 async def create_cycle(
     request: Request,
     project_id: str,
     body: CycleCreateRequest,
     background_tasks: BackgroundTasks,
     identity: Identity | None = Depends(require_scopes(Scope.CYCLES_WRITE)),
-):
+) -> CycleCreateResponse:
     """Create a Cycle + first Run (T17: atomic).
 
     SIP-0066: After persisting, enqueues execute_run as a background task.
@@ -595,7 +597,7 @@ async def list_cycles(
     status: CycleStatus | None = None,
     limit: int = Query(50, ge=1, le=500),
     offset: int = Query(0, ge=0),
-):
+) -> list[CycleResponse]:
     """A page of the project's cycles, newest first; ``status`` filters before the page
     (#1891). A full page means there may be more: ask again from ``offset + limit``."""
     from squadops.api.runtime.deps import get_cycle_registry
@@ -608,7 +610,7 @@ async def list_cycles(
 
 
 @router.get("/{cycle_id}", dependencies=[Depends(require_scopes(Scope.CYCLES_READ))])
-async def get_cycle(request: Request, project_id: str, cycle_id: str):
+async def get_cycle(request: Request, project_id: str, cycle_id: str) -> CycleResponse:
     from squadops.api.runtime.deps import get_cycle_registry
 
     registry = get_cycle_registry(request)
@@ -728,7 +730,7 @@ async def rate_proposal(
 
 
 @router.post("/{cycle_id}/cancel", dependencies=[Depends(require_scopes(Scope.CYCLES_WRITE))])
-async def cancel_cycle(request: Request, project_id: str, cycle_id: str):
+async def cancel_cycle(request: Request, project_id: str, cycle_id: str) -> CycleCancelResponse:
     from squadops.api.routes.cycles.cancellation import cancel_cycle_by_the_existing_path
 
     return await cancel_cycle_by_the_existing_path(request, project_id, cycle_id)

@@ -11,10 +11,12 @@ from datetime import UTC, datetime
 from fastapi import APIRouter, Depends, Request
 
 from squadops.api.cycle_schemas import (
+    ActiveProfileSetResponse,
     ProfileCloneRequest,
     ProfileCreateRequest,
     ProfileUpdateRequest,
     SetActiveProfileRequest,
+    SquadProfileResponse,
 )
 from squadops.api.middleware.auth import require_scopes
 from squadops.api.routes.cycles.mapping import profile_to_response
@@ -98,7 +100,7 @@ async def _check_model_availability(
 
 
 @router.get("", dependencies=[Depends(require_scopes(Scope.CYCLES_READ))])
-async def list_profiles(request: Request):
+async def list_profiles(request: Request) -> list[SquadProfileResponse]:
     from squadops.api.runtime.deps import get_squad_profile_port
 
     port = get_squad_profile_port(request)
@@ -108,7 +110,7 @@ async def list_profiles(request: Request):
 
 
 @router.get("/active", dependencies=[Depends(require_scopes(Scope.CYCLES_READ))])
-async def get_active_profile(request: Request):
+async def get_active_profile(request: Request) -> SquadProfileResponse:
     from squadops.api.runtime.deps import get_squad_profile_port
 
     port = get_squad_profile_port(request)
@@ -117,16 +119,18 @@ async def get_active_profile(request: Request):
 
 
 @router.post("/active", dependencies=[Depends(require_scopes(Scope.CYCLES_WRITE))])
-async def set_active_profile(request: Request, body: SetActiveProfileRequest):
+async def set_active_profile(
+    request: Request, body: SetActiveProfileRequest
+) -> ActiveProfileSetResponse:
     from squadops.api.runtime.deps import get_squad_profile_port
 
     port = get_squad_profile_port(request)
     await port.set_active_profile(body.profile_id)
-    return {"status": "ok", "active_profile_id": body.profile_id}
+    return ActiveProfileSetResponse(status="ok", active_profile_id=body.profile_id)
 
 
-@router.post("", dependencies=[Depends(require_scopes(Scope.CYCLES_WRITE))])
-async def create_profile(request: Request, body: ProfileCreateRequest):
+@router.post("", status_code=201, dependencies=[Depends(require_scopes(Scope.CYCLES_WRITE))])
+async def create_profile(request: Request, body: ProfileCreateRequest) -> SquadProfileResponse:
     from squadops.api.runtime.deps import get_squad_profile_port
 
     agents = _validate_agent_request(body.agents)
@@ -148,7 +152,9 @@ async def create_profile(request: Request, body: ProfileCreateRequest):
 
 
 @router.put("/{profile_id}", dependencies=[Depends(require_scopes(Scope.CYCLES_WRITE))])
-async def update_profile(request: Request, profile_id: str, body: ProfileUpdateRequest):
+async def update_profile(
+    request: Request, profile_id: str, body: ProfileUpdateRequest
+) -> SquadProfileResponse:
     from squadops.api.runtime.deps import get_squad_profile_port
 
     agents = None
@@ -171,8 +177,14 @@ async def update_profile(request: Request, profile_id: str, body: ProfileUpdateR
     )
 
 
-@router.post("/{profile_id}/clone", dependencies=[Depends(require_scopes(Scope.CYCLES_WRITE))])
-async def clone_profile(request: Request, profile_id: str, body: ProfileCloneRequest):
+@router.post(
+    "/{profile_id}/clone",
+    status_code=201,
+    dependencies=[Depends(require_scopes(Scope.CYCLES_WRITE))],
+)
+async def clone_profile(
+    request: Request, profile_id: str, body: ProfileCloneRequest
+) -> SquadProfileResponse:
     from squadops.api.runtime.deps import get_squad_profile_port
 
     port = get_squad_profile_port(request)
@@ -191,17 +203,18 @@ async def clone_profile(request: Request, profile_id: str, body: ProfileCloneReq
     return profile_to_response(created, warnings=warnings)
 
 
-@router.delete("/{profile_id}", dependencies=[Depends(require_scopes(Scope.CYCLES_WRITE))])
-async def delete_profile(request: Request, profile_id: str):
+@router.delete(
+    "/{profile_id}", status_code=204, dependencies=[Depends(require_scopes(Scope.CYCLES_WRITE))]
+)
+async def delete_profile(request: Request, profile_id: str) -> None:
     from squadops.api.runtime.deps import get_squad_profile_port
 
     port = get_squad_profile_port(request)
     await port.delete_profile(profile_id)
-    return {"status": "deleted", "profile_id": profile_id}
 
 
 @router.post("/{profile_id}/activate", dependencies=[Depends(require_scopes(Scope.CYCLES_WRITE))])
-async def activate_profile(request: Request, profile_id: str):
+async def activate_profile(request: Request, profile_id: str) -> SquadProfileResponse:
     from squadops.api.runtime.deps import get_squad_profile_port
 
     port = get_squad_profile_port(request)
@@ -210,7 +223,7 @@ async def activate_profile(request: Request, profile_id: str):
 
 
 @router.get("/{profile_id}", dependencies=[Depends(require_scopes(Scope.CYCLES_READ))])
-async def get_profile(request: Request, profile_id: str):
+async def get_profile(request: Request, profile_id: str) -> SquadProfileResponse:
     from squadops.api.runtime.deps import get_squad_profile_port
 
     port = get_squad_profile_port(request)

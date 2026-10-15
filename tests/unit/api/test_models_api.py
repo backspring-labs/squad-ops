@@ -150,8 +150,8 @@ class TestPullStatus:
 class TestDeleteModel:
     def test_deletes_model(self, client):
         resp = client.delete("/api/v1/models/qwen2.5:7b")
-        assert resp.status_code == 200
-        assert resp.json()["status"] == "deleted"
+        assert resp.status_code == 204
+        assert resp.content == b""
 
     def test_not_found(self, client, mock_llm_port):
         from squadops.llm.exceptions import LLMModelNotFoundError

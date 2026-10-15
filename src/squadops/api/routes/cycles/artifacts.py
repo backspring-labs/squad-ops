@@ -7,8 +7,13 @@ import uuid
 from datetime import UTC, datetime
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Request, UploadFile
+from fastapi.responses import Response
 
-from squadops.api.cycle_schemas import BaselinePromoteRequest
+from squadops.api.cycle_schemas import (
+    ArtifactRefResponse,
+    BaselinePromotedResponse,
+    BaselinePromoteRequest,
+)
 from squadops.api.middleware.auth import require_scopes
 from squadops.api.routes.cycles.mapping import artifact_to_response
 from squadops.auth.models import Scope
@@ -31,6 +36,7 @@ _VALID_PROMOTION_STATUSES = {PromotionStatus.WORKING, PromotionStatus.PROMOTED}
 
 @router.post(
     "/projects/{project_id}/artifacts/ingest",
+    status_code=201,
     dependencies=[Depends(require_scopes(Scope.CYCLES_WRITE))],
 )
 async def ingest_artifact(
@@ -40,7 +46,7 @@ async def ingest_artifact(
     artifact_type: str = Form(...),
     filename: str = Form(...),
     media_type: str = Form(...),
-):
+) -> ArtifactRefResponse:
     """Ingest an artifact via multipart/form-data (T16)."""
     from squadops.api.runtime.deps import get_artifact_vault
     from squadops.cycles.artifact_names import artifact_filename_refusal
@@ -109,7 +115,7 @@ async def ingest_artifact(
 
 
 @router.get("/artifacts/{artifact_id}", dependencies=[Depends(require_scopes(Scope.CYCLES_READ))])
-async def get_artifact_metadata(request: Request, artifact_id: str):
+async def get_artifact_metadata(request: Request, artifact_id: str) -> ArtifactRefResponse:
     from squadops.api.runtime.deps import get_artifact_vault
 
     vault = get_artifact_vault(request)
@@ -118,15 +124,15 @@ async def get_artifact_metadata(request: Request, artifact_id: str):
 
 
 @router.get(
-    "/artifacts/{artifact_id}/download", dependencies=[Depends(require_scopes(Scope.CYCLES_READ))]
+    "/artifacts/{artifact_id}/download",
+    response_class=Response,
+    dependencies=[Depends(require_scopes(Scope.CYCLES_READ))],
 )
-async def download_artifact(request: Request, artifact_id: str):
+async def download_artifact(request: Request, artifact_id: str) -> Response:
     from squadops.api.runtime.deps import get_artifact_vault
 
     vault = get_artifact_vault(request)
     ref, content = await vault.retrieve(artifact_id)
-    from fastapi.responses import Response
-
     return Response(
         content=content,
         media_type=ref.media_type,
@@ -137,7 +143,7 @@ async def download_artifact(request: Request, artifact_id: str):
 @router.post(
     "/artifacts/{artifact_id}/promote", dependencies=[Depends(require_scopes(Scope.CYCLES_WRITE))]
 )
-async def promote_artifact(request: Request, artifact_id: str):
+async def promote_artifact(request: Request, artifact_id: str) -> ArtifactRefResponse:
     """Promote an artifact to cycle-scoped canonical status (SIP-0076 §9.5)."""
     from squadops.api.runtime.deps import get_artifact_vault
 
@@ -171,7 +177,7 @@ async def list_project_artifacts(
     project_id: str,
     artifact_type: str | None = None,
     promotion_status: str | None = None,
-):
+) -> list[ArtifactRefResponse]:
     from squadops.api.runtime.deps import get_artifact_vault
 
     if promotion_status is not None and promotion_status not in _VALID_PROMOTION_STATUSES:
@@ -197,7 +203,7 @@ async def list_cycle_artifacts(
     project_id: str,
     cycle_id: str,
     promotion_status: str | None = None,
-):
+) -> list[ArtifactRefResponse]:
     from squadops.api.runtime.deps import get_artifact_vault
 
     if promotion_status is not None and promotion_status not in _VALID_PROMOTION_STATUSES:
@@ -224,7 +230,7 @@ async def list_run_artifacts(
     cycle_id: str,
     run_id: str,
     promotion_status: str | None = None,
-):
+) -> list[ArtifactRefResponse]:
     from squadops.api.runtime.deps import get_artifact_vault
 
     if promotion_status is not None and promotion_status not in _VALID_PROMOTION_STATUSES:
@@ -248,7 +254,7 @@ async def list_run_artifacts(
 )
 async def promote_baseline(
     request: Request, project_id: str, artifact_type: str, body: BaselinePromoteRequest
-):
+) -> BaselinePromotedResponse:
     """Promote an artifact as baseline (T6: enforcement here, not in vault)."""
     from squadops.api.runtime.deps import get_artifact_vault, get_cycle_registry
 
@@ -274,14 +280,16 @@ async def promote_baseline(
         )
 
     await vault.set_baseline(project_id, artifact_type, body.artifact_id)
-    return {"status": "ok", "project_id": project_id, "artifact_type": artifact_type}
+    return BaselinePromotedResponse(status="ok", project_id=project_id, artifact_type=artifact_type)
 
 
 @router.get(
     "/projects/{project_id}/baseline/{artifact_type}",
     dependencies=[Depends(require_scopes(Scope.CYCLES_READ))],
 )
-async def get_baseline(request: Request, project_id: str, artifact_type: str):
+async def get_baseline(
+    request: Request, project_id: str, artifact_type: str
+) -> ArtifactRefResponse:
     from squadops.api.runtime.deps import get_artifact_vault
 
     vault = get_artifact_vault(request)
@@ -296,7 +304,7 @@ async def get_baseline(request: Request, project_id: str, artifact_type: str):
 @router.get(
     "/projects/{project_id}/baseline", dependencies=[Depends(require_scopes(Scope.CYCLES_READ))]
 )
-async def list_baselines(request: Request, project_id: str):
+async def list_baselines(request: Request, project_id: str) -> dict[str, ArtifactRefResponse]:
     from squadops.api.runtime.deps import get_artifact_vault
 
     vault = get_artifact_vault(request)

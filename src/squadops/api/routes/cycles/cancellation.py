@@ -27,6 +27,7 @@ import logging
 
 from fastapi import Request
 
+from squadops.api.cycle_schemas import CycleCancelResponse
 from squadops.api.runtime.deps import (
     get_activity_port,
     get_cancel_queue_port,
@@ -199,7 +200,9 @@ async def abort_cancelled_cycle_activities(request: Request, cycle_id: str) -> i
     return aborted
 
 
-async def cancel_cycle_by_the_existing_path(request, project_id: str, cycle_id: str) -> dict:
+async def cancel_cycle_by_the_existing_path(
+    request, project_id: str, cycle_id: str
+) -> CycleCancelResponse:
     """Cancel a cycle everywhere it lives: its flag, its event, its Prefect flow runs, its
     in-flight runs, its focus leases and its open activities, telling its agents first.
 
@@ -253,11 +256,11 @@ async def cancel_cycle_by_the_existing_path(request, project_id: str, cycle_id: 
     # that agent's activity tracking.
     activities_ended = await abort_cancelled_cycle_activities(request, cycle_id)
 
-    return {
-        "status": "cancelled",
-        "cycle_id": cycle_id,
-        "prefect_flow_runs_cancelled": cancelled,
-        "focus_leases_released": leases_released,
-        "activities_ended": activities_ended,
-        "agents_notified": agents_notified,
-    }
+    return CycleCancelResponse(
+        status="cancelled",
+        cycle_id=cycle_id,
+        prefect_flow_runs_cancelled=cancelled,
+        focus_leases_released=leases_released,
+        activities_ended=activities_ended,
+        agents_notified=agents_notified,
+    )
