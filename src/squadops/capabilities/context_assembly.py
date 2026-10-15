@@ -629,8 +629,8 @@ def manifest_surface_fragments(
         return {}
     # #1029 lives in the module that owns the derivation, not in scaffold.py: the
     # response floor already has one home and a second copy would be a second answer.
-    from squadops.capabilities.response_shape import response_surface_instructions
-    from squadops.capabilities.scaffold import (
+    from squadops.stacks.response_shape import response_surface_instructions
+    from squadops.stacks.scaffold import (
         client_surface_instructions,
         error_seam_instructions,
         frozen_surface_index_lines,

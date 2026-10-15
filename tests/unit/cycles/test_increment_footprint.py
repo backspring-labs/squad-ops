@@ -194,9 +194,9 @@ async def test_the_plan_author_is_shown_the_footprint_before_the_gate_refuses():
     from adapters.prompts.factory import create_prompt_asset_source
     from squadops.campaigns.increment_tree import increment_footprint
     from squadops.capabilities.handlers._plan_authoring import contract_surface_sections
-    from squadops.capabilities.scaffold import InterfaceManifest
     from squadops.cycles.task_plan import inject_contract_inputs
     from squadops.prompts.renderer import RequestTemplateRenderer
+    from squadops.stacks.scaffold import InterfaceManifest
 
     footprint = increment_footprint(
         _cycle(True).resolved_config(), InterfaceManifest.from_yaml(CANDIDATE)
@@ -226,9 +226,9 @@ def test_an_increment_framing_plan_carries_its_footprint_to_the_plan_author():
     """Wiring, entered at ``generate_task_plan`` — what a framing run's provisioning calls.
     Bug caught: the footprint derived nowhere on the live path, so the appendix a test
     renders by hand never reaches an author."""
-    from squadops.capabilities.scaffold import InterfaceManifest
     from squadops.cycles.models import AgentProfileEntry, SquadProfile
     from squadops.cycles.task_plan import generate_task_plan
+    from squadops.stacks.scaffold import InterfaceManifest
 
     profile = SquadProfile(
         profile_id="full",
@@ -280,12 +280,12 @@ async def test_the_footprint_names_apart_the_files_the_scaffold_regenerates():
     for; or dropped from what the author is shown altogether, so it is not told they change."""
     from adapters.prompts.factory import create_prompt_asset_source
     from squadops.capabilities.handlers._plan_authoring import contract_surface_sections
-    from squadops.capabilities.scaffold import InterfaceManifest
-    from squadops.capabilities.scaffold_contract import emit_contract_yaml
     from squadops.cycles.models import AgentProfileEntry, SquadProfile
     from squadops.cycles.task_plan import generate_task_plan
     from squadops.cycles.verification_contract import VerificationContract
     from squadops.prompts.renderer import RequestTemplateRenderer
+    from squadops.stacks.scaffold import InterfaceManifest
+    from squadops.stacks.scaffold_contract import emit_contract_yaml
 
     candidate = InterfaceManifest.from_yaml(CANDIDATE)
     contract = VerificationContract.from_yaml(emit_contract_yaml(candidate))
@@ -386,7 +386,7 @@ def test_an_increments_framing_runs_the_plan_proposers(profile_name):
             )
         ),
     )
-    from squadops.capabilities.scaffold import InterfaceManifest
+    from squadops.stacks.scaffold import InterfaceManifest
 
     cycle = _cycle(True)
     cycle = dataclasses.replace(

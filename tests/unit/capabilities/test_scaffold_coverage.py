@@ -15,8 +15,8 @@ from pathlib import Path
 import pytest
 import yaml
 
-from squadops.capabilities.scaffold import InterfaceManifest
-from squadops.capabilities.scaffold_coverage import (
+from squadops.stacks.scaffold import InterfaceManifest
+from squadops.stacks.scaffold_coverage import (
     derive_scaffold_coverage,
     slot_routes,
     summarize_coverage,

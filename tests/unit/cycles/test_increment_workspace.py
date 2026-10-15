@@ -256,7 +256,7 @@ async def test_an_increment_s_frozen_files_are_its_candidate_s_not_the_accepted_
     the skeleton the candidate regenerated, and no repair can rewrite a frozen file. Bugs
     caught: a carried-over frozen file shadowing the regenerated one; or the accepted tree's
     implementation lost with it."""
-    from squadops.capabilities.scaffold import InterfaceManifest, frozen_paths
+    from squadops.stacks.scaffold import InterfaceManifest, frozen_paths
 
     assert "backend/models.py" in frozen_paths(InterfaceManifest.from_yaml(_MANIFEST))
     # As the accepted cycle stored it: its own skeleton's model, seeded by the scaffold.

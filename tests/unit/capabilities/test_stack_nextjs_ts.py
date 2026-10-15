@@ -30,12 +30,12 @@ from pathlib import Path
 
 import pytest
 
-from squadops.capabilities import scaffold, scaffold_contract
-from squadops.capabilities.development_profiles import DEVELOPMENT_PROFILES, TEST_FRAMEWORK_VITEST
 from squadops.capabilities.handlers import probe_runner as pr
-from squadops.capabilities.scaffold import InterfaceManifest, expand, fill_slot_paths
-from squadops.capabilities.scaffold_contract import emit_contract_dict, emit_contract_yaml
 from squadops.sandbox.environment import get_environment_contract
+from squadops.stacks import scaffold, scaffold_contract
+from squadops.stacks.development_profiles import DEVELOPMENT_PROFILES, TEST_FRAMEWORK_VITEST
+from squadops.stacks.scaffold import InterfaceManifest, expand, fill_slot_paths
+from squadops.stacks.scaffold_contract import emit_contract_dict, emit_contract_yaml
 
 pytestmark = [pytest.mark.domain_capabilities]
 
@@ -394,7 +394,7 @@ class TestStoreUpdateSeam:
 
     @staticmethod
     def _store() -> str:
-        from squadops.capabilities.scaffold import expand
+        from squadops.stacks.scaffold import expand
         from tests.unit.capabilities._stack_fixtures import manifest_for_stack
 
         tree = {f["name"]: f["content"] for f in expand(manifest_for_stack("nextjs_ts"))}
@@ -422,7 +422,7 @@ class TestStoreUpdateSeam:
         the reason the previous absence cost two rolls. The index derives from the tree,
         so this asserts the derivation reaches the brief rather than that a list was
         edited."""
-        from squadops.capabilities.scaffold import frozen_surface_index_lines
+        from squadops.stacks.scaffold import frozen_surface_index_lines
         from tests.unit.capabilities._stack_fixtures import manifest_for_stack
 
         store_line = next(
@@ -454,7 +454,7 @@ def test_ts_type_passes_declared_names_through_and_keeps_the_string_fallback(raw
     """#1096: `list[Participant]` rendered `string[]` because the token was lower-cased and
     then looked up as a primitive. A declared name must survive case-preserved; an
     undeclared token must still fall to `string`, never `any`."""
-    from squadops.capabilities.stack_nextjs_ts import _ts_type
+    from squadops.stacks.stack_nextjs_ts import _ts_type
 
     assert _ts_type(raw, {"Participant"}) == expected
 
@@ -478,7 +478,7 @@ def test_the_frozen_model_and_the_response_floor_pin_the_same_element_kind():
     field whose element is a declared entity, the floor asserts the element's required
     fields and the model must declare the element's interface — the same manifest fact,
     rendered twice, must not read differently."""
-    from squadops.capabilities.response_shape import derive_response_shape
+    from squadops.stacks.response_shape import derive_response_shape
 
     manifest = _manifest()
     models = next(f["content"] for f in expand(manifest) if f["name"] == "lib/models.ts")

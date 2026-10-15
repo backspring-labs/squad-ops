@@ -230,11 +230,11 @@ def shell_region_evidence(
     plain hash — so a mismatch names WHICH layer moved, which is the whole point of the
     attribution fields (SIP §4.3).
     """
-    from squadops.capabilities.verification_scaffold import (
+    from squadops.cycles.task_outcome import ContractComplianceViolation
+    from squadops.stacks.verification_scaffold import (
         ScaffoldSpineError,
         spine_hash,
     )
-    from squadops.cycles.task_outcome import ContractComplianceViolation
 
     attempted_spine: str | None
     try:

@@ -343,6 +343,6 @@ def _is_test_file(path: str, patterns: tuple[str, ...]) -> bool:
     convention this way (#1014, ``adapters/cycles/correction_repair.py``); the two exclusions
     now agree on it.
     """
-    from squadops.capabilities.development_profiles import matches_test_file_patterns
+    from squadops.stacks.development_profiles import matches_test_file_patterns
 
     return matches_test_file_patterns(path, patterns) or "/__tests__/" in f"/{path}"

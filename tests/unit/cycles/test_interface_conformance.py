@@ -136,7 +136,7 @@ def test_unparseable_file_never_raises():
 def test_real_group_run_manifest_pf13_multi_drift():
     from pathlib import Path
 
-    from squadops.capabilities.scaffold import InterfaceManifest
+    from squadops.stacks.scaffold import InterfaceManifest
 
     manifest = InterfaceManifest.from_yaml(
         Path("examples/03_group_run/interface_manifest.yaml").read_text(encoding="utf-8")

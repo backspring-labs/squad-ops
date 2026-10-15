@@ -30,9 +30,9 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 
 from adapters.noop.ports import NoOpFailurePatternRecall
-from squadops.capabilities import scaffold
 from squadops.capabilities.handlers.build_profiles import BUILD_PROFILES
-from squadops.capabilities.scaffold import InterfaceManifest, ScaffoldStack
+from squadops.stacks import scaffold
+from squadops.stacks.scaffold import InterfaceManifest, ScaffoldStack
 
 pytestmark = [pytest.mark.domain_contracts]
 
@@ -127,7 +127,7 @@ async def test_an_expansion_failure_stays_tolerant(monkeypatch):
 
     # BuildProfile is frozen and its expander import is function-local, so the seam is the
     # scaffold's `expand` itself — resolved fresh on every call.
-    monkeypatch.setattr("squadops.capabilities.scaffold.expand", _boom, raising=True)
+    monkeypatch.setattr("squadops.stacks.scaffold.expand", _boom, raising=True)
 
     result = await _executor()._seed_skeleton_artifacts(
         _manifest("fullstack_fastapi_react"), MagicMock(), "run_x"

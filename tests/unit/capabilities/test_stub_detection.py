@@ -16,8 +16,8 @@ from squadops.capabilities.handlers.stub_detection import (
     detect_self_mocking_tests,
     detect_stub_fallback_tests,
 )
-from squadops.capabilities.scaffold import app_invocation_for
-from squadops.capabilities.stack_nextjs_ts import APP_INVOCATION as NEXTJS_APP_INVOCATION
+from squadops.stacks.scaffold import app_invocation_for
+from squadops.stacks.stack_nextjs_ts import APP_INVOCATION as NEXTJS_APP_INVOCATION
 
 pytestmark = [pytest.mark.domain_capabilities]
 

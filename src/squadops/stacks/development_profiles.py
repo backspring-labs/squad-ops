@@ -13,7 +13,7 @@ from collections.abc import Mapping
 from dataclasses import dataclass
 from typing import Any
 
-from squadops.capabilities.stack_nextjs_ts import VITEST_SUITE_GLOB
+from squadops.stacks.stack_nextjs_ts import VITEST_SUITE_GLOB
 
 # ---------------------------------------------------------------------------
 # Test framework constants (D5)
@@ -544,7 +544,7 @@ def effective_development_profile(resolved_config: Mapping[str, Any] | None) -> 
     validators and prompt builders that must not crash on a config preflight already
     refuses, and picking the conservative Python capability is what they did before.
     """
-    from squadops.capabilities.scaffold import resolve_development_profile
+    from squadops.stacks.scaffold import resolve_development_profile
 
     return resolve_development_profile(resolved_config) or DEFAULT_DEVELOPMENT_PROFILE
 

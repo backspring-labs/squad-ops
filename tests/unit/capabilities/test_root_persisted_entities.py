@@ -13,7 +13,7 @@ from __future__ import annotations
 
 import pytest
 
-from squadops.capabilities.scaffold import InterfaceManifest, root_persisted_entities
+from squadops.stacks.scaffold import InterfaceManifest, root_persisted_entities
 
 pytestmark = [pytest.mark.domain_capabilities]
 
@@ -185,7 +185,7 @@ def test_containment_is_read_per_resource_so_two_roots_stay_two():
     ],
 )
 def test_the_resource_prefix_is_the_path_before_its_first_parameter(path, prefix):
-    from squadops.capabilities.scaffold import _resource_prefix
+    from squadops.stacks.scaffold import _resource_prefix
 
     assert _resource_prefix(path) == prefix
 
@@ -208,7 +208,7 @@ def test_equal_field_sets_under_one_resource_are_both_kept():
 
 
 def test_shape_entities_is_the_complement_in_declaration_order():
-    from squadops.capabilities.scaffold import shape_entities
+    from squadops.stacks.scaffold import shape_entities
 
     m = _detail_manifest(
         """    - { method: POST, path: /runs, response: Run }

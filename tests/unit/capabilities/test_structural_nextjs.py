@@ -12,8 +12,8 @@ from __future__ import annotations
 import pytest
 
 from squadops.capabilities.anchored_edits import apply_anchored_edits, parse_anchored_edits
-from squadops.capabilities.scaffold import expand
 from squadops.cycles.structural_resolution import syntax_error
+from squadops.stacks.scaffold import expand
 from tests.unit.capabilities._stack_fixtures import manifest_for_stack
 
 pytestmark = [pytest.mark.domain_capabilities]

@@ -1193,7 +1193,7 @@ class TestErrorSeamThreading:
     def _manifest():
         from pathlib import Path
 
-        from squadops.capabilities.scaffold import InterfaceManifest
+        from squadops.stacks.scaffold import InterfaceManifest
 
         repo_root = Path(__file__).resolve().parents[3]
         path = repo_root / "examples" / "03_group_run" / "interface_manifest.yaml"

@@ -11,7 +11,7 @@ from squadops.capabilities.handlers.route_rendering import (
     render_profile_for,
     render_routes,
 )
-from squadops.capabilities.scaffold import render_profile_name_for
+from squadops.stacks.scaffold import render_profile_name_for
 
 PROFILE = render_profile_for("vite_dev_proxy")
 ROUTES = {"/": ("run-list-view",), "/runs/:run_id": ("run-detail-view", "capacity-status")}

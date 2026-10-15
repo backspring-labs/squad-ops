@@ -41,11 +41,11 @@ import re
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any
 
-from squadops.capabilities.response_shape import ResponseShape, derive_response_shape
-from squadops.capabilities.scaffold_contract import _slug
-from squadops.capabilities.stack_nextjs_ts import _segments
-from squadops.capabilities.success_status import success_status_for
-from squadops.capabilities.verification_scaffold import (
+from squadops.stacks.response_shape import ResponseShape, derive_response_shape
+from squadops.stacks.scaffold_contract import _slug
+from squadops.stacks.stack_nextjs_ts import _segments
+from squadops.stacks.success_status import success_status_for
+from squadops.stacks.verification_scaffold import (
     BehaviorSlot,
     ScaffoldDerivationError,
     slot_begin_marker,
@@ -53,7 +53,7 @@ from squadops.capabilities.verification_scaffold import (
 )
 
 if TYPE_CHECKING:  # pragma: no cover - annotations only
-    from squadops.capabilities.scaffold import InterfaceManifest
+    from squadops.stacks.scaffold import InterfaceManifest
 
 #: Where every emitted shell lives. Inside the stack's ``__tests__`` namespace so the
 #: vitest include pattern collects it; the ``.scaffold.test.ts`` suffix marks provenance.
@@ -576,7 +576,7 @@ def derive_scaffold_behaviors(
     its own answer is worse than none: it would drift from the shells silently and
     report a delta that is itself wrong.
     """
-    from squadops.capabilities.scaffold_contract import emit_contract_dict
+    from squadops.stacks.scaffold_contract import emit_contract_dict
 
     contract = emit_contract_dict(manifest)
     probes = contract["behavioral"]["probes"]
@@ -597,7 +597,7 @@ def slot_element_kinds_nextjs_ts(manifest: InterfaceManifest) -> dict[str, dict[
     frozen spine cannot disagree about a field's declared kind (#1094). Behaviors with
     no floor (rejections, conflicts) contribute nothing — their bodies are the envelope's.
     """
-    from squadops.capabilities.response_shape import element_kinds
+    from squadops.stacks.response_shape import element_kinds
 
     behaviors, _ = derive_scaffold_behaviors(manifest)
     out: dict[str, dict[str, Any]] = {}
@@ -617,7 +617,7 @@ def emit_nextjs_ts_verification_scaffold(
     stays per-behavior. Deterministic order: probe twins in probe order, then minted read
     shells in endpoint declaration order.
     """
-    from squadops.capabilities.scaffold_coverage import (
+    from squadops.stacks.scaffold_coverage import (
         probe_routes,
         slot_routes,
         summarize_coverage,

@@ -26,7 +26,7 @@ from __future__ import annotations
 from collections.abc import Mapping
 from typing import Any
 
-from squadops.capabilities.scaffold import is_scaffoldable_stack
+from squadops.stacks.scaffold import is_scaffoldable_stack
 from squadops.tasks.task_types import TaskType
 
 #: The framing stage that authors the manifest (SIP-0103 §3.1). Dev owns it: the manifest
@@ -115,7 +115,7 @@ def open_decisions(manifest_content: str | None) -> tuple[tuple[str, str], ...]:
     id is the author's, and it recurs across framings of one project (``list-ordering``)."""
     if not manifest_content:
         return ()
-    from squadops.capabilities.scaffold import InterfaceManifest
+    from squadops.stacks.scaffold import InterfaceManifest
 
     try:
         manifest = InterfaceManifest.from_yaml(manifest_content)
@@ -213,7 +213,7 @@ def cited_late_answers(manifest_content: str | None) -> dict[str, tuple[str, str
     id)}`` (SIP-0109 §24bm): what a plan gate checks the plan still carries."""
     if not manifest_content:
         return {}
-    from squadops.capabilities.scaffold import InterfaceManifest
+    from squadops.stacks.scaffold import InterfaceManifest
 
     try:
         manifest = InterfaceManifest.from_yaml(manifest_content)

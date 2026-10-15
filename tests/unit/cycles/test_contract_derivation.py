@@ -17,8 +17,6 @@ from pathlib import Path
 
 import pytest
 
-from squadops.capabilities.scaffold import InterfaceManifest
-from squadops.capabilities.scaffold_contract import emit_contract_yaml
 from squadops.cycles.contract_derivation import (
     CONTRACT_ARTIFACT_TYPE,
     ContractDerivationError,
@@ -27,6 +25,8 @@ from squadops.cycles.contract_derivation import (
     is_interface_manifest,
     load_seeded_manifest_content,
 )
+from squadops.stacks.scaffold import InterfaceManifest
+from squadops.stacks.scaffold_contract import emit_contract_yaml
 
 _REFERENCE_MANIFEST = (
     Path(__file__).resolve().parents[3] / "examples" / "03_group_run" / "interface_manifest.yaml"

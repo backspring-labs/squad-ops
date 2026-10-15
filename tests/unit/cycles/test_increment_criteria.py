@@ -138,9 +138,9 @@ def test_the_plan_authors_are_shown_each_criterions_file():
 
     from adapters.prompts.factory import create_prompt_asset_source
     from squadops.capabilities.handlers._plan_authoring import contract_surface_sections
-    from squadops.capabilities.scaffold import InterfaceManifest
     from squadops.cycles.task_plan import generate_task_plan
     from squadops.prompts.renderer import RequestTemplateRenderer
+    from squadops.stacks.scaffold import InterfaceManifest
 
     profile = SquadProfile(
         profile_id="full",

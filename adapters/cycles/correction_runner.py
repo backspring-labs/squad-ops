@@ -246,12 +246,12 @@ def _inject_deterministic_evidence(
       gate rejects such a patch but never says what the right names are, so the
       next attempt guesses again.
     """
-    from squadops.capabilities.scaffold import (
+    from squadops.cycles.contract_expectations import expectation_lines
+    from squadops.cycles.interface_conformance import detect_interface_drift
+    from squadops.stacks.scaffold import (
         error_seam_instructions,
         model_surface_instructions,
     )
-    from squadops.cycles.contract_expectations import expectation_lines
-    from squadops.cycles.interface_conformance import detect_interface_drift
 
     drift = detect_interface_drift(
         interface_manifest,

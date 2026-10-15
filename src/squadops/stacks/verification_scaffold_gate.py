@@ -37,11 +37,11 @@ import json
 import re
 from typing import TYPE_CHECKING
 
-from squadops.capabilities.verification_scaffold import ScaffoldValidationError
+from squadops.stacks.verification_scaffold import ScaffoldValidationError
 
 if TYPE_CHECKING:  # pragma: no cover - annotations only
-    from squadops.capabilities.scaffold import InterfaceManifest
-    from squadops.capabilities.verification_scaffold_emission import (
+    from squadops.stacks.scaffold import InterfaceManifest
+    from squadops.stacks.verification_scaffold_emission import (
         VerificationScaffoldEmission,
     )
 
@@ -82,7 +82,7 @@ def _allowed_statuses(manifest: InterfaceManifest) -> set[int]:
     """Statuses the contract declares — through the deriver's own seam (#772), plus the
     error contract."""
     allowed: set[int] = set()
-    from squadops.capabilities.scaffold import success_status_for
+    from squadops.stacks.scaffold import success_status_for
 
     for ep in manifest.api.endpoints:
         allowed.add(success_status_for(ep))

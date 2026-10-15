@@ -28,15 +28,6 @@ from squadops.capabilities.handlers.build_profiles import (
     ROUTING_FALLBACK_NO_BUILDER,
 )
 from squadops.capabilities.reasoning_policy import REASONING_OVERRIDE_KEY
-from squadops.capabilities.response_shape import declared_field_kinds
-from squadops.capabilities.scaffold import (
-    InterfaceManifest,
-    client_surface_instructions,
-    frozen_surface_index_lines,
-    harness_entry_modules,
-    is_qa_test_path_for_stack,
-    testid_surface_instructions,
-)
 from squadops.cycles.acceptance_check_spec import (
     CHECK_ASSERTION_KINDS,
     CHECK_CLIENT_MOCK_SURFACE,
@@ -72,6 +63,15 @@ from squadops.cycles.models import (
 )
 from squadops.cycles.profile_utils import validate_reasoning_override
 from squadops.cycles.proposed_role_tasks import role_to_id
+from squadops.stacks.response_shape import declared_field_kinds
+from squadops.stacks.scaffold import (
+    InterfaceManifest,
+    client_surface_instructions,
+    frozen_surface_index_lines,
+    harness_entry_modules,
+    is_qa_test_path_for_stack,
+    testid_surface_instructions,
+)
 from squadops.tasks.models import TaskEnvelope
 from squadops.tasks.task_types import TaskType, authors_qa_suite, authors_source
 
@@ -706,7 +706,7 @@ def _increment_criterion_files(
     if not change_request:
         return ()
     from squadops.campaigns.increment_tree import increment_criterion_files
-    from squadops.capabilities.scaffold import scaffold_stack_for
+    from squadops.stacks.scaffold import scaffold_stack_for
 
     return increment_criterion_files(change_request, scaffold_stack_for(resolved_config))
 
@@ -935,14 +935,14 @@ def inject_contract_inputs(
         # surface already derives the same way. Presence-keyed: unopted stacks and
         # manifest-less calls inject nothing and stay byte-identical.
         if task_contract.bind_verification_scaffold and interface_manifest is not None:
-            from squadops.capabilities.scaffold import verification_scaffold_for
-            from squadops.capabilities.verification_scaffold_emission import (
+            from squadops.stacks.scaffold import verification_scaffold_for
+            from squadops.stacks.verification_scaffold_emission import (
                 emit_verification_scaffold,
                 slot_element_kinds,
             )
 
             if verification_scaffold_for(interface_manifest.stack):
-                from squadops.capabilities.scaffold import root_persisted_entities
+                from squadops.stacks.scaffold import root_persisted_entities
 
                 emission = emit_verification_scaffold(interface_manifest)
                 inputs["verification_scaffold"] = {
@@ -1087,7 +1087,7 @@ def _client_mock_surface_criteria(
     suites call route handlers directly) — never a row that can only skip."""
     if not authors_qa_suite(task_type) or contract is None:
         return []
-    from squadops.capabilities.scaffold import client_surface_for
+    from squadops.stacks.scaffold import client_surface_for
 
     stack = contract.skeleton.expander
     surface = client_surface_for(stack)
@@ -1149,9 +1149,9 @@ def _fill_slot_signature_criteria(
     assignment stay restore-owned (SIP-0100), deliberately outside this check."""
     if not authors_source(task_type) or interface_manifest is None:
         return []
-    from squadops.capabilities.scaffold import expand, fill_slot_paths, is_scaffoldable_stack
     from squadops.cycles.bound_scaffold_record import _normalize
     from squadops.cycles.fill_slot_integrity import declared_route_signatures
+    from squadops.stacks.scaffold import expand, fill_slot_paths, is_scaffoldable_stack
 
     if not is_scaffoldable_stack(getattr(interface_manifest, "stack", "")):
         return []

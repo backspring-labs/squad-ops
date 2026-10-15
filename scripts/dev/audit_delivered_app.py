@@ -421,7 +421,7 @@ def _declared_routes(project: str, cycle_id: str) -> tuple[dict, dict]:
     from capture_delivered_app import load_manifest
 
     from squadops.campaigns.increment_tree import declared_routes, route_seeds
-    from squadops.capabilities.scaffold import InterfaceManifest
+    from squadops.stacks.scaffold import InterfaceManifest
 
     manifest = InterfaceManifest.from_yaml(yaml.safe_dump(load_manifest(project, cycle_id)))
     return declared_routes(manifest), route_seeds(manifest)

@@ -27,7 +27,6 @@ from pathlib import Path
 import pytest
 import yaml
 
-from squadops.capabilities.scaffold import InterfaceManifest
 from squadops.cycles.implementation_plan import ImplementationPlan
 from squadops.cycles.models import (
     AgentProfileEntry,
@@ -39,6 +38,7 @@ from squadops.cycles.models import (
 )
 from squadops.cycles.task_plan import generate_task_plan
 from squadops.cycles.verification_contract import VerificationContract
+from squadops.stacks.scaffold import InterfaceManifest
 
 pytestmark = [pytest.mark.domain_capabilities]
 

@@ -14,8 +14,6 @@ from pathlib import Path
 
 import pytest
 
-from squadops.capabilities.scaffold import InterfaceManifest, expand
-from squadops.capabilities.scaffold_contract import emit_contract_dict
 from squadops.cycles.verification_contract import VerificationContract
 from squadops.cycles.verification_contract_runner import (
     FILL_BEHAVIOR_MEASURES,
@@ -23,6 +21,8 @@ from squadops.cycles.verification_contract_runner import (
     is_structural,
     structural_criteria,
 )
+from squadops.stacks.scaffold import InterfaceManifest, expand
+from squadops.stacks.scaffold_contract import emit_contract_dict
 
 pytestmark = [pytest.mark.domain_capabilities]
 

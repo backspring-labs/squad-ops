@@ -19,7 +19,7 @@ from __future__ import annotations
 
 import pytest
 
-from squadops.capabilities.stack_nextjs_ts import (
+from squadops.stacks.stack_nextjs_ts import (
     _harness_test_source,
     _store_source,
     _table_name,

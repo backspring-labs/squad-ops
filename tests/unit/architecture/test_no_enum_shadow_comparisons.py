@@ -86,7 +86,7 @@ _ALLOWLIST: set[tuple[str, str]] = {
     # SIP-0109's campaign vocabularies (#1799) share four common words with older, unrelated
     # ones. None of these sites is about a campaign:
     # - the Next.js test generator's probe kind ("create" is a probe that mints a resource);
-    ("src/squadops/capabilities/stack_nextjs_ts_tests.py", "create"),
+    ("src/squadops/stacks/stack_nextjs_ts_tests.py", "create"),
     # - the correction protocol's declared step name ("decide" is a correction step);
     ("src/squadops/cycles/task_plan.py", "decide"),
     # - a planning handler's outcome-dict status ("failure" is its own token);

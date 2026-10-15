@@ -232,7 +232,7 @@ def _open_questions(manifest_content: str) -> tuple[str, ...]:
     An unparseable manifest has no readable decisions; the parse failure is already a
     finding, so this stays silent rather than adding a second complaint about it.
     """
-    from squadops.capabilities.scaffold import InterfaceManifest
+    from squadops.stacks.scaffold import InterfaceManifest
 
     try:
         manifest = InterfaceManifest.from_yaml(manifest_content)

@@ -557,8 +557,8 @@ async def replay_sample(
     from adapters.cycles.correction_runner import _Diagnosis, _inject_deterministic_evidence
     from adapters.cycles.patch_acceptance import PatchAcceptance
     from adapters.noop.ports import NoOpFailurePatternRecall
-    from squadops.capabilities.scaffold import InterfaceManifest
     from squadops.cycles.failure_evidence import build_failure_evidence
+    from squadops.stacks.scaffold import InterfaceManifest
     from squadops.tasks.models import TaskEnvelope
 
     envelope = TaskEnvelope.from_dict(bundle["envelope"])

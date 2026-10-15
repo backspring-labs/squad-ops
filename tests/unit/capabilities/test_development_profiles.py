@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import pytest
 
-from squadops.capabilities.development_profiles import (
+from squadops.stacks.development_profiles import (
     DEVELOPMENT_PROFILES,
     TEST_FRAMEWORK_BOTH,
     TEST_FRAMEWORK_PYTEST,
@@ -277,11 +277,11 @@ class TestTestFilesAreWhatTheRunnerCollects:
         fails here."""
         import re
 
-        from squadops.capabilities.development_profiles import (
+        from squadops.stacks.development_profiles import (
             matches_test_file_patterns,
             test_file_patterns_from_glob,
         )
-        from squadops.capabilities.scaffold import expand
+        from squadops.stacks.scaffold import expand
         from tests.unit.capabilities._stack_fixtures import manifest_for_stack
 
         emitted = {f["name"]: f["content"] for f in expand(manifest_for_stack("nextjs_ts"))}
@@ -304,7 +304,7 @@ class TestTestFilesAreWhatTheRunnerCollects:
         ],
     )
     def test_nextjs_collection_is_a_directory_rule_too(self, path, collected):
-        from squadops.capabilities.development_profiles import matches_test_file_patterns
+        from squadops.stacks.development_profiles import matches_test_file_patterns
 
         patterns = get_development_profile("nextjs_ts").collected_test_patterns
         assert matches_test_file_patterns(path, patterns) is collected
@@ -312,7 +312,7 @@ class TestTestFilesAreWhatTheRunnerCollects:
     def test_the_test_file_vocabulary_still_covers_what_collection_leaves_out(self):
         """The exclusions keep the broad answer: a dev repair's ``extra.test.ts`` or a
         ``.tsx`` suite is not collected, and must still count as a test file (#1014)."""
-        from squadops.capabilities.development_profiles import matches_test_file_patterns
+        from squadops.stacks.development_profiles import matches_test_file_patterns
 
         vocabulary = get_development_profile("nextjs_ts").test_file_patterns
         for path in ("extra.test.ts", "__tests__/runs-ui.test.tsx", "__tests__/runs.spec.ts"):
@@ -322,7 +322,7 @@ class TestTestFilesAreWhatTheRunnerCollects:
         "path", ["frontend/tests/runs.test.ts", "frontend/src/__tests__/App.test.tsx"]
     )
     def test_react_collection_includes_what_vitest_collects_by_default(self, path):
-        from squadops.capabilities.development_profiles import matches_test_file_patterns
+        from squadops.stacks.development_profiles import matches_test_file_patterns
 
         patterns = get_development_profile("fullstack_fastapi_react").collected_test_patterns
         assert matches_test_file_patterns(path, patterns)

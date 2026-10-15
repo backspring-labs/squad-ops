@@ -249,7 +249,7 @@ class RunProvisioning:
                 # #1876: never its scaffold-frozen files, which the skeleton above regenerated
                 # from the candidate manifest.
                 from squadops.campaigns.increment_tree import starting_tree_refs
-                from squadops.capabilities.scaffold import frozen_paths
+                from squadops.stacks.scaffold import frozen_paths
 
                 seed_artifact_refs.extend(
                     await starting_tree_refs(

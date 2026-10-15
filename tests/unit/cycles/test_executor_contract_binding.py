@@ -14,9 +14,9 @@ from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock
 
 from adapters.cycles.dispatched_flow_executor import DispatchedFlowExecutor
-from squadops.capabilities.scaffold import InterfaceManifest
-from squadops.capabilities.scaffold_contract import emit_contract_yaml
 from squadops.cycles.verification_contract import VerificationContract
+from squadops.stacks.scaffold import InterfaceManifest
+from squadops.stacks.scaffold_contract import emit_contract_yaml
 
 _MANIFEST_YAML = (
     Path(__file__).resolve().parents[3] / "examples" / "03_group_run" / "interface_manifest.yaml"

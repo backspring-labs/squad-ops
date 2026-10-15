@@ -1826,8 +1826,8 @@ class TestInterWorkloadGatePlanValidation:
         import dataclasses
         from pathlib import Path
 
-        from squadops.capabilities.scaffold import InterfaceManifest
-        from squadops.capabilities.scaffold_contract import emit_contract_yaml
+        from squadops.stacks.scaffold import InterfaceManifest
+        from squadops.stacks.scaffold_contract import emit_contract_yaml
 
         manifest_text = (
             Path(__file__).resolve().parents[3]
@@ -1903,8 +1903,8 @@ class TestInterWorkloadGatePlanValidation:
         import dataclasses
         from pathlib import Path
 
-        from squadops.capabilities.scaffold import InterfaceManifest
-        from squadops.capabilities.scaffold_contract import emit_contract_yaml
+        from squadops.stacks.scaffold import InterfaceManifest
+        from squadops.stacks.scaffold_contract import emit_contract_yaml
 
         manifest_text = (
             Path(__file__).resolve().parents[3]
@@ -1987,8 +1987,8 @@ class TestInterWorkloadGatePlanValidation:
         import dataclasses
         from pathlib import Path
 
-        from squadops.capabilities.scaffold import InterfaceManifest
-        from squadops.capabilities.scaffold_contract import emit_contract_yaml
+        from squadops.stacks.scaffold import InterfaceManifest
+        from squadops.stacks.scaffold_contract import emit_contract_yaml
 
         manifest_text = (
             Path(__file__).resolve().parents[3]

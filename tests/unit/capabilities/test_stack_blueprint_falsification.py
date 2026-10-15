@@ -79,10 +79,10 @@ from contextlib import contextmanager
 
 import pytest
 
-from squadops.capabilities import development_profiles, scaffold, scaffold_contract
-from squadops.capabilities import verification_scaffold_emission as vse
 from squadops.capabilities.handlers import build_profiles, probe_runner
 from squadops.sandbox import environment
+from squadops.stacks import development_profiles, scaffold, scaffold_contract
+from squadops.stacks import verification_scaffold_emission as vse
 from tests.unit.capabilities._stack_fixtures import manifest_for_stack
 
 pytestmark = [pytest.mark.domain_capabilities]

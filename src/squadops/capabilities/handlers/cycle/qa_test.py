@@ -23,12 +23,6 @@ from squadops.campaigns.proposed_behaviours import (
     parse_proposed_behaviours,
     stored_form,
 )
-from squadops.capabilities.app_invocation import AppInvocation
-from squadops.capabilities.development_profiles import (
-    DEFAULT_DEVELOPMENT_PROFILE,
-    effective_development_profile,
-    get_development_profile,
-)
 from squadops.capabilities.disputed_checks import criterion_identities
 from squadops.capabilities.handlers.base import (
     HandlerEvidence,
@@ -47,6 +41,12 @@ from squadops.cycles.emission_integrity import emission_stats as _emission_stats
 from squadops.cycles.verification_integrity import NotExecutedReason, ResultStatus
 from squadops.llm.exceptions import LLMError
 from squadops.llm.models import ChatMessage
+from squadops.stacks.app_invocation import AppInvocation
+from squadops.stacks.development_profiles import (
+    DEFAULT_DEVELOPMENT_PROFILE,
+    effective_development_profile,
+    get_development_profile,
+)
 from squadops.tasks.task_types import TaskType
 
 if TYPE_CHECKING:
@@ -207,7 +207,7 @@ def _qa_owned_for(inputs: dict[str, Any]) -> Callable[[str], bool]:
     from the same ``resolved_config`` the boot and self-mocking seams read (#822, #1126);
     an unknown stack owns nothing, so no defect is stamped qa-owned.
     """
-    from squadops.capabilities.scaffold import is_qa_test_path_for_stack, scaffold_stack_for
+    from squadops.stacks.scaffold import is_qa_test_path_for_stack, scaffold_stack_for
 
     stack = scaffold_stack_for(inputs.get("resolved_config"))
     return lambda path: is_qa_test_path_for_stack(path, stack)
@@ -783,9 +783,9 @@ class QATestHandler(_CycleTaskHandler):
             return
 
         from squadops.capabilities.handlers.probe_runner import probe_check_rows, run_probes
-        from squadops.capabilities.scaffold import scaffold_stack_for
         from squadops.cycles.patch_verification import materialize_artifacts
         from squadops.cycles.verification_contract import Probe
+        from squadops.stacks.scaffold import scaffold_stack_for
 
         probes = []
         for entry in raw:
@@ -910,7 +910,7 @@ class QATestHandler(_CycleTaskHandler):
         unknown stack: the self-mocking detector then judges nothing and its row is
         banked with an EMPTY inspected inventory (#986) — "did not look", never "clean".
         """
-        from squadops.capabilities.scaffold import app_invocation_for, scaffold_stack_for
+        from squadops.stacks.scaffold import app_invocation_for, scaffold_stack_for
 
         return app_invocation_for(scaffold_stack_for(inputs.get("resolved_config")))
 
@@ -1373,11 +1373,11 @@ class QATestHandler(_CycleTaskHandler):
         in exactly one disposition; missing and rejected slots render as failing states
         inside the merged shells, attributed to the fill layer.
         """
-        from squadops.capabilities.verification_scaffold import VerificationScaffoldManifest
         from squadops.capabilities.verification_scaffold_fill import (
             measure_assertion_strength,
             merge_fills,
         )
+        from squadops.stacks.verification_scaffold import VerificationScaffoldManifest
 
         record = VerificationScaffoldManifest.from_dict(scaffold_input["manifest"])
         shell_paths = {f.path for f in record.files}
@@ -1444,12 +1444,12 @@ class QATestHandler(_CycleTaskHandler):
         Non-blocking, but a diagnostic is not evidence and must not be counted as one
         (SIP-0096 §6.1).
         """
-        from squadops.capabilities.verification_scaffold import VerificationScaffoldManifest
         from squadops.cycles.scaffold_evidence import (
             build_scaffold_evidence_summary,
             classify_shell_failures,
             correlate,
         )
+        from squadops.stacks.verification_scaffold import VerificationScaffoldManifest
 
         record = VerificationScaffoldManifest.from_dict(scaffold_input["manifest"])
         dispositions = {

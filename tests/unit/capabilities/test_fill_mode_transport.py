@@ -16,15 +16,15 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 
 from squadops.capabilities.handlers.cycle.qa_test import QATestHandler
-from squadops.capabilities.scaffold_contract import emit_contract_dict
-from squadops.capabilities.stack_nextjs_ts import APP_INVOCATION as NEXTJS_APP_INVOCATION
-from squadops.capabilities.verification_scaffold_emission import (
-    GENERATOR_VERSION,
-    emit_verification_scaffold,
-)
 from squadops.capabilities.verification_scaffold_fill import parse_fill_emission
 from squadops.cycles.task_plan import inject_contract_inputs
 from squadops.cycles.verification_contract import VerificationContract
+from squadops.stacks.scaffold_contract import emit_contract_dict
+from squadops.stacks.stack_nextjs_ts import APP_INVOCATION as NEXTJS_APP_INVOCATION
+from squadops.stacks.verification_scaffold_emission import (
+    GENERATOR_VERSION,
+    emit_verification_scaffold,
+)
 from tests.unit.capabilities._stack_fixtures import manifest_for_stack
 
 pytestmark = [pytest.mark.domain_capabilities]
@@ -211,7 +211,7 @@ class TestMergeFillArtifacts:
         self, scaffold_input
     ):
         """#1094 through the handler: roll 5's fill on roll 5's kind of manifest."""
-        from squadops.capabilities.verification_scaffold_emission import slot_element_kinds
+        from squadops.stacks.verification_scaffold_emission import slot_element_kinds
 
         kinds = slot_element_kinds(manifest_for_stack("nextjs_ts"))
         fills = parse_fill_emission(

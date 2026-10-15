@@ -6,8 +6,8 @@ from pathlib import Path
 
 import pytest
 
-from squadops.capabilities.scaffold import InterfaceManifest
 from squadops.cycles.bound_scaffold_record import BoundScaffoldRecord, build_bound_record
+from squadops.stacks.scaffold import InterfaceManifest
 
 pytestmark = [pytest.mark.domain_cycles] if hasattr(pytest.mark, "domain_cycles") else []
 

@@ -12,7 +12,7 @@ from pathlib import Path
 
 import squadops.cycles.bound_scaffold_record as bsr
 from adapters.cycles.dispatched_flow_executor import DispatchedFlowExecutor
-from squadops.capabilities.scaffold import InterfaceManifest
+from squadops.stacks.scaffold import InterfaceManifest
 
 _MANIFEST = Path(__file__).parents[3] / "examples" / "03_group_run" / "interface_manifest.yaml"
 

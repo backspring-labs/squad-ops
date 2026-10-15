@@ -68,7 +68,7 @@ def resolve_check_stack(resolved_config: Mapping[str, Any]) -> str | None:
     ``build_profile`` maps through the scaffold's stack registry; else ``None``
     (checks skip with ``unsupported_stack_or_syntax``, today's behavior).
     """
-    from squadops.capabilities.scaffold import check_stack_for
+    from squadops.stacks.scaffold import check_stack_for
 
     explicit = resolved_config.get("stack")
     if explicit:

@@ -16,10 +16,10 @@ import dataclasses
 
 import pytest
 
-from squadops.capabilities.scaffold import expand
-from squadops.capabilities.verification_scaffold import ScaffoldValidationError
-from squadops.capabilities.verification_scaffold_emission import emit_verification_scaffold
-from squadops.capabilities.verification_scaffold_gate import (
+from squadops.stacks.scaffold import expand
+from squadops.stacks.verification_scaffold import ScaffoldValidationError
+from squadops.stacks.verification_scaffold_emission import emit_verification_scaffold
+from squadops.stacks.verification_scaffold_gate import (
     assess_execution_readiness,
     validate_execution_readiness,
 )

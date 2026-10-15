@@ -9,11 +9,11 @@ from __future__ import annotations
 
 import pytest
 
-from squadops.capabilities.response_shape import (
+from squadops.stacks.response_shape import (
     derive_response_shape,
     response_surface_instructions,
 )
-from squadops.capabilities.scaffold import InterfaceManifest
+from squadops.stacks.scaffold import InterfaceManifest
 
 _BASE = """
 version: 1

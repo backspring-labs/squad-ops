@@ -11,7 +11,7 @@ passed independent boot audits. The apps were fine; the tests were not.
 Three rules, all reading the EMITTED BYTES rather than any declaration — the same posture
 as the scaffold gate, and for the same reason: a defect is precisely a gap between what
 the author meant and what it wrote. Two of them are the stack's own definition of
-"invokes the application" (:class:`~squadops.capabilities.app_invocation.AppInvocation`,
+"invokes the application" (:class:`~squadops.stacks.app_invocation.AppInvocation`,
 #1126) applied at emission, which is where the self-mocking detector's rule was only
 ever applied after the suite had already run.
 
@@ -41,7 +41,7 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass
 
-from squadops.capabilities.app_invocation import AppInvocation
+from squadops.stacks.app_invocation import AppInvocation
 
 #: Rule identifiers — constants at the core; the strings are what the evidence carries.
 RULE_LIVE_SERVER_FETCH = "live_server_fetch"

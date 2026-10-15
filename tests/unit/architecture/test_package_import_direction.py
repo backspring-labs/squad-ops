@@ -41,7 +41,7 @@ KNOWN_MUTUAL: dict[tuple[str, str], str] = {
 
 #: How many ``squadops`` modules a leaf may load (#1985 measured 4 for ``cycles.naming`` and 13 for
 #: ``capabilities.scaffold`` once the roots were thinned, against 144 and 143 before).
-_LEAF_BOUND = {"squadops.cycles.naming": 10, "squadops.capabilities.scaffold": 30}
+_LEAF_BOUND = {"squadops.cycles.naming": 10, "squadops.stacks.scaffold": 30}
 
 
 def _module_level_package_edges() -> set[tuple[str, str]]:

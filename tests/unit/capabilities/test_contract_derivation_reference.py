@@ -2,7 +2,7 @@
 
 SIP-0103 §5b Correction 1 asserted that contract v9 was hand-authored and that no
 ``derive_contract(manifest)`` existed. Measurement at build time found the opposite:
-the deriver is :func:`squadops.capabilities.scaffold_contract.emit_contract_dict`
+the deriver is :func:`squadops.stacks.scaffold_contract.emit_contract_dict`
 (SIP-0098 phase 98.2), and the ingested contract ``art_4f368ea08799`` is precisely its
 output for the ingested manifest ``art_8becd104e9fc``. The v1.6 plan carries that
 correction; this module makes the equality it uncovered impossible to lose quietly.
@@ -39,8 +39,8 @@ from pathlib import Path
 
 import yaml
 
-from squadops.capabilities.scaffold import InterfaceManifest, expand
-from squadops.capabilities.scaffold_contract import emit_contract_dict, emit_contract_yaml
+from squadops.stacks.scaffold import InterfaceManifest, expand
+from squadops.stacks.scaffold_contract import emit_contract_dict, emit_contract_yaml
 
 _REPO = Path(__file__).resolve().parents[3]
 # The manifest is a genuine product input: scripts/dev/contract_gate.py defaults to

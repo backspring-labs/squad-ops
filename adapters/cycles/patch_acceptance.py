@@ -193,7 +193,7 @@ def _repaired_suite_files(
     ``backend/tests/test_runs.py`` arrives as ``code`` and a ``type``-keyed rule would
     miss exactly the case this exists for.
     """
-    from squadops.capabilities.development_profiles import (
+    from squadops.stacks.development_profiles import (
         collected_test_patterns_for,
         matches_test_file_patterns,
     )
@@ -527,9 +527,9 @@ class PatchAcceptance:
         file_owned: list[Any] = []
         if interface_manifest is not None:
             try:
-                from squadops.capabilities.scaffold_contract import emit_contract_dict
                 from squadops.cycles.implementation_plan import resolve_criteria_for_files
                 from squadops.cycles.verification_contract import VerificationContract
+                from squadops.stacks.scaffold_contract import emit_contract_dict
 
                 file_owned = resolve_criteria_for_files(
                     VerificationContract.from_dict(emit_contract_dict(interface_manifest)),

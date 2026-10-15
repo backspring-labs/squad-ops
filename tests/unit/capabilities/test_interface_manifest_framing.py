@@ -33,9 +33,9 @@ import yaml
 from adapters.cycles.dispatched_flow_executor import DispatchedFlowExecutor
 from adapters.noop.ports import NoOpFailurePatternRecall
 from squadops.capabilities.handlers.fenced_parser import extract_fenced_files
-from squadops.capabilities.scaffold import InterfaceManifest, is_scaffoldable_stack
 from squadops.cycles.manifest_authoring import MANIFEST_ARTIFACT_TYPE
 from squadops.cycles.manifest_gates import assess_schema, assess_winnability
+from squadops.stacks.scaffold import InterfaceManifest, is_scaffoldable_stack
 
 pytestmark = [pytest.mark.domain_capabilities]
 

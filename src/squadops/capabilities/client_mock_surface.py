@@ -32,8 +32,8 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass
 
-from squadops.capabilities.app_invocation import NETWORK_SEAM_FETCH_STUB
-from squadops.capabilities.client_surface import ClientSurface
+from squadops.stacks.app_invocation import NETWORK_SEAM_FETCH_STUB
+from squadops.stacks.client_surface import ClientSurface
 
 RULE_IMPORT_UNDECLARED = "client_import_undeclared"
 RULE_MOCK_EXPORTS_UNDECLARED = "client_mock_exports_undeclared"

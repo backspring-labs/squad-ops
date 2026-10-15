@@ -14,13 +14,13 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any
 
-from squadops.capabilities.scaffold import (
+from squadops.core.hashing import text_sha256
+from squadops.stacks.scaffold import (
     InterfaceManifest,
     expand,
     fill_slot_paths,
     qa_test_namespace,
 )
-from squadops.core.hashing import text_sha256
 
 
 def _normalize(path: str) -> str:
@@ -139,7 +139,7 @@ class BoundScaffoldRecord:
 def _scaffold_record_from(raw: dict | None):
     if not raw:
         return None
-    from squadops.capabilities.verification_scaffold import VerificationScaffoldManifest
+    from squadops.stacks.verification_scaffold import VerificationScaffoldManifest
 
     return VerificationScaffoldManifest.from_dict(raw)
 
@@ -152,12 +152,12 @@ def _derive_verification_scaffold(manifest: InterfaceManifest):
     losing frozen-file enforcement to a region-level derivation bug would widen the
     attack surface exactly when something is already wrong.
     """
-    from squadops.capabilities.scaffold import verification_scaffold_for
+    from squadops.stacks.scaffold import verification_scaffold_for
 
     if not verification_scaffold_for(manifest.stack):
         return None
     try:
-        from squadops.capabilities.verification_scaffold_emission import (
+        from squadops.stacks.verification_scaffold_emission import (
             emit_verification_scaffold,
         )
 

@@ -15,8 +15,8 @@ import shutil
 import pytest
 
 from squadops.capabilities.handlers.scaffold_execution import run_skeleton_execution_gate
-from squadops.capabilities.scaffold import expand
-from squadops.capabilities.verification_scaffold_emission import emit_verification_scaffold
+from squadops.stacks.scaffold import expand
+from squadops.stacks.verification_scaffold_emission import emit_verification_scaffold
 from tests.unit.capabilities._stack_fixtures import manifest_for_stack
 
 pytestmark = [

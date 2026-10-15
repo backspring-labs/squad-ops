@@ -1467,7 +1467,7 @@ class TestQARetestExecuteOnly:
                 }
             ],
         }
-        from squadops.capabilities.stack_nextjs_ts import APP_INVOCATION
+        from squadops.stacks.stack_nextjs_ts import APP_INVOCATION
 
         handler = QATestHandler()
         # #1126: the detector judges through the STACK's declaration of "invokes the

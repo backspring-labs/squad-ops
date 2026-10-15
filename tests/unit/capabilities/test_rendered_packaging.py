@@ -17,10 +17,10 @@ import dataclasses
 
 import pytest
 
-from squadops.capabilities.rendered_packaging import render_packaging
-from squadops.capabilities.scaffold import _STACKS, expand
 from squadops.cycles.container_packaging import packaging_findings
 from squadops.sandbox import environment
+from squadops.stacks.rendered_packaging import render_packaging
+from squadops.stacks.scaffold import _STACKS, expand
 from tests.unit.capabilities._stack_fixtures import manifest_for_stack
 
 pytestmark = [pytest.mark.domain_capabilities]
@@ -72,7 +72,7 @@ def test_a_stack_without_a_rendering_is_refused_not_defaulted():
 def test_the_packaging_is_frozen_never_a_fill_slot():
     """A rendered file in the fill set would be author-editable, and the builder's per-roll
     packaging would come back through the other door."""
-    from squadops.capabilities.scaffold import fill_slot_paths
+    from squadops.stacks.scaffold import fill_slot_paths
 
     for stack in sorted(_STACKS):
         manifest = manifest_for_stack(stack)

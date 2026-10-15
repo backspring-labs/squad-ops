@@ -4,7 +4,6 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from squadops.capabilities.scaffold import InterfaceManifest
 from squadops.cycles.bound_scaffold_record import build_bound_record
 from squadops.cycles.patch_verification import materialize
 from squadops.cycles.write_authorization import (
@@ -12,6 +11,7 @@ from squadops.cycles.write_authorization import (
     WriteAuthorization,
     WriteGrant,
 )
+from squadops.stacks.scaffold import InterfaceManifest
 
 _MANIFEST = Path(__file__).parents[3] / "examples" / "03_group_run" / "interface_manifest.yaml"
 

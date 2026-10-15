@@ -27,10 +27,10 @@ import yaml
 
 from adapters.sandbox.container_backend import ContainerBackend
 from adapters.tools.docker import DockerAdapter
-from squadops.capabilities.scaffold import InterfaceManifest, expand
 from squadops.sandbox.environment import FULLSTACK_FASTAPI_REACT
 from squadops.sandbox.models import RevisionOrigin
 from squadops.sandbox.workspace import WorkspaceStore
+from squadops.stacks.scaffold import InterfaceManifest, expand
 
 ROOT = Path(os.environ.get("SQUADOPS_SANDBOX_SMOKE_ROOT", "/tmp/squadops-sandbox-smoke"))
 MANIFEST = Path("examples/03_group_run/interface_manifest.yaml")

@@ -6,8 +6,8 @@ from pathlib import Path
 from types import SimpleNamespace
 
 from adapters.cycles.dispatched_flow_executor import DispatchedFlowExecutor
-from squadops.capabilities.scaffold import InterfaceManifest
 from squadops.cycles.bound_scaffold_record import build_bound_record
+from squadops.stacks.scaffold import InterfaceManifest
 
 _MANIFEST = Path(__file__).parents[3] / "examples" / "03_group_run" / "interface_manifest.yaml"
 

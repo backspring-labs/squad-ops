@@ -21,8 +21,8 @@ from unittest.mock import AsyncMock
 import pytest
 
 from adapters.noop.ports import NoOpFailurePatternRecall
-from squadops.capabilities.scaffold import InterfaceManifest
 from squadops.cycles.models import ArtifactRef
+from squadops.stacks.scaffold import InterfaceManifest
 from squadops.tasks.models import TaskEnvelope
 
 pytestmark = [pytest.mark.domain_orchestration]

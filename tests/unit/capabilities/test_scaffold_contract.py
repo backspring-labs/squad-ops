@@ -16,13 +16,13 @@ from pathlib import Path
 import pytest
 import yaml
 
-from squadops.capabilities.scaffold import InterfaceManifest, expand, fill_slot_paths
-from squadops.capabilities.scaffold_contract import (
+from squadops.cycles.verification_contract import VerificationContract
+from squadops.stacks.scaffold import InterfaceManifest, expand, fill_slot_paths
+from squadops.stacks.scaffold_contract import (
     _probe_sample_value,
     emit_contract_dict,
     emit_contract_yaml,
 )
-from squadops.cycles.verification_contract import VerificationContract
 
 pytestmark = [pytest.mark.domain_capabilities]
 
@@ -315,7 +315,7 @@ class TestBlankInputProbe:
             )
 
     def test_emitted_model_constrains_required_request_fields(self):
-        from squadops.capabilities.scaffold import expand
+        from squadops.stacks.scaffold import expand
 
         files = {f["name"]: f["content"] for f in expand(_manifest())}
         models = files["backend/models.py"]
@@ -539,7 +539,7 @@ def test_rejection_and_conflict_probes_carry_no_shape():
 
 def test_a_response_naming_no_entity_adds_no_shape():
     """A probe must not assert a shape the manifest never stated."""
-    from squadops.capabilities.scaffold_contract import _success_expect
+    from squadops.stacks.scaffold_contract import _success_expect
 
     assert _success_expect(_manifest(), 201, None) == {"status": 201}
     assert _success_expect(_manifest(), 201, "Nonesuch") == {"status": 201}
@@ -603,7 +603,7 @@ class TestEntityTypedRequestBodies:
 
         import pydantic
 
-        from squadops.capabilities.scaffold import expand
+        from squadops.stacks.scaffold import expand
 
         manifest = self._entity_typed_join()
         files = {f["name"]: f["content"] for f in expand(manifest)}

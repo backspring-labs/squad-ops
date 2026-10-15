@@ -280,12 +280,12 @@ class TestOnAScaffoldedArtifact:
         """§39.3, on the real FastAPI+React scaffold's ``backend/routes.py``. Bug caught: a
         body repair that disturbs the scaffold-owned decorator, path, status code or signature —
         the drift ``fill_slot_integrity`` restores or reports after a whole-file rewrite."""
-        from squadops.capabilities.scaffold import expand
         from squadops.cycles.fill_slot_integrity import (
             declared_route_signatures,
             restore_declared_status_codes,
             signature_divergences,
         )
+        from squadops.stacks.scaffold import expand
         from tests.unit.capabilities._stack_fixtures import manifest_for_stack
 
         files = {

@@ -111,8 +111,8 @@ def derive_contract_bytes(manifest_content: str) -> bytes:
     author mode, because an operator who seeded a manifest asked for bind mode and an
     unbound green would carry none of the criteria they expected.
     """
-    from squadops.capabilities.scaffold import InterfaceManifest
-    from squadops.capabilities.scaffold_contract import emit_contract_yaml
+    from squadops.stacks.scaffold import InterfaceManifest
+    from squadops.stacks.scaffold_contract import emit_contract_yaml
 
     try:
         manifest = InterfaceManifest.from_yaml(manifest_content)

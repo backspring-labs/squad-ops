@@ -20,7 +20,6 @@ from squadops.campaigns.change_request import (
     stored_change_request,
     validate_proposal,
 )
-from squadops.capabilities.scaffold import InterfaceManifest
 from squadops.cycles.implementation_plan import ImplementationPlan
 from squadops.cycles.models import (
     AgentProfileEntry,
@@ -31,6 +30,7 @@ from squadops.cycles.models import (
     TaskFlowPolicy,
 )
 from squadops.cycles.task_plan import generate_task_plan
+from squadops.stacks.scaffold import InterfaceManifest
 
 NOW = datetime(2026, 10, 2, 14, 0, tzinfo=UTC)
 _FIXTURES = Path(__file__).resolve().parents[2] / "fixtures" / "campaigns"
@@ -284,7 +284,7 @@ def test_a_parameterized_route_is_seeded_by_its_collections_create():
     """§8.3. Bugs caught: the run page read at ``/runs/:run_id`` literally (never the view), or
     seeded with a body the create probe would not send."""
     from squadops.campaigns.increment_tree import route_seeds
-    from squadops.capabilities.scaffold_contract import create_request_body
+    from squadops.stacks.scaffold_contract import create_request_body
 
     seeds = route_seeds(CANDIDATE)
 

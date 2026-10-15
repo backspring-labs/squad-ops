@@ -136,8 +136,8 @@ class _PlanningTaskHandler(_CycleTaskHandler):
         Empty for a cycle with no scaffoldable ``build_profile``: a free-form generation cycle
         has no stack to be decided for it, and asserting one would be a fiction.
         """
-        from squadops.capabilities.scaffold import scaffold_stack_for
-        from squadops.capabilities.stack_narratives import stack_narrative
+        from squadops.stacks.scaffold import scaffold_stack_for
+        from squadops.stacks.stack_narratives import stack_narrative
 
         stack = scaffold_stack_for(inputs.get("resolved_config"))
         if not stack:

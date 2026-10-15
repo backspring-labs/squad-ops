@@ -12,15 +12,6 @@ import hashlib
 
 import pytest
 
-from squadops.capabilities.verification_scaffold import (
-    slot_begin_marker as slot_begin,
-)
-from squadops.capabilities.verification_scaffold import (
-    slot_body_span,
-)
-from squadops.capabilities.verification_scaffold import (
-    slot_end_marker as slot_end,
-)
 from squadops.cycles.patch_verification import candidate_revision_id
 from squadops.cycles.revision_transaction import (
     RefusalReason,
@@ -32,6 +23,15 @@ from squadops.cycles.revision_transaction import (
 )
 from squadops.cycles.write_authorization import WriteGrant
 from squadops.sandbox.models import compute_revision_id
+from squadops.stacks.verification_scaffold import (
+    slot_begin_marker as slot_begin,
+)
+from squadops.stacks.verification_scaffold import (
+    slot_body_span,
+)
+from squadops.stacks.verification_scaffold import (
+    slot_end_marker as slot_end,
+)
 
 pytestmark = [pytest.mark.domain_orchestration]
 

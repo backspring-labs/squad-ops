@@ -922,11 +922,11 @@ class _RepairPromptMixin:
         renderer = getattr(context.ports, "request_renderer", None)
         if renderer is None:
             return ""
-        from squadops.capabilities.development_profiles import (
+        from squadops.stacks.development_profiles import (
             effective_development_profile,
             get_development_profile,
         )
-        from squadops.capabilities.scaffold import is_scaffoldable_stack
+        from squadops.stacks.scaffold import is_scaffoldable_stack
 
         resolved_config = inputs.get("resolved_config") or {}
         stack = str(resolved_config.get("build_profile") or "")
@@ -1440,13 +1440,13 @@ def _merge_repair_fills(
     failed shell by name and the retest runs it. A whole-shell rewrite emitted as a
     path fence is dropped and recorded, as on every other qa path.
     """
-    from squadops.capabilities.verification_scaffold import VerificationScaffoldManifest
     from squadops.capabilities.verification_scaffold_fill import (
         apply_followup_fills,
         merge_fills,
         parse_fill_emission,
         recover_fills,
     )
+    from squadops.stacks.verification_scaffold import VerificationScaffoldManifest
 
     record = VerificationScaffoldManifest.from_dict(scaffold_input["manifest"])
     shell_paths = {f.path for f in record.files}

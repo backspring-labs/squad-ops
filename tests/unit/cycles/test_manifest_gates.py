@@ -223,12 +223,12 @@ def test_structurally_doomed_manifests_are_rejected(mutation):
 # where it could become something a check depends on.
 # ---------------------------------------------------------------------------
 
-from squadops.capabilities.scaffold import InterfaceManifest  # noqa: E402
 from squadops.cycles.manifest_gates import (  # noqa: E402
     PROOF_DECISION_RECORD,
     PROOF_SOURCE_PRD,
     assess_schema,
 )
+from squadops.stacks.scaffold import InterfaceManifest  # noqa: E402
 
 # The manifest hash contract v9 is bound to (`skeleton.interface_manifest_hash`).
 _BOUND_MANIFEST_HASH = "bb472e267e53d5ad29406663b4340de45613dd68fa091fe7f2d06a99b7267530"
@@ -271,7 +271,7 @@ def test_decisions_never_reach_the_derived_contract():
     contract, no derived check can depend on an unresolved one. Pinned rather than
     re-checked — a detector for an impossible condition is the pattern this repo rejects.
     """
-    from squadops.capabilities.scaffold_contract import emit_contract_yaml
+    from squadops.stacks.scaffold_contract import emit_contract_yaml
 
     data = _reference_dict()
     data["decisions"].append(
@@ -346,7 +346,7 @@ def test_a_structurally_invalid_contract_is_a_winnability_finding(monkeypatch):
     of the emitter's own uniqueness test and stop covering the wiring, which is the half
     that was actually missing.
     """
-    from squadops.capabilities import scaffold_contract
+    from squadops.stacks import scaffold_contract
 
     real = scaffold_contract.emit_contract_dict
 
@@ -374,7 +374,7 @@ def test_the_rejection_says_why_a_duplicate_id_matters(monkeypatch):
     still reads as fully bound. The message has to name that, or the next reader files it as
     cosmetic and waives it.
     """
-    from squadops.capabilities import scaffold_contract
+    from squadops.stacks import scaffold_contract
 
     real = scaffold_contract.emit_contract_dict
 
@@ -417,17 +417,17 @@ class TestScaffoldReadinessProof:
         """The reference manifest (stack #1) already asserts zero findings above; this
         pins the reason — no verification_scaffold declaration means the proof skips,
         not that it passes by luck."""
-        from squadops.capabilities.scaffold import verification_scaffold_for
         from squadops.cycles.manifest_gates import PROOF_SCAFFOLD_READY
+        from squadops.stacks.scaffold import verification_scaffold_for
 
         assert verification_scaffold_for("fullstack_fastapi_react") == ""
         findings = assess_winnability(_REFERENCE.read_text(encoding="utf-8"))
         assert PROOF_SCAFFOLD_READY not in _proofs(findings)
 
     def test_an_emission_refusal_is_a_winnability_finding(self, monkeypatch):
-        from squadops.capabilities import verification_scaffold_emission as emission_module
-        from squadops.capabilities.verification_scaffold import ScaffoldDerivationError
         from squadops.cycles.manifest_gates import PROOF_SCAFFOLD_READY
+        from squadops.stacks import verification_scaffold_emission as emission_module
+        from squadops.stacks.verification_scaffold import ScaffoldDerivationError
         from tests.unit.capabilities._stack_fixtures import manifest_dict_for_stack
 
         def _refuse(manifest, **kwargs):

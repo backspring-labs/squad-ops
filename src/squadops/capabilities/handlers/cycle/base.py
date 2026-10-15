@@ -12,14 +12,12 @@ from collections.abc import Callable
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
-from squadops.capabilities.app_invocation import JS_SUITE_SUFFIXES
 from squadops.capabilities.handlers.base import (
     CapabilityHandler,
     HandlerEvidence,
     HandlerResult,
 )
 from squadops.capabilities.reasoning_policy import resolve_reasoning_level
-from squadops.capabilities.scaffold import scaffold_stack_for
 from squadops.cycles.acceptance_check_spec import (
     CHECK_SPECS,
     CONFIG_OFF_SKIP_REASONS,
@@ -47,6 +45,8 @@ from squadops.cycles.verification_integrity import ResultStatus
 from squadops.llm.exceptions import LLMContextOverflowError, LLMError
 from squadops.llm.model_registry import get_model_spec, thinking_headroom
 from squadops.llm.models import ChatMessage
+from squadops.stacks.app_invocation import JS_SUITE_SUFFIXES
+from squadops.stacks.scaffold import scaffold_stack_for
 
 if TYPE_CHECKING:
     from squadops.capabilities.handlers.context import ExecutionContext
@@ -502,7 +502,7 @@ class _CycleTaskHandler(CapabilityHandler):
         instead of inventing a number.
         """
         try:
-            from squadops.capabilities.development_profiles import get_development_profile
+            from squadops.stacks.development_profiles import get_development_profile
 
             return get_development_profile(self._task_type).max_completion_tokens
         except Exception:

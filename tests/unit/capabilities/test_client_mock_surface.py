@@ -22,8 +22,8 @@ from pathlib import Path
 import pytest
 
 from squadops.capabilities.client_mock_surface import mock_surface_findings
-from squadops.capabilities.client_surface import KIND_FUNCTION, ClientExport, ClientSurface
-from squadops.capabilities.scaffold import client_surface_for
+from squadops.stacks.client_surface import KIND_FUNCTION, ClientExport, ClientSurface
+from squadops.stacks.scaffold import client_surface_for
 
 pytestmark = [pytest.mark.domain_capabilities]
 

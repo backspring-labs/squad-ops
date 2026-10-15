@@ -228,7 +228,7 @@ def stack_development_profile_decision(config: Mapping[str, Any]) -> PreflightDe
     rather than silently deriving, because overriding an explicit config value hides the drift
     instead of ending it — the operator should fix the profile.
     """
-    from squadops.capabilities.scaffold import development_profile_for, resolve_development_profile
+    from squadops.stacks.scaffold import development_profile_for, resolve_development_profile
 
     if resolve_development_profile(config) is not None:
         return PreflightDecision()

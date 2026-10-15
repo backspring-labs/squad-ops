@@ -101,8 +101,8 @@ def bound_record_or_none(interface_manifest: Any, run_id: str, resolved_config: 
         return None
     try:
         from squadops.campaigns.increment_tree import increment_footprint
-        from squadops.capabilities.scaffold import is_scaffoldable_stack
         from squadops.cycles.bound_scaffold_record import build_bound_record
+        from squadops.stacks.scaffold import is_scaffoldable_stack
 
         if not is_scaffoldable_stack(getattr(interface_manifest, "stack", "")):
             return None

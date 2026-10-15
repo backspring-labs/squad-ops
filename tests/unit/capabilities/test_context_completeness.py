@@ -378,7 +378,7 @@ def test_builder_template_declares_the_new_blocks():
 
 
 def _reference_manifest():
-    from squadops.capabilities.scaffold import InterfaceManifest
+    from squadops.stacks.scaffold import InterfaceManifest
 
     return InterfaceManifest.from_yaml(
         (
@@ -433,7 +433,7 @@ def test_the_brief_and_the_shell_pin_the_same_shape():
         SURFACE_RESPONSE,
         manifest_surface_fragments,
     )
-    from squadops.capabilities.verification_scaffold_emission import emit_verification_scaffold
+    from squadops.stacks.verification_scaffold_emission import emit_verification_scaffold
     from tests.unit.capabilities._stack_fixtures import manifest_for_stack
 
     manifest = manifest_for_stack("nextjs_ts")

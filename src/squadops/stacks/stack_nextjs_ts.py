@@ -35,14 +35,14 @@ import re
 from collections.abc import Collection
 from typing import TYPE_CHECKING, Any
 
-from squadops.capabilities.app_invocation import JS_MODULE_LOAD, AppInvocation
-from squadops.capabilities.baseline_stylesheet import BASELINE_CSS
-from squadops.capabilities.rendered_packaging import render_packaging
-from squadops.capabilities.route_paths import path_segments
-from squadops.capabilities.success_status import success_status_for
+from squadops.stacks.app_invocation import JS_MODULE_LOAD, AppInvocation
+from squadops.stacks.baseline_stylesheet import BASELINE_CSS
+from squadops.stacks.rendered_packaging import render_packaging
+from squadops.stacks.route_paths import path_segments
+from squadops.stacks.success_status import success_status_for
 
 if TYPE_CHECKING:  # pragma: no cover - annotations only, avoids a scaffold import cycle
-    from squadops.capabilities.scaffold import InterfaceManifest
+    from squadops.stacks.scaffold import InterfaceManifest
 
 STACK_NAME = "nextjs_ts"
 
@@ -324,7 +324,7 @@ def _harness_test_source(manifest: Any) -> str:
     declared table via `TABLES`, which additionally demonstrates the accessor the fill briefs
     point authors at.
     """
-    from squadops.capabilities.scaffold import root_persisted_entities
+    from squadops.stacks.scaffold import root_persisted_entities
 
     # #1087: the first ROOT-PERSISTED table, not the first declared entity. On
     # ``group_run`` the first declared entity is ``Participant`` — an embedded shape —
@@ -431,7 +431,7 @@ def _store_source(manifest: Any) -> str:
     A manifest declaring no entities keeps an open signature: there is no union to derive,
     and ``never`` would make the store unusable rather than safe.
     """
-    from squadops.capabilities.scaffold import root_persisted_entities
+    from squadops.stacks.scaffold import root_persisted_entities
 
     entities = (
         list(root_persisted_entities(manifest)) if getattr(manifest, "entities", None) else []

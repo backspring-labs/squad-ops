@@ -5,9 +5,9 @@ slot 6 (omission), pf-39 (derived-default enforcement), and the false-positive
 shapes a rejection gate must never produce.
 """
 
-from squadops.capabilities.scaffold import InterfaceManifest
 from squadops.cycles.framing_consistency import validate_manifest_plan_consistency
 from squadops.cycles.implementation_plan import ImplementationPlan
+from squadops.stacks.scaffold import InterfaceManifest
 
 
 def _manifest(endpoints_yaml: str, stack: str = "nextjs_ts") -> InterfaceManifest:
@@ -317,12 +317,12 @@ class TestTheOmissionHalfIsUnreachableByConstruction:
     """
 
     def _stacks(self):
-        from squadops.capabilities.scaffold import _STACKS
+        from squadops.stacks.scaffold import _STACKS
 
         return sorted(_STACKS)
 
     def test_every_registered_stack_carries_the_status_without_the_plan(self):
-        from squadops.capabilities.scaffold import (
+        from squadops.stacks.scaffold import (
             brief_carries_success_status_for,
             skeleton_pins_success_status_for,
         )
@@ -344,10 +344,10 @@ class TestTheOmissionHalfIsUnreachableByConstruction:
         from squadops.cycles.framing_consistency import validate_manifest_plan_consistency
 
         monkeypatch.setattr(
-            "squadops.capabilities.scaffold.skeleton_pins_success_status_for", lambda _s: False
+            "squadops.stacks.scaffold.skeleton_pins_success_status_for", lambda _s: False
         )
         monkeypatch.setattr(
-            "squadops.capabilities.scaffold.brief_carries_success_status_for", lambda _s: False
+            "squadops.stacks.scaffold.brief_carries_success_status_for", lambda _s: False
         )
         manifest = _manifest(
             "    - method: POST\n      path: /api/runs\n      success_status: 201\n"
@@ -365,7 +365,7 @@ class TestTheOmissionHalfIsUnreachableByConstruction:
         from squadops.cycles.framing_consistency import validate_manifest_plan_consistency
 
         monkeypatch.setattr(
-            "squadops.capabilities.scaffold.skeleton_pins_success_status_for", lambda _s: True
+            "squadops.stacks.scaffold.skeleton_pins_success_status_for", lambda _s: True
         )
         manifest = _manifest(
             "    - method: POST\n      path: /api/runs\n      success_status: 201\n"

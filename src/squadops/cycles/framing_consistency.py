@@ -46,8 +46,8 @@ import re
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from squadops.capabilities.scaffold import Endpoint, InterfaceManifest
     from squadops.cycles.implementation_plan import ImplementationPlan
+    from squadops.stacks.scaffold import Endpoint, InterfaceManifest
 
 #: Success-family tokens the checks reason about. 3-digit tokens outside this
 #: set (400/404/409/422/...) are error vocabulary and never participate.
@@ -66,7 +66,7 @@ def _enforced_success_status(ep: Endpoint) -> int | None:
     GETs derive no status probe, so there is nothing to enforce and nothing to
     contradict.
     """
-    from squadops.capabilities.scaffold import success_status_for
+    from squadops.stacks.scaffold import success_status_for
 
     if ep.method.upper() != "POST":
         return ep.success_status  # declared-only for non-POST; None = unchecked
@@ -116,7 +116,7 @@ def validate_manifest_plan_consistency(
 
     Returns error strings in the plan-validation vocabulary (empty = pass).
     """
-    from squadops.capabilities.scaffold import (
+    from squadops.stacks.scaffold import (
         brief_carries_success_status_for,
         skeleton_pins_success_status_for,
     )

@@ -2170,7 +2170,7 @@ class ClientMockSurfaceCheck(BaseCheck):
             mock_surface_findings,
             mock_surface_observations,
         )
-        from squadops.capabilities.client_surface import ClientSurface
+        from squadops.stacks.client_surface import ClientSurface
 
         rel = str(params["file"])
         surface = ClientSurface.from_params(params.get("client"))
@@ -2222,7 +2222,7 @@ class AdditiveContainmentCheck(BaseCheck):
         stack: str | None = None,
     ) -> CheckOutcome:
         from squadops.capabilities.additive_containment import containment_findings
-        from squadops.capabilities.scaffold import app_invocation_for
+        from squadops.stacks.scaffold import app_invocation_for
 
         rel = str(params["file"])
         invocation = app_invocation_for(str(params.get("stack") or ""))

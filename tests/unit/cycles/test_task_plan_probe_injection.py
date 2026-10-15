@@ -299,7 +299,7 @@ def test_generate_task_plan_binds_before_resolving_refs():
 def _testid_manifest():
     from pathlib import Path
 
-    from squadops.capabilities.scaffold import InterfaceManifest
+    from squadops.stacks.scaffold import InterfaceManifest
 
     path = (
         Path(__file__).resolve().parents[3]

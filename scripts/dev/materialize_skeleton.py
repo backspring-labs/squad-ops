@@ -17,8 +17,8 @@ from __future__ import annotations
 import sys
 from pathlib import Path
 
-from squadops.capabilities.scaffold import InterfaceManifest
-from squadops.capabilities.scaffold import materialize as materialize_skeleton
+from squadops.stacks.scaffold import InterfaceManifest
+from squadops.stacks.scaffold import materialize as materialize_skeleton
 
 
 def materialize(manifest_path: Path, out_dir: Path) -> int:

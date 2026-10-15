@@ -27,8 +27,8 @@ from pathlib import Path
 
 import pytest
 
-from squadops.capabilities import scaffold
-from squadops.capabilities.scaffold import (
+from squadops.stacks import scaffold
+from squadops.stacks.scaffold import (
     InterfaceManifest,
     ScaffoldStack,
     check_stack_for,

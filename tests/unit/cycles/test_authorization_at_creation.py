@@ -26,7 +26,6 @@ import pytest
 
 from adapters.cycles.execution_errors import _ExecutionError
 from adapters.noop.ports import NoOpFailurePatternRecall
-from squadops.capabilities.scaffold import InterfaceManifest
 from squadops.cycles.bound_scaffold_record import build_bound_record
 from squadops.cycles.delivered_tree import StoredArtifact, delivered_files
 from squadops.cycles.failure_attribution import TerminalKind
@@ -40,6 +39,7 @@ from squadops.cycles.scaffold_integrity_evidence import (
     STAGE_PATCH_VERIFICATION,
 )
 from squadops.cycles.task_outcome import FailureClassification, TaskOutcome
+from squadops.stacks.scaffold import InterfaceManifest
 from squadops.tasks.models import TaskEnvelope, TaskResult
 
 pytestmark = [pytest.mark.domain_orchestration]

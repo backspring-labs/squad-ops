@@ -28,14 +28,14 @@ from typing import Any
 
 import yaml
 
-from squadops.capabilities.scaffold import (
+from squadops.core.hashing import text_sha256
+from squadops.stacks.scaffold import (
     InterfaceManifest,
     criteria_pack_for,
     expand,
     fill_slot_paths,
     success_status_for,
 )
-from squadops.core.hashing import text_sha256
 
 CONTRACT_VERSION = 1
 CAP_PYTHON = "python"
@@ -263,7 +263,7 @@ def _nextjs_ts_slot_criteria(manifest: InterfaceManifest, path: str) -> dict[str
     general protection against a future stack repeating this is the id linter, now wired at
     derivation, not a second hand-audit of the emitters.
     """
-    from squadops.capabilities.stack_nextjs_ts import endpoint_owners_nextjs_ts
+    from squadops.stacks.stack_nextjs_ts import endpoint_owners_nextjs_ts
 
     criteria: dict[str, Any] = {
         "interface": [],
@@ -364,7 +364,7 @@ def _pack_for(stack: str) -> CriteriaPack:
 def _error_expect(manifest: InterfaceManifest, status: int, code: str) -> dict[str, Any]:
     """A rejection probe's expectation: the status and the code, and the code's message when the
     contract declares one (#2205 gap 3), so every cycle holds the build to its wording."""
-    from squadops.capabilities.scaffold import declared_error_messages
+    from squadops.stacks.scaffold import declared_error_messages
 
     expect: dict[str, Any] = {"status": status, "error_code": code}
     message = declared_error_messages(manifest).get(code)
@@ -448,7 +448,7 @@ def _success_expect(
     declared response, or one naming no entity, adds nothing — a probe must not assert a
     shape the manifest never stated.
     """
-    from squadops.capabilities.response_shape import derive_response_shape
+    from squadops.stacks.response_shape import derive_response_shape
 
     expect: dict[str, Any] = {"status": status}
     shape = derive_response_shape(manifest, response)

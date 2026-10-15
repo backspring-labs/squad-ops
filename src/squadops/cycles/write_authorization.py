@@ -20,8 +20,8 @@ import posixpath
 from dataclasses import dataclass, field
 from enum import StrEnum
 
-from squadops.capabilities.scaffold import within_namespace
 from squadops.cycles.bound_scaffold_record import BoundScaffoldRecord
+from squadops.stacks.scaffold import within_namespace
 
 
 class AuthzDecision(StrEnum):

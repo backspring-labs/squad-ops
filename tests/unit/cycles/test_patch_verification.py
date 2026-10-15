@@ -671,7 +671,7 @@ _REPLAYS = __import__("pathlib").Path(__file__).resolve().parents[2] / "fixtures
 def _nextjs_tree_with_the_1221_patch():
     """The Next.js skeleton the failed task was evaluated against, and the first repair
     ``cyc_05abfc7c1f00`` produced for ``app/api/runs/route.ts`` — stored bytes."""
-    from squadops.capabilities.scaffold import expand
+    from squadops.stacks.scaffold import expand
     from tests.unit.capabilities._stack_fixtures import manifest_for_stack
 
     tree = {f["name"]: f["content"] for f in expand(manifest_for_stack("nextjs_ts"))}

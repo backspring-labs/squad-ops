@@ -13,8 +13,8 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from squadops.capabilities.development_profiles import get_development_profile
 from squadops.capabilities.handlers.cycle.develop import DevelopmentDevelopHandler
+from squadops.stacks.development_profiles import get_development_profile
 
 pytestmark = [pytest.mark.domain_capabilities]
 
@@ -133,7 +133,7 @@ class TestPerStackAppendix:
         handler = _handler("fullstack_fastapi_react")
         capability = get_development_profile("fullstack_fastapi_react")
         with patch(
-            "squadops.capabilities.development_profiles.get_development_profile",
+            "squadops.stacks.development_profiles.get_development_profile",
             return_value=replace(capability, fill_only_template=""),
         ):
             assert await handler._fill_only_section(renderer) == ""

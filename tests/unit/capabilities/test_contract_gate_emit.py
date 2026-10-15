@@ -15,8 +15,8 @@ from pathlib import Path
 
 import pytest
 
-from squadops.capabilities.scaffold import InterfaceManifest
-from squadops.capabilities.scaffold_contract import emit_contract_yaml
+from squadops.stacks.scaffold import InterfaceManifest
+from squadops.stacks.scaffold_contract import emit_contract_yaml
 
 pytestmark = [pytest.mark.domain_capabilities]
 

@@ -770,11 +770,11 @@ class TestVerificationIntegrityWiring:
 from pathlib import Path  # noqa: E402
 
 from adapters.cycles.run_completion import RunCompletion  # noqa: E402
-from squadops.capabilities.scaffold import InterfaceManifest  # noqa: E402
-from squadops.capabilities.scaffold_contract import emit_contract_yaml  # noqa: E402
 from squadops.cycles.run_ledger import RunLedger  # noqa: E402
 from squadops.cycles.verification_contract import VerificationContract  # noqa: E402
 from squadops.cycles.verification_integrity import CheckResult, ResultStatus  # noqa: E402
+from squadops.stacks.scaffold import InterfaceManifest  # noqa: E402
+from squadops.stacks.scaffold_contract import emit_contract_yaml  # noqa: E402
 
 _MANIFEST_YAML = (
     Path(__file__).resolve().parents[3] / "examples" / "03_group_run" / "interface_manifest.yaml"

@@ -22,7 +22,7 @@ from typing import Any
 
 import yaml
 
-from squadops.capabilities.scaffold import InterfaceManifest
+from squadops.stacks.scaffold import InterfaceManifest
 
 REFERENCE_PATH = (
     Path(__file__).resolve().parents[3] / "examples" / "03_group_run" / "interface_manifest.yaml"

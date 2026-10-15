@@ -81,7 +81,7 @@ class TestSurface:
 
     @classmethod
     def for_stack(cls, stack: str) -> TestSurface:
-        from squadops.capabilities.scaffold import (
+        from squadops.stacks.scaffold import (
             qa_test_namespace_for_stack,
             test_config_files_for_stack,
         )

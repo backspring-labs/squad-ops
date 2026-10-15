@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import pytest
 
-from squadops.capabilities.verification_scaffold import (
+from squadops.stacks.verification_scaffold import (
     SCAFFOLD_MANIFEST_VERSION,
     BehaviorSlot,
     ScaffoldSpineError,

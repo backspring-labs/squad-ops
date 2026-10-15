@@ -26,25 +26,25 @@ from __future__ import annotations
 import re
 from typing import TYPE_CHECKING
 
-from squadops.capabilities.app_invocation import (
+from squadops.stacks.app_invocation import (
     JS_MODULE_LOAD,
     NETWORK_SEAM_FETCH_STUB,
     AppInvocation,
 )
-from squadops.capabilities.baseline_stylesheet import BASELINE_CSS
-from squadops.capabilities.client_surface import (
+from squadops.stacks.baseline_stylesheet import BASELINE_CSS
+from squadops.stacks.client_surface import (
     KIND_CLASS,
     KIND_FUNCTION,
     ClientExport,
     ClientSurface,
 )
-from squadops.capabilities.rendered_packaging import render_packaging
-from squadops.capabilities.route_paths import path_segments
-from squadops.capabilities.success_status import derived_success_status
-from squadops.capabilities.type_tokens import base_type_name
+from squadops.stacks.rendered_packaging import render_packaging
+from squadops.stacks.route_paths import path_segments
+from squadops.stacks.success_status import derived_success_status
+from squadops.stacks.type_tokens import base_type_name
 
 if TYPE_CHECKING:  # pragma: no cover - annotations only, avoids a scaffold import cycle
-    from squadops.capabilities.scaffold import Endpoint, InterfaceManifest, Route
+    from squadops.stacks.scaffold import Endpoint, InterfaceManifest, Route
 
 STACK_NAME = "fullstack_fastapi_react"
 
@@ -201,7 +201,7 @@ def _routes_source(manifest: InterfaceManifest) -> str:
     # stub exactly as the error seam is. The fill then USES the store instead of
     # inventing a module for it — which is what pf-40 did, with a broken import.
     # Function-local as in the Next.js module: scaffold.py imports this module.
-    from squadops.capabilities.scaffold import root_persisted_entities
+    from squadops.stacks.scaffold import root_persisted_entities
 
     store_names = [f"{_snake(name)}_store" for name in root_persisted_entities(manifest)]
     store_import = f"from .store import {', '.join(store_names)}" if store_names else ""
@@ -778,7 +778,7 @@ def _store_source(manifest: InterfaceManifest) -> str:
     stores for one stored thing. The shapes are named here, with why they have no table,
     so neither author has to guess (the same rule drives the Next.js ``TABLES``).
     """
-    from squadops.capabilities.scaffold import root_persisted_entities, shape_entities
+    from squadops.stacks.scaffold import root_persisted_entities, shape_entities
 
     entities = list(root_persisted_entities(manifest))
     shapes = list(shape_entities(manifest))
@@ -888,7 +888,7 @@ def store_brief_lines(manifest: InterfaceManifest) -> list[str]:
     """
     if manifest.persistence != "in_memory":
         return []
-    from squadops.capabilities.scaffold import root_persisted_entities, shape_entities
+    from squadops.stacks.scaffold import root_persisted_entities, shape_entities
 
     stores = ", ".join(f"`{_snake(name)}_store`" for name in root_persisted_entities(manifest))
     shapes = ", ".join(f"`{name}`" for name in shape_entities(manifest))
