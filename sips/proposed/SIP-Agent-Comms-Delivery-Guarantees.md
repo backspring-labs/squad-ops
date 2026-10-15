@@ -28,8 +28,8 @@ Kept by the rule in CLAUDE.md ("SIP System"): one row per part, updated in the P
 | part | status | where |
 |---|---|---|
 | §5.2 publisher confirms and mandatory routing: a publish the broker cannot route raises into the publish retry | **shipped** | 2.3.0, PR #2323, issue #1977 |
-| §5.1 bounded redelivery and quarantine, as amended by §5.3b (the agent's attempt count, its own dead-letter queue) | **shipped** | 2.3.0, PR #PRNUM, issue #1977 |
-| §5.3 consumer idempotency, with §5.3a's death-path marker replacing the interim redelivery rule (§5.3b) | **shipped** | 2.3.0, PR #PRNUM, issue #1977 |
+| §5.1 bounded redelivery and quarantine, as amended by §5.3b (the agent's attempt count, its own dead-letter queue) | **shipped** | 2.3.0, PR #2324, issue #1977 |
+| §5.3 consumer idempotency, with §5.3a's death-path marker replacing the interim redelivery rule (§5.3b) | **shipped** | 2.3.0, PR #2324, issue #1977 |
 | §5.4 deferred redelivery | **unplaced, deliberately**: not part of the owner's ruling of 2026-10-14 | — |
 | §5.5 observability | **unplaced, deliberately**: not part of the owner's ruling of 2026-10-14 | — |
 | the duty-gated parts | **deferred to 3.x (ruled 2026-10-04)**: with the duty cluster | `sips/PORTFOLIO.md` §2 |
