@@ -126,3 +126,28 @@ class TestBaselineRejectsWorking:
         await vault.promote_artifact("art_001")
         ref = await vault.get_metadata("art_001")
         assert ref.promotion_status == "promoted"
+
+
+async def test_a_page_of_artifacts_is_newest_first_and_stable(vault):
+    """#1976. Bugs caught: a page cut from the filesystem's walk order, so the same offset showed
+    other artifacts on the next request; or two artifacts created in the same second swapping
+    between pages."""
+    from datetime import timedelta
+
+    for artifact_id, minutes in (("art_a", 0), ("art_b", 2), ("art_c", 1), ("art_d", 2)):
+        await vault.store(
+            _make_artifact(
+                artifact_id=artifact_id,
+                filename=f"{artifact_id}.py",
+                created_at=NOW + timedelta(minutes=minutes),
+            ),
+            b"x",
+        )
+
+    every = await vault.list_artifacts(project_id="proj_001")
+    page = await vault.list_artifacts(project_id="proj_001", limit=2, offset=1)
+    past_the_end = await vault.list_artifacts(project_id="proj_001", limit=2, offset=4)
+
+    assert [r.artifact_id for r in every] == ["art_b", "art_d", "art_c", "art_a"]
+    assert [r.artifact_id for r in page] == ["art_d", "art_c"]
+    assert past_the_end == []

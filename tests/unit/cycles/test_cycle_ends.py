@@ -68,3 +68,41 @@ async def test_the_latest_ending_is_the_cycles_and_none_means_none_was_recorded(
         await registry.record_cycle_end(
             RecordedEnd("cyc_none", "run_1", CycleStopReason.RUN_FAILED)
         )
+
+
+async def test_an_internal_reader_of_a_cycles_runs_gets_every_run_and_a_route_its_page():
+    """#1976. Bug caught: the port's old ``limit=50`` default, which cut every internal reader of
+    a cycle's runs (the completion hook, cancellation, the brief) at 50 without a word."""
+    from squadops.cycles.models import Run
+
+    registry = MemoryCycleRegistry()
+    await registry.create_cycle(
+        Cycle(
+            cycle_id="cyc_1",
+            project_id="p",
+            created_at=datetime(2026, 10, 2, tzinfo=UTC),
+            created_by="t",
+            prd_ref=None,
+            squad_profile_id="full",
+            squad_profile_snapshot_ref="x",
+            task_flow_policy=TaskFlowPolicy(mode="sequential"),
+            build_strategy="fresh",
+        )
+    )
+    for n in range(1, 56):
+        await registry.create_run(
+            Run(
+                run_id=f"run_{n:03}",
+                cycle_id="cyc_1",
+                run_number=n,
+                status="queued",
+                initiated_by="t",
+                resolved_config_hash="h",
+            )
+        )
+
+    every = await registry.list_runs("cyc_1")
+    page = await registry.list_runs("cyc_1", limit=2, offset=53)
+
+    assert [r.run_number for r in every] == list(range(1, 56))
+    assert [r.run_number for r in page] == [54, 55]
