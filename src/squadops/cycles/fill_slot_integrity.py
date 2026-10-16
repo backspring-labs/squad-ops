@@ -40,6 +40,12 @@ Scope — deliberately narrow, because the safe surface is smaller than the owne
 
 Matching is by ``(method, path-with-parameters-normalized)``, so a producer that renamed a
 path parameter still matches its scaffold counterpart and still gets its status code back.
+
+**A parameter the producer adds beside the scaffold's is not a divergence when FastAPI reads it
+from neither the path nor the body** (#2378): a query string, header or cookie value, or a
+dependency. A manifest can choose a query parameter in prose (a ``DELETE`` that names whom by
+``?name=``), and the seed's signature holds only the path's. A removed or renamed
+scaffold-owned parameter, or an added path or body one, is still reported.
 A route the scaffold never declared, or one the producer dropped, is left alone — that is
 ``endpoint_defined``'s job, not this module's.
 
@@ -55,6 +61,18 @@ from dataclasses import dataclass, replace
 
 _ROUTER_METHODS = frozenset({"get", "post", "put", "patch", "delete", "head", "options"})
 _PARAM = re.compile(r"\{[^}]*\}")
+_PARAM_NAME = re.compile(r"\{([^}:]*)")
+
+#: FastAPI's parameter sources, by the marker a default or an ``Annotated`` carries (#2378).
+_BODY_MARKERS = frozenset({"Body", "Form", "File"})
+_NON_BODY_MARKERS = frozenset({"Query", "Header", "Cookie", "Depends", "Security"})
+#: Annotations FastAPI reads from the query string when nothing marks them otherwise, and the
+#: objects it injects. Anything else, a model or a list, is read from the body.
+_QUERY_TYPES = frozenset(
+    {"str", "int", "float", "bool", "UUID", "date", "datetime", "time", "Decimal", "Any"}
+)
+_INJECTED_TYPES = frozenset({"Request", "Response", "BackgroundTasks", "WebSocket"})
+_UNWRAPPED = frozenset({"Optional", "Union", "Annotated"})
 
 
 @dataclass(frozen=True)
@@ -79,9 +97,97 @@ class _Route:
     response_model: str | None
     func_name: str
     arg_names: tuple[str, ...]
+    #: The parameters FastAPI reads from neither the path nor the body (#2378).
+    beside_the_contract: frozenset[str]
     # byte offsets of the decorator call's closing paren, for splicing
     end_lineno: int
     end_col_offset: int
+
+
+def _marker(expr: ast.expr | None) -> str | None:
+    """The FastAPI marker a default or an ``Annotated`` extra names: ``Query`` for
+    ``Query("")`` or ``fastapi.Query("")``."""
+    if not isinstance(expr, ast.Call):
+        return None
+    func = expr.func
+    return func.id if isinstance(func, ast.Name) else getattr(func, "attr", None)
+
+
+def _type_name(annotation: ast.expr | None) -> tuple[str | None, list[ast.expr]]:
+    """The annotation's base type name, unwrapped from ``Optional[...]``, ``Union[X, None]``,
+    ``X | None`` and ``Annotated[...]``, with the ``Annotated`` extras. ``None`` for no
+    annotation, ``""`` for one that names no single type."""
+    extras: list[ast.expr] = []
+    node = annotation
+    while True:
+        if isinstance(node, ast.BinOp) and isinstance(node.op, ast.BitOr):
+            sides = [n for n in (node.left, node.right) if not _is_none(n)]
+            if len(sides) != 1:
+                return "", extras
+            node = sides[0]
+        elif isinstance(node, ast.Subscript) and _subscript_name(node) in _UNWRAPPED:
+            items = node.slice.elts if isinstance(node.slice, ast.Tuple) else [node.slice]
+            if _subscript_name(node) == "Annotated":
+                extras.extend(items[1:])
+                node = items[0]
+                continue
+            kept = [n for n in items if not _is_none(n)]
+            if len(kept) != 1:
+                return "", extras
+            node = kept[0]
+        elif isinstance(node, ast.Name):
+            return node.id, extras
+        elif isinstance(node, ast.Attribute):
+            return node.attr, extras
+        elif node is None:
+            return None, extras
+        else:
+            return "", extras
+
+
+def _subscript_name(node: ast.Subscript) -> str | None:
+    value = node.value
+    return value.id if isinstance(value, ast.Name) else getattr(value, "attr", None)
+
+
+def _is_none(node: ast.expr) -> bool:
+    return isinstance(node, ast.Constant) and node.value is None
+
+
+def _neither_path_nor_body(
+    node: ast.FunctionDef | ast.AsyncFunctionDef, path: str
+) -> frozenset[str]:
+    """The handler's parameters FastAPI reads from neither the path nor the body (#2378): those
+    a ``Query``, ``Header``, ``Cookie``, ``Depends`` or ``Security`` marks, those annotated with
+    a scalar or left unannotated (FastAPI reads them from the query string), and the objects it
+    injects (``Request``). A model, a list with no marker, or a ``Body``/``Form``/``File`` is the
+    body's."""
+    in_path = {name.strip() for name in _PARAM_NAME.findall(path)}
+    positional = node.args.args
+    defaults = [None] * (len(positional) - len(node.args.defaults)) + list(node.args.defaults)
+    out = set()
+    for arg, default in zip(positional, defaults, strict=True):
+        if arg.arg in in_path:
+            continue
+        type_name, extras = _type_name(arg.annotation)
+        markers = {m for m in (_marker(default), *map(_marker, extras)) if m}
+        if markers & _BODY_MARKERS:
+            continue
+        if (
+            markers & _NON_BODY_MARKERS
+            or type_name is None
+            or type_name in _QUERY_TYPES
+            or type_name in _INJECTED_TYPES
+        ):
+            out.add(arg.arg)
+    return frozenset(out)
+
+
+def _scaffold_params_held(want: tuple[str, ...], got: _Route) -> bool:
+    """The scaffold's parameters, in order, once the emission's additions beside the contract
+    are set aside (#2378). A removed or renamed one, or an added path or body one, is not."""
+    kept = tuple(a for a in got.arg_names if a in want or a not in got.beside_the_contract)
+    return kept == want
 
 
 def _route_key(method: str, path: str) -> tuple[str, str]:
@@ -284,6 +390,7 @@ def _route_from_decorator(
         response_model=response_model,
         func_name=node.name,
         arg_names=tuple(a.arg for a in node.args.args),
+        beside_the_contract=_neither_path_nor_body(node, path),
         end_lineno=dec.end_lineno,
         end_col_offset=dec.end_col_offset,
     )
@@ -512,7 +619,7 @@ def restore_declared_status_codes(
                     restored=False,
                 )
             )
-        if want.arg_names != got.arg_names:
+        if not _scaffold_params_held(want.arg_names, got):
             divergences.append(
                 DecoratorDivergence(
                     method=got.method.upper(),
@@ -678,7 +785,9 @@ def signature_divergences(declared: list[dict], emitted_source: str) -> list[str
                 f"{got.func_name!r}"
             )
         want_params = sig.get("params")
-        if isinstance(want_params, list) and tuple(str(p) for p in want_params) != got.arg_names:
+        if isinstance(want_params, list) and not _scaffold_params_held(
+            tuple(str(p) for p in want_params), got
+        ):
             details.append(
                 f"{route_token}: scaffold-owned parameters {[str(p) for p in want_params]} "
                 f"emitted as {list(got.arg_names)}"
