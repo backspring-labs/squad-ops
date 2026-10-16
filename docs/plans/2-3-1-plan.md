@@ -1,8 +1,9 @@
 # 2.3.1 plan — what the 2.3 cut found, fixed small
 
-**Status: DRAFT (2026-10-16), for the owner's review of §5.** The scope is ruled. After the 2.3.0 cut the owner placed
-five items here: "place the 2.3.1 candidates you listed after the cut", and "yes" to adding #2381 the same way. This
-plan says how each is built, how the line is verified, and what it leaves out. Nothing is built before §5 is ruled.
+**Status: ADOPTED (2026-10-16).** The owner ruled §5 at ~15:26 ET: "approve D1-D3 for 2.3.1". The scope was ruled
+earlier the same day. After the 2.3.0 cut the owner placed five items here: "place the 2.3.1 candidates you listed
+after the cut", and "yes" to adding #2381 the same way. D2 adds a sixth, #2384. This plan says how each is built, how
+the line is verified, and what it leaves out.
 
 **What 2.3.1 is.** A patch on the 2.3 line (CLAUDE.md, #281: urgent or small fixes, either lane). Every item was found
 on the 2.3 line, most of them by its cut. None is urgent: each is a defect that is small, understood, and cheaper to fix
@@ -13,11 +14,12 @@ now than to carry into 2.4, whose first campaigns start measuring outcomes. The 
 > **What a campaign's records and checks say is what happened:**
 > - a late answer reaches the stored digest, and says who gave it;
 > - a correct handler for a declared query parameter is not refused;
-> - a check that ran and passed is not recorded as skipped.
+> - a check that ran and passed is not recorded as skipped;
+> - a cycle that failed does not read `accepted`.
 
 ---
 
-## 1. The five items
+## 1. The six items
 
 ### #2322: the runtime API's unused RabbitMQ connection and channel are removed
 
@@ -65,6 +67,23 @@ now than to carry into 2.4, whose first campaigns start measuring outcomes. The 
 
   It must also hold on the Next.js stack's route handlers, or say why they don't carry the check.
 
+### #2384: a failed cycle does not roll up as `accepted` (D2, ruled in)
+
+- **The defect:** `aggregate_cycle_outcome` (`src/squadops/cycles/verification_integrity.py:875`) keeps a run's
+  adverse verdict at cycle scope only when the run left no reconcilable rows (`:946`).
+  - The 2.3 cut's set 1 fourth roll (`cyc_ce31b502b82c`) failed on a framework integrity error. Its implementation
+    run's own verdict was `blocked_unverified`, from two optional rows that had executed and passed elsewhere.
+  - Reconciliation superseded both rows, so the cycle detail read `accepted` beside the cycle's `failed` status.
+  - The roll-up has no notion of a run that failed, only of the rows it left.
+- **The fix:** a run that failed carries its adverse verdict to cycle scope, unless a later run re-executes its work.
+  The "opaque" rule (#388) extends to a failed run, whatever rows it left. First read every caller of
+  `resolve_cycle_outcome` (the cycle-detail API, the release package, wrap-up and gates). The rule is right only if
+  none of them relies on today's reading of a failed run.
+- **The test:** the issue's shape: a failed implementation run whose summary is `blocked_unverified` with only
+  optional, elsewhere-executed unverified rows. Its cycle reads `blocked_unverified`. The edge: a failed run whose
+  work a later run re-executed and passed still reads `accepted`. The wiring test enters at the cycle-detail route.
+- **The release package keeps its warning** (#2385) as the guard against the next disagreement.
+
 ### #2297, a read first: does QA's test author see the leave endpoint's method and path?
 
 - **The defect:** QA's backend test for leaving a run guessed the endpoint's method or path and got 405. That was 2 of
@@ -100,7 +119,6 @@ now than to carry into 2.4, whose first campaigns start measuring outcomes. The 
 
 | item | why not | where |
 |---|---|---|
-| #2384, a failed cycle rolling up `accepted` | **the owner's decision, D2** | 2.3.1 if ruled in; otherwise 2.4 |
 | #2306, a converging repair ended as a plan defect | changes when correction gives up. The issue itself says to read the 12 recent terminations first | 2.4's plan |
 | #2153, slot assertions routed by location | the owner ruled it waits for SIP-0110's measurement window (SIP-0104 §13d) | after the window |
 | #2253, QA's output budget | raising it changes what a regression roll measures, so it belongs in a line's plan | 2.4's plan |
@@ -132,22 +150,24 @@ QA's prompt (#2297). So unlike 2.2.1, a campaign alone can't show the build unch
   read in its wiring test only.
 - **#2378, live:** the refusal needs a manifest that chooses a query parameter, which one of the 2.3 cut's eight counted
   rolls did (set 1's first). The pair may not reach it.
+- **#2384, live:** the defect needs a run that fails on a framework error, which a passing pair does not produce. It is
+  read in its wiring test, and in the roll-up of any cycle in the pair or the shakeout that does fail.
 
 ---
 
 ## 4. Sequencing
 
-1. #2322, then #2305, then #2378. Each is its own PR, merged on green with main's run read.
+1. #2322, then #2305, then #2378, then #2384. Each is its own PR, merged on green with main's run read.
 2. The two reads, #2297 and #2381, recorded on their issues. Then a fix PR for each read that points to one inside
    2.3.1, or a re-placement to 2.4 with the read.
 3. The rebuild, the loaded checks, the pair and the shakeout. Then the cut.
 
 ---
 
-## 5. Decisions for the owner
+## 5. Decisions (ruled 2026-10-16)
 
-| # | decision | recommendation |
-|---|---|---|
-| D1 | **the verification** | **§3 as written:** tests, a full rebuild with loaded checks, one uncounted pair and one shakeout campaign, about 2.5 hours of box time. *Heavier:* a counted set, two rolls per stack pre-registered as 2.3's was, about 2 more hours. *Leaner:* the shakeout alone, which leaves #2378's change to the build path read only in tests |
-| D2 | **#2384, a failed cycle rolling up `accepted`** | **in 2.3.1.** It is a correctness defect in the cycle roll-up that every consumer reads: the API, the console and the release package, which had to work around it at the 2.3 cut. The fix is to let a failed run's adverse verdict stand at cycle scope unless a later run re-executes its work. Read the resolver's callers first |
-| D3 | **who runs the line** | **the supervisor, on the 2.3 line's terms:** build in §4's order, merge on green with main's run read, rebuilds and uncounted runs. Through the cut, including the tag and the records upload once §3's exit rule holds and the release PR merges with main green. If a reading fails, it stops for the owner. Accepting SIPs and anything security-related stay the owner's. The grant ends at the 2.3.1 cut |
+| # | decision | recommendation | ruling |
+|---|---|---|---|
+| D1 | **the verification** | **§3 as written:** tests, a full rebuild with loaded checks, one uncounted pair and one shakeout campaign, about 2.5 hours of box time. *Heavier:* a counted set, two rolls per stack pre-registered as 2.3's was, about 2 more hours. *Leaner:* the shakeout alone, which leaves #2378's change to the build path read only in tests | **approved** |
+| D2 | **#2384, a failed cycle rolling up `accepted`** | **in 2.3.1.** It is a correctness defect in the cycle roll-up that every consumer reads: the API, the console and the release package, which had to work around it at the 2.3 cut. The fix is to let a failed run's adverse verdict stand at cycle scope unless a later run re-executes its work. Read the resolver's callers first | **approved** |
+| D3 | **who runs the line** | **the supervisor, on the 2.3 line's terms:** build in §4's order, merge on green with main's run read, rebuilds and uncounted runs. Through the cut, including the tag and the records upload once §3's exit rule holds and the release PR merges with main green. If a reading fails, it stops for the owner. Accepting SIPs and anything security-related stay the owner's. The grant ends at the 2.3.1 cut | **approved** |
