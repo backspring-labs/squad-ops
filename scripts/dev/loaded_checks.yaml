@@ -1095,3 +1095,15 @@ checks:
       lines = brief_lines({"cycle_id": "c", "evaluation": {"verdict": "rejected", "blocked": ["b"]}})
       print("own evaluation rejected it" in lines, "- blocked: b" in lines)
     expect: "True True"
+  - id: "2379-runtime"
+    what: "a kept repair's next round keeps the kept files' producers: a retest's copy of the dev's file names the dev's step, a changed copy names none (#2379)"
+    container: squadops-runtime-api
+    code: |
+      import inspect
+      from squadops.cycles.scaffold_enforcement import carry_named_producers as c
+      from squadops.execution.patch_acceptance import PatchAcceptance as P
+      k = [{"name": "a.py", "content": "x", "producer_task_id": "r", "producer_task_type": "development.correction_repair"}]
+      same = c([{"name": "a.py", "content": "x"}], k)[0].get("producer_task_type")
+      changed = c([{"name": "a.py", "content": "y"}], k)[0].get("producer_task_type")
+      print("carry_named_producers(" in inspect.getsource(P._keep_progress), same, changed)
+    expect: "True development.correction_repair None"
