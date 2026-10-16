@@ -1107,6 +1107,17 @@ checks:
       changed = c([{"name": "a.py", "content": "y"}], k)[0].get("producer_task_type")
       print("carry_named_producers(" in inspect.getsource(P._keep_progress), same, changed)
     expect: "True development.correction_repair None"
+  - id: "2384"
+    what: "a failed run's adverse verdict stands at cycle scope, and the resolver reads which runs failed (#2384)"
+    container: squadops-runtime-api
+    code: |
+      import inspect
+      from squadops.cycles.cycle_outcome import resolve_cycle_outcome as r
+      from squadops.cycles.verification_integrity import RunVerdict as V, RunVerificationSummary as S
+      from squadops.cycles.verification_integrity import UnverifiedCheck as U, aggregate_cycle_outcome as a
+      f = S(V.BLOCKED_UNVERIFIED, ("c",), (), (U("c", "missing_tooling", False),), (), 1, 1)
+      print("_unrepeated_failures(" in inspect.getsource(r), a([f], failed_runs=[f]).verdict, a([f]).verdict)
+    expect: "True blocked_unverified accepted"
   - id: "2322"
     what: "the runtime API holds no AMQP connection of its own: every publish goes through the queue port (#2322)"
     container: squadops-runtime-api

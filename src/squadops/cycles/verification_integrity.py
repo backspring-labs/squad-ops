@@ -872,12 +872,38 @@ def _dedupe(items: Collection[Any]) -> tuple[Any, ...]:
     return tuple(out)
 
 
+def _verdicts_that_stand(
+    run_summaries: Sequence[RunVerificationSummary],
+    failed_runs: Collection[RunVerificationSummary],
+) -> tuple[bool, bool]:
+    """Whether a run's ``blocked_unverified``, and a run's ``rejected``, stand at cycle scope
+    whatever later evidence says.
+
+    - **An opaque run** went adverse without contributing reconcilable evidence (aborted before
+      verification, #388): there is nothing to supersede it with.
+    - **A failed run** (#2384) ended where it failed, and its evidence stops there. Its rows
+      still reconcile, so the disclosure lists are unchanged; only its verdict holds.
+    """
+    opaque = [
+        s
+        for s in run_summaries
+        if (s.verdict is RunVerdict.BLOCKED_UNVERIFIED and not s.unverified)
+        or (s.verdict is RunVerdict.REJECTED and not s.failed)
+    ]
+    standing = [*opaque, *failed_runs]
+    return (
+        any(s.verdict is RunVerdict.BLOCKED_UNVERIFIED for s in standing),
+        any(s.verdict is RunVerdict.REJECTED for s in standing),
+    )
+
+
 def aggregate_cycle_outcome(
     run_summaries: Sequence[RunVerificationSummary],
     *,
     waived: Collection[WaivedCheck] = (),
     inert: Collection[str] = (),
     replay: ReplayProvenance | None = None,
+    failed_runs: Collection[RunVerificationSummary] = (),
 ) -> CycleOutcome:
     """Pure cycle-level roll-up over per-run summaries (SIP-0096 §10).
 
@@ -894,10 +920,19 @@ def aggregate_cycle_outcome(
     ``blocked_unverified``):
 
       - any required check with no executed evidence in any run — or any run
-        that went adverse *without* reconcilable evidence rows (#388 abort) —
+        that went adverse *without* reconcilable evidence rows (#388 abort), or
+        a failed run's ``blocked_unverified`` (#2384) —
         → cycle ``blocked_unverified``;
-      - else any check whose final executed state is failed → ``rejected``;
+      - else any check whose final executed state is failed, or a failed run's
+        ``rejected`` (#2384) → ``rejected``;
       - else ``accepted``.
+
+    **A run that failed** (``failed_runs``, #2384): its evidence stops where it failed, so its
+    adverse verdict stands at cycle scope whatever rows it left, as an opaque run's does. The
+    caller passes only the failed runs that no later run of the same workload re-executed: a
+    retry's evidence reconciles as any later run's does. The 2.3 cut's set 1 fourth roll is
+    the case: its implementation run failed ``blocked_unverified`` on two optional rows that had
+    executed elsewhere, reconciliation superseded both, and the cycle read ``accepted``.
 
     An executed failure is superseded only by a later execution, never by
     non-evidence — the incomplete-evidence signal still cannot hide behind a
@@ -928,8 +963,6 @@ def aggregate_cycle_outcome(
     # failure is only superseded by a later execution, never by non-evidence.
     executed_final: dict[str, bool] = {}  # check_id → passed? (last executed wins)
     last_not_executed: dict[str, UnverifiedCheck] = {}
-    any_opaque_blocked = False  # adverse verdict with no unverified rows (#388 abort)
-    any_opaque_rejected = False  # adverse verdict with no failed rows
 
     for s in run_summaries:
         verified.extend(s.verified)
@@ -940,13 +973,7 @@ def aggregate_cycle_outcome(
             executed_final[cid] = False
         for u in s.unverified:
             last_not_executed[u.check_id] = u
-        # A run that went adverse without contributing reconcilable evidence
-        # (e.g. aborted before verification, #388) can't be superseded — there
-        # is nothing to supersede it with. Its verdict stands at cycle scope.
-        if s.verdict is RunVerdict.BLOCKED_UNVERIFIED and not s.unverified:
-            any_opaque_blocked = True
-        elif s.verdict is RunVerdict.REJECTED and not s.failed:
-            any_opaque_rejected = True
+    standing_blocked, standing_rejected = _verdicts_that_stand(run_summaries, failed_runs)
 
     # Disclosure: verified/failed remain full unions (nothing hidden); the
     # cycle-scope ``unverified`` keeps only rows never superseded by a later
@@ -955,9 +982,9 @@ def aggregate_cycle_outcome(
         u for cid, u in last_not_executed.items() if cid not in executed_final
     ]
 
-    if any(u.required for u in unverified) or any_opaque_blocked:
+    if any(u.required for u in unverified) or standing_blocked:
         verdict = RunVerdict.BLOCKED_UNVERIFIED
-    elif any(not passed for passed in executed_final.values()) or any_opaque_rejected:
+    elif any(not passed for passed in executed_final.values()) or standing_rejected:
         verdict = RunVerdict.REJECTED
     else:
         verdict = RunVerdict.ACCEPTED

@@ -588,6 +588,47 @@ class TestCycleOutcomeReconciliation:
         assert outcome.verdict is RunVerdict.REJECTED
         assert outcome.required_unmet == ()
 
+    @pytest.mark.parametrize(
+        ("failed_run", "later", "expected"),
+        [
+            (
+                _run_summary(
+                    RunVerdict.BLOCKED_UNVERIFIED,
+                    verified=["acceptance:frontend_compiles"],
+                    unverified=[
+                        vi.UnverifiedCheck("acceptance:frontend_compiles", "missing_tooling", False)
+                    ],
+                ),
+                None,
+                RunVerdict.BLOCKED_UNVERIFIED,
+            ),
+            (
+                _run_summary(RunVerdict.REJECTED, failed=["tests_pass"]),
+                _run_summary(RunVerdict.ACCEPTED, verified=["tests_pass"]),
+                RunVerdict.REJECTED,
+            ),
+            (_run_summary(RunVerdict.ACCEPTED, verified=["tests_pass"]), None, RunVerdict.ACCEPTED),
+        ],
+        ids=[
+            "blocked on optional rows executed elsewhere (the 2.3 cut's roll)",
+            "rejected on a check a later run of another workload passed",
+            "a failed run that verified everything carries nothing adverse",
+        ],
+    )
+    def test_a_failed_runs_adverse_verdict_stands(self, failed_run, later, expected):
+        """#2384. Bug caught: a run that failed rolled up ``accepted`` once its leftover rows were
+        superseded, so a failed cycle read accepted. Its rows still reconcile (the disclosure
+        lists are unchanged); only its verdict stands. Without ``failed_runs`` the same
+        summaries reconcile to ``accepted``, as before."""
+        framing = _run_summary(RunVerdict.ACCEPTED, verified=["plan_valid"])
+        runs = [framing, failed_run, *([later] if later else [])]
+
+        outcome = aggregate_cycle_outcome(runs, failed_runs=[failed_run])
+
+        assert outcome.verdict is expected
+        assert aggregate_cycle_outcome(runs).verdict is RunVerdict.ACCEPTED
+        assert outcome.unverified == ()
+
 
 # ---------------------------------------------------------------------------
 # SIP-0098 98.4: contract-criterion coverage accounting
