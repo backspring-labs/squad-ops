@@ -38,3 +38,9 @@ langfuse>=2.0,<3.0
 
 # Event ID generation (SIP-0077) — optional, falls back to UUID4
 ulid-py>=1.1.0,<2.0
+
+# Telemetry (#2371): the runtime exports its activity through MetricsPort's OTel adapter (#2204).
+# Until #2371 this image installed no OpenTelemetry at all, so the adapter's SDK import failed and
+# every metric call did nothing, as the agents' did until #2203. CI already pins both.
+opentelemetry-sdk>=1.22.0
+opentelemetry-exporter-otlp-proto-grpc>=1.22.0

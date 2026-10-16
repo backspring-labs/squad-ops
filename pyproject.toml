@@ -56,6 +56,8 @@ api = [
   "PyJWT[crypto]>=2.10",
   "langfuse>=2.0,<3.0",
   "ulid-py>=1.1.0,<2.0",
+  "opentelemetry-sdk>=1.22.0",
+  "opentelemetry-exporter-otlp-proto-grpc>=1.22.0",
 ]
 agent = [
   "aio-pika>=9.3.1",
@@ -74,7 +76,7 @@ agent = [
 langfuse = ["langfuse>=2.0,<3.0"]
 # adapters/telemetry/otel.py imports the SDK lazily and swallows its absence. It was declared
 # nowhere (#582), and until #2203 no image installed it, so no metric reached the collector. The
-# agent extra and image now carry it with the OTLP exporter.
+# agent and api extras and images now carry it with the OTLP exporter (#2203, #2371).
 otel = ["opentelemetry-api>=1.22.0", "opentelemetry-sdk>=1.22.0"]
 # Adapter-specific deps. Previously undeclared and pulled in only transitively
 # (via Prefect in the Docker images), so minimal/CI envs failed to import the
