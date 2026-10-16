@@ -1107,3 +1107,10 @@ checks:
       changed = c([{"name": "a.py", "content": "y"}], k)[0].get("producer_task_type")
       print("carry_named_producers(" in inspect.getsource(P._keep_progress), same, changed)
     expect: "True development.correction_repair None"
+  - id: "2322"
+    what: "the runtime API holds no AMQP connection of its own: every publish goes through the queue port (#2322)"
+    container: squadops-runtime-api
+    code: |
+      from squadops.api.runtime import main as m
+      print(any("rabbitmq" in s for s in m._STATE_SLOTS), hasattr(m, "aio_pika"))
+    expect: "False False"

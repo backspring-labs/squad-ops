@@ -243,10 +243,11 @@ defaults the root relies on today are named in the PR.
   else.
 - Module level: imports and `logger`. **A bare `import squadops.api.runtime.main` performs no
   configuration load, no secret resolution and no construction.**
-- The connection and process objects (`pool`, `rabbitmq_connection`, `rabbitmq_channel`, the
-  Redis client, the health checker instance, the reply router, the tracker, the coordinator)
-  move from module globals onto `app.state`, FastAPI's own per-app holder, so an app's
-  connections have the app's lifecycle and nothing else's.
+- The connection and process objects (`pool`, the Redis client, the health checker instance,
+  the reply router, the tracker, the coordinator) move from module globals onto `app.state`,
+  FastAPI's own per-app holder, so an app's connections have the app's lifecycle and nothing
+  else's. The runtime's own AMQP connection and channel were removed instead (#2322): nothing
+  read them, and every publish goes through the queue port.
 - `src/squadops/api/runtime/Dockerfile:64` becomes
   `uvicorn squadops.api.runtime.main:build_app --factory --host 0.0.0.0 --port 8001`;
   `docker-compose.yml` is untouched (it names the image, not the module); the healthcheck
