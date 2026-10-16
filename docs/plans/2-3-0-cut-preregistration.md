@@ -8,7 +8,8 @@ shakeout's exit rule to this document, written when the line's last batch is bui
 **What must be true before it is registered:**
 1. **The line's last batch is built, merged and deployed** (§6): #1994's last two rounds, the correction runner and the
    task-plan builder, each with its own rebuild and regression pair; then the fixes round (#2363, #2204's last piece,
-   #2354 and the deferral record), with its own rebuild and pair. That rebuild is the final deploy.
+   #2354 and the deferral record, and #2371, which the round's first rebuild found), with its own rebuild and pair.
+   That rebuild is the final deploy.
 2. **Every tracked loaded check answers its expected value on the final deploy** (`verify_loaded.py`, run from the main
    checkout).
 3. **The shakeout loop's exit rule holds** (§3): one shakeout campaign on the final deploy with no new seam finding.
@@ -20,7 +21,7 @@ shakeout's exit rule to this document, written when the line's last batch is bui
 
 2.3 is a stabilization release (odd minor). Its engine changed: the owner adopted TensorFold at G4 on 2026-10-13, so
 every cycle since phase 7 runs on `qwen3.8-27b-tf-nvfp4` through TensorFold. And its structure moved: the cycle
-orchestration left `adapters/cycles` (#1992), a `stacks` package (#1993), 606 deferred imports hoisted (#2062), and the
+orchestration left `adapters/cycles` (#1992), a `stacks` package (#1993), 389 deferred imports hoisted (#2062), and the
 five largest units split into named steps (#1994). The set measures:
 - the final deploy still builds what the line built, on both stacks, on the engine 2.3 ships with;
 - every structural round's code is what runs;
@@ -53,7 +54,9 @@ five largest units split into named steps (#1994). The set measures:
     | #1994 unit 1 | `125c9db6` | accepted, 22/22, 3, PASS, 32 | accepted, 18/18, 1, PASS, 30 |
     | #1994 unit 2 | `012208ee` | accepted, 21/21, 0, PASS, 24 | accepted, 20/20, 1, PASS, 30 |
     | #1994 unit 3 | `f609f15a` | accepted, 21/21, 0, PASS, 24 | **rejected**, 14/15, 3, PASS, 42 (#2363, the store had no delete) |
-    | #1994 units 4 and 5, the fixes round | — | added at registration | added at registration |
+    | #1994 unit 4 | `ec507e4a` | accepted, 21/21, 1, PASS, 27 | accepted, 18/18, 1, PASS, 34 |
+    | #1994 unit 5 | `8f2602cb` | accepted, 20/20, 1, PASS, 26 | accepted, 17/17, 1, PASS, 26 |
+    | the fixes round | — | added at registration | added at registration |
 
 - **The shakeout campaign:** one campaign of **two increments** on React, opening with its calibration cycle
   (`examples/03_group_run/campaigns/2-3-0-cut-shakeout.yaml`). It is 2.2's cut shakeout, carried, on `full-38-tf`.
@@ -92,7 +95,7 @@ five largest units split into named steps (#1994). The set measures:
 |---|---|---|---|
 | P1 | every model call in every roll is served by TensorFold, on `qwen3.8-27b-tf-nvfp4` | the agents' per-call metrics over each roll's window: `squadops_llm_call_seconds_count` by `engine` and `model` | any call counted under another engine or model in a roll's window |
 | P2 | every tracked loaded check answers its expected value in every roll, the structural rounds' rows among them (`1992-runtime`, `1994-qa-agent`, `1994-handler-base`, `1994-executor-task`, `1994-correction-runner`, `1994-task-plan`) | each roll's record, its "Loaded, not built" section, against `scripts/dev/loaded_checks.yaml` | any tracked row unanswered, or answering a value other than its `expect` |
-| P3 | every roll's cycle declares memory disabled and pins no snapshot; every consuming task records a `memory_disabled` exposure; every captured envelope reconstructs byte for byte (2.2's P1, carried) | each roll's cycle row, `memory_exposures`, and `verify_authoring_envelopes.py` | a pinned snapshot, a consuming task with no exposure or another status, or an envelope that does not reconstruct |
+| P3 | every roll's cycle declares memory disabled and pins only a disabled snapshot with no entries (SIP-0110 §5i, the owner's ruling at 2.2's cut); every consuming task records a `memory_disabled` exposure; every captured envelope reconstructs byte for byte (2.2's P1, carried) | each roll's cycle row, `memory_exposures`, and `verify_authoring_envelopes.py` | a pinned snapshot that is enabled or holds an entry, a consuming task with no exposure or another status, or an envelope that does not reconstruct |
 | P4 | in the shakeout, every plan gate whose plan meets the tier's conditions is approved by it, with `decided_by = system:plan_review_tier` and each condition's reading in the notes; a gate that fails one escalates (2.2's P3 and P4, carried) | the shakeout's gate decisions and escalation rows | a qualifying gate decided by anyone else, a tier approval missing a condition's reading, or a tier approval on a gate that fails a condition |
 
 ---
@@ -147,9 +150,13 @@ five largest units split into named steps (#1994). The set measures:
 - **What is not in 2.3:** "ok to defer" (the request-profile taxonomy, #316, and Outcome Evaluation's instruments move
   to 2.4, PR #2366); "no second tensorfold candidate at this time" (#2230, in 2.4 since 2026-10-12).
 - **The engine:** TensorFold, adopted at G4 on 2026-10-13 (#2282, #2285).
+- **The cut itself:** "You can push the tag and upload records" (2026-10-15, after granting merge and judgement
+  authority to finish 2.3 that night). The conditions the supervisor stated with it, and keeps: the tag is pushed only
+  once this set passes and the release PR merges with main green; the records are uploaded only if the credential
+  scan is clean, and with the preview's sha256 (`--expect-sha256`). Accepting SIPs and anything security-related stay
+  the owner's.
 
-The supervisor registers the set when §1's conditions hold, and launches it. The owner pushes the tag and approves the
-records' upload, as at 2.2's cut.
+The supervisor registers the set when §1's conditions hold, and launches it.
 
 ## 10. The set's readings
 
