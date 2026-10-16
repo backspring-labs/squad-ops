@@ -37,9 +37,10 @@ def tree(tmp_path, monkeypatch):
         + "| due now | **placed** | 2.1.0, #10 |\n"
         + "| closed | **placed** | 2.1.0, #11 |\n"
         + "| later | **placed** | 2.2.0, #12 |\n"
+        + "| moved on | **placed** | 2.2.0, #13: moved from 2.1 by the owner |\n"
     )
     (tmp_path / "sips" / "open-issues.json").write_text(
-        '{"refreshed": "x", "open": {"10": [], "12": []}}'
+        '{"refreshed": "x", "open": {"10": [], "12": [], "13": []}}'
     )
     monkeypatch.setenv("SIP_SWEEP_ROOT", str(tmp_path))
     return tmp_path
@@ -48,7 +49,8 @@ def tree(tmp_path, monkeypatch):
 def test_the_sweep_reads_promotion_re_placement_and_stale_rows(tree):
     """Bugs caught: a SIP with nothing left not offered for promotion; a part placed in the
     release and unshipped passing the cut unnoticed; a shipped part whose row still says placed;
-    and a later release's part reported as overdue."""
+    and a later release's part reported as overdue, including one whose row says it moved from
+    this release (SIP-0111's #2230 at the 2.3 cut: "2.4.0, #2230: moved from 2.3 by the owner")."""
     s = sip_sweep.sweep("2.1.0", tree)
 
     assert s.promotable == ["SIP-0001"]
