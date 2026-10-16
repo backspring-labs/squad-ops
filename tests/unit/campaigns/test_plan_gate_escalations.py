@@ -383,3 +383,53 @@ async def test_the_digest_asks_while_pending_then_for_a_late_answer_then_shows_i
     assert "Answered late by human:owner: list-ordering: insertion order" in answered
     # Kept apart from the accepted work: its own section.
     assert answered.index("## Escalations") > answered.index("## Accepted")
+
+
+@pytest.mark.parametrize(
+    ("question", "joined"),
+    [
+        ("Pick the runs list's order.", "Pick the runs list's order. Answered late by"),
+        ("which order does the runs list use?", "use? Answered late by"),
+        ("the runs list's order", "the runs list's order. Answered late by"),
+    ],
+    ids=["a question ending in a period", "a question mark", "no end of its own"],
+)
+async def test_a_late_answer_follows_its_question_with_one_sentence_end(question, joined):
+    """#2305. Bug caught: the digest line read "…the plan-review tier escalates.. Answered late by
+    …": the question's own period, then the separator's."""
+    from squadops.campaigns.escalation import answer_transition
+    from squadops.campaigns.evidence import digest, package
+
+    campaigns = MemoryCampaignRegistry()
+    await campaigns.create_campaign(
+        campaign(CID), actor="o", actor_role="o", reason="r", idempotency_key="c"
+    )
+    verdict = plan_review_tier(
+        kind=CycleKind.INCREMENT,
+        open_questions=(question,),
+        footprint=("backend/routes.py",),
+        allowed_scope=("backend/**",),
+        refused_framing_runs=(),
+        answered_on_record={},
+    )
+    await campaigns.transition(
+        CID, opening_transition(_identity("cyc_x"), verdict, (("list-ordering", question),), OPENED)
+    )
+    [esc] = escalations(await campaigns.control_log(CID), S.COMPLETED)
+    await campaigns.transition(
+        CID,
+        answer_transition(
+            esc,
+            {"list-ordering": "insertion order"},
+            actor="human:owner",
+            actor_role="owner",
+            reason="late",
+        ),
+    )
+
+    text = digest(
+        package(await campaigns.get_campaign(CID), await campaigns.control_log(CID), [], [])
+    )
+
+    assert f"{joined} human:owner: list-ordering: insertion order" in text
+    assert ".. Answered" not in text and "?. Answered" not in text

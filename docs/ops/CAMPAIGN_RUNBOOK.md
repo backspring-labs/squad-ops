@@ -206,6 +206,10 @@ squadops campaigns answer <campaign_id> <escalation_id> \
     --answer "<decision_id>=<the answer>" --reason "<why now>"
 ```
 
+An agent answering for the owner adds `--as-agent`, as at a gate, so the record says an agent gave
+it (#2305). On a closed campaign the answer materializes the package again, so `campaigns digest`
+shows it and stops asking.
+
 **Where it is read (§24bm).** At a tier campaign's next proposal launch, in this campaign or a later one
 for the same project, an open decision in the baseline is resolved by a late answer only when both the
 decision id and the question match. The decision's `choice` becomes the answer, and its `warrant` names

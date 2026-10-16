@@ -1114,3 +1114,12 @@ checks:
       from squadops.api.runtime import main as m
       print(any("rabbitmq" in s for s in m._STATE_SLOTS), hasattr(m, "aio_pika"))
     expect: "False False"
+  - id: "2305"
+    what: "a late answer on a closed campaign materializes its package again, and says whether an agent gave it (#2305)"
+    container: squadops-runtime-api
+    code: |
+      import inspect
+      from squadops.api.campaign_schemas import EscalationAnswerRequest as R
+      from squadops.api.routes.campaigns.campaigns import answer_escalation as a
+      print("answered_by_kind" in R.model_fields, "_materialize_after_close(" in inspect.getsource(a))
+    expect: "True True"

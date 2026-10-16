@@ -94,6 +94,7 @@ from squadops.campaigns.progress import (
     owner_held,
 )
 from squadops.campaigns.projection import project
+from squadops.cycles.gate_attribution import compose_decided_by
 from squadops.cycles.models import CycleStatus
 from squadops.memory.pinning import pin_campaign
 
@@ -403,7 +404,11 @@ async def answer_escalation(
     """A late answer to an expired or cancelled escalation (§24bj's ruling 4, §24bm): a record,
     accepted after the campaign ended, answering each decision it names by its id. It never reopens
     the campaign or resumes the parked cycle. A later tier campaign's proposal launch carries a
-    compatible answer into its manifest, and its plan gate checks the plan still carries it."""
+    compatible answer into its manifest, and its plan gate checks the plan still carries it.
+
+    It is recorded by whom, as a gate decision is (``{kind}:{principal}``, #812), and on a closed
+    campaign the stored package is materialized again, as the close did, so the digest stops
+    asking for an answer that was given (#2305)."""
 
     campaign = await _registry(request).get_campaign(campaign_id)
     found = next(
@@ -418,11 +423,18 @@ async def answer_escalation(
     if refusal is not None:
         raise HTTPException(422, _validation(refusal))
     assert found is not None
-    actor, role = actor_from(identity)
+    _principal, role = actor_from(identity)
     transition = answer_transition(
-        found, body.answers, actor=actor, actor_role=role, reason=body.reason
+        found,
+        body.answers,
+        actor=compose_decided_by(identity, body.answered_by_kind),
+        actor_role=role,
+        reason=body.reason,
     )
-    return _result(await apply_control(request, campaign_id, transition, identity))
+    result = await apply_control(request, campaign_id, transition, identity)
+    if not result.replayed and campaign.state is CampaignState.COMPLETED:
+        await _materialize_after_close(request, campaign_id)
+    return _result(result)
 
 
 @router.get("/{campaign_id}/ledger")

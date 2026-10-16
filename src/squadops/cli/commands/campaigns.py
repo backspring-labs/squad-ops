@@ -287,6 +287,13 @@ def answer(
         help="DECISION_ID=ANSWER, once per decision answered (see `escalations` for the ids)",
     ),
     reason: str = _REASON,
+    as_agent: bool = typer.Option(
+        False,
+        "--as-agent",
+        help="Record this answer as an autonomous agent's, not a person's (#812). An agent using "
+        "a human's credentials is invisible to the token, so declaring is the only way the record "
+        "can be true.",
+    ),
 ):
     """Answer an expired or cancelled escalation late (SIP-0109 §24bj, §24bm), one answer per
     decision, by its id. A record: it never reopens the campaign or resumes the parked cycle. A
@@ -302,7 +309,11 @@ def answer(
         ctx,
         "post",
         f"/api/v1/campaigns/{campaign_id}/escalations/{escalation_id}/answer",
-        json={"answers": answers, "reason": reason},
+        json={
+            "answers": answers,
+            "reason": reason,
+            **({"answered_by_kind": "agent"} if as_agent else {}),
+        },
     )
     _show_result(ctx, data, f"escalation_answered:{escalation_id}")
 
