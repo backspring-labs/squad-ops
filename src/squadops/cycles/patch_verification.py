@@ -186,6 +186,28 @@ class PatchVerification:
     #: decided ran here.
     decided_by_agent: int = 0
 
+    def check_rows(self) -> list[dict[str, Any]]:
+        """The rows the ledger banks for the patched task, in the order it needs (#2381).
+
+        Every row here is banked under the failed task's subject, and the ledger keeps the
+        **last** row per ``(check, subject, criterion)``, whatever its status. This
+        environment's rows are evaluated after the repair's are collected, so a criterion the
+        runtime API could not execute (no npm for ``frontend_compiles``) and the repair
+        executed in its own container ended on the skip: 17 of 20 on the 2.3 cut shakeout's
+        second increment, with three passes recorded as not verified. So a row that did not
+        execute, for a criterion another row executed, is banked first, and the criterion's
+        final state is the execution. The verdict never depended on this order
+        (``_task_verdict`` reads both environments); the record did.
+        """
+        executed = {_criterion_key(r.check, r.params) for r in self.checks if r.status in _EXECUTED}
+
+        def overtaken(r: PatchCheckRecord) -> bool:
+            return r.status not in _EXECUTED and _criterion_key(r.check, r.params) in executed
+
+        first = [r for r in self.checks if overtaken(r)]
+        rest = [r for r in self.checks if not overtaken(r)]
+        return [r.to_check_row() for r in (*first, *rest)]
+
 
 def rebase_artifact_paths(
     artifacts: list[dict[str, Any]], expected_paths: list[str] | tuple[str, ...]

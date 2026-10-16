@@ -1001,7 +1001,7 @@ class PatchAcceptance:
         # This seam keeps the logging, because the log lines name the task and the seam.
         produced = {
             str(row.get("check"))
-            for row in ([r.to_check_row() for r in verification.checks] + retest_rows)
+            for row in (verification.check_rows() + retest_rows)
             if isinstance(row, Mapping) and row.get("check")
         }
         # `tests_pass` is the one owed row that is never a check ROW on a passing result:
@@ -1109,7 +1109,7 @@ class PatchAcceptance:
             # both in the evidence — equal, or this line is never reached.
             "candidate_revision_id": verified_revision_id,
             "persisted_revision_id": persisted_revision_id,
-            "checks": [r.to_check_row() for r in verification.checks] + retest_rows + spine_rows,
+            "checks": verification.check_rows() + retest_rows + spine_rows,
         }
         corrected_outputs.pop("outcome_class", None)
         patched_result_holder["patched_result"] = dataclasses.replace(

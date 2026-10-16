@@ -1464,6 +1464,132 @@ class TestAKeptDevRepairSurvivesTheRoundAfterIt:
         )
 
 
+class TestARepairsExecutedViewCompileIsItsFinalState:
+    """#2381 (``cyc_024e350cc844``, the 2.3 cut shakeout's second increment): a backend-only
+    increment bound its view compiles to the qa task. A dev repair of that task's failure
+    re-asked them; the runtime API, with no npm, skipped them ``missing_tooling``; the dev's
+    container ran them and passed. The verdict used the passes, the record kept the skips
+    (17 of 20), because the skips were banked after the passes under the same identity."""
+
+    _VIEW = "frontend/src/views/RunsList.jsx"
+    _CRITERION = "vc-view-compiles-runs-list-view"
+
+    def _envelope(self):
+        from squadops.cycles.implementation_plan import TypedCheck
+        from squadops.tasks.models import TaskEnvelope
+
+        tree = {
+            "backend/routes.py": "def ordered():\n    return RUNS\n",
+            "frontend/package.json": "{}",
+            self._VIEW: "export default function RunsList() { return null }\n",
+        }
+        return TaskEnvelope(
+            task_id="task_9",
+            agent_id="eve",
+            cycle_id="cyc_001",
+            pulse_id="p",
+            project_id="hello_squad",
+            task_type="qa.test",
+            correlation_id="corr",
+            causation_id=None,
+            trace_id="t",
+            span_id="s",
+            inputs={
+                "resolved_config": {},
+                "artifact_contents": tree,
+                # The accepted tree the verifier materializes, the view the qa task compiled in it.
+                "acceptance_workspace_files": tree,
+                "acceptance_criteria": [
+                    TypedCheck(
+                        check="regex_match",
+                        params={"file": "backend/routes.py", "pattern": "def ordered"},
+                        severity="error",
+                        description="Routes define the list",
+                    ),
+                    TypedCheck(
+                        check="frontend_compiles",
+                        params={"file": self._VIEW},
+                        severity="error",
+                        description="The runs list view compiles",
+                        id=self._CRITERION,
+                    ),
+                ],
+            },
+            metadata={"role": "qa"},
+        )
+
+    def _repairs_rows(self, status: str) -> list[dict]:
+        """The dev repair's own evaluation, as its handler hands it over (#1229)."""
+        return [
+            {
+                "environment": "agent:dev",
+                "checks": [
+                    {
+                        "check": "acceptance:frontend_compiles",
+                        "status": status,
+                        "severity": "error",
+                        "params": {"file": self._VIEW},
+                        "criterion_id": self._CRITERION,
+                    }
+                ],
+            }
+        ]
+
+    @pytest.mark.parametrize(
+        ("repair_ran", "credited"),
+        [("passed", True), ("skipped", False)],
+        ids=["the repair ran it: its pass is the final state", "nobody ran it: it stays skipped"],
+    )
+    async def test_the_view_compile_ends_as_the_environment_that_ran_it_said(
+        self, executor, cycle, monkeypatch, repair_ran, credited
+    ):
+        """Entered at ``_try_accept_patch``, the outcome router's call for a dev repair of a qa
+        failure, with the runtime's npm absent as it is in the image. The accepted result's
+        rows are read as the ledger reads them. Bugs caught: the runtime's skip banked after
+        the repair's pass, so an executed criterion reads not verified; and, the other way, a
+        criterion no environment ran credited."""
+        import squadops.cycles.acceptance_checks as acceptance_checks
+        from squadops.cycles.verification_integrity import aggregate_verification
+        from squadops.cycles.verification_normalize import normalize_task_checks
+
+        which = acceptance_checks.shutil.which
+        monkeypatch.setattr(
+            acceptance_checks.shutil,
+            "which",
+            lambda name, *a, **k: None if name == "npm" else which(name, *a, **k),
+        )
+        executor._correction_runner.reexecute_repaired_suite = AsyncMock(
+            return_value=TestAcceptPatchRetest()._retest_success()
+        )
+        failed = TaskResult(
+            task_id="task_9",
+            status="FAILED",
+            outputs={
+                "test_result": {"executed": True, "exit_code": 1, "tests_passed": False},
+                "validation_result": {"passed": False, "checks": []},
+            },
+            error="tests failed",
+        )
+        holder: dict = {}
+
+        action = await executor._try_accept_patch(
+            self._envelope(),
+            failed,
+            [{"name": "backend/routes.py", "content": "def ordered():\n    return sorted(RUNS)\n"}],
+            holder,
+            **TestAcceptPatchRetest()._kwargs(cycle),
+            repair_typed_checks=self._repairs_rows(repair_ran),
+        )
+        rows = normalize_task_checks(holder["patched_result"].outputs, subject="task_9")
+        summary = aggregate_verification(rows, contract_criteria=(self._CRITERION,))
+
+        assert action == "accept_patch"
+        assert (self._CRITERION in summary.criteria_verified) is credited
+        assert [u.reason for u in summary.unverified if "frontend_compiles" in u.check_id] == (
+            [] if credited else ["missing_tooling"]
+        )
+
+
 class TestAcceptPatchRetestWorkspaceThreading:
     """3.11 instant-fail: the retest was built from the BASE envelope, but
     artifact_contents (the workspace) exists only on the dispatch-time
