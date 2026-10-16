@@ -11,13 +11,14 @@ from __future__ import annotations
 
 import re
 from collections import defaultdict
-from collections.abc import Iterable
+from collections.abc import Iterable, Mapping
 from typing import Any
 
+from squadops.campaigns.acceptance import Held
 from squadops.capabilities.anchored_edits import verbatim_block
 from squadops.cycles.cycle_assessment import CycleAssessment, IndicatorState
 from squadops.cycles.run_loop_summary import RunLoopSummary
-from squadops.cycles.verification_integrity import FailedCheck
+from squadops.cycles.verification_integrity import FailedCheck, RunVerdict
 
 _UNASKABLE = "unaskable: "
 
@@ -126,6 +127,64 @@ def prior_cycle_brief(
     return brief
 
 
+def evaluation_findings(
+    evaluation: Mapping[str, Any] | None, stated: Mapping[str, Mapping[str, Any]]
+) -> dict[str, Any] | None:
+    """#2318: why the increment's own evaluation (§8) rejected it, for the brief. The cycle's
+    checks are the build's verdict; the evaluation is the increment's, and it can reject a build
+    that passed every one of them: a frozen criterion broken, a new one unmet, a route that did
+    not render. The brief read only the checks, so a repair launched for such a rejection was told
+    the cycle passed. ``None`` when there is no evaluation, or it accepted.
+
+    ``stated`` gives each criterion's statement and surface, by id: the approved change request's
+    for the new ones, the promotion's for the frozen ones."""
+    if not evaluation or evaluation.get("verdict") == str(RunVerdict.ACCEPTED):
+        return None
+
+    def described(criterion_id: str) -> dict[str, Any]:
+        known = stated.get(criterion_id) or {}
+        return {
+            "criterion_id": criterion_id,
+            **{k: known[k] for k in ("statement", "surface") if known.get(k)},
+        }
+
+    held = str(Held.HELD)
+    findings: dict[str, Any] = {"verdict": str(evaluation.get("verdict"))}
+    broken = [
+        {
+            **described(str(f.get("criterion_id"))),
+            "held": str(f.get("held")),
+            "detail": _bounded(str(f.get("detail") or "")),
+        }
+        for f in evaluation.get("frozen") or ()
+        if f.get("held") != held
+    ]
+    unmet = [
+        {**described(str(d.get("criterion_id"))), "reason": str(d.get("reason"))}
+        for d in evaluation.get("discriminations") or ()
+        if not d.get("met")
+    ]
+    routes = [
+        {
+            "path": str(r.get("path")),
+            "held": str(r.get("held")),
+            "missing": [str(m) for m in r.get("missing") or ()],
+        }
+        for r in evaluation.get("routes") or ()
+        if r.get("held") != held
+    ]
+    blocked = [str(b) for b in evaluation.get("blocked") or ()]
+    for key, rows in (
+        ("frozen_broken", broken),
+        ("unmet", unmet),
+        ("routes_not_held", routes),
+        ("blocked", blocked),
+    ):
+        if rows:
+            findings[key] = rows
+    return findings
+
+
 def _bounded(reason: str) -> str:
     reason = str(reason or "").strip()
     if len(reason) <= REASON_LIMIT:
@@ -150,6 +209,7 @@ def brief_lines(brief: Any) -> str:
         surface = f" on `{criterion['surface']}`" if criterion.get("surface") else ""
         statement = criterion.get("statement") or "(no statement recorded)"
         lines.append(f"- `{criterion['criterion_id']}`{surface}: {statement}")
+    lines.extend(_evaluation_lines(brief.get("evaluation"), {c["criterion_id"] for c in met}))
     why = brief.get("why_failed") or ()
     if why:
         lines.append("\nWhy each failed, as its run recorded it:")
@@ -166,6 +226,42 @@ def brief_lines(brief: Any) -> str:
     if brief.get("correction_ended"):
         lines.append(f"- the chain ended: `{brief['correction_ended']}`")
     return "\n".join(lines)
+
+
+def _evaluation_lines(findings: Any, already_shown: set[str]) -> list[str]:
+    """#2318: the increment's evaluation, after the cycle's own checks, so a reader whose checks all
+    passed is told what rejected the increment. A criterion already listed as met is not repeated."""
+    if not isinstance(findings, dict):
+        return []
+    lines = [
+        f"\nThe increment's own evaluation rejected it (`{findings.get('verdict')}`), "
+        "whatever the checks above say:"
+    ]
+    for f in findings.get("frozen_broken") or ():
+        lines.append(
+            f"- frozen `{f['criterion_id']}`{_on(f)}: {_said(f)} — `{f.get('held')}`; "
+            f"failing: {f.get('detail') or '(no detail recorded)'}"
+        )
+    for d in findings.get("unmet") or ():
+        if d["criterion_id"] not in already_shown:
+            lines.append(
+                f"- new `{d['criterion_id']}`{_on(d)}: {_said(d)} — not met: `{d['reason']}`"
+            )
+    for r in findings.get("routes_not_held") or ():
+        lines.append(
+            f"- route `{r['path']}` — `{r.get('held')}`; missing: {_value(r.get('missing') or [])}"
+        )
+    for b in findings.get("blocked") or ():
+        lines.append(f"- blocked: {b}")
+    return lines
+
+
+def _on(criterion: dict[str, Any]) -> str:
+    return f" on `{criterion['surface']}`" if criterion.get("surface") else ""
+
+
+def _said(criterion: dict[str, Any]) -> str:
+    return criterion.get("statement") or "(no statement recorded)"
 
 
 def _round_line(r: dict[str, Any]) -> str:

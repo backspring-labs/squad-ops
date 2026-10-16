@@ -10,7 +10,7 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from squadops.campaigns.prior_cycle import brief_lines, prior_cycle_brief
+from squadops.campaigns.prior_cycle import brief_lines, evaluation_findings, prior_cycle_brief
 from squadops.cycles.cycle_assessment import (
     AssessorIdentity,
     AttributionReading,
@@ -391,3 +391,66 @@ def test_the_criteria_already_met_are_shown_with_what_each_asserts():
     assert "Already met by the accepted application, before this change:" in lines
     assert "- `T5` on `/r`: The view shows the text" in lines
     assert "- `T6`: (no statement recorded)" in lines
+
+
+@pytest.mark.parametrize(
+    "evaluation", [None, {}, {"verdict": "accepted", "frozen": [{"criterion_id": "T1"}]}]
+)
+def test_an_evaluation_that_accepted_or_is_absent_adds_nothing(evaluation):
+    """#2318, edge: only a rejection is a finding. Bug caught: a brief for a cycle whose increment
+    was accepted, or never evaluated, telling the next author its evaluation rejected it."""
+    assert evaluation_findings(evaluation, {}) is None
+
+
+def test_every_part_of_a_rejection_is_shown_and_a_criterion_already_met_is_not_repeated():
+    """#2318. Bug caught: a brief that names only one way an evaluation rejects. A new criterion
+    unmet on the candidate, a route that did not render and a blocked judgement each reject an
+    increment whose build passed its own checks, and each is something its successor can act on."""
+    findings = evaluation_findings(
+        {
+            "verdict": "rejected",
+            "frozen": [{"criterion_id": "T1", "held": "held", "detail": ""}],
+            "discriminations": [
+                {"criterion_id": "T4", "met": False, "reason": "fails_on_candidate"},
+                {"criterion_id": "T5", "met": False, "reason": "no_baseline_failure"},
+                {"criterion_id": "T6", "met": True, "reason": "discriminates"},
+            ],
+            "routes": [
+                {"path": "/", "held": "held", "missing": []},
+                {"path": "/runs/:run_id", "held": "broken", "missing": ["run-detail-error"]},
+            ],
+            "blocked": ["route /create: the app did not boot"],
+        },
+        {"T4": {"statement": "The seed endpoint creates a run", "surface": "POST /runs/seed"}},
+    )
+
+    assert findings == {
+        "verdict": "rejected",
+        "unmet": [
+            {
+                "criterion_id": "T4",
+                "statement": "The seed endpoint creates a run",
+                "surface": "POST /runs/seed",
+                "reason": "fails_on_candidate",
+            },
+            {"criterion_id": "T5", "reason": "no_baseline_failure"},
+        ],
+        "routes_not_held": [
+            {"path": "/runs/:run_id", "held": "broken", "missing": ["run-detail-error"]}
+        ],
+        "blocked": ["route /create: the app did not boot"],
+    }
+    lines = brief_lines(
+        {"cycle_id": "cyc_inc", "already_met": [{"criterion_id": "T5"}], "evaluation": findings}
+    )
+    assert (
+        "The increment's own evaluation rejected it (`rejected`), whatever the checks above say:"
+        in lines
+    )
+    assert (
+        "- new `T4` on `POST /runs/seed`: The seed endpoint creates a run — not met: "
+        "`fails_on_candidate`"
+    ) in lines
+    assert "- route `/runs/:run_id` — `broken`; missing: `run-detail-error`" in lines
+    assert "- blocked: route /create: the app did not boot" in lines
+    assert "- new `T5`" not in lines  # listed once, under what the application already meets
