@@ -382,6 +382,15 @@ Phase 8's rebuilds, in order:
     on TensorFold, with the boot audit passing and no intervention (`cyc_42a2657080fc` 21/21, `cyc_c86e20e7c97f`
     18/18). Each took one correction round, so the split diagnosis ran live in both. All 108 tracked loaded checks
     answered as expected, its own (`1994-correction-runner`, "True True True") among them. No new seam finding.
+  - **The task-plan builder (unit 5): its rebuild and pair, done 2026-10-16.** #2361 (a recording test of the
+    builder's envelopes, taken first) and #2362 merged. The builder's run facts, its acceptance families and each
+    step's envelope inputs became their own functions, moved and not changed: `generate_task_plan` went from 272
+    lines to 193. It was deployed as `dep_a8f0a6489c7d` from `8f2602cb`. Both cycles of the pair were accepted on
+    TensorFold, with the boot audit passing and no intervention (`cyc_8bc1711d54bb` 20/20, `cyc_ad7569db5a0d`
+    17/17), each after one correction round. All 109 tracked loaded checks answered as expected, its own
+    (`1994-task-plan`, "True True True") among them. No new seam finding. The driver ran from a checkout whose
+    `src/` also held #2367 and #2368, merged after the rebuild; neither is read by the pair's seeding or its checks,
+    and the fixes round deploys both. This is the last of #1994's five units.
 - **R8 and R9: moved to 2.4 by the owner, 2026-10-15** ("ok to defer"). #316's taxonomy and Outcome Evaluation's
   instruments each needed its SIP accepted first, and neither was. The 2.4 plan places both design reviews.
 - **#2204b** at any of them.
