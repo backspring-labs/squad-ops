@@ -1193,7 +1193,7 @@ class CampaignProgress:
             brief = prior_cycle_brief(
                 latest, [f for s in summaries for f in s.failed_detail], loops
             )
-            if CycleKind(cycle.kind) in _INCREMENT_KINDS and runs:
+            if cycle.kind and CycleKind(cycle.kind) in _INCREMENT_KINDS and runs:
                 last = max(runs, key=lambda r: r.run_number)
                 findings = evaluation_findings(
                     await self._increment_evaluation(last),

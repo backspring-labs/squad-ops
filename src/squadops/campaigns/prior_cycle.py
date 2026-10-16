@@ -18,7 +18,7 @@ from squadops.campaigns.acceptance import Held
 from squadops.capabilities.anchored_edits import verbatim_block
 from squadops.cycles.cycle_assessment import CycleAssessment, IndicatorState
 from squadops.cycles.run_loop_summary import RunLoopSummary
-from squadops.cycles.verification_integrity import FailedCheck
+from squadops.cycles.verification_integrity import FailedCheck, RunVerdict
 
 _UNASKABLE = "unaskable: "
 
@@ -138,7 +138,7 @@ def evaluation_findings(
 
     ``stated`` gives each criterion's statement and surface, by id: the approved change request's
     for the new ones, the promotion's for the frozen ones."""
-    if not evaluation or evaluation.get("verdict") == "accepted":
+    if not evaluation or evaluation.get("verdict") == str(RunVerdict.ACCEPTED):
         return None
 
     def described(criterion_id: str) -> dict[str, Any]:
