@@ -77,7 +77,7 @@ from squadops.campaigns.models import (
     LaunchRequest,
     PlanGate,
 )
-from squadops.campaigns.prior_cycle import prior_cycle_brief
+from squadops.campaigns.prior_cycle import evaluation_findings, prior_cycle_brief
 from squadops.campaigns.proposed_behaviours import (
     QA_PROPOSED_BEHAVIOURS_ARTIFACT_TYPE,
     merged_entries,
@@ -1175,22 +1175,51 @@ class CampaignProgress:
         """#1692: the failed cycle's brief, from its assessment (read here when the caller has
         none — an owner's resume) and its runs' verification summaries. It is an aid to the next
         cycle, so a record that cannot be read or derived from leaves it out, with a warning; it
-        never blocks the launch."""
+        never blocks the launch.
+
+        #2318: an increment's brief also carries its evaluation's findings. The decision that
+        launched the successor read that evaluation (``increment_verdict``), and it can reject a
+        build whose own checks all passed; without it, the brief said the cycle passed."""
         try:
             if latest is None:
                 latest = await self._assess(cycle.cycle_id)
             summaries = await self._cycles.list_run_verification_summaries(cycle.cycle_id)
+            runs = await self._cycles.list_runs(cycle.cycle_id)
             loops = [
                 loop
-                for run in await self._cycles.list_runs(cycle.cycle_id)
+                for run in runs
                 if (loop := await self._cycles.get_run_loop_summary(run.run_id)) is not None
             ]
-            return prior_cycle_brief(latest, [f for s in summaries for f in s.failed_detail], loops)
+            brief = prior_cycle_brief(
+                latest, [f for s in summaries for f in s.failed_detail], loops
+            )
+            if CycleKind(cycle.kind) in _INCREMENT_KINDS and runs:
+                last = max(runs, key=lambda r: r.run_number)
+                findings = evaluation_findings(
+                    await self._increment_evaluation(last),
+                    await self._evaluation_stated(cycle, last),
+                )
+                if findings:
+                    brief["evaluation"] = findings
+            return brief
         except Exception:  # noqa: BLE001 — an unreadable record is absent, never a blocked launch
             logger.warning(
                 "cycle %s: no prior-cycle brief: its records are unreadable", cycle.cycle_id
             )
             return None
+
+    async def _evaluation_stated(self, cycle: Cycle, run: Run) -> dict[str, dict]:
+        """What each criterion an increment's evaluation judged asserts (#2318): the frozen ones as
+        their promotions froze them (carried on the cycle's bound proposal), and the new ones from
+        its approved change request (``_criteria_stated``)."""
+        block = cycle.resolved_config().get("campaign_proposal")
+        frozen = block.get("frozen_criteria") if isinstance(block, dict) else None
+        stated = {
+            str(c["criterion_id"]): {k: c[k] for k in ("statement", "surface") if c.get(k)}
+            for c in frozen or ()
+            if isinstance(c, dict) and c.get("criterion_id")
+        }
+        return {**stated, **await self._criteria_stated(cycle, run)}
 
     async def _approved_plan(self, cycle: Cycle) -> str | None:
         """The implementation plan the failed cycle built under (§10a): its framing's approved

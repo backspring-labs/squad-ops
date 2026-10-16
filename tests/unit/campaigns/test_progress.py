@@ -1033,11 +1033,18 @@ async def _increment_failed_by_the_environment(
     environment=True,
     reasons=(),
     loop_summary=None,
+    assessed=RunVerdict.REJECTED,
+    frozen=(),
+    evaluation=None,
     **policy,
 ):
     """An accepted calibration, an increment proposed against its tree and ruled on, built, and
     rejected for a cause outside the work. Its approved seeds are stored, as the gate stores
-    them; created before the calibration's manifest, so the calibration's stays the latest."""
+    them; created before the calibration's manifest, so the calibration's stays the latest.
+
+    ``assessed`` is the cycle's own verdict when the cause is the work, ``frozen`` the criteria
+    earlier promotions froze (carried on its bound proposal), and ``evaluation`` the increment
+    evaluation its run stored, if any (#2318)."""
     stored["art_candidate"] = (
         _ref("art_candidate", "interface_manifest.yaml", "interface_manifest", -2),
         MANIFEST.encode(),
@@ -1056,7 +1063,13 @@ async def _increment_failed_by_the_environment(
         "baseline_tree": "an-older-tree" if moved else accepted,
         "accepted_cycle_id": "cyc_cal",
         "baseline_manifest": MANIFEST,
+        **({"frozen_criteria": list(frozen)} if frozen else {}),
     }
+    if evaluation is not None:
+        stored["art_eval"] = (
+            _ref("art_eval", "increment_evaluation.json", "increment_evaluation", 20),
+            evaluation,
+        )
     increment_run = await w.launched_cycle(
         "increment",
         "cyc_inc",
@@ -1107,9 +1120,7 @@ async def _increment_failed_by_the_environment(
         ),
     )
     w._assess = lambda cycle_id: _async(
-        _environment_failure(cycle_id)
-        if environment
-        else _assessment(cycle_id, RunVerdict.REJECTED)
+        _environment_failure(cycle_id) if environment else _assessment(cycle_id, assessed)
     )
     w.progress._assess = w._assess
     await w.end("cyc_inc", increment_run, CycleStopReason.SEQUENCE_COMPLETED)
@@ -1272,6 +1283,88 @@ async def test_a_rejected_increment_is_repaired_from_its_own_candidate_under_its
     assert overrides["campaign_proposal"]["prior_cycle"]["cycle_id"] == "cyc_inc"
     assert overrides["plan_artifact_refs"] == ["art_candidate", "art_cr", "art_plan"]
     assert [w["type"] for w in overrides["workload_sequence"]] == ["implementation"]
+
+
+#: The frozen criterion the 2.3 cut's shakeout broke (``cmp_27dba15dea9a``, increment 2), as the
+#: promotion froze it and the evaluation judged it.
+_FROZEN_T2 = {
+    "criterion_id": "T2",
+    "statement": "A third join to a run with capacity 2 is refused",
+    "surface": "POST /runs/{run_id}/join",
+    "test_path": "backend/tests/criteria/test_T2.py",
+    "bundle_address": "1bbf6dff",
+}
+
+
+def _t2_broken() -> bytes:
+    return _rejection(
+        frozen=[
+            {
+                "criterion_id": "T2",
+                "bundle_address": "1bbf6dff",
+                "held": "broken",
+                "detail": "test_guard_ordering_capacity_before_duplicate",
+            }
+        ],
+    )
+
+
+@pytest.mark.parametrize("successor", ["repair", "next-proposal"])
+async def test_an_increment_its_evaluation_rejected_tells_its_successor_why(
+    calibrating, stored, successor
+):
+    """#2318, entered at the completion hook, on the 2.3 cut shakeout's case: a build that passed
+    every check of its own, rejected by its increment's evaluation because it broke a frozen
+    criterion. Bug caught: the successor told the cycle passed. There, a repair so briefed broke
+    the same frozen test again, and the increment was abandoned."""
+    import dataclasses as _dc
+
+    from squadops.campaigns.prior_cycle import brief_lines
+
+    stored["art_plan"] = (
+        _dc.replace(
+            _ref("art_plan", "implementation_plan.yaml", "control_implementation_plan", 5),
+            promotion_status="promoted",
+        ),
+        b"version: 1",
+    )
+    w = await _increment_failed_by_the_environment(
+        calibrating,
+        stored,
+        environment=False,
+        assessed=RunVerdict.ACCEPTED,
+        frozen=(_FROZEN_T2,),
+        evaluation=_t2_broken(),
+        **({} if successor == "repair" else {"max_repair_cycles_per_increment": 0}),
+    )
+
+    decision = (await w.campaigns.control_log(CID))[-1]
+    *_, launched = await w.campaigns.launch_intents(CID)
+    block = launched.cycle_request["body"]["execution_overrides"]["campaign_proposal"]
+    if successor == "repair":
+        assert (decision.binding["row"], decision.binding["action"]) == (12, "repair")
+        brief = block["prior_cycle"]
+    else:
+        assert (decision.binding["row"], decision.binding["action"]) == (13, "abandon_and_propose")
+        brief = block["abandoned_increment"]
+    assert decision.binding["verdict"] == "rejected"
+    assert brief["verdict"] == "accepted"  # the build's own checks, still shown as they read
+    assert brief["evaluation"] == {
+        "verdict": "rejected",
+        "frozen_broken": [
+            {
+                "criterion_id": "T2",
+                "statement": "A third join to a run with capacity 2 is refused",
+                "surface": "POST /runs/{run_id}/join",
+                "held": "broken",
+                "detail": "test_guard_ordering_capacity_before_duplicate",
+            }
+        ],
+    }
+    assert (
+        "- frozen `T2` on `POST /runs/{run_id}/join`: A third join to a run with capacity 2 is "
+        "refused — `broken`; failing: test_guard_ordering_capacity_before_duplicate"
+    ) in brief_lines(brief)
 
 
 async def test_a_repair_with_no_approved_plan_escalates(calibrating, stored):
