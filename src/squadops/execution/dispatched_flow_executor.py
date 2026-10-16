@@ -477,6 +477,179 @@ class RunState:
     authored: tuple[Any, Any] = (None, None)
 
 
+@dataclasses.dataclass(frozen=True)
+class _TaskOutcomeRouter:
+    """One task's routing of its failed attempts, built once per task by ``_execute_task``.
+
+    These were three closures inside ``_execute_task`` (#1994, the extraction map's §4c step 3a).
+    Routing stays the executor's (§6.1): the dispatcher receives ``route`` as its
+    ``handle_task_outcome`` and only acts on the action token it returns. The values the
+    closures captured are fields here, fixed when the router is built, exactly as the closures'
+    defaults were fixed at definition time. Each method's first lines unpack them into the
+    names the closures used, so the bodies are the closures' own lines.
+    """
+
+    executor: DispatchedFlowExecutor
+    state: RunState
+    envelope: TaskEnvelope
+    enriched: TaskEnvelope
+    cycle: Cycle
+    run_id: str
+    flow_run_id: str | None
+    profile: SquadProfile | None
+    interface_manifest: Any
+    budget_guard: Callable[[], None]
+    ledger: RunLedger
+    #: The run's failure count when the router is built, before the task's first dispatch. Every
+    #: routing decision of this task is handed this value, not a live one (#2348: nothing raises
+    #: the count, and nothing reads it).
+    consecutive_failures: int
+    #: SIP-0096 §6.4 (Phase 2): holds the latest failed result so the abort path — where the
+    #: correction protocol raises from *inside* dispatch_with_retry before it can return — can still
+    #: record the failing task's verification evidence. The #276-class evidence (a failed/not-executed
+    #: qa.test that triggers the abort) is exactly what must survive, or a failed run reads as
+    #: "0 verified" instead of red. ``_handle_task_outcome`` writes a verified patch into the same dict
+    #: (``patched_result_holder``), and ``settle`` takes it from here.
+    held: dict[str, Any] = dataclasses.field(default_factory=dict)
+
+    async def next_action(self, result, _envelope, _enriched, _consecutive_failures, _holder):
+        executor, state, cycle, run_id = self.executor, self.state, self.cycle, self.run_id
+        profile, flow_run_id, ledger = self.profile, self.flow_run_id, self.ledger
+        interface_manifest, budget_guard = self.interface_manifest, self.budget_guard
+        return await executor._handle_task_outcome(
+            result=result,
+            envelope=_envelope,
+            enriched_envelope=_enriched,
+            cycle=cycle,
+            run_id=run_id,
+            task_attempt_counts=state.routing.task_attempt_counts,
+            consecutive_failures=_consecutive_failures,
+            correction_counter=state.correction.counter,
+            correction_signature_state=state.correction.signature_state,
+            scaffold_enforcement_carry=state.ownership.enforcement_carry,
+            prior_outputs=state.produced.prior_outputs,
+            all_artifact_refs=state.produced.all_artifact_refs,
+            stored_artifacts=state.produced.stored_artifacts,
+            completed_task_ids=state.checkpoint.completed_task_ids,
+            plan_delta_refs=state.checkpoint.plan_delta_refs,
+            profile=profile,
+            flow_run_id=flow_run_id,
+            patched_result_holder=_holder,
+            interface_manifest=interface_manifest,
+            budget_guard=budget_guard,
+            repair_rejection_carry=state.correction.rejection_carry,
+            repair_dispute_carry=state.correction.dispute_carry,
+            bound_record=state.ownership.bound_record,
+            compliance_counter=state.ownership.compliance_counter,
+            accepted_repair_task_ids=state.correction.accepted_repair_task_ids,
+            ledger=ledger,
+        )
+
+    async def route(self, result):
+        """The dispatcher's ``handle_task_outcome``: route one failed attempt."""
+        _envelope, _enriched, _holder = self.envelope, self.enriched, self.held
+        _consecutive_failures = self.consecutive_failures
+        _next_action, _record_task_evidence = self.next_action, self.record_evidence
+        executor, state, cycle, run_id = self.executor, self.state, self.cycle, self.run_id
+        interface_manifest, ledger = self.interface_manifest, self.ledger
+        # #1323: authorize BEFORE holding. The held result is the base the repair
+        # overlay is built from (``_try_accept_patch``) and the source the triage
+        # bank stores (#971) — both must see the same authorized set, or a path
+        # the producer may not write is admitted here and the repair that fixes
+        # it is refused at storage for touching it.
+        result = await executor._admit_failed_emission(
+            result,
+            _envelope,
+            cycle,
+            run_id,
+            state.produced.all_artifact_refs,
+            bound_record=state.ownership.bound_record,
+            compliance_counter=state.ownership.compliance_counter,
+        )
+        _holder["result"] = result
+        if ledger is not None:
+            record_absent_emission(ledger, result, _envelope)
+        action = await _next_action(result, _envelope, _enriched, _consecutive_failures, _holder)
+        while action == KEEP_PROGRESS:
+            # #1522: the repair cleared some of the round's failures and added none. It
+            # becomes accepted state, and the retest's failure (the task run on the kept
+            # tree) is routed as the next round's: nothing is re-dispatched. Every round
+            # draws on the correction budget, so this ends when a round accepts, discards,
+            # or the budget is spent. The round's failed attempt is recorded first, as a
+            # re-dispatched one is below (#379).
+            _record_task_evidence(result)
+            result = await executor._store_kept_progress(
+                _holder,
+                _envelope,
+                _enriched,
+                cycle,
+                run_id,
+                state,
+                interface_manifest=interface_manifest,
+            )
+            _holder["result"] = result
+            action = await _next_action(
+                result, _envelope, _enriched, _consecutive_failures, _holder
+            )
+        if action == "continue":
+            # SIP-0110 §0.2 (#2162): the re-dispatch is another authoring invocation. It asks
+            # its unit's snapshot again and records its own exposure under its attempt;
+            # before, it rode the first attempt's envelope and had none.
+            await supply_the_redispatch(
+                (_envelope, _enriched),
+                recall=executor._failure_recall,
+                cycle=cycle,
+                run_id=run_id,
+                now=datetime.now(UTC),
+            )
+        if action == "accept_patch":
+            # #994: remember that THIS task now has accepted, stored repaired
+            # state. A later round's rewind re-authors from the checkpoint and
+            # cannot preserve it, so the guard needs the fact and this loop is
+            # the only place that holds it.
+            state.correction.accepted_repair_task_ids.add(_envelope.task_id)
+        if action in ("continue", "accept_patch"):
+            # #379: this attempt failed — re-dispatched ("continue") or
+            # superseded by a verified patch ("accept_patch", #389). Record
+            # its evidence now so the ledger honestly holds the
+            # failed→passed history; aggregation supersedes it to the final
+            # state per (check_id, subject). Self-filtering: a transport retry
+            # carries no validation_result/test_result → nothing is recorded.
+            _record_task_evidence(result)
+        return action
+
+    def record_evidence(self, task_result) -> None:
+        # The body is shared with the fan-out path (#1148) — see ``record_task_evidence``.
+        ledger, _envelope = self.ledger, self.envelope
+        record_task_evidence(ledger, task_result, _envelope.task_id)
+
+    def settle(self, task_succeeded: bool, result: TaskResult) -> TaskResult:
+        """After the dispatch: swap in a verified patch, record the final result, and on a failed
+        task reset the failure count (#1994, the extraction map's §4c step 3b)."""
+        _last_failed_result, _record_task_evidence = self.held, self.record_evidence
+        state = self.state
+        # #389: a verified patch supersedes the failed result — swap before
+        # recording/collection so the ledger and artifact store see the
+        # corrected outputs (repaired artifacts + executed-passed checks).
+        patched = _last_failed_result.pop("patched_result", None)
+        if patched is not None:
+            result = patched
+
+        # Every non-abort completion — success AND corrected-failure
+        # (break_correction) — records its final result here; the abort path
+        # above is the only other producer, so no task is double-recorded.
+        _record_task_evidence(result)
+
+        if not task_succeeded:
+            # #374: reaching here means the correction returned break_correction —
+            # i.e. governance chose "continue" (advance without repair). A `patch`
+            # now returns "continue", re-running the failed check inside
+            # dispatch_with_retry, so it never lands here. The correction count is
+            # bumped on the shared holder inside _handle_task_outcome, not here.
+            state.routing.consecutive_failures = 0
+        return result
+
+
 def _flow_run_tags_for(cycle: Cycle) -> list[str]:
     """#1722, #1728: the cycle's Prefect tags, from what the cycle already holds. A replay
     declaration is validated at create; one that no longer parses is left untagged rather than
@@ -1801,130 +1974,22 @@ class DispatchedFlowExecutor(FlowExecutionPort):
             },
         )
 
-        # Dispatch + retry loop for retryable failures (SIP-0079).
-        # Routing stays here (§6.1): the dispatcher receives the outcome
-        # decision as a closure over this loop's orchestration state and
-        # only acts on the returned action token.
-        # Loop-scoped values bind as defaults: fixed at definition time,
-        # exactly like the old per-call parameter passing (and B023-safe).
-        # SIP-0096 §6.4 (Phase 2): holds the latest failed result so the abort
-        # path — where the correction protocol raises from *inside*
-        # dispatch_with_retry before it can return — can still record the
-        # failing task's verification evidence. The #276-class evidence (a
-        # failed/not-executed qa.test that triggers the abort) is exactly what
-        # must survive, or a failed run reads as "0 verified" instead of red.
-        _last_failed_result: dict[str, Any] = {}
-
-        async def _next_action(result, _envelope, _enriched, _consecutive_failures, _holder):
-            return await self._handle_task_outcome(
-                result=result,
-                envelope=_envelope,
-                enriched_envelope=_enriched,
-                cycle=cycle,
-                run_id=run_id,
-                task_attempt_counts=state.routing.task_attempt_counts,
-                consecutive_failures=_consecutive_failures,
-                correction_counter=state.correction.counter,
-                correction_signature_state=state.correction.signature_state,
-                scaffold_enforcement_carry=state.ownership.enforcement_carry,
-                prior_outputs=state.produced.prior_outputs,
-                all_artifact_refs=state.produced.all_artifact_refs,
-                stored_artifacts=state.produced.stored_artifacts,
-                completed_task_ids=state.checkpoint.completed_task_ids,
-                plan_delta_refs=state.checkpoint.plan_delta_refs,
-                profile=profile,
-                flow_run_id=flow_run_id,
-                patched_result_holder=_holder,
-                interface_manifest=interface_manifest,
-                budget_guard=budget_guard,
-                repair_rejection_carry=state.correction.rejection_carry,
-                repair_dispute_carry=state.correction.dispute_carry,
-                bound_record=state.ownership.bound_record,
-                compliance_counter=state.ownership.compliance_counter,
-                accepted_repair_task_ids=state.correction.accepted_repair_task_ids,
-                ledger=ledger,
-            )
-
-        async def _route_outcome(
-            result,
-            _envelope=envelope,
-            _enriched=enriched,
-            _consecutive_failures=state.routing.consecutive_failures,
-            _holder=_last_failed_result,
-        ):
-            # #1323: authorize BEFORE holding. The held result is the base the repair
-            # overlay is built from (``_try_accept_patch``) and the source the triage
-            # bank stores (#971) — both must see the same authorized set, or a path
-            # the producer may not write is admitted here and the repair that fixes
-            # it is refused at storage for touching it.
-            result = await self._admit_failed_emission(
-                result,
-                _envelope,
-                cycle,
-                run_id,
-                state.produced.all_artifact_refs,
-                bound_record=state.ownership.bound_record,
-                compliance_counter=state.ownership.compliance_counter,
-            )
-            _holder["result"] = result
-            if ledger is not None:
-                record_absent_emission(ledger, result, _envelope)
-            action = await _next_action(
-                result, _envelope, _enriched, _consecutive_failures, _holder
-            )
-            while action == KEEP_PROGRESS:
-                # #1522: the repair cleared some of the round's failures and added none. It
-                # becomes accepted state, and the retest's failure (the task run on the kept
-                # tree) is routed as the next round's: nothing is re-dispatched. Every round
-                # draws on the correction budget, so this ends when a round accepts, discards,
-                # or the budget is spent. The round's failed attempt is recorded first, as a
-                # re-dispatched one is below (#379).
-                _record_task_evidence(result)
-                result = await self._store_kept_progress(
-                    _holder,
-                    _envelope,
-                    _enriched,
-                    cycle,
-                    run_id,
-                    state,
-                    interface_manifest=interface_manifest,
-                )
-                _holder["result"] = result
-                action = await _next_action(
-                    result, _envelope, _enriched, _consecutive_failures, _holder
-                )
-            if action == "continue":
-                # SIP-0110 §0.2 (#2162): the re-dispatch is another authoring invocation. It asks
-                # its unit's snapshot again and records its own exposure under its attempt;
-                # before, it rode the first attempt's envelope and had none.
-                await supply_the_redispatch(
-                    (_envelope, _enriched),
-                    recall=self._failure_recall,
-                    cycle=cycle,
-                    run_id=run_id,
-                    now=datetime.now(UTC),
-                )
-            if action == "accept_patch":
-                # #994: remember that THIS task now has accepted, stored repaired
-                # state. A later round's rewind re-authors from the checkpoint and
-                # cannot preserve it, so the guard needs the fact and this loop is
-                # the only place that holds it.
-                state.correction.accepted_repair_task_ids.add(_envelope.task_id)
-            if action in ("continue", "accept_patch"):
-                # #379: this attempt failed — re-dispatched ("continue") or
-                # superseded by a verified patch ("accept_patch", #389). Record
-                # its evidence now so the ledger honestly holds the
-                # failed→passed history; aggregation supersedes it to the final
-                # state per (check_id, subject). Self-filtering: a transport retry
-                # carries no validation_result/test_result → nothing is recorded.
-                _record_task_evidence(result)
-            return action
-
-        def _record_task_evidence(task_result, _envelope=envelope) -> None:
-            # ``_envelope`` is bound as a default (B023) so it captures THIS
-            # iteration's task, matching _route_outcome. The body is shared with the
-            # fan-out path (#1148) — see ``record_task_evidence``.
-            record_task_evidence(ledger, task_result, _envelope.task_id)
+        # Dispatch + retry loop for retryable failures (SIP-0079). The routing of a failed
+        # attempt is the router's (``_TaskOutcomeRouter``), built here with this task's values.
+        router = _TaskOutcomeRouter(
+            executor=self,
+            state=state,
+            envelope=envelope,
+            enriched=enriched,
+            cycle=cycle,
+            run_id=run_id,
+            flow_run_id=flow_run_id,
+            profile=profile,
+            interface_manifest=interface_manifest,
+            budget_guard=budget_guard,
+            ledger=ledger,
+            consecutive_failures=state.routing.consecutive_failures,
+        )
 
         try:
             task_succeeded, result = await self._task_dispatcher.dispatch_with_retry(
@@ -1934,34 +1999,16 @@ class DispatchedFlowExecutor(FlowExecutionPort):
                 run_id,
                 flow_run_id=flow_run_id,
                 task_run_id=task_run_id,
-                handle_task_outcome=_route_outcome,
+                handle_task_outcome=router.route,
             )
         except Exception:
             # Correction aborted (raised inside dispatch_with_retry). Record the
             # final failed result before the run unwinds, then re-raise — recording
             # is additive and never alters the abort's control flow.
-            _record_task_evidence(_last_failed_result.get("result"))
+            router.record_evidence(router.held.get("result"))
             raise
 
-        # #389: a verified patch supersedes the failed result — swap before
-        # recording/collection so the ledger and artifact store see the
-        # corrected outputs (repaired artifacts + executed-passed checks).
-        patched = _last_failed_result.pop("patched_result", None)
-        if patched is not None:
-            result = patched
-
-        # Every non-abort completion — success AND corrected-failure
-        # (break_correction) — records its final result here; the abort path
-        # above is the only other producer, so no task is double-recorded.
-        _record_task_evidence(result)
-
-        if not task_succeeded:
-            # #374: reaching here means the correction returned break_correction —
-            # i.e. governance chose "continue" (advance without repair). A `patch`
-            # now returns "continue", re-running the failed check inside
-            # dispatch_with_retry, so it never lands here. The correction count is
-            # bumped on the shared holder inside _handle_task_outcome, not here.
-            state.routing.consecutive_failures = 0
+        result = router.settle(task_succeeded, result)
 
         if not task_succeeded:
             # Correction "continue"/"patch" handled — this task is done for now, and the
