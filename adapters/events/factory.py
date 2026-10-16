@@ -3,8 +3,8 @@
 Follows the create_cycle_registry() / create_llm_observability_provider()
 pattern with lazy imports inside each branch.
 
-The factory also handles bridge wiring: when ``llm_observability`` and/or
-``workflow_tracker`` ports are passed, the corresponding subscriber bridges
+The factory also handles bridge wiring: when ``llm_observability``, ``workflow_tracker``
+and/or ``metrics`` ports are passed, the corresponding subscriber bridges
 are subscribed automatically. Composition roots (runtime-api, agent
 entrypoints) hand the factory their ports and never import bridge classes
 by name — that keeps vendor-themed bridge symbols out of core wiring.
@@ -19,6 +19,7 @@ from squadops.ports.events.cycle_event_bus import CycleEventBusPort
 if TYPE_CHECKING:
     from squadops.ports.cycles import WorkflowTrackerPort
     from squadops.ports.telemetry.llm_observability import LLMObservabilityPort
+    from squadops.ports.telemetry.metrics import MetricsPort
 
 
 def create_cycle_event_bus(
@@ -26,6 +27,7 @@ def create_cycle_event_bus(
     *,
     llm_observability: LLMObservabilityPort | None = None,
     workflow_tracker: WorkflowTrackerPort | None = None,
+    metrics: MetricsPort | None = None,
     **kwargs,
 ) -> CycleEventBusPort:
     """Select a :class:`CycleEventBusPort` and subscribe standard bridges.
@@ -38,6 +40,9 @@ def create_cycle_event_bus(
         workflow_tracker: When provided, a ``WorkflowTrackerBridge`` is
             subscribed so run/task lifecycle events drive the workflow
             tracker port (Prefect / NoOp / etc.).
+        metrics: When provided, a ``MetricsBridge`` is subscribed so run, campaign, task and
+            correction moments reach the metrics port (#2204: the dashboard's activity row
+            and its markers).
         **kwargs: Passed to the adapter constructor. ``in_process`` requires
             ``source_service`` and ``source_version``.
     """
@@ -63,5 +68,9 @@ def create_cycle_event_bus(
         from squadops.events.bridges import WorkflowTrackerBridge
 
         bus.subscribe(WorkflowTrackerBridge(workflow_tracker))
+    if metrics is not None:
+        from squadops.events.bridges import MetricsBridge
+
+        bus.subscribe(MetricsBridge(metrics))
 
     return bus

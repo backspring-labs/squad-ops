@@ -16,6 +16,7 @@ performs no configuration load, no secret resolution and no construction.
 import asyncio
 import logging
 import os
+import time
 from contextlib import asynccontextmanager
 from typing import Any
 from urllib.parse import urlparse
@@ -376,7 +377,10 @@ async def _init_cycle_subsystem(state, config, pool) -> None:
     artifact_vault = create_artifact_vault("filesystem")
 
     from adapters.comms.factory import create_queue_adapter
-    from adapters.telemetry.factory import create_llm_observability_provider
+    from adapters.telemetry.factory import (
+        create_llm_observability_provider,
+        create_metrics_provider,
+    )
 
     queue_adapter = create_queue_adapter(config.comms)  # #301 (§6.2)
     # LangFuse is the only provider and no config field selects it: named here (#1449).
@@ -401,12 +405,21 @@ async def _init_cycle_subsystem(state, config, pool) -> None:
     # Bridges are subscribed inside the factory so the composition root
     # never names ``LLMObservabilityBridge`` / ``WorkflowTrackerBridge``
     # directly — only the ports cross this boundary.
+    # #2204: the runtime's own metrics, through the selected telemetry backend. The bus's
+    # metrics bridge turns run, campaign, task and correction moments into counters and
+    # event-time markers, and the start below marks every deploy, since a deploy restarts the
+    # runtime. Grafana's activity row and markers read them.
+    metrics = create_metrics_provider(
+        config.telemetry.backend, otlp_endpoint=config.telemetry.otlp_endpoint
+    )
+    metrics.gauge("runtime_started_timestamp_seconds", time.time())
     event_bus = create_cycle_event_bus(
         "in_process",
         source_service="runtime-api",
         source_version=SQUADOPS_VERSION,
         llm_observability=llm_obs,
         workflow_tracker=state.workflow_tracker,
+        metrics=metrics,
     )
     state.cycle_event_bus = event_bus
 

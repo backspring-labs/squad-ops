@@ -18,7 +18,72 @@
   "refresh": "1m",
   "timezone": "browser",
   "annotations": {
-    "list": []
+    "list": [
+      {
+        "name": "Deploys",
+        "datasource": {
+          "type": "prometheus",
+          "uid": "PBFA97CFB590B2093"
+        },
+        "enable": true,
+        "hide": false,
+        "iconColor": "#5794F2",
+        "expr": "max(squadops_runtime_started_timestamp_seconds) * 1000",
+        "step": "1m",
+        "useValueForTime": true,
+        "titleFormat": "Deploy: the runtime started",
+        "tagKeys": "",
+        "textFormat": ""
+      },
+      {
+        "name": "Runs started",
+        "datasource": {
+          "type": "prometheus",
+          "uid": "PBFA97CFB590B2093"
+        },
+        "enable": true,
+        "hide": false,
+        "iconColor": "#73BF69",
+        "expr": "max(squadops_run_started_timestamp_seconds) * 1000",
+        "step": "1m",
+        "useValueForTime": true,
+        "titleFormat": "Run started",
+        "tagKeys": "",
+        "textFormat": ""
+      },
+      {
+        "name": "Runs finished",
+        "datasource": {
+          "type": "prometheus",
+          "uid": "PBFA97CFB590B2093"
+        },
+        "enable": true,
+        "hide": false,
+        "iconColor": "#B877D9",
+        "expr": "max by (outcome) (squadops_run_finished_timestamp_seconds) * 1000",
+        "step": "1m",
+        "useValueForTime": true,
+        "titleFormat": "Run {{outcome}}",
+        "tagKeys": "outcome",
+        "textFormat": ""
+      },
+      {
+        "name": "Campaign transitions",
+        "datasource": {
+          "type": "prometheus",
+          "uid": "PBFA97CFB590B2093"
+        },
+        "enable": true,
+        "hide": false,
+        "iconColor": "#FF9830",
+        "expr": "max by (next_state) (squadops_campaign_transition_timestamp_seconds) * 1000",
+        "step": "1m",
+        "useValueForTime": true,
+        "titleFormat": "Campaign: {{next_state}}",
+        "tagKeys": "next_state",
+        "textFormat": ""
+      }
+    ]
   },
   "links": [],
   "panels": [
