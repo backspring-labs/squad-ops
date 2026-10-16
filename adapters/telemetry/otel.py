@@ -6,6 +6,7 @@ Part of SIP-0.8.7 Infrastructure Ports Migration.
 
 from __future__ import annotations
 
+import logging
 import uuid
 from collections.abc import Sequence
 from datetime import UTC, datetime
@@ -18,6 +19,8 @@ from squadops.telemetry.models import Span, StructuredEvent
 if TYPE_CHECKING:
     from opentelemetry.sdk.metrics.export import MetricExporter
     from opentelemetry.sdk.trace.export import SpanExporter
+
+logger = logging.getLogger(__name__)
 
 
 def resource_attributes(service_name: str) -> dict[str, str]:
@@ -88,6 +91,7 @@ class OTelAdapter(MetricsPort, EventPort):
         self._histograms: dict[str, Any] = {}
         self._active_spans: dict[str, Any] = {}
         self._initialized = False
+        self._init_failure_logged = False
 
     def _ensure_initialized(self) -> bool:
         """Lazily initialize OpenTelemetry SDK. Returns True if ready."""
@@ -132,8 +136,17 @@ class OTelAdapter(MetricsPort, EventPort):
 
             self._initialized = True
             return True
-        except Exception:
-            # Swallow initialization errors - non-blocking contract
+        except Exception as exc:
+            # Swallow initialization errors - non-blocking contract. But say so, once: a missing
+            # SDK read as silence twice, in the agents' image (#2203) and then the runtime's (#2371).
+            if not self._init_failure_logged:
+                self._init_failure_logged = True
+                logger.warning(
+                    "OpenTelemetry could not initialize, so no metric or span leaves this "
+                    "process: %s: %s",
+                    type(exc).__name__,
+                    exc,
+                )
             return False
 
     def counter(

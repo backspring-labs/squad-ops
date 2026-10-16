@@ -1,5 +1,7 @@
 """Unit tests for telemetry adapters."""
 
+import logging
+import sys
 from contextlib import contextmanager
 from io import StringIO
 
@@ -288,6 +290,23 @@ class TestOTelAdapter:
         adapter.gauge("test", 1)  # Must not raise
         adapter.histogram("test", 1)  # Must not raise
         adapter.emit(StructuredEvent(name="test", message="msg"))  # Must not raise
+
+    def test_a_missing_sdk_is_said_once_and_nothing_raises(self, monkeypatch, caplog):
+        """Bug caught: #2203 and #2371. Without the SDK every call returned quietly, and an image
+        that exported nothing read exactly like a quiet one. Edge: one warning, not one a call."""
+        monkeypatch.setitem(sys.modules, "opentelemetry.sdk.metrics", None)
+        adapter = OTelAdapter(otlp_endpoint="http://otel-collector:4317")
+
+        with caplog.at_level(logging.WARNING, logger="adapters.telemetry.otel"):
+            adapter.gauge("runtime_started_timestamp_seconds", 1.0)
+            adapter.counter("runs_started_total", 1)
+
+        said = [r.getMessage() for r in caplog.records if r.name == "adapters.telemetry.otel"]
+        assert len(said) == 1, said
+        assert said[0].startswith(
+            "OpenTelemetry could not initialize, so no metric or span leaves this process: "
+            "ModuleNotFoundError: "
+        )
 
     def test_broken_exporter_init_registers_no_atexit_hook(self):
         """#239 regression: a BrokenExporter adapter installs a real global tracer
