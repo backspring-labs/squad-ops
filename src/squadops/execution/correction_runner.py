@@ -1256,6 +1256,97 @@ class CorrectionRunner:
             },
         )
 
+        failure_evidence = await self._round_evidence(
+            run_id,
+            cycle,
+            envelope,
+            result,
+            correction_attempts,
+            plan_delta_refs=plan_delta_refs,
+            interface_manifest=interface_manifest,
+            artifact_contents=artifact_contents,
+            scaffold_enforcement_carry=scaffold_enforcement_carry,
+            bound_record=bound_record,
+            repair_rejections=repair_rejections,
+            stored_artifacts=stored_artifacts,
+            repair_disputes=repair_disputes,
+            ledger=ledger,
+            correction_budget=correction_budget,
+            all_artifact_refs=all_artifact_refs,
+        )
+        # Issue #95: capture each correction step's outputs in its own variable
+        # so the analyzer's classification/analysis_summary survive past the
+        # subsequent governance.correction_decision step (which doesn't carry
+        # those fields forward). Reusing a single variable used to mask the
+        # analyzer's diagnosis with defaults at PlanDelta time.
+        analysis_outputs: dict[str, Any] = {}
+        decision_outputs: dict[str, Any] = {}
+        corr_correlation_id = uuid4().hex
+
+        for step_idx, (task_type, role) in enumerate(declared_steps):
+            corr_result = await self._dispatch_declared_step(
+                run_id,
+                cycle,
+                envelope,
+                correction_attempts,
+                step_idx=step_idx,
+                task_type=task_type,
+                role=role,
+                round_seq=round_seq,
+                corr_correlation_id=corr_correlation_id,
+                failure_evidence=failure_evidence,
+                analysis_outputs=analysis_outputs,
+                prior_outputs=prior_outputs,
+                all_artifact_refs=all_artifact_refs,
+                stored_artifacts=stored_artifacts,
+                completed_task_ids=completed_task_ids,
+                plan_delta_refs=plan_delta_refs,
+                profile=profile,
+                flow_run_id=flow_run_id,
+                budget_guard=budget_guard,
+                bound_record=bound_record,
+            )
+            # Collect correction task outputs into the right named bucket so
+            # downstream PlanDelta construction reads each field from the
+            # handler that owns it (issue #95).
+            step_outputs = {
+                k: v for k, v in (corr_result.outputs or {}).items() if k != "artifacts"
+            }
+            bucket = _CORRECTION_STEP_OUTPUT_BUCKET.get(task_type)
+            if bucket == "analysis":
+                analysis_outputs = step_outputs
+            elif bucket == "decision":
+                decision_outputs = step_outputs
+        return _Diagnosis(
+            failure_evidence=failure_evidence,
+            analysis_outputs=analysis_outputs,
+            decision_outputs=decision_outputs,
+            correlation_id=corr_correlation_id,
+        )
+
+    async def _round_evidence(
+        self,
+        run_id: str,
+        cycle: Cycle,
+        envelope: TaskEnvelope,
+        result: TaskResult,
+        correction_attempts: int,
+        *,
+        plan_delta_refs: list[str],
+        interface_manifest: Any,
+        artifact_contents: dict[str, str] | None,
+        scaffold_enforcement_carry: list[str] | None,
+        bound_record: Any,
+        repair_rejections: list[str] | None,
+        stored_artifacts: list[tuple[str, ArtifactRef]],
+        repair_disputes: list[dict[str, Any]] | None,
+        ledger: RunLedger | None,
+        correction_budget: int,
+        all_artifact_refs: list[str],
+    ) -> dict[str, Any]:
+        """Step 1a — what the round knows: the failure evidence, the deterministic injections and
+        the contested rows, the round failure on the ledger, then the priority reserve, which
+        ends the chain (#1994, the extraction map's §4d step 4a)."""
         # 2. Build correction task envelopes (deterministic IDs)
         failure_evidence = build_failure_evidence(
             envelope, result, prior_plan_deltas_count=len(plan_delta_refs)
@@ -1291,99 +1382,102 @@ class CorrectionRunner:
                 round_failure, envelope, cycle, run_id, correction_attempts, all_artifact_refs
             )
 
-        # Issue #95: capture each correction step's outputs in its own variable
-        # so the analyzer's classification/analysis_summary survive past the
-        # subsequent governance.correction_decision step (which doesn't carry
-        # those fields forward). Reusing a single variable used to mask the
-        # analyzer's diagnosis with defaults at PlanDelta time.
-        analysis_outputs: dict[str, Any] = {}
-        decision_outputs: dict[str, Any] = {}
-        corr_correlation_id = uuid4().hex
+        return failure_evidence
 
-        for step_idx, (task_type, role) in enumerate(declared_steps):
-            corr_task_id = correction_task_id(
-                "corr", run_id, correction_attempts, round_seq, task_type
-            )
-            resolved = resolve_agent_config(role, profile)
-            agent_id = resolved.agent_id
-            agent_model = resolved.model
-            agent_overrides = resolved.config_overrides
+    async def _dispatch_declared_step(
+        self,
+        run_id: str,
+        cycle: Cycle,
+        envelope: TaskEnvelope,
+        correction_attempts: int,
+        *,
+        step_idx: int,
+        task_type: str,
+        role: str,
+        round_seq: int,
+        corr_correlation_id: str,
+        failure_evidence: dict[str, Any],
+        analysis_outputs: dict[str, Any],
+        prior_outputs: dict[str, Any],
+        all_artifact_refs: list[str],
+        stored_artifacts: list[tuple[str, ArtifactRef]],
+        completed_task_ids: list[str],
+        plan_delta_refs: list[str],
+        profile: Any,
+        flow_run_id: str | None,
+        budget_guard: Callable[[], None] | None,
+        bound_record: Any,
+    ) -> TaskResult:
+        """Step 1b — one declared protocol step: its id, its role resolved against the profile,
+        its inputs (with the analysis and the refuted claims after an analysis), its envelope and
+        its dispatch (#1994, the extraction map's §4d step 4b)."""
+        from uuid import uuid4
 
-            # Issue #110: propagate squad-profile model + overrides so
-            # correction-loop reasoning runs on the cycle's specified model
-            # (e.g. the `full` profile pins data/lead to qwen3.6:27b)
-            # rather than the agent container's instance default.
-            corr_inputs: dict[str, Any] = {
-                "prd": cycle.prd_ref,
-                "failure_evidence": failure_evidence,
-                "prior_outputs": prior_outputs,
-                "artifact_refs": list(all_artifact_refs),
-                "agent_model": agent_model,
-                "agent_config_overrides": agent_overrides,
-                # 1.7.4 plan §3.1: the cycle's resolved config rides the analysis and
-                # decision envelopes as it does every other cycle task's, so a fault
-                # declared on the cycle reaches the analyzer's emission seam (#968's
-                # diagnostic). Neither handler reads anything else from it — model and
-                # overrides arrive on their own keys above (#110).
-                "resolved_config": cycle.resolved_config(),
-            }
-            if analysis_outputs:
-                corr_inputs["failure_analysis"] = analysis_outputs
-                _attach_refuted_claims(
-                    corr_inputs,
-                    analysis_outputs,
-                    envelope,
-                    corr_task_id,
-                    frozen_paths=bound_record.frozen_paths() if bound_record is not None else (),
-                )
+        corr_task_id = correction_task_id("corr", run_id, correction_attempts, round_seq, task_type)
+        resolved = resolve_agent_config(role, profile)
+        agent_id = resolved.agent_id
+        agent_model = resolved.model
+        agent_overrides = resolved.config_overrides
 
-            corr_envelope = TaskEnvelope(
-                task_id=corr_task_id,
-                agent_id=agent_id,
-                cycle_id=cycle.cycle_id,
-                pulse_id=uuid4().hex,
-                project_id=cycle.project_id,
-                task_type=task_type,
-                correlation_id=corr_correlation_id,
-                causation_id=envelope.task_id,
-                trace_id=uuid4().hex,
-                span_id=uuid4().hex,
-                inputs=corr_inputs,
-                metadata={"role": role, "step_index": step_idx},
-            )
-
-            # 3. Dispatch correction task (task_run creation + task events
-            # live in _dispatch_protocol_step, SIP-0087 B2).
-            corr_result = await self._dispatch_protocol_step(
-                corr_envelope,
-                run_id,
-                cycle,
-                flow_run_id,
-                prior_outputs=prior_outputs,
-                all_artifact_refs=all_artifact_refs,
-                stored_artifacts=stored_artifacts,
-                completed_task_ids=completed_task_ids,
-                plan_delta_refs=plan_delta_refs,
-                budget_guard=budget_guard,
+        # Issue #110: propagate squad-profile model + overrides so
+        # correction-loop reasoning runs on the cycle's specified model
+        # (e.g. the `full` profile pins data/lead to qwen3.6:27b)
+        # rather than the agent container's instance default.
+        corr_inputs: dict[str, Any] = {
+            "prd": cycle.prd_ref,
+            "failure_evidence": failure_evidence,
+            "prior_outputs": prior_outputs,
+            "artifact_refs": list(all_artifact_refs),
+            "agent_model": agent_model,
+            "agent_config_overrides": agent_overrides,
+            # 1.7.4 plan §3.1: the cycle's resolved config rides the analysis and
+            # decision envelopes as it does every other cycle task's, so a fault
+            # declared on the cycle reaches the analyzer's emission seam (#968's
+            # diagnostic). Neither handler reads anything else from it — model and
+            # overrides arrive on their own keys above (#110).
+            "resolved_config": cycle.resolved_config(),
+        }
+        if analysis_outputs:
+            corr_inputs["failure_analysis"] = analysis_outputs
+            _attach_refuted_claims(
+                corr_inputs,
+                analysis_outputs,
+                envelope,
+                corr_task_id,
+                frozen_paths=bound_record.frozen_paths() if bound_record is not None else (),
             )
 
-            # Collect correction task outputs into the right named bucket so
-            # downstream PlanDelta construction reads each field from the
-            # handler that owns it (issue #95).
-            step_outputs = {
-                k: v for k, v in (corr_result.outputs or {}).items() if k != "artifacts"
-            }
-            bucket = _CORRECTION_STEP_OUTPUT_BUCKET.get(task_type)
-            if bucket == "analysis":
-                analysis_outputs = step_outputs
-            elif bucket == "decision":
-                decision_outputs = step_outputs
-        return _Diagnosis(
-            failure_evidence=failure_evidence,
-            analysis_outputs=analysis_outputs,
-            decision_outputs=decision_outputs,
+        corr_envelope = TaskEnvelope(
+            task_id=corr_task_id,
+            agent_id=agent_id,
+            cycle_id=cycle.cycle_id,
+            pulse_id=uuid4().hex,
+            project_id=cycle.project_id,
+            task_type=task_type,
             correlation_id=corr_correlation_id,
+            causation_id=envelope.task_id,
+            trace_id=uuid4().hex,
+            span_id=uuid4().hex,
+            inputs=corr_inputs,
+            metadata={"role": role, "step_index": step_idx},
         )
+
+        # 3. Dispatch correction task (task_run creation + task events
+        # live in _dispatch_protocol_step, SIP-0087 B2).
+        corr_result = await self._dispatch_protocol_step(
+            corr_envelope,
+            run_id,
+            cycle,
+            flow_run_id,
+            prior_outputs=prior_outputs,
+            all_artifact_refs=all_artifact_refs,
+            stored_artifacts=stored_artifacts,
+            completed_task_ids=completed_task_ids,
+            plan_delta_refs=plan_delta_refs,
+            budget_guard=budget_guard,
+        )
+
+        return corr_result
 
     def _resolve_correction_path(
         self,
