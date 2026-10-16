@@ -433,6 +433,49 @@ class TestStoreUpdateSeam:
         assert "update(table: Table, row: Record<string, unknown>)" in store_line
 
 
+class TestStoreRemove:
+    """#2363: a DELETE over an entity stored as rows of its own had no correct form. The store
+    offered `insert`, `update` and `find`, so a leave handler could drop a participant from its
+    run's list but not from the participant table, and a suite asserting that table rejected a
+    working application in every correction round (cyc_0758d771a1dc)."""
+
+    @staticmethod
+    def _store() -> str:
+        from squadops.stacks.scaffold import expand
+        from tests.unit.capabilities._stack_fixtures import manifest_for_stack
+
+        tree = {f["name"]: f["content"] for f in expand(manifest_for_stack("nextjs_ts"))}
+        return tree["lib/store.ts"]
+
+    def test_the_store_removes_a_row_by_id_and_says_whether_it_did(self):
+        """Bug caught: a delete with no verb, or one that reports success for an id that was
+        never stored, so a handler cannot answer `participant_not_found` from it."""
+        source = self._store()
+        assert "export function remove(table: Table, id: string): boolean" in source
+        body = source.split("export function remove")[1].split("export function nextId")[0]
+        assert "if (index < 0) return false" in body
+        assert "rows.splice(index, 1)" in body
+
+    def test_the_frozen_index_and_the_developer_brief_name_remove(self):
+        """Bug caught: a verb the developer cannot see. The index derives from the tree; the
+        fill appendix states the store seam by hand, so it is checked separately."""
+        from squadops.stacks.scaffold import frozen_surface_index_lines
+        from tests.unit.capabilities._stack_fixtures import manifest_for_stack
+
+        store_line = next(
+            line
+            for line in frozen_surface_index_lines(manifest_for_stack("nextjs_ts"))
+            if "lib/store.ts" in line
+        )
+        assert "remove(table: Table, id: string)" in store_line
+        appendix = (
+            Path(__file__).resolve().parents[3]
+            / "src/squadops/prompts/request_templates"
+            / "request.development_develop_fill_only_appendix_nextjs_ts.md"
+        ).read_text()
+        assert "`remove(TABLES.Participant, participant.id)`" in appendix
+
+
 # --------------------------------------------------------------------------- #
 # #1096 — the frozen model must not contradict the response floor
 # --------------------------------------------------------------------------- #

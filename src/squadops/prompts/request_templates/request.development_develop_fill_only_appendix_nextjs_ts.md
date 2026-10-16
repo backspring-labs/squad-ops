@@ -31,7 +31,9 @@ fixed slots** — never to rebuild, rewire, or regenerate the scaffold.
 its own, and its functions accept only those values. An entity that exists only as a shape
 embedded in another (`Run.participants: Participant[]`) or as a response projection has no
 table — store it inside the owning row and project it in the handler. Write
-`insert(TABLES.Run, run)` and `all(TABLES.Run)`. A name you make up is a
+`insert(TABLES.Run, run)` and `all(TABLES.Run)`. A delete of something stored as its own row is
+`remove(TABLES.Participant, participant.id)`; when the same thing is also kept inside another
+row (a run's `participants`), update that row too, so the two never disagree. A name you make up is a
 compile error, and the build fails on compile errors — so the cost of inventing one is the
 whole run, not a warning. Read the table names out of `TABLES`; do not retype them as
 strings, and do not add a table of your own.

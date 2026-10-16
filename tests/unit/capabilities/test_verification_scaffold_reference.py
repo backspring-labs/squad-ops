@@ -76,6 +76,9 @@ _MANIFEST_HASH = "ac1e7be378c54d5966680b85824c6f2c2e4d158eb8dec14d081209223e0705
 # Version 9 (#2202) added a shell kind, the ordered read, emitted only for a collection GET that
 # declares an `order`. The reference manifest declares none, so every shell and both pins below
 # are byte-identical to version 8; the manifest's `generator_version` line is the one change.
+# #2363 (2026-10-15): the store gained `remove`, a tree-only change. Every shell and both pins below
+# are byte-identical; the manifest's `expanded_tree_hash` is the one line regenerated in place, with no
+# version bump, as the docstring rules.
 _AGGREGATE_SPINE_HASH = "1ff59445d016f6d7385d713c5f31de7620fe3f065344db6a083bae7b1a0ab962"
 _SCAFFOLD_HASH = "6fc46f50369bc9afd34e40607350b2464b74f79a6a8ef62772470037f5e98854"
 
