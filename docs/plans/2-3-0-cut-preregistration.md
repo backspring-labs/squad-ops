@@ -1,6 +1,6 @@
 # 2.3.0 — pre-registration of the cut's set (plan §3 step 9, the cut's criteria)
 
-**Status: SET 2 REGISTERED <!-- SET2-REGISTERED -->**, after set 1 failed. Set 1 was registered on 2026-10-16 at 06:26 ET,
+**Status: SET 2 REGISTERED 2026-10-16 at 10:50 ET**, after set 1 failed. Set 1 was registered on 2026-10-16 at 06:26 ET,
 when the four conditions below held and §6's pins were read, and it **failed on its fourth roll** (read at 09:06 ET,
 §10a). That was a framework defect, #2379, fixed by #2380. Under §3 the fix voids the set, and it restarts on a new
 deploy after a shakeout, so set 2 is registered under the same frame, predictions and budget, once its own four
@@ -14,10 +14,34 @@ the line's last batch is built (the 2.3 plan §7), as 2.0, 2.1 and 2.2 did. The 
 **What must be true before set 2 is registered:**
 1. **The fix is built, merged and deployed.** #2380 merged as `2b895f89`, and its rebuild is the new final deploy (§6b).
 2. **Every tracked loaded check answers its expected value on the new deploy,** set 1's 114 rows and the fix's
-   `2379-runtime` among them (`verify_loaded.py`, run from the main checkout). <!-- SET2-COND2 -->
+   `2379-runtime` among them (`verify_loaded.py`, run from the main checkout). **Met:** 118 loaded, 0 not, and the
+   deploy record `dep_dff75482722e` is ok (09:24 ET); `2379-runtime` answers `True development.correction_repair None`.
 3. **The shakeout loop's exit rule holds on the new deploy** (§3): one shakeout campaign with no new seam finding.
-   <!-- SET2-COND3 -->
-4. **The pins are read** (§6b), and nothing in set 2 has launched. <!-- SET2-COND4 -->
+   **Met in round 3** (`cmp_3f67e906eb2d` on `dep_dff75482722e`, 09:30–10:44 ET). It completed with its objective
+   met. The calibration (`cyc_155d4dc7c637`) and both increments were accepted on their first cycle, with no repair
+   cycle, no retry and no escalation:
+   - `cyc_9cb30efbe755`: capacity, all four criteria discriminating;
+   - `cyc_024e350cc844`: a seed endpoint, discriminating, with increment 1's four frozen criteria held.
+
+   The tier decided all 3 plan gates, each with its three readings. Each increment's build took one in-cycle
+   correction, the list-order probe repaired by the developer inside QA's task. That is data (§3); increment 2 kept
+   its first round and accepted its second, both on `backend/routes.py`. The control log's safety reads hold:
+   - 17 rows, none refused, none overdue, no lease and no launch-blocked row;
+   - both rulings bind the hash their submission put at the gate, and both entries into building are approving
+     rulings;
+   - every promotion carries its tree and each frozen criterion's bundle;
+   - three launches, one cycle each.
+
+   The audit sink holds 171 of its events and no refused launch. The runtime's log holds no box wait and no error,
+   and no agent logged an error in the window.
+
+   **Read, and not counted as a seam finding: #2381.** Increment 2 reads 17 of 20 contract criteria: its three
+   view compiles were executed and passed by QA's task, then superseded by `missing_tooling` skips when the
+   developer's repair re-ran them at patch verification. It changes no verdict or gate, and it never credits what did
+   not run. It isn't new to this deploy: round 2's seed increment shows the same 17 of 20. And the counted rolls bind
+   the view compiles to the frontend developer tasks, not QA's. **The loop took three rounds:** round 1 found #2318,
+   set 1 failed on #2379, and round 3 met the rule.
+4. **The pins are read** (§6b), and nothing in set 2 has launched. **Met:** read at 14:50Z (10:50 ET), both counting preflights clean.
 
 **What had to be true before set 1 was registered** (kept as registered):
 
@@ -168,7 +192,16 @@ five largest units split into named steps (#1994). The set measures:
 
 ### 6b. Set 2's pins (read at its registration)
 
-<!-- SET2-PINS -->
+| pin | value |
+|---|---|
+| deploy commit | **`2b895f89`**: #2380 on set 1's tree, rebuilt 2026-10-16 09:21–09:24 ET (`pre-2-3-2379-20261016T132135Z`) |
+| deploy record | **`dep_dff75482722e`**, "describes what runs: 24 services" (`verify_loaded.py` from the main checkout) |
+| image ids | **runtime-api `c2e0289adfe7`, max `f1d5ef5eb198`, neo `7ec40c7f51bc`, nat `2b6a36603862`, bob `6623fb579446`, eve `38fa09a65ce7`, data `6a9a99210c73`**: read from the running containers, equal to both configs' `frozen_image_ids` |
+| model | `qwen3.8-27b-tf-nvfp4` on TensorFold, the frozen NVFP4 recipe, unchanged from set 1 |
+| loaded checks | 115 tracked rows in each config: set 1's 114 and `2379-runtime`. On the deploy, `verify_loaded.py` from the main checkout: 118 loaded, 0 not. Both counting preflights clean |
+| set configs | `2-3-0-cut2-regression-fastapi-react.yaml` **`01bec40cbfc45b14…`**, `2-3-0-cut2-regression-nextjs.yaml` **`e13b878db0a837c4…`** (sha256), carried from set 1's: name, records home (`var/verification_sets/2-3-0-cut2-regression/`), notes, the added row and the pins |
+| HEAD at preflight | **`3c40472d`**, this registration's branch, at both counting preflights (14:50Z). Roll 1 pins the HEAD it launches from, this registration's merge. Its difference from the deploy commit is the set's configs and prose. Nothing under `src/` or `adapters/` differs |
+| the chain | as set 1's, and it also stops on a roll whose verdict is not accepted. Set 1's chain would have run on past one, since the driver exits 0 for a roll it recorded |
 
 ---
 
