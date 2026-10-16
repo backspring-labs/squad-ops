@@ -360,6 +360,21 @@ Phase 8's rebuilds, in order:
     the pair were accepted on TensorFold, with the boot audit passing and no intervention (`cyc_98dd068cbb18`
     21/21 with no correction round, `cyc_a65a98824c7f` 20/20 after one). All 106 tracked loaded checks answered
     as expected, its own (`1994-handler-base`, "True True True") among them. No new seam finding.
+  - **The executor's per-task method (unit 3): its rebuild and pair, done 2026-10-15.** #2349–#2351 merged. The
+    method's routing closures became a per-task router (`_TaskOutcomeRouter`), and its success tail and dispatch
+    announcement became their own methods, moved and not changed. It was deployed as `dep_640f915341ea` from
+    `f609f15a`.
+    - **React:** accepted on TensorFold, with the boot audit passing and no intervention (`cyc_c033db109bb5`,
+      21/21, no correction round).
+    - **Next.js:** rejected (`cyc_0758d771a1dc`, 14/15). Its boot audit passed. Three correction rounds ended as a
+      plan defect on the qa suite's assertion that a deleted participant leaves the Participant table. Read by its
+      signature, that's the Next.js stack's frozen store, which has no delete (#2363, filed), not this round's
+      change. The router handled a kept-progress round, a round not kept, a re-dispatch and the plan-defect stop as
+      designed. The correction runner's round runs a Next.js cycle on a deploy that still carries this code.
+    - All 107 tracked loaded checks answered as expected in both cycles, its own (`1994-executor-task`, "True True
+      True") among them.
+    - **Found while building it:** two SIP-0079 limits nothing read, `max_consecutive_failures` (#2348, removed by
+      #2355) and `max_task_seconds` (#2353, its removal is #2358). The owner ruled both removed.
 - **R8:** #316, once its SIP is accepted.
 - **R9:** Outcome Evaluation's instruments, once their SIP is accepted.
 - **#2204b** at any of them.
