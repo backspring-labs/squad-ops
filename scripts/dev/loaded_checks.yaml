@@ -1077,3 +1077,21 @@ checks:
       sdk = has("opentelemetry.sdk.metrics") and has("opentelemetry.exporter.otlp.proto.grpc.metric_exporter")
       print("metrics" in inspect.signature(factory.create_cycle_event_bus).parameters, len(getattr(m, "_MARKER_MAP", {})), sdk)
     expect: "True 5 True"
+  - id: "2318-runtime"
+    what: "a successor's brief carries the increment's evaluation: the runtime reads it into the brief, and its lines name a frozen break (#2318)"
+    container: squadops-runtime-api
+    code: |
+      import inspect
+      from squadops.campaigns import prior_cycle as c
+      from squadops.campaigns.progress import CampaignProgress as P
+      f = c.evaluation_findings({"verdict": "rejected", "frozen": [{"criterion_id": "T2", "held": "broken", "detail": "t"}]}, {})
+      print("evaluation_findings(" in inspect.getsource(P._prior_cycle_brief), "frozen `T2`" in c.brief_lines({"cycle_id": "c", "evaluation": f}))
+    expect: "True True"
+  - id: "2318-nat"
+    what: "the proposer renders an abandoned increment's evaluation findings from its brief (#2318)"
+    container: squadops-nat
+    code: |
+      from squadops.campaigns.prior_cycle import brief_lines
+      lines = brief_lines({"cycle_id": "c", "evaluation": {"verdict": "rejected", "blocked": ["b"]}})
+      print("own evaluation rejected it" in lines, "- blocked: b" in lines)
+    expect: "True True"
