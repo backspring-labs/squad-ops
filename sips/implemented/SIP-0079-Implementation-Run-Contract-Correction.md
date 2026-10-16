@@ -835,7 +835,7 @@ wait is the deploy's `dispatch.task_timeout` (`src/squadops/api/runtime/main.py`
 awaits the owner's ruling.
 
 **Evidence.** #2348: the count was set to 0 in two places and never raised or compared, and the
-parameter was never read. PR #PRNUM is the removal. The executor's characterization record
+parameter was never read. PR #2355 is the removal. The executor's characterization record
 (`tests/unit/cycles/goldens/execute_task_characterization.json`) changes only by the removed key.
 
 **Ruled by** the owner, 2026-10-15. Of #2348's two options, enforcing the limit or removing it, they
