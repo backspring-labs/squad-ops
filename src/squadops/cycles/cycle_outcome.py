@@ -5,9 +5,10 @@ roll-up at a cycle-completion seam (there is none — a cycle's terminal state i
 derived on read), we compute the ``CycleOutcome`` on demand from the durable per-run
 ``RunVerificationSummary`` rows (slice 2a) via the pure ``aggregate_cycle_outcome``.
 
-Thin I/O orchestration only — one registry read, then the pure choke point. Reusable
+Thin I/O orchestration only — the registry reads, then the pure choke point. Reusable
 by every consumer (cycle-detail API here; wrap-up, gates, and the 1.6 Campaign
-continuation decision later).
+continuation decision later). Beside the summaries it reads which runs failed with no
+later run of their workload, whose adverse verdict stands (#2384).
 """
 
 from __future__ import annotations
@@ -23,6 +24,7 @@ from squadops.cycles.inert_detection import (
     detect_inert_checks,
 )
 from squadops.cycles.lineage import prior_in_series
+from squadops.cycles.models import RunStatus
 from squadops.cycles.replay import (
     REPLAY_COMPATIBILITY_ELEMENTS,
     parse_replay_declaration,
@@ -37,7 +39,7 @@ from squadops.cycles.verification_integrity import (
 if TYPE_CHECKING:
     from collections.abc import Sequence
 
-    from squadops.cycles.models import Cycle
+    from squadops.cycles.models import Cycle, Run
     from squadops.cycles.verification_integrity import RunVerificationSummary
     from squadops.ports.cycles.cycle_registry import CycleRegistryPort
 
@@ -137,4 +139,30 @@ async def resolve_cycle_outcome(
     except Exception:
         logger.warning("inert-check detection failed for %s", cycle_id, exc_info=True)
         inert = ()
-    return aggregate_cycle_outcome(summaries, waived=waived, inert=inert, replay=replay)
+    return aggregate_cycle_outcome(
+        summaries,
+        waived=waived,
+        inert=inert,
+        replay=replay,
+        failed_runs=await _unrepeated_failures(registry, runs),
+    )
+
+
+async def _unrepeated_failures(
+    registry: CycleRegistryPort, runs: Sequence[Run]
+) -> list[RunVerificationSummary]:
+    """The summaries of the runs that failed and that no later run of the same workload
+    re-executed (#2384): their adverse verdicts stand at cycle scope. A retry after a failure
+    takes the failed run's workload, so a later run of it is the work done again, and its
+    evidence reconciles with the failed run's as any later run's does."""
+    ordered = sorted(runs, key=lambda r: r.run_number)
+    out: list[RunVerificationSummary] = []
+    for i, run in enumerate(ordered):
+        if run.status != RunStatus.FAILED:
+            continue
+        if any(later.workload_type == run.workload_type for later in ordered[i + 1 :]):
+            continue
+        summary = await registry.get_run_verification_summary(run.run_id)
+        if summary is not None:
+            out.append(summary)
+    return out
