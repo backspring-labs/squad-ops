@@ -1951,28 +1951,7 @@ class DispatchedFlowExecutor(FlowExecutionPort):
             run_derived_contract=authored_contract,
         )
 
-        # SIP-0087: executor owns Prefect task-run creation so task_run_id
-        # is available for contextvar scoping + heartbeat before the
-        # agent starts emitting logs.
-        task_run_id = await self._task_dispatcher.create_task_run_if_enabled(flow_run_id, envelope)
-
-        # SIP-0077: task.dispatched event (bridge now only reads terminal
-        # state from context; creation already happened above).
-        self._cycle_event_bus.emit(
-            EventType.TASK_DISPATCHED,
-            entity_type="task",
-            entity_id=envelope.task_id,
-            context={
-                "cycle_id": cycle.cycle_id,
-                "run_id": run_id,
-                "flow_run_id": flow_run_id or "",
-                "task_run_id": task_run_id or "",
-            },
-            payload={
-                "task_type": envelope.task_type,
-                "task_name": build_task_name(envelope),
-            },
-        )
+        task_run_id = await self._announce_dispatch(envelope, cycle, run_id, flow_run_id)
 
         # Dispatch + retry loop for retryable failures (SIP-0079). The routing of a failed
         # attempt is the router's (``_TaskOutcomeRouter``), built here with this task's values.
@@ -2015,6 +1994,71 @@ class DispatchedFlowExecutor(FlowExecutionPort):
             # run moves on. (Was `continue` when this was a loop body.)
             return
 
+        await self._after_task_success(
+            state,
+            envelope,
+            result,
+            task_idx=task_idx,
+            plan=plan,
+            cycle=cycle,
+            run_id=run_id,
+            flow_run_id=flow_run_id,
+            profile=profile,
+            run_root=run_root,
+            obs_ctx=obs_ctx,
+            ledger=ledger,
+            pulse=pulse,
+        )
+
+    async def _announce_dispatch(
+        self, envelope: TaskEnvelope, cycle: Cycle, run_id: str, flow_run_id: str | None
+    ) -> str | None:
+        """Create the task's Prefect task run and emit ``task.dispatched``; return the task-run id
+        (#1994, the extraction map's §4c step 3d)."""
+        # SIP-0087: executor owns Prefect task-run creation so task_run_id
+        # is available for contextvar scoping + heartbeat before the
+        # agent starts emitting logs.
+        task_run_id = await self._task_dispatcher.create_task_run_if_enabled(flow_run_id, envelope)
+
+        # SIP-0077: task.dispatched event (bridge now only reads terminal
+        # state from context; creation already happened above).
+        self._cycle_event_bus.emit(
+            EventType.TASK_DISPATCHED,
+            entity_type="task",
+            entity_id=envelope.task_id,
+            context={
+                "cycle_id": cycle.cycle_id,
+                "run_id": run_id,
+                "flow_run_id": flow_run_id or "",
+                "task_run_id": task_run_id or "",
+            },
+            payload={
+                "task_type": envelope.task_type,
+                "task_name": build_task_name(envelope),
+            },
+        )
+        return task_run_id
+
+    async def _after_task_success(
+        self,
+        state: RunState,
+        envelope: TaskEnvelope,
+        result: TaskResult,
+        *,
+        task_idx: int,
+        plan: list[TaskEnvelope],
+        cycle: Cycle,
+        run_id: str,
+        flow_run_id: str | None,
+        profile: SquadProfile | None,
+        run_root: str,
+        obs_ctx: Any,
+        ledger: RunLedger,
+        pulse: _PulseContext,
+    ) -> None:
+        """A successful task's tail: reset the failure count, collect and checkpoint, bind an
+        authored manifest, evaluate pulse boundaries, check the gate (#1994, the extraction
+        map's §4c step 3c)."""
         # Reset consecutive failures on success
         state.routing.consecutive_failures = 0
 
