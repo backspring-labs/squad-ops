@@ -196,7 +196,9 @@ def _escalation_lines(campaign: dict, rows: list[dict]) -> list[str]:
         line = f"- `{e.escalation_id}` on `{e.cycle_id}`: {e.state} ({failed}). Asked: {asked}"
         if e.answers:
             given = "; ".join(f"{d}: {a}" for d, a in e.answers.items())
-            line += f". Answered late by {e.answered_by}: {given}"
+            # The question carries its own end, often a period: one sentence end, not two (#2305).
+            ended = line if line.endswith((".", "?", "!")) else f"{line}."
+            line = f"{ended} Answered late by {e.answered_by}: {given}"
         lines.append(line)
     return lines
 

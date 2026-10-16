@@ -348,6 +348,23 @@ def test_answer_sends_the_answer_to_the_escalations_own_route(get_client):
 
 
 @patch("squadops.cli.commands.campaigns._get_client")
+def test_answer_as_agent_says_an_agent_gave_it(get_client):
+    """#2305, as `runs gate --as-agent` does (#812). Bug caught: an agent answering with the
+    owner's credentials and recorded as the owner, the flag accepted and never sent."""
+    client = _client(post=_RESULT)
+    get_client.return_value = client
+    args = ["campaigns", "answer", "cmp_1", "esc_0123456789ab", "--answer", "a=b", "--reason", "r"]
+
+    result = runner.invoke(app, [*args, "--as-agent"])
+
+    assert result.exit_code == 0, result.output
+    client.post.assert_called_once_with(
+        "/api/v1/campaigns/cmp_1/escalations/esc_0123456789ab/answer",
+        json={"answers": {"a": "b"}, "reason": "r", "answered_by_kind": "agent"},
+    )
+
+
+@patch("squadops.cli.commands.campaigns._get_client")
 def test_escalations_lists_each_ones_state_failed_conditions_and_late_answer(get_client):
     listed = [
         {

@@ -667,11 +667,15 @@ async def _escalation(world: _World, *, ended: str | None) -> str:
 
 
 def _answer(
-    world: _World, escalation_id: str, answer: str = "insertion order", decision="list-ordering"
+    world: _World,
+    escalation_id: str,
+    answer: str = "insertion order",
+    decision="list-ordering",
+    **extra,
 ):
     return world.client.post(
         f"/api/v1/campaigns/cmp_api000000001/escalations/{escalation_id}/answer",
-        json={"answers": {decision: answer}, "reason": "late, after the campaign"},
+        json={"answers": {decision: answer}, "reason": "late, after the campaign", **extra},
     )
 
 
@@ -693,9 +697,48 @@ async def test_a_late_answer_is_recorded_once_against_an_expired_escalation(worl
     assert (listed["state"], listed["answers"], listed["answered_by"]) == (
         "expired",
         {"list-ordering": "insertion order"},
-        "owner",
+        "human:owner",
     )
     assert listed["decision_ids"] == ["list-ordering"]
+
+
+@pytest.mark.parametrize(
+    ("declared", "identity_type", "answered_by"),
+    [
+        ({"answered_by_kind": "agent"}, IdentityType.HUMAN, "agent:owner"),
+        ({}, IdentityType.HUMAN, "human:owner"),
+        ({}, IdentityType.SERVICE, "service:owner"),
+    ],
+    ids=["an agent declares itself", "a person", "undeclared, the token's own type"],
+)
+async def test_a_late_answer_says_who_gave_it_as_a_gate_decision_does(
+    world, declared, identity_type, answered_by
+):
+    """#2305, recorded as `runs gate` records a decider (#812). Bug caught: the owner's delegate
+    answering with the owner's credentials and recorded as the owner, with no way to say
+    otherwise. A later plan's warrant names whoever this says answered."""
+    world.as_(_identity(Role.ADMIN, kind=identity_type))
+    assert _create(world).status_code == 201
+    escalation_id = await _escalation(world, ended="expired")
+
+    resp = _answer(world, escalation_id, **declared)
+    [listed] = world.client.get("/api/v1/campaigns/cmp_api000000001/escalations").json()
+
+    assert resp.status_code == 200
+    assert listed["answered_by"] == answered_by
+
+
+async def test_a_late_answer_refuses_a_kind_it_cannot_record(world):
+    """The edge: the declared kind is the gate's vocabulary. Bug caught: any string stored as the
+    kind of whoever answered, which the warrant then repeats."""
+    assert _create(world).status_code == 201
+    escalation_id = await _escalation(world, ended="expired")
+
+    resp = _answer(world, escalation_id, answered_by_kind="system")
+    [listed] = world.client.get("/api/v1/campaigns/cmp_api000000001/escalations").json()
+
+    assert resp.status_code == 422
+    assert listed["answers"] == {}
 
 
 async def test_an_answer_after_the_campaign_ended_is_recorded_and_reopens_nothing(world):

@@ -8,7 +8,7 @@ control operation are never fields here — they come from the caller's verified
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Any
+from typing import Any, Literal
 
 from pydantic import BaseModel, Field
 
@@ -129,6 +129,10 @@ class EscalationAnswerRequest(BaseModel):
 
     answers: dict[str, str] = Field(min_length=1)
     reason: str
+    #: Who answered, as a gate decision records it (#812, #2305): an agent answering with a
+    #: person's credentials is invisible to the token, so it says so. Omitted, the token's own
+    #: identity type is recorded.
+    answered_by_kind: Literal["human", "agent"] | None = None
 
 
 class EscalationResponse(BaseModel):

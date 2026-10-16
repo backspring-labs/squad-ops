@@ -113,3 +113,93 @@ async def test_the_managing_seats_materialize_a_package_and_no_other(world, seat
 
     assert client.post(f"/api/v1/campaigns/{CID}/package").status_code == status
     assert len(vault.stored) == stored
+
+
+async def _open_escalation(campaigns, *, ended: str | None = None) -> str:
+    """A plan-review escalation on the campaign, ended as ``ended`` (``None`` leaves it pending)."""
+    from datetime import UTC, datetime
+
+    from squadops.campaigns.escalation import EscalationIdentity, opening_transition
+    from squadops.campaigns.models import CampaignTransition, ControlOperation, CycleKind
+    from squadops.campaigns.plan_review_tier import plan_review_tier
+
+    identity = EscalationIdentity(
+        CID, "cyc_x", "run_x", "progress_plan_review", None, None, None, "p"
+    )
+    verdict = plan_review_tier(
+        kind=CycleKind.CALIBRATION,
+        open_questions=("which order does the runs list use?",),
+        footprint=("backend/main.py",),
+        allowed_scope=("backend/**",),
+        refused_framing_runs=(),
+        answered_on_record={},
+    )
+    await campaigns.transition(
+        CID,
+        opening_transition(
+            identity,
+            verdict,
+            (("list-ordering", "which order does the runs list use?"),),
+            datetime(2026, 10, 8, 15, 0, tzinfo=UTC),
+        ),
+    )
+    if ended is not None:
+        await campaigns.transition(
+            CID,
+            CampaignTransition(
+                operation=ControlOperation.ESCALATION_CLOSED,
+                actor="squadops",
+                actor_role="sweep",
+                reason="test",
+                idempotency_key=f"escalation_closed:{identity.escalation_id}",
+                next_state=None,
+                target="run_x",
+                binding={"escalation_id": identity.escalation_id, "state": ended},
+            ),
+        )
+    return identity.escalation_id
+
+
+def _answer(client, escalation_id: str):
+    return client.post(
+        f"/api/v1/campaigns/{CID}/escalations/{escalation_id}/answer",
+        json={"answers": {"list-ordering": "insertion order"}, "reason": "late"},
+    )
+
+
+async def test_a_late_answer_on_a_closed_campaign_reaches_its_stored_digest(world):
+    """#2305, entered at the answer route on a closed campaign, and read where `campaigns digest`
+    reads: the latest STORED package. Bugs caught: the digest still asking for an answer that was
+    given, because the close materialized it before the answer; a replayed answer storing another
+    package. The digest built from the log never had this defect, which is why its test missed it."""
+    client, vault, _role = world
+    escalation_id = await _open_escalation(client.app.state.campaign_registry)
+    client.post(
+        f"/api/v1/campaigns/{CID}/abort", json={"reason": "stop", "idempotency_key": "abort-1"}
+    )
+    closed = client.get(f"/api/v1/campaigns/{CID}/package").json()["digest"]
+
+    first = _answer(client, escalation_id)
+    after = client.get(f"/api/v1/campaigns/{CID}/package").json()["digest"]
+    stored = len(vault.stored)
+    replay = _answer(client, escalation_id)
+
+    assert f"Escalation `{escalation_id}` cancelled with nobody answering" in closed
+    assert first.status_code == 200
+    assert "with nobody answering" not in after
+    assert "Answered late by human:u: list-ordering: insertion order" in after
+    assert replay.json()["replayed"] is True
+    assert len(vault.stored) == stored == 4
+
+
+async def test_a_late_answer_on_an_open_campaign_stores_no_package(world):
+    """The edge: an escalation expires while its campaign goes on, and the answer comes before the
+    close. Bug caught: a package materialized mid-campaign, as if the answer had closed it. The
+    close still materializes it, with the answer in."""
+    client, vault, _role = world
+    escalation_id = await _open_escalation(client.app.state.campaign_registry, ended="expired")
+
+    resp = _answer(client, escalation_id)
+
+    assert resp.status_code == 200
+    assert vault.stored == {}
