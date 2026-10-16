@@ -1,0 +1,31 @@
+# 2.3.1's shakeout campaign (docs/plans/2-3-1-plan.md §3, the owner's D1): the campaign path unattended on the
+# 2.3.1 deploy, and the reads' shapes where an increment reaches them (#2381 appears where a backend-only
+# increment's QA task carries view-compile rows). The 2.3 cut's shakeout, carried unchanged, on TensorFold
+# (`full-38-tf`). Plan gates stay `tier`; proposal rulings stay with the owner's delegate, since the increment
+# gate is never the tier's. Uncounted. The exit rule: this campaign and the regression pair on one deploy, with no
+# new seam finding.
+project_id: group_run
+objective:
+  statement: "evolve group_run toward its PRD's expansion scope, one increment at a time"
+  allowed_scope: ["backend/**", "frontend/**"]
+  measurement: "two accepted increments"
+  target_accepted_increments: 2
+policy:
+  # 1 calibration + 2 increments + one repair or retry each (2) + 2 replacements for abandoned ones.
+  max_cycles: 7
+  max_elapsed_s: 43200
+  budget_tokens: 4000000
+  max_repair_cycles_per_increment: 1
+  max_retry_cycles_per_increment: 1
+  max_proposal_run_retries: 1
+  max_proposal_revisions: 2
+  max_rejected_proposals_in_row: 2
+  max_unaccepted_increments: 2
+  ruling_bound_s: 1800
+  lease_expiry_s: 3600
+  launch_blocked_interval_s: 300
+  launch_blocked_attempts: 6
+  calibration_profile: validated-fullstack
+  proposal_profile: campaign-increment
+  squad_profile: full-38-tf
+  plan_gate: tier
