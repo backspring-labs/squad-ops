@@ -5,6 +5,8 @@ from __future__ import annotations
 from pathlib import Path
 from types import SimpleNamespace
 
+import pytest
+
 from squadops.cycles.bound_scaffold_record import build_bound_record
 from squadops.execution.dispatched_flow_executor import DispatchedFlowExecutor
 from squadops.stacks.scaffold import InterfaceManifest
@@ -168,6 +170,48 @@ def test_a_frozen_path_binds_every_named_producer():
     (ev,) = evidence
     assert ev.violation_code == "frozen_path_emission"
     assert ev.producer_task_type == "development.correction_repair"
+
+
+# --- #2379: a kept round's retest copies keep the kept file's producer ---------------------
+
+_KEPT_FIX = "def ordered(): return sorted(RUNS)\n"
+
+
+@pytest.mark.parametrize(
+    "echoed, kept_by_dev, evidence_codes",
+    [
+        (_KEPT_FIX, True, []),
+        ("def ordered(): return RUNS\n", True, ["unauthorized_slot_emission"]),
+        (_KEPT_FIX, False, ["unauthorized_slot_emission"]),
+    ],
+    ids=["same-bytes-as-the-dev-repair", "bytes-the-retest-changed", "kept-copy-named-nobody"],
+)
+def test_a_retest_copy_of_a_kept_file_is_judged_as_the_kept_files_writer(
+    echoed, kept_by_dev, evidence_codes
+):
+    """Bug caught: ``cyc_ce31b502b82c`` (#2379). Round 0's dev repair of ``backend/routes.py``
+    was kept, and the next round started from the qa retest, which returned the file it ran
+    against as its own. Judged under the qa task's grants, storage dropped the dev's fix and
+    the §5.5 guard failed the run. Only the kept bytes carry the dev step's name; a copy the
+    retest changed is still the qa task's write, and is still dropped."""
+    from squadops.cycles.scaffold_enforcement import carry_named_producers
+
+    routes = {"name": "backend/routes.py", "content": _KEPT_FIX}
+    kept = [_by("development.correction_repair", routes) if kept_by_dev else routes]
+    retest = [
+        {"name": "backend/routes.py", "content": echoed, "type": "test"},
+        {"name": "backend/tests/test_api.py", "content": "T = 1\n", "type": "test"},
+    ]
+
+    enforced, evidence = DispatchedFlowExecutor._enforce_frozen_ownership(
+        object(), carry_named_producers(retest, kept), _record(), _env("qa.test")
+    )
+
+    assert [e.violation_code for e in evidence] == evidence_codes
+    kept_names = ["backend/routes.py"] if not evidence_codes else []
+    assert [a["name"] for a in enforced] == [*kept_names, "backend/tests/test_api.py"]
+    if not evidence_codes:
+        assert enforced[0]["producer_task_type"] == "development.correction_repair"
 
 
 def test_qa_write_in_its_namespace_passes():

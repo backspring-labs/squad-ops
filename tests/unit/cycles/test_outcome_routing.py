@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import json
 from datetime import UTC, datetime
+from pathlib import Path
 from unittest.mock import AsyncMock, patch
 
 import pytest
@@ -1296,6 +1297,171 @@ class TestAcceptPatchRetest:
         )
         assert action == "accept_patch"
         executor._correction_runner.reexecute_repaired_suite.assert_not_awaited()
+
+
+class TestAKeptDevRepairSurvivesTheRoundAfterIt:
+    """#2379 (``cyc_ce31b502b82c``, the 2.3 cut set's fourth roll): a qa task's round 0 kept a
+    dev repair, round 1 accepted a repair of another file, and storage failed the run on
+    SIP-0107 §5.5. The next round started from round 0's retest, whose copy of the dev's file
+    named no producer, so storage judged it a qa write to dev's slot and dropped it."""
+
+    _FIX = "def ordered():\n    return sorted(RUNS)\n"
+    _SUITE = "def test_a():\n    assert 0\n"
+
+    def _envelope(self):
+        from squadops.cycles.implementation_plan import TypedCheck
+        from squadops.tasks.models import TaskEnvelope
+
+        return TaskEnvelope(
+            task_id="task_9",
+            agent_id="eve",
+            cycle_id="cyc_001",
+            pulse_id="p",
+            project_id="hello_squad",
+            task_type="qa.test",
+            correlation_id="corr",
+            causation_id=None,
+            trace_id="t",
+            span_id="s",
+            inputs={
+                "resolved_config": {},
+                "artifact_contents": {"backend/routes.py": "def ordered():\n    return RUNS\n"},
+                "acceptance_criteria": [
+                    TypedCheck(
+                        check="regex_match",
+                        params={"file": "backend/routes.py", "pattern": "def ordered"},
+                        severity="error",
+                        description="Routes define the list",
+                    ),
+                    TypedCheck(
+                        check="regex_match",
+                        params={"file": "backend/tests/test_api.py", "pattern": "def test_"},
+                        severity="error",
+                        description="Suite defines tests",
+                    ),
+                ],
+            },
+            metadata={"role": "qa"},
+        )
+
+    @staticmethod
+    def _failing(*titles: str) -> dict:
+        return {
+            "test_result": {"executed": True, "exit_code": 1, "tests_passed": False},
+            "validation_result": {
+                "passed": False,
+                "checks": [TestAcceptPatchRetest._suite_row(*titles)],
+            },
+        }
+
+    @staticmethod
+    def _named(task_type: str, name: str, content: str) -> dict:
+        """A repair emission as the correction runner hands it over (``name_producer``)."""
+        role = "dev" if task_type.startswith("development") else "qa"
+        return {
+            "name": name,
+            "content": content,
+            "producer_task_id": f"repair-run_001-00-{task_type}",
+            "producer_task_type": task_type,
+            "producer_role": role,
+        }
+
+    async def test_the_accepted_set_stores_the_kept_dev_fix_as_the_devs(self, executor, cycle):
+        from squadops.cycles.bound_scaffold_record import build_bound_record
+        from squadops.execution.patch_acceptance import KEEP_PROGRESS, KEPT_NEXT_FAILURE_KEY
+        from squadops.stacks.scaffold import InterfaceManifest
+
+        manifest = (
+            Path(__file__).parents[3] / "examples" / "03_group_run" / "interface_manifest.yaml"
+        )
+        record = build_bound_record(
+            InterfaceManifest.from_yaml(manifest.read_text()),
+            run_id="run_001",
+            attempt_id="run_001",
+            created_at="t",
+        )
+        envelope = self._envelope()
+        failed = TaskResult(
+            task_id="task_9",
+            status="FAILED",
+            outputs={
+                **self._failing("a", "b", "c"),
+                "artifacts": [
+                    {"name": "backend/tests/test_api.py", "content": self._SUITE, "type": "test"}
+                ],
+            },
+            error="tests failed",
+        )
+        # Round 0's retest: fewer failures, and the files it ran against returned as its own.
+        retest_0 = TaskResult(
+            task_id="retest-run_001-00-qa.test",
+            status="FAILED",
+            outputs={
+                **self._failing("c"),
+                "artifacts": [
+                    {"name": "backend/routes.py", "content": self._FIX, "type": "test"},
+                    {"name": "backend/tests/test_api.py", "content": self._SUITE, "type": "test"},
+                ],
+            },
+            error="Repaired suite still fails (exit 1)",
+        )
+        retest_1 = TaskResult(
+            task_id="retest-run_001-01-qa.test",
+            status="SUCCEEDED",
+            outputs={"test_result": {"executed": True, "exit_code": 0, "tests_passed": True}},
+        )
+        executor._correction_runner.reexecute_repaired_suite = AsyncMock(
+            side_effect=[retest_0, retest_1]
+        )
+        kwargs = {**TestAcceptPatchRetest()._kwargs(cycle), "bound_record": record}
+
+        holder: dict = {}
+        round_0 = await executor._try_accept_patch(
+            envelope,
+            failed,
+            [self._named("development.correction_repair", "backend/routes.py", self._FIX)],
+            holder,
+            **kwargs,
+        )
+        assert round_0 == KEEP_PROGRESS
+        # What ``_store_kept_progress`` hands the outcome router as the next round's failure.
+        next_failure = holder.pop(KEPT_NEXT_FAILURE_KEY)
+
+        holder = {}
+        round_1 = await executor._try_accept_patch(
+            envelope,
+            next_failure,
+            [
+                self._named(
+                    "qa.test_repair", "backend/tests/test_api.py", "def test_a():\n    assert 1\n"
+                )
+            ],
+            holder,
+            **{**kwargs, "correction_attempts": 1},
+        )
+        assert round_1 == "accept_patch"
+
+        accepted = holder["patched_result"]
+        stored: list = []
+        await executor._store_accepted_artifacts(
+            accepted.outputs["artifacts"],
+            accepted.outputs,
+            envelope,
+            cycle,
+            "run_001",
+            [],
+            stored,
+            bound_record=record,
+            compliance_counter={"n": 0},
+        )
+
+        by_name = {ref.filename: ref for _, ref in stored}
+        assert by_name["backend/routes.py"].metadata["written_by_task_type"] == (
+            "development.correction_repair"
+        )
+        assert by_name["backend/tests/test_api.py"].metadata["written_by_task_type"] == (
+            "qa.test_repair"
+        )
 
 
 class TestAcceptPatchRetestWorkspaceThreading:
