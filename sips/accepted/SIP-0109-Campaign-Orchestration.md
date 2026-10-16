@@ -116,6 +116,7 @@ Kept by the rule in CLAUDE.md ("SIP System"): one row per part, updated in the P
 | the timeout half, read live: the expiry, the parked increment, row 15, the no-progress stop and the late answer, on a diagnostic campaign whose increments ask a question (the `increment_design_asks` seed fault) | **shipped:** 2.3.0, PR #2307, issue #2279. Read live on `dep_c627c2873c3c`, 2026-10-14: every pre-registered reading held, after the reading found #2290, #2301 and #2303 (fixed by #2293, #2302 and #2304) | the 2.3 plan, phase 8, R3's deploy |
 | a park's abandonment counted at its own decision, so a run of parks stops at `max_unaccepted_increments` (§24bp) | **shipped** | 2.3.0, PR #2295, issue #2294 |
 | an increment rejected only for criteria the accepted application already meets is abandoned for a new proposal told which, not repaired (§24bq, row 16) | **shipped** | 2.3.0, PR #2319, issue #2315 |
+| a successor's brief carries the increment's evaluation (frozen breaks, unmet criteria, routes not held, blocked judgements), not only its cycle's checks (§24br, rows 12, 13 and 16) | **shipped** | 2.3.0, PR #2375, issue #2318 |
 | accepted increments' `prd_delta` text to the proposer | **deferred to 2.4** (ruled 2026-10-03, §24ap): "a 2.4 question" | §24ap |
 | escalating a launch the cycle-create preflight refuses | **shipped** (§24ba) | 2.1.0, PR #2052, issue #1971 |
 | re-hearing an ended cycle between restarts | **shipped**: the campaign sweep re-hears on its interval, and a cycle is heard by one hearer at a time | 2.1.0, PR #2038, issue #1972 (§24as) |
@@ -3434,3 +3435,59 @@ The readings are on #2205 and the issue is #2315.
 
 **Who ruled it.** The owner, 2026-10-14 ("yes"), on the recommendation put on #2315: skip the repair, and tell the
 next proposal which criteria the accepted application already meets.
+
+### 24br. A successor's brief carries the increment's evaluation, not only its cycle's checks (2026-10-16, §8, §10a, §24w, §24bq, §10 rows 12, 13 and 16, #2318; implementer's correction, for the owner)
+
+**What main did.** A repair (row 12), a retry, and the next proposal after an abandonment (rows 13 and 16) are handed the
+failed cycle's brief (§24w, #1692). It was built from the cycle's own assessment: its checks, its attribution and its
+correction rounds. The decision that launched the successor read something else, the increment's own evaluation (§8,
+`increment_verdict`). The evaluation can reject a build whose own checks all passed: a frozen criterion broken, a new
+criterion unmet, a declared route that didn't render, or a judgement blocked. Then the brief told the successor the
+cycle passed. §24bq added one part, the criteria already met, to an abandonment's brief only.
+
+**The evidence.** The 2.3 cut's shakeout (`cmp_27dba15dea9a`, on `dep_d8f35563107c`, 2026-10-16):
+- increment 2 (`prop_6663003f2974`, a seed endpoint, `cyc_019ad1db5c02`) passed every check of its own, 23 of 23
+  criteria. Its evaluation rejected it: frozen T2 broke at `test_guard_ordering_capacity_before_duplicate`, because the
+  build rewrote `backend/routes.py` and moved the duplicate check ahead of the capacity check;
+- row 12 launched a repair (`cyc_cb0461c0a639`). Its brief read `verdict: accepted, failed_checks: [], primary_cause:
+  None`, and named neither T2 nor the test;
+- the repair passed its own checks, T2 broke at the same test again, and row 13 abandoned the increment.
+
+**What changed.**
+- **Every brief built from an increment-kind cycle carries its evaluation's findings** when the evaluation rejected it.
+  That covers increments, repairs and retries, for the repair, the retry and the next proposal alike:
+  - each frozen criterion that didn't hold, with its failing tests;
+  - each new criterion left unmet, with its reason;
+  - each route that didn't render, with the test ids it was missing;
+  - anything the evaluation blocked.
+- **Each criterion is named with its statement and surface:** the frozen ones as their promotions froze them (carried on
+  the bound proposal), the new ones from the approved change request.
+- **It's read from stored records,** the last run's `increment_evaluation.json`, as §24bq's criteria are (#1943).
+- **The brief's lines show the findings after the cycle's checks,** headed "The increment's own evaluation rejected it,
+  whatever the checks above say". A criterion already listed as met (§24bq) isn't repeated.
+- **Unchanged:**
+  - the decision and its rows;
+  - the brief's cycle-check indicators, which still say what the build's checks read;
+  - its integrity rule: typed records only, never a narrative.
+
+**Not in it.** A repair's own correction loop still doesn't run the frozen criteria. They run at the evaluation (§8.1),
+so a repair is now told what broke but can't verify its fix before the evaluation does.
+
+**Evidence.**
+- `tests/unit/campaigns/test_progress.py::test_an_increment_its_evaluation_rejected_tells_its_successor_why` enters at
+  the completion hook on the shakeout's case: a build whose checks accepted, whose evaluation broke frozen T2. For the
+  repair (row 12) and for the next proposal (row 13), the brief carries T2 with its statement, surface and failing
+  test, and its lines show it.
+- `tests/unit/campaigns/test_prior_cycle.py` checks:
+  - an accepted or absent evaluation adds nothing;
+  - every part of a rejection is shown;
+  - a criterion already met isn't repeated.
+- Four mutations are caught:
+  - the brief never reading the evaluation;
+  - frozen breaks dropped;
+  - the lines never shown;
+  - an accepted evaluation reported.
+
+**Who ruled it.** Not the owner yet. The supervisor placed it in 2.3 under the owner's delegation of 2026-10-15 ("Yes I
+gave you authority!"), as the cut shakeout's seam finding: the cut's pre-registration (§3) fixes a finding and re-runs
+the shakeout. It's for the owner's review.
