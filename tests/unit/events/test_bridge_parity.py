@@ -255,9 +255,11 @@ class TestMetricsParity:
         """Events outside the counter map produce no metric calls."""
         metrics = MagicMock()
         bridge = MetricsBridge(metrics)
-        bridge.on_event(_event(EventType.RUN_STARTED, "run", "run_1"))
+        # RUN_STARTED was this example until #2204 mapped it; RUN_PAUSED is still unmapped.
+        bridge.on_event(_event(EventType.RUN_PAUSED, "run", "run_1"))
         metrics.counter.assert_not_called()
         metrics.histogram.assert_not_called()
+        metrics.gauge.assert_not_called()
 
     def test_correction_initiated_counter(self):
         """CORRECTION_INITIATED increments corrections_initiated_total."""

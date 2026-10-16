@@ -17,7 +17,72 @@
   "refresh": "30s",
   "timezone": "browser",
   "annotations": {
-    "list": []
+    "list": [
+      {
+        "name": "Deploys",
+        "datasource": {
+          "type": "prometheus",
+          "uid": "PBFA97CFB590B2093"
+        },
+        "enable": true,
+        "hide": false,
+        "iconColor": "#5794F2",
+        "expr": "max(squadops_runtime_started_timestamp_seconds) * 1000",
+        "step": "1m",
+        "useValueForTime": true,
+        "titleFormat": "Deploy: the runtime started",
+        "tagKeys": "",
+        "textFormat": ""
+      },
+      {
+        "name": "Runs started",
+        "datasource": {
+          "type": "prometheus",
+          "uid": "PBFA97CFB590B2093"
+        },
+        "enable": true,
+        "hide": false,
+        "iconColor": "#73BF69",
+        "expr": "max(squadops_run_started_timestamp_seconds) * 1000",
+        "step": "1m",
+        "useValueForTime": true,
+        "titleFormat": "Run started",
+        "tagKeys": "",
+        "textFormat": ""
+      },
+      {
+        "name": "Runs finished",
+        "datasource": {
+          "type": "prometheus",
+          "uid": "PBFA97CFB590B2093"
+        },
+        "enable": true,
+        "hide": false,
+        "iconColor": "#B877D9",
+        "expr": "max by (outcome) (squadops_run_finished_timestamp_seconds) * 1000",
+        "step": "1m",
+        "useValueForTime": true,
+        "titleFormat": "Run {{outcome}}",
+        "tagKeys": "outcome",
+        "textFormat": ""
+      },
+      {
+        "name": "Campaign transitions",
+        "datasource": {
+          "type": "prometheus",
+          "uid": "PBFA97CFB590B2093"
+        },
+        "enable": true,
+        "hide": false,
+        "iconColor": "#FF9830",
+        "expr": "max by (next_state) (squadops_campaign_transition_timestamp_seconds) * 1000",
+        "step": "1m",
+        "useValueForTime": true,
+        "titleFormat": "Campaign: {{next_state}}",
+        "tagKeys": "next_state",
+        "textFormat": ""
+      }
+    ]
   },
   "templating": {
     "list": []
@@ -762,6 +827,374 @@
           "refId": "A",
           "expr": "node_filesystem_avail_bytes{mountpoint=\"/\", fstype!~\"tmpfs|overlay\"}",
           "legendFormat": "free on /",
+          "range": true
+        }
+      ]
+    },
+    {
+      "id": 12,
+      "type": "stat",
+      "title": "Runs started",
+      "description": "Runs the runtime started in the selected range.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "PBFA97CFB590B2093"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 30,
+        "w": 6,
+        "h": 4
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "decimals": 0,
+          "color": {
+            "mode": "fixed",
+            "fixedColor": "text"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "text",
+                "value": null
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "colorMode": "none",
+        "graphMode": "none",
+        "textMode": "value",
+        "justifyMode": "auto"
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "PBFA97CFB590B2093"
+          },
+          "refId": "A",
+          "expr": "sum (sum by (exported_instance) (last_over_time(squadops_runs_started_total[$__range])) - (sum by (exported_instance) (last_over_time(squadops_runs_started_total[10m] offset $__range)) or sum by (exported_instance) (last_over_time(squadops_runs_started_total[$__range])) * 0))",
+          "instant": true,
+          "range": false
+        }
+      ]
+    },
+    {
+      "id": 13,
+      "type": "stat",
+      "title": "Runs completed",
+      "description": "Runs that completed in the selected range.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "PBFA97CFB590B2093"
+      },
+      "gridPos": {
+        "x": 6,
+        "y": 30,
+        "w": 6,
+        "h": 4
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "decimals": 0,
+          "color": {
+            "mode": "fixed",
+            "fixedColor": "text"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "text",
+                "value": null
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "colorMode": "none",
+        "graphMode": "none",
+        "textMode": "value",
+        "justifyMode": "auto"
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "PBFA97CFB590B2093"
+          },
+          "refId": "A",
+          "expr": "sum (sum by (exported_instance) (last_over_time(squadops_runs_completed_total[$__range])) - (sum by (exported_instance) (last_over_time(squadops_runs_completed_total[10m] offset $__range)) or sum by (exported_instance) (last_over_time(squadops_runs_completed_total[$__range])) * 0))",
+          "instant": true,
+          "range": false
+        }
+      ]
+    },
+    {
+      "id": 14,
+      "type": "stat",
+      "title": "Runs failed",
+      "description": "Runs that failed in the selected range.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "PBFA97CFB590B2093"
+      },
+      "gridPos": {
+        "x": 12,
+        "y": 30,
+        "w": 6,
+        "h": 4
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "decimals": 0,
+          "color": {
+            "mode": "fixed",
+            "fixedColor": "text"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "text",
+                "value": null
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "colorMode": "none",
+        "graphMode": "none",
+        "textMode": "value",
+        "justifyMode": "auto"
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "PBFA97CFB590B2093"
+          },
+          "refId": "A",
+          "expr": "sum (sum by (exported_instance) (last_over_time(squadops_runs_failed_total[$__range])) - (sum by (exported_instance) (last_over_time(squadops_runs_failed_total[10m] offset $__range)) or sum by (exported_instance) (last_over_time(squadops_runs_failed_total[$__range])) * 0))",
+          "instant": true,
+          "range": false
+        }
+      ]
+    },
+    {
+      "id": 15,
+      "type": "stat",
+      "title": "Campaign transitions",
+      "description": "Campaign state changes in the selected range: proposals, approvals, closes.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "PBFA97CFB590B2093"
+      },
+      "gridPos": {
+        "x": 18,
+        "y": 30,
+        "w": 6,
+        "h": 4
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "decimals": 0,
+          "color": {
+            "mode": "fixed",
+            "fixedColor": "text"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "text",
+                "value": null
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "colorMode": "none",
+        "graphMode": "none",
+        "textMode": "value",
+        "justifyMode": "auto"
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "PBFA97CFB590B2093"
+          },
+          "refId": "A",
+          "expr": "sum (sum by (exported_instance) (last_over_time(squadops_campaign_transitions_total[$__range])) - (sum by (exported_instance) (last_over_time(squadops_campaign_transitions_total[10m] offset $__range)) or sum by (exported_instance) (last_over_time(squadops_campaign_transitions_total[$__range])) * 0))",
+          "instant": true,
+          "range": false
+        }
+      ]
+    },
+    {
+      "id": 16,
+      "type": "timeseries",
+      "title": "Runs per hour",
+      "description": "Runs started, completed and failed in each hour. The markers on every chart show when each run started and finished, each deploy and each campaign transition.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "PBFA97CFB590B2093"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 34,
+        "w": 24,
+        "h": 8
+      },
+      "interval": "1h",
+      "maxDataPoints": 2000,
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "min": 0,
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "drawStyle": "bars",
+            "fillOpacity": 80,
+            "lineWidth": 1,
+            "showPoints": "never",
+            "barAlignment": -1
+          }
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "started"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "#73BF69"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "completed"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "#5794F2"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "failed"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "#F2495C"
+                }
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "none"
+        }
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "PBFA97CFB590B2093"
+          },
+          "refId": "A",
+          "expr": "sum (sum by (exported_instance) (last_over_time(squadops_runs_started_total[$__interval])) - (sum by (exported_instance) (last_over_time(squadops_runs_started_total[10m] offset $__interval)) or sum by (exported_instance) (last_over_time(squadops_runs_started_total[$__interval])) * 0))",
+          "legendFormat": "started",
+          "range": true
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "PBFA97CFB590B2093"
+          },
+          "refId": "B",
+          "expr": "sum (sum by (exported_instance) (last_over_time(squadops_runs_completed_total[$__interval])) - (sum by (exported_instance) (last_over_time(squadops_runs_completed_total[10m] offset $__interval)) or sum by (exported_instance) (last_over_time(squadops_runs_completed_total[$__interval])) * 0))",
+          "legendFormat": "completed",
+          "range": true
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "PBFA97CFB590B2093"
+          },
+          "refId": "C",
+          "expr": "sum (sum by (exported_instance) (last_over_time(squadops_runs_failed_total[$__interval])) - (sum by (exported_instance) (last_over_time(squadops_runs_failed_total[10m] offset $__interval)) or sum by (exported_instance) (last_over_time(squadops_runs_failed_total[$__interval])) * 0))",
+          "legendFormat": "failed",
           "range": true
         }
       ]
