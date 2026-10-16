@@ -2,8 +2,10 @@
 # (2-3-0-cut-preregistration.md §2), on the final deploy, beside the other stack's config.
 # Carried from the fixes round's config. What changed:
 # - the name, the records home, the pre-registration and the notes, and two rolls (§2);
-# - nothing else: the tracked loaded checks are the fixes round's, and the deploy pins are its
-#   (dep_d8f35563107c, f52326ec), the final deploy's, re-read at registration (§6).
+# - the tracked loaded checks: the fixes round's, plus the shakeout fix's 2 (#2318);
+# - the deploy pins: the final deploy's (dep_1f734db0eedc, 49827026), read from its running containers.
+#   The fixes round ran on dep_d8f35563107c; the cut shakeout's first round found #2318, fixed
+#   and rebuilt before registration (2-3-0-cut-preregistration.md §3).
 # The fixes round's config follows, as carried.
 # 2.3 regression roll for the line's last fixes — nextjs, UNCOUNTED: the 2.3 plan's
 # phase 8, on TensorFold.
@@ -349,10 +351,10 @@ gate_notes: >-
 # {roll} and {n} are the only substitutions the driver makes.
 launch_notes: >-
   2.3 Next.js (nextjs_ts) cut set on TensorFold (the frozen NVFP4 recipe), the final deploy
-  (dep_d8f35563107c), memory declared disabled — COUNTED roll {roll} of {n}.
+  (dep_1f734db0eedc), memory declared disabled — COUNTED roll {roll} of {n}.
 shakeout_notes: >-
   2.3 Next.js (nextjs_ts) on TensorFold — NON-COUNTING by declaration before launch, on the
-  final deploy (dep_d8f35563107c, 2-3-0-cut-preregistration.md), memory declared disabled. A red
+  final deploy (dep_1f734db0eedc, 2-3-0-cut-preregistration.md), memory declared disabled. A red
   belongs to that deploy's changes and is read by its signature.
 # The line's loaded checks, by their id in scripts/dev/loaded_checks.yaml (recorded as `#<id>`).
 tracked_loaded_checks:
@@ -473,6 +475,8 @@ tracked_loaded_checks:
   - "2363-runtime"
   - "2363-neo"
   - "2204-runtime"
+  - "2318-runtime"
+  - "2318-nat"
 loaded_checks:
   # The prelude's framework surfaces. These run HERE rather than in an agent container
   # because runtime-api seeds the skeleton and ships examples/ — the builder image does
@@ -910,12 +914,12 @@ pins_unmoved_because: >-
   own live_squad_snapshot on 2026-10-13.
   The config-hash pin is not carried: every launch declares memory disabled (D12), an
   execution override, so the hash moves by design; the roll records the hash it launched with.
-frozen_deploy_commit: "f52326ec"
+frozen_deploy_commit: "49827026"
 frozen_image_ids:
-  runtime-api: "4f1684181e5a"
-  max: "c075329d2858"
-  neo: "1a6eb0fdcb5a"
-  nat: "c3520083fb38"
-  bob: "d6c10053fcff"
-  eve: "c4e1a3183a59"
-  data: "da4fa23369bd"
+  runtime-api: "f0dcb6afc798"
+  max: "5e9c1b32e813"
+  neo: "f64522fa4bfb"
+  nat: "b49e226c37cd"
+  bob: "647f18742d01"
+  eve: "dd7200cc8fd8"
+  data: "a18c491e0d7b"
