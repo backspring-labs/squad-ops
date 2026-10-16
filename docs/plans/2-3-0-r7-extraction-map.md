@@ -7,7 +7,8 @@ on the same day (§4b; #1994, comment 6191733584), and unit 3's that evening (§
 placement (phase 8, after R6). This map owns each unit's scope, its steps, the data that crosses each
 step, and the proof each PR carries.
 
-**Granularity:** units 1, 2 and 3 are mapped to the step (§4, §4b, §4c). Units 4 and 5 are mapped to the block
+**Granularity:** units 1, 2 and 3 are mapped to the step (§4, §4b, §4c), and unit 4's step table is
+proposed (§4d) for the owner's review. Unit 5 is mapped to the block
 here. Each gets
 its step table in this file, re-measured on the tree it extracts from, and reviewed before its first
 extraction PR. Measured on R6's tree (PR #2327), where units 3 and 4 live after the orchestration
@@ -53,7 +54,7 @@ The criterion is one unit owning several independent reasons to change.
 | 1 | `test_qa_dev_handle_characterization.py` (every output shape, end to end) and `test_llm_call_characterization.py` | none |
 | 2 | the same two for `handle` and `_llm_call` | **a characterization of `_evaluate_typed_acceptance`:** the rows, the missing list and the escalation counts for each status × severity × authored/injected case |
 | 3 | none pins the per-task loop | **a characterization of `_execute_task`:** the events emitted, the evidence the ledger records, the collection calls and the patched-result swap, over a success, a corrected failure, a kept-progress round and an abort |
-| 4 | `test_correction_context_golden.py` (the repair and retest envelopes) and `test_correction_runner.py` | none |
+| 4 | `test_correction_context_golden.py` (the repair and retest envelopes) and `test_correction_runner.py` | none, measured to the block. **Measured to the step (§4d): a characterization of the diagnosis**, whose analysis and decision envelopes no golden records |
 | 5 | `test_plan_context_golden.py` (`generate_task_plan`'s exact envelope inputs, framing and implementation) | none |
 
 4. **Its own rebuild and regression pair.** Each unit is a structural batch, as the issue requires and
@@ -280,6 +281,93 @@ and the success tail: about 100 lines, most of them the signature and the calls'
 
 **The PRs:** step 0; then 3a with 3b (the router and what settles through it); then 3c with 3d; then
 unit 3's rebuild and regression pair.
+
+## 4d. Unit 4: `CorrectionRunner`, step by step (for the owner's review)
+
+Measured on main at `f609f15a`: `src/squadops/execution/correction_runner.py`, the class at lines
+392–1696, 1,305 lines in 15 methods. 1.7.5's recovery map already split the protocol into its five
+steps, each a method that takes the previous step's value: diagnose, resolve the path, bank the delta and
+check termination, repair, judge. So most of the long methods already have one job each. Where the length
+is:
+
+| method | lines | what it is | a step here? |
+|---|---:|---|---|
+| `run_correction_protocol` | 195 | 34 lines of signature and 31 of docstring. The body is the five steps as calls, with their keyword arguments | no: already a sequence of named calls, the reason §7 keeps `execute_cycle` off the map |
+| `_diagnose` | 180 | the round's evidence (the event, the failure evidence and what is added to it, the round failure, the reserve), then a loop that builds and dispatches each declared step | **yes** |
+| `_check_progress_termination` | 132 | one rule, #435's plan-defect terminal; a quarter of it is the docstring | no |
+| `_dispatch_protocol_step` | 124 | the one per-step dispatch sequence: the budget, the Prefect task run, the events, emission enforcement, storage, the checkpoint. Four suites, the golden among them, patch or call it | no |
+| `reexecute_repaired_suite` | 106 | the retest (#456): one job, and a public entry point | no |
+| `_bank_delta_and_check_termination` | 102 | the plan delta and its storage, then the termination check, in the order that is the contract (#435) | no |
+
+**`_diagnose`'s blocks** (1207–1386):
+
+| lines | block | lines in it |
+|---|---|---:|
+| 1207–1238 | signature and docstring | 32 |
+| 1239–1244 | the local `uuid4` import; the profile's declared steps (SIP-0108 §10i) | 6 |
+| 1246–1257 | emit `CORRECTION_INITIATED` | 12 |
+| 1259–1275 | the failure evidence: built, with the deterministic injections and the contested rows (SIP-0096 §17a) | 17 |
+| 1276–1282 | the round failure, recorded on the ledger before any dispatch (SIP-0108 §4.2) | 7 |
+| 1283–1292 | the priority reserve (#414): a round that only fails what the last attempt isn't held for ends here | 10 |
+| 1294–1301 | the two output buckets (#95) and the correlation id | 8 |
+| 1303–1368 | **the loop body:** one declared step's id, its role resolved against the profile, its inputs (with the analysis and the refuted claims after an analysis), its envelope, its dispatch | 66 |
+| 1370–1380 | the step's outputs, into their bucket | 11 |
+| 1381–1386 | the result | 6 |
+
+**Step 0, its own PR: a characterization of the diagnosis.** §3's table said unit 4 needs no step 0. That
+was measured to the block. The correction golden (`test_correction_context_golden.py`) records only the
+repair and retest envelopes: it keeps step ids that start `repair-` (line 254). The analysis and decision
+envelopes `_diagnose` builds are what 4b moves, and only single assertions in `test_correction_runner.py`
+pin them (the resolved config on both, the analysis on the decision). Step 0 enters at
+`run_correction_protocol` with the golden's harness shape (the dispatch seam captured, `uuid4` counted).
+- **What it records,** per case:
+  - the events emitted, in order, with their payloads;
+  - every protocol step's envelope: its id, agent, type, correlation and causation ids, metadata and
+    inputs;
+  - the failure evidence the first step received;
+  - the ledger's round-failure rows;
+  - the exception, where the round ends.
+- **The cases:**
+  - the full declared shape: analyze, decide, repair;
+  - the analyzer cites a source claim the tree refutes, so the decision's envelope carries the refuted
+    claims;
+  - repair alone declared: nothing is dispatched before the repair;
+  - the previous round's repair disputed a check, so the evidence carries contested rows;
+  - the last attempt is held for a required check this round didn't fail: the round ends before any
+    dispatch, as `reserved_for_required`.
+
+**4a: the round's evidence becomes `_round_evidence`** (1259–1292). It builds the failure evidence, adds the
+deterministic injections and the contested rows, records the round failure and ends the chain at the
+reserve, which raises. It returns the failure evidence.
+
+**4b: one declared step becomes `_dispatch_declared_step`** (1304–1368). It builds the step's id, resolves
+its role, assembles its inputs, builds the envelope and dispatches it through `_dispatch_protocol_step`. It
+returns the step's result. The loop keeps the bucketing (#95). The method imports `uuid4` locally, as
+`_diagnose` does now, and the correlation id is still drawn once before the loop. So the order of `uuid4`
+calls doesn't change, and the golden's counter would catch it if it did.
+
+**Where:** both on `CorrectionRunner`. 4b calls `_dispatch_protocol_step` through `self`, so the suites that
+patch it on the instance keep reaching the code. The runner's own `__init__` hands the repair half a lambda
+for the same reason (the hoist lesson, #2062).
+
+**After:** `_diagnose` reads as the declared steps, `CORRECTION_INITIATED`, the round's evidence, the loop
+(one call and the bucketing) and the result. That's about 110 lines, most of them signatures and the
+calls' keyword arguments.
+
+**The carrier §5 planned isn't built (the owner's choice).** §5 planned a frozen carrier holding the twenty
+run-lived references once. Re-measured:
+- `run_correction_protocol` and `reexecute_repaired_suite` are the runner's public entry points. Tests
+  call or patch them in five and four suites, so their signatures stay (§3, zero test edits).
+- `_dispatch_protocol_step` is the seam four suites patch or call, so its signature stays.
+- `CorrectionRepair.dispatch` is another module's (1.7.5's repair half).
+
+A carrier would be built in `run_correction_protocol` and unpacked again at three of its four uses. It
+would shorten the signatures of 4a, 4b and `_diagnose` without separating any reason to change, and §2
+makes that the criterion. So 4a and 4b take keyword-only parameters, as `_diagnose` does now. If the
+owner wants the carrier anyway, it lands with 4a and 4b. It would hold what `_diagnose` and its two new
+steps read, and `run_correction_protocol` would build it once.
+
+**The PRs:** step 0; then 4a with 4b; then unit 4's rebuild and regression pair.
 
 ## 5. Units 2–5, to the block
 
