@@ -125,7 +125,7 @@ The cycle-create resolver adds the stack's defaults to `applied_defaults`, so `v
 3. **Old profiles stay, frozen, under their old names,** so every pinned config resolves to what it ran. Q13 already rules this for campaign definitions.
 4. **The campaign profiles stay outside the operator's set.**
 
-### Delivery ledger (current as of 2026-10-15)
+### Delivery ledger (current as of 2026-10-16)
 
 | part | status | where |
 |---|---|---|

@@ -23,7 +23,38 @@ Each even-minor consumer sits strictly behind the release that earns its trust: 
 
 ## Release Timeline
 
-### v2.2.1 (2026-10-11) — Current — a failed proposal and an abort end with a record
+### v2.3.0 (2026-10-16) — Current — TensorFold, and the structure moved under it
+
+**v2.3.0, a stabilization release** (feature-free by rule; plan `docs/plans/2-3-0-plan.md`). It changed the engine
+first, and then moved the structure on it:
+- **TensorFold serves the squad** (SIP-0111). The owner adopted it at G4 on 2026-10-13: the same 27B model on
+  TensorFold's frozen NVFP4 recipe took 0.45 of Ollama's median cycle time on FastAPI+React and 0.61 on Next.js.
+  Ollama stays beside it, stopped, as the rollback, and every call carries a seed;
+- **the structure moved, and didn't change:** the cycle orchestration left `adapters/cycles` for `squadops.execution`
+  (#1992), the stacks became their own package (#1993), 389 deferred imports were hoisted (#2062), and the five largest
+  units were split into named steps, each move checked against a recording of the unit taken before it (#1994);
+- **hardening:** every error body is the standard envelope and every route declares its response (#1976); the comms
+  path retries what is safe and bounds a task by its own attempts (#1977); the campaign's plan-review tier's timeout
+  half was read live (#2279), and a repair or the next proposal is told why the increment's evaluation rejected it
+  (#2318, found by the cut's shakeout);
+- **output quality:** a declared list order and a declared error message are held to by derived probes, and a failing
+  contract probe now enters correction (#2202, #2205, #2308);
+- **monitoring:** the agents' and the runtime's metrics reach Prometheus, the host and GPU are scraped, and Grafana is
+  provisioned from the repo (#2203, #2204, #2371).
+
+<!-- CUT EVIDENCE -->
+
+**Not in this release:** the request-profile taxonomy (#316) and Outcome Evaluation's instruments moved to 2.4 by the
+owner on 2026-10-15, each needing its SIP accepted first; the second TensorFold candidate (#2230) is in 2.4.
+
+**Upgrade from 2.2.1:**
+- **`.env` must name `SQUADOPS__LLM__URL`;** `.env.example` carries the host-Ollama value. A deploy without it fails at
+  `docker compose`, naming the key.
+- **On the Spark, install the memory watchdog once,** with sudo:
+  `./scripts/dev/ops/install_host_unit.sh squadops-memory-watchdog`.
+- **No database migration.**
+
+### v2.2.1 (2026-10-11) — a failed proposal and an abort end with a record
 
 **v2.2.1, the 2.2 line's first patch** (plan `docs/plans/2-2-1-plan.md`). It fixes the three defects the 2.2 cut's tier
 diagnostic found, and a security fix the owner added:
@@ -925,10 +956,10 @@ The following areas are identified for future work but do not block 1.0 readines
 
 ## Stats
 
-*As of 2026-10-11 (v2.2.1):*
+*As of 2026-10-16 (v2.3.0):*
 
-- **Framework version**: 2.2.1
-- **SIPs** (2026-10-11, after the 2.2 sweep): 69 implemented, 11 accepted (SIP-0088, 0090–0093, 0101, 0102, 0105, 0109, 0110, 0111), 34 deprecated, plus the unnumbered proposals indexed in `sips/PORTFOLIO.md`
+- **Framework version**: 2.3.0
+- **SIPs** (2026-10-16, after the 2.3 sweep, which promoted none): 69 implemented, 11 accepted (SIP-0088, 0090–0093, 0101, 0102, 0105, 0109, 0110, 0111), 34 deprecated, plus the unnumbered proposals indexed in `sips/PORTFOLIO.md`
 - **Tests**: 10,000+ passing in the regression suite (all of `tests/unit`, #1316)
 - **Python source**: ~109,000 lines measured 2026-09-17 (`src/` ~84,000 + `adapters/` ~25,000; ~168,000 test lines; ~144,000 lines of Markdown under `docs/` and `sips/`)
 - **~6 months** from initial repo (2025-09-20) to 1.0.0 release (2026-03-10)
