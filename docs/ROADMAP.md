@@ -42,7 +42,14 @@ first, and then moved the structure on it:
 - **monitoring:** the agents' and the runtime's metrics reach Prometheus, the host and GPU are scraped, and Grafana is
   provisioned from the repo (#2203, #2204, #2371).
 
-<!-- CUT EVIDENCE -->
+**The cut's evidence: PASS, on the second counted set** (`docs/plans/2-3-0-cut-preregistration.md` §10):
+- 4 of 4 regression rolls were accepted on TensorFold, two per stack: every criterion verified, every boot audit
+  passing, and no correction round;
+- all 66 model calls were TensorFold's, and all 115 tracked loaded checks answered in every roll;
+- the shakeout campaign was clean in its third round.
+
+The first set failed on its fourth roll, on #2379: a kept repair's file lost its writer at storage, latent since 1.9.0.
+#2380 fixed it, and the set restarted on a new deploy after a shakeout.
 
 **Not in this release:** the request-profile taxonomy (#316) and Outcome Evaluation's instruments moved to 2.4 by the
 owner on 2026-10-15, each needing its SIP accepted first; the second TensorFold candidate (#2230) is in 2.4.

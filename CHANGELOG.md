@@ -22,7 +22,22 @@ of 2026-10-09, dark until its cutover, and every rebuild after the cutover ran i
 - **adoption (G4):** the owner adopted it with the seed fix first (#2283). The Spark has served the squad on TensorFold
   since 20:01 ET that day, and the cutover pair was accepted, 20 of 20 and 21 of 21.
 
-<!-- PENDING: the cut's evidence (the regression set on TensorFold and the campaign shakeout), once read. -->
+**The cut's evidence: PASS, on the second counted set** (`docs/plans/2-3-0-cut-preregistration.md`, registered in
+#2377 and #2382, read in §10). It was read on the fix's deploy (`2b895f89`, `dep_dff75482722e`):
+- **the counted set:** 4 of 4 regression rolls accepted on TensorFold, two per stack, with memory disabled. Every
+  criterion was verified (21, 18, 20, 14), every boot audit passed, and no roll had a correction round;
+- **every model call was TensorFold's:** 66 of 66, read from the agents' per-call metrics and matched in their logs;
+- **the line's code is what ran:** all 115 tracked loaded checks answered as expected in every roll, the structural
+  rounds' among them;
+- **memory inert where it is disabled:** every exposure reads `memory_disabled`, and all 38 envelopes reconstruct
+  byte for byte;
+- **the shakeout campaign, in three rounds:** round 1 found #2318. Round 3, on the fix's deploy, was clean: two
+  increments were accepted on their first cycle, and the tier decided all 3 plan gates;
+- **the first set failed** on its fourth roll, on #2379, a defect latent since 1.9.0. A kept repair's next round lost
+  the developer's name on its file, and storage failed the run. #2380 fixed it, and the set restarted on a new deploy
+  after a shakeout, as its pre-registration requires;
+- **what it does not cover:** the tagged tree differs from the validated deploy only by the version string, the
+  release's documents and the set's configs. Nothing under `src/` or `adapters/` differs.
 
 **The engine (SIP-0111, TensorFold).**
 - **The Spark's Ollama runs in a container,** pinned by digest, so the switch can stop it without sudo.
