@@ -5,6 +5,182 @@ All notable changes to SquadOps are recorded here. Format loosely follows
 
 ## [Unreleased]
 
+## [2.3.0] — 2026-10-16
+
+**The 2.3 line: a stabilization release, feature-free by rule, that changed the engine first: the owner adopted
+TensorFold at G4, the trial's adoption gate, on 2026-10-13, and the line's structural refactors and hardening then ran
+on it** (plan `docs/plans/2-3-0-plan.md`). The TensorFold trial (SIP-0111) rode the odd minor under the owner's waiver
+of 2026-10-09, dark until its cutover, and every rebuild after the cutover ran its regression pair on TensorFold.
+
+**The engine decision** (SIP-0111 §9e–§9k; G3's pre-registration #2272 and record #2282):
+- **throughput (G0):** on 132 held-out authoring prompts, the same 27B model on TensorFold's frozen NVFP4 recipe took
+  0.438 of Ollama's median paired wall-clock, against a bar of 0.75;
+- **validity (G1):** passed by the owner's ruling, with plan writing one answer under Ollama's (55 of 68 against 56);
+- **cycles (G3):** eight measured rolls and two shakeouts, all accepted with their boot audits passing. TensorFold's
+  median cycle took 0.45 of Ollama's time on FastAPI+React and 0.61 on Next.js, and decode ran 2.04× (54.7 against
+  26.8 tokens a second). Two of seven predictions failed: decode ≥ 1.8× on every task type, and tokens within ±20%;
+- **adoption (G4):** the owner adopted it with the seed fix first (#2283). The Spark has served the squad on TensorFold
+  since 20:01 ET that day, and the cutover pair was accepted, 20 of 20 and 21 of 21.
+
+**The cut's evidence: PASS, on the second counted set** (`docs/plans/2-3-0-cut-preregistration.md`, registered in
+#2377 and #2382, read in §10). It was read on the fix's deploy (`2b895f89`, `dep_dff75482722e`):
+- **the counted set:** 4 of 4 regression rolls accepted on TensorFold, two per stack, with memory disabled. Every
+  criterion was verified (21, 18, 20, 14), every boot audit passed, and no roll had a correction round;
+- **every model call was TensorFold's:** 66 of 66, read from the agents' per-call metrics and matched in their logs;
+- **the line's code is what ran:** all 115 tracked loaded checks answered as expected in every roll, the structural
+  rounds' among them;
+- **memory inert where it is disabled:** every exposure reads `memory_disabled`, and all 38 envelopes reconstruct
+  byte for byte;
+- **the shakeout campaign, in three rounds:** round 1 found #2318. Round 3, on the fix's deploy, was clean: two
+  increments were accepted on their first cycle, and the tier decided all 3 plan gates;
+- **the first set failed** on its fourth roll, on #2379, a defect latent since 1.9.0. A kept repair's next round lost
+  the developer's name on its file, and storage failed the run. #2380 fixed it, and the set restarted on a new deploy
+  after a shakeout, as its pre-registration requires;
+- **what it does not cover:** the tagged tree differs from the validated deploy only by the version string, the
+  release's documents and the set's configs. Nothing under `src/` or `adapters/` differs.
+
+**The engine (SIP-0111, TensorFold).**
+- **The Spark's Ollama runs in a container,** pinned by digest, so the switch can stop it without sudo.
+  `SQUADOPS__LLM__URL` is now required: a deploy without it fails at `docker compose`, naming the key (#2249; #2250).
+- **The engine switch and the replay harness:** `engine_switch.py` starts a pinned TensorFold recipe, verifies it, and
+  restores Ollama on any failure; `engine_replay.py` replays captured authoring prompts on both engines, paired and
+  seeded, and scores each answer with its task type's own handler (#2199; #2252, #2254, #2256, #2262).
+- **The model port gains declared controls:** a seed and a thinking budget, refused where undeclared and never dropped;
+  a normalized termination; and a context overflow that blocks its task instead of entering correction (#2200; #2268).
+- **The TensorFold adapter,** its wire read from TensorFold's own source: a stream succeeds only with its finish frame,
+  usage and `[DONE]`, and an error frame, a malformed frame or a cut stream raises with what arrived (#2200; #2269).
+- **The switch moves the model clients with the engine,** through `docker-compose.tensorfold.yml` and a key in `.env`,
+  onto the squad profile `full-38-tf`. Its live check took 27.2 s there and 48.4 s back (#2200; #2270, #2271).
+- **The cutover:** a switch records its engine in `.env` and the deploy record, and a rebuild or re-bootstrap keeps it;
+  the launch gate reads a busy TensorFold as not quiet; a fresh Spark installs the frozen recipe and serves on it, with
+  Ollama stopped beside it as the rollback (#2229, #2284; #2273, #2285).
+- **Every TensorFold call carries a seed.** TensorFold derives an unset seed from the prompt, so a repeated prompt had
+  repeated its answer. A call with no seed now gets a fresh one, named on its log line (#2281; #2283).
+- **The memory watchdog runs as a host service,** restarted always. After it kills TensorFold it restores Ollama and
+  moves the clients back, and one engine switch runs at a time (#2288; #2289).
+- **The line's engine records go to the Release:** its replay and switch records, with the credential scan covering
+  TensorFold's key (#2199; #2267).
+
+**Structure.**
+- **The stack registry and its stacks** (19 modules, 7,866 lines) move to `squadops.stacks`, which imports neither
+  capabilities nor cycles (#1993; #2325). 389 deferred imports whose reason was gone are hoisted, and each of the 53
+  that stay says why (#2062; #2326).
+- **The cycle orchestration moves from `adapters/cycles` to `squadops.execution`** (18 modules, 12,535 lines), a
+  top-level package by the owner's ruling: it imports what it orchestrates, and nothing imports it (#1992; #2327).
+- **The five largest units split into named steps, moved and not changed** (#1994). The owner reviewed each piece's
+  step-by-step plan (#2328, #2332, #2347, #2356, #2357), and each move was checked against a recording of the unit's
+  behaviour taken before it:
+  - the qa handler's `handle`, 481 lines to 104, as eight named steps (#2330, #2331);
+  - the handler base class every agent's task code inherits: its acceptance decisions move beside the evaluator, and
+    its envelope capture and empty-output marker become their own steps (#2335; #2336–#2339);
+  - the executor's per-task method, 313 lines to 107, around a per-task router (#2349–#2351);
+  - the correction runner's diagnosis, 180 lines to 119 (#2359, #2360);
+  - the task-plan builder: its run facts, acceptance families and each step's envelope inputs became their own
+    functions, 272 lines to 193 (#2361, #2362).
+
+**API and comms hardening (#1976, #1977).**
+- **Every error body is the standard envelope,** and a server failure gives the request id, never the exception's
+  text, which seven 5xx bodies had carried, five on unauthenticated or agent-status routes (#2265).
+- **Every route declares its response** (67 of 86 had none usable); creates answer 201, deletes 204 (#2317).
+- **The lists page:** the cycle list reads a page's runs in one query, not one per cycle (#2266); the runs, artifacts
+  and campaigns lists page as it does, and internal readers no longer stop silently at 50 runs (#2321).
+- **A transient database failure is retried inside the cycle registry,** only where running it again is safe (#2320).
+- **A publish the broker can't route raises into the retry,** where it had resolved as delivered (#2323).
+- **A dispatched task is bounded by its own attempts:** a completed task is never re-run, and past 3 attempts it is
+  quarantined and failed (#2324). The record is kept per send, so the runtime's own re-send runs (#2333; #2334).
+
+**Campaigns (SIP-0109).**
+- **`max_proposal_run_retries` is read:** failed proposal cycles past it pause the campaign (§24bn; #2231; #2245).
+- **The plan-review tier's timeout half, read live: every reading held** (#2279; #2296, #2307). A diagnostic-only fault
+  makes an increment's design ask (#2280), at its launch, before a late answer is carried in (#2290; #2293). Two
+  campaigns read the expiry, the park, the no-progress stop, and a late answer carried into the next campaign's plan.
+  The three defects it found were fixed first: a run of parks stops at the no-progress limit (§24bp; #2294; #2295); a
+  run cancelled at its gate ends the cycle as stored, so an expired escalation parks (#2301; #2302); a parked increment
+  is never accepted (#2303; #2304).
+- **An increment rejected only for criteria the accepted application already meets** goes to a new proposal told
+  which, not to a repair that can't change them (§24bq; #2315; #2319).
+- **A repair, a retry or the next proposal is told why the increment's own evaluation rejected it:** each frozen
+  criterion it broke, each new criterion left unmet, each route that didn't render. Its brief had carried only the
+  cycle's checks, so a repair of a build that passed them was told the cycle passed. The cut's shakeout read it live
+  (§24br; #2318; #2375).
+
+**Output quality: what a manifest declares, the build is held to.**
+- **A list order declared on an endpoint is checked by a derived probe,** not left as prose. Its pre-registered
+  before-and-after comparison on TensorFold held every reading it reached (#2202; #2276; #2299, #2312).
+- **The Next.js store can delete a row** (`remove(table, id)`), so a declared DELETE over an entity stored as its own
+  rows has a correct form. Without it a leave handler could empty a run's list but not the row (#2363; #2367).
+- **The proposal rails refuse an undefined manifest key and an unbuildable criterion, and an error's message is declared
+  on its code,** rendered word for word and asserted by the probes (SIP-0109 §24bo). Its comparison's after arm held
+  every reading (#2205; #2275; #2300, #2316).
+- **A failing contract probe fails its `qa.test` result,** so correction engages; since #1223 it had been diagnosed and
+  never repaired (#2308; #2309). The boot audit assembles a promoted increment as its accepted tree (#2310; #2311).
+- **Rubric `criterion_already_satisfied@3`:** the delivered code decides when the sources are silent or contradict it
+  (#2208; #2274). A replay pins a rubric version by its text, and @2's is kept (#2313; #2314).
+
+**Correction loop and evidence.**
+- **A contract probe still failing for a new reason is progress,** so a repair that half-fixes it is kept, and the
+  retest's line names a failed probe (SIP-0086 §12d; #2340, #2341; #2343).
+- **An accepted repair's file names the step that wrote it,** so a dev repair of a qa failure no longer reads as QA
+  writing a dev-owned file (#2206; #2243).
+- **A kept repair survives the round after it.** The next round starts from the kept round's retest, and its copy of
+  the developer's file now keeps the developer's name. Before, storage judged that copy a QA write, dropped the
+  developer's fix, and the stored-set guard failed the run. That was latent since 1.9.0, and it failed the cut's first
+  counted set (#2379; #2380).
+
+**Memory entry points (SIP-0110).**
+- **The legacy agent store is dormant:** every operation is refused visibly, and chat neither recalls nor stores (#2174;
+  #2246).
+- **A chat session is its owner's,** and each turn carries the session's bounded history to the agent (#2175; #2247).
+- **The context-assembly port, inert,** asked by the four authoring seams; what a task is given is unchanged (#2176;
+  #2257).
+- **A revocation names only running units as work to halt,** and lists the finished ones apart (#2210; #2242).
+
+**Monitoring (#2204).**
+- **The agents' metrics reach Prometheus:** the agent image lacked the OpenTelemetry SDK, so every metric call did
+  nothing. Each model call records its decode rate, tokens and prefill time (#2203; #2239), by engine (#2260; #2263).
+- **The host and GPU are scraped** (#2240, #2244). `GET /health/host` reports them, memory and disk against the box's
+  floors and an unreadable value as unknown (#2241), and the console's Host panel colours its states (#2277).
+- **Grafana, provisioned from the repo:** Spark health and DCGM dashboards and a board-thermal alert (#2258; #2259),
+  and "Squad model calls", counted exactly, since `increase()` misses each series' first value (#2261).
+- **The runtime exports its activity:** runs started and finished, campaign transitions and its own start, shown as
+  markers on both dashboards and an activity row on Spark health (#2204; #2368). Its image carries the OpenTelemetry
+  SDK they need, which it had lacked as the agents' had, and the adapter now says once when it can't start (#2371;
+  #2372).
+
+**Removed settings.** Two SIP-0079 limits nothing read, `max_consecutive_failures` (#2348; #2355) and
+`max_task_seconds` (#2353; #2358): the owner chose removal, and a profile that sets either is refused at load.
+
+**Tooling, auth and CI.**
+- **The login password goes through the environment,** so a refused driver login no longer prints it, and no unit test
+  reaches the live CLI: three had, and Keycloak locked the admin user (#2291; #2292).
+- **The release capture** seeds a delivered app at the backend's paths and bounds every browser call (#2234; #2264).
+  **The deploy-record check** reads the running deploy's compose project from any checkout (#2354; #2365).
+- **CI's integration job pulls from Google's Docker Hub mirror,** so the anonymous limit can't fail it (#2201; #2238).
+
+**Plans and SIPs.** 2.3 started after 2.2.1's cut, with the release-capture fix placed (#2237); Flash-Next moved to 2.4
+(#2255); the request-profile taxonomy's revision 2, for review (#316; #2278); the v2.2.1 release package (#2236).
+
+**Records of the line's test rounds.** Each rebuild ran one uncounted cycle per stack, with a loaded check per change:
+- the benchmark deploy's pairs, before and after Ollama moved into a container (#2248, #2251);
+- **accepted on both stacks, on TensorFold:** the memory and campaign fixes (#2298), the API and comms hardening
+  (#2329), the orchestration move (#2344), the probe-progress fix (#2345), and the qa handler and base class splits
+  (#2346, #2352);
+- **the stacks move** (#2342): its first pair found #2333; the owner counted the second as the exit, its Next.js
+  rejection (#2340) being outside the round's changes;
+- **the executor split** (#2364): React accepted; Next.js rejected, 14 of 15, as its stack's store had no delete
+  (#2363);
+- **accepted on both stacks, on TensorFold:** the correction runner and task-plan builder splits (#2369, #2370), and
+  the fixes round, whose first rebuild found #2371 (#2374).
+
+**Upgrade from 2.2.1:** `.env` must name `SQUADOPS__LLM__URL` (`.env.example` carries the host-Ollama value). On the
+Spark, install the watchdog once, with sudo: `./scripts/dev/ops/install_host_unit.sh squadops-memory-watchdog`. No
+database migration.
+
+**Not in this release.** The request-profile taxonomy (#316) and Outcome Evaluation's reporting-only instruments were
+moved to 2.4 by the owner on 2026-10-15: each needed its SIP accepted first, and neither was (#2366). The second
+TensorFold candidate, Qwen3.8-Flash-Next (#2230), is in 2.4 (the owner, 2026-10-12, confirmed 2026-10-15): not
+measured in 2.3, which is not a negative finding.
+
 ## [2.2.1] — 2026-10-11
 
 **The 2.2 line's first patch: a failed proposal and an abort end with a record, never a wedge** (plan

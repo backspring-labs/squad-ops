@@ -1,6 +1,6 @@
 # 2.3.0 — pre-registration of the cut's set (plan §3 step 9, the cut's criteria)
 
-**Status: SET 2 REGISTERED 2026-10-16 at 10:50 ET**, after set 1 failed. Set 1 was registered on 2026-10-16 at 06:26 ET,
+**Status: SET 2 PASSED** (read 2026-10-16 at 13:00 ET, §10b). It was registered at 10:50 ET, after set 1 failed. Set 1 was registered on 2026-10-16 at 06:26 ET,
 when the four conditions below held and §6's pins were read, and it **failed on its fourth roll** (read at 09:06 ET,
 §10a). That was a framework defect, #2379, fixed by #2380. Under §3 the fix voids the set, and it restarts on a new
 deploy after a shakeout, so set 2 is registered under the same frame, predictions and budget, once its own four
@@ -271,6 +271,54 @@ It is latent since 1.9.0 (#1769), not a 2.3 change: the code is the same at `v2.
 
 **What it means for the set:** under §3 the fix voids it, and it restarts on a new deploy after a shakeout. The restart is set 2 (§6b, §10b), registered under the same frame, predictions and budget, with the fix's loaded check among its tracked rows.
 
-### 10b. Set 2
+### 10b. Set 2: passed (read 2026-10-16, 13:00 ET)
 
-Written when the set is read.
+Registered at 10:50 ET (§6b). The chain ran 11:07–12:58 ET from the main checkout at `74148895`, the registration's
+merge, on `dep_dff75482722e`. It stops on a roll that is refused, fails, or is not accepted. Nothing merged or
+rebuilt, and no other workload ran beside it. The supervisor only read records, logs and metrics.
+
+| roll | cycle | verdict | criteria | correction rounds | boot audit | minutes | model calls |
+|---|---|---|---|---|---|---|---|
+| React 1 | `cyc_bd0126f57063` | accepted | 21/21 | 0 | PASS | 25 | 17 |
+| Next.js 1 | `cyc_8227b62a1f0f` | accepted | 18/18 | 0 | PASS | 27 | 18 |
+| React 2 | `cyc_e07cffe202e5` | accepted | 20/20 | 0 | PASS | 24 | 15 |
+| Next.js 2 | `cyc_b74f6a20c69e` | accepted | 14/14 | 0 | PASS | 28 | 16 |
+
+**The verdict: PASS** (§3):
+- every regression roll was accepted, and its boot audit passed;
+- no roll regressed against its stack's baseline (§2): every criterion was verified, and every roll took no
+  correction round, inside the line's range of 0–3 on both stacks;
+- P1–P4 hold.
+
+**The predictions:**
+- **P1 holds:** every model call in each roll's window was TensorFold's, on `qwen3.8-27b-tf-nvfp4`. That is 66 calls,
+  17, 18, 15 and 16, read exactly from `squadops_llm_call_seconds_count` by engine and model, and the agents' logs
+  give the same count in each window.
+- **P2 holds:** all 115 tracked loaded checks answered as expected in each of the four rolls, the structural rounds'
+  rows and the fix's `2379-runtime` among them.
+- **P3 holds:**
+  - each cycle pinned a disabled snapshot with no entries;
+  - every consuming task recorded a `memory_disabled` exposure against it (10, 10, 9 and 9);
+  - every captured envelope, 38 in all, reconstructed byte for byte, each with its own exposure.
+- **P4 holds,** read in the shakeout's third round: the tier decided all 3 plan gates, each with its three readings.
+
+**What the sample can say** (§2): four rolls and one campaign, on one deploy, show the final deploy working on
+TensorFold on both stacks, the structural rounds' code running, and the campaign's unattended path. They are not a
+reliability rate. With set 1, six of the line's eight counted rolls ran clean; set 1's fourth roll failed on #2379.
+
+**The shakeout loop took three rounds:**
+1. round 1 found #2318;
+2. set 1, on round 2's deploy, failed on #2379;
+3. round 3, on the fix's deploy, met the rule.
+
+**Drift (§8):**
+- **The tagged tree and the registered deploy** (`2b895f89`) differ by:
+  - the set's configs and this document, which are prose;
+  - the release's own changes: the version string (`2.2.1` → `2.3.0` in `pyproject.toml`, which the running images
+    report as `2.2.1`), its markers, `CHANGELOG.md`, `docs/ROADMAP.md`, `README.md`, the SIP ledgers and
+    `sips/open-issues.json`.
+
+  None is behavioural. Nothing under `src/` or `adapters/` differs.
+- **Each void and re-run:** none in either set. Set 1 was not void: it failed, and §3 restarted it as set 2.
+- **Owner actions:** none touched the deploy or either set. The owner's rulings while they ran concern later lines:
+  2.4's headline, and what 2.3.1 carries.

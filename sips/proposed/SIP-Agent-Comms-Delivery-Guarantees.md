@@ -16,12 +16,12 @@ created_at: '2026-07-08T00:00:00Z'
 ## Status
 Proposed
 
-**Targets:** split (ruled 2026-10-04, `sips/PORTFOLIO.md` §2): the transport hardening is placed in 2.3.0 (#1977), and the duty-gated parts are deferred to 3.x. The gate is: **implemented before any squad does paid external duty/Campaign work over this transport.**
+**Targets:** split (ruled 2026-10-04, `sips/PORTFOLIO.md` §2): the transport hardening shipped in 2.3.0 (#1977), and the duty-gated parts are deferred to 3.x. The gate is: **implemented before any squad does paid external duty/Campaign work over this transport.**
 **Builds on:** SIP-0094 (per-agent reply queues + `subscribe()` primitive, implemented) and #323 (agent comms poll→push migration). SIP-0094 §4 explicitly deferred the agent-side loop as "a follow-up"; #323 was that follow-up. This SIP is the next rung: the transport loop is now correct — the *delivery guarantees around failure* are not.
 **Amends:** SIP-0094 D12 ack policy — scoped per-direction, not revoked (see §5.1).
 **Ruled 2026-10-14 (the owner, on #1977):** §5.1–§5.3a are accepted as #1977's design: bounded redelivery and a dead-letter queue, the death-path rule, publisher confirms and mandatory routing, and consumer idempotency. §5.4, §5.5 and the duty-gated parts are not part of that ruling. **Measured 2026-10-14, before §5.1 was built:** an explicit `nack(requeue=True)` on these classic queues carries no `x-death` and no delivery count (#1977). §5.1's count never advances as written. **Amended 2026-10-14 (§5.3b), ruled by the owner:** the bound is the agent's own per-task attempt count in Redis. **Amended 2026-10-15 (§5.3c), ruled by the owner (#2333):** the record is kept per send, not per task, because the runtime sends a task again under its own id for a fresh execution.
 
-## Delivery ledger (current as of 2026-10-15)
+## Delivery ledger (current as of 2026-10-16)
 
 Kept by the rule in CLAUDE.md ("SIP System"): one row per part, updated in the PR that ships or re-places it.
 
@@ -34,7 +34,7 @@ Kept by the rule in CLAUDE.md ("SIP System"): one row per part, updated in the P
 | §5.5 observability | **unplaced, deliberately**: not part of the owner's ruling of 2026-10-14 | — |
 | the duty-gated parts | **deferred to 3.x (ruled 2026-10-04)**: with the duty cluster | `sips/PORTFOLIO.md` §2 |
 
-The transport hardening closes when §5.1–§5.3a ship (2.3, #1977). §5.4, §5.5 and the duty-gated parts are read again at 3.0's plan.
+The transport hardening closed in 2.3.0, with §5.1–§5.3a shipped (#1977). §5.4, §5.5 and the duty-gated parts are read again at 3.0's plan.
 
 ## 1. Abstract
 
