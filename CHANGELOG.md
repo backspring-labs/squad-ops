@@ -107,6 +107,10 @@ of 2026-10-09, dark until its cutover, and every rebuild after the cutover ran i
   retest's line names a failed probe (SIP-0086 §12d; #2340, #2341; #2343).
 - **An accepted repair's file names the step that wrote it,** so a dev repair of a qa failure no longer reads as QA
   writing a dev-owned file (#2206; #2243).
+- **A kept repair survives the round after it.** The next round starts from the kept round's retest, and its copy of
+  the developer's file now keeps the developer's name. Before, storage judged that copy a QA write, dropped the
+  developer's fix, and the stored-set guard failed the run. That was latent since 1.9.0, and it failed the cut's first
+  counted set (#2379; #2380).
 
 **Memory entry points (SIP-0110).**
 - **The legacy agent store is dormant:** every operation is refused visibly, and chat neither recalls nor stores (#2174;
