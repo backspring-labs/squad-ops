@@ -63,7 +63,10 @@ def test_the_bound_record_and_the_verification_scaffold_keep_their_identities():
     ) == (
         "1ff59445d016f6d7385d713c5f31de7620fe3f065344db6a083bae7b1a0ab962",
         "6fc46f50369bc9afd34e40607350b2464b74f79a6a8ef62772470037f5e98854",
-        "a667c9932b3c3d26db52ea0b2da1931bb80eeaf470ba7f9c8b7c0b4833bdefbe",
+        # #2363 (2026-10-15): the Next.js store gained `remove`, so the expanded tree moved. The
+        # spine and scaffold hashes above did not, which is the evidence the change was the
+        # store's alone.
+        "d13528cfaf5bdbc079ccb4126f37c246b79bf44ad38f8e4a1124f89797c2ed2b",
     )
 
 

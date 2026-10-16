@@ -402,6 +402,21 @@ export function find(table: Table, id: string): Record<string, unknown> | undefi
   return (tables[table] ?? []).find((r) => r.id === id)
 }
 
+// Delete a stored row by its `id`. Returns whether a row was removed.
+//
+// This exists because it did not (#2363), the same gap `update` closed for changes. With only
+// `insert`, `update` and `find`, a DELETE over an entity stored as rows of its own had no
+// correct form: the leave handler could take a participant out of its run's list, but the
+// participant's own row stayed, and a suite asserting that table failed a working application
+// on every repair (cyc_0758d771a1dc, three rounds).
+export function remove(table: Table, id: string): boolean {
+  const rows = tables[table] ?? []
+  const index = rows.findIndex((r) => r.id === id)
+  if (index < 0) return false
+  rows.splice(index, 1)
+  return true
+}
+
 export function nextId(): string {
   return Math.random().toString(36).slice(2, 10)
 }
