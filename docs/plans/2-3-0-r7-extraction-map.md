@@ -3,12 +3,11 @@
 **Status:** reviewed. The owner approved unit 1's step table on 2026-10-15, and chose to review each
 of units 2–5 at the step before its first extraction PR (#1994, comment 6188687592). It reviewed unit 2's
 on the same day (§4b; #1994, comment 6191733584), unit 3's that evening (§4c; #1994, comment
-6204066944), and unit 4's later that evening (§4d; #1994, comment 6206245131). The plan owns R7's
+6204066944), and units 4 and 5's later that evening (§4d and §4e; #1994, comment 6206245131). The plan owns R7's
 placement (phase 8, after R6). This map owns each unit's scope, its steps, the data that crosses each
 step, and the proof each PR carries.
 
-**Granularity:** units 1–4 are mapped to the step (§4, §4b, §4c, §4d). Unit 5 is mapped to the block
-here. Each gets
+**Granularity:** every unit is mapped to the step (§4, §4b, §4c, §4d, §4e). Each gets
 its step table in this file, re-measured on the tree it extracts from, and reviewed before its first
 extraction PR. Measured on R6's tree (PR #2327), where units 3 and 4 live after the orchestration
 move, to the top-level `squadops.execution` the owner ruled (#1992, comment 6188687208).
@@ -54,7 +53,7 @@ The criterion is one unit owning several independent reasons to change.
 | 2 | the same two for `handle` and `_llm_call` | **a characterization of `_evaluate_typed_acceptance`:** the rows, the missing list and the escalation counts for each status × severity × authored/injected case |
 | 3 | none pins the per-task loop | **a characterization of `_execute_task`:** the events emitted, the evidence the ledger records, the collection calls and the patched-result swap, over a success, a corrected failure, a kept-progress round and an abort |
 | 4 | `test_correction_context_golden.py` (the repair and retest envelopes) and `test_correction_runner.py` | **a characterization of the diagnosis** (§4d): no golden records its analysis and decision envelopes. Measured to the block, this said none |
-| 5 | `test_plan_context_golden.py` (`generate_task_plan`'s exact envelope inputs, framing and implementation) | none |
+| 5 | `test_plan_context_golden.py` (`generate_task_plan`'s exact envelope inputs, framing and implementation) | **a record of what the golden leaves out** (§4e): the input keys' order, the envelopes' other fields and an increment. Measured to the block, this said none |
 
 4. **Its own rebuild and regression pair.** Each unit is a structural batch, as the issue requires and
    phase 8 runs every rebuild.
@@ -375,6 +374,88 @@ makes that the criterion. So 4a and 4b take keyword-only parameters, as `_diagno
 
 **The PRs:** step 0; then 4a with 4b; then unit 4's rebuild and regression pair.
 
+## 4e. Unit 5: `generate_task_plan`, step by step (reviewed by the owner, 2026-10-15)
+
+**The owner's choices** (2026-10-15 21:38 ET, #1994, comment 6206245131). The owner approved all three of the
+plan's recommendations:
+- the run's facts are held in one frozen value, `_PlanFacts` (5a);
+- the acceptance families move into `_plan_task_acceptance` (5b), and an envelope's inputs into
+  `_step_inputs` (5c), with the input keys in today's order;
+- a record of what the plan golden leaves out comes first, as step 0.
+
+Measured on main at `f609f15a`: `src/squadops/cycles/task_plan.py`, lines 1241–1512, 272 lines. The
+function builds a run's task envelopes, one per step, and is the plan's one constructor. Its blocks:
+
+| lines | block | lines in it |
+|---|---|---:|
+| 1241–1276 | signature and docstring | 36 |
+| 1277–1304 | **the run's facts:** the served roles and the cycle's reasoning; the resolved config, with a framing re-roll's rejection lifted out of it (#669); an increment's footprint, criterion files, frozen files and test scope (SIP-0109 §7.3); the change-request requirement; the evaluation | 28 |
+| 1306–1321 | the steps: by workload (SIP-0078) or the legacy flags; the approved plan replaces the build steps (SIP-0086); the evaluation's steps go last (SIP-0109 §8) | 16 |
+| 1323–1369 | the lineage ids and the routing reason; the comment on deterministic ids (#811, #1934); each step's agent resolved once, with the per-agent counts (#94); the plan's implementation artifacts (RC2) | 47 |
+| 1371–1496 | **the per-step loop** | 126 |
+| 1372–1404 | — the step's type, role and plan task; its id, pulse, span and causation ids; its agent, model, overrides and metadata | 33 |
+| 1406–1420 | — the base inputs and the lane position | 15 |
+| 1422–1465 | — **a plan task's inputs, and its acceptance from seven criterion families** | 44 |
+| 1467–1479 | — the contract, rejection, increment and prior-cycle inputs | 13 |
+| 1481–1496 | — the envelope | 16 |
+| 1498–1508 | the builder's `build_profile` requirement (#392) | 11 |
+| 1510–1512 | the unbound contract criteria; the result | 3 |
+
+**Step 0, its own PR: a record of what the plan golden leaves out.** §3's table gave unit 5 no step 0,
+because `test_plan_context_golden.py` pins every envelope's inputs. Measured to the step, it doesn't pin
+everything the moves touch:
+- it compares with `sort_keys=True` (line 251), so the order of an envelope's input keys isn't checked,
+  and that order is what reaches an agent;
+- it records the inputs only: not the task ids, agents, metadata or the causation chain;
+- its three scenarios (framing re-roll in bind mode, implementation in bind mode, implementation in author
+  mode) include no increment, so the facts 5a moves (footprint, criterion files, frozen files, test
+  scope, evaluation) are pinned only by single assertions in the increment suites.
+
+Step 0 records, per case, each envelope's id, agent, type, metadata, causation (the previous task or the
+correlation id) and its input keys in order. The cases are the golden's three plus an increment's
+framing run and an increment's implementation run with evaluation steps. It reads `generate_task_plan`'s
+return value, so no patch target is involved.
+
+**5a: the run's facts become `_PlanFacts`** (1283–1304). A frozen dataclass in this module holds:
+- the resolved config, after the rejection is lifted out;
+- the rejection context;
+- the footprint, criterion files, frozen files and test scope;
+- the evaluation.
+
+`_plan_facts(cycle, run, interface_manifest, change_request)` builds it with the same calls in the same
+order. That includes the three deferred imports of `squadops.campaigns.increment_tree`, which stay inside
+it because that module loads this one. The change-request requirement still runs between the test scope
+and the evaluation. `generate_task_plan` builds the facts once and unpacks them into the names its body
+uses, so every later line is unchanged.
+
+**5b: the acceptance families become `_plan_task_acceptance`** (1434–1464):
+`_plan_task_acceptance(task_type, plan_task, contract, interface_manifest) -> list`. It starts from
+`_applicable_acceptance`, then extends it, in the same order, with:
+- the contract-resolved criteria (bind mode);
+- the harness boundary, the contract assertions, the assertion kinds, the DOM anchors, the client-mock
+  surface and the fill-slot signatures.
+
+The loop keeps `inputs["acceptance_criteria"] = …`.
+
+**5c: one envelope's inputs come from `_step_inputs`** (1406–1479, with 5b's call inside). It takes the
+facts, the cycle and run, the step's type, plan task, model and overrides, its lane position, and the
+contract, manifest, change request and the plan's implementation artifacts. It returns the inputs dict
+with its keys inserted in today's order. The loop keeps advancing the lane count (`lane_seen`). It hands
+the builder the position and total, so the two lines that set them become `inputs["role_index"] =
+role_index` and `inputs["role_total"] = role_total`, and the PR lists both.
+
+**After:** the loop reads as the step, its ids, its agent and metadata, the lane, `_step_inputs`, the
+envelope: about 65 lines, down from 126. `generate_task_plan` drops to about 195 lines, a third of them
+its signature, docstring and the ids' comment. 5a and 5c move about 95 lines and add back about 20 for
+their calls.
+
+**Why a carrier here, when §4d drops the correction runner's.** Here it has one reader that reads all of
+it: `_step_inputs`, once per step. There, the long signatures were the public entry points and a patched
+seam, which keep theirs either way.
+
+**The PRs:** step 0; then 5a, 5b and 5c together (5c reads 5a's facts and calls 5b); then unit 5's
+rebuild and regression pair. That pair closes #1994.
+
 ## 5. Units 2–5, to the block
 
 **Unit 2: `_CycleTaskHandler`** (mapped to the step in §4b). The template method and its hooks in one class:
@@ -410,7 +491,7 @@ makes that the criterion. So 4a and 4b take keyword-only parameters, as `_diagno
 - The per-step loop's acceptance block (about 30 lines, seven criterion families) becomes
   `_plan_task_acceptance`.
 - The envelope's inputs come from one builder.
-- The loop drops to about 40 lines.
+- The loop drops to about 40 lines. *Measured to the step, about 65 (§4e).*
 
 ## 6. Order and box time
 
