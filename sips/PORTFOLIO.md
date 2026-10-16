@@ -73,7 +73,7 @@ Class: **live** (wanted, not built), **partly absorbed** (some built or owned el
 
 | proposal | class | placement it states | action |
 |---|---|---|---|
-| Outcome Evaluation (PR #1963) | live | instruments 2.3; feature half heads 2.4 | Q1, Q3 |
+| Outcome Evaluation (PR #1963) | live | instruments **2.4** (moved from 2.3, 2026-10-15, the owner); the feature half follows them | Q1, Q3 |
 | Memory Entry Points (epic #2173; drafted 2026-10-09 on the owner's direction) | **accepted 2026-10-09 and absorbed into SIP-0110** (§5g, Appendix A); the proposal file is **deprecated** with a pointer there | 2.3.0 (#2174, #2175, #2176), 2.4.0 (#2177–#2183), 2.5.0 (#2184): SIP-0110's ledger | Q25–Q29, ruled |
 | Verification Yield | partly absorbed | ledger 2026-10-04: #1960 (2.1), #1965 (crew, 2.1 window), #1966 (after memory) | done 2026-10-04 |
 | Test-First Verification | partly absorbed | greenfield gate #1978 (2.6) | ruled |
@@ -88,7 +88,7 @@ Class: **live** (wanted, not built), **partly absorbed** (some built or owned el
 | Fine-Grained Issue Enumeration | partly absorbed (vision) | none | keep as vision; fix its stale SIP names |
 | LLM Emission Contracts | partly absorbed; targets stale | P1–P3 in 1.5 | Q10 |
 | Agent Comms Delivery Guarantees | split | #1977 (2.3.0); duty-gated parts 3.x | ruled |
-| Cycle Request Profile Naming Taxonomy | live; inventory stale | **2.3.0** via #316 (moved from 2.1.0, 2026-10-05: the 2.1 plan's ruling 14) | Q13 |
+| Cycle Request Profile Naming Taxonomy | live; inventory stale | **2.4.0** via #316 (moved from 2.1.0, 2026-10-05: the 2.1 plan's ruling 14; from 2.3.0, 2026-10-15: the owner) | Q13 |
 | Planning Sequence Strategy-First | live (greenfield only); details stale | none | an outer-loop experiment candidate |
 | API Contract Hardening | partly absorbed; residue in #1976 | pre-1.0 | **deprecated** 2026-10-05 (#2023, Q14) |
 | Experiment Queue and Cycle Assessment | superseded (by SIP-0108 and SIP-0109) | v1.1/v1.2 | **deprecated** 2026-10-05 (#2023, Q14) |

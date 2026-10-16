@@ -10,6 +10,8 @@ created_at: '2026-07-01T00:00:00Z'
 > **Placement and delivery (2026-10-04: the owner's rulings on the SIP-portfolio audit, `sips/PORTFOLIO.md`).** **Placed: 2.1.0, via #316.** One constraint is ruled: **pinned campaign definitions keep resolving old profile names indefinitely.** The 2.0 set's pinned files name profiles, and the crew re-runs that set. The constraint goes into #316's acceptance, and the inventory here is refreshed in the implementing PR.
 >
 > **Moved to 2.3.0 (2026-10-05, the owner's ruling on the 2.1 day plan, 2.1 plan §5 ruling 14).** This SIP is still proposed, #316 is large, and nothing in 2.1 depends on it. It joins 2.3's structural batch, and the constraint above stands.
+>
+> **Moved to 2.4.0 (2026-10-15, the owner's ruling of 2026-10-15, in session: "ok to defer").** The SIP was still proposed when 2.3's last structural rounds ran, and its acceptance is the owner's design review, so 2.3 is cut without it. The 2.4 plan places its review and #316's build. The constraint above stands.
 
 
 **Status:** Proposed
@@ -123,13 +125,13 @@ The cycle-create resolver adds the stack's defaults to `applied_defaults`, so `v
 3. **Old profiles stay, frozen, under their old names,** so every pinned config resolves to what it ran. Q13 already rules this for campaign definitions.
 4. **The campaign profiles stay outside the operator's set.**
 
-### Delivery ledger (current as of 2026-10-13)
+### Delivery ledger (current as of 2026-10-15)
 
 | part | status | where |
 |---|---|---|
-| the design (this SIP accepted) | **placed:** 2.3.0, #316 | the owner's review of revision 2 |
-| the stack-declared defaults and the resolver (R2.3) | **placed:** 2.3.0, #316 | the plan's R8 |
-| the new names, with every old profile frozen under its old name | **placed:** 2.3.0, #316 | the plan's R8 |
+| the design (this SIP accepted) | **placed:** 2.4.0, #316 (moved from 2.3.0, 2026-10-15) | the owner's review of revision 2 |
+| the stack-declared defaults and the resolver (R2.3) | **placed:** 2.4.0, #316 (moved from 2.3.0, 2026-10-15) | the 2.4 plan |
+| the new names, with every old profile frozen under its old name | **placed:** 2.4.0, #316 (moved from 2.3.0, 2026-10-15) | the 2.4 plan |
 | CLI sugar flags (`--stack`, `--pulse`, `--multirole`) | **unplaced**, deliberately: `--set` covers them | — |
 
 **What closes this SIP:** acceptance, then the resolver and the new names shipped, with every old profile frozen and byte-identical.
