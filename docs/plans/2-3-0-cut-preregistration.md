@@ -1,9 +1,25 @@
 # 2.3.0 — pre-registration of the cut's set (plan §3 step 9, the cut's criteria)
 
-**Status: REGISTERED 2026-10-16 at 06:26 ET**, when the four conditions below held and §6's pins were read. Written
-2026-10-15 on the owner's ruling (§9), as a draft (#2373). Nothing in the set launched before registration. The plan
-leaves the regression set's size and the shakeout's exit rule to this document, written when the line's last batch is
-built (the 2.3 plan §7), as 2.0, 2.1 and 2.2 did. The owner's ruling sets its numbers: **2.2's** (§9).
+**Status: SET 2 REGISTERED <!-- SET2-REGISTERED -->**, after set 1 failed. Set 1 was registered on 2026-10-16 at 06:26 ET,
+when the four conditions below held and §6's pins were read, and it **failed on its fourth roll** (read at 09:06 ET,
+§10a). That was a framework defect, #2379, fixed by #2380. Under §3 the fix voids the set, and it restarts on a new
+deploy after a shakeout, so set 2 is registered under the same frame, predictions and budget, once its own four
+conditions hold (below) and §6b's pins are read.
+
+Written 2026-10-15 on the owner's ruling (§9), as a draft (#2373). Nothing in either set launched before its
+registration. The plan leaves the regression set's size and the shakeout's exit rule to this document, written when
+the line's last batch is built (the 2.3 plan §7), as 2.0, 2.1 and 2.2 did. The owner's ruling sets its numbers:
+**2.2's** (§9).
+
+**What must be true before set 2 is registered:**
+1. **The fix is built, merged and deployed.** #2380 merged as `2b895f89`, and its rebuild is the new final deploy (§6b).
+2. **Every tracked loaded check answers its expected value on the new deploy,** set 1's 114 rows and the fix's
+   `2379-runtime` among them (`verify_loaded.py`, run from the main checkout). <!-- SET2-COND2 -->
+3. **The shakeout loop's exit rule holds on the new deploy** (§3): one shakeout campaign with no new seam finding.
+   <!-- SET2-COND3 -->
+4. **The pins are read** (§6b), and nothing in set 2 has launched. <!-- SET2-COND4 -->
+
+**What had to be true before set 1 was registered** (kept as registered):
 
 **What must be true before it is registered:**
 1. **The line's last batch is built, merged and deployed** (§6): #1994's last two rounds, the correction runner and the
@@ -150,6 +166,10 @@ five largest units split into named steps (#1994). The set measures:
 | set configs | `2-3-0-cut-regression-fastapi-react.yaml` **`e7e9ba20d97e604a…`**, `2-3-0-cut-regression-nextjs.yaml` **`56bf3289964e4020…`** (sha256) |
 | HEAD at preflight | **`9ca3ff8c`**, this registration's branch, at both counting preflights (10:26Z). The preflight only reads it; roll 1 pins the HEAD it launches from, this registration's merge. Its difference from the deploy commit is #2376 (a maintainer script), the set's configs and loaded-check rows, and prose. Nothing under `src/` or `adapters/` differs |
 
+### 6b. Set 2's pins (read at its registration)
+
+<!-- SET2-PINS -->
+
 ---
 
 ## 7. Prohibited while the set is open
@@ -175,12 +195,49 @@ five largest units split into named steps (#1994). The set measures:
 - **The engine:** TensorFold, adopted at G4 on 2026-10-13 (#2282, #2285).
 - **The cut itself:** "You can push the tag and upload records" (2026-10-15, after granting merge and judgement
   authority to finish 2.3 that night). The conditions the supervisor stated with it, and keeps: the tag is pushed only
-  once this set passes and the release PR merges with main green; the records are uploaded only if the credential
+  once a set passes and the release PR merges with main green; the records are uploaded only if the credential
   scan is clean, and with the preview's sha256 (`--expect-sha256`). Accepting SIPs and anything security-related stay
   the owner's.
 
-The supervisor registers the set when the four conditions at the top hold, and launches it.
+The supervisor registers each set when its four conditions at the top hold, and launches it.
 
-## 10. The set's readings
+## 10. The sets' readings
+
+### 10a. Set 1: failed, on its fourth roll (read 2026-10-16, 09:06 ET)
+
+Registered at 06:26 ET (§6). The chain ran 06:46–08:58 ET from the main checkout at `aec33ad1`, the registration's merge, on `dep_1f734db0eedc`. Nothing merged or rebuilt, and no other workload ran beside it. The supervisor only read records, logs and metrics.
+
+| roll | cycle | verdict | criteria | correction rounds | boot audit | minutes | model calls |
+|---|---|---|---|---|---|---|---|
+| React 1 | `cyc_281f3978c9bd` | accepted | 20/20 | 1 | PASS | 40 | 25 |
+| Next.js 1 | `cyc_ebd551126495` | accepted | 16/16 | 0 | PASS | 25 | 18 |
+| React 2 | `cyc_52bec2e6270b` | accepted | 21/21 | 0 | PASS | 27 | 16 |
+| Next.js 2 | `cyc_ce31b502b82c` | **blocked_unverified** | 16/16 | 2 | PASS | 33 | 25 |
+
+**The verdict: FAIL** (§3: every regression roll accepted). The fourth roll's verdict was not accepted.
+
+**Its cause is the framework's, so the roll is not void** (§3's inconclusive rule is for a cause outside the framework). It is #2379:
+1. QA's suite failed, partly on the list-order probe, which is an app defect. Round 0 kept a developer repair of `app/api/runs/route.ts` (#1522).
+2. The next round started from round 0's retest. The retest's copy of that file named no producer.
+3. Round 1 accepted a repair of another file. Storage then judged the copy a QA write to a developer slot, dropped it, and the SIP-0107 §5.5 guard failed the run (`run_d5cbe881be8b`, 12:58Z).
+
+It is latent since 1.9.0 (#1769), not a 2.3 change: the code is the same at `v2.2.1`, and no earlier record carries the failure. Fixed by #2380.
+
+**The predictions held in every roll:**
+- **P1:** every model call in each roll's window was TensorFold's, on `qwen3.8-27b-tf-nvfp4`. That is 84 calls, 25, 18, 16 and 25, and the agents' logs give the same count in each window.
+- **P2:** all 114 tracked loaded checks answered as expected, in each of the four rolls.
+- **P3:**
+  - each cycle pinned a disabled snapshot with no entries;
+  - every consuming task recorded a `memory_disabled` exposure against it (12, 11, 10 and 12);
+  - every captured envelope reconstructed byte for byte, each with its own exposure.
+- **P4** was read in the shakeout (§0, condition 3).
+
+**Data, not failure:**
+- **React 1's round** was the developer's correct handler for the leave endpoint's query parameter. The scaffold's signature check refused it (#2378), and the repair worked around the check.
+- **One of Next.js 2's QA calls** was cut off at the 12,288-token budget (#2253). Its two rounds are within the line's range.
+
+**What it means for the set:** under §3 the fix voids it, and it restarts on a new deploy after a shakeout. The restart is set 2 (§6b, §10b), registered under the same frame, predictions and budget, with the fix's loaded check among its tracked rows.
+
+### 10b. Set 2
 
 Written when the set is read.
