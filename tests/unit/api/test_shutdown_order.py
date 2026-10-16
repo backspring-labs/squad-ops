@@ -31,7 +31,6 @@ async def test_the_executor_is_told_before_the_pool_closes_and_the_reply_waits_f
         campaign_sweep_task=None,
         memory_reconcile_task=None,
         redis_client=None,
-        rabbitmq_connection=None,
         log_forwarder=None,
         workflow_tracker=None,
     )

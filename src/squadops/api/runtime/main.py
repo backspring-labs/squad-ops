@@ -21,7 +21,6 @@ from contextlib import asynccontextmanager
 from typing import Any
 from urllib.parse import urlparse
 
-import aio_pika
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
@@ -141,8 +140,6 @@ def _include_routers(app: FastAPI) -> None:
 #: every reader sees the full inventory; ``_startup`` fills them.
 _STATE_SLOTS = (
     "pool",  # asyncpg pool (memory endpoints; the one factory, #577)
-    "rabbitmq_connection",  # persistent, like agents (task publishing)
-    "rabbitmq_channel",
     "workflow_tracker",  # closed on shutdown
     "reply_router",  # SIP-0094 per-agent reply queues; stopped on shutdown (D13)
     "log_forwarder",  # SIP-0087; closed on shutdown
@@ -696,20 +693,11 @@ async def _lifespan(app: FastAPI):
 
 
 async def _startup(app: FastAPI) -> None:
-    """Initialize database and message queue connections, then every subsystem, onto
-    ``app.state``."""
+    """Initialize the database pool, then every subsystem, onto ``app.state``. The runtime holds
+    no AMQP connection of its own: every publish goes through the queue port, which opens its own
+    (#2322)."""
     state, config = app.state, app.state.config
     state.pool = await create_pool(config.db.url, min_size=1, max_size=10)  # #577: the one factory
-    # Initialize RabbitMQ connection (persistent, like agents do)
-    try:
-        logger.info("Attempting to connect to RabbitMQ...")
-        state.rabbitmq_connection = await aio_pika.connect_robust(config.comms.rabbitmq.url)
-        state.rabbitmq_channel = await state.rabbitmq_connection.channel()
-        logger.info("RabbitMQ connection established during startup")
-    except Exception as e:
-        # Log error but don't fail startup - connection will be retried on first use
-        logger.error(f"Failed to initialize RabbitMQ connection during startup: {e}", exc_info=True)
-
     await _init_auth_subsystem(state, config)
     await _init_migrations(config, state.pool)
     # SIP-0110 (D13): the memory store, before the cycle subsystem whose executor recalls from it.
@@ -838,8 +826,6 @@ async def _shutdown(app: FastAPI) -> None:
         await state.redis_client.aclose()
     if state.pool:
         await state.pool.close()
-    if state.rabbitmq_connection:
-        await state.rabbitmq_connection.close()
     if state.log_forwarder is not None:
         await state.log_forwarder.aclose()
     # SIP-0094 D13: stop the reply router — once stopped it rejects new
