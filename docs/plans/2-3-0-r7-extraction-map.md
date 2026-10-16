@@ -2,13 +2,12 @@
 
 **Status:** reviewed. The owner approved unit 1's step table on 2026-10-15, and chose to review each
 of units 2–5 at the step before its first extraction PR (#1994, comment 6188687592). It reviewed unit 2's
-on the same day (§4b; #1994, comment 6191733584), and unit 3's that evening (§4c; #1994, comment
-6204066944). The plan owns R7's
+on the same day (§4b; #1994, comment 6191733584), unit 3's that evening (§4c; #1994, comment
+6204066944), and unit 4's later that evening (§4d; #1994, comment 6206245131). The plan owns R7's
 placement (phase 8, after R6). This map owns each unit's scope, its steps, the data that crosses each
 step, and the proof each PR carries.
 
-**Granularity:** units 1, 2 and 3 are mapped to the step (§4, §4b, §4c), and unit 4's step table is
-proposed (§4d) for the owner's review. Unit 5 is mapped to the block
+**Granularity:** units 1–4 are mapped to the step (§4, §4b, §4c, §4d). Unit 5 is mapped to the block
 here. Each gets
 its step table in this file, re-measured on the tree it extracts from, and reviewed before its first
 extraction PR. Measured on R6's tree (PR #2327), where units 3 and 4 live after the orchestration
@@ -54,7 +53,7 @@ The criterion is one unit owning several independent reasons to change.
 | 1 | `test_qa_dev_handle_characterization.py` (every output shape, end to end) and `test_llm_call_characterization.py` | none |
 | 2 | the same two for `handle` and `_llm_call` | **a characterization of `_evaluate_typed_acceptance`:** the rows, the missing list and the escalation counts for each status × severity × authored/injected case |
 | 3 | none pins the per-task loop | **a characterization of `_execute_task`:** the events emitted, the evidence the ledger records, the collection calls and the patched-result swap, over a success, a corrected failure, a kept-progress round and an abort |
-| 4 | `test_correction_context_golden.py` (the repair and retest envelopes) and `test_correction_runner.py` | none, measured to the block. **Measured to the step (§4d): a characterization of the diagnosis**, whose analysis and decision envelopes no golden records |
+| 4 | `test_correction_context_golden.py` (the repair and retest envelopes) and `test_correction_runner.py` | **a characterization of the diagnosis** (§4d): no golden records its analysis and decision envelopes. Measured to the block, this said none |
 | 5 | `test_plan_context_golden.py` (`generate_task_plan`'s exact envelope inputs, framing and implementation) | none |
 
 4. **Its own rebuild and regression pair.** Each unit is a structural batch, as the issue requires and
@@ -282,7 +281,13 @@ and the success tail: about 100 lines, most of them the signature and the calls'
 **The PRs:** step 0; then 3a with 3b (the router and what settles through it); then 3c with 3d; then
 unit 3's rebuild and regression pair.
 
-## 4d. Unit 4: `CorrectionRunner`, step by step (for the owner's review)
+## 4d. Unit 4: `CorrectionRunner`, step by step (reviewed by the owner, 2026-10-15)
+
+**The owner's choices** (2026-10-15 21:38 ET, #1994, comment 6206245131). The owner approved all three of the
+plan's recommendations:
+- the shared-references carrier §5 planned is not built;
+- the diagnosis splits into `_round_evidence` (4a) and `_dispatch_declared_step` (4b);
+- a characterization of the diagnosis comes first, as step 0.
 
 Measured on main at `f609f15a`: `src/squadops/execution/correction_runner.py`, the class at lines
 392–1696, 1,305 lines in 15 methods. 1.7.5's recovery map already split the protocol into its five
@@ -363,9 +368,7 @@ run-lived references once. Re-measured:
 
 A carrier would be built in `run_correction_protocol` and unpacked again at three of its four uses. It
 would shorten the signatures of 4a, 4b and `_diagnose` without separating any reason to change, and §2
-makes that the criterion. So 4a and 4b take keyword-only parameters, as `_diagnose` does now. If the
-owner wants the carrier anyway, it lands with 4a and 4b. It would hold what `_diagnose` and its two new
-steps read, and `run_correction_protocol` would build it once.
+makes that the criterion. So 4a and 4b take keyword-only parameters, as `_diagnose` does now.
 
 **The PRs:** step 0; then 4a with 4b; then unit 4's rebuild and regression pair.
 
@@ -393,7 +396,8 @@ steps read, and `run_correction_protocol` would build it once.
 **Unit 4: `CorrectionRunner`.**
 - Its five steps already exist (1.7.5 §4 step 4). What makes them long now is the twenty run-lived
   references re-passed to each step. A frozen `_RoundRefs` carrier holds them once. They're frozen in
-  binding, since the lists are the executor's and are mutated by design.
+  binding, since the lists are the executor's and are mutated by design. *Measured to the step, it isn't
+  built (§4d, the owner's choice).*
 - `_diagnose` splits into the round's evidence (the failure evidence, the deterministic injections,
   contested rows, the round failure and the reserve) and one declared step's dispatch (the loop body).
 
