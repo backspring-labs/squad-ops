@@ -1020,3 +1020,12 @@ checks:
       src = inspect.getsource(H.handle)
       print(hasattr(ae, "acceptance_check_record") and hasattr(ae, "apply_blocking_matrix"), hasattr(H, "_capture_authoring_envelope") and hasattr(H, "_mark_contentless"), "self._fail_result(" in src and "self._prompt_provenance(" in src)
     expect: "True True True"
+  - id: "1994-executor-task"
+    what: "the executor's per-task method routes a failed attempt through a per-task router, and its success tail and dispatch announcement are their own methods (#1994)"
+    container: squadops-runtime-api
+    code: |
+      import inspect
+      from squadops.execution import dispatched_flow_executor as m
+      src = inspect.getsource(m.DispatchedFlowExecutor._execute_task)
+      print(hasattr(m, "_TaskOutcomeRouter"), all(hasattr(m.DispatchedFlowExecutor, n) for n in ("_after_task_success", "_announce_dispatch")), len(src.splitlines()) < 120)
+    expect: "True True True"
