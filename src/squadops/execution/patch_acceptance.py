@@ -56,7 +56,7 @@ from squadops.cycles.patch_verification import (
     supersede_evidence_artifacts,
     verify_patched_artifacts,
 )
-from squadops.cycles.scaffold_enforcement import named_producer
+from squadops.cycles.scaffold_enforcement import carry_named_producers, named_producer
 from squadops.cycles.scaffold_integrity_evidence import STAGE_PATCH_VERIFICATION
 from squadops.cycles.verification_contract import VerificationContract
 from squadops.cycles.verification_normalize import row_is_blocking_failure
@@ -1169,8 +1169,13 @@ class PatchAcceptance:
             "artifacts": artifacts,
             "validation_result": {"persisted_revision_id": persisted_revision_id},
         }
-        # The retest ran as its own task id; the next round is about the failed task.
+        # The retest ran as its own task id; the next round is about the failed task. Its
+        # artifacts are the next round's base, and its copies of the kept files keep their
+        # producers: a copy of the developer's file is not a qa write (#2379).
+        next_outputs = dict(failed_retest.outputs or {})
+        if isinstance(next_outputs.get("artifacts"), list):
+            next_outputs["artifacts"] = carry_named_producers(next_outputs["artifacts"], artifacts)
         patched_result_holder[KEPT_NEXT_FAILURE_KEY] = dataclasses.replace(
-            failed_retest, task_id=envelope.task_id
+            failed_retest, task_id=envelope.task_id, outputs=next_outputs
         )
         return KEEP_PROGRESS

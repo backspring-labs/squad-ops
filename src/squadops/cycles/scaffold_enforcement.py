@@ -88,6 +88,52 @@ def name_producer(artifacts: Iterable[Mapping[str, Any]], envelope: Any) -> list
     ]
 
 
+def carry_named_producers(
+    artifacts: Iterable[Mapping[str, Any]], kept: Iterable[Mapping[str, Any]]
+) -> list[dict[str, Any]]:
+    """Copies of ``artifacts`` in which a copy of a kept file names the kept file's producer
+    (#2379).
+
+    A kept round's next failure is its retest's result (#1522), and a qa retest returns the
+    files it ran against as its own artifacts, the developer's repaired file among them. That
+    copy named no producer, so the next round's accepted set carried it as the qa task's own,
+    storage judged it a qa write to a developer slot and dropped it, and the run failed on
+    SIP-0107 §5.5 (``cyc_ce31b502b82c``). Only bytes equal to the kept file's at the same path
+    take its producer: a copy the retest changed is the retest's own emission, and stays the
+    envelope's.
+    """
+    named: dict[str, Mapping[str, Any]] = {}
+    for art in kept:
+        norm = _normalized_path(art)
+        if norm is not None and named_producer(art) is not None:
+            named[norm] = art
+    carried: list[dict[str, Any]] = []
+    for art in artifacts:
+        norm = _normalized_path(art)
+        source = named.get(norm) if norm is not None else None
+        if (
+            source is not None
+            and named_producer(art) is None
+            and art.get("content") == source.get("content")
+        ):
+            carried.append(
+                {
+                    **art,
+                    PRODUCER_TASK_ID_KEY: source[PRODUCER_TASK_ID_KEY],
+                    PRODUCER_TASK_TYPE_KEY: source[PRODUCER_TASK_TYPE_KEY],
+                    PRODUCER_ROLE_KEY: source.get(PRODUCER_ROLE_KEY),
+                }
+            )
+        else:
+            carried.append(dict(art))
+    return carried
+
+
+def _normalized_path(art: Mapping[str, Any]) -> str | None:
+    raw = _artifact_raw_path(art)
+    return normalize_ws_path(raw) if isinstance(raw, str) else None
+
+
 # Per-artifact enforcement dispositions (internal protocol; named so comparison
 # sites never carry raw literals that shadow unrelated enums — #380/#559).
 _DISP_DROP_FROZEN = "drop_frozen"
@@ -96,7 +142,7 @@ _DISP_DROP = "drop"
 _DISP_PASS = "pass"
 
 
-def _artifact_raw_path(art: dict) -> str | None:
+def _artifact_raw_path(art: Mapping[str, Any]) -> str | None:
     """The producer-emitted path of an artifact, accepting both the ``{name}`` and ``{path}``
     shapes the two materializers use (SIP-0100 0.1)."""
     return art.get("name") if art.get("name") is not None else art.get("path")
