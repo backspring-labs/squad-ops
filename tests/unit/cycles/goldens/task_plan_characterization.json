@@ -1,0 +1,1650 @@
+{
+  "builder_without_a_build_profile": {
+    "envelopes": null,
+    "raised": "CycleError: build_profile is required when the plan includes a builder task, but none was configured. Set build_profile in the cycle request profile \u2014 there is no default (a builder must not assemble for an assumed stack)."
+  },
+  "framing_rebind_with_rejection": {
+    "envelopes": [
+      {
+        "agent_id": "data",
+        "causation_id": "00000000000000000000000000000000",
+        "correlation_id": "00000000000000000000000000000000",
+        "input_keys": [
+          "prd",
+          "resolved_config",
+          "config_hash",
+          "agent_model",
+          "agent_config_overrides",
+          "profile_roles",
+          "role_index",
+          "role_total"
+        ],
+        "inputs": {
+          "agent_config_overrides": {},
+          "agent_model": "m",
+          "config_hash": "confhash",
+          "prd": "PRD-CONTENT",
+          "profile_roles": [
+            "builder",
+            "data",
+            "dev",
+            "lead",
+            "qa",
+            "strat"
+          ],
+          "resolved_config": {
+            "contract_ref": "art_c",
+            "plan_authoring_contributors": [
+              "development",
+              "qa",
+              "strategy"
+            ]
+          },
+          "role_index": 1,
+          "role_total": 1
+        },
+        "metadata": {
+          "role": "data",
+          "step_index": 0
+        },
+        "pulse_id": "00000000000000000000000000000002",
+        "span_id": "00000000000000000000000000000003",
+        "task_id": "task-run_abcdef12-000-data.research_context",
+        "task_type": "data.research_context",
+        "trace_id": "00000000000000000000000000000001"
+      },
+      {
+        "agent_id": "nat",
+        "causation_id": "task-run_abcdef12-000-data.research_context",
+        "correlation_id": "00000000000000000000000000000000",
+        "input_keys": [
+          "prd",
+          "resolved_config",
+          "config_hash",
+          "agent_model",
+          "agent_config_overrides",
+          "profile_roles",
+          "role_index",
+          "role_total"
+        ],
+        "inputs": {
+          "agent_config_overrides": {},
+          "agent_model": "m",
+          "config_hash": "confhash",
+          "prd": "PRD-CONTENT",
+          "profile_roles": [
+            "builder",
+            "data",
+            "dev",
+            "lead",
+            "qa",
+            "strat"
+          ],
+          "resolved_config": {
+            "contract_ref": "art_c",
+            "plan_authoring_contributors": [
+              "development",
+              "qa",
+              "strategy"
+            ]
+          },
+          "role_index": 1,
+          "role_total": 2
+        },
+        "metadata": {
+          "role": "strat",
+          "step_index": 1
+        },
+        "pulse_id": "00000000000000000000000000000004",
+        "span_id": "00000000000000000000000000000005",
+        "task_id": "task-run_abcdef12-001-strategy.frame_objective",
+        "task_type": "strategy.frame_objective",
+        "trace_id": "00000000000000000000000000000001"
+      },
+      {
+        "agent_id": "neo",
+        "causation_id": "task-run_abcdef12-001-strategy.frame_objective",
+        "correlation_id": "00000000000000000000000000000000",
+        "input_keys": [
+          "prd",
+          "resolved_config",
+          "config_hash",
+          "agent_model",
+          "agent_config_overrides",
+          "profile_roles",
+          "role_index",
+          "role_total",
+          "rejection_reasons",
+          "rejected_plan_yaml"
+        ],
+        "inputs": {
+          "agent_config_overrides": {},
+          "agent_model": "m",
+          "config_hash": "confhash",
+          "prd": "PRD-CONTENT",
+          "profile_roles": [
+            "builder",
+            "data",
+            "dev",
+            "lead",
+            "qa",
+            "strat"
+          ],
+          "rejected_plan_yaml": "version: 1\ntasks: []\n",
+          "rejection_reasons": [
+            "plan_task 2 claims frozen file backend/app.py"
+          ],
+          "resolved_config": {
+            "contract_ref": "art_c",
+            "plan_authoring_contributors": [
+              "development",
+              "qa",
+              "strategy"
+            ]
+          },
+          "role_index": 1,
+          "role_total": 2
+        },
+        "metadata": {
+          "role": "dev",
+          "step_index": 2
+        },
+        "pulse_id": "00000000000000000000000000000006",
+        "span_id": "00000000000000000000000000000007",
+        "task_id": "task-run_abcdef12-002-development.design_plan",
+        "task_type": "development.design_plan",
+        "trace_id": "00000000000000000000000000000001"
+      },
+      {
+        "agent_id": "eve",
+        "causation_id": "task-run_abcdef12-002-development.design_plan",
+        "correlation_id": "00000000000000000000000000000000",
+        "input_keys": [
+          "prd",
+          "resolved_config",
+          "config_hash",
+          "agent_model",
+          "agent_config_overrides",
+          "profile_roles",
+          "role_index",
+          "role_total"
+        ],
+        "inputs": {
+          "agent_config_overrides": {},
+          "agent_model": "m",
+          "config_hash": "confhash",
+          "prd": "PRD-CONTENT",
+          "profile_roles": [
+            "builder",
+            "data",
+            "dev",
+            "lead",
+            "qa",
+            "strat"
+          ],
+          "resolved_config": {
+            "contract_ref": "art_c",
+            "plan_authoring_contributors": [
+              "development",
+              "qa",
+              "strategy"
+            ]
+          },
+          "role_index": 1,
+          "role_total": 2
+        },
+        "metadata": {
+          "role": "qa",
+          "step_index": 3
+        },
+        "pulse_id": "00000000000000000000000000000008",
+        "span_id": "00000000000000000000000000000009",
+        "task_id": "task-run_abcdef12-003-qa.define_test_strategy",
+        "task_type": "qa.define_test_strategy",
+        "trace_id": "00000000000000000000000000000001"
+      },
+      {
+        "agent_id": "max",
+        "causation_id": "task-run_abcdef12-003-qa.define_test_strategy",
+        "correlation_id": "00000000000000000000000000000000",
+        "input_keys": [
+          "prd",
+          "resolved_config",
+          "config_hash",
+          "agent_model",
+          "agent_config_overrides",
+          "profile_roles",
+          "role_index",
+          "role_total",
+          "rejection_reasons",
+          "rejected_plan_yaml"
+        ],
+        "inputs": {
+          "agent_config_overrides": {},
+          "agent_model": "m",
+          "config_hash": "confhash",
+          "prd": "PRD-CONTENT",
+          "profile_roles": [
+            "builder",
+            "data",
+            "dev",
+            "lead",
+            "qa",
+            "strat"
+          ],
+          "rejected_plan_yaml": "version: 1\ntasks: []\n",
+          "rejection_reasons": [
+            "plan_task 2 claims frozen file backend/app.py"
+          ],
+          "resolved_config": {
+            "contract_ref": "art_c",
+            "plan_authoring_contributors": [
+              "development",
+              "qa",
+              "strategy"
+            ]
+          },
+          "role_index": 1,
+          "role_total": 3
+        },
+        "metadata": {
+          "role": "lead",
+          "step_index": 4
+        },
+        "pulse_id": "00000000000000000000000000000010",
+        "span_id": "00000000000000000000000000000011",
+        "task_id": "task-run_abcdef12-004-governance.prepare_plan_authoring_brief",
+        "task_type": "governance.prepare_plan_authoring_brief",
+        "trace_id": "00000000000000000000000000000001"
+      },
+      {
+        "agent_id": "neo",
+        "causation_id": "task-run_abcdef12-004-governance.prepare_plan_authoring_brief",
+        "correlation_id": "00000000000000000000000000000000",
+        "input_keys": [
+          "prd",
+          "resolved_config",
+          "config_hash",
+          "agent_model",
+          "agent_config_overrides",
+          "profile_roles",
+          "role_index",
+          "role_total",
+          "contract_criteria_index",
+          "frozen_surface_index",
+          "rejection_reasons",
+          "rejected_plan_yaml"
+        ],
+        "inputs": {
+          "agent_config_overrides": {},
+          "agent_model": "m",
+          "config_hash": "confhash",
+          "contract_criteria_index": "- backend/routes.py: bind vc-routes-endpoints (endpoint_defined)",
+          "frozen_surface_index": "- `backend/__init__.py` \u2014 import as `backend`\n- `backend/main.py` \u2014 import as `backend.main`; functions health(); its own imports `.errors`, `.routes`, `fastapi`, `fastapi.middleware.cors`, `os`\n- `backend/models.py` \u2014 import as `backend.models`; defines Participant(id, name), RunEvent(id, title, datetime, location, distance, pace_target, route_notes, participants), RunEventCreate(title, datetime, location, distance, pace_target, route_notes), ParticipantName(name); its own imports `pydantic`, `typing`\n- `backend/store.py` \u2014 import as `backend.store`; module state run_event_store: dict[str, RunEvent]; functions reset(); its own imports `.models`\n- `backend/errors.py` \u2014 import as `backend.errors`; defines ApiError; functions register_error_handlers(app); its own imports `fastapi`, `fastapi.exceptions`, `fastapi.responses`\n- `backend/requirements.txt`\n- `conftest.py` \u2014 functions client(); its own imports `backend.main`, `backend.store`, `fastapi.testclient`, `os`, `pytest`, `sys`\n- `frontend/index.html`\n- `frontend/package.json` \u2014 dependencies react, react-dom, react-router-dom; devDependencies @testing-library/dom, @testing-library/jest-dom, @testing-library/react, @vitejs/plugin-react, jsdom, vite, vitest\n- `frontend/vite.config.js` \u2014 its own imports `@vitejs/plugin-react`, `vite`\n- `frontend/src/test-setup.js` \u2014 its own imports `@testing-library/react`, `vitest`\n- `frontend/src/__tests__/harness.test.jsx` \u2014 its own imports `../App.jsx`, `@testing-library/react`, `react-router-dom`, `vitest`\n- `frontend/src/main.jsx` \u2014 its own imports `./App.jsx`, `react`, `react-dom/client`, `react-router-dom`\n- `frontend/src/index.css`\n- `Dockerfile`\n- `nginx.conf`\n- `start.sh`\n- `.dockerignore`\n- `frontend/src/api.js` \u2014 classes `ApiError(code, message, status)`; functions `apiFetch(path, options = {})`\n- `frontend/src/App.jsx` \u2014 its own imports `./views/CreateRunView.jsx`, `./views/RunDetailView.jsx`, `./views/RunsListView.jsx`, `react-router-dom`",
+          "prd": "PRD-CONTENT",
+          "profile_roles": [
+            "builder",
+            "data",
+            "dev",
+            "lead",
+            "qa",
+            "strat"
+          ],
+          "rejected_plan_yaml": "version: 1\ntasks: []\n",
+          "rejection_reasons": [
+            "plan_task 2 claims frozen file backend/app.py"
+          ],
+          "resolved_config": {
+            "contract_ref": "art_c",
+            "plan_authoring_contributors": [
+              "development",
+              "qa",
+              "strategy"
+            ]
+          },
+          "role_index": 2,
+          "role_total": 2
+        },
+        "metadata": {
+          "role": "dev",
+          "step_index": 5
+        },
+        "pulse_id": "00000000000000000000000000000012",
+        "span_id": "00000000000000000000000000000013",
+        "task_id": "task-run_abcdef12-005-development.propose_plan_tasks",
+        "task_type": "development.propose_plan_tasks",
+        "trace_id": "00000000000000000000000000000001"
+      },
+      {
+        "agent_id": "eve",
+        "causation_id": "task-run_abcdef12-005-development.propose_plan_tasks",
+        "correlation_id": "00000000000000000000000000000000",
+        "input_keys": [
+          "prd",
+          "resolved_config",
+          "config_hash",
+          "agent_model",
+          "agent_config_overrides",
+          "profile_roles",
+          "role_index",
+          "role_total",
+          "contract_criteria_index",
+          "frozen_surface_index",
+          "rejection_reasons",
+          "rejected_plan_yaml"
+        ],
+        "inputs": {
+          "agent_config_overrides": {},
+          "agent_model": "m",
+          "config_hash": "confhash",
+          "contract_criteria_index": "- backend/routes.py: bind vc-routes-endpoints (endpoint_defined)",
+          "frozen_surface_index": "- `backend/__init__.py` \u2014 import as `backend`\n- `backend/main.py` \u2014 import as `backend.main`; functions health(); its own imports `.errors`, `.routes`, `fastapi`, `fastapi.middleware.cors`, `os`\n- `backend/models.py` \u2014 import as `backend.models`; defines Participant(id, name), RunEvent(id, title, datetime, location, distance, pace_target, route_notes, participants), RunEventCreate(title, datetime, location, distance, pace_target, route_notes), ParticipantName(name); its own imports `pydantic`, `typing`\n- `backend/store.py` \u2014 import as `backend.store`; module state run_event_store: dict[str, RunEvent]; functions reset(); its own imports `.models`\n- `backend/errors.py` \u2014 import as `backend.errors`; defines ApiError; functions register_error_handlers(app); its own imports `fastapi`, `fastapi.exceptions`, `fastapi.responses`\n- `backend/requirements.txt`\n- `conftest.py` \u2014 functions client(); its own imports `backend.main`, `backend.store`, `fastapi.testclient`, `os`, `pytest`, `sys`\n- `frontend/index.html`\n- `frontend/package.json` \u2014 dependencies react, react-dom, react-router-dom; devDependencies @testing-library/dom, @testing-library/jest-dom, @testing-library/react, @vitejs/plugin-react, jsdom, vite, vitest\n- `frontend/vite.config.js` \u2014 its own imports `@vitejs/plugin-react`, `vite`\n- `frontend/src/test-setup.js` \u2014 its own imports `@testing-library/react`, `vitest`\n- `frontend/src/__tests__/harness.test.jsx` \u2014 its own imports `../App.jsx`, `@testing-library/react`, `react-router-dom`, `vitest`\n- `frontend/src/main.jsx` \u2014 its own imports `./App.jsx`, `react`, `react-dom/client`, `react-router-dom`\n- `frontend/src/index.css`\n- `Dockerfile`\n- `nginx.conf`\n- `start.sh`\n- `.dockerignore`\n- `frontend/src/api.js` \u2014 classes `ApiError(code, message, status)`; functions `apiFetch(path, options = {})`\n- `frontend/src/App.jsx` \u2014 its own imports `./views/CreateRunView.jsx`, `./views/RunDetailView.jsx`, `./views/RunsListView.jsx`, `react-router-dom`",
+          "prd": "PRD-CONTENT",
+          "profile_roles": [
+            "builder",
+            "data",
+            "dev",
+            "lead",
+            "qa",
+            "strat"
+          ],
+          "rejected_plan_yaml": "version: 1\ntasks: []\n",
+          "rejection_reasons": [
+            "plan_task 2 claims frozen file backend/app.py"
+          ],
+          "resolved_config": {
+            "contract_ref": "art_c",
+            "plan_authoring_contributors": [
+              "development",
+              "qa",
+              "strategy"
+            ]
+          },
+          "role_index": 2,
+          "role_total": 2
+        },
+        "metadata": {
+          "role": "qa",
+          "step_index": 6
+        },
+        "pulse_id": "00000000000000000000000000000014",
+        "span_id": "00000000000000000000000000000015",
+        "task_id": "task-run_abcdef12-006-qa.propose_plan_tasks",
+        "task_type": "qa.propose_plan_tasks",
+        "trace_id": "00000000000000000000000000000001"
+      },
+      {
+        "agent_id": "nat",
+        "causation_id": "task-run_abcdef12-006-qa.propose_plan_tasks",
+        "correlation_id": "00000000000000000000000000000000",
+        "input_keys": [
+          "prd",
+          "resolved_config",
+          "config_hash",
+          "agent_model",
+          "agent_config_overrides",
+          "profile_roles",
+          "role_index",
+          "role_total",
+          "rejection_reasons",
+          "rejected_plan_yaml"
+        ],
+        "inputs": {
+          "agent_config_overrides": {},
+          "agent_model": "m",
+          "config_hash": "confhash",
+          "prd": "PRD-CONTENT",
+          "profile_roles": [
+            "builder",
+            "data",
+            "dev",
+            "lead",
+            "qa",
+            "strat"
+          ],
+          "rejected_plan_yaml": "version: 1\ntasks: []\n",
+          "rejection_reasons": [
+            "plan_task 2 claims frozen file backend/app.py"
+          ],
+          "resolved_config": {
+            "contract_ref": "art_c",
+            "plan_authoring_contributors": [
+              "development",
+              "qa",
+              "strategy"
+            ]
+          },
+          "role_index": 2,
+          "role_total": 2
+        },
+        "metadata": {
+          "role": "strat",
+          "step_index": 7
+        },
+        "pulse_id": "00000000000000000000000000000016",
+        "span_id": "00000000000000000000000000000017",
+        "task_id": "task-run_abcdef12-007-strategy.propose_plan_guidance",
+        "task_type": "strategy.propose_plan_guidance",
+        "trace_id": "00000000000000000000000000000001"
+      },
+      {
+        "agent_id": "max",
+        "causation_id": "task-run_abcdef12-007-strategy.propose_plan_guidance",
+        "correlation_id": "00000000000000000000000000000000",
+        "input_keys": [
+          "prd",
+          "resolved_config",
+          "config_hash",
+          "agent_model",
+          "agent_config_overrides",
+          "profile_roles",
+          "role_index",
+          "role_total",
+          "contract_criteria_index",
+          "frozen_surface_index"
+        ],
+        "inputs": {
+          "agent_config_overrides": {},
+          "agent_model": "m",
+          "config_hash": "confhash",
+          "contract_criteria_index": "- backend/routes.py: bind vc-routes-endpoints (endpoint_defined)",
+          "frozen_surface_index": "- `backend/__init__.py` \u2014 import as `backend`\n- `backend/main.py` \u2014 import as `backend.main`; functions health(); its own imports `.errors`, `.routes`, `fastapi`, `fastapi.middleware.cors`, `os`\n- `backend/models.py` \u2014 import as `backend.models`; defines Participant(id, name), RunEvent(id, title, datetime, location, distance, pace_target, route_notes, participants), RunEventCreate(title, datetime, location, distance, pace_target, route_notes), ParticipantName(name); its own imports `pydantic`, `typing`\n- `backend/store.py` \u2014 import as `backend.store`; module state run_event_store: dict[str, RunEvent]; functions reset(); its own imports `.models`\n- `backend/errors.py` \u2014 import as `backend.errors`; defines ApiError; functions register_error_handlers(app); its own imports `fastapi`, `fastapi.exceptions`, `fastapi.responses`\n- `backend/requirements.txt`\n- `conftest.py` \u2014 functions client(); its own imports `backend.main`, `backend.store`, `fastapi.testclient`, `os`, `pytest`, `sys`\n- `frontend/index.html`\n- `frontend/package.json` \u2014 dependencies react, react-dom, react-router-dom; devDependencies @testing-library/dom, @testing-library/jest-dom, @testing-library/react, @vitejs/plugin-react, jsdom, vite, vitest\n- `frontend/vite.config.js` \u2014 its own imports `@vitejs/plugin-react`, `vite`\n- `frontend/src/test-setup.js` \u2014 its own imports `@testing-library/react`, `vitest`\n- `frontend/src/__tests__/harness.test.jsx` \u2014 its own imports `../App.jsx`, `@testing-library/react`, `react-router-dom`, `vitest`\n- `frontend/src/main.jsx` \u2014 its own imports `./App.jsx`, `react`, `react-dom/client`, `react-router-dom`\n- `frontend/src/index.css`\n- `Dockerfile`\n- `nginx.conf`\n- `start.sh`\n- `.dockerignore`\n- `frontend/src/api.js` \u2014 classes `ApiError(code, message, status)`; functions `apiFetch(path, options = {})`\n- `frontend/src/App.jsx` \u2014 its own imports `./views/CreateRunView.jsx`, `./views/RunDetailView.jsx`, `./views/RunsListView.jsx`, `react-router-dom`",
+          "prd": "PRD-CONTENT",
+          "profile_roles": [
+            "builder",
+            "data",
+            "dev",
+            "lead",
+            "qa",
+            "strat"
+          ],
+          "resolved_config": {
+            "contract_ref": "art_c",
+            "plan_authoring_contributors": [
+              "development",
+              "qa",
+              "strategy"
+            ]
+          },
+          "role_index": 2,
+          "role_total": 3
+        },
+        "metadata": {
+          "role": "lead",
+          "step_index": 8
+        },
+        "pulse_id": "00000000000000000000000000000018",
+        "span_id": "00000000000000000000000000000019",
+        "task_id": "task-run_abcdef12-008-governance.merge_plan",
+        "task_type": "governance.merge_plan",
+        "trace_id": "00000000000000000000000000000001"
+      },
+      {
+        "agent_id": "max",
+        "causation_id": "task-run_abcdef12-008-governance.merge_plan",
+        "correlation_id": "00000000000000000000000000000000",
+        "input_keys": [
+          "prd",
+          "resolved_config",
+          "config_hash",
+          "agent_model",
+          "agent_config_overrides",
+          "profile_roles",
+          "role_index",
+          "role_total"
+        ],
+        "inputs": {
+          "agent_config_overrides": {},
+          "agent_model": "m",
+          "config_hash": "confhash",
+          "prd": "PRD-CONTENT",
+          "profile_roles": [
+            "builder",
+            "data",
+            "dev",
+            "lead",
+            "qa",
+            "strat"
+          ],
+          "resolved_config": {
+            "contract_ref": "art_c",
+            "plan_authoring_contributors": [
+              "development",
+              "qa",
+              "strategy"
+            ]
+          },
+          "role_index": 3,
+          "role_total": 3
+        },
+        "metadata": {
+          "role": "lead",
+          "step_index": 9
+        },
+        "pulse_id": "00000000000000000000000000000020",
+        "span_id": "00000000000000000000000000000021",
+        "task_id": "task-run_abcdef12-009-governance.review_plan",
+        "task_type": "governance.review_plan",
+        "trace_id": "00000000000000000000000000000001"
+      }
+    ],
+    "raised": null
+  },
+  "implementation_author": {
+    "envelopes": [
+      {
+        "agent_id": "max",
+        "causation_id": "00000000000000000000000000000000",
+        "correlation_id": "00000000000000000000000000000000",
+        "input_keys": [
+          "prd",
+          "resolved_config",
+          "config_hash",
+          "agent_model",
+          "agent_config_overrides",
+          "profile_roles",
+          "role_index",
+          "role_total"
+        ],
+        "inputs": {
+          "agent_config_overrides": {},
+          "agent_model": "m",
+          "config_hash": "confhash",
+          "prd": "PRD-CONTENT",
+          "profile_roles": [
+            "builder",
+            "data",
+            "dev",
+            "lead",
+            "qa",
+            "strat"
+          ],
+          "resolved_config": {
+            "build_profile": "fullstack_fastapi_react",
+            "implementation_plan": true
+          },
+          "role_index": 1,
+          "role_total": 1
+        },
+        "metadata": {
+          "role": "lead",
+          "step_index": 0
+        },
+        "pulse_id": "00000000000000000000000000000002",
+        "span_id": "00000000000000000000000000000003",
+        "task_id": "task-run_abcdef12-000-governance.define_done",
+        "task_type": "governance.define_done",
+        "trace_id": "00000000000000000000000000000001"
+      },
+      {
+        "agent_id": "neo",
+        "causation_id": "task-run_abcdef12-000-governance.define_done",
+        "correlation_id": "00000000000000000000000000000000",
+        "input_keys": [
+          "prd",
+          "resolved_config",
+          "config_hash",
+          "agent_model",
+          "agent_config_overrides",
+          "profile_roles",
+          "role_index",
+          "role_total",
+          "subtask_focus",
+          "subtask_description",
+          "expected_artifacts",
+          "subtask_index",
+          "acceptance_criteria"
+        ],
+        "inputs": {
+          "acceptance_criteria": [],
+          "agent_config_overrides": {},
+          "agent_model": "m",
+          "config_hash": "confhash",
+          "expected_artifacts": [
+            "backend/routes.py"
+          ],
+          "prd": "PRD-CONTENT",
+          "profile_roles": [
+            "builder",
+            "data",
+            "dev",
+            "lead",
+            "qa",
+            "strat"
+          ],
+          "resolved_config": {
+            "build_profile": "fullstack_fastapi_react",
+            "implementation_plan": true
+          },
+          "role_index": 1,
+          "role_total": 1,
+          "subtask_description": "implement the routes fill slot",
+          "subtask_focus": "routes",
+          "subtask_index": 0
+        },
+        "metadata": {
+          "role": "dev",
+          "routing_reason": "builder_role_present",
+          "step_index": 1
+        },
+        "pulse_id": "00000000000000000000000000000004",
+        "span_id": "00000000000000000000000000000005",
+        "task_id": "task-run_abcdef12-m000-development.develop",
+        "task_type": "development.develop",
+        "trace_id": "00000000000000000000000000000001"
+      },
+      {
+        "agent_id": "bob",
+        "causation_id": "task-run_abcdef12-m000-development.develop",
+        "correlation_id": "00000000000000000000000000000000",
+        "input_keys": [
+          "prd",
+          "resolved_config",
+          "config_hash",
+          "agent_model",
+          "agent_config_overrides",
+          "profile_roles",
+          "role_index",
+          "role_total"
+        ],
+        "inputs": {
+          "agent_config_overrides": {},
+          "agent_model": "m",
+          "config_hash": "confhash",
+          "prd": "PRD-CONTENT",
+          "profile_roles": [
+            "builder",
+            "data",
+            "dev",
+            "lead",
+            "qa",
+            "strat"
+          ],
+          "resolved_config": {
+            "build_profile": "fullstack_fastapi_react",
+            "implementation_plan": true
+          },
+          "role_index": 1,
+          "role_total": 1
+        },
+        "metadata": {
+          "role": "builder",
+          "routing_reason": "builder_role_present",
+          "step_index": 2
+        },
+        "pulse_id": "00000000000000000000000000000006",
+        "span_id": "00000000000000000000000000000007",
+        "task_id": "task-run_abcdef12-002-builder.assemble",
+        "task_type": "builder.assemble",
+        "trace_id": "00000000000000000000000000000001"
+      },
+      {
+        "agent_id": "eve",
+        "causation_id": "task-run_abcdef12-002-builder.assemble",
+        "correlation_id": "00000000000000000000000000000000",
+        "input_keys": [
+          "prd",
+          "resolved_config",
+          "config_hash",
+          "agent_model",
+          "agent_config_overrides",
+          "profile_roles",
+          "role_index",
+          "role_total",
+          "subtask_focus",
+          "subtask_description",
+          "expected_artifacts",
+          "subtask_index",
+          "implementation_artifacts",
+          "acceptance_criteria"
+        ],
+        "inputs": {
+          "acceptance_criteria": [],
+          "agent_config_overrides": {},
+          "agent_model": "m",
+          "config_hash": "confhash",
+          "expected_artifacts": [
+            "backend/tests/test_items.py"
+          ],
+          "implementation_artifacts": [
+            "backend/routes.py"
+          ],
+          "prd": "PRD-CONTENT",
+          "profile_roles": [
+            "builder",
+            "data",
+            "dev",
+            "lead",
+            "qa",
+            "strat"
+          ],
+          "resolved_config": {
+            "build_profile": "fullstack_fastapi_react",
+            "implementation_plan": true
+          },
+          "role_index": 1,
+          "role_total": 1,
+          "subtask_description": "author the API suite",
+          "subtask_focus": "suite",
+          "subtask_index": 1
+        },
+        "metadata": {
+          "role": "qa",
+          "routing_reason": "builder_role_present",
+          "step_index": 3
+        },
+        "pulse_id": "00000000000000000000000000000008",
+        "span_id": "00000000000000000000000000000009",
+        "task_id": "task-run_abcdef12-m001-qa.test",
+        "task_type": "qa.test",
+        "trace_id": "00000000000000000000000000000001"
+      }
+    ],
+    "raised": null
+  },
+  "implementation_bind": {
+    "envelopes": [
+      {
+        "agent_id": "max",
+        "causation_id": "00000000000000000000000000000000",
+        "correlation_id": "00000000000000000000000000000000",
+        "input_keys": [
+          "prd",
+          "resolved_config",
+          "config_hash",
+          "agent_model",
+          "agent_config_overrides",
+          "profile_roles",
+          "role_index",
+          "role_total"
+        ],
+        "inputs": {
+          "agent_config_overrides": {},
+          "agent_model": "m",
+          "config_hash": "confhash",
+          "prd": "PRD-CONTENT",
+          "profile_roles": [
+            "builder",
+            "data",
+            "dev",
+            "lead",
+            "qa",
+            "strat"
+          ],
+          "resolved_config": {
+            "build_profile": "fullstack_fastapi_react",
+            "contract_ref": "art_c",
+            "implementation_plan": true
+          },
+          "role_index": 1,
+          "role_total": 1
+        },
+        "metadata": {
+          "role": "lead",
+          "step_index": 0
+        },
+        "pulse_id": "00000000000000000000000000000002",
+        "span_id": "00000000000000000000000000000003",
+        "task_id": "task-run_abcdef12-000-governance.define_done",
+        "task_type": "governance.define_done",
+        "trace_id": "00000000000000000000000000000001"
+      },
+      {
+        "agent_id": "neo",
+        "causation_id": "task-run_abcdef12-000-governance.define_done",
+        "correlation_id": "00000000000000000000000000000000",
+        "input_keys": [
+          "prd",
+          "resolved_config",
+          "config_hash",
+          "agent_model",
+          "agent_config_overrides",
+          "profile_roles",
+          "role_index",
+          "role_total",
+          "subtask_focus",
+          "subtask_description",
+          "expected_artifacts",
+          "subtask_index",
+          "acceptance_criteria"
+        ],
+        "inputs": {
+          "acceptance_criteria": [
+            "TypedCheck(check='endpoint_defined', params={'methods_paths': ['POST /items'], 'file': 'backend/routes.py'}, severity='error', description='', id='vc-routes-endpoints')",
+            "TypedCheck(check='fill_slot_signature', params={'file': 'backend/routes.py', 'routes': [{'route': 'GET /runs', 'function': 'get_runs', 'params': [], 'response_model': 'list[RunEvent]'}, {'route': 'POST /runs', 'function': 'post_runs', 'params': ['payload'], 'response_model': 'RunEvent'}, {'route': 'GET /runs/{run_id}', 'function': 'get_runs_run_id', 'params': ['run_id'], 'response_model': 'RunEvent'}, {'route': 'POST /runs/{run_id}/join', 'function': 'post_runs_run_id_join', 'params': ['run_id', 'payload'], 'response_model': 'RunEvent'}, {'route': 'POST /runs/{run_id}/leave', 'function': 'post_runs_run_id_leave', 'params': ['run_id', 'payload'], 'response_model': 'RunEvent'}]}, severity='error', description='', id='fill-slot-signature:backend/routes.py')"
+          ],
+          "agent_config_overrides": {},
+          "agent_model": "m",
+          "config_hash": "confhash",
+          "expected_artifacts": [
+            "backend/routes.py"
+          ],
+          "prd": "PRD-CONTENT",
+          "profile_roles": [
+            "builder",
+            "data",
+            "dev",
+            "lead",
+            "qa",
+            "strat"
+          ],
+          "resolved_config": {
+            "build_profile": "fullstack_fastapi_react",
+            "contract_ref": "art_c",
+            "implementation_plan": true
+          },
+          "role_index": 1,
+          "role_total": 1,
+          "subtask_description": "implement the routes fill slot",
+          "subtask_focus": "routes",
+          "subtask_index": 0
+        },
+        "metadata": {
+          "role": "dev",
+          "routing_reason": "builder_role_present",
+          "step_index": 1
+        },
+        "pulse_id": "00000000000000000000000000000004",
+        "span_id": "00000000000000000000000000000005",
+        "task_id": "task-run_abcdef12-m000-development.develop",
+        "task_type": "development.develop",
+        "trace_id": "00000000000000000000000000000001"
+      },
+      {
+        "agent_id": "bob",
+        "causation_id": "task-run_abcdef12-m000-development.develop",
+        "correlation_id": "00000000000000000000000000000000",
+        "input_keys": [
+          "prd",
+          "resolved_config",
+          "config_hash",
+          "agent_model",
+          "agent_config_overrides",
+          "profile_roles",
+          "role_index",
+          "role_total"
+        ],
+        "inputs": {
+          "agent_config_overrides": {},
+          "agent_model": "m",
+          "config_hash": "confhash",
+          "prd": "PRD-CONTENT",
+          "profile_roles": [
+            "builder",
+            "data",
+            "dev",
+            "lead",
+            "qa",
+            "strat"
+          ],
+          "resolved_config": {
+            "build_profile": "fullstack_fastapi_react",
+            "contract_ref": "art_c",
+            "implementation_plan": true
+          },
+          "role_index": 1,
+          "role_total": 1
+        },
+        "metadata": {
+          "role": "builder",
+          "routing_reason": "builder_role_present",
+          "step_index": 2
+        },
+        "pulse_id": "00000000000000000000000000000006",
+        "span_id": "00000000000000000000000000000007",
+        "task_id": "task-run_abcdef12-002-builder.assemble",
+        "task_type": "builder.assemble",
+        "trace_id": "00000000000000000000000000000001"
+      },
+      {
+        "agent_id": "eve",
+        "causation_id": "task-run_abcdef12-002-builder.assemble",
+        "correlation_id": "00000000000000000000000000000000",
+        "input_keys": [
+          "prd",
+          "resolved_config",
+          "config_hash",
+          "agent_model",
+          "agent_config_overrides",
+          "profile_roles",
+          "role_index",
+          "role_total",
+          "subtask_focus",
+          "subtask_description",
+          "expected_artifacts",
+          "subtask_index",
+          "implementation_artifacts",
+          "acceptance_criteria",
+          "contract_probes",
+          "contract_endpoint_owners",
+          "api_behavior_contract",
+          "dom_testid_surface",
+          "frozen_client_surface"
+        ],
+        "inputs": {
+          "acceptance_criteria": [
+            "TypedCheck(check='harness_boundary', params={'file': 'backend/tests/test_items.py', 'entry_modules': ['backend.main', 'app.main', 'main']}, severity='error', description='', id='scaffold-harness:backend/tests/test_items.py')",
+            "TypedCheck(check='contract_assertions_match', params={'file': 'backend/tests/test_items.py', 'endpoints': ['POST /items 201']}, severity='error', description='', id='contract-assertions:backend/tests/test_items.py')",
+            "TypedCheck(check='assertion_kinds_match', params={'file': 'backend/tests/test_items.py', 'field_kinds': {'datetime': 'string', 'distance': 'string', 'id': 'string', 'location': 'string', 'name': 'string', 'pace_target': 'string', 'participants': 'list', 'route_notes': 'string', 'title': 'string'}}, severity='error', description='', id='assertion-kinds:backend/tests/test_items.py')"
+          ],
+          "agent_config_overrides": {},
+          "agent_model": "m",
+          "api_behavior_contract": [
+            "POST /items \u2192 HTTP 201"
+          ],
+          "config_hash": "confhash",
+          "contract_endpoint_owners": {
+            "POST /items": "backend/routes.py"
+          },
+          "contract_probes": [
+            {
+              "expect": {
+                "json_has": [
+                  "id"
+                ],
+                "status": 201
+              },
+              "id": "vc-probe-create",
+              "request": {
+                "json": {
+                  "title": "x"
+                },
+                "method": "POST",
+                "path": "/items"
+              },
+              "subject": "backend"
+            }
+          ],
+          "dom_testid_surface": [
+            "`RunsListView` (route `/`): root container `runs-list`; anchors: `runs-list`, `run-item`, `run-participant-count`, `empty-state`, `create-run-link`",
+            "`CreateRunView` (route `/create`): root container `create-run-view`; anchors: `create-run-view`, `create-run-form`, `field-title`, `field-datetime`, `field-location`, `field-distance`, `field-pace-target`, `field-route-notes`, `submit-create`, `form-error`",
+            "`RunDetailView` (route `/runs/:id`): root container `run-detail`; anchors: `run-detail`, `participant-list`, `participant-item`, `join-form`, `join-name-input`, `join-submit`, `leave-form`, `leave-name-input`, `leave-submit`, `action-error`, `not-found`"
+          ],
+          "expected_artifacts": [
+            "backend/tests/test_items.py"
+          ],
+          "frozen_client_surface": [
+            "`ApiError(code, message, status)` exported from `frontend/src/api.js` \u2014 the error a non-2xx `{\"error\": {code, message}}` envelope becomes",
+            "`apiFetch(path, options = {})` exported from `frontend/src/api.js` \u2014 prefixes `/api`, sends JSON headers, returns the parsed JSON body (`null` on 204) and throws `ApiError` on a non-2xx response"
+          ],
+          "implementation_artifacts": [
+            "backend/routes.py"
+          ],
+          "prd": "PRD-CONTENT",
+          "profile_roles": [
+            "builder",
+            "data",
+            "dev",
+            "lead",
+            "qa",
+            "strat"
+          ],
+          "resolved_config": {
+            "build_profile": "fullstack_fastapi_react",
+            "contract_ref": "art_c",
+            "implementation_plan": true
+          },
+          "role_index": 1,
+          "role_total": 1,
+          "subtask_description": "author the API suite",
+          "subtask_focus": "suite",
+          "subtask_index": 1
+        },
+        "metadata": {
+          "role": "qa",
+          "routing_reason": "builder_role_present",
+          "step_index": 3
+        },
+        "pulse_id": "00000000000000000000000000000008",
+        "span_id": "00000000000000000000000000000009",
+        "task_id": "task-run_abcdef12-m001-qa.test",
+        "task_type": "qa.test",
+        "trace_id": "00000000000000000000000000000001"
+      }
+    ],
+    "raised": null
+  },
+  "increment_framing": {
+    "envelopes": [
+      {
+        "agent_id": "neo",
+        "causation_id": "00000000000000000000000000000000",
+        "correlation_id": "00000000000000000000000000000000",
+        "input_keys": [
+          "prd",
+          "resolved_config",
+          "config_hash",
+          "agent_model",
+          "agent_config_overrides",
+          "profile_roles",
+          "role_index",
+          "role_total",
+          "increment_change_request"
+        ],
+        "inputs": {
+          "agent_config_overrides": {},
+          "agent_model": "m",
+          "config_hash": "confhash",
+          "increment_change_request": "proposal_id: prop_cap\nversion: 1\nbaseline_tree: sha-accepted\nkind: feature\nprd_delta:\n- id: capacity-limit\n  op: add\n  text: A run may set a capacity. Joining a full run is refused, and the run's page\n    shows how many of its places are taken.\nmanifest_delta:\n- op: modify\n  target: entity\n  key: Run\n  definition:\n    name: Run\n    fields:\n    - name: id\n      type: string\n      required: true\n      generated: true\n    - name: title\n      type: string\n      required: true\n    - name: datetime\n      type: string\n      required: true\n    - name: location\n      type: string\n      required: true\n    - name: distance\n      type: string\n      required: false\n    - name: pace\n      type: string\n      required: false\n    - name: notes\n      type: string\n      required: false\n    - name: capacity\n      type: integer\n      required: false\n    - name: participants\n      type: list[string]\n      required: true\n      default: []\n    - name: participant_count\n      type: integer\n      required: true\n- op: modify\n  target: request_shape\n  key: RunCreate\n  definition:\n    required:\n    - title\n    - datetime\n    - location\n    optional:\n    - distance\n    - pace\n    - notes\n    - capacity\n- op: add\n  target: error_code\n  key: capacity_exceeded\n  definition:\n    http: 409\n- op: modify\n  target: endpoint\n  key: POST /runs/{run_id}/join\n  definition:\n    method: POST\n    path: /runs/{run_id}/join\n    summary: join a run with a participant name, refused when the run is full\n    request: JoinIn\n    response: Run\n    errors:\n    - validation_error\n    - run_not_found\n    - duplicate_participant\n    - capacity_exceeded\n- op: modify\n  target: client_route\n  key: /runs/:run_id\n  definition:\n    path: /runs/:run_id\n    view: RunDetailView\n    purpose: show run details, participant list, places taken of capacity, join form,\n      and leave form\n    testids:\n    - run-detail-view\n    - run-detail-title\n    - run-detail-participants\n    - run-detail-participant\n    - run-detail-participant-count\n    - run-detail-join-form\n    - run-detail-join-name\n    - run-detail-join-submit\n    - run-detail-leave-form\n    - run-detail-leave-name\n    - run-detail-leave-submit\n    - run-detail-error\n    - run-detail-not-found\n    - capacity-status\ncriteria:\n- id: C1\n  statement: A run created with capacity 2 is returned with capacity 2\n  surface_kind: endpoint\n  surface: POST /runs\n  observable: 'the 201 response body carries capacity: 2'\n- id: C2\n  statement: Joining a full run is refused\n  surface_kind: endpoint\n  surface: POST /runs/{run_id}/join\n  observable: 409 with error code capacity_exceeded when the run's participants already\n    fill its capacity\n- id: C3\n  statement: The run's page shows places taken of capacity\n  surface_kind: client_route\n  surface: /runs/:run_id\n  observable: capacity-status renders '2 / 2 joined' for a full run of capacity 2\nmust_not_break: []\nretires: []\nreplaces_verifiers: []\nfootprint:\n- backend/errors.py\n- backend/models.py\n- backend/routes.py\n- frontend/src/views/RunDetailView.jsx\n- backend/tests/**\n- frontend/src/__tests__/**\n- frontend/src/tests/**\ncontent_hash: 737db498820030d38380ef38dad2a40a79c897017813f98767744388f72ba5b1\n",
+          "prd": "PRD-CONTENT",
+          "profile_roles": [
+            "builder",
+            "data",
+            "dev",
+            "lead",
+            "qa",
+            "strat"
+          ],
+          "resolved_config": {
+            "build_profile": "fullstack_fastapi_react",
+            "campaign_proposal": {
+              "accepted_cycle_id": "cyc_accepted",
+              "baseline_manifest": "version: 1\nkind: interface_manifest\nproject_id: group_run\nsource_prd: \"PRD: group_run (1-Hour Cycle MVP+) v0.5\"\nstack: fullstack_fastapi_react\nscope: >\n  Full-stack CRUD for group run events with participant join/leave via an\n  in-memory store. Deliberately excludes authentication, persistent database,\n  real-time updates, external service integration, and UI component libraries.\n\nentities:\n  - name: Run\n    fields:\n      - { name: id,                type: string,  required: true,  generated: true }\n      - { name: title,             type: string,  required: true }\n      - { name: datetime,          type: string,  required: true }\n      - { name: location,          type: string,  required: true }\n      - { name: distance,          type: string,  required: false }\n      - { name: pace,              type: string,  required: false }\n      - { name: notes,             type: string,  required: false }\n      - { name: participants,      type: \"list[string]\", required: true, default: [] }\n      - { name: participant_count, type: integer, required: true }\n\napi:\n  base_path: /api\n  request_shapes:\n    RunCreate:\n      required: [title, datetime, location]\n      optional: [distance, pace, notes]\n    JoinIn:\n      required: [name]\n    LeaveIn:\n      required: [name]\n  endpoints:\n    - method: POST\n      path: /runs\n      summary: create a new run event\n      request: RunCreate\n      response: Run\n      success_status: 201\n      errors: [validation_error]\n    - method: GET\n      path: /runs\n      summary: list all runs\n      response: \"list[Run]\"\n    - method: GET\n      path: \"/runs/{run_id}\"\n      summary: get run details and participants\n      response: Run\n      errors: [run_not_found]\n    - method: POST\n      path: \"/runs/{run_id}/join\"\n      summary: join a run with a participant name\n      request: JoinIn\n      response: Run\n      errors: [validation_error, run_not_found, duplicate_participant]\n    - method: POST\n      path: \"/runs/{run_id}/leave\"\n      summary: remove a participant from a run by name\n      request: LeaveIn\n      response: Run\n      errors: [validation_error, run_not_found, participant_not_found]\n  error_contract:\n    shape: '{\"error\": {\"code\": \"...\", \"message\": \"...\"}}'\n    codes:\n      validation_error:       { http: 422 }\n      run_not_found:          { http: 404 }\n      duplicate_participant:  { http: 409 }\n      participant_not_found:  { http: 404 }\n\nfrontend:\n  framework: react_vite\n  routes:\n    - path: /\n      view: RunListView\n      purpose: display list of runs with title, datetime, location, participant count; link to create and detail\n      testids:\n        - run-list-view\n        - run-list\n        - run-row\n        - create-run-link\n        - empty-state\n    - path: /runs/new\n      view: RunCreateView\n      purpose: form to create a run with required and optional fields; redirect to list on success\n      testids:\n        - run-create-view\n        - run-create-form\n        - run-create-title\n        - run-create-datetime\n        - run-create-location\n        - run-create-distance\n        - run-create-pace\n        - run-create-notes\n        - run-create-submit\n        - run-create-error\n    - path: /runs/:run_id\n      view: RunDetailView\n      purpose: show run details, participant list, join form, and leave form\n      testids:\n        - run-detail-view\n        - run-detail-title\n        - run-detail-participants\n        - run-detail-participant\n        - run-detail-participant-count\n        - run-detail-join-form\n        - run-detail-join-name\n        - run-detail-join-submit\n        - run-detail-leave-form\n        - run-detail-leave-name\n        - run-detail-leave-submit\n        - run-detail-error\n        - run-detail-not-found\n\npersistence: in_memory\n\ndecisions:\n  - id: duplicate-name-case-sensitivity\n    choice: \"Participant name uniqueness is case-insensitive (\\\"Alice\\\" and \\\"alice\\\" are the same participant)\"\n    warrant: \"PRD \u00a75.4 \u2014 'default recommendation: case-insensitive uniqueness'\"\n  - id: leave-unknown-participant\n    choice: \"Leaving a run with a name not on the run returns 404 PARTICIPANT_NOT_FOUND\"\n    warrant: \"PRD \u00a75.5 \u2014 'backend returns clear error'; 404 is the natural semantic for a missing resource\"\n  - id: datetime-storage\n    choice: \"The datetime field is stored and returned as an opaque string; no server-side parsing or validation of format\"\n    warrant: \"PRD \u00a75.1 \u2014 'string input acceptable for MVP'; sorting is expansion scope (\u00a74.1 T1.2)\"\n  - id: run-id-generation\n    choice: \"Run id is a UUID string generated server-side at creation\"\n    warrant: \"PRD \u00a75.1 \u2014 'created run with generated id'; UUID avoids counter state in the in-memory store\"\n  - id: participant-count-derivation\n    choice: \"participant_count is derived as len(participants) in the response; not independently stored\"\n    warrant: \"PRD \u00a75.2 and \u00a75.3 require displaying participant count; including it in the response avoids client-side array-length computation in three views\"\n  - id: leave-via-post-body\n    choice: \"Leave uses POST /runs/{run_id}/leave with a JSON body {name} rather than DELETE with the name in the URL path\"\n    warrant: \"Technical design \u00a72.2; avoids URL-encoding issues with names containing spaces or special characters; keeps the request shape symmetric with join\"\n\nprovenance:\n  mode: authored\n  cycle_id: cyc_7a4b7a6fbf0e\n  task_id: task-run_f0424d18-003-development.author_manifest\n  attempts: 1\n  revisions: []\n",
+              "proposal_id": "prop_cap"
+            },
+            "contract_ref": "art_contract"
+          },
+          "role_index": 1,
+          "role_total": 1
+        },
+        "metadata": {
+          "role": "dev",
+          "step_index": 0
+        },
+        "pulse_id": "00000000000000000000000000000002",
+        "span_id": "00000000000000000000000000000003",
+        "task_id": "task-run_abcdef12-000-development.design_plan",
+        "task_type": "development.design_plan",
+        "trace_id": "00000000000000000000000000000001"
+      },
+      {
+        "agent_id": "eve",
+        "causation_id": "task-run_abcdef12-000-development.design_plan",
+        "correlation_id": "00000000000000000000000000000000",
+        "input_keys": [
+          "prd",
+          "resolved_config",
+          "config_hash",
+          "agent_model",
+          "agent_config_overrides",
+          "profile_roles",
+          "role_index",
+          "role_total",
+          "increment_change_request"
+        ],
+        "inputs": {
+          "agent_config_overrides": {},
+          "agent_model": "m",
+          "config_hash": "confhash",
+          "increment_change_request": "proposal_id: prop_cap\nversion: 1\nbaseline_tree: sha-accepted\nkind: feature\nprd_delta:\n- id: capacity-limit\n  op: add\n  text: A run may set a capacity. Joining a full run is refused, and the run's page\n    shows how many of its places are taken.\nmanifest_delta:\n- op: modify\n  target: entity\n  key: Run\n  definition:\n    name: Run\n    fields:\n    - name: id\n      type: string\n      required: true\n      generated: true\n    - name: title\n      type: string\n      required: true\n    - name: datetime\n      type: string\n      required: true\n    - name: location\n      type: string\n      required: true\n    - name: distance\n      type: string\n      required: false\n    - name: pace\n      type: string\n      required: false\n    - name: notes\n      type: string\n      required: false\n    - name: capacity\n      type: integer\n      required: false\n    - name: participants\n      type: list[string]\n      required: true\n      default: []\n    - name: participant_count\n      type: integer\n      required: true\n- op: modify\n  target: request_shape\n  key: RunCreate\n  definition:\n    required:\n    - title\n    - datetime\n    - location\n    optional:\n    - distance\n    - pace\n    - notes\n    - capacity\n- op: add\n  target: error_code\n  key: capacity_exceeded\n  definition:\n    http: 409\n- op: modify\n  target: endpoint\n  key: POST /runs/{run_id}/join\n  definition:\n    method: POST\n    path: /runs/{run_id}/join\n    summary: join a run with a participant name, refused when the run is full\n    request: JoinIn\n    response: Run\n    errors:\n    - validation_error\n    - run_not_found\n    - duplicate_participant\n    - capacity_exceeded\n- op: modify\n  target: client_route\n  key: /runs/:run_id\n  definition:\n    path: /runs/:run_id\n    view: RunDetailView\n    purpose: show run details, participant list, places taken of capacity, join form,\n      and leave form\n    testids:\n    - run-detail-view\n    - run-detail-title\n    - run-detail-participants\n    - run-detail-participant\n    - run-detail-participant-count\n    - run-detail-join-form\n    - run-detail-join-name\n    - run-detail-join-submit\n    - run-detail-leave-form\n    - run-detail-leave-name\n    - run-detail-leave-submit\n    - run-detail-error\n    - run-detail-not-found\n    - capacity-status\ncriteria:\n- id: C1\n  statement: A run created with capacity 2 is returned with capacity 2\n  surface_kind: endpoint\n  surface: POST /runs\n  observable: 'the 201 response body carries capacity: 2'\n- id: C2\n  statement: Joining a full run is refused\n  surface_kind: endpoint\n  surface: POST /runs/{run_id}/join\n  observable: 409 with error code capacity_exceeded when the run's participants already\n    fill its capacity\n- id: C3\n  statement: The run's page shows places taken of capacity\n  surface_kind: client_route\n  surface: /runs/:run_id\n  observable: capacity-status renders '2 / 2 joined' for a full run of capacity 2\nmust_not_break: []\nretires: []\nreplaces_verifiers: []\nfootprint:\n- backend/errors.py\n- backend/models.py\n- backend/routes.py\n- frontend/src/views/RunDetailView.jsx\n- backend/tests/**\n- frontend/src/__tests__/**\n- frontend/src/tests/**\ncontent_hash: 737db498820030d38380ef38dad2a40a79c897017813f98767744388f72ba5b1\n",
+          "prd": "PRD-CONTENT",
+          "profile_roles": [
+            "builder",
+            "data",
+            "dev",
+            "lead",
+            "qa",
+            "strat"
+          ],
+          "resolved_config": {
+            "build_profile": "fullstack_fastapi_react",
+            "campaign_proposal": {
+              "accepted_cycle_id": "cyc_accepted",
+              "baseline_manifest": "version: 1\nkind: interface_manifest\nproject_id: group_run\nsource_prd: \"PRD: group_run (1-Hour Cycle MVP+) v0.5\"\nstack: fullstack_fastapi_react\nscope: >\n  Full-stack CRUD for group run events with participant join/leave via an\n  in-memory store. Deliberately excludes authentication, persistent database,\n  real-time updates, external service integration, and UI component libraries.\n\nentities:\n  - name: Run\n    fields:\n      - { name: id,                type: string,  required: true,  generated: true }\n      - { name: title,             type: string,  required: true }\n      - { name: datetime,          type: string,  required: true }\n      - { name: location,          type: string,  required: true }\n      - { name: distance,          type: string,  required: false }\n      - { name: pace,              type: string,  required: false }\n      - { name: notes,             type: string,  required: false }\n      - { name: participants,      type: \"list[string]\", required: true, default: [] }\n      - { name: participant_count, type: integer, required: true }\n\napi:\n  base_path: /api\n  request_shapes:\n    RunCreate:\n      required: [title, datetime, location]\n      optional: [distance, pace, notes]\n    JoinIn:\n      required: [name]\n    LeaveIn:\n      required: [name]\n  endpoints:\n    - method: POST\n      path: /runs\n      summary: create a new run event\n      request: RunCreate\n      response: Run\n      success_status: 201\n      errors: [validation_error]\n    - method: GET\n      path: /runs\n      summary: list all runs\n      response: \"list[Run]\"\n    - method: GET\n      path: \"/runs/{run_id}\"\n      summary: get run details and participants\n      response: Run\n      errors: [run_not_found]\n    - method: POST\n      path: \"/runs/{run_id}/join\"\n      summary: join a run with a participant name\n      request: JoinIn\n      response: Run\n      errors: [validation_error, run_not_found, duplicate_participant]\n    - method: POST\n      path: \"/runs/{run_id}/leave\"\n      summary: remove a participant from a run by name\n      request: LeaveIn\n      response: Run\n      errors: [validation_error, run_not_found, participant_not_found]\n  error_contract:\n    shape: '{\"error\": {\"code\": \"...\", \"message\": \"...\"}}'\n    codes:\n      validation_error:       { http: 422 }\n      run_not_found:          { http: 404 }\n      duplicate_participant:  { http: 409 }\n      participant_not_found:  { http: 404 }\n\nfrontend:\n  framework: react_vite\n  routes:\n    - path: /\n      view: RunListView\n      purpose: display list of runs with title, datetime, location, participant count; link to create and detail\n      testids:\n        - run-list-view\n        - run-list\n        - run-row\n        - create-run-link\n        - empty-state\n    - path: /runs/new\n      view: RunCreateView\n      purpose: form to create a run with required and optional fields; redirect to list on success\n      testids:\n        - run-create-view\n        - run-create-form\n        - run-create-title\n        - run-create-datetime\n        - run-create-location\n        - run-create-distance\n        - run-create-pace\n        - run-create-notes\n        - run-create-submit\n        - run-create-error\n    - path: /runs/:run_id\n      view: RunDetailView\n      purpose: show run details, participant list, join form, and leave form\n      testids:\n        - run-detail-view\n        - run-detail-title\n        - run-detail-participants\n        - run-detail-participant\n        - run-detail-participant-count\n        - run-detail-join-form\n        - run-detail-join-name\n        - run-detail-join-submit\n        - run-detail-leave-form\n        - run-detail-leave-name\n        - run-detail-leave-submit\n        - run-detail-error\n        - run-detail-not-found\n\npersistence: in_memory\n\ndecisions:\n  - id: duplicate-name-case-sensitivity\n    choice: \"Participant name uniqueness is case-insensitive (\\\"Alice\\\" and \\\"alice\\\" are the same participant)\"\n    warrant: \"PRD \u00a75.4 \u2014 'default recommendation: case-insensitive uniqueness'\"\n  - id: leave-unknown-participant\n    choice: \"Leaving a run with a name not on the run returns 404 PARTICIPANT_NOT_FOUND\"\n    warrant: \"PRD \u00a75.5 \u2014 'backend returns clear error'; 404 is the natural semantic for a missing resource\"\n  - id: datetime-storage\n    choice: \"The datetime field is stored and returned as an opaque string; no server-side parsing or validation of format\"\n    warrant: \"PRD \u00a75.1 \u2014 'string input acceptable for MVP'; sorting is expansion scope (\u00a74.1 T1.2)\"\n  - id: run-id-generation\n    choice: \"Run id is a UUID string generated server-side at creation\"\n    warrant: \"PRD \u00a75.1 \u2014 'created run with generated id'; UUID avoids counter state in the in-memory store\"\n  - id: participant-count-derivation\n    choice: \"participant_count is derived as len(participants) in the response; not independently stored\"\n    warrant: \"PRD \u00a75.2 and \u00a75.3 require displaying participant count; including it in the response avoids client-side array-length computation in three views\"\n  - id: leave-via-post-body\n    choice: \"Leave uses POST /runs/{run_id}/leave with a JSON body {name} rather than DELETE with the name in the URL path\"\n    warrant: \"Technical design \u00a72.2; avoids URL-encoding issues with names containing spaces or special characters; keeps the request shape symmetric with join\"\n\nprovenance:\n  mode: authored\n  cycle_id: cyc_7a4b7a6fbf0e\n  task_id: task-run_f0424d18-003-development.author_manifest\n  attempts: 1\n  revisions: []\n",
+              "proposal_id": "prop_cap"
+            },
+            "contract_ref": "art_contract"
+          },
+          "role_index": 1,
+          "role_total": 1
+        },
+        "metadata": {
+          "role": "qa",
+          "step_index": 1
+        },
+        "pulse_id": "00000000000000000000000000000004",
+        "span_id": "00000000000000000000000000000005",
+        "task_id": "task-run_abcdef12-001-qa.define_test_strategy",
+        "task_type": "qa.define_test_strategy",
+        "trace_id": "00000000000000000000000000000001"
+      },
+      {
+        "agent_id": "max",
+        "causation_id": "task-run_abcdef12-001-qa.define_test_strategy",
+        "correlation_id": "00000000000000000000000000000000",
+        "input_keys": [
+          "prd",
+          "resolved_config",
+          "config_hash",
+          "agent_model",
+          "agent_config_overrides",
+          "profile_roles",
+          "role_index",
+          "role_total",
+          "increment_change_request"
+        ],
+        "inputs": {
+          "agent_config_overrides": {},
+          "agent_model": "m",
+          "config_hash": "confhash",
+          "increment_change_request": "proposal_id: prop_cap\nversion: 1\nbaseline_tree: sha-accepted\nkind: feature\nprd_delta:\n- id: capacity-limit\n  op: add\n  text: A run may set a capacity. Joining a full run is refused, and the run's page\n    shows how many of its places are taken.\nmanifest_delta:\n- op: modify\n  target: entity\n  key: Run\n  definition:\n    name: Run\n    fields:\n    - name: id\n      type: string\n      required: true\n      generated: true\n    - name: title\n      type: string\n      required: true\n    - name: datetime\n      type: string\n      required: true\n    - name: location\n      type: string\n      required: true\n    - name: distance\n      type: string\n      required: false\n    - name: pace\n      type: string\n      required: false\n    - name: notes\n      type: string\n      required: false\n    - name: capacity\n      type: integer\n      required: false\n    - name: participants\n      type: list[string]\n      required: true\n      default: []\n    - name: participant_count\n      type: integer\n      required: true\n- op: modify\n  target: request_shape\n  key: RunCreate\n  definition:\n    required:\n    - title\n    - datetime\n    - location\n    optional:\n    - distance\n    - pace\n    - notes\n    - capacity\n- op: add\n  target: error_code\n  key: capacity_exceeded\n  definition:\n    http: 409\n- op: modify\n  target: endpoint\n  key: POST /runs/{run_id}/join\n  definition:\n    method: POST\n    path: /runs/{run_id}/join\n    summary: join a run with a participant name, refused when the run is full\n    request: JoinIn\n    response: Run\n    errors:\n    - validation_error\n    - run_not_found\n    - duplicate_participant\n    - capacity_exceeded\n- op: modify\n  target: client_route\n  key: /runs/:run_id\n  definition:\n    path: /runs/:run_id\n    view: RunDetailView\n    purpose: show run details, participant list, places taken of capacity, join form,\n      and leave form\n    testids:\n    - run-detail-view\n    - run-detail-title\n    - run-detail-participants\n    - run-detail-participant\n    - run-detail-participant-count\n    - run-detail-join-form\n    - run-detail-join-name\n    - run-detail-join-submit\n    - run-detail-leave-form\n    - run-detail-leave-name\n    - run-detail-leave-submit\n    - run-detail-error\n    - run-detail-not-found\n    - capacity-status\ncriteria:\n- id: C1\n  statement: A run created with capacity 2 is returned with capacity 2\n  surface_kind: endpoint\n  surface: POST /runs\n  observable: 'the 201 response body carries capacity: 2'\n- id: C2\n  statement: Joining a full run is refused\n  surface_kind: endpoint\n  surface: POST /runs/{run_id}/join\n  observable: 409 with error code capacity_exceeded when the run's participants already\n    fill its capacity\n- id: C3\n  statement: The run's page shows places taken of capacity\n  surface_kind: client_route\n  surface: /runs/:run_id\n  observable: capacity-status renders '2 / 2 joined' for a full run of capacity 2\nmust_not_break: []\nretires: []\nreplaces_verifiers: []\nfootprint:\n- backend/errors.py\n- backend/models.py\n- backend/routes.py\n- frontend/src/views/RunDetailView.jsx\n- backend/tests/**\n- frontend/src/__tests__/**\n- frontend/src/tests/**\ncontent_hash: 737db498820030d38380ef38dad2a40a79c897017813f98767744388f72ba5b1\n",
+          "prd": "PRD-CONTENT",
+          "profile_roles": [
+            "builder",
+            "data",
+            "dev",
+            "lead",
+            "qa",
+            "strat"
+          ],
+          "resolved_config": {
+            "build_profile": "fullstack_fastapi_react",
+            "campaign_proposal": {
+              "accepted_cycle_id": "cyc_accepted",
+              "baseline_manifest": "version: 1\nkind: interface_manifest\nproject_id: group_run\nsource_prd: \"PRD: group_run (1-Hour Cycle MVP+) v0.5\"\nstack: fullstack_fastapi_react\nscope: >\n  Full-stack CRUD for group run events with participant join/leave via an\n  in-memory store. Deliberately excludes authentication, persistent database,\n  real-time updates, external service integration, and UI component libraries.\n\nentities:\n  - name: Run\n    fields:\n      - { name: id,                type: string,  required: true,  generated: true }\n      - { name: title,             type: string,  required: true }\n      - { name: datetime,          type: string,  required: true }\n      - { name: location,          type: string,  required: true }\n      - { name: distance,          type: string,  required: false }\n      - { name: pace,              type: string,  required: false }\n      - { name: notes,             type: string,  required: false }\n      - { name: participants,      type: \"list[string]\", required: true, default: [] }\n      - { name: participant_count, type: integer, required: true }\n\napi:\n  base_path: /api\n  request_shapes:\n    RunCreate:\n      required: [title, datetime, location]\n      optional: [distance, pace, notes]\n    JoinIn:\n      required: [name]\n    LeaveIn:\n      required: [name]\n  endpoints:\n    - method: POST\n      path: /runs\n      summary: create a new run event\n      request: RunCreate\n      response: Run\n      success_status: 201\n      errors: [validation_error]\n    - method: GET\n      path: /runs\n      summary: list all runs\n      response: \"list[Run]\"\n    - method: GET\n      path: \"/runs/{run_id}\"\n      summary: get run details and participants\n      response: Run\n      errors: [run_not_found]\n    - method: POST\n      path: \"/runs/{run_id}/join\"\n      summary: join a run with a participant name\n      request: JoinIn\n      response: Run\n      errors: [validation_error, run_not_found, duplicate_participant]\n    - method: POST\n      path: \"/runs/{run_id}/leave\"\n      summary: remove a participant from a run by name\n      request: LeaveIn\n      response: Run\n      errors: [validation_error, run_not_found, participant_not_found]\n  error_contract:\n    shape: '{\"error\": {\"code\": \"...\", \"message\": \"...\"}}'\n    codes:\n      validation_error:       { http: 422 }\n      run_not_found:          { http: 404 }\n      duplicate_participant:  { http: 409 }\n      participant_not_found:  { http: 404 }\n\nfrontend:\n  framework: react_vite\n  routes:\n    - path: /\n      view: RunListView\n      purpose: display list of runs with title, datetime, location, participant count; link to create and detail\n      testids:\n        - run-list-view\n        - run-list\n        - run-row\n        - create-run-link\n        - empty-state\n    - path: /runs/new\n      view: RunCreateView\n      purpose: form to create a run with required and optional fields; redirect to list on success\n      testids:\n        - run-create-view\n        - run-create-form\n        - run-create-title\n        - run-create-datetime\n        - run-create-location\n        - run-create-distance\n        - run-create-pace\n        - run-create-notes\n        - run-create-submit\n        - run-create-error\n    - path: /runs/:run_id\n      view: RunDetailView\n      purpose: show run details, participant list, join form, and leave form\n      testids:\n        - run-detail-view\n        - run-detail-title\n        - run-detail-participants\n        - run-detail-participant\n        - run-detail-participant-count\n        - run-detail-join-form\n        - run-detail-join-name\n        - run-detail-join-submit\n        - run-detail-leave-form\n        - run-detail-leave-name\n        - run-detail-leave-submit\n        - run-detail-error\n        - run-detail-not-found\n\npersistence: in_memory\n\ndecisions:\n  - id: duplicate-name-case-sensitivity\n    choice: \"Participant name uniqueness is case-insensitive (\\\"Alice\\\" and \\\"alice\\\" are the same participant)\"\n    warrant: \"PRD \u00a75.4 \u2014 'default recommendation: case-insensitive uniqueness'\"\n  - id: leave-unknown-participant\n    choice: \"Leaving a run with a name not on the run returns 404 PARTICIPANT_NOT_FOUND\"\n    warrant: \"PRD \u00a75.5 \u2014 'backend returns clear error'; 404 is the natural semantic for a missing resource\"\n  - id: datetime-storage\n    choice: \"The datetime field is stored and returned as an opaque string; no server-side parsing or validation of format\"\n    warrant: \"PRD \u00a75.1 \u2014 'string input acceptable for MVP'; sorting is expansion scope (\u00a74.1 T1.2)\"\n  - id: run-id-generation\n    choice: \"Run id is a UUID string generated server-side at creation\"\n    warrant: \"PRD \u00a75.1 \u2014 'created run with generated id'; UUID avoids counter state in the in-memory store\"\n  - id: participant-count-derivation\n    choice: \"participant_count is derived as len(participants) in the response; not independently stored\"\n    warrant: \"PRD \u00a75.2 and \u00a75.3 require displaying participant count; including it in the response avoids client-side array-length computation in three views\"\n  - id: leave-via-post-body\n    choice: \"Leave uses POST /runs/{run_id}/leave with a JSON body {name} rather than DELETE with the name in the URL path\"\n    warrant: \"Technical design \u00a72.2; avoids URL-encoding issues with names containing spaces or special characters; keeps the request shape symmetric with join\"\n\nprovenance:\n  mode: authored\n  cycle_id: cyc_7a4b7a6fbf0e\n  task_id: task-run_f0424d18-003-development.author_manifest\n  attempts: 1\n  revisions: []\n",
+              "proposal_id": "prop_cap"
+            },
+            "contract_ref": "art_contract"
+          },
+          "role_index": 1,
+          "role_total": 3
+        },
+        "metadata": {
+          "role": "lead",
+          "step_index": 2
+        },
+        "pulse_id": "00000000000000000000000000000006",
+        "span_id": "00000000000000000000000000000007",
+        "task_id": "task-run_abcdef12-002-governance.prepare_plan_authoring_brief",
+        "task_type": "governance.prepare_plan_authoring_brief",
+        "trace_id": "00000000000000000000000000000001"
+      },
+      {
+        "agent_id": "max",
+        "causation_id": "task-run_abcdef12-002-governance.prepare_plan_authoring_brief",
+        "correlation_id": "00000000000000000000000000000000",
+        "input_keys": [
+          "prd",
+          "resolved_config",
+          "config_hash",
+          "agent_model",
+          "agent_config_overrides",
+          "profile_roles",
+          "role_index",
+          "role_total",
+          "increment_change_request"
+        ],
+        "inputs": {
+          "agent_config_overrides": {},
+          "agent_model": "m",
+          "config_hash": "confhash",
+          "increment_change_request": "proposal_id: prop_cap\nversion: 1\nbaseline_tree: sha-accepted\nkind: feature\nprd_delta:\n- id: capacity-limit\n  op: add\n  text: A run may set a capacity. Joining a full run is refused, and the run's page\n    shows how many of its places are taken.\nmanifest_delta:\n- op: modify\n  target: entity\n  key: Run\n  definition:\n    name: Run\n    fields:\n    - name: id\n      type: string\n      required: true\n      generated: true\n    - name: title\n      type: string\n      required: true\n    - name: datetime\n      type: string\n      required: true\n    - name: location\n      type: string\n      required: true\n    - name: distance\n      type: string\n      required: false\n    - name: pace\n      type: string\n      required: false\n    - name: notes\n      type: string\n      required: false\n    - name: capacity\n      type: integer\n      required: false\n    - name: participants\n      type: list[string]\n      required: true\n      default: []\n    - name: participant_count\n      type: integer\n      required: true\n- op: modify\n  target: request_shape\n  key: RunCreate\n  definition:\n    required:\n    - title\n    - datetime\n    - location\n    optional:\n    - distance\n    - pace\n    - notes\n    - capacity\n- op: add\n  target: error_code\n  key: capacity_exceeded\n  definition:\n    http: 409\n- op: modify\n  target: endpoint\n  key: POST /runs/{run_id}/join\n  definition:\n    method: POST\n    path: /runs/{run_id}/join\n    summary: join a run with a participant name, refused when the run is full\n    request: JoinIn\n    response: Run\n    errors:\n    - validation_error\n    - run_not_found\n    - duplicate_participant\n    - capacity_exceeded\n- op: modify\n  target: client_route\n  key: /runs/:run_id\n  definition:\n    path: /runs/:run_id\n    view: RunDetailView\n    purpose: show run details, participant list, places taken of capacity, join form,\n      and leave form\n    testids:\n    - run-detail-view\n    - run-detail-title\n    - run-detail-participants\n    - run-detail-participant\n    - run-detail-participant-count\n    - run-detail-join-form\n    - run-detail-join-name\n    - run-detail-join-submit\n    - run-detail-leave-form\n    - run-detail-leave-name\n    - run-detail-leave-submit\n    - run-detail-error\n    - run-detail-not-found\n    - capacity-status\ncriteria:\n- id: C1\n  statement: A run created with capacity 2 is returned with capacity 2\n  surface_kind: endpoint\n  surface: POST /runs\n  observable: 'the 201 response body carries capacity: 2'\n- id: C2\n  statement: Joining a full run is refused\n  surface_kind: endpoint\n  surface: POST /runs/{run_id}/join\n  observable: 409 with error code capacity_exceeded when the run's participants already\n    fill its capacity\n- id: C3\n  statement: The run's page shows places taken of capacity\n  surface_kind: client_route\n  surface: /runs/:run_id\n  observable: capacity-status renders '2 / 2 joined' for a full run of capacity 2\nmust_not_break: []\nretires: []\nreplaces_verifiers: []\nfootprint:\n- backend/errors.py\n- backend/models.py\n- backend/routes.py\n- frontend/src/views/RunDetailView.jsx\n- backend/tests/**\n- frontend/src/__tests__/**\n- frontend/src/tests/**\ncontent_hash: 737db498820030d38380ef38dad2a40a79c897017813f98767744388f72ba5b1\n",
+          "prd": "PRD-CONTENT",
+          "profile_roles": [
+            "builder",
+            "data",
+            "dev",
+            "lead",
+            "qa",
+            "strat"
+          ],
+          "resolved_config": {
+            "build_profile": "fullstack_fastapi_react",
+            "campaign_proposal": {
+              "accepted_cycle_id": "cyc_accepted",
+              "baseline_manifest": "version: 1\nkind: interface_manifest\nproject_id: group_run\nsource_prd: \"PRD: group_run (1-Hour Cycle MVP+) v0.5\"\nstack: fullstack_fastapi_react\nscope: >\n  Full-stack CRUD for group run events with participant join/leave via an\n  in-memory store. Deliberately excludes authentication, persistent database,\n  real-time updates, external service integration, and UI component libraries.\n\nentities:\n  - name: Run\n    fields:\n      - { name: id,                type: string,  required: true,  generated: true }\n      - { name: title,             type: string,  required: true }\n      - { name: datetime,          type: string,  required: true }\n      - { name: location,          type: string,  required: true }\n      - { name: distance,          type: string,  required: false }\n      - { name: pace,              type: string,  required: false }\n      - { name: notes,             type: string,  required: false }\n      - { name: participants,      type: \"list[string]\", required: true, default: [] }\n      - { name: participant_count, type: integer, required: true }\n\napi:\n  base_path: /api\n  request_shapes:\n    RunCreate:\n      required: [title, datetime, location]\n      optional: [distance, pace, notes]\n    JoinIn:\n      required: [name]\n    LeaveIn:\n      required: [name]\n  endpoints:\n    - method: POST\n      path: /runs\n      summary: create a new run event\n      request: RunCreate\n      response: Run\n      success_status: 201\n      errors: [validation_error]\n    - method: GET\n      path: /runs\n      summary: list all runs\n      response: \"list[Run]\"\n    - method: GET\n      path: \"/runs/{run_id}\"\n      summary: get run details and participants\n      response: Run\n      errors: [run_not_found]\n    - method: POST\n      path: \"/runs/{run_id}/join\"\n      summary: join a run with a participant name\n      request: JoinIn\n      response: Run\n      errors: [validation_error, run_not_found, duplicate_participant]\n    - method: POST\n      path: \"/runs/{run_id}/leave\"\n      summary: remove a participant from a run by name\n      request: LeaveIn\n      response: Run\n      errors: [validation_error, run_not_found, participant_not_found]\n  error_contract:\n    shape: '{\"error\": {\"code\": \"...\", \"message\": \"...\"}}'\n    codes:\n      validation_error:       { http: 422 }\n      run_not_found:          { http: 404 }\n      duplicate_participant:  { http: 409 }\n      participant_not_found:  { http: 404 }\n\nfrontend:\n  framework: react_vite\n  routes:\n    - path: /\n      view: RunListView\n      purpose: display list of runs with title, datetime, location, participant count; link to create and detail\n      testids:\n        - run-list-view\n        - run-list\n        - run-row\n        - create-run-link\n        - empty-state\n    - path: /runs/new\n      view: RunCreateView\n      purpose: form to create a run with required and optional fields; redirect to list on success\n      testids:\n        - run-create-view\n        - run-create-form\n        - run-create-title\n        - run-create-datetime\n        - run-create-location\n        - run-create-distance\n        - run-create-pace\n        - run-create-notes\n        - run-create-submit\n        - run-create-error\n    - path: /runs/:run_id\n      view: RunDetailView\n      purpose: show run details, participant list, join form, and leave form\n      testids:\n        - run-detail-view\n        - run-detail-title\n        - run-detail-participants\n        - run-detail-participant\n        - run-detail-participant-count\n        - run-detail-join-form\n        - run-detail-join-name\n        - run-detail-join-submit\n        - run-detail-leave-form\n        - run-detail-leave-name\n        - run-detail-leave-submit\n        - run-detail-error\n        - run-detail-not-found\n\npersistence: in_memory\n\ndecisions:\n  - id: duplicate-name-case-sensitivity\n    choice: \"Participant name uniqueness is case-insensitive (\\\"Alice\\\" and \\\"alice\\\" are the same participant)\"\n    warrant: \"PRD \u00a75.4 \u2014 'default recommendation: case-insensitive uniqueness'\"\n  - id: leave-unknown-participant\n    choice: \"Leaving a run with a name not on the run returns 404 PARTICIPANT_NOT_FOUND\"\n    warrant: \"PRD \u00a75.5 \u2014 'backend returns clear error'; 404 is the natural semantic for a missing resource\"\n  - id: datetime-storage\n    choice: \"The datetime field is stored and returned as an opaque string; no server-side parsing or validation of format\"\n    warrant: \"PRD \u00a75.1 \u2014 'string input acceptable for MVP'; sorting is expansion scope (\u00a74.1 T1.2)\"\n  - id: run-id-generation\n    choice: \"Run id is a UUID string generated server-side at creation\"\n    warrant: \"PRD \u00a75.1 \u2014 'created run with generated id'; UUID avoids counter state in the in-memory store\"\n  - id: participant-count-derivation\n    choice: \"participant_count is derived as len(participants) in the response; not independently stored\"\n    warrant: \"PRD \u00a75.2 and \u00a75.3 require displaying participant count; including it in the response avoids client-side array-length computation in three views\"\n  - id: leave-via-post-body\n    choice: \"Leave uses POST /runs/{run_id}/leave with a JSON body {name} rather than DELETE with the name in the URL path\"\n    warrant: \"Technical design \u00a72.2; avoids URL-encoding issues with names containing spaces or special characters; keeps the request shape symmetric with join\"\n\nprovenance:\n  mode: authored\n  cycle_id: cyc_7a4b7a6fbf0e\n  task_id: task-run_f0424d18-003-development.author_manifest\n  attempts: 1\n  revisions: []\n",
+              "proposal_id": "prop_cap"
+            },
+            "contract_ref": "art_contract"
+          },
+          "role_index": 2,
+          "role_total": 3
+        },
+        "metadata": {
+          "role": "lead",
+          "step_index": 3
+        },
+        "pulse_id": "00000000000000000000000000000008",
+        "span_id": "00000000000000000000000000000009",
+        "task_id": "task-run_abcdef12-003-governance.merge_plan",
+        "task_type": "governance.merge_plan",
+        "trace_id": "00000000000000000000000000000001"
+      },
+      {
+        "agent_id": "max",
+        "causation_id": "task-run_abcdef12-003-governance.merge_plan",
+        "correlation_id": "00000000000000000000000000000000",
+        "input_keys": [
+          "prd",
+          "resolved_config",
+          "config_hash",
+          "agent_model",
+          "agent_config_overrides",
+          "profile_roles",
+          "role_index",
+          "role_total",
+          "increment_change_request"
+        ],
+        "inputs": {
+          "agent_config_overrides": {},
+          "agent_model": "m",
+          "config_hash": "confhash",
+          "increment_change_request": "proposal_id: prop_cap\nversion: 1\nbaseline_tree: sha-accepted\nkind: feature\nprd_delta:\n- id: capacity-limit\n  op: add\n  text: A run may set a capacity. Joining a full run is refused, and the run's page\n    shows how many of its places are taken.\nmanifest_delta:\n- op: modify\n  target: entity\n  key: Run\n  definition:\n    name: Run\n    fields:\n    - name: id\n      type: string\n      required: true\n      generated: true\n    - name: title\n      type: string\n      required: true\n    - name: datetime\n      type: string\n      required: true\n    - name: location\n      type: string\n      required: true\n    - name: distance\n      type: string\n      required: false\n    - name: pace\n      type: string\n      required: false\n    - name: notes\n      type: string\n      required: false\n    - name: capacity\n      type: integer\n      required: false\n    - name: participants\n      type: list[string]\n      required: true\n      default: []\n    - name: participant_count\n      type: integer\n      required: true\n- op: modify\n  target: request_shape\n  key: RunCreate\n  definition:\n    required:\n    - title\n    - datetime\n    - location\n    optional:\n    - distance\n    - pace\n    - notes\n    - capacity\n- op: add\n  target: error_code\n  key: capacity_exceeded\n  definition:\n    http: 409\n- op: modify\n  target: endpoint\n  key: POST /runs/{run_id}/join\n  definition:\n    method: POST\n    path: /runs/{run_id}/join\n    summary: join a run with a participant name, refused when the run is full\n    request: JoinIn\n    response: Run\n    errors:\n    - validation_error\n    - run_not_found\n    - duplicate_participant\n    - capacity_exceeded\n- op: modify\n  target: client_route\n  key: /runs/:run_id\n  definition:\n    path: /runs/:run_id\n    view: RunDetailView\n    purpose: show run details, participant list, places taken of capacity, join form,\n      and leave form\n    testids:\n    - run-detail-view\n    - run-detail-title\n    - run-detail-participants\n    - run-detail-participant\n    - run-detail-participant-count\n    - run-detail-join-form\n    - run-detail-join-name\n    - run-detail-join-submit\n    - run-detail-leave-form\n    - run-detail-leave-name\n    - run-detail-leave-submit\n    - run-detail-error\n    - run-detail-not-found\n    - capacity-status\ncriteria:\n- id: C1\n  statement: A run created with capacity 2 is returned with capacity 2\n  surface_kind: endpoint\n  surface: POST /runs\n  observable: 'the 201 response body carries capacity: 2'\n- id: C2\n  statement: Joining a full run is refused\n  surface_kind: endpoint\n  surface: POST /runs/{run_id}/join\n  observable: 409 with error code capacity_exceeded when the run's participants already\n    fill its capacity\n- id: C3\n  statement: The run's page shows places taken of capacity\n  surface_kind: client_route\n  surface: /runs/:run_id\n  observable: capacity-status renders '2 / 2 joined' for a full run of capacity 2\nmust_not_break: []\nretires: []\nreplaces_verifiers: []\nfootprint:\n- backend/errors.py\n- backend/models.py\n- backend/routes.py\n- frontend/src/views/RunDetailView.jsx\n- backend/tests/**\n- frontend/src/__tests__/**\n- frontend/src/tests/**\ncontent_hash: 737db498820030d38380ef38dad2a40a79c897017813f98767744388f72ba5b1\n",
+          "prd": "PRD-CONTENT",
+          "profile_roles": [
+            "builder",
+            "data",
+            "dev",
+            "lead",
+            "qa",
+            "strat"
+          ],
+          "resolved_config": {
+            "build_profile": "fullstack_fastapi_react",
+            "campaign_proposal": {
+              "accepted_cycle_id": "cyc_accepted",
+              "baseline_manifest": "version: 1\nkind: interface_manifest\nproject_id: group_run\nsource_prd: \"PRD: group_run (1-Hour Cycle MVP+) v0.5\"\nstack: fullstack_fastapi_react\nscope: >\n  Full-stack CRUD for group run events with participant join/leave via an\n  in-memory store. Deliberately excludes authentication, persistent database,\n  real-time updates, external service integration, and UI component libraries.\n\nentities:\n  - name: Run\n    fields:\n      - { name: id,                type: string,  required: true,  generated: true }\n      - { name: title,             type: string,  required: true }\n      - { name: datetime,          type: string,  required: true }\n      - { name: location,          type: string,  required: true }\n      - { name: distance,          type: string,  required: false }\n      - { name: pace,              type: string,  required: false }\n      - { name: notes,             type: string,  required: false }\n      - { name: participants,      type: \"list[string]\", required: true, default: [] }\n      - { name: participant_count, type: integer, required: true }\n\napi:\n  base_path: /api\n  request_shapes:\n    RunCreate:\n      required: [title, datetime, location]\n      optional: [distance, pace, notes]\n    JoinIn:\n      required: [name]\n    LeaveIn:\n      required: [name]\n  endpoints:\n    - method: POST\n      path: /runs\n      summary: create a new run event\n      request: RunCreate\n      response: Run\n      success_status: 201\n      errors: [validation_error]\n    - method: GET\n      path: /runs\n      summary: list all runs\n      response: \"list[Run]\"\n    - method: GET\n      path: \"/runs/{run_id}\"\n      summary: get run details and participants\n      response: Run\n      errors: [run_not_found]\n    - method: POST\n      path: \"/runs/{run_id}/join\"\n      summary: join a run with a participant name\n      request: JoinIn\n      response: Run\n      errors: [validation_error, run_not_found, duplicate_participant]\n    - method: POST\n      path: \"/runs/{run_id}/leave\"\n      summary: remove a participant from a run by name\n      request: LeaveIn\n      response: Run\n      errors: [validation_error, run_not_found, participant_not_found]\n  error_contract:\n    shape: '{\"error\": {\"code\": \"...\", \"message\": \"...\"}}'\n    codes:\n      validation_error:       { http: 422 }\n      run_not_found:          { http: 404 }\n      duplicate_participant:  { http: 409 }\n      participant_not_found:  { http: 404 }\n\nfrontend:\n  framework: react_vite\n  routes:\n    - path: /\n      view: RunListView\n      purpose: display list of runs with title, datetime, location, participant count; link to create and detail\n      testids:\n        - run-list-view\n        - run-list\n        - run-row\n        - create-run-link\n        - empty-state\n    - path: /runs/new\n      view: RunCreateView\n      purpose: form to create a run with required and optional fields; redirect to list on success\n      testids:\n        - run-create-view\n        - run-create-form\n        - run-create-title\n        - run-create-datetime\n        - run-create-location\n        - run-create-distance\n        - run-create-pace\n        - run-create-notes\n        - run-create-submit\n        - run-create-error\n    - path: /runs/:run_id\n      view: RunDetailView\n      purpose: show run details, participant list, join form, and leave form\n      testids:\n        - run-detail-view\n        - run-detail-title\n        - run-detail-participants\n        - run-detail-participant\n        - run-detail-participant-count\n        - run-detail-join-form\n        - run-detail-join-name\n        - run-detail-join-submit\n        - run-detail-leave-form\n        - run-detail-leave-name\n        - run-detail-leave-submit\n        - run-detail-error\n        - run-detail-not-found\n\npersistence: in_memory\n\ndecisions:\n  - id: duplicate-name-case-sensitivity\n    choice: \"Participant name uniqueness is case-insensitive (\\\"Alice\\\" and \\\"alice\\\" are the same participant)\"\n    warrant: \"PRD \u00a75.4 \u2014 'default recommendation: case-insensitive uniqueness'\"\n  - id: leave-unknown-participant\n    choice: \"Leaving a run with a name not on the run returns 404 PARTICIPANT_NOT_FOUND\"\n    warrant: \"PRD \u00a75.5 \u2014 'backend returns clear error'; 404 is the natural semantic for a missing resource\"\n  - id: datetime-storage\n    choice: \"The datetime field is stored and returned as an opaque string; no server-side parsing or validation of format\"\n    warrant: \"PRD \u00a75.1 \u2014 'string input acceptable for MVP'; sorting is expansion scope (\u00a74.1 T1.2)\"\n  - id: run-id-generation\n    choice: \"Run id is a UUID string generated server-side at creation\"\n    warrant: \"PRD \u00a75.1 \u2014 'created run with generated id'; UUID avoids counter state in the in-memory store\"\n  - id: participant-count-derivation\n    choice: \"participant_count is derived as len(participants) in the response; not independently stored\"\n    warrant: \"PRD \u00a75.2 and \u00a75.3 require displaying participant count; including it in the response avoids client-side array-length computation in three views\"\n  - id: leave-via-post-body\n    choice: \"Leave uses POST /runs/{run_id}/leave with a JSON body {name} rather than DELETE with the name in the URL path\"\n    warrant: \"Technical design \u00a72.2; avoids URL-encoding issues with names containing spaces or special characters; keeps the request shape symmetric with join\"\n\nprovenance:\n  mode: authored\n  cycle_id: cyc_7a4b7a6fbf0e\n  task_id: task-run_f0424d18-003-development.author_manifest\n  attempts: 1\n  revisions: []\n",
+              "proposal_id": "prop_cap"
+            },
+            "contract_ref": "art_contract"
+          },
+          "role_index": 3,
+          "role_total": 3
+        },
+        "metadata": {
+          "role": "lead",
+          "step_index": 4
+        },
+        "pulse_id": "00000000000000000000000000000010",
+        "span_id": "00000000000000000000000000000011",
+        "task_id": "task-run_abcdef12-004-governance.review_plan",
+        "task_type": "governance.review_plan",
+        "trace_id": "00000000000000000000000000000001"
+      }
+    ],
+    "raised": null
+  },
+  "increment_implementation_with_evaluation": {
+    "envelopes": [
+      {
+        "agent_id": "max",
+        "causation_id": "00000000000000000000000000000000",
+        "correlation_id": "00000000000000000000000000000000",
+        "input_keys": [
+          "prd",
+          "resolved_config",
+          "config_hash",
+          "agent_model",
+          "agent_config_overrides",
+          "profile_roles",
+          "role_index",
+          "role_total"
+        ],
+        "inputs": {
+          "agent_config_overrides": {},
+          "agent_model": "m",
+          "config_hash": "confhash",
+          "prd": "PRD-CONTENT",
+          "profile_roles": [
+            "builder",
+            "data",
+            "dev",
+            "lead",
+            "qa",
+            "strat"
+          ],
+          "resolved_config": {
+            "build_profile": "fullstack_fastapi_react",
+            "campaign_proposal": {
+              "accepted_cycle_id": "cyc_accepted",
+              "baseline_manifest": "version: 1\nkind: interface_manifest\nproject_id: group_run\nsource_prd: \"PRD: group_run (1-Hour Cycle MVP+) v0.5\"\nstack: fullstack_fastapi_react\nscope: >\n  Full-stack CRUD for group run events with participant join/leave via an\n  in-memory store. Deliberately excludes authentication, persistent database,\n  real-time updates, external service integration, and UI component libraries.\n\nentities:\n  - name: Run\n    fields:\n      - { name: id,                type: string,  required: true,  generated: true }\n      - { name: title,             type: string,  required: true }\n      - { name: datetime,          type: string,  required: true }\n      - { name: location,          type: string,  required: true }\n      - { name: distance,          type: string,  required: false }\n      - { name: pace,              type: string,  required: false }\n      - { name: notes,             type: string,  required: false }\n      - { name: participants,      type: \"list[string]\", required: true, default: [] }\n      - { name: participant_count, type: integer, required: true }\n\napi:\n  base_path: /api\n  request_shapes:\n    RunCreate:\n      required: [title, datetime, location]\n      optional: [distance, pace, notes]\n    JoinIn:\n      required: [name]\n    LeaveIn:\n      required: [name]\n  endpoints:\n    - method: POST\n      path: /runs\n      summary: create a new run event\n      request: RunCreate\n      response: Run\n      success_status: 201\n      errors: [validation_error]\n    - method: GET\n      path: /runs\n      summary: list all runs\n      response: \"list[Run]\"\n    - method: GET\n      path: \"/runs/{run_id}\"\n      summary: get run details and participants\n      response: Run\n      errors: [run_not_found]\n    - method: POST\n      path: \"/runs/{run_id}/join\"\n      summary: join a run with a participant name\n      request: JoinIn\n      response: Run\n      errors: [validation_error, run_not_found, duplicate_participant]\n    - method: POST\n      path: \"/runs/{run_id}/leave\"\n      summary: remove a participant from a run by name\n      request: LeaveIn\n      response: Run\n      errors: [validation_error, run_not_found, participant_not_found]\n  error_contract:\n    shape: '{\"error\": {\"code\": \"...\", \"message\": \"...\"}}'\n    codes:\n      validation_error:       { http: 422 }\n      run_not_found:          { http: 404 }\n      duplicate_participant:  { http: 409 }\n      participant_not_found:  { http: 404 }\n\nfrontend:\n  framework: react_vite\n  routes:\n    - path: /\n      view: RunListView\n      purpose: display list of runs with title, datetime, location, participant count; link to create and detail\n      testids:\n        - run-list-view\n        - run-list\n        - run-row\n        - create-run-link\n        - empty-state\n    - path: /runs/new\n      view: RunCreateView\n      purpose: form to create a run with required and optional fields; redirect to list on success\n      testids:\n        - run-create-view\n        - run-create-form\n        - run-create-title\n        - run-create-datetime\n        - run-create-location\n        - run-create-distance\n        - run-create-pace\n        - run-create-notes\n        - run-create-submit\n        - run-create-error\n    - path: /runs/:run_id\n      view: RunDetailView\n      purpose: show run details, participant list, join form, and leave form\n      testids:\n        - run-detail-view\n        - run-detail-title\n        - run-detail-participants\n        - run-detail-participant\n        - run-detail-participant-count\n        - run-detail-join-form\n        - run-detail-join-name\n        - run-detail-join-submit\n        - run-detail-leave-form\n        - run-detail-leave-name\n        - run-detail-leave-submit\n        - run-detail-error\n        - run-detail-not-found\n\npersistence: in_memory\n\ndecisions:\n  - id: duplicate-name-case-sensitivity\n    choice: \"Participant name uniqueness is case-insensitive (\\\"Alice\\\" and \\\"alice\\\" are the same participant)\"\n    warrant: \"PRD \u00a75.4 \u2014 'default recommendation: case-insensitive uniqueness'\"\n  - id: leave-unknown-participant\n    choice: \"Leaving a run with a name not on the run returns 404 PARTICIPANT_NOT_FOUND\"\n    warrant: \"PRD \u00a75.5 \u2014 'backend returns clear error'; 404 is the natural semantic for a missing resource\"\n  - id: datetime-storage\n    choice: \"The datetime field is stored and returned as an opaque string; no server-side parsing or validation of format\"\n    warrant: \"PRD \u00a75.1 \u2014 'string input acceptable for MVP'; sorting is expansion scope (\u00a74.1 T1.2)\"\n  - id: run-id-generation\n    choice: \"Run id is a UUID string generated server-side at creation\"\n    warrant: \"PRD \u00a75.1 \u2014 'created run with generated id'; UUID avoids counter state in the in-memory store\"\n  - id: participant-count-derivation\n    choice: \"participant_count is derived as len(participants) in the response; not independently stored\"\n    warrant: \"PRD \u00a75.2 and \u00a75.3 require displaying participant count; including it in the response avoids client-side array-length computation in three views\"\n  - id: leave-via-post-body\n    choice: \"Leave uses POST /runs/{run_id}/leave with a JSON body {name} rather than DELETE with the name in the URL path\"\n    warrant: \"Technical design \u00a72.2; avoids URL-encoding issues with names containing spaces or special characters; keeps the request shape symmetric with join\"\n\nprovenance:\n  mode: authored\n  cycle_id: cyc_7a4b7a6fbf0e\n  task_id: task-run_f0424d18-003-development.author_manifest\n  attempts: 1\n  revisions: []\n",
+              "proposal_id": "prop_cap"
+            },
+            "implementation_plan": true
+          },
+          "role_index": 1,
+          "role_total": 1
+        },
+        "metadata": {
+          "role": "lead",
+          "step_index": 0
+        },
+        "pulse_id": "00000000000000000000000000000002",
+        "span_id": "00000000000000000000000000000003",
+        "task_id": "task-run_abcdef12-000-governance.define_done",
+        "task_type": "governance.define_done",
+        "trace_id": "00000000000000000000000000000001"
+      },
+      {
+        "agent_id": "neo",
+        "causation_id": "task-run_abcdef12-000-governance.define_done",
+        "correlation_id": "00000000000000000000000000000000",
+        "input_keys": [
+          "prd",
+          "resolved_config",
+          "config_hash",
+          "agent_model",
+          "agent_config_overrides",
+          "profile_roles",
+          "role_index",
+          "role_total",
+          "subtask_focus",
+          "subtask_description",
+          "expected_artifacts",
+          "subtask_index",
+          "acceptance_criteria"
+        ],
+        "inputs": {
+          "acceptance_criteria": [
+            "TypedCheck(check='fill_slot_signature', params={'file': 'backend/routes.py', 'routes': [{'route': 'POST /runs', 'function': 'post_runs', 'params': ['payload'], 'response_model': 'Run'}, {'route': 'GET /runs', 'function': 'get_runs', 'params': [], 'response_model': 'list[Run]'}, {'route': 'GET /runs/{run_id}', 'function': 'get_runs_run_id', 'params': ['run_id'], 'response_model': 'Run'}, {'route': 'POST /runs/{run_id}/join', 'function': 'post_runs_run_id_join', 'params': ['run_id', 'payload'], 'response_model': 'Run'}, {'route': 'POST /runs/{run_id}/leave', 'function': 'post_runs_run_id_leave', 'params': ['run_id', 'payload'], 'response_model': 'Run'}]}, severity='error', description='', id='fill-slot-signature:backend/routes.py')"
+          ],
+          "agent_config_overrides": {},
+          "agent_model": "m",
+          "config_hash": "confhash",
+          "expected_artifacts": [
+            "backend/routes.py"
+          ],
+          "prd": "PRD-CONTENT",
+          "profile_roles": [
+            "builder",
+            "data",
+            "dev",
+            "lead",
+            "qa",
+            "strat"
+          ],
+          "resolved_config": {
+            "build_profile": "fullstack_fastapi_react",
+            "campaign_proposal": {
+              "accepted_cycle_id": "cyc_accepted",
+              "baseline_manifest": "version: 1\nkind: interface_manifest\nproject_id: group_run\nsource_prd: \"PRD: group_run (1-Hour Cycle MVP+) v0.5\"\nstack: fullstack_fastapi_react\nscope: >\n  Full-stack CRUD for group run events with participant join/leave via an\n  in-memory store. Deliberately excludes authentication, persistent database,\n  real-time updates, external service integration, and UI component libraries.\n\nentities:\n  - name: Run\n    fields:\n      - { name: id,                type: string,  required: true,  generated: true }\n      - { name: title,             type: string,  required: true }\n      - { name: datetime,          type: string,  required: true }\n      - { name: location,          type: string,  required: true }\n      - { name: distance,          type: string,  required: false }\n      - { name: pace,              type: string,  required: false }\n      - { name: notes,             type: string,  required: false }\n      - { name: participants,      type: \"list[string]\", required: true, default: [] }\n      - { name: participant_count, type: integer, required: true }\n\napi:\n  base_path: /api\n  request_shapes:\n    RunCreate:\n      required: [title, datetime, location]\n      optional: [distance, pace, notes]\n    JoinIn:\n      required: [name]\n    LeaveIn:\n      required: [name]\n  endpoints:\n    - method: POST\n      path: /runs\n      summary: create a new run event\n      request: RunCreate\n      response: Run\n      success_status: 201\n      errors: [validation_error]\n    - method: GET\n      path: /runs\n      summary: list all runs\n      response: \"list[Run]\"\n    - method: GET\n      path: \"/runs/{run_id}\"\n      summary: get run details and participants\n      response: Run\n      errors: [run_not_found]\n    - method: POST\n      path: \"/runs/{run_id}/join\"\n      summary: join a run with a participant name\n      request: JoinIn\n      response: Run\n      errors: [validation_error, run_not_found, duplicate_participant]\n    - method: POST\n      path: \"/runs/{run_id}/leave\"\n      summary: remove a participant from a run by name\n      request: LeaveIn\n      response: Run\n      errors: [validation_error, run_not_found, participant_not_found]\n  error_contract:\n    shape: '{\"error\": {\"code\": \"...\", \"message\": \"...\"}}'\n    codes:\n      validation_error:       { http: 422 }\n      run_not_found:          { http: 404 }\n      duplicate_participant:  { http: 409 }\n      participant_not_found:  { http: 404 }\n\nfrontend:\n  framework: react_vite\n  routes:\n    - path: /\n      view: RunListView\n      purpose: display list of runs with title, datetime, location, participant count; link to create and detail\n      testids:\n        - run-list-view\n        - run-list\n        - run-row\n        - create-run-link\n        - empty-state\n    - path: /runs/new\n      view: RunCreateView\n      purpose: form to create a run with required and optional fields; redirect to list on success\n      testids:\n        - run-create-view\n        - run-create-form\n        - run-create-title\n        - run-create-datetime\n        - run-create-location\n        - run-create-distance\n        - run-create-pace\n        - run-create-notes\n        - run-create-submit\n        - run-create-error\n    - path: /runs/:run_id\n      view: RunDetailView\n      purpose: show run details, participant list, join form, and leave form\n      testids:\n        - run-detail-view\n        - run-detail-title\n        - run-detail-participants\n        - run-detail-participant\n        - run-detail-participant-count\n        - run-detail-join-form\n        - run-detail-join-name\n        - run-detail-join-submit\n        - run-detail-leave-form\n        - run-detail-leave-name\n        - run-detail-leave-submit\n        - run-detail-error\n        - run-detail-not-found\n\npersistence: in_memory\n\ndecisions:\n  - id: duplicate-name-case-sensitivity\n    choice: \"Participant name uniqueness is case-insensitive (\\\"Alice\\\" and \\\"alice\\\" are the same participant)\"\n    warrant: \"PRD \u00a75.4 \u2014 'default recommendation: case-insensitive uniqueness'\"\n  - id: leave-unknown-participant\n    choice: \"Leaving a run with a name not on the run returns 404 PARTICIPANT_NOT_FOUND\"\n    warrant: \"PRD \u00a75.5 \u2014 'backend returns clear error'; 404 is the natural semantic for a missing resource\"\n  - id: datetime-storage\n    choice: \"The datetime field is stored and returned as an opaque string; no server-side parsing or validation of format\"\n    warrant: \"PRD \u00a75.1 \u2014 'string input acceptable for MVP'; sorting is expansion scope (\u00a74.1 T1.2)\"\n  - id: run-id-generation\n    choice: \"Run id is a UUID string generated server-side at creation\"\n    warrant: \"PRD \u00a75.1 \u2014 'created run with generated id'; UUID avoids counter state in the in-memory store\"\n  - id: participant-count-derivation\n    choice: \"participant_count is derived as len(participants) in the response; not independently stored\"\n    warrant: \"PRD \u00a75.2 and \u00a75.3 require displaying participant count; including it in the response avoids client-side array-length computation in three views\"\n  - id: leave-via-post-body\n    choice: \"Leave uses POST /runs/{run_id}/leave with a JSON body {name} rather than DELETE with the name in the URL path\"\n    warrant: \"Technical design \u00a72.2; avoids URL-encoding issues with names containing spaces or special characters; keeps the request shape symmetric with join\"\n\nprovenance:\n  mode: authored\n  cycle_id: cyc_7a4b7a6fbf0e\n  task_id: task-run_f0424d18-003-development.author_manifest\n  attempts: 1\n  revisions: []\n",
+              "proposal_id": "prop_cap"
+            },
+            "implementation_plan": true
+          },
+          "role_index": 1,
+          "role_total": 1,
+          "subtask_description": "implement the routes fill slot",
+          "subtask_focus": "routes",
+          "subtask_index": 0
+        },
+        "metadata": {
+          "role": "dev",
+          "routing_reason": "builder_role_present",
+          "step_index": 1
+        },
+        "pulse_id": "00000000000000000000000000000004",
+        "span_id": "00000000000000000000000000000005",
+        "task_id": "task-run_abcdef12-m000-development.develop",
+        "task_type": "development.develop",
+        "trace_id": "00000000000000000000000000000001"
+      },
+      {
+        "agent_id": "bob",
+        "causation_id": "task-run_abcdef12-m000-development.develop",
+        "correlation_id": "00000000000000000000000000000000",
+        "input_keys": [
+          "prd",
+          "resolved_config",
+          "config_hash",
+          "agent_model",
+          "agent_config_overrides",
+          "profile_roles",
+          "role_index",
+          "role_total"
+        ],
+        "inputs": {
+          "agent_config_overrides": {},
+          "agent_model": "m",
+          "config_hash": "confhash",
+          "prd": "PRD-CONTENT",
+          "profile_roles": [
+            "builder",
+            "data",
+            "dev",
+            "lead",
+            "qa",
+            "strat"
+          ],
+          "resolved_config": {
+            "build_profile": "fullstack_fastapi_react",
+            "campaign_proposal": {
+              "accepted_cycle_id": "cyc_accepted",
+              "baseline_manifest": "version: 1\nkind: interface_manifest\nproject_id: group_run\nsource_prd: \"PRD: group_run (1-Hour Cycle MVP+) v0.5\"\nstack: fullstack_fastapi_react\nscope: >\n  Full-stack CRUD for group run events with participant join/leave via an\n  in-memory store. Deliberately excludes authentication, persistent database,\n  real-time updates, external service integration, and UI component libraries.\n\nentities:\n  - name: Run\n    fields:\n      - { name: id,                type: string,  required: true,  generated: true }\n      - { name: title,             type: string,  required: true }\n      - { name: datetime,          type: string,  required: true }\n      - { name: location,          type: string,  required: true }\n      - { name: distance,          type: string,  required: false }\n      - { name: pace,              type: string,  required: false }\n      - { name: notes,             type: string,  required: false }\n      - { name: participants,      type: \"list[string]\", required: true, default: [] }\n      - { name: participant_count, type: integer, required: true }\n\napi:\n  base_path: /api\n  request_shapes:\n    RunCreate:\n      required: [title, datetime, location]\n      optional: [distance, pace, notes]\n    JoinIn:\n      required: [name]\n    LeaveIn:\n      required: [name]\n  endpoints:\n    - method: POST\n      path: /runs\n      summary: create a new run event\n      request: RunCreate\n      response: Run\n      success_status: 201\n      errors: [validation_error]\n    - method: GET\n      path: /runs\n      summary: list all runs\n      response: \"list[Run]\"\n    - method: GET\n      path: \"/runs/{run_id}\"\n      summary: get run details and participants\n      response: Run\n      errors: [run_not_found]\n    - method: POST\n      path: \"/runs/{run_id}/join\"\n      summary: join a run with a participant name\n      request: JoinIn\n      response: Run\n      errors: [validation_error, run_not_found, duplicate_participant]\n    - method: POST\n      path: \"/runs/{run_id}/leave\"\n      summary: remove a participant from a run by name\n      request: LeaveIn\n      response: Run\n      errors: [validation_error, run_not_found, participant_not_found]\n  error_contract:\n    shape: '{\"error\": {\"code\": \"...\", \"message\": \"...\"}}'\n    codes:\n      validation_error:       { http: 422 }\n      run_not_found:          { http: 404 }\n      duplicate_participant:  { http: 409 }\n      participant_not_found:  { http: 404 }\n\nfrontend:\n  framework: react_vite\n  routes:\n    - path: /\n      view: RunListView\n      purpose: display list of runs with title, datetime, location, participant count; link to create and detail\n      testids:\n        - run-list-view\n        - run-list\n        - run-row\n        - create-run-link\n        - empty-state\n    - path: /runs/new\n      view: RunCreateView\n      purpose: form to create a run with required and optional fields; redirect to list on success\n      testids:\n        - run-create-view\n        - run-create-form\n        - run-create-title\n        - run-create-datetime\n        - run-create-location\n        - run-create-distance\n        - run-create-pace\n        - run-create-notes\n        - run-create-submit\n        - run-create-error\n    - path: /runs/:run_id\n      view: RunDetailView\n      purpose: show run details, participant list, join form, and leave form\n      testids:\n        - run-detail-view\n        - run-detail-title\n        - run-detail-participants\n        - run-detail-participant\n        - run-detail-participant-count\n        - run-detail-join-form\n        - run-detail-join-name\n        - run-detail-join-submit\n        - run-detail-leave-form\n        - run-detail-leave-name\n        - run-detail-leave-submit\n        - run-detail-error\n        - run-detail-not-found\n\npersistence: in_memory\n\ndecisions:\n  - id: duplicate-name-case-sensitivity\n    choice: \"Participant name uniqueness is case-insensitive (\\\"Alice\\\" and \\\"alice\\\" are the same participant)\"\n    warrant: \"PRD \u00a75.4 \u2014 'default recommendation: case-insensitive uniqueness'\"\n  - id: leave-unknown-participant\n    choice: \"Leaving a run with a name not on the run returns 404 PARTICIPANT_NOT_FOUND\"\n    warrant: \"PRD \u00a75.5 \u2014 'backend returns clear error'; 404 is the natural semantic for a missing resource\"\n  - id: datetime-storage\n    choice: \"The datetime field is stored and returned as an opaque string; no server-side parsing or validation of format\"\n    warrant: \"PRD \u00a75.1 \u2014 'string input acceptable for MVP'; sorting is expansion scope (\u00a74.1 T1.2)\"\n  - id: run-id-generation\n    choice: \"Run id is a UUID string generated server-side at creation\"\n    warrant: \"PRD \u00a75.1 \u2014 'created run with generated id'; UUID avoids counter state in the in-memory store\"\n  - id: participant-count-derivation\n    choice: \"participant_count is derived as len(participants) in the response; not independently stored\"\n    warrant: \"PRD \u00a75.2 and \u00a75.3 require displaying participant count; including it in the response avoids client-side array-length computation in three views\"\n  - id: leave-via-post-body\n    choice: \"Leave uses POST /runs/{run_id}/leave with a JSON body {name} rather than DELETE with the name in the URL path\"\n    warrant: \"Technical design \u00a72.2; avoids URL-encoding issues with names containing spaces or special characters; keeps the request shape symmetric with join\"\n\nprovenance:\n  mode: authored\n  cycle_id: cyc_7a4b7a6fbf0e\n  task_id: task-run_f0424d18-003-development.author_manifest\n  attempts: 1\n  revisions: []\n",
+              "proposal_id": "prop_cap"
+            },
+            "implementation_plan": true
+          },
+          "role_index": 1,
+          "role_total": 1
+        },
+        "metadata": {
+          "role": "builder",
+          "routing_reason": "builder_role_present",
+          "step_index": 2
+        },
+        "pulse_id": "00000000000000000000000000000006",
+        "span_id": "00000000000000000000000000000007",
+        "task_id": "task-run_abcdef12-002-builder.assemble",
+        "task_type": "builder.assemble",
+        "trace_id": "00000000000000000000000000000001"
+      },
+      {
+        "agent_id": "eve",
+        "causation_id": "task-run_abcdef12-002-builder.assemble",
+        "correlation_id": "00000000000000000000000000000000",
+        "input_keys": [
+          "prd",
+          "resolved_config",
+          "config_hash",
+          "agent_model",
+          "agent_config_overrides",
+          "profile_roles",
+          "role_index",
+          "role_total",
+          "subtask_focus",
+          "subtask_description",
+          "expected_artifacts",
+          "subtask_index",
+          "implementation_artifacts",
+          "acceptance_criteria",
+          "increment_test_scope"
+        ],
+        "inputs": {
+          "acceptance_criteria": [],
+          "agent_config_overrides": {},
+          "agent_model": "m",
+          "config_hash": "confhash",
+          "expected_artifacts": [
+            "backend/tests/test_items.py"
+          ],
+          "implementation_artifacts": [
+            "backend/routes.py"
+          ],
+          "increment_test_scope": {
+            "criteria": [
+              {
+                "id": "C1",
+                "observable": "the 201 response body carries capacity: 2",
+                "statement": "A run created with capacity 2 is returned with capacity 2"
+              },
+              {
+                "id": "C2",
+                "observable": "409 with error code capacity_exceeded when the run's participants already fill its capacity",
+                "statement": "Joining a full run is refused"
+              },
+              {
+                "id": "C3",
+                "observable": "capacity-status renders '2 / 2 joined' for a full run of capacity 2",
+                "statement": "The run's page shows places taken of capacity"
+              }
+            ],
+            "frozen": []
+          },
+          "prd": "PRD-CONTENT",
+          "profile_roles": [
+            "builder",
+            "data",
+            "dev",
+            "lead",
+            "qa",
+            "strat"
+          ],
+          "resolved_config": {
+            "build_profile": "fullstack_fastapi_react",
+            "campaign_proposal": {
+              "accepted_cycle_id": "cyc_accepted",
+              "baseline_manifest": "version: 1\nkind: interface_manifest\nproject_id: group_run\nsource_prd: \"PRD: group_run (1-Hour Cycle MVP+) v0.5\"\nstack: fullstack_fastapi_react\nscope: >\n  Full-stack CRUD for group run events with participant join/leave via an\n  in-memory store. Deliberately excludes authentication, persistent database,\n  real-time updates, external service integration, and UI component libraries.\n\nentities:\n  - name: Run\n    fields:\n      - { name: id,                type: string,  required: true,  generated: true }\n      - { name: title,             type: string,  required: true }\n      - { name: datetime,          type: string,  required: true }\n      - { name: location,          type: string,  required: true }\n      - { name: distance,          type: string,  required: false }\n      - { name: pace,              type: string,  required: false }\n      - { name: notes,             type: string,  required: false }\n      - { name: participants,      type: \"list[string]\", required: true, default: [] }\n      - { name: participant_count, type: integer, required: true }\n\napi:\n  base_path: /api\n  request_shapes:\n    RunCreate:\n      required: [title, datetime, location]\n      optional: [distance, pace, notes]\n    JoinIn:\n      required: [name]\n    LeaveIn:\n      required: [name]\n  endpoints:\n    - method: POST\n      path: /runs\n      summary: create a new run event\n      request: RunCreate\n      response: Run\n      success_status: 201\n      errors: [validation_error]\n    - method: GET\n      path: /runs\n      summary: list all runs\n      response: \"list[Run]\"\n    - method: GET\n      path: \"/runs/{run_id}\"\n      summary: get run details and participants\n      response: Run\n      errors: [run_not_found]\n    - method: POST\n      path: \"/runs/{run_id}/join\"\n      summary: join a run with a participant name\n      request: JoinIn\n      response: Run\n      errors: [validation_error, run_not_found, duplicate_participant]\n    - method: POST\n      path: \"/runs/{run_id}/leave\"\n      summary: remove a participant from a run by name\n      request: LeaveIn\n      response: Run\n      errors: [validation_error, run_not_found, participant_not_found]\n  error_contract:\n    shape: '{\"error\": {\"code\": \"...\", \"message\": \"...\"}}'\n    codes:\n      validation_error:       { http: 422 }\n      run_not_found:          { http: 404 }\n      duplicate_participant:  { http: 409 }\n      participant_not_found:  { http: 404 }\n\nfrontend:\n  framework: react_vite\n  routes:\n    - path: /\n      view: RunListView\n      purpose: display list of runs with title, datetime, location, participant count; link to create and detail\n      testids:\n        - run-list-view\n        - run-list\n        - run-row\n        - create-run-link\n        - empty-state\n    - path: /runs/new\n      view: RunCreateView\n      purpose: form to create a run with required and optional fields; redirect to list on success\n      testids:\n        - run-create-view\n        - run-create-form\n        - run-create-title\n        - run-create-datetime\n        - run-create-location\n        - run-create-distance\n        - run-create-pace\n        - run-create-notes\n        - run-create-submit\n        - run-create-error\n    - path: /runs/:run_id\n      view: RunDetailView\n      purpose: show run details, participant list, join form, and leave form\n      testids:\n        - run-detail-view\n        - run-detail-title\n        - run-detail-participants\n        - run-detail-participant\n        - run-detail-participant-count\n        - run-detail-join-form\n        - run-detail-join-name\n        - run-detail-join-submit\n        - run-detail-leave-form\n        - run-detail-leave-name\n        - run-detail-leave-submit\n        - run-detail-error\n        - run-detail-not-found\n\npersistence: in_memory\n\ndecisions:\n  - id: duplicate-name-case-sensitivity\n    choice: \"Participant name uniqueness is case-insensitive (\\\"Alice\\\" and \\\"alice\\\" are the same participant)\"\n    warrant: \"PRD \u00a75.4 \u2014 'default recommendation: case-insensitive uniqueness'\"\n  - id: leave-unknown-participant\n    choice: \"Leaving a run with a name not on the run returns 404 PARTICIPANT_NOT_FOUND\"\n    warrant: \"PRD \u00a75.5 \u2014 'backend returns clear error'; 404 is the natural semantic for a missing resource\"\n  - id: datetime-storage\n    choice: \"The datetime field is stored and returned as an opaque string; no server-side parsing or validation of format\"\n    warrant: \"PRD \u00a75.1 \u2014 'string input acceptable for MVP'; sorting is expansion scope (\u00a74.1 T1.2)\"\n  - id: run-id-generation\n    choice: \"Run id is a UUID string generated server-side at creation\"\n    warrant: \"PRD \u00a75.1 \u2014 'created run with generated id'; UUID avoids counter state in the in-memory store\"\n  - id: participant-count-derivation\n    choice: \"participant_count is derived as len(participants) in the response; not independently stored\"\n    warrant: \"PRD \u00a75.2 and \u00a75.3 require displaying participant count; including it in the response avoids client-side array-length computation in three views\"\n  - id: leave-via-post-body\n    choice: \"Leave uses POST /runs/{run_id}/leave with a JSON body {name} rather than DELETE with the name in the URL path\"\n    warrant: \"Technical design \u00a72.2; avoids URL-encoding issues with names containing spaces or special characters; keeps the request shape symmetric with join\"\n\nprovenance:\n  mode: authored\n  cycle_id: cyc_7a4b7a6fbf0e\n  task_id: task-run_f0424d18-003-development.author_manifest\n  attempts: 1\n  revisions: []\n",
+              "proposal_id": "prop_cap"
+            },
+            "implementation_plan": true
+          },
+          "role_index": 1,
+          "role_total": 2,
+          "subtask_description": "author the API suite",
+          "subtask_focus": "suite",
+          "subtask_index": 1
+        },
+        "metadata": {
+          "role": "qa",
+          "routing_reason": "builder_role_present",
+          "step_index": 3
+        },
+        "pulse_id": "00000000000000000000000000000008",
+        "span_id": "00000000000000000000000000000009",
+        "task_id": "task-run_abcdef12-m001-qa.test",
+        "task_type": "qa.test",
+        "trace_id": "00000000000000000000000000000001"
+      },
+      {
+        "agent_id": "eve",
+        "causation_id": "task-run_abcdef12-m001-qa.test",
+        "correlation_id": "00000000000000000000000000000000",
+        "input_keys": [
+          "prd",
+          "resolved_config",
+          "config_hash",
+          "agent_model",
+          "agent_config_overrides",
+          "profile_roles",
+          "role_index",
+          "role_total",
+          "increment_id",
+          "increment_criterion_files",
+          "increment_declared_routes",
+          "increment_frozen_criteria",
+          "increment_route_seeds",
+          "increment_retired_criteria",
+          "increment_replaced_criteria"
+        ],
+        "inputs": {
+          "agent_config_overrides": {},
+          "agent_model": "m",
+          "config_hash": "confhash",
+          "increment_criterion_files": [
+            {
+              "criterion_id": "C1",
+              "path": "backend/tests/criteria/test_C1.py"
+            },
+            {
+              "criterion_id": "C2",
+              "path": "backend/tests/criteria/test_C2.py"
+            },
+            {
+              "criterion_id": "C3",
+              "path": "frontend/src/__tests__/criteria/C3.test.jsx"
+            }
+          ],
+          "increment_declared_routes": {
+            "/": [
+              "run-list-view",
+              "run-list",
+              "run-row",
+              "create-run-link",
+              "empty-state"
+            ],
+            "/runs/:run_id": [
+              "run-detail-view",
+              "run-detail-title",
+              "run-detail-participants",
+              "run-detail-participant",
+              "run-detail-participant-count",
+              "run-detail-join-form",
+              "run-detail-join-name",
+              "run-detail-join-submit",
+              "run-detail-leave-form",
+              "run-detail-leave-name",
+              "run-detail-leave-submit",
+              "run-detail-error",
+              "run-detail-not-found",
+              "capacity-status"
+            ],
+            "/runs/new": [
+              "run-create-view",
+              "run-create-form",
+              "run-create-title",
+              "run-create-datetime",
+              "run-create-location",
+              "run-create-distance",
+              "run-create-pace",
+              "run-create-notes",
+              "run-create-submit",
+              "run-create-error"
+            ]
+          },
+          "increment_frozen_criteria": [],
+          "increment_id": "prop_cap",
+          "increment_replaced_criteria": [],
+          "increment_retired_criteria": [],
+          "increment_route_seeds": {
+            "/runs/:run_id": {
+              "json": {
+                "datetime": "2026-08-01T08:00:00",
+                "location": "sample",
+                "title": "sample"
+              },
+              "method": "POST",
+              "param": "run_id",
+              "path": "/runs",
+              "segment": ":run_id"
+            }
+          },
+          "prd": "PRD-CONTENT",
+          "profile_roles": [
+            "builder",
+            "data",
+            "dev",
+            "lead",
+            "qa",
+            "strat"
+          ],
+          "resolved_config": {
+            "build_profile": "fullstack_fastapi_react",
+            "campaign_proposal": {
+              "accepted_cycle_id": "cyc_accepted",
+              "baseline_manifest": "version: 1\nkind: interface_manifest\nproject_id: group_run\nsource_prd: \"PRD: group_run (1-Hour Cycle MVP+) v0.5\"\nstack: fullstack_fastapi_react\nscope: >\n  Full-stack CRUD for group run events with participant join/leave via an\n  in-memory store. Deliberately excludes authentication, persistent database,\n  real-time updates, external service integration, and UI component libraries.\n\nentities:\n  - name: Run\n    fields:\n      - { name: id,                type: string,  required: true,  generated: true }\n      - { name: title,             type: string,  required: true }\n      - { name: datetime,          type: string,  required: true }\n      - { name: location,          type: string,  required: true }\n      - { name: distance,          type: string,  required: false }\n      - { name: pace,              type: string,  required: false }\n      - { name: notes,             type: string,  required: false }\n      - { name: participants,      type: \"list[string]\", required: true, default: [] }\n      - { name: participant_count, type: integer, required: true }\n\napi:\n  base_path: /api\n  request_shapes:\n    RunCreate:\n      required: [title, datetime, location]\n      optional: [distance, pace, notes]\n    JoinIn:\n      required: [name]\n    LeaveIn:\n      required: [name]\n  endpoints:\n    - method: POST\n      path: /runs\n      summary: create a new run event\n      request: RunCreate\n      response: Run\n      success_status: 201\n      errors: [validation_error]\n    - method: GET\n      path: /runs\n      summary: list all runs\n      response: \"list[Run]\"\n    - method: GET\n      path: \"/runs/{run_id}\"\n      summary: get run details and participants\n      response: Run\n      errors: [run_not_found]\n    - method: POST\n      path: \"/runs/{run_id}/join\"\n      summary: join a run with a participant name\n      request: JoinIn\n      response: Run\n      errors: [validation_error, run_not_found, duplicate_participant]\n    - method: POST\n      path: \"/runs/{run_id}/leave\"\n      summary: remove a participant from a run by name\n      request: LeaveIn\n      response: Run\n      errors: [validation_error, run_not_found, participant_not_found]\n  error_contract:\n    shape: '{\"error\": {\"code\": \"...\", \"message\": \"...\"}}'\n    codes:\n      validation_error:       { http: 422 }\n      run_not_found:          { http: 404 }\n      duplicate_participant:  { http: 409 }\n      participant_not_found:  { http: 404 }\n\nfrontend:\n  framework: react_vite\n  routes:\n    - path: /\n      view: RunListView\n      purpose: display list of runs with title, datetime, location, participant count; link to create and detail\n      testids:\n        - run-list-view\n        - run-list\n        - run-row\n        - create-run-link\n        - empty-state\n    - path: /runs/new\n      view: RunCreateView\n      purpose: form to create a run with required and optional fields; redirect to list on success\n      testids:\n        - run-create-view\n        - run-create-form\n        - run-create-title\n        - run-create-datetime\n        - run-create-location\n        - run-create-distance\n        - run-create-pace\n        - run-create-notes\n        - run-create-submit\n        - run-create-error\n    - path: /runs/:run_id\n      view: RunDetailView\n      purpose: show run details, participant list, join form, and leave form\n      testids:\n        - run-detail-view\n        - run-detail-title\n        - run-detail-participants\n        - run-detail-participant\n        - run-detail-participant-count\n        - run-detail-join-form\n        - run-detail-join-name\n        - run-detail-join-submit\n        - run-detail-leave-form\n        - run-detail-leave-name\n        - run-detail-leave-submit\n        - run-detail-error\n        - run-detail-not-found\n\npersistence: in_memory\n\ndecisions:\n  - id: duplicate-name-case-sensitivity\n    choice: \"Participant name uniqueness is case-insensitive (\\\"Alice\\\" and \\\"alice\\\" are the same participant)\"\n    warrant: \"PRD \u00a75.4 \u2014 'default recommendation: case-insensitive uniqueness'\"\n  - id: leave-unknown-participant\n    choice: \"Leaving a run with a name not on the run returns 404 PARTICIPANT_NOT_FOUND\"\n    warrant: \"PRD \u00a75.5 \u2014 'backend returns clear error'; 404 is the natural semantic for a missing resource\"\n  - id: datetime-storage\n    choice: \"The datetime field is stored and returned as an opaque string; no server-side parsing or validation of format\"\n    warrant: \"PRD \u00a75.1 \u2014 'string input acceptable for MVP'; sorting is expansion scope (\u00a74.1 T1.2)\"\n  - id: run-id-generation\n    choice: \"Run id is a UUID string generated server-side at creation\"\n    warrant: \"PRD \u00a75.1 \u2014 'created run with generated id'; UUID avoids counter state in the in-memory store\"\n  - id: participant-count-derivation\n    choice: \"participant_count is derived as len(participants) in the response; not independently stored\"\n    warrant: \"PRD \u00a75.2 and \u00a75.3 require displaying participant count; including it in the response avoids client-side array-length computation in three views\"\n  - id: leave-via-post-body\n    choice: \"Leave uses POST /runs/{run_id}/leave with a JSON body {name} rather than DELETE with the name in the URL path\"\n    warrant: \"Technical design \u00a72.2; avoids URL-encoding issues with names containing spaces or special characters; keeps the request shape symmetric with join\"\n\nprovenance:\n  mode: authored\n  cycle_id: cyc_7a4b7a6fbf0e\n  task_id: task-run_f0424d18-003-development.author_manifest\n  attempts: 1\n  revisions: []\n",
+              "proposal_id": "prop_cap"
+            },
+            "implementation_plan": true
+          },
+          "role_index": 2,
+          "role_total": 2
+        },
+        "metadata": {
+          "role": "qa",
+          "step_index": 4
+        },
+        "pulse_id": "00000000000000000000000000000010",
+        "span_id": "00000000000000000000000000000011",
+        "task_id": "task-run_abcdef12-004-qa.evaluate_increment",
+        "task_type": "qa.evaluate_increment",
+        "trace_id": "00000000000000000000000000000001"
+      }
+    ],
+    "raised": null
+  },
+  "increment_without_its_change_request": {
+    "envelopes": null,
+    "raised": "CycleError: run run_abcdef123456 (framing) of an increment has no approved change request (SIP-0109 \u00a77.3)"
+  }
+}
