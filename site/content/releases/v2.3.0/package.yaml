@@ -1780,3 +1780,89 @@ showcase:
     build took two correction rounds, the first kept as progress, which the flow-run
     timeline shows. No roll of the passing counted set had a correction round to show'
   role: shakeout
+records:
+  asset: squadops-2.3.0-records.tar.gz
+  sha256: 5983dfb98b01553bd54e6933b43a9dcfdb40f62edf1f0663c0fb8aecc7ce7747
+  files: 1323
+  campaigns:
+  - cmp_27dba15dea9a
+  - cmp_391cc2d3cad6
+  - cmp_3f67e906eb2d
+  - cmp_62e17d6d4773
+  - cmp_7adb83830ece
+  - cmp_a47189e4e061
+  - cmp_a9a15dd33fe0
+  - cmp_b69e3002b760
+  - cmp_b6d8305f2729
+  - cmp_cda1b0d177b7
+  - cmp_ed8000dfb94f
+  - cmp_f59a69f07bc0
+  - cmp_fd71a56a9142
+  engine_records:
+  - var/engine_replay/2026-10-11-overnight
+  - var/engine_replay/2026-10-12-held-out
+  - var/engine_switch/20261012T015806Z-status.jsonl
+  - var/engine_switch/20261012T015816Z-watchdog.jsonl
+  - var/engine_switch/20261012T035448Z-to-tensorfold.jsonl
+  - var/engine_switch/20261012T040023Z-to-ollama.jsonl
+  - var/engine_switch/20261012T040023Z-to-ollama.tensorfold.log
+  - var/engine_switch/20261012T040051Z-to-tensorfold.jsonl
+  - var/engine_switch/20261012T040051Z-to-tensorfold.tensorfold.log
+  - var/engine_switch/20261012T040124Z-to-tensorfold.jsonl
+  - var/engine_switch/20261012T041234Z-to-tensorfold.jsonl
+  - var/engine_switch/20261012T041234Z-to-tensorfold.tensorfold.log
+  - var/engine_switch/20261012T045334Z-to-tensorfold.jsonl
+  - var/engine_switch/20261012T045334Z-to-tensorfold.tensorfold.log
+  - var/engine_switch/20261012T052555Z-to-tensorfold.jsonl
+  - var/engine_switch/20261012T052555Z-to-tensorfold.tensorfold.log
+  - var/engine_switch/20261012T055223Z-to-tensorfold.jsonl
+  - var/engine_switch/20261012T055223Z-to-tensorfold.tensorfold.log
+  - var/engine_switch/20261012T061910Z-to-tensorfold.jsonl
+  - var/engine_switch/20261012T061910Z-to-tensorfold.tensorfold.log
+  - var/engine_switch/20261012T064652Z-to-tensorfold.jsonl
+  - var/engine_switch/20261012T064652Z-to-tensorfold.tensorfold.log
+  - var/engine_switch/20261012T071307Z-to-tensorfold.jsonl
+  - var/engine_switch/20261012T071307Z-to-tensorfold.tensorfold.log
+  - var/engine_switch/20261012T074436Z-to-tensorfold.jsonl
+  - var/engine_switch/20261012T074436Z-to-tensorfold.tensorfold.log
+  - var/engine_switch/20261012T081611Z-to-ollama.jsonl
+  - var/engine_switch/20261012T081611Z-to-ollama.tensorfold.log
+  - var/engine_switch/20261012T232201Z-to-tensorfold.jsonl
+  - var/engine_switch/20261013T034304Z-to-ollama.jsonl
+  - var/engine_switch/20261013T034304Z-to-ollama.tensorfold.log
+  - var/engine_switch/20261013T131710Z-to-tensorfold.jsonl
+  - var/engine_switch/20261013T131805Z-to-ollama.jsonl
+  - var/engine_switch/20261013T131805Z-to-ollama.tensorfold.log
+  - var/engine_switch/20261013T142010Z-to-tensorfold.jsonl
+  - var/engine_switch/20261013T151720Z-to-ollama.jsonl
+  - var/engine_switch/20261013T151720Z-to-ollama.tensorfold.log
+  - var/engine_switch/20261013T151824Z-to-ollama.jsonl
+  - var/engine_switch/20261013T152249Z-to-ollama.jsonl
+  - var/engine_switch/20261013T162103Z-to-tensorfold.jsonl
+  - var/engine_switch/20261013T164817Z-to-ollama.jsonl
+  - var/engine_switch/20261013T164817Z-to-ollama.tensorfold.log
+  - var/engine_switch/20261013T174344Z-to-tensorfold.jsonl
+  - var/engine_switch/20261013T180926Z-to-ollama.jsonl
+  - var/engine_switch/20261013T180926Z-to-ollama.tensorfold.log
+  - var/engine_switch/20261013T190841Z-to-tensorfold.jsonl
+  - var/engine_switch/20261013T193811Z-to-ollama.jsonl
+  - var/engine_switch/20261013T193811Z-to-ollama.tensorfold.log
+  - var/engine_switch/20261013T203256Z-to-tensorfold.jsonl
+  - var/engine_switch/20261013T211405Z-to-ollama.jsonl
+  - var/engine_switch/20261013T211405Z-to-ollama.tensorfold.log
+  - var/engine_switch/20261013T234741Z-status.jsonl
+  - var/engine_switch/20261014T000032Z-watchdog.jsonl
+  - var/engine_switch/20261014T000046Z-to-tensorfold.jsonl
+  - var/engine_switch/20261014T123515Z-status.jsonl
+  - var/engine_switch/20261014T144613Z-status.jsonl
+  - var/engine_switch/20261014T162120Z-status.jsonl
+  - var/engine_switch/20261014T200033Z-status.jsonl
+  bytes: 18426726
+  attached_at: '2026-10-16T17:31:32Z'
+  scanned:
+    secret_values: 68
+    patterns:
+    - langfuse key
+    - api key (sk-)
+    - jwt
+    - private key
