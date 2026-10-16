@@ -368,8 +368,6 @@ class _CheckpointProgress:
 class _Routing:
     """SIP-0079 Phase 3 outcome-routing state."""
 
-    #: Reset on every success; the fail-fast counter.
-    consecutive_failures: int = 0
     #: Per-task attempt count — the D5 fallback table's input.
     task_attempt_counts: dict[str, int] = dataclasses.field(default_factory=dict)
 
@@ -500,10 +498,6 @@ class _TaskOutcomeRouter:
     interface_manifest: Any
     budget_guard: Callable[[], None]
     ledger: RunLedger
-    #: The run's failure count when the router is built, before the task's first dispatch. Every
-    #: routing decision of this task is handed this value, not a live one (#2348: nothing raises
-    #: the count, and nothing reads it).
-    consecutive_failures: int
     #: SIP-0096 §6.4 (Phase 2): holds the latest failed result so the abort path — where the
     #: correction protocol raises from *inside* dispatch_with_retry before it can return — can still
     #: record the failing task's verification evidence. The #276-class evidence (a failed/not-executed
@@ -512,7 +506,7 @@ class _TaskOutcomeRouter:
     #: (``patched_result_holder``), and ``settle`` takes it from here.
     held: dict[str, Any] = dataclasses.field(default_factory=dict)
 
-    async def next_action(self, result, _envelope, _enriched, _consecutive_failures, _holder):
+    async def next_action(self, result, _envelope, _enriched, _holder):
         executor, state, cycle, run_id = self.executor, self.state, self.cycle, self.run_id
         profile, flow_run_id, ledger = self.profile, self.flow_run_id, self.ledger
         interface_manifest, budget_guard = self.interface_manifest, self.budget_guard
@@ -523,7 +517,6 @@ class _TaskOutcomeRouter:
             cycle=cycle,
             run_id=run_id,
             task_attempt_counts=state.routing.task_attempt_counts,
-            consecutive_failures=_consecutive_failures,
             correction_counter=state.correction.counter,
             correction_signature_state=state.correction.signature_state,
             scaffold_enforcement_carry=state.ownership.enforcement_carry,
@@ -548,7 +541,6 @@ class _TaskOutcomeRouter:
     async def route(self, result):
         """The dispatcher's ``handle_task_outcome``: route one failed attempt."""
         _envelope, _enriched, _holder = self.envelope, self.enriched, self.held
-        _consecutive_failures = self.consecutive_failures
         _next_action, _record_task_evidence = self.next_action, self.record_evidence
         executor, state, cycle, run_id = self.executor, self.state, self.cycle, self.run_id
         interface_manifest, ledger = self.interface_manifest, self.ledger
@@ -569,7 +561,7 @@ class _TaskOutcomeRouter:
         _holder["result"] = result
         if ledger is not None:
             record_absent_emission(ledger, result, _envelope)
-        action = await _next_action(result, _envelope, _enriched, _consecutive_failures, _holder)
+        action = await _next_action(result, _envelope, _enriched, _holder)
         while action == KEEP_PROGRESS:
             # #1522: the repair cleared some of the round's failures and added none. It
             # becomes accepted state, and the retest's failure (the task run on the kept
@@ -588,9 +580,7 @@ class _TaskOutcomeRouter:
                 interface_manifest=interface_manifest,
             )
             _holder["result"] = result
-            action = await _next_action(
-                result, _envelope, _enriched, _consecutive_failures, _holder
-            )
+            action = await _next_action(result, _envelope, _enriched, _holder)
         if action == "continue":
             # SIP-0110 §0.2 (#2162): the re-dispatch is another authoring invocation. It asks
             # its unit's snapshot again and records its own exposure under its attempt;
@@ -623,11 +613,10 @@ class _TaskOutcomeRouter:
         ledger, _envelope = self.ledger, self.envelope
         record_task_evidence(ledger, task_result, _envelope.task_id)
 
-    def settle(self, task_succeeded: bool, result: TaskResult) -> TaskResult:
-        """After the dispatch: swap in a verified patch, record the final result, and on a failed
-        task reset the failure count (#1994, the extraction map's §4c step 3b)."""
+    def settle(self, result: TaskResult) -> TaskResult:
+        """After the dispatch: swap in a verified patch and record the final result (#1994, the
+        extraction map's §4c step 3b)."""
         _last_failed_result, _record_task_evidence = self.held, self.record_evidence
-        state = self.state
         # #389: a verified patch supersedes the failed result — swap before
         # recording/collection so the ledger and artifact store see the
         # corrected outputs (repaired artifacts + executed-passed checks).
@@ -639,14 +628,6 @@ class _TaskOutcomeRouter:
         # (break_correction) — records its final result here; the abort path
         # above is the only other producer, so no task is double-recorded.
         _record_task_evidence(result)
-
-        if not task_succeeded:
-            # #374: reaching here means the correction returned break_correction —
-            # i.e. governance chose "continue" (advance without repair). A `patch`
-            # now returns "continue", re-running the failed check inside
-            # dispatch_with_retry, so it never lands here. The correction count is
-            # bumped on the shared holder inside _handle_task_outcome, not here.
-            state.routing.consecutive_failures = 0
         return result
 
 
@@ -1967,7 +1948,6 @@ class DispatchedFlowExecutor(FlowExecutionPort):
             interface_manifest=interface_manifest,
             budget_guard=budget_guard,
             ledger=ledger,
-            consecutive_failures=state.routing.consecutive_failures,
         )
 
         try:
@@ -1987,7 +1967,7 @@ class DispatchedFlowExecutor(FlowExecutionPort):
             router.record_evidence(router.held.get("result"))
             raise
 
-        result = router.settle(task_succeeded, result)
+        result = router.settle(result)
 
         if not task_succeeded:
             # Correction "continue"/"patch" handled — this task is done for now, and the
@@ -2056,12 +2036,8 @@ class DispatchedFlowExecutor(FlowExecutionPort):
         ledger: RunLedger,
         pulse: _PulseContext,
     ) -> None:
-        """A successful task's tail: reset the failure count, collect and checkpoint, bind an
-        authored manifest, evaluate pulse boundaries, check the gate (#1994, the extraction
-        map's §4c step 3c)."""
-        # Reset consecutive failures on success
-        state.routing.consecutive_failures = 0
-
+        """A successful task's tail: collect and checkpoint, bind an authored manifest, evaluate
+        pulse boundaries, check the gate (#1994, the extraction map's §4c step 3c)."""
         # Collect artifacts + checkpoint after successful task; a checkpoint
         # that closes a role phase is a replay boundary and survives pruning
         # (SIP-0101 Slice 2)
@@ -3022,7 +2998,6 @@ class DispatchedFlowExecutor(FlowExecutionPort):
         cycle: Cycle,
         run_id: str,
         task_attempt_counts: dict[str, int],
-        consecutive_failures: int,
         correction_counter: dict[str, int],
         correction_signature_state: dict[str, Any],
         scaffold_enforcement_carry: list[str],

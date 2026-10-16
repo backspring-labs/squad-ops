@@ -355,7 +355,7 @@ class TestBlockedOutcome:
 
 
 class TestSuccessOutcome:
-    """SUCCESS → checkpoint saved, consecutive_failures reset."""
+    """SUCCESS → checkpoint saved."""
 
     async def test_success_checkpoints(self, executor, mock_queue, mock_registry):
         """Each successful task triggers a checkpoint save."""
@@ -2285,7 +2285,6 @@ class TestTheNextAttemptKeepsTheCasesThisOneExposed:
                 cycle=cycle,
                 run_id="run_6140efedaea6",
                 task_attempt_counts={},
-                consecutive_failures=0,
                 correction_counter={"n": 0},
                 correction_signature_state={},
                 scaffold_enforcement_carry=[],
@@ -2721,7 +2720,6 @@ class TestTheAcceptedRepairFactReachesTheCorrectionPolicy:
                 cycle=cycle,
                 run_id="run_1",
                 task_attempt_counts={},
-                consecutive_failures=0,
                 correction_counter={"n": 0},
                 correction_signature_state={},
                 scaffold_enforcement_carry=[],

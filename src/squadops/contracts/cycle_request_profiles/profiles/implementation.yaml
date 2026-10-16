@@ -23,7 +23,6 @@ defaults:
   build_tasks: true
   max_task_retries: 2
   max_task_seconds: 600
-  max_consecutive_failures: 3
   max_correction_attempts: 2
   time_budget_seconds: 7200
   implementation_pulse_checks:

@@ -350,6 +350,9 @@ Configurable via cycle request profile `applied_defaults`:
 | Max correction attempts per run | `max_correction_attempts` | 2 | Run aborted, transition to wrap-up |
 | Run time budget | `time_budget_seconds` | 7200 | Run halted, transition to wrap-up |
 
+> **Amended (§17, 2026-10-15):** `max_consecutive_failures` was never enforced and is removed (#2348).
+> `max_task_seconds` is not read either; that is #2353.
+
 These limits are stored in the Run Contract (§7.1) and enforced by the executor. The existing `generation_timeout` (SIP-0073) remains for LLM-level timeouts; `max_task_seconds` is the overall task envelope including dispatch and processing.
 
 ### 7.9 Implementation Task Steps
@@ -763,7 +766,7 @@ In addition to `PAUSED → RUNNING`, the lifecycle state machine allows `FAILED 
 6. **Correction protocol full path** — detect → `data.analyze_failure` → `governance.correction_decision` → plan delta stored → execution resumes (or aborts) based on decision.
 7. **All four correction paths** — `continue`, `patch`, `rewind`, `abort` are implemented and produce the expected behavior.
 8. **Plan delta append-only** — multiple plan deltas can accumulate during a run. Each is a separate artifact. Original plan is never mutated.
-9. **Bounded execution limits** — `max_task_retries`, `max_consecutive_failures`, `max_correction_attempts`, and `time_budget_seconds` are enforced by the executor.
+9. **Bounded execution limits** — `max_task_retries`, `max_consecutive_failures`, `max_correction_attempts`, and `time_budget_seconds` are enforced by the executor. *(Amended by §17: `max_consecutive_failures` is removed.)*
 10. **RUN_RESUMED event** — emitted when a run resumes from checkpoint.
 11. **CHECKPOINT_CREATED event** — emitted after each successful checkpoint save.
 12. **CORRECTION_* events** — `CORRECTION_INITIATED`, `CORRECTION_DECIDED`, `CORRECTION_COMPLETED` emitted at correct points.
@@ -797,6 +800,46 @@ Resolved: The existing LangFuse trace/span model (trace = cycle, span = task) re
 
 - `docs/ideas/IDEA-squadops-1.0-long-run-readiness.md` — run contract, correction protocol, checkpoint/resume, role capability baselines, first DGX Spark validation run requirements.
 - `docs/ideas/IDEA-prefect-cycle-event-bus-boundary.md` — layered ownership model, failure taxonomy, structured outcome contract, recovery as explicit workloads.
+
+---
+
+## 17. Post-implementation amendment (2026-10-15): `max_consecutive_failures` is removed (#2348)
+
+**What changed.** §7.8's third limit ("Max consecutive failures | `max_consecutive_failures` | 3 |
+Correction protocol triggered (§7.6)") and acceptance criterion 9's claim that the executor enforces it
+no longer describe main. The setting is removed:
+- from the profile schema's accepted keys, so a profile that still sets it is refused at load as an
+  unknown key;
+- from the `implementation` profile (§7.16);
+- from the executor, whose run state carried the count (`RunState.routing.consecutive_failures`) and
+  whose outcome handler took it as a parameter.
+
+§7.13's key list and §7.16's profile still show it, as the record of what was designed.
+
+**Why.** It was never enforced. The executor this SIP shipped (af657aed) raised the count on a semantic
+failure and reset it on success, but nothing compared it with the limit. The complexity refactor
+a4552343 (2026-03-28) dropped the increment, and from then on the count was 0 in every run. A setting an
+operator can change, to no effect and with no error, is worse than none.
+
+The threshold had nothing to trigger anyway. A single semantic failure goes straight to the correction
+protocol: `_handle_task_outcome` calls `_dispatch_correction_protocol` without counting earlier
+failures. Two limits bound a run that keeps failing:
+- `max_correction_attempts`: past it the run is aborted (`_dispatch_correction_protocol`);
+- `time_budget_seconds`: the run's time budget (`RunState.budget`, set in `_execute_sequential`).
+
+`max_task_retries` still bounds the retries of an unclassified failure (`_classify_unhandled_outcome`,
+the D5 fallback).
+
+**Not covered here.** §7.8's `max_task_seconds` row has the same gap. No code reads it, and a task's
+wait is the deploy's `dispatch.task_timeout` (`src/squadops/api/runtime/main.py`). That is #2353, which
+awaits the owner's ruling.
+
+**Evidence.** #2348: the count was set to 0 in two places and never raised or compared, and the
+parameter was never read. PR #2355 is the removal. The executor's characterization record
+(`tests/unit/cycles/goldens/execute_task_characterization.json`) changes only by the removed key.
+
+**Ruled by** the owner, 2026-10-15. Of #2348's two options, enforcing the limit or removing it, they
+chose removal.
 
 ---
 

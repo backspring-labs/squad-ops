@@ -13,7 +13,6 @@ class TestSIP0079SchemaKeys:
         [
             "max_task_retries",
             "max_task_seconds",
-            "max_consecutive_failures",
             "max_correction_attempts",
             "time_budget_seconds",
             "implementation_pulse_checks",
@@ -24,11 +23,12 @@ class TestSIP0079SchemaKeys:
         profile = CycleRequestProfile(name="test", defaults={"max_self_eval_passes": 0, key: 42})
         assert profile.defaults[key] == 42
 
-    def test_unknown_key_still_rejected(self):
-        with pytest.raises(ValueError, match="Unknown default keys"):
-            CycleRequestProfile(
-                name="test", defaults={"max_self_eval_passes": 0, "not_a_real_key": 1}
-            )
+    # `max_consecutive_failures` was declared and never enforced (#2348). A profile that still
+    # sets it is refused, so nobody believes it bounds the run.
+    @pytest.mark.parametrize("key", ["not_a_real_key", "max_consecutive_failures"])
+    def test_unknown_key_still_rejected(self, key):
+        with pytest.raises(ValueError, match=f"Unknown default keys: {{'{key}'}}"):
+            CycleRequestProfile(name="test", defaults={"max_self_eval_passes": 0, key: 1})
 
     def test_multiple_new_keys_together(self):
         profile = CycleRequestProfile(
@@ -36,7 +36,6 @@ class TestSIP0079SchemaKeys:
             defaults={
                 "max_self_eval_passes": 0,
                 "max_task_retries": 2,
-                "max_consecutive_failures": 3,
                 "max_correction_attempts": 2,
                 "time_budget_seconds": 7200,
             },

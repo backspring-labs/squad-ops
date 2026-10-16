@@ -221,7 +221,6 @@ class _Case:
     #: per routed attempt: an action, or ``("accept_patch", patched)``, or ``"abort"``
     actions: list[Any] = dataclasses.field(default_factory=list)
     kept: list[TaskResult] = dataclasses.field(default_factory=list)
-    consecutive_failures: int = 0
     pulse_checks: bool = False
     cadence_closed: bool = False
 
@@ -235,7 +234,6 @@ def _cases() -> dict[str, _Case]:
         "re_dispatched_then_success": _Case(
             attempts=[_failed("first"), _passed("second")],
             actions=["continue"],
-            consecutive_failures=2,
             pulse_checks=True,
         ),
         "repair_accepted": _Case(
@@ -247,9 +245,7 @@ def _cases() -> dict[str, _Case]:
             actions=[KEEP_PROGRESS, ("accept_patch", _passed("patched"))],
             kept=[_failed("retest-on-kept")],
         ),
-        "failure_let_through": _Case(
-            attempts=[_failed("first")], actions=["break_correction"], consecutive_failures=1
-        ),
+        "failure_let_through": _Case(attempts=[_failed("first")], actions=["break_correction"]),
         "abort_from_inside_the_dispatch": _Case(attempts=[_failed("first")], actions=["abort"]),
     }
 
@@ -428,7 +424,6 @@ async def _run_case(case: _Case, monkeypatch) -> dict[str, Any]:
     dev = _envelope("t-dev", _GATE_AFTER, "dev")
     qa = _envelope("t-qa", "qa.test", "qa")
     state = RunState(budget=_Budget(seconds=3600.0, started=100.0))
-    state.routing.consecutive_failures = case.consecutive_failures
     state.cadence.started = 50.0
     ledger = RunLedger()
     cycle = _cycle()
@@ -489,7 +484,6 @@ async def _run_case(case: _Case, monkeypatch) -> dict[str, Any]:
         ],
         "ledger_absent_emissions": [dataclasses.asdict(a) for a in ledger.absent_emissions],
         "state_after": {
-            "consecutive_failures": state.routing.consecutive_failures,
             "accepted_repair_task_ids": sorted(state.correction.accepted_repair_task_ids),
             "cadence_task_count": state.cadence.task_count,
             "cadence_interval_id": state.cadence.interval_id,

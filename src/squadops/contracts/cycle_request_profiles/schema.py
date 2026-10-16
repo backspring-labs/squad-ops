@@ -29,7 +29,10 @@ _APPLIED_DEFAULTS_EXTRA_KEYS = {
     "workload_sequence",
     "max_task_retries",
     "max_task_seconds",
-    "max_consecutive_failures",
+    # `max_consecutive_failures` lived here (SIP-0079 §7.8), declared and never enforced: the
+    # count it was meant to bound was never compared with it, and from a4552343 was never
+    # raised either. Removed, with SIP-0079 §17, rather than left as a setting that does
+    # nothing (#2348).
     "max_correction_attempts",
     # SIP-0108 §10i item 3: what this profile's correction protocol runs, from
     # ``task_plan.DECLARABLE_CORRECTION_STEPS``. Declared, never inferred — a profile that
