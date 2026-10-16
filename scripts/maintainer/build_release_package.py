@@ -523,14 +523,31 @@ def render(version: str, tag: str, package: dict) -> str:
                     "",
                 ]
                 continue
+            status = cycle.get("status")
             out += [
-                f"**Verdict:** `{cycle.get('verdict')}` · **Runs:** {cycle.get('run_count')}"
+                f"**Verdict:** `{cycle.get('verdict')}`"
+                + (f" · **Cycle status:** `{status}`" if status and status != "completed" else "")
+                + f" · **Runs:** {cycle.get('run_count')}"
                 + (
                     f" · **Role:** {cycle['role']}{_ROLE_NOTES.get(cycle['role'], '')}"
                     if cycle.get("role")
                     else ""
                 ),
                 "",
+            ]
+            # #2384: the roll-up reads a failed run's leftover rows, not that it failed, so a
+            # cycle that failed can roll up `accepted`. The page says the two disagree rather
+            # than print the roll-up's word alone (the v2.3.0 cut's failed counted roll).
+            if status == "failed" and cycle.get("verdict") == "accepted":
+                out += [
+                    '!!! warning "The roll-up and the cycle disagree"',
+                    "",
+                    "    The cycle **failed**, but its verification roll-up reads `accepted`: the",
+                    "    roll-up keeps a failed run's verdict only when the run left no rows to",
+                    "    reconcile. Read the failed run's own verdict in this release's records.",
+                    "",
+                ]
+            out += [
                 "| | Checks |",
                 "|---|---|",
                 f"| Verified | {', '.join(cycle.get('verified') or []) or '—'} |",

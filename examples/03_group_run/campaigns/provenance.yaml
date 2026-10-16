@@ -613,4 +613,211 @@ campaigns:
     sha256: 502ad4a667b622ba89680e9fbbf956aad280f4fb71588b1e22414ac93f76775d
   package_identity: 7ff7ad097504ccd6472b8be52a22f856ae812ce0e5db4e3a8dd7e8dd0041fc67
   package_artifact: art_8f9cb517f3c5
+- campaign_id: cmp_62e17d6d4773
+  created: '2026-10-14T12:42:51.20887+00:00'
+  state: completed
+  outcome: aborted
+  create_reason: '#2279 live reading, campaign A (2-3-0-tier-timeout-preregistration.md, approved by the
+    owner 2026-10-14): uncounted diagnostic on dep_7a6cf99f7c11'
+  recorded_definition:
+    path: examples/03_group_run/campaigns/2-3-0-tier-timeout-a.yaml
+    sha256: fd6ffbdb1def64d9abf43c603ce7d4debabda9a3c00394f268a6f31e3961453d
+  recorded_reconciles: true
+  definitions:
+  - path: examples/03_group_run/campaigns/2-3-0-tier-timeout-a.yaml
+    sha256: fd6ffbdb1def64d9abf43c603ce7d4debabda9a3c00394f268a6f31e3961453d
+  - path: examples/03_group_run/campaigns/2-3-0-tier-timeout-b.yaml
+    sha256: ac226f54aaba2dd2bcb6f9493ad1a36fe27f1c94f39dd586f6903ed0d2b6b177
+  package_identity: e7a528dcf56673558157f73c7e4bc786dc83c126c6c73914de0289571bb41eca
+  package_artifact: art_05c1a0135237
+- campaign_id: cmp_391cc2d3cad6
+  created: '2026-10-14T14:46:40.779001+00:00'
+  state: completed
+  outcome: success
+  create_reason: '#2279 live reading, campaign A attempt 2 (pre-registration approved 2026-10-14; re-run
+    on dep_57e39a35bf04 with #2302, approved 2026-10-14): uncounted diagnostic'
+  recorded_definition:
+    path: examples/03_group_run/campaigns/2-3-0-tier-timeout-a.yaml
+    sha256: fd6ffbdb1def64d9abf43c603ce7d4debabda9a3c00394f268a6f31e3961453d
+  recorded_reconciles: true
+  definitions:
+  - path: examples/03_group_run/campaigns/2-3-0-tier-timeout-a.yaml
+    sha256: fd6ffbdb1def64d9abf43c603ce7d4debabda9a3c00394f268a6f31e3961453d
+  - path: examples/03_group_run/campaigns/2-3-0-tier-timeout-b.yaml
+    sha256: ac226f54aaba2dd2bcb6f9493ad1a36fe27f1c94f39dd586f6903ed0d2b6b177
+  package_identity: 3683b97fb2c47331ee303060d0e64bd16d01b6ba88b5d81fba3faa3db49d7915
+  package_artifact: art_a25f1b3fa503
+- campaign_id: cmp_b6d8305f2729
+  created: '2026-10-14T16:21:49.656739+00:00'
+  state: completed
+  outcome: failure
+  create_reason: '#2279 live reading, campaign A attempt 3 (pre-registration approved 2026-10-14; on dep_c627c2873c3c
+    with #2302 and #2304, each approved 2026-10-14): uncounted diagnostic'
+  recorded_definition:
+    path: examples/03_group_run/campaigns/2-3-0-tier-timeout-a.yaml
+    sha256: fd6ffbdb1def64d9abf43c603ce7d4debabda9a3c00394f268a6f31e3961453d
+  recorded_reconciles: true
+  definitions:
+  - path: examples/03_group_run/campaigns/2-3-0-tier-timeout-a.yaml
+    sha256: fd6ffbdb1def64d9abf43c603ce7d4debabda9a3c00394f268a6f31e3961453d
+  - path: examples/03_group_run/campaigns/2-3-0-tier-timeout-b.yaml
+    sha256: ac226f54aaba2dd2bcb6f9493ad1a36fe27f1c94f39dd586f6903ed0d2b6b177
+  package_identity: c0715398c733c672f69c0ef3c2f3b1dded9fb3ccf5dcf304ed8c7a9ee19ac38b
+  package_artifact: art_c590564cb214
+- campaign_id: cmp_7adb83830ece
+  created: '2026-10-14T17:37:57.268927+00:00'
+  state: completed
+  outcome: failure
+  create_reason: '#2279 live reading, campaign B (pre-registration approved 2026-10-14): carries campaign
+    A cmp_b6d8305f2729''s late answer to esc_de3be6cbc17f; uncounted diagnostic on dep_c627c2873c3c'
+  recorded_definition:
+    path: examples/03_group_run/campaigns/2-3-0-tier-timeout-b.yaml
+    sha256: ac226f54aaba2dd2bcb6f9493ad1a36fe27f1c94f39dd586f6903ed0d2b6b177
+  recorded_reconciles: true
+  definitions:
+  - path: examples/03_group_run/campaigns/2-3-0-tier-timeout-a.yaml
+    sha256: fd6ffbdb1def64d9abf43c603ce7d4debabda9a3c00394f268a6f31e3961453d
+  - path: examples/03_group_run/campaigns/2-3-0-tier-timeout-b.yaml
+    sha256: ac226f54aaba2dd2bcb6f9493ad1a36fe27f1c94f39dd586f6903ed0d2b6b177
+  package_identity: 288e875de48e803fab3f3969a59932bf38799366a147da39f77f3d145d9bbdc2
+  package_artifact: art_909d0cc6a4d4
+- campaign_id: cmp_cda1b0d177b7
+  created: '2026-10-14T18:05:22.27047+00:00'
+  state: completed
+  outcome: aborted
+  create_reason: '#2279 live reading, campaign B attempt 2 (attempt 1 cmp_7adb83830ece failed its calibration
+    on #2306, outside the timeout half): carries cmp_b6d8305f2729''s late answer; uncounted diagnostic
+    on dep_c627c2873c3c'
+  recorded_definition:
+    path: examples/03_group_run/campaigns/2-3-0-tier-timeout-b.yaml
+    sha256: ac226f54aaba2dd2bcb6f9493ad1a36fe27f1c94f39dd586f6903ed0d2b6b177
+  recorded_reconciles: true
+  definitions:
+  - path: examples/03_group_run/campaigns/2-3-0-tier-timeout-a.yaml
+    sha256: fd6ffbdb1def64d9abf43c603ce7d4debabda9a3c00394f268a6f31e3961453d
+  - path: examples/03_group_run/campaigns/2-3-0-tier-timeout-b.yaml
+    sha256: ac226f54aaba2dd2bcb6f9493ad1a36fe27f1c94f39dd586f6903ed0d2b6b177
+  package_identity: 964aa5a91ce38e466102c01ff20b82f1ac48c790588ec8385e24e3cb1595ef11
+  package_artifact: art_b3b95cf67c4e
+- campaign_id: cmp_ed8000dfb94f
+  created: '2026-10-14T18:58:06.521389+00:00'
+  state: completed
+  outcome: success
+  create_reason: '#2202 comparison, the BEFORE arm (2-3-0-list-order-comparison-preregistration.md, approved
+    by the owner 2026-10-14), on dep_c627c2873c3c without #2276; uncounted'
+  recorded_definition:
+    path: examples/03_group_run/campaigns/2-3-0-list-order-comparison.yaml
+    sha256: d9c1d4ae841cb90dc9c7720b6a3b8868c184959af4c02e67aae065318a381aed
+  recorded_reconciles: true
+  definitions:
+  - path: examples/03_group_run/campaigns/2-3-0-list-order-comparison.yaml
+    sha256: d9c1d4ae841cb90dc9c7720b6a3b8868c184959af4c02e67aae065318a381aed
+  package_identity: cebc260733da46f4e625bbf95cf83f788124abcc420ffe66b224a58dccfece50
+  package_artifact: art_afcf3050cc05
+- campaign_id: cmp_f59a69f07bc0
+  created: '2026-10-14T20:01:13.048649+00:00'
+  state: completed
+  outcome: failure
+  create_reason: '#2202 comparison, the AFTER arm (2-3-0-list-order-comparison-preregistration.md, approved
+    by the owner 2026-10-14), on dep_4dbbbb990e74 with #2276; uncounted'
+  recorded_definition:
+    path: examples/03_group_run/campaigns/2-3-0-list-order-comparison.yaml
+    sha256: d9c1d4ae841cb90dc9c7720b6a3b8868c184959af4c02e67aae065318a381aed
+  recorded_reconciles: true
+  definitions:
+  - path: examples/03_group_run/campaigns/2-3-0-list-order-comparison.yaml
+    sha256: d9c1d4ae841cb90dc9c7720b6a3b8868c184959af4c02e67aae065318a381aed
+  package_identity: 551bc617778220d995859f66d3072e5a98b6acf1d52ed546f74663d63c1c2f6b
+  package_artifact: art_98e4462b7d35
+- campaign_id: cmp_a47189e4e061
+  created: '2026-10-14T22:24:06.367443+00:00'
+  state: completed
+  outcome: success
+  create_reason: "#2202 comparison, the AFTER arm re-run (2-3-0-list-order-comparison-preregistration.md\
+    \ \xA79, approved by the owner 2026-10-14), on dep_0eafe15d5819 with #2276 and #2309; uncounted"
+  recorded_definition:
+    path: examples/03_group_run/campaigns/2-3-0-list-order-comparison.yaml
+    sha256: d9c1d4ae841cb90dc9c7720b6a3b8868c184959af4c02e67aae065318a381aed
+  recorded_reconciles: true
+  definitions:
+  - path: examples/03_group_run/campaigns/2-3-0-list-order-comparison.yaml
+    sha256: d9c1d4ae841cb90dc9c7720b6a3b8868c184959af4c02e67aae065318a381aed
+  package_identity: 4495de783166bf456a17473b53ad9ddc3f45bf69e69fb3ecf7e212bcb2ca9f22
+  package_artifact: art_5e0a735da83f
+- campaign_id: cmp_a9a15dd33fe0
+  created: '2026-10-14T23:09:47.615618+00:00'
+  state: completed
+  outcome: success
+  create_reason: '#2205 comparison, the BEFORE arm (2-3-0-error-message-comparison-preregistration.md,
+    approved by the owner 2026-10-14), on dep_0eafe15d5819 without #2275; uncounted'
+  recorded_definition:
+    path: examples/03_group_run/campaigns/2-3-0-error-message-comparison.yaml
+    sha256: a7ee28abdb7a055e06063513ea69b9e11274316615be0a1e05e08c57e40ed866
+  recorded_reconciles: true
+  definitions:
+  - path: examples/03_group_run/campaigns/2-3-0-error-message-comparison.yaml
+    sha256: a7ee28abdb7a055e06063513ea69b9e11274316615be0a1e05e08c57e40ed866
+  package_identity: 784160294a459db77000fac626e98c836fb04c4bbe6e032c3c5521f166970349
+  package_artifact: art_b2b20a3303af
+- campaign_id: cmp_fd71a56a9142
+  created: '2026-10-15T00:20:56.292801+00:00'
+  state: completed
+  outcome: success
+  create_reason: '#2205 comparison, the AFTER arm (2-3-0-error-message-comparison-preregistration.md,
+    approved by the owner 2026-10-14), on dep_6b56d325a89c with #2275; uncounted'
+  recorded_definition:
+    path: examples/03_group_run/campaigns/2-3-0-error-message-comparison.yaml
+    sha256: a7ee28abdb7a055e06063513ea69b9e11274316615be0a1e05e08c57e40ed866
+  recorded_reconciles: true
+  definitions:
+  - path: examples/03_group_run/campaigns/2-3-0-error-message-comparison.yaml
+    sha256: a7ee28abdb7a055e06063513ea69b9e11274316615be0a1e05e08c57e40ed866
+  package_identity: 81f904587a53a11015124bc0f665f6c548744d81f34114255af42b7e4845a86e
+  package_artifact: art_94ffc822e9f8
+- campaign_id: cmp_27dba15dea9a
+  created: '2026-10-16T07:13:45.265499+00:00'
+  state: completed
+  outcome: success
+  create_reason: "2.3 cut shakeout (docs/plans/2-3-0-cut-preregistration.md \xA72, \xA73): the exit rule's\
+    \ campaign on the final deploy, dep_d8f35563107c from f52326ec; uncounted"
+  recorded_definition:
+    path: examples/03_group_run/campaigns/2-3-0-cut-shakeout.yaml
+    sha256: c92590ec20a3afdbae78287d4fdf236b141b504ffe85bdcc5ef06ec83c0420c5
+  recorded_reconciles: true
+  definitions:
+  - path: examples/03_group_run/campaigns/2-3-0-cut-shakeout.yaml
+    sha256: c92590ec20a3afdbae78287d4fdf236b141b504ffe85bdcc5ef06ec83c0420c5
+  package_identity: 8b17db3d5c301803c46e7d3f7731d856ea46da928e43a07c6475bf3cea6f99e1
+  package_artifact: art_aca3734912ad
+- campaign_id: cmp_b69e3002b760
+  created: '2026-10-16T09:11:59.321958+00:00'
+  state: completed
+  outcome: success
+  create_reason: "2.3 cut shakeout, round 2 (docs/plans/2-3-0-cut-preregistration.md \xA72, \xA73): round\
+    \ 1 (cmp_27dba15dea9a) found #2318, fixed by #2375; on the final deploy dep_1f734db0eedc from 49827026;\
+    \ uncounted"
+  recorded_definition:
+    path: examples/03_group_run/campaigns/2-3-0-cut-shakeout.yaml
+    sha256: c92590ec20a3afdbae78287d4fdf236b141b504ffe85bdcc5ef06ec83c0420c5
+  recorded_reconciles: true
+  definitions:
+  - path: examples/03_group_run/campaigns/2-3-0-cut-shakeout.yaml
+    sha256: c92590ec20a3afdbae78287d4fdf236b141b504ffe85bdcc5ef06ec83c0420c5
+  package_identity: 4cb6c0f934faa51cd07451be53299fdec19683ea3703a2b9c2d28217d98a1e51
+  package_artifact: art_52bc49c9f82e
+- campaign_id: cmp_3f67e906eb2d
+  created: '2026-10-16T13:25:05.319318+00:00'
+  state: completed
+  outcome: success
+  create_reason: "2.3 cut shakeout, round 3: set 1 failed on #2379 (fixed by #2380), so under the pre-registration's\
+    \ \xA73 the set restarts after a shakeout on the new deploy (dep_dff75482722e)"
+  recorded_definition:
+    path: examples/03_group_run/campaigns/2-3-0-cut-shakeout.yaml
+    sha256: c92590ec20a3afdbae78287d4fdf236b141b504ffe85bdcc5ef06ec83c0420c5
+  recorded_reconciles: true
+  definitions:
+  - path: examples/03_group_run/campaigns/2-3-0-cut-shakeout.yaml
+    sha256: c92590ec20a3afdbae78287d4fdf236b141b504ffe85bdcc5ef06ec83c0420c5
+  package_identity: 5c5d8bd60789d939a649bab956a0ba1f6661173b3dcf185c631573e8623cba4a
+  package_artifact: art_ebd26242afc6
 examples_only: []

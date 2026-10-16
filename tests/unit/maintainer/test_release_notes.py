@@ -392,6 +392,44 @@ class TestCycleRoles:
         assert "**Role:** diagnostic — fault-injected, non-counting" in page
         assert brp.cycle_count_line(cycles) == "2 cycles (1 diagnostic)"
 
+    @pytest.mark.parametrize(
+        "status, verdict, shown, warned",
+        [
+            ("failed", "accepted", " · **Cycle status:** `failed`", True),
+            ("failed", "blocked_unverified", " · **Cycle status:** `failed`", False),
+            ("completed", "accepted", "", False),
+        ],
+        ids=["failed-but-rolled-up-accepted", "failed-and-blocked", "completed"],
+    )
+    def test_a_cycle_that_did_not_complete_says_so_beside_its_verdict(
+        self, monkeypatch, status, verdict, shown, warned
+    ):
+        """Bug caught (#2384): the v2.3.0 cut's failed counted roll, `cyc_ce31b502b82c`, whose
+        implementation run failed, rolled up `accepted`, and the page would have printed that
+        word alone for a counted roll the release's own record says failed."""
+        brp = build_release_package
+        body = (
+            f'{{"status": "{status}", "runs": [1, 2], "cycle_outcome": {{"verdict": "{verdict}", '
+            '"verified": ["tests_pass"], "failed": [], "required_unmet": [], "unverified": []}}'
+        )
+        monkeypatch.setattr(brp, "run", lambda *a, **k: body)
+        monkeypatch.setattr(brp, "_bearer_token", lambda: "tok")
+        cycles = brp.cycle_evidence(["cyc_x"], "http://api", "proj", {"cyc_x": "counted"})
+        page = brp.render(
+            "2.3.0",
+            "v2.3.0",
+            {
+                "date": "2026-10-16",
+                "narrative": "",
+                "pull_requests": [],
+                "sip_moves": [],
+                "cycles": cycles,
+                "screenshots": [],
+            },
+        )
+        assert f"**Verdict:** `{verdict}`{shown} · **Runs:** 2 · **Role:** counted" in page
+        assert ("The roll-up and the cycle disagree" in page) is warned
+
     def test_an_absent_cycle_keeps_its_role(self, monkeypatch):
         brp = build_release_package
         monkeypatch.setattr(brp, "run", lambda *a, **k: '{"detail": "Not Found"}')
