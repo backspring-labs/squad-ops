@@ -375,6 +375,13 @@ Phase 8's rebuilds, in order:
       True") among them.
     - **Found while building it:** two SIP-0079 limits nothing read, `max_consecutive_failures` (#2348, removed by
       #2355) and `max_task_seconds` (#2353, its removal is #2358). The owner ruled both removed.
+  - **The correction runner (unit 4): its rebuild and pair, done 2026-10-16.** #2359 (a recording test of the
+    diagnosis, taken first because the correction golden doesn't record the analysis and decision envelopes) and
+    #2360 merged. The diagnosis's round evidence and one declared step's dispatch became their own methods, moved
+    and not changed. It was deployed as `dep_8ecd555a6900` from `ec507e4a`. Both cycles of the pair were accepted
+    on TensorFold, with the boot audit passing and no intervention (`cyc_42a2657080fc` 21/21, `cyc_c86e20e7c97f`
+    18/18). Each took one correction round, so the split diagnosis ran live in both. All 108 tracked loaded checks
+    answered as expected, its own (`1994-correction-runner`, "True True True") among them. No new seam finding.
 - **R8 and R9: moved to 2.4 by the owner, 2026-10-15** ("ok to defer"). #316's taxonomy and Outcome Evaluation's
   instruments each needed its SIP accepted first, and neither was. The 2.4 plan places both design reviews.
 - **#2204b** at any of them.
