@@ -10,7 +10,8 @@ created_at: '2026-10-04T00:00:00Z'
 **Status:** Proposed (draft, revision 1)
 **Revision:** 1 (2026-10-04)
 **Target:**
-- **the instruments:** reporting-only, 2.3 (a stabilization release; instruments change no verdict);
+- **the instruments:** reporting-only, **2.4** (moved from 2.3, 2026-10-15, the owner's ruling of 2026-10-15, in session: "ok to defer": this SIP
+  was still proposed when 2.3's rounds ran, and its acceptance is the owner's design review);
 - **the feature half:** the 2.4 headline, after Cross-Cycle Memory (2.2) and before the squad
   authors its own backlog.
 
@@ -248,8 +249,11 @@ comparable.
 | phase | release | what | verdicts |
 |---|---|---|---|
 | 0 | 2.1 | #1959 (increment replay) and #1960 (per-increment scorecard), already placed | none changed |
-| 1 | 2.3 | the scenario store and runner, held out; scenarios run per increment, results in the package; Lighthouse, axe and lint per increment with baselines; the intervention ledger's classifications; AOR, the AWE and outcome contribution in the digest | **reporting-only:** no row, gate or prompt changes |
+| 1 | 2.4 (moved from 2.3, 2026-10-15) | the scenario store and runner, held out; scenarios run per increment, results in the package; Lighthouse, axe and lint per increment with baselines; the intervention ledger's classifications; AOR, the AWE and outcome contribution in the digest | **reporting-only:** no row, gate or prompt changes |
 | 2 | 2.4 | §4.5: the proposal sees scenario goals and quality readings. §4.7: the objective's outcome measure, read by row 3. Quality gates where phase 1's data supports a threshold | changed, each with its phase-1 evidence |
+
+*Moved 2026-10-15:* phase 1 now starts in 2.4, so phase 2's release is re-read at the 2.4 plan,
+after phase 1 has data. The text below was written for phase 1 in 2.3.
 
 Phase 1 runs through 2.3's line and the first 2.4 campaigns, so phase 2's thresholds are set from
 measured noise, not guessed.

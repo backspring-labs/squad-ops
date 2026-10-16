@@ -255,8 +255,8 @@ Each item is a framework fix, an output-quality change, an instrument or an eval
 | #1993 | a `stacks` package | framework (refactor) | M | phase 8, R5 |
 | #1992 | orchestration out of `adapters/cycles` (~12,000 lines) | framework (refactor) | L | phase 8, R6; deferrable (§4) |
 | #1994 | the largest units split | framework (refactor) | L | phase 8, R7; deferrable (§4) |
-| #316 | the request-profile taxonomy | framework | L | phase 8, R8. **Its SIP is accepted first** (Q13: pinned definitions keep resolving old names) |
-| Outcome Evaluation's reporting-only instruments | the yardstick for output-quality work after 2.3 | instrument | M–L | phase 8, R9. **Its SIP is accepted first** (PR #1963) |
+| #316 | the request-profile taxonomy | framework | L | ~~phase 8, R8~~ **moved to 2.4 by the owner, 2026-10-15** (its SIP was still proposed; Q13: pinned definitions keep resolving old names) |
+| Outcome Evaluation's reporting-only instruments | the yardstick for output-quality work after 2.3 | instrument | M–L | ~~phase 8, R9~~ **moved to 2.4 by the owner, 2026-10-15** (its SIP was still proposed; PR #1963) |
 | **#2234** (placed by the owner, 2026-10-11) | the release capture: the delivered-app capture can't seed an app with an empty API base path, and the Prefect capture hangs on a failed flow run | framework (release tooling) | S | phase 8, any slot; before the 2.3 cut captures its package |
 | **#2315** (placed by the owner, 2026-10-14) | a rejected increment whose only unmet criteria the accepted application already meets was sent to a repair that cannot change them, and the next proposal wasn't told which (found by #2205's comparison) | framework (campaign) | S | phase 8, with R4. SIP-0109 §24bq |
 
@@ -375,8 +375,8 @@ Phase 8's rebuilds, in order:
       True") among them.
     - **Found while building it:** two SIP-0079 limits nothing read, `max_consecutive_failures` (#2348, removed by
       #2355) and `max_task_seconds` (#2353, its removal is #2358). The owner ruled both removed.
-- **R8:** #316, once its SIP is accepted.
-- **R9:** Outcome Evaluation's instruments, once their SIP is accepted.
+- **R8 and R9: moved to 2.4 by the owner, 2026-10-15** ("ok to defer"). #316's taxonomy and Outcome Evaluation's
+  instruments each needed its SIP accepted first, and neither was. The 2.4 plan places both design reviews.
 - **#2204b** at any of them.
 
 On branches during phases 4–7: Track B's code, and the two SIP design reviews (#316's, Outcome Evaluation's).
