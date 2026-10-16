@@ -393,7 +393,19 @@ Phase 8's rebuilds, in order:
     and the fixes round deploys both. This is the last of #1994's five units.
 - **R8 and R9: moved to 2.4 by the owner, 2026-10-15** ("ok to defer"). #316's taxonomy and Outcome Evaluation's
   instruments each needed its SIP accepted first, and neither was. The 2.4 plan places both design reviews.
-- **#2204b** at any of them.
+- **#2204b and the line's last fixes: the fixes round, done 2026-10-16.** #2365 (closing #2354), #2367 (closing
+  #2363) and #2368 (closing #2204) merged, with #2366's deferral record. Its rebuild is the final deploy.
+  - **The first rebuild found #2371** (`dep_1c5e8372d923`, from `254d2c2a`): the runtime image had no OpenTelemetry
+    SDK, so #2368's activity metrics never left the runtime. #2372 fixed it.
+  - **The second rebuild is the final deploy:** `dep_d8f35563107c`, from `f52326ec`. There:
+    - the runtime's start marker, run counters and run markers reach Prometheus, each marker at its event's time;
+    - both cycles of the pair were accepted on TensorFold, with the boot audit passing and no intervention
+      (`cyc_4abf43ecca32` 20/20, `cyc_98d74c477146` 18/18), each after one correction round;
+    - all 112 tracked loaded checks answered as expected, the round's three among them (`2363-runtime`, `2363-neo`,
+      `2204-runtime`);
+    - the Next.js cycle kept participants inside the run, so its DELETE took the update form, and the store's new
+      `remove` wasn't exercised live.
+  - No new seam finding.
 
 On branches during phases 4–7: Track B's code, and the two SIP design reviews (#316's, Outcome Evaluation's).
 
