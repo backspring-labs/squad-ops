@@ -21,12 +21,11 @@ class TestImplementationProfile:
         assert profile.name == "implementation"
 
     def test_defaults_contain_bounded_execution_keys(self):
-        """All 5 bounded execution keys present in defaults."""
+        """All 4 bounded execution keys present in defaults."""
         profile = load_profile("implementation")
         defaults = profile.defaults
         for key in (
             "max_task_retries",
-            "max_task_seconds",
             "max_correction_attempts",
             "time_budget_seconds",
             "implementation_pulse_checks",

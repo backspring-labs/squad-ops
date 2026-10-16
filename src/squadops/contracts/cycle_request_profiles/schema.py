@@ -28,7 +28,9 @@ _APPLIED_DEFAULTS_EXTRA_KEYS = {
     "generation_timeout",
     "workload_sequence",
     "max_task_retries",
-    "max_task_seconds",
+    # `max_task_seconds` lived here too (SIP-0079 §7.8), declared and never read: a task's wait
+    # is the deploy's `dispatch.task_timeout`, which every dispatch, correction steps included,
+    # waits through. Removed, with SIP-0079 §18 (#2353).
     # `max_consecutive_failures` lived here (SIP-0079 §7.8), declared and never enforced: the
     # count it was meant to bound was never compared with it, and from a4552343 was never
     # raised either. Removed, with SIP-0079 §17, rather than left as a setting that does

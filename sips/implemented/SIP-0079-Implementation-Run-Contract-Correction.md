@@ -351,7 +351,7 @@ Configurable via cycle request profile `applied_defaults`:
 | Run time budget | `time_budget_seconds` | 7200 | Run halted, transition to wrap-up |
 
 > **Amended (§17, 2026-10-15):** `max_consecutive_failures` was never enforced and is removed (#2348).
-> `max_task_seconds` is not read either; that is #2353.
+> **Amended (§18, 2026-10-15):** `max_task_seconds` was never read either and is removed (#2353).
 
 These limits are stored in the Run Contract (§7.1) and enforced by the executor. The existing `generation_timeout` (SIP-0073) remains for LLM-level timeouts; `max_task_seconds` is the overall task envelope including dispatch and processing.
 
@@ -830,9 +830,7 @@ failures. Two limits bound a run that keeps failing:
 `max_task_retries` still bounds the retries of an unclassified failure (`_classify_unhandled_outcome`,
 the D5 fallback).
 
-**Not covered here.** §7.8's `max_task_seconds` row has the same gap. No code reads it, and a task's
-wait is the deploy's `dispatch.task_timeout` (`src/squadops/api/runtime/main.py`). That is #2353, which
-awaits the owner's ruling.
+**Not covered here.** §7.8's `max_task_seconds` row had the same gap. §18 removes it (#2353).
 
 **Evidence.** #2348: the count was set to 0 in two places and never raised or compared, and the
 parameter was never read. PR #2355 is the removal. The executor's characterization record
@@ -840,6 +838,38 @@ parameter was never read. PR #2355 is the removal. The executor's characterizati
 
 **Ruled by** the owner, 2026-10-15. Of #2348's two options, enforcing the limit or removing it, they
 chose removal.
+
+---
+
+## 18. Post-implementation amendment (2026-10-15): `max_task_seconds` is removed (#2353)
+
+**What changed.** Three places no longer describe main:
+- §7.8's second limit ("Max task duration | `max_task_seconds` | 600 | Task cancelled, marked `FAILED`…");
+- the sentence after that table, which calls it "the overall task envelope including dispatch and
+  processing";
+- §9's mitigation that correction tasks are "bounded by same `max_task_seconds`".
+
+The setting is removed:
+- from the profile schema's accepted keys, so a profile that still sets it is refused at load as an
+  unknown key;
+- from the `implementation` profile (§7.16);
+- from the verification-set driver's record of each cycle's execution envelope, which listed it beside
+  the limits that hold.
+
+§7.13's key list and §7.16's profile still show it, as the record of what was designed.
+
+**Why.** No code ever read it. `git log -S max_task_seconds -- src adapters` shows only the two commits
+that declared it: 82b1ae47, the schema key, and 466302ee, the profile. A task's wait is the deploy's
+`dispatch.task_timeout` (`AppConfig.task_timeout_seconds` in `src/squadops/config/schema.py`), which the
+runtime hands the dispatcher (`src/squadops/api/runtime/main.py`). Every dispatch waits through it, the
+correction protocol's steps included (`TaskDispatcher.dispatch_task` calls `_publish_and_await`). A wait
+that runs out fails the task as a typed fact. That is the behaviour §7.8's row describes, under a setting
+the deploy owns rather than the profile.
+
+**Evidence.** #2353. PR #PRNUM is the removal.
+
+**Ruled by** the owner, 2026-10-15. Of #2353's two options, making the profile's value bound a task or
+removing it, they chose removal.
 
 ---
 
