@@ -866,7 +866,7 @@ correction protocol's steps included (`TaskDispatcher.dispatch_task` calls `_pub
 that runs out fails the task as a typed fact. That is the behaviour §7.8's row describes, under a setting
 the deploy owns rather than the profile.
 
-**Evidence.** #2353. PR #PRNUM is the removal.
+**Evidence.** #2353. PR #2358 is the removal.
 
 **Ruled by** the owner, 2026-10-15. Of #2353's two options, making the profile's value bound a task or
 removing it, they chose removal.
