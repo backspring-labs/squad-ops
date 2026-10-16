@@ -46,12 +46,16 @@ class Sweep:
         return sorted(set(ids))
 
 
+#: A placed row's release: the first one its ``where`` names ("2.4.0, #2230: moved from 2.3 by the
+#: owner" is placed in 2.4). A release named later in the row is its history, not its placement.
+_RELEASE = re.compile(r"\b(\d+\.\d+)(?:\.\d+)?\b")
+
+
 def sweep(version: str, root: Path | None = None) -> Sweep:
     sips = (root or sip_ledgers.REPO_ROOT) / "sips"
     data = sip_ledgers.open_issues(sips / "open-issues.json")
     open_issues = set(data["open"])
     minor = ".".join(version.split(".")[:2])
-    in_release = re.compile(rf"\b{re.escape(minor)}(\.\d+)?\b")
     out = Sweep()
     for path in sorted((sips / "accepted").glob("*.md")):
         name = f"SIP-{sip_ledgers.sip_number(path)}"
@@ -64,7 +68,7 @@ def sweep(version: str, root: Path | None = None) -> Sweep:
             still_open = r.issues & open_issues
             if not still_open:
                 out.stale += [(name, n) for n in sorted(r.issues)]
-            elif in_release.search(r.where):
+            elif (placed := _RELEASE.search(r.where)) and placed.group(1) == minor:
                 out.replace += [(name, n) for n in sorted(still_open)]
     return out
 
