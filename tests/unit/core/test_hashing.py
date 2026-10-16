@@ -65,8 +65,9 @@ def test_the_bound_record_and_the_verification_scaffold_keep_their_identities():
         "6fc46f50369bc9afd34e40607350b2464b74f79a6a8ef62772470037f5e98854",
         # #2363 (2026-10-15): the Next.js store gained `remove`, so the expanded tree moved. The
         # spine and scaffold hashes above did not, which is the evidence the change was the
-        # store's alone.
-        "d13528cfaf5bdbc079ccb4126f37c246b79bf44ad38f8e4a1124f89797c2ed2b",
+        # store's alone. #2394 (2026-10-16): the seeded vitest config gained `esbuild.jsx`, and the
+        # tree moved again with the spine and scaffold hashes unmoved.
+        "dd63dcdfb00f6c8df364e144e7bb4b18a402da817965fba981181a7303d6375f",
     )
 
 

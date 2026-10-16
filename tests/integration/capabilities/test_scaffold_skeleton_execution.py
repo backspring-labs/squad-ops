@@ -15,6 +15,8 @@ import shutil
 import pytest
 
 from squadops.capabilities.handlers.scaffold_execution import run_skeleton_execution_gate
+from squadops.capabilities.handlers.test_runner import run_build_validation, run_suite
+from squadops.stacks.development_profiles import TEST_FRAMEWORK_VITEST
 from squadops.stacks.scaffold import expand
 from squadops.stacks.verification_scaffold_emission import emit_verification_scaffold
 from tests.unit.capabilities._stack_fixtures import manifest_for_stack
@@ -95,3 +97,67 @@ async def test_an_injected_runtime_defect_is_caught_as_mechanical(reference):
         "vc-probe-api-runs.scaffold.test.ts" in failure and "Requests" in failure
         for failure in verdict.mechanical_failures
     )
+
+
+#: A suite that renders a scaffold page the way the qa role does on this stack: no JSX in the
+#: suite (the runner collects `.test.ts` only), so the page is built with `createElement` and
+#: rendered to a string. `app/page.tsx` is the manifest's root client route.
+_PAGE_RENDER_SUITE = (
+    "__tests__/page-render.test.ts",
+    """import { describe, it, expect } from 'vitest'
+import { createElement } from 'react'
+import { renderToString } from 'react-dom/server'
+import Page from '@/app/page'
+
+describe('the root page', () => {
+  it('renders', () => {
+    expect(renderToString(createElement(Page))).toContain('<main')
+  })
+})
+""",
+)
+
+
+def _as_runner_files(files):
+    return [{"path": f["name"], "content": f["content"]} for f in files]
+
+
+async def test_a_suite_that_renders_a_page_passes_under_the_seeded_config(reference):
+    """#2394: through the call qa.test makes, a suite that renders a page runs to its
+    assertion, and `next build` still accepts the config that made it possible."""
+    tree, _ = reference
+    path, content = _PAGE_RENDER_SUITE
+    result = await run_build_validation(
+        TEST_FRAMEWORK_VITEST,
+        _as_runner_files(tree),
+        [{"path": path, "content": content}],
+        timeout_seconds=_TIMEOUT,
+    )
+    assert result.tests_passed, result.stdout + result.stderr
+    assert path not in result.uncollected_test_files
+    assert result.frontend_build is not None and result.frontend_build.ok, result.frontend_build
+
+
+async def test_without_the_jsx_setting_the_same_suite_dies_inside_the_page(reference):
+    """The control: with the seeded config's `esbuild.jsx` line removed, the suite above
+    fails where the 2.3.1 Next.js roll did, so the test above is not passing by accident."""
+    tree, _ = reference
+    without = [
+        (
+            {**f, "content": f["content"].replace("  esbuild: { jsx: 'automatic' },\n", "")}
+            if f["name"] == "vitest.config.ts"
+            else f
+        )
+        for f in tree
+    ]
+    assert without != tree, "the seeded config no longer carries the line this control removes"
+    path, content = _PAGE_RENDER_SUITE
+    result = await run_suite(
+        TEST_FRAMEWORK_VITEST,
+        _as_runner_files(without),
+        [{"path": path, "content": content}],
+        timeout_seconds=_TIMEOUT,
+    )
+    assert result.executed, result.error
+    assert result.exit_code != 0
+    assert "React is not defined" in result.stdout + result.stderr

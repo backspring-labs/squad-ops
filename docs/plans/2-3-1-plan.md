@@ -2,8 +2,9 @@
 
 **Status: ADOPTED (2026-10-16).** The owner ruled §5 at ~15:26 ET: "approve D1-D3 for 2.3.1". The scope was ruled
 earlier the same day. After the 2.3.0 cut the owner placed five items here: "place the 2.3.1 candidates you listed
-after the cut", and "yes" to adding #2381 the same way. D2 adds a sixth, #2384. This plan says how each is built, how
-the line is verified, and what it leaves out.
+after the cut", and "yes" to adding #2381 the same way. D2 adds a sixth, #2384. A seventh, #2394, came out of the
+regression pair's first round: the owner ruled at ~19:44 ET the same day, "approve #2394 for 2.3.1, #2395 to 2.4" (D4).
+This plan says how each is built, how the line is verified, and what it leaves out.
 
 **What 2.3.1 is.** A patch on the 2.3 line (CLAUDE.md, #281: urgent or small fixes, either lane). Every item was found
 on the 2.3 line, most of them by its cut. None is urgent: each is a defect that is small, understood, and cheaper to fix
@@ -15,11 +16,12 @@ now than to carry into 2.4, whose first campaigns start measuring outcomes. The 
 > - a late answer reaches the stored digest, and says who gave it;
 > - a correct handler for a declared query parameter is not refused;
 > - a check that ran and passed is not recorded as skipped;
-> - a cycle that failed does not read `accepted`.
+> - a cycle that failed does not read `accepted`;
+> - a Next.js suite that renders a page fails or passes on its own assertions, not on the scaffold's config.
 
 ---
 
-## 1. The six items
+## 1. The seven items
 
 ### #2322: the runtime API's unused RabbitMQ connection and channel are removed
 
@@ -84,6 +86,23 @@ now than to carry into 2.4, whose first campaigns start measuring outcomes. The 
   work a later run re-executed and passed still reads `accepted`. The wiring test enters at the cycle-detail route.
 - **The release package keeps its warning** (#2385) as the guard against the next disagreement.
 
+### #2394: the Next.js scaffold's vitest config compiles a page's JSX for the runtime it has (D4, ruled in)
+
+- **The defect:** the seeded `vitest.config.ts` (`src/squadops/stacks/stack_nextjs_ts.py`, `_VITEST_CONFIG`) set no
+  JSX runtime. `tsconfig.json`'s `"jsx": "preserve"` leaves JSX to `next build`, so vite compiled each page's JSX as
+  `React.createElement`, and a Next.js page does not import React.
+  - A suite that renders a page failed "React is not defined" inside the page module, where no repair either role may
+    make reaches it.
+  - The regression pair's first Next.js roll (`cyc_31a49b2cdde6`) ended there after two correction rounds, and a
+    qa.test on 1.8.1 did too (`cyc_4d9602ce0a66`).
+- **The fix:** `esbuild: { jsx: 'automatic' }` in the seeded config.
+- **The test:** in `tests/integration/capabilities/test_scaffold_skeleton_execution.py`, which CI's integration job
+  runs with npm. A suite that renders the expanded scaffold's root page goes through `run_build_validation`, the call
+  qa.test makes; the suite passes and `next build` accepts the config. The control removes the line, and the same suite
+  fails "React is not defined".
+- **What it does not fix:** the roll would still have failed. With the config fixed, the plan's page tests see only
+  the loading state, because a server render never runs a page's data-loading effect. That is #2395, placed in 2.4.
+
 ### #2297, a read first: does QA's test author see the leave endpoint's method and path?
 
 - **The defect:** QA's backend test for leaving a run guessed the endpoint's method or path and got 405. That was 2 of
@@ -125,6 +144,7 @@ now than to carry into 2.4, whose first campaigns start measuring outcomes. The 
 | #1469, `frontend_build`'s aggregate signature | still blocked on its corpus | re-read at each cut |
 | #1756, stored prompts cut at 10,000 characters | an instrument, not a patch | 2.4's plan |
 | #2286, TensorFold operator keys | credentials: the owner's to place | the owner |
+| #2395, a Next.js plan asking QA for page-state tests the stack's vitest can't run | a design choice: a planning rule that leaves page rendering to the boot audit, or a DOM test environment for the stack. The owner placed it in 2.4 (D4) | 2.4's plan |
 
 ---
 
@@ -152,6 +172,16 @@ QA's prompt (#2297). So unlike 2.2.1, a campaign alone can't show the build unch
   rolls did (set 1's first). The pair may not reach it.
 - **#2384, live:** the defect needs a run that fails on a framework error, which a passing pair does not produce. It is
   read in its wiring test, and in the roll-up of any cycle in the pair or the shakeout that does fail.
+- **#2394, live:** only a plan that asks QA to render a page reaches it. One of the 17 Next.js cycles in the 2.3 line's
+  verification sets did, so the second pair probably won't. It is read in its integration test.
+
+**Round 1, the first pair** on `dep_4da309b688d4` (69ddf158), from 16:33 to 18:08 ET:
+- FastAPI + React, `cyc_ee3b645e51bd`: accepted, 21 of 21 criteria verified, one correction round.
+- Next.js, `cyc_31a49b2cdde6`: rejected, 17 of 18 criteria verified. The implementation run ended `plan_defect` after
+  two correction rounds; the boot audit passed.
+- Both answered all 125 loaded checks, the six 2.3.1 rows as expected.
+- The reading stopped the line for the owner. Its cause, #2394 under #2395, was reproduced on the run's rebuilt tree.
+  The shakeout was not launched. Round 2 is the pair again on the deploy with #2394, then the shakeout.
 
 ---
 
@@ -161,6 +191,7 @@ QA's prompt (#2297). So unlike 2.2.1, a campaign alone can't show the build unch
 2. The two reads, #2297 and #2381, recorded on their issues. Then a fix PR for each read that points to one inside
    2.3.1, or a re-placement to 2.4 with the read.
 3. The rebuild, the loaded checks, the pair and the shakeout. Then the cut.
+4. After the first pair (D4): #2394 in its own PR, the rebuild and the loaded checks, the pair again, then the shakeout.
 
 ---
 
@@ -171,3 +202,4 @@ QA's prompt (#2297). So unlike 2.2.1, a campaign alone can't show the build unch
 | D1 | **the verification** | **§3 as written:** tests, a full rebuild with loaded checks, one uncounted pair and one shakeout campaign, about 2.5 hours of box time. *Heavier:* a counted set, two rolls per stack pre-registered as 2.3's was, about 2 more hours. *Leaner:* the shakeout alone, which leaves #2378's change to the build path read only in tests | **approved** |
 | D2 | **#2384, a failed cycle rolling up `accepted`** | **in 2.3.1.** It is a correctness defect in the cycle roll-up that every consumer reads: the API, the console and the release package, which had to work around it at the 2.3 cut. The fix is to let a failed run's adverse verdict stand at cycle scope unless a later run re-executes its work. Read the resolver's callers first | **approved** |
 | D3 | **who runs the line** | **the supervisor, on the 2.3 line's terms:** build in §4's order, merge on green with main's run read, rebuilds and uncounted runs. Through the cut, including the tag and the records upload once §3's exit rule holds and the release PR merges with main green. If a reading fails, it stops for the owner. Accepting SIPs and anything security-related stay the owner's. The grant ends at the 2.3.1 cut | **approved** |
+| D4 | **#2394 and #2395, from the first pair** (§3, round 1) | **#2394 in 2.3.1:** a one-line fix to a scaffold-owned file that no role can repair, with an integration test, then the pair again on the new deploy. **#2395 in 2.4:** it is a design choice between a planning rule and a DOM test environment for the stack. *The alternative:* both in 2.4 and the Next.js roll re-run on the same deploy, which needed a ruling that the finding does not count against the exit rule | **approved**: "approve #2394 for 2.3.1, #2395 to 2.4" |

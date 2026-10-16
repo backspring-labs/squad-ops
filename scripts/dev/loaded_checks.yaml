@@ -1118,6 +1118,14 @@ checks:
       f = S(V.BLOCKED_UNVERIFIED, ("c",), (), (U("c", "missing_tooling", False),), (), 1, 1)
       print("_unrepeated_failures(" in inspect.getsource(r), a([f], failed_runs=[f]).verdict, a([f]).verdict)
     expect: "True blocked_unverified accepted"
+  - id: "2394"
+    what: "the Next.js scaffold's vitest config compiles a page's JSX with the automatic runtime, so a suite that renders a page reaches its assertion (#2394)"
+    container: squadops-runtime-api
+    code: |
+      import inspect
+      from squadops.stacks import stack_nextjs_ts as s
+      print("esbuild: { jsx: 'automatic' }" in s._VITEST_CONFIG, "_VITEST_CONFIG" in inspect.getsource(s.expand_nextjs_ts))
+    expect: "True True"
   - id: "2322"
     what: "the runtime API holds no AMQP connection of its own: every publish goes through the queue port (#2322)"
     container: squadops-runtime-api
