@@ -201,6 +201,8 @@ Fifteen more are reached through `state`. Two capture rules are behaviour, and t
   the live one. Found while writing step 0: nothing ever raises the count and nothing reads it, so
   SIP-0079's `max_consecutive_failures` is enforced by nothing (#2348, filed for the owner). The
   move keeps the snapshot as code, and step 0 pins the value handed over.
+  *After the moves:* the owner chose removal (2026-10-15). The count, the router's copy and the
+  parameter are gone, and SIP-0079 §17 records it.
 - **The held result is one dict, shared.** `_handle_task_outcome` writes the verified patch into it
   (`patched_result_holder`), and the swap after dispatch pops it from the same object.
 
@@ -275,6 +277,7 @@ and the success tail: about 100 lines, most of them the signature and the calls'
 - **The two failure-count resets.** Lines 1964 and 1972 both set `state.routing.consecutive_failures = 0`:
   one on a failed task, one on a success. Merging them would change no behaviour, but it isn't a move,
   so 3b and 3c each keep their line.
+  *After the moves:* both resets went with the count (#2348).
 - **`_handle_task_outcome` itself:** it's unit 4's neighbour, and the correction protocol's entry. It
   isn't touched here.
 

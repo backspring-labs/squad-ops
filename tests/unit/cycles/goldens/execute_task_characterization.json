@@ -71,7 +71,6 @@
         "call": "handle_task_outcome",
         "completed_task_ids": "state.checkpoint.completed_task_ids",
         "compliance_counter": "state.ownership.compliance_counter",
-        "consecutive_failures": 0,
         "correction_counter": "state.correction.counter",
         "correction_signature_state": "state.correction.signature_state",
         "cycle": "cycle",
@@ -117,8 +116,7 @@
       ],
       "cadence_interval_id": 1,
       "cadence_restarted": false,
-      "cadence_task_count": 0,
-      "consecutive_failures": 0
+      "cadence_task_count": 0
     }
   },
   "declined_by_a_precondition": {
@@ -144,8 +142,7 @@
       ],
       "cadence_interval_id": 1,
       "cadence_restarted": false,
-      "cadence_task_count": 0,
-      "consecutive_failures": 0
+      "cadence_task_count": 0
     }
   },
   "failure_let_through": {
@@ -220,7 +217,6 @@
         "call": "handle_task_outcome",
         "completed_task_ids": "state.checkpoint.completed_task_ids",
         "compliance_counter": "state.ownership.compliance_counter",
-        "consecutive_failures": 1,
         "correction_counter": "state.correction.counter",
         "correction_signature_state": "state.correction.signature_state",
         "cycle": "cycle",
@@ -270,8 +266,7 @@
       ],
       "cadence_interval_id": 1,
       "cadence_restarted": false,
-      "cadence_task_count": 0,
-      "consecutive_failures": 0
+      "cadence_task_count": 0
     }
   },
   "first_try_success_with_pulse_and_gate": {
@@ -414,8 +409,7 @@
       ],
       "cadence_interval_id": 2,
       "cadence_restarted": true,
-      "cadence_task_count": 0,
-      "consecutive_failures": 0
+      "cadence_task_count": 0
     }
   },
   "kept_progress_then_accepted": {
@@ -490,7 +484,6 @@
         "call": "handle_task_outcome",
         "completed_task_ids": "state.checkpoint.completed_task_ids",
         "compliance_counter": "state.ownership.compliance_counter",
-        "consecutive_failures": 0,
         "correction_counter": "state.correction.counter",
         "correction_signature_state": "state.correction.signature_state",
         "cycle": "cycle",
@@ -529,7 +522,6 @@
         "call": "handle_task_outcome",
         "completed_task_ids": "state.checkpoint.completed_task_ids",
         "compliance_counter": "state.ownership.compliance_counter",
-        "consecutive_failures": 0,
         "correction_counter": "state.correction.counter",
         "correction_signature_state": "state.correction.signature_state",
         "cycle": "cycle",
@@ -638,8 +630,7 @@
       ],
       "cadence_interval_id": 1,
       "cadence_restarted": false,
-      "cadence_task_count": 0,
-      "consecutive_failures": 0
+      "cadence_task_count": 0
     }
   },
   "re_dispatched_then_success": {
@@ -714,7 +705,6 @@
         "call": "handle_task_outcome",
         "completed_task_ids": "state.checkpoint.completed_task_ids",
         "compliance_counter": "state.ownership.compliance_counter",
-        "consecutive_failures": 2,
         "correction_counter": "state.correction.counter",
         "correction_signature_state": "state.correction.signature_state",
         "cycle": "cycle",
@@ -851,8 +841,7 @@
       ],
       "cadence_interval_id": 1,
       "cadence_restarted": false,
-      "cadence_task_count": 1,
-      "consecutive_failures": 0
+      "cadence_task_count": 1
     }
   },
   "repair_accepted": {
@@ -927,7 +916,6 @@
         "call": "handle_task_outcome",
         "completed_task_ids": "state.checkpoint.completed_task_ids",
         "compliance_counter": "state.ownership.compliance_counter",
-        "consecutive_failures": 0,
         "correction_counter": "state.correction.counter",
         "correction_signature_state": "state.correction.signature_state",
         "cycle": "cycle",
@@ -1034,8 +1022,7 @@
       ],
       "cadence_interval_id": 1,
       "cadence_restarted": false,
-      "cadence_task_count": 0,
-      "consecutive_failures": 0
+      "cadence_task_count": 0
     }
   }
 }
