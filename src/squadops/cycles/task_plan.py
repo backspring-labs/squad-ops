@@ -1238,6 +1238,170 @@ def _resolve_cycle_reasoning(cycle: Cycle) -> str | None:
     return level
 
 
+@dataclass(frozen=True)
+class _PlanFacts:
+    """What every envelope of one run is built from, read once per run (#1994, the extraction
+    map's §4e step 5a): the resolved config with a re-roll's rejection lifted out of it, and an
+    increment's footprint, criterion files, frozen files, test scope and evaluation."""
+
+    resolved_config: dict[str, Any]
+    framing_rejection_context: Any
+    footprint: tuple[str, ...] | None
+    criterion_files: tuple[Any, ...]
+    frozen_files: tuple[tuple[str, str], ...]
+    test_scope: dict[str, list[dict[str, str]]] | None
+    evaluation: _IncrementEvaluation
+
+
+def _plan_facts(
+    cycle: Cycle,
+    run: Run,
+    interface_manifest: InterfaceManifest | None,
+    change_request: str | None,
+) -> _PlanFacts:
+    # SIP-0093 PR 93.3: framing workload threads plan_authoring_contributors
+    # through resolved_config so the proposer steps are added/skipped per
+    # cycle config. Other workload types ignore the extra argument.
+    resolved_config = cycle.resolved_config()
+    # #669: a framing re-roll forwards the prior rejection on the §6.6 overrides
+    # rail. It is authoring CONTEXT, not config — lift it out so resolved_config
+    # stays config-shaped on every envelope, then inject it onto the
+    # plan-authoring tasks only (below).
+    framing_rejection_context = resolved_config.pop("framing_rejection_context", None)
+    # SIP-0109 §7.3 (#1705 d): an increment cycle's footprint, for its plan authors.
+    # deferred (cycle): campaigns.increment_tree loads this module
+    from squadops.campaigns.increment_tree import increment_footprint
+
+    footprint = increment_footprint(resolved_config, interface_manifest)
+    criterion_files = _increment_criterion_files(change_request, resolved_config)
+    # deferred (cycle): campaigns.increment_tree loads this module
+    from squadops.campaigns.increment_tree import increment_frozen_files
+
+    frozen_files = increment_frozen_files(resolved_config, change_request)
+    # deferred (cycle): campaigns.increment_tree loads this module
+    from squadops.campaigns.increment_tree import increment_test_scope
+
+    test_scope = increment_test_scope(resolved_config, change_request)
+    _require_change_request_for_increment(run, resolved_config, change_request)
+    evaluation = _increment_evaluation(run, resolved_config, change_request, interface_manifest)
+
+    return _PlanFacts(
+        resolved_config=resolved_config,
+        framing_rejection_context=framing_rejection_context,
+        footprint=footprint,
+        criterion_files=criterion_files,
+        frozen_files=frozen_files,
+        test_scope=test_scope,
+        evaluation=evaluation,
+    )
+
+
+def _plan_task_acceptance(
+    task_type: str,
+    plan_task: Any,
+    contract: VerificationContract | None,
+    interface_manifest: InterfaceManifest | None,
+) -> list[Any]:
+    """A plan task's acceptance criteria: its own, then the seven families bound onto it, in
+    order (#1994, the extraction map's §4e step 5b)."""
+    acceptance = _applicable_acceptance(plan_task)
+    # SIP-0098 98.3: in bind mode, resolve the task's criteria_refs into
+    # TypedChecks (stamped with contract ids) and merge them in. The plan
+    # binds by id, dispatch materializes — evaluation is unchanged. Author
+    # mode (no contract / no refs) leaves acceptance_criteria as authored.
+    if contract is not None and plan_task.criteria_refs:
+        acceptance.extend(resolve_contract_refs(plan_task.criteria_refs, contract))
+    # SIP-0100 1.1: bind scaffold-owned harness_boundary checks onto bound qa.test slots.
+    acceptance.extend(_harness_boundary_criteria(task_type, plan_task, contract))
+    # #629 (A6/D2): bind contract-owned assertion-vs-contract checks onto
+    # bound qa.test suite files — layer 1's authoring block is guidance,
+    # this is the guarantee.
+    acceptance.extend(_contract_assertion_criteria(task_type, plan_task, contract))
+    # #1153: the manifest's declared field kinds, enforced on the suite's own
+    # literal assertions — the free-authored counterpart of the fill kind gate.
+    acceptance.extend(_assertion_kind_criteria(task_type, plan_task, contract, interface_manifest))
+    # #668: the manifest's DOM anchors, enforced on the suite's own queries — the
+    # anchor appendix is guidance, this is the guarantee.
+    acceptance.extend(_dom_anchor_criteria(task_type, plan_task, contract, interface_manifest))
+    # #668, the data-fetch half: the stack's frozen client surface, reported on the
+    # suite's own mock of it — advisory this line, banked beside the verdict.
+    acceptance.extend(_client_mock_surface_criteria(task_type, plan_task, contract))
+    # #730 D1 / #504: scaffold-owned signature enforcement on .py fill
+    # slots — the pf-40 report, promoted to blocking.
+    acceptance.extend(_fill_slot_signature_criteria(task_type, plan_task, interface_manifest))
+    return acceptance
+
+
+def _step_inputs(
+    facts: _PlanFacts,
+    *,
+    cycle: Cycle,
+    run: Run,
+    task_type: str,
+    plan_task: Any,
+    agent_model: Any,
+    agent_overrides: Any,
+    profile_roles: Any,
+    role_index: int,
+    role_total: int,
+    contract: VerificationContract | None,
+    interface_manifest: InterfaceManifest | None,
+    change_request: str | None,
+    implementation_artifacts: list[Any],
+) -> dict:
+    """One envelope's inputs, with their keys in the order an agent receives them (#1994, the
+    extraction map's §4e step 5c)."""
+    resolved_config, framing_rejection_context = (
+        facts.resolved_config,
+        facts.framing_rejection_context,
+    )
+    footprint, criterion_files = facts.footprint, facts.criterion_files
+    frozen_files, test_scope, evaluation = facts.frozen_files, facts.test_scope, facts.evaluation
+    inputs: dict = {
+        "prd": cycle.prd_ref,
+        "resolved_config": resolved_config,
+        "config_hash": run.resolved_config_hash,
+        "agent_model": agent_model,
+        "agent_config_overrides": agent_overrides,
+        # SIP-0086: expose active profile roles so planning handlers can
+        # constrain plan role choices to what the squad actually has.
+        "profile_roles": sorted(profile_roles),
+    }
+
+    inputs["role_index"] = role_index
+    inputs["role_total"] = role_total
+
+    # SIP-0086: populate subtask fields from plan
+    if plan_task is not None:
+        inputs["subtask_focus"] = plan_task.focus
+        inputs["subtask_description"] = plan_task.description
+        inputs["expected_artifacts"] = plan_task.expected_artifacts
+        inputs["subtask_index"] = plan_task.task_index
+        # RC2: only qa.test failures need the source-under-test surface — their
+        # own artifacts are the test files, so a no-drift correction must reach
+        # past them to the dev source. Dev tasks already own their source
+        # artifact, so omitting the key keeps their corrections byte-identical.
+        if authors_qa_suite(task_type):
+            inputs["implementation_artifacts"] = implementation_artifacts
+        acceptance = _plan_task_acceptance(task_type, plan_task, contract, interface_manifest)
+        inputs["acceptance_criteria"] = acceptance
+
+    inject_contract_inputs(
+        inputs,
+        contract,
+        task_type,
+        interface_manifest,
+        footprint,
+        criterion_files,
+        frozen_files,
+        test_scope,
+    )
+    _inject_rejection_context(inputs, framing_rejection_context, task_type)
+    inputs.update(_increment_inputs(run, task_type, change_request, evaluation, test_scope))
+    inputs.update(_prior_cycle_inputs(resolved_config, task_type))
+    return inputs
+
+
 def generate_task_plan(
     cycle: Cycle,
     run: Run,
@@ -1277,31 +1441,8 @@ def generate_task_plan(
     profile_roles = served_roles(profile)
     cycle_reasoning = _resolve_cycle_reasoning(cycle)
 
-    # SIP-0093 PR 93.3: framing workload threads plan_authoring_contributors
-    # through resolved_config so the proposer steps are added/skipped per
-    # cycle config. Other workload types ignore the extra argument.
-    resolved_config = cycle.resolved_config()
-    # #669: a framing re-roll forwards the prior rejection on the §6.6 overrides
-    # rail. It is authoring CONTEXT, not config — lift it out so resolved_config
-    # stays config-shaped on every envelope, then inject it onto the
-    # plan-authoring tasks only (below).
-    framing_rejection_context = resolved_config.pop("framing_rejection_context", None)
-    # SIP-0109 §7.3 (#1705 d): an increment cycle's footprint, for its plan authors.
-    # deferred (cycle): campaigns.increment_tree loads this module
-    from squadops.campaigns.increment_tree import increment_footprint
-
-    footprint = increment_footprint(resolved_config, interface_manifest)
-    criterion_files = _increment_criterion_files(change_request, resolved_config)
-    # deferred (cycle): campaigns.increment_tree loads this module
-    from squadops.campaigns.increment_tree import increment_frozen_files
-
-    frozen_files = increment_frozen_files(resolved_config, change_request)
-    # deferred (cycle): campaigns.increment_tree loads this module
-    from squadops.campaigns.increment_tree import increment_test_scope
-
-    test_scope = increment_test_scope(resolved_config, change_request)
-    _require_change_request_for_increment(run, resolved_config, change_request)
-    evaluation = _increment_evaluation(run, resolved_config, change_request, interface_manifest)
+    facts = _plan_facts(cycle, run, interface_manifest, change_request)
+    resolved_config, evaluation = facts.resolved_config, facts.evaluation
 
     if run.workload_type is not None:
         steps, builder_used = _resolve_workload_steps(
@@ -1403,80 +1544,24 @@ def generate_task_plan(
         if task_type in _BUILD_TASK_TYPES:
             metadata["routing_reason"] = routing_reason
 
-        inputs: dict = {
-            "prd": cycle.prd_ref,
-            "resolved_config": resolved_config,
-            "config_hash": run.resolved_config_hash,
-            "agent_model": agent_model,
-            "agent_config_overrides": agent_overrides,
-            # SIP-0086: expose active profile roles so planning handlers can
-            # constrain plan role choices to what the squad actually has.
-            "profile_roles": sorted(profile_roles),
-        }
-
         # #94: per-agent position/total for the Prefect "{agent}[{n}/{total}]" label
         lane_seen[agent_id] = lane_seen.get(agent_id, 0) + 1
-        inputs["role_index"] = lane_seen[agent_id]
-        inputs["role_total"] = lane_totals[agent_id]
-
-        # SIP-0086: populate subtask fields from plan
-        if plan_task is not None:
-            inputs["subtask_focus"] = plan_task.focus
-            inputs["subtask_description"] = plan_task.description
-            inputs["expected_artifacts"] = plan_task.expected_artifacts
-            inputs["subtask_index"] = plan_task.task_index
-            # RC2: only qa.test failures need the source-under-test surface — their
-            # own artifacts are the test files, so a no-drift correction must reach
-            # past them to the dev source. Dev tasks already own their source
-            # artifact, so omitting the key keeps their corrections byte-identical.
-            if authors_qa_suite(task_type):
-                inputs["implementation_artifacts"] = implementation_artifacts
-            acceptance = _applicable_acceptance(plan_task)
-            # SIP-0098 98.3: in bind mode, resolve the task's criteria_refs into
-            # TypedChecks (stamped with contract ids) and merge them in. The plan
-            # binds by id, dispatch materializes — evaluation is unchanged. Author
-            # mode (no contract / no refs) leaves acceptance_criteria as authored.
-            if contract is not None and plan_task.criteria_refs:
-                acceptance.extend(resolve_contract_refs(plan_task.criteria_refs, contract))
-            # SIP-0100 1.1: bind scaffold-owned harness_boundary checks onto bound qa.test slots.
-            acceptance.extend(_harness_boundary_criteria(task_type, plan_task, contract))
-            # #629 (A6/D2): bind contract-owned assertion-vs-contract checks onto
-            # bound qa.test suite files — layer 1's authoring block is guidance,
-            # this is the guarantee.
-            acceptance.extend(_contract_assertion_criteria(task_type, plan_task, contract))
-            # #1153: the manifest's declared field kinds, enforced on the suite's own
-            # literal assertions — the free-authored counterpart of the fill kind gate.
-            acceptance.extend(
-                _assertion_kind_criteria(task_type, plan_task, contract, interface_manifest)
-            )
-            # #668: the manifest's DOM anchors, enforced on the suite's own queries — the
-            # anchor appendix is guidance, this is the guarantee.
-            acceptance.extend(
-                _dom_anchor_criteria(task_type, plan_task, contract, interface_manifest)
-            )
-            # #668, the data-fetch half: the stack's frozen client surface, reported on the
-            # suite's own mock of it — advisory this line, banked beside the verdict.
-            acceptance.extend(_client_mock_surface_criteria(task_type, plan_task, contract))
-            # #730 D1 / #504: scaffold-owned signature enforcement on .py fill
-            # slots — the pf-40 report, promoted to blocking.
-            acceptance.extend(
-                _fill_slot_signature_criteria(task_type, plan_task, interface_manifest)
-            )
-            inputs["acceptance_criteria"] = acceptance
-
-        inject_contract_inputs(
-            inputs,
-            contract,
-            task_type,
-            interface_manifest,
-            footprint,
-            criterion_files,
-            frozen_files,
-            test_scope,
+        inputs = _step_inputs(
+            facts,
+            cycle=cycle,
+            run=run,
+            task_type=task_type,
+            plan_task=plan_task,
+            agent_model=agent_model,
+            agent_overrides=agent_overrides,
+            profile_roles=profile_roles,
+            role_index=lane_seen[agent_id],
+            role_total=lane_totals[agent_id],
+            contract=contract,
+            interface_manifest=interface_manifest,
+            change_request=change_request,
+            implementation_artifacts=implementation_artifacts,
         )
-        _inject_rejection_context(inputs, framing_rejection_context, task_type)
-        inputs.update(_increment_inputs(run, task_type, change_request, evaluation, test_scope))
-        inputs.update(_prior_cycle_inputs(resolved_config, task_type))
 
         envelope = TaskEnvelope(
             task_id=task_id,
