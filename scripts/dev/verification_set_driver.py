@@ -1396,7 +1396,6 @@ def arm_substrate(cfg: SetConfig) -> dict:
                 "max_correction_attempts",
                 "max_self_eval_passes",
                 "max_task_retries",
-                "max_task_seconds",
                 "required_checks",
             )
         },
