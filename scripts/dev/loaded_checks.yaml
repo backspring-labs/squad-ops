@@ -1047,3 +1047,33 @@ checks:
       src = inspect.getsource(m.generate_task_plan)
       print(all(hasattr(m, n) for n in ("_PlanFacts", "_plan_facts", "_plan_task_acceptance", "_step_inputs")), "_step_inputs(" in src, len(src.splitlines()) < 220)
     expect: "True True True"
+  - id: "2363-runtime"
+    what: "the Next.js store the scaffold seeds can delete a row, so a declared DELETE over a stored entity has a correct form (#2363)"
+    container: squadops-runtime-api
+    code: |
+      from squadops.stacks import stack_nextjs_ts as m
+      print("export function remove(table: Table, id: string): boolean" in m._STORE_BODY, "export function find(" in m._STORE_BODY)
+    expect: "True True"
+  - id: "2363-neo"
+    what: "the dev fill appendix for Next.js shows the delete, and that a row kept inside another is updated with it (#2363)"
+    container: squadops-neo
+    code: |
+      import pathlib, squadops.prompts as p
+      text = (pathlib.Path(p.__file__).parent / "request_templates" / "request.development_develop_fill_only_appendix_nextjs_ts.md").read_text()
+      print("remove(TABLES.Participant, participant.id)" in text, "insert(TABLES.Run, run)" in text)
+    expect: "True True"
+  - id: "2204-runtime"
+    what: "the runtime's event bus subscribes the metrics bridge, which sets a marker for each run start, run end and campaign transition, and the image has the SDK and exporter that send them (#2204, #2371)"
+    container: squadops-runtime-api
+    code: |
+      import importlib.util, inspect
+      from adapters.events import factory
+      from squadops.events.bridges import metrics as m
+      def has(name):
+          try:
+              return importlib.util.find_spec(name) is not None
+          except ModuleNotFoundError:
+              return False
+      sdk = has("opentelemetry.sdk.metrics") and has("opentelemetry.exporter.otlp.proto.grpc.metric_exporter")
+      print("metrics" in inspect.signature(factory.create_cycle_event_bus).parameters, len(getattr(m, "_MARKER_MAP", {})), sdk)
+    expect: "True 5 True"
