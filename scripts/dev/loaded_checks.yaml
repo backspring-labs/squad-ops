@@ -1029,3 +1029,12 @@ checks:
       src = inspect.getsource(m.DispatchedFlowExecutor._execute_task)
       print(hasattr(m, "_TaskOutcomeRouter"), all(hasattr(m.DispatchedFlowExecutor, n) for n in ("_after_task_success", "_announce_dispatch")), len(src.splitlines()) < 120)
     expect: "True True True"
+  - id: "1994-correction-runner"
+    what: "the correction runner's diagnosis builds the round's evidence and dispatches each declared step through their own methods (#1994)"
+    container: squadops-runtime-api
+    code: |
+      import inspect
+      from squadops.execution.correction_runner import CorrectionRunner as R
+      src = inspect.getsource(R._diagnose)
+      print(hasattr(R, "_round_evidence") and hasattr(R, "_dispatch_declared_step"), "self._round_evidence(" in src and "self._dispatch_declared_step(" in src, len(src.splitlines()) < 140)
+    expect: "True True True"
