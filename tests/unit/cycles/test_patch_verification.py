@@ -16,6 +16,7 @@ from squadops.cycles.patch_verification import (
     PATCH_UNVERIFIABLE,
     EvidenceSupersession,
     PatchCheckRecord,
+    PatchVerification,
     candidate_files,
     candidate_revision_id,
     overlay_artifacts,
@@ -1215,3 +1216,52 @@ class TestTheDeliverableIsTheBuilderRepairsBlockingCriterion:
             repaired=["start.sh"],
         )
         assert result.status == PATCH_PASSED
+
+
+# ---------------------------------------------------------------------------
+# #2381: the banked order — a criterion's final row is the one that executed
+# ---------------------------------------------------------------------------
+
+
+def _row(status: str, reason: str | None, executed_in: str) -> PatchCheckRecord:
+    return PatchCheckRecord(
+        check="frontend_compiles",
+        severity="error",
+        status=status,
+        reason=reason,
+        params={"file": "frontend/src/views/RunsList.jsx"},
+        executed_in=executed_in,
+        criterion_id="vc-view-compiles-runs-list-view",
+    )
+
+
+@pytest.mark.parametrize(
+    ("agent", "local", "final"),
+    [
+        (("passed", None), ("skipped", "missing_tooling"), ("passed", "agent:dev")),
+        (("failed", None), ("skipped", "missing_tooling"), ("failed", "agent:dev")),
+        (("passed", None), ("failed", None), ("failed", "runtime-api")),
+        (
+            ("skipped", "missing_tooling"),
+            ("skipped", "missing_tooling"),
+            ("skipped", "runtime-api"),
+        ),
+    ],
+    ids=[
+        "a skip here, a pass there: the pass",
+        "a skip here, a failure there: the failure",
+        "both executed: the order is unchanged",
+        "neither executed: the order is unchanged",
+    ],
+)
+def test_the_last_banked_row_per_criterion_is_one_that_executed(agent, local, final):
+    """#2381. Bugs caught: this environment's skip banked after the repair's execution, so the
+    ledger's last-row rule records the criterion as not executed; or the reordering moving an
+    executed row, which would change which of two executions the ledger keeps."""
+    verification = PatchVerification(
+        status="passed", checks=(_row(*agent, "agent:dev"), _row(*local, "runtime-api"))
+    )
+
+    last = verification.check_rows()[-1]
+
+    assert (last["status"], last["executed_in"]) == final

@@ -1114,6 +1114,16 @@ checks:
       from squadops.api.runtime import main as m
       print(any("rabbitmq" in s for s in m._STATE_SLOTS), hasattr(m, "aio_pika"))
     expect: "False False"
+  - id: "2381"
+    what: "patch verification banks a row it could not execute before the repair's execution of the same criterion, so the execution is the final state (#2381)"
+    container: squadops-runtime-api
+    code: |
+      from squadops.cycles.patch_verification import PatchCheckRecord as R, PatchVerification as V
+      p = {"file": "frontend/src/views/RunsList.jsx"}
+      ran = R("frontend_compiles", "error", "passed", params=p, executed_in="agent:dev")
+      skip = R("frontend_compiles", "error", "skipped", reason="missing_tooling", params=p)
+      print([r["status"] for r in V(status="passed", checks=(ran, skip)).check_rows()])
+    expect: "['skipped', 'passed']"
   - id: "2305"
     what: "a late answer on a closed campaign materializes its package again, and says whether an agent gave it (#2305)"
     container: squadops-runtime-api
