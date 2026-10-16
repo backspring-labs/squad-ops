@@ -1063,11 +1063,17 @@ checks:
       print("remove(TABLES.Participant, participant.id)" in text, "insert(TABLES.Run, run)" in text)
     expect: "True True"
   - id: "2204-runtime"
-    what: "the runtime's event bus subscribes the metrics bridge, which sets a marker for each run start, run end and campaign transition (#2204)"
+    what: "the runtime's event bus subscribes the metrics bridge, which sets a marker for each run start, run end and campaign transition, and the image has the SDK and exporter that send them (#2204, #2371)"
     container: squadops-runtime-api
     code: |
-      import inspect
+      import importlib.util, inspect
       from adapters.events import factory
       from squadops.events.bridges import metrics as m
-      print("metrics" in inspect.signature(factory.create_cycle_event_bus).parameters, len(getattr(m, "_MARKER_MAP", {})))
-    expect: "True 5"
+      def has(name):
+          try:
+              return importlib.util.find_spec(name) is not None
+          except ModuleNotFoundError:
+              return False
+      sdk = has("opentelemetry.sdk.metrics") and has("opentelemetry.exporter.otlp.proto.grpc.metric_exporter")
+      print("metrics" in inspect.signature(factory.create_cycle_event_bus).parameters, len(getattr(m, "_MARKER_MAP", {})), sdk)
+    expect: "True 5 True"
