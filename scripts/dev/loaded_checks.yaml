@@ -1038,3 +1038,12 @@ checks:
       src = inspect.getsource(R._diagnose)
       print(hasattr(R, "_round_evidence") and hasattr(R, "_dispatch_declared_step"), "self._round_evidence(" in src and "self._dispatch_declared_step(" in src, len(src.splitlines()) < 140)
     expect: "True True True"
+  - id: "1994-task-plan"
+    what: "the task-plan builder reads the run's facts once and builds each envelope's inputs and acceptance through their own functions (#1994)"
+    container: squadops-runtime-api
+    code: |
+      import inspect
+      from squadops.cycles import task_plan as m
+      src = inspect.getsource(m.generate_task_plan)
+      print(all(hasattr(m, n) for n in ("_PlanFacts", "_plan_facts", "_plan_task_acceptance", "_step_inputs")), "_step_inputs(" in src, len(src.splitlines()) < 220)
+    expect: "True True True"
