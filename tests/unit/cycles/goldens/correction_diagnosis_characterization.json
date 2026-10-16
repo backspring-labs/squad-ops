@@ -1,0 +1,1730 @@
+{
+  "contested_row_confirmed": {
+    "events": [
+      {
+        "context": {
+          "cycle_id": "cyc_char",
+          "run_id": "run_abcdef123456"
+        },
+        "entity_id": "run_abcdef123456",
+        "entity_type": "run",
+        "event": "correction.initiated",
+        "payload": {
+          "correction_attempt": 1,
+          "failed_task_id": "task-run_abcdef12-m001-development.develop",
+          "failed_task_type": "development.develop"
+        }
+      }
+    ],
+    "raised": {
+      "error": "contested_check: correction ended at round 0 \u2014 the analyzer confirmed the producer's dispute of endpoint_defined; the check, not the work product, is the defect, and the operator decides (see term_.develop_00)",
+      "terminal": {
+        "contested_checks": [
+          "endpoint_defined"
+        ],
+        "failure_classification": "work_product",
+        "kind": "correction_terminated",
+        "refused_validators": [],
+        "task_id": "task-run_abcdef12-m001-development.develop",
+        "termination_reason": "contested_check"
+      }
+    },
+    "returned": null,
+    "round_failures": [
+      {
+        "category": "executed_and_failed",
+        "emission_signature": null,
+        "failed_checks": [
+          "endpoint_defined"
+        ],
+        "failed_detail": [
+          [
+            "endpoint_defined",
+            "GET /api/runs missing"
+          ]
+        ],
+        "locus": "unknown",
+        "round_index": 0,
+        "task_id": "task-run_abcdef12-m001-development.develop"
+      }
+    ],
+    "steps": [
+      {
+        "agent_id": "data-agent",
+        "causation_id": "task-run_abcdef12-m001-development.develop",
+        "correlation_id": "00000000000000000000000000000000",
+        "input_keys": [
+          "prd",
+          "failure_evidence",
+          "prior_outputs",
+          "artifact_refs",
+          "agent_model",
+          "agent_config_overrides",
+          "resolved_config"
+        ],
+        "inputs": {
+          "agent_config_overrides": {},
+          "agent_model": "m",
+          "artifact_refs": [
+            "art_routes"
+          ],
+          "failure_evidence": {
+            "contested_rows": [
+              {
+                "check": "endpoint_defined",
+                "contested": {
+                  "by": "development",
+                  "reason": "the endpoint is registered under /api/v1/runs, as the contract says"
+                },
+                "detail": "GET /api/runs missing",
+                "passed": false
+              }
+            ],
+            "contract_expectations": [
+              "`` must define exactly these routes (method, absolute path, and path-parameter names are all literal): "
+            ],
+            "error": "validation failed",
+            "failed_task_id": "task-run_abcdef12-m001-development.develop",
+            "failed_task_type": "development.develop",
+            "failure_category": "executed_and_failed",
+            "outcome_class": "SEMANTIC_FAILURE",
+            "preliminary_failure_classification": "work_product",
+            "prior_plan_deltas_count": 0,
+            "rejected_artifacts": [
+              {
+                "content_snippet": "def broken(): ...",
+                "name": "backend/routes.py",
+                "size": 17,
+                "type": "source"
+              }
+            ],
+            "validation_result": {
+              "checks": [
+                {
+                  "check": "endpoint_defined",
+                  "contested": {
+                    "by": "development",
+                    "reason": "the endpoint is registered under /api/v1/runs, as the contract says"
+                  },
+                  "detail": "GET /api/runs missing",
+                  "passed": false
+                },
+                {
+                  "check": "expected_artifacts",
+                  "passed": true
+                }
+              ],
+              "missing_components": [],
+              "passed": false,
+              "summary": "1/2 checks passed"
+            }
+          },
+          "prd": "PRD-CONTENT",
+          "prior_outputs": {
+            "dev": {
+              "summary": "[dev] built"
+            }
+          },
+          "resolved_config": {
+            "correction_steps": [
+              "analyze",
+              "decide",
+              "repair"
+            ]
+          }
+        },
+        "metadata": {
+          "role": "data",
+          "step_index": 0
+        },
+        "pulse_id": "00000000000000000000000000000001",
+        "span_id": "00000000000000000000000000000003",
+        "task_id": "corr-run_abcdef12-00-s00-data.analyze_failure",
+        "task_type": "data.analyze_failure",
+        "trace_id": "00000000000000000000000000000002"
+      },
+      {
+        "agent_id": "max",
+        "causation_id": "task-run_abcdef12-m001-development.develop",
+        "correlation_id": "00000000000000000000000000000000",
+        "input_keys": [
+          "prd",
+          "failure_evidence",
+          "prior_outputs",
+          "artifact_refs",
+          "agent_model",
+          "agent_config_overrides",
+          "resolved_config",
+          "failure_analysis"
+        ],
+        "inputs": {
+          "agent_config_overrides": {},
+          "agent_model": "m",
+          "artifact_refs": [
+            "art_routes"
+          ],
+          "failure_analysis": {
+            "analysis_summary": "The emitted routes module never registers GET /api/runs.",
+            "classification": "work_product",
+            "dispute_rulings": [
+              {
+                "check": "endpoint_defined",
+                "dispute_confirmed": true,
+                "reason": "the contract names /api/v1/runs"
+              }
+            ]
+          },
+          "failure_evidence": {
+            "contested_rows": [
+              {
+                "check": "endpoint_defined",
+                "contested": {
+                  "by": "development",
+                  "reason": "the endpoint is registered under /api/v1/runs, as the contract says"
+                },
+                "detail": "GET /api/runs missing",
+                "passed": false
+              }
+            ],
+            "contract_expectations": [
+              "`` must define exactly these routes (method, absolute path, and path-parameter names are all literal): "
+            ],
+            "error": "validation failed",
+            "failed_task_id": "task-run_abcdef12-m001-development.develop",
+            "failed_task_type": "development.develop",
+            "failure_category": "executed_and_failed",
+            "outcome_class": "SEMANTIC_FAILURE",
+            "preliminary_failure_classification": "work_product",
+            "prior_plan_deltas_count": 0,
+            "rejected_artifacts": [
+              {
+                "content_snippet": "def broken(): ...",
+                "name": "backend/routes.py",
+                "size": 17,
+                "type": "source"
+              }
+            ],
+            "validation_result": {
+              "checks": [
+                {
+                  "check": "endpoint_defined",
+                  "contested": {
+                    "by": "development",
+                    "reason": "the endpoint is registered under /api/v1/runs, as the contract says"
+                  },
+                  "detail": "GET /api/runs missing",
+                  "passed": false
+                },
+                {
+                  "check": "expected_artifacts",
+                  "passed": true
+                }
+              ],
+              "missing_components": [],
+              "passed": false,
+              "summary": "1/2 checks passed"
+            }
+          },
+          "prd": "PRD-CONTENT",
+          "prior_outputs": {
+            "dev": {
+              "summary": "[dev] built"
+            }
+          },
+          "resolved_config": {
+            "correction_steps": [
+              "analyze",
+              "decide",
+              "repair"
+            ]
+          }
+        },
+        "metadata": {
+          "role": "lead",
+          "step_index": 1
+        },
+        "pulse_id": "00000000000000000000000000000004",
+        "span_id": "00000000000000000000000000000006",
+        "task_id": "corr-run_abcdef12-00-s00-governance.correction_decision",
+        "task_type": "governance.correction_decision",
+        "trace_id": "00000000000000000000000000000005"
+      }
+    ]
+  },
+  "contested_row_left_unruled": {
+    "events": [
+      {
+        "context": {
+          "cycle_id": "cyc_char",
+          "run_id": "run_abcdef123456"
+        },
+        "entity_id": "run_abcdef123456",
+        "entity_type": "run",
+        "event": "correction.initiated",
+        "payload": {
+          "correction_attempt": 1,
+          "failed_task_id": "task-run_abcdef12-m001-development.develop",
+          "failed_task_type": "development.develop"
+        }
+      },
+      {
+        "context": {
+          "cycle_id": "cyc_char",
+          "run_id": "run_abcdef123456"
+        },
+        "entity_id": "run_abcdef123456",
+        "entity_type": "run",
+        "event": "correction.decided",
+        "payload": {
+          "correction_path": "patch",
+          "decision_rationale": "patch the routes module"
+        }
+      },
+      {
+        "context": {
+          "cycle_id": "cyc_char",
+          "run_id": "run_abcdef123456"
+        },
+        "entity_id": "run_abcdef123456",
+        "entity_type": "run",
+        "event": "correction.completed",
+        "payload": {
+          "correction_path": "patch",
+          "emission_empty": true,
+          "empty_emission_signatures": []
+        }
+      }
+    ],
+    "raised": null,
+    "returned": {
+      "correction_path": "patch",
+      "emission_empty": true,
+      "empty_emission_offered_scoped": null,
+      "empty_emission_signatures": [],
+      "repair_artifacts": [],
+      "repair_typed_checks": []
+    },
+    "round_failures": [
+      {
+        "category": "executed_and_failed",
+        "emission_signature": null,
+        "failed_checks": [
+          "endpoint_defined"
+        ],
+        "failed_detail": [
+          [
+            "endpoint_defined",
+            "GET /api/runs missing"
+          ]
+        ],
+        "locus": "unknown",
+        "round_index": 0,
+        "task_id": "task-run_abcdef12-m001-development.develop"
+      }
+    ],
+    "steps": [
+      {
+        "agent_id": "data-agent",
+        "causation_id": "task-run_abcdef12-m001-development.develop",
+        "correlation_id": "00000000000000000000000000000000",
+        "input_keys": [
+          "prd",
+          "failure_evidence",
+          "prior_outputs",
+          "artifact_refs",
+          "agent_model",
+          "agent_config_overrides",
+          "resolved_config"
+        ],
+        "inputs": {
+          "agent_config_overrides": {},
+          "agent_model": "m",
+          "artifact_refs": [
+            "art_routes"
+          ],
+          "failure_evidence": {
+            "contested_rows": [
+              {
+                "check": "endpoint_defined",
+                "contested": {
+                  "by": "development",
+                  "reason": "the endpoint is registered under /api/v1/runs, as the contract says"
+                },
+                "detail": "GET /api/runs missing",
+                "passed": false
+              }
+            ],
+            "contract_expectations": [
+              "`` must define exactly these routes (method, absolute path, and path-parameter names are all literal): "
+            ],
+            "error": "validation failed",
+            "failed_task_id": "task-run_abcdef12-m001-development.develop",
+            "failed_task_type": "development.develop",
+            "failure_category": "executed_and_failed",
+            "outcome_class": "SEMANTIC_FAILURE",
+            "preliminary_failure_classification": "work_product",
+            "prior_plan_deltas_count": 0,
+            "rejected_artifacts": [
+              {
+                "content_snippet": "def broken(): ...",
+                "name": "backend/routes.py",
+                "size": 17,
+                "type": "source"
+              }
+            ],
+            "validation_result": {
+              "checks": [
+                {
+                  "check": "endpoint_defined",
+                  "contested": {
+                    "by": "development",
+                    "reason": "the endpoint is registered under /api/v1/runs, as the contract says"
+                  },
+                  "detail": "GET /api/runs missing",
+                  "passed": false
+                },
+                {
+                  "check": "expected_artifacts",
+                  "passed": true
+                }
+              ],
+              "missing_components": [],
+              "passed": false,
+              "summary": "1/2 checks passed"
+            }
+          },
+          "prd": "PRD-CONTENT",
+          "prior_outputs": {
+            "dev": {
+              "summary": "[dev] built"
+            }
+          },
+          "resolved_config": {
+            "correction_steps": [
+              "analyze",
+              "decide",
+              "repair"
+            ]
+          }
+        },
+        "metadata": {
+          "role": "data",
+          "step_index": 0
+        },
+        "pulse_id": "00000000000000000000000000000001",
+        "span_id": "00000000000000000000000000000003",
+        "task_id": "corr-run_abcdef12-00-s00-data.analyze_failure",
+        "task_type": "data.analyze_failure",
+        "trace_id": "00000000000000000000000000000002"
+      },
+      {
+        "agent_id": "max",
+        "causation_id": "task-run_abcdef12-m001-development.develop",
+        "correlation_id": "00000000000000000000000000000000",
+        "input_keys": [
+          "prd",
+          "failure_evidence",
+          "prior_outputs",
+          "artifact_refs",
+          "agent_model",
+          "agent_config_overrides",
+          "resolved_config",
+          "failure_analysis"
+        ],
+        "inputs": {
+          "agent_config_overrides": {},
+          "agent_model": "m",
+          "artifact_refs": [
+            "art_routes"
+          ],
+          "failure_analysis": {
+            "analysis_summary": "The emitted routes module never registers GET /api/runs.",
+            "classification": "work_product"
+          },
+          "failure_evidence": {
+            "contested_rows": [
+              {
+                "check": "endpoint_defined",
+                "contested": {
+                  "by": "development",
+                  "reason": "the endpoint is registered under /api/v1/runs, as the contract says"
+                },
+                "detail": "GET /api/runs missing",
+                "passed": false
+              }
+            ],
+            "contract_expectations": [
+              "`` must define exactly these routes (method, absolute path, and path-parameter names are all literal): "
+            ],
+            "error": "validation failed",
+            "failed_task_id": "task-run_abcdef12-m001-development.develop",
+            "failed_task_type": "development.develop",
+            "failure_category": "executed_and_failed",
+            "outcome_class": "SEMANTIC_FAILURE",
+            "preliminary_failure_classification": "work_product",
+            "prior_plan_deltas_count": 0,
+            "rejected_artifacts": [
+              {
+                "content_snippet": "def broken(): ...",
+                "name": "backend/routes.py",
+                "size": 17,
+                "type": "source"
+              }
+            ],
+            "validation_result": {
+              "checks": [
+                {
+                  "check": "endpoint_defined",
+                  "contested": {
+                    "by": "development",
+                    "reason": "the endpoint is registered under /api/v1/runs, as the contract says"
+                  },
+                  "detail": "GET /api/runs missing",
+                  "passed": false
+                },
+                {
+                  "check": "expected_artifacts",
+                  "passed": true
+                }
+              ],
+              "missing_components": [],
+              "passed": false,
+              "summary": "1/2 checks passed"
+            }
+          },
+          "prd": "PRD-CONTENT",
+          "prior_outputs": {
+            "dev": {
+              "summary": "[dev] built"
+            }
+          },
+          "resolved_config": {
+            "correction_steps": [
+              "analyze",
+              "decide",
+              "repair"
+            ]
+          }
+        },
+        "metadata": {
+          "role": "lead",
+          "step_index": 1
+        },
+        "pulse_id": "00000000000000000000000000000004",
+        "span_id": "00000000000000000000000000000006",
+        "task_id": "corr-run_abcdef12-00-s00-governance.correction_decision",
+        "task_type": "governance.correction_decision",
+        "trace_id": "00000000000000000000000000000005"
+      },
+      {
+        "agent_id": "neo",
+        "causation_id": "task-run_abcdef12-m001-development.develop",
+        "correlation_id": "00000000000000000000000000000000",
+        "input_keys": [
+          "prd",
+          "failed_task_type",
+          "failure_evidence",
+          "failure_analysis",
+          "correction_decision",
+          "prior_outputs",
+          "artifact_refs",
+          "agent_model",
+          "agent_config_overrides",
+          "resolved_config",
+          "subtask_focus",
+          "subtask_description",
+          "expected_artifacts",
+          "acceptance_criteria",
+          "correction_attempt",
+          "max_correction_attempts",
+          "failed_task_artifacts"
+        ],
+        "inputs": {
+          "acceptance_criteria": [
+            {
+              "check": "endpoint_defined",
+              "params": {
+                "method": "GET",
+                "path": "/api/runs"
+              }
+            }
+          ],
+          "agent_config_overrides": {},
+          "agent_model": "m",
+          "artifact_refs": [
+            "art_routes",
+            "delta_000000000000"
+          ],
+          "correction_attempt": 1,
+          "correction_decision": {
+            "affected_task_types": [
+              "development.develop"
+            ],
+            "correction_path": "patch",
+            "decision_rationale": "patch the routes module",
+            "structural_plan_change_candidate": "none"
+          },
+          "expected_artifacts": [
+            "backend/routes.py",
+            "backend/models.py"
+          ],
+          "failed_task_artifacts": [
+            {
+              "content": "def broken(): ...",
+              "name": "backend/routes.py"
+            }
+          ],
+          "failed_task_type": "development.develop",
+          "failure_analysis": {
+            "analysis_summary": "The emitted routes module never registers GET /api/runs.",
+            "classification": "work_product"
+          },
+          "failure_evidence": {
+            "contested_rows": [
+              {
+                "check": "endpoint_defined",
+                "contested": {
+                  "by": "development",
+                  "reason": "the endpoint is registered under /api/v1/runs, as the contract says"
+                },
+                "detail": "GET /api/runs missing",
+                "passed": false
+              }
+            ],
+            "contract_expectations": [
+              "`` must define exactly these routes (method, absolute path, and path-parameter names are all literal): "
+            ],
+            "error": "validation failed",
+            "failed_task_id": "task-run_abcdef12-m001-development.develop",
+            "failed_task_type": "development.develop",
+            "failure_category": "executed_and_failed",
+            "outcome_class": "SEMANTIC_FAILURE",
+            "preliminary_failure_classification": "work_product",
+            "prior_plan_deltas_count": 0,
+            "rejected_artifacts": [
+              {
+                "content_snippet": "def broken(): ...",
+                "name": "backend/routes.py",
+                "size": 17,
+                "type": "source"
+              }
+            ],
+            "validation_result": {
+              "checks": [
+                {
+                  "check": "endpoint_defined",
+                  "contested": {
+                    "by": "development",
+                    "reason": "the endpoint is registered under /api/v1/runs, as the contract says"
+                  },
+                  "detail": "GET /api/runs missing",
+                  "passed": false
+                },
+                {
+                  "check": "expected_artifacts",
+                  "passed": true
+                }
+              ],
+              "missing_components": [],
+              "passed": false,
+              "summary": "1/2 checks passed"
+            }
+          },
+          "max_correction_attempts": 3,
+          "prd": "PRD-CONTENT",
+          "prior_outputs": {
+            "dev": {
+              "summary": "[dev] built"
+            }
+          },
+          "resolved_config": {
+            "build_profile": "fastapi_react_vite"
+          },
+          "subtask_description": null,
+          "subtask_focus": "Backend API"
+        },
+        "metadata": {
+          "role": "dev",
+          "step_index": 0
+        },
+        "pulse_id": "00000000000000000000000000000008",
+        "span_id": "00000000000000000000000000000010",
+        "task_id": "repair-run_abcdef12-00-s00-development.correction_repair",
+        "task_type": "development.correction_repair",
+        "trace_id": "00000000000000000000000000000009"
+      }
+    ]
+  },
+  "full_protocol_with_carried_evidence": {
+    "events": [
+      {
+        "context": {
+          "cycle_id": "cyc_char",
+          "run_id": "run_abcdef123456"
+        },
+        "entity_id": "run_abcdef123456",
+        "entity_type": "run",
+        "event": "correction.initiated",
+        "payload": {
+          "correction_attempt": 1,
+          "failed_task_id": "task-run_abcdef12-m001-development.develop",
+          "failed_task_type": "development.develop"
+        }
+      },
+      {
+        "context": {
+          "cycle_id": "cyc_char",
+          "run_id": "run_abcdef123456"
+        },
+        "entity_id": "run_abcdef123456",
+        "entity_type": "run",
+        "event": "correction.decided",
+        "payload": {
+          "correction_path": "patch",
+          "decision_rationale": "patch the routes module"
+        }
+      },
+      {
+        "context": {
+          "cycle_id": "cyc_char",
+          "run_id": "run_abcdef123456"
+        },
+        "entity_id": "run_abcdef123456",
+        "entity_type": "run",
+        "event": "correction.completed",
+        "payload": {
+          "correction_path": "patch",
+          "emission_empty": true,
+          "empty_emission_signatures": []
+        }
+      }
+    ],
+    "raised": null,
+    "returned": {
+      "correction_path": "patch",
+      "emission_empty": true,
+      "empty_emission_offered_scoped": null,
+      "empty_emission_signatures": [],
+      "repair_artifacts": [],
+      "repair_typed_checks": []
+    },
+    "round_failures": [
+      {
+        "category": "executed_and_failed",
+        "emission_signature": null,
+        "failed_checks": [
+          "endpoint_defined"
+        ],
+        "failed_detail": [
+          [
+            "endpoint_defined",
+            "GET /api/runs missing"
+          ]
+        ],
+        "locus": "unknown",
+        "round_index": 0,
+        "task_id": "task-run_abcdef12-m001-development.develop"
+      }
+    ],
+    "steps": [
+      {
+        "agent_id": "data-agent",
+        "causation_id": "task-run_abcdef12-m001-development.develop",
+        "correlation_id": "00000000000000000000000000000000",
+        "input_keys": [
+          "prd",
+          "failure_evidence",
+          "prior_outputs",
+          "artifact_refs",
+          "agent_model",
+          "agent_config_overrides",
+          "resolved_config"
+        ],
+        "inputs": {
+          "agent_config_overrides": {},
+          "agent_model": "m",
+          "artifact_refs": [
+            "art_routes"
+          ],
+          "failure_evidence": {
+            "contract_expectations": [
+              "`` must define exactly these routes (method, absolute path, and path-parameter names are all literal): "
+            ],
+            "error": "validation failed",
+            "error_contract": [
+              "on failure raise `ApiError(code, message)` (`from .errors import ApiError`): the FIRST argument is the error-code STRING, the second a human-readable string \u2014 never `ApiError(status_code=..., detail=...)` and never `HTTPException` for contract errors; the frozen `errors.py` maps the code to the HTTP status and renders the pinned envelope",
+              "valid error codes (code \u2192 HTTP status, mapped by frozen `errors.py`): `validation_error` \u2192 422, `run_not_found` \u2192 404, `duplicate_participant` \u2192 409, `participant_not_found` \u2192 404"
+            ],
+            "failed_task_id": "task-run_abcdef12-m001-development.develop",
+            "failed_task_type": "development.develop",
+            "failure_category": "executed_and_failed",
+            "model_surface": [
+              "`backend/models.py` is scaffold-frozen and defines EXACTLY these names: `Participant(id, name)`, `RunEvent(id, title, datetime, location, distance, pace_target, route_notes, participants)`, `RunEventCreate(title, datetime, location, distance, pace_target, route_notes)`, `ParticipantName(name)`. Import only from this list \u2014 these are the complete contents of that module",
+              "field names are exact \u2014 construct and read models with the fields shown above; a near-miss (`pace` for `pace_target`, `meeting_location` for `location`) raises at request time and every affected endpoint returns HTTP 500",
+              "do NOT invent model names or aliases (`Run`, `RunCreate`, `RunResponse`, `RunJoin` and similar do not exist); an import of a name absent from the list above fails at load, the app never starts, and the patch is rejected",
+              "`models.py` is frozen \u2014 if a name you want is missing, use the declared names and shape the response in the fill slot; do not edit or re-emit the model module",
+              "`backend/store.py` is scaffold-frozen and already defines the in-memory stores: `run_event_store` (plus `reset()` for test isolation). Import them (`from .store import ...`); do NOT declare your own store dicts \u2014 a shadow store is invisible to `reset()`, so state leaks between tests and the suite fails on isolation. `Participant` have no store \u2014 they are shapes embedded in or projected from those rows; build them from a stored entity, never keep a parallel store."
+            ],
+            "outcome_class": "SEMANTIC_FAILURE",
+            "preliminary_failure_classification": "work_product",
+            "prior_plan_deltas_count": 0,
+            "prior_repair_rejections": [
+              "round 0's repair was refused: endpoint_defined still failed"
+            ],
+            "rejected_artifacts": [
+              {
+                "content_snippet": "def broken(): ...",
+                "name": "backend/routes.py",
+                "size": 17,
+                "type": "source"
+              }
+            ],
+            "scaffold_enforcement": [
+              "backend/models.py is frozen: restored to the scaffold"
+            ],
+            "validation_result": {
+              "checks": [
+                {
+                  "check": "endpoint_defined",
+                  "detail": "GET /api/runs missing",
+                  "passed": false
+                },
+                {
+                  "check": "expected_artifacts",
+                  "passed": true
+                }
+              ],
+              "missing_components": [],
+              "passed": false,
+              "summary": "1/2 checks passed"
+            }
+          },
+          "prd": "PRD-CONTENT",
+          "prior_outputs": {
+            "dev": {
+              "summary": "[dev] built"
+            }
+          },
+          "resolved_config": {
+            "correction_steps": [
+              "analyze",
+              "decide",
+              "repair"
+            ]
+          }
+        },
+        "metadata": {
+          "role": "data",
+          "step_index": 0
+        },
+        "pulse_id": "00000000000000000000000000000001",
+        "span_id": "00000000000000000000000000000003",
+        "task_id": "corr-run_abcdef12-00-s00-data.analyze_failure",
+        "task_type": "data.analyze_failure",
+        "trace_id": "00000000000000000000000000000002"
+      },
+      {
+        "agent_id": "max",
+        "causation_id": "task-run_abcdef12-m001-development.develop",
+        "correlation_id": "00000000000000000000000000000000",
+        "input_keys": [
+          "prd",
+          "failure_evidence",
+          "prior_outputs",
+          "artifact_refs",
+          "agent_model",
+          "agent_config_overrides",
+          "resolved_config",
+          "failure_analysis"
+        ],
+        "inputs": {
+          "agent_config_overrides": {},
+          "agent_model": "m",
+          "artifact_refs": [
+            "art_routes"
+          ],
+          "failure_analysis": {
+            "analysis_summary": "The emitted routes module never registers GET /api/runs.",
+            "classification": "work_product"
+          },
+          "failure_evidence": {
+            "contract_expectations": [
+              "`` must define exactly these routes (method, absolute path, and path-parameter names are all literal): "
+            ],
+            "error": "validation failed",
+            "error_contract": [
+              "on failure raise `ApiError(code, message)` (`from .errors import ApiError`): the FIRST argument is the error-code STRING, the second a human-readable string \u2014 never `ApiError(status_code=..., detail=...)` and never `HTTPException` for contract errors; the frozen `errors.py` maps the code to the HTTP status and renders the pinned envelope",
+              "valid error codes (code \u2192 HTTP status, mapped by frozen `errors.py`): `validation_error` \u2192 422, `run_not_found` \u2192 404, `duplicate_participant` \u2192 409, `participant_not_found` \u2192 404"
+            ],
+            "failed_task_id": "task-run_abcdef12-m001-development.develop",
+            "failed_task_type": "development.develop",
+            "failure_category": "executed_and_failed",
+            "model_surface": [
+              "`backend/models.py` is scaffold-frozen and defines EXACTLY these names: `Participant(id, name)`, `RunEvent(id, title, datetime, location, distance, pace_target, route_notes, participants)`, `RunEventCreate(title, datetime, location, distance, pace_target, route_notes)`, `ParticipantName(name)`. Import only from this list \u2014 these are the complete contents of that module",
+              "field names are exact \u2014 construct and read models with the fields shown above; a near-miss (`pace` for `pace_target`, `meeting_location` for `location`) raises at request time and every affected endpoint returns HTTP 500",
+              "do NOT invent model names or aliases (`Run`, `RunCreate`, `RunResponse`, `RunJoin` and similar do not exist); an import of a name absent from the list above fails at load, the app never starts, and the patch is rejected",
+              "`models.py` is frozen \u2014 if a name you want is missing, use the declared names and shape the response in the fill slot; do not edit or re-emit the model module",
+              "`backend/store.py` is scaffold-frozen and already defines the in-memory stores: `run_event_store` (plus `reset()` for test isolation). Import them (`from .store import ...`); do NOT declare your own store dicts \u2014 a shadow store is invisible to `reset()`, so state leaks between tests and the suite fails on isolation. `Participant` have no store \u2014 they are shapes embedded in or projected from those rows; build them from a stored entity, never keep a parallel store."
+            ],
+            "outcome_class": "SEMANTIC_FAILURE",
+            "preliminary_failure_classification": "work_product",
+            "prior_plan_deltas_count": 0,
+            "prior_repair_rejections": [
+              "round 0's repair was refused: endpoint_defined still failed"
+            ],
+            "rejected_artifacts": [
+              {
+                "content_snippet": "def broken(): ...",
+                "name": "backend/routes.py",
+                "size": 17,
+                "type": "source"
+              }
+            ],
+            "scaffold_enforcement": [
+              "backend/models.py is frozen: restored to the scaffold"
+            ],
+            "validation_result": {
+              "checks": [
+                {
+                  "check": "endpoint_defined",
+                  "detail": "GET /api/runs missing",
+                  "passed": false
+                },
+                {
+                  "check": "expected_artifacts",
+                  "passed": true
+                }
+              ],
+              "missing_components": [],
+              "passed": false,
+              "summary": "1/2 checks passed"
+            }
+          },
+          "prd": "PRD-CONTENT",
+          "prior_outputs": {
+            "dev": {
+              "summary": "[dev] built"
+            }
+          },
+          "resolved_config": {
+            "correction_steps": [
+              "analyze",
+              "decide",
+              "repair"
+            ]
+          }
+        },
+        "metadata": {
+          "role": "lead",
+          "step_index": 1
+        },
+        "pulse_id": "00000000000000000000000000000004",
+        "span_id": "00000000000000000000000000000006",
+        "task_id": "corr-run_abcdef12-00-s00-governance.correction_decision",
+        "task_type": "governance.correction_decision",
+        "trace_id": "00000000000000000000000000000005"
+      },
+      {
+        "agent_id": "neo",
+        "causation_id": "task-run_abcdef12-m001-development.develop",
+        "correlation_id": "00000000000000000000000000000000",
+        "input_keys": [
+          "prd",
+          "failed_task_type",
+          "failure_evidence",
+          "failure_analysis",
+          "correction_decision",
+          "prior_outputs",
+          "artifact_refs",
+          "agent_model",
+          "agent_config_overrides",
+          "resolved_config",
+          "subtask_focus",
+          "subtask_description",
+          "expected_artifacts",
+          "acceptance_criteria",
+          "correction_attempt",
+          "max_correction_attempts",
+          "error_contract",
+          "model_surface",
+          "testid_surface",
+          "dom_testid_surface",
+          "frozen_client_surface",
+          "frozen_surface",
+          "response_surface",
+          "failed_task_artifacts"
+        ],
+        "inputs": {
+          "acceptance_criteria": [
+            {
+              "check": "endpoint_defined",
+              "params": {
+                "method": "GET",
+                "path": "/api/runs"
+              }
+            }
+          ],
+          "agent_config_overrides": {},
+          "agent_model": "m",
+          "artifact_refs": [
+            "art_routes",
+            "delta_000000000000"
+          ],
+          "correction_attempt": 1,
+          "correction_decision": {
+            "affected_task_types": [
+              "development.develop"
+            ],
+            "correction_path": "patch",
+            "decision_rationale": "patch the routes module",
+            "structural_plan_change_candidate": "none"
+          },
+          "dom_testid_surface": [
+            "`RunsListView` (route `/`): root container `runs-list`; anchors: `runs-list`, `run-item`, `run-participant-count`, `empty-state`, `create-run-link`",
+            "`CreateRunView` (route `/create`): root container `create-run-view`; anchors: `create-run-view`, `create-run-form`, `field-title`, `field-datetime`, `field-location`, `field-distance`, `field-pace-target`, `field-route-notes`, `submit-create`, `form-error`",
+            "`RunDetailView` (route `/runs/:id`): root container `run-detail`; anchors: `run-detail`, `participant-list`, `participant-item`, `join-form`, `join-name-input`, `join-submit`, `leave-form`, `leave-name-input`, `leave-submit`, `action-error`, `not-found`"
+          ],
+          "error_contract": [
+            "on failure raise `ApiError(code, message)` (`from .errors import ApiError`): the FIRST argument is the error-code STRING, the second a human-readable string \u2014 never `ApiError(status_code=..., detail=...)` and never `HTTPException` for contract errors; the frozen `errors.py` maps the code to the HTTP status and renders the pinned envelope",
+            "valid error codes (code \u2192 HTTP status, mapped by frozen `errors.py`): `validation_error` \u2192 422, `run_not_found` \u2192 404, `duplicate_participant` \u2192 409, `participant_not_found` \u2192 404"
+          ],
+          "expected_artifacts": [
+            "backend/routes.py",
+            "backend/models.py"
+          ],
+          "failed_task_artifacts": [
+            {
+              "content": "def broken(): ...",
+              "name": "backend/routes.py"
+            }
+          ],
+          "failed_task_type": "development.develop",
+          "failure_analysis": {
+            "analysis_summary": "The emitted routes module never registers GET /api/runs.",
+            "classification": "work_product"
+          },
+          "failure_evidence": {
+            "contract_expectations": [
+              "`` must define exactly these routes (method, absolute path, and path-parameter names are all literal): "
+            ],
+            "error": "validation failed",
+            "error_contract": [
+              "on failure raise `ApiError(code, message)` (`from .errors import ApiError`): the FIRST argument is the error-code STRING, the second a human-readable string \u2014 never `ApiError(status_code=..., detail=...)` and never `HTTPException` for contract errors; the frozen `errors.py` maps the code to the HTTP status and renders the pinned envelope",
+              "valid error codes (code \u2192 HTTP status, mapped by frozen `errors.py`): `validation_error` \u2192 422, `run_not_found` \u2192 404, `duplicate_participant` \u2192 409, `participant_not_found` \u2192 404"
+            ],
+            "failed_task_id": "task-run_abcdef12-m001-development.develop",
+            "failed_task_type": "development.develop",
+            "failure_category": "executed_and_failed",
+            "model_surface": [
+              "`backend/models.py` is scaffold-frozen and defines EXACTLY these names: `Participant(id, name)`, `RunEvent(id, title, datetime, location, distance, pace_target, route_notes, participants)`, `RunEventCreate(title, datetime, location, distance, pace_target, route_notes)`, `ParticipantName(name)`. Import only from this list \u2014 these are the complete contents of that module",
+              "field names are exact \u2014 construct and read models with the fields shown above; a near-miss (`pace` for `pace_target`, `meeting_location` for `location`) raises at request time and every affected endpoint returns HTTP 500",
+              "do NOT invent model names or aliases (`Run`, `RunCreate`, `RunResponse`, `RunJoin` and similar do not exist); an import of a name absent from the list above fails at load, the app never starts, and the patch is rejected",
+              "`models.py` is frozen \u2014 if a name you want is missing, use the declared names and shape the response in the fill slot; do not edit or re-emit the model module",
+              "`backend/store.py` is scaffold-frozen and already defines the in-memory stores: `run_event_store` (plus `reset()` for test isolation). Import them (`from .store import ...`); do NOT declare your own store dicts \u2014 a shadow store is invisible to `reset()`, so state leaks between tests and the suite fails on isolation. `Participant` have no store \u2014 they are shapes embedded in or projected from those rows; build them from a stored entity, never keep a parallel store."
+            ],
+            "outcome_class": "SEMANTIC_FAILURE",
+            "preliminary_failure_classification": "work_product",
+            "prior_plan_deltas_count": 0,
+            "prior_repair_rejections": [
+              "round 0's repair was refused: endpoint_defined still failed"
+            ],
+            "rejected_artifacts": [
+              {
+                "content_snippet": "def broken(): ...",
+                "name": "backend/routes.py",
+                "size": 17,
+                "type": "source"
+              }
+            ],
+            "scaffold_enforcement": [
+              "backend/models.py is frozen: restored to the scaffold"
+            ],
+            "validation_result": {
+              "checks": [
+                {
+                  "check": "endpoint_defined",
+                  "detail": "GET /api/runs missing",
+                  "passed": false
+                },
+                {
+                  "check": "expected_artifacts",
+                  "passed": true
+                }
+              ],
+              "missing_components": [],
+              "passed": false,
+              "summary": "1/2 checks passed"
+            }
+          },
+          "frozen_client_surface": [
+            "`ApiError(code, message, status)` exported from `frontend/src/api.js` \u2014 the error a non-2xx `{\"error\": {code, message}}` envelope becomes",
+            "`apiFetch(path, options = {})` exported from `frontend/src/api.js` \u2014 prefixes `/api`, sends JSON headers, returns the parsed JSON body (`null` on 204) and throws `ApiError` on a non-2xx response"
+          ],
+          "frozen_surface": [
+            "- `backend/__init__.py` \u2014 import as `backend`",
+            "- `backend/main.py` \u2014 import as `backend.main`; functions health(); its own imports `.errors`, `.routes`, `fastapi`, `fastapi.middleware.cors`, `os`",
+            "- `backend/models.py` \u2014 import as `backend.models`; defines Participant(id, name), RunEvent(id, title, datetime, location, distance, pace_target, route_notes, participants), RunEventCreate(title, datetime, location, distance, pace_target, route_notes), ParticipantName(name); its own imports `pydantic`, `typing`",
+            "- `backend/store.py` \u2014 import as `backend.store`; module state run_event_store: dict[str, RunEvent]; functions reset(); its own imports `.models`",
+            "- `backend/errors.py` \u2014 import as `backend.errors`; defines ApiError; functions register_error_handlers(app); its own imports `fastapi`, `fastapi.exceptions`, `fastapi.responses`",
+            "- `backend/requirements.txt`",
+            "- `conftest.py` \u2014 functions client(); its own imports `backend.main`, `backend.store`, `fastapi.testclient`, `os`, `pytest`, `sys`",
+            "- `frontend/index.html`",
+            "- `frontend/package.json` \u2014 dependencies react, react-dom, react-router-dom; devDependencies @testing-library/dom, @testing-library/jest-dom, @testing-library/react, @vitejs/plugin-react, jsdom, vite, vitest",
+            "- `frontend/vite.config.js` \u2014 its own imports `@vitejs/plugin-react`, `vite`",
+            "- `frontend/src/test-setup.js` \u2014 its own imports `@testing-library/react`, `vitest`",
+            "- `frontend/src/__tests__/harness.test.jsx` \u2014 its own imports `../App.jsx`, `@testing-library/react`, `react-router-dom`, `vitest`",
+            "- `frontend/src/main.jsx` \u2014 its own imports `./App.jsx`, `react`, `react-dom/client`, `react-router-dom`",
+            "- `frontend/src/index.css`",
+            "- `Dockerfile`",
+            "- `nginx.conf`",
+            "- `start.sh`",
+            "- `.dockerignore`",
+            "- `frontend/src/api.js` \u2014 classes `ApiError(code, message, status)`; functions `apiFetch(path, options = {})`",
+            "- `frontend/src/App.jsx` \u2014 its own imports `./views/CreateRunView.jsx`, `./views/RunDetailView.jsx`, `./views/RunsListView.jsx`, `react-router-dom`"
+          ],
+          "max_correction_attempts": 3,
+          "model_surface": [
+            "`backend/models.py` is scaffold-frozen and defines EXACTLY these names: `Participant(id, name)`, `RunEvent(id, title, datetime, location, distance, pace_target, route_notes, participants)`, `RunEventCreate(title, datetime, location, distance, pace_target, route_notes)`, `ParticipantName(name)`. Import only from this list \u2014 these are the complete contents of that module",
+            "field names are exact \u2014 construct and read models with the fields shown above; a near-miss (`pace` for `pace_target`, `meeting_location` for `location`) raises at request time and every affected endpoint returns HTTP 500",
+            "do NOT invent model names or aliases (`Run`, `RunCreate`, `RunResponse`, `RunJoin` and similar do not exist); an import of a name absent from the list above fails at load, the app never starts, and the patch is rejected",
+            "`models.py` is frozen \u2014 if a name you want is missing, use the declared names and shape the response in the fill slot; do not edit or re-emit the model module",
+            "`backend/store.py` is scaffold-frozen and already defines the in-memory stores: `run_event_store` (plus `reset()` for test isolation). Import them (`from .store import ...`); do NOT declare your own store dicts \u2014 a shadow store is invisible to `reset()`, so state leaks between tests and the suite fails on isolation. `Participant` have no store \u2014 they are shapes embedded in or projected from those rows; build them from a stored entity, never keep a parallel store."
+          ],
+          "prd": "PRD-CONTENT",
+          "prior_outputs": {
+            "dev": {
+              "summary": "[dev] built"
+            }
+          },
+          "resolved_config": {
+            "build_profile": "fastapi_react_vite"
+          },
+          "response_surface": [
+            "`GET /runs` returns a list of `RunEvent` \u2014 each element of the array carries `id`, `title`, `datetime`, `location`, `participants`; each `participants` element carries `id`, `name`",
+            "`POST /runs` returns HTTP 201 with `RunEvent` \u2014 the response body carries `id`, `title`, `datetime`, `location`, `participants`; each `participants` element carries `id`, `name`",
+            "`GET /runs/{run_id}` returns `RunEvent` \u2014 the response body carries `id`, `title`, `datetime`, `location`, `participants`; each `participants` element carries `id`, `name`",
+            "`POST /runs/{run_id}/join` returns `RunEvent` \u2014 the response body carries `id`, `title`, `datetime`, `location`, `participants`; each `participants` element carries `id`, `name`",
+            "`POST /runs/{run_id}/leave` returns `RunEvent` \u2014 the response body carries `id`, `title`, `datetime`, `location`, `participants`; each `participants` element carries `id`, `name`"
+          ],
+          "subtask_description": null,
+          "subtask_focus": "Backend API",
+          "testid_surface": [
+            "`RunsListView` (route `/`): root container `runs-list`; anchors: `runs-list`, `run-item`, `run-participant-count`, `empty-state`, `create-run-link`",
+            "`CreateRunView` (route `/create`): root container `create-run-view`; anchors: `create-run-view`, `create-run-form`, `field-title`, `field-datetime`, `field-location`, `field-distance`, `field-pace-target`, `field-route-notes`, `submit-create`, `form-error`",
+            "`RunDetailView` (route `/runs/:id`): root container `run-detail`; anchors: `run-detail`, `participant-list`, `participant-item`, `join-form`, `join-name-input`, `join-submit`, `leave-form`, `leave-name-input`, `leave-submit`, `action-error`, `not-found`"
+          ]
+        },
+        "metadata": {
+          "role": "dev",
+          "step_index": 0
+        },
+        "pulse_id": "00000000000000000000000000000008",
+        "span_id": "00000000000000000000000000000010",
+        "task_id": "repair-run_abcdef12-00-s00-development.correction_repair",
+        "task_type": "development.correction_repair",
+        "trace_id": "00000000000000000000000000000009"
+      }
+    ]
+  },
+  "refuted_claim_reaches_the_decision": {
+    "events": [
+      {
+        "context": {
+          "cycle_id": "cyc_char",
+          "run_id": "run_abcdef123456"
+        },
+        "entity_id": "run_abcdef123456",
+        "entity_type": "run",
+        "event": "correction.initiated",
+        "payload": {
+          "correction_attempt": 1,
+          "failed_task_id": "task-run_abcdef12-m001-development.develop",
+          "failed_task_type": "development.develop"
+        }
+      },
+      {
+        "context": {
+          "cycle_id": "cyc_char",
+          "run_id": "run_abcdef123456"
+        },
+        "entity_id": "run_abcdef123456",
+        "entity_type": "run",
+        "event": "correction.decided",
+        "payload": {
+          "correction_path": "patch",
+          "decision_rationale": "patch the routes module"
+        }
+      },
+      {
+        "context": {
+          "cycle_id": "cyc_char",
+          "run_id": "run_abcdef123456"
+        },
+        "entity_id": "run_abcdef123456",
+        "entity_type": "run",
+        "event": "correction.completed",
+        "payload": {
+          "correction_path": "patch",
+          "emission_empty": true,
+          "empty_emission_signatures": []
+        }
+      }
+    ],
+    "raised": null,
+    "returned": {
+      "correction_path": "patch",
+      "emission_empty": true,
+      "empty_emission_offered_scoped": null,
+      "empty_emission_signatures": [],
+      "repair_artifacts": [],
+      "repair_typed_checks": []
+    },
+    "round_failures": [
+      {
+        "category": "executed_and_failed",
+        "emission_signature": null,
+        "failed_checks": [
+          "endpoint_defined"
+        ],
+        "failed_detail": [
+          [
+            "endpoint_defined",
+            "GET /api/runs missing"
+          ]
+        ],
+        "locus": "unknown",
+        "round_index": 0,
+        "task_id": "task-run_abcdef12-m001-development.develop"
+      }
+    ],
+    "steps": [
+      {
+        "agent_id": "data-agent",
+        "causation_id": "task-run_abcdef12-m001-development.develop",
+        "correlation_id": "00000000000000000000000000000000",
+        "input_keys": [
+          "prd",
+          "failure_evidence",
+          "prior_outputs",
+          "artifact_refs",
+          "agent_model",
+          "agent_config_overrides",
+          "resolved_config"
+        ],
+        "inputs": {
+          "agent_config_overrides": {},
+          "agent_model": "m",
+          "artifact_refs": [
+            "art_routes"
+          ],
+          "failure_evidence": {
+            "contract_expectations": [
+              "`` must define exactly these routes (method, absolute path, and path-parameter names are all literal): "
+            ],
+            "error": "validation failed",
+            "failed_task_id": "task-run_abcdef12-m001-development.develop",
+            "failed_task_type": "development.develop",
+            "failure_category": "executed_and_failed",
+            "outcome_class": "SEMANTIC_FAILURE",
+            "preliminary_failure_classification": "work_product",
+            "prior_plan_deltas_count": 0,
+            "rejected_artifacts": [
+              {
+                "content_snippet": "def broken(): ...",
+                "name": "backend/routes.py",
+                "size": 17,
+                "type": "source"
+              }
+            ],
+            "validation_result": {
+              "checks": [
+                {
+                  "check": "endpoint_defined",
+                  "detail": "GET /api/runs missing",
+                  "passed": false
+                },
+                {
+                  "check": "expected_artifacts",
+                  "passed": true
+                }
+              ],
+              "missing_components": [],
+              "passed": false,
+              "summary": "1/2 checks passed"
+            }
+          },
+          "prd": "PRD-CONTENT",
+          "prior_outputs": {
+            "dev": {
+              "summary": "[dev] built"
+            }
+          },
+          "resolved_config": {
+            "correction_steps": [
+              "analyze",
+              "decide",
+              "repair"
+            ]
+          }
+        },
+        "metadata": {
+          "role": "data",
+          "step_index": 0
+        },
+        "pulse_id": "00000000000000000000000000000001",
+        "span_id": "00000000000000000000000000000003",
+        "task_id": "corr-run_abcdef12-00-s00-data.analyze_failure",
+        "task_type": "data.analyze_failure",
+        "trace_id": "00000000000000000000000000000002"
+      },
+      {
+        "agent_id": "max",
+        "causation_id": "task-run_abcdef12-m001-development.develop",
+        "correlation_id": "00000000000000000000000000000000",
+        "input_keys": [
+          "prd",
+          "failure_evidence",
+          "prior_outputs",
+          "artifact_refs",
+          "agent_model",
+          "agent_config_overrides",
+          "resolved_config",
+          "failure_analysis",
+          "refuted_source_claims"
+        ],
+        "inputs": {
+          "agent_config_overrides": {},
+          "agent_model": "m",
+          "artifact_refs": [
+            "art_routes"
+          ],
+          "failure_analysis": {
+            "analysis_summary": "The handler in backend/services/run_service.py returns the wrong shape. The routes module never registers GET /api/runs.",
+            "classification": "work_product"
+          },
+          "failure_evidence": {
+            "contract_expectations": [
+              "`` must define exactly these routes (method, absolute path, and path-parameter names are all literal): "
+            ],
+            "error": "validation failed",
+            "failed_task_id": "task-run_abcdef12-m001-development.develop",
+            "failed_task_type": "development.develop",
+            "failure_category": "executed_and_failed",
+            "outcome_class": "SEMANTIC_FAILURE",
+            "preliminary_failure_classification": "work_product",
+            "prior_plan_deltas_count": 0,
+            "rejected_artifacts": [
+              {
+                "content_snippet": "def broken(): ...",
+                "name": "backend/routes.py",
+                "size": 17,
+                "type": "source"
+              }
+            ],
+            "validation_result": {
+              "checks": [
+                {
+                  "check": "endpoint_defined",
+                  "detail": "GET /api/runs missing",
+                  "passed": false
+                },
+                {
+                  "check": "expected_artifacts",
+                  "passed": true
+                }
+              ],
+              "missing_components": [],
+              "passed": false,
+              "summary": "1/2 checks passed"
+            }
+          },
+          "prd": "PRD-CONTENT",
+          "prior_outputs": {
+            "dev": {
+              "summary": "[dev] built"
+            }
+          },
+          "refuted_source_claims": [
+            {
+              "claim": "The handler in backend/services/run_service.py returns the wrong shape.",
+              "path": "backend/services/run_service.py"
+            }
+          ],
+          "resolved_config": {
+            "correction_steps": [
+              "analyze",
+              "decide",
+              "repair"
+            ]
+          }
+        },
+        "metadata": {
+          "role": "lead",
+          "step_index": 1
+        },
+        "pulse_id": "00000000000000000000000000000004",
+        "span_id": "00000000000000000000000000000006",
+        "task_id": "corr-run_abcdef12-00-s00-governance.correction_decision",
+        "task_type": "governance.correction_decision",
+        "trace_id": "00000000000000000000000000000005"
+      },
+      {
+        "agent_id": "neo",
+        "causation_id": "task-run_abcdef12-m001-development.develop",
+        "correlation_id": "00000000000000000000000000000000",
+        "input_keys": [
+          "prd",
+          "failed_task_type",
+          "failure_evidence",
+          "failure_analysis",
+          "correction_decision",
+          "prior_outputs",
+          "artifact_refs",
+          "agent_model",
+          "agent_config_overrides",
+          "resolved_config",
+          "subtask_focus",
+          "subtask_description",
+          "expected_artifacts",
+          "acceptance_criteria",
+          "correction_attempt",
+          "max_correction_attempts",
+          "failed_task_artifacts"
+        ],
+        "inputs": {
+          "acceptance_criteria": [
+            {
+              "check": "endpoint_defined",
+              "params": {
+                "method": "GET",
+                "path": "/api/runs"
+              }
+            }
+          ],
+          "agent_config_overrides": {},
+          "agent_model": "m",
+          "artifact_refs": [
+            "art_routes",
+            "delta_000000000000"
+          ],
+          "correction_attempt": 1,
+          "correction_decision": {
+            "affected_task_types": [
+              "development.develop"
+            ],
+            "correction_path": "patch",
+            "decision_rationale": "patch the routes module",
+            "structural_plan_change_candidate": "none"
+          },
+          "expected_artifacts": [
+            "backend/routes.py",
+            "backend/models.py"
+          ],
+          "failed_task_artifacts": [
+            {
+              "content": "def broken(): ...",
+              "name": "backend/routes.py"
+            }
+          ],
+          "failed_task_type": "development.develop",
+          "failure_analysis": {
+            "analysis_summary": "The handler in backend/services/run_service.py returns the wrong shape. The routes module never registers GET /api/runs.",
+            "classification": "work_product"
+          },
+          "failure_evidence": {
+            "contract_expectations": [
+              "`` must define exactly these routes (method, absolute path, and path-parameter names are all literal): "
+            ],
+            "error": "validation failed",
+            "failed_task_id": "task-run_abcdef12-m001-development.develop",
+            "failed_task_type": "development.develop",
+            "failure_category": "executed_and_failed",
+            "outcome_class": "SEMANTIC_FAILURE",
+            "preliminary_failure_classification": "work_product",
+            "prior_plan_deltas_count": 0,
+            "rejected_artifacts": [
+              {
+                "content_snippet": "def broken(): ...",
+                "name": "backend/routes.py",
+                "size": 17,
+                "type": "source"
+              }
+            ],
+            "validation_result": {
+              "checks": [
+                {
+                  "check": "endpoint_defined",
+                  "detail": "GET /api/runs missing",
+                  "passed": false
+                },
+                {
+                  "check": "expected_artifacts",
+                  "passed": true
+                }
+              ],
+              "missing_components": [],
+              "passed": false,
+              "summary": "1/2 checks passed"
+            }
+          },
+          "max_correction_attempts": 3,
+          "prd": "PRD-CONTENT",
+          "prior_outputs": {
+            "dev": {
+              "summary": "[dev] built"
+            }
+          },
+          "resolved_config": {
+            "build_profile": "fastapi_react_vite"
+          },
+          "subtask_description": null,
+          "subtask_focus": "Backend API"
+        },
+        "metadata": {
+          "role": "dev",
+          "step_index": 0
+        },
+        "pulse_id": "00000000000000000000000000000008",
+        "span_id": "00000000000000000000000000000010",
+        "task_id": "repair-run_abcdef12-00-s00-development.correction_repair",
+        "task_type": "development.correction_repair",
+        "trace_id": "00000000000000000000000000000009"
+      }
+    ]
+  },
+  "repair_alone_declared": {
+    "events": [
+      {
+        "context": {
+          "cycle_id": "cyc_char",
+          "run_id": "run_abcdef123456"
+        },
+        "entity_id": "run_abcdef123456",
+        "entity_type": "run",
+        "event": "correction.initiated",
+        "payload": {
+          "correction_attempt": 1,
+          "failed_task_id": "task-run_abcdef12-m001-development.develop",
+          "failed_task_type": "development.develop"
+        }
+      },
+      {
+        "context": {
+          "cycle_id": "cyc_char",
+          "run_id": "run_abcdef123456"
+        },
+        "entity_id": "run_abcdef123456",
+        "entity_type": "run",
+        "event": "correction.decided",
+        "payload": {
+          "correction_path": "patch",
+          "decision_rationale": ""
+        }
+      },
+      {
+        "context": {
+          "cycle_id": "cyc_char",
+          "run_id": "run_abcdef123456"
+        },
+        "entity_id": "run_abcdef123456",
+        "entity_type": "run",
+        "event": "correction.completed",
+        "payload": {
+          "correction_path": "patch",
+          "emission_empty": true,
+          "empty_emission_signatures": []
+        }
+      }
+    ],
+    "raised": null,
+    "returned": {
+      "correction_path": "patch",
+      "emission_empty": true,
+      "empty_emission_offered_scoped": null,
+      "empty_emission_signatures": [],
+      "repair_artifacts": [],
+      "repair_typed_checks": []
+    },
+    "round_failures": [
+      {
+        "category": "executed_and_failed",
+        "emission_signature": null,
+        "failed_checks": [
+          "endpoint_defined"
+        ],
+        "failed_detail": [
+          [
+            "endpoint_defined",
+            "GET /api/runs missing"
+          ]
+        ],
+        "locus": "unknown",
+        "round_index": 0,
+        "task_id": "task-run_abcdef12-m001-development.develop"
+      }
+    ],
+    "steps": [
+      {
+        "agent_id": "neo",
+        "causation_id": "task-run_abcdef12-m001-development.develop",
+        "correlation_id": "00000000000000000000000000000000",
+        "input_keys": [
+          "prd",
+          "failed_task_type",
+          "failure_evidence",
+          "failure_analysis",
+          "correction_decision",
+          "prior_outputs",
+          "artifact_refs",
+          "agent_model",
+          "agent_config_overrides",
+          "resolved_config",
+          "subtask_focus",
+          "subtask_description",
+          "expected_artifacts",
+          "acceptance_criteria",
+          "correction_attempt",
+          "max_correction_attempts",
+          "failed_task_artifacts"
+        ],
+        "inputs": {
+          "acceptance_criteria": [
+            {
+              "check": "endpoint_defined",
+              "params": {
+                "method": "GET",
+                "path": "/api/runs"
+              }
+            }
+          ],
+          "agent_config_overrides": {},
+          "agent_model": "m",
+          "artifact_refs": [
+            "art_routes",
+            "delta_000000000000"
+          ],
+          "correction_attempt": 1,
+          "correction_decision": {},
+          "expected_artifacts": [
+            "backend/routes.py",
+            "backend/models.py"
+          ],
+          "failed_task_artifacts": [
+            {
+              "content": "def broken(): ...",
+              "name": "backend/routes.py"
+            }
+          ],
+          "failed_task_type": "development.develop",
+          "failure_analysis": {},
+          "failure_evidence": {
+            "contract_expectations": [
+              "`` must define exactly these routes (method, absolute path, and path-parameter names are all literal): "
+            ],
+            "error": "validation failed",
+            "failed_task_id": "task-run_abcdef12-m001-development.develop",
+            "failed_task_type": "development.develop",
+            "failure_category": "executed_and_failed",
+            "outcome_class": "SEMANTIC_FAILURE",
+            "preliminary_failure_classification": "work_product",
+            "prior_plan_deltas_count": 0,
+            "rejected_artifacts": [
+              {
+                "content_snippet": "def broken(): ...",
+                "name": "backend/routes.py",
+                "size": 17,
+                "type": "source"
+              }
+            ],
+            "validation_result": {
+              "checks": [
+                {
+                  "check": "endpoint_defined",
+                  "detail": "GET /api/runs missing",
+                  "passed": false
+                },
+                {
+                  "check": "expected_artifacts",
+                  "passed": true
+                }
+              ],
+              "missing_components": [],
+              "passed": false,
+              "summary": "1/2 checks passed"
+            }
+          },
+          "max_correction_attempts": 3,
+          "prd": "PRD-CONTENT",
+          "prior_outputs": {
+            "dev": {
+              "summary": "[dev] built"
+            }
+          },
+          "resolved_config": {
+            "build_profile": "fastapi_react_vite"
+          },
+          "subtask_description": null,
+          "subtask_focus": "Backend API"
+        },
+        "metadata": {
+          "role": "dev",
+          "step_index": 0
+        },
+        "pulse_id": "00000000000000000000000000000002",
+        "span_id": "00000000000000000000000000000004",
+        "task_id": "repair-run_abcdef12-00-s00-development.correction_repair",
+        "task_type": "development.correction_repair",
+        "trace_id": "00000000000000000000000000000003"
+      }
+    ]
+  },
+  "reserve_ends_the_round": {
+    "events": [
+      {
+        "context": {
+          "cycle_id": "cyc_char",
+          "run_id": "run_abcdef123456"
+        },
+        "entity_id": "run_abcdef123456",
+        "entity_type": "run",
+        "event": "correction.initiated",
+        "payload": {
+          "correction_attempt": 3,
+          "failed_task_id": "task-run_abcdef12-m001-development.develop",
+          "failed_task_type": "development.develop"
+        }
+      }
+    ],
+    "raised": {
+      "error": "reserved_for_required: correction ended at round 2, the run's last attempt, which is held for a required check; this round failed only endpoint_defined (#414, see term_.develop_02)",
+      "terminal": {
+        "contested_checks": [],
+        "failure_classification": null,
+        "kind": "correction_terminated",
+        "refused_validators": [],
+        "task_id": "task-run_abcdef12-m001-development.develop",
+        "termination_reason": "reserved_for_required"
+      }
+    },
+    "returned": null,
+    "round_failures": [
+      {
+        "category": "executed_and_failed",
+        "emission_signature": null,
+        "failed_checks": [
+          "endpoint_defined"
+        ],
+        "failed_detail": [
+          [
+            "endpoint_defined",
+            "GET /api/runs missing"
+          ]
+        ],
+        "locus": "unknown",
+        "round_index": 2,
+        "task_id": "task-run_abcdef12-m001-development.develop"
+      }
+    ],
+    "steps": []
+  }
+}
