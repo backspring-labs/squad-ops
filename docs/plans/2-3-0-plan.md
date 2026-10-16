@@ -353,6 +353,13 @@ Phase 8's rebuilds, in order:
     passing and no intervention (`cyc_213693497a97` 22/22 after three correction rounds, `cyc_1e3c7dfac55b` 18/18
     after one). Every tracked loaded check answered, its own (`1994-qa-agent`, "True 8 True") among them. No new
     seam finding.
+  - **The handler base class split (unit 2): its rebuild and pair, done 2026-10-15.** #2336–#2339 merged (#2339
+    closing #2335): the base class every agent's task code inherits keeps its acceptance decisions beside the
+    evaluator, its envelope capture and contentless marker are their own steps, and its generic `handle` uses the
+    shared helpers, moved and not changed. It was deployed as `dep_391013504581` from `012208ee`. Both cycles of
+    the pair were accepted on TensorFold, with the boot audit passing and no intervention (`cyc_98dd068cbb18`
+    21/21 with no correction round, `cyc_a65a98824c7f` 20/20 after one). All 106 tracked loaded checks answered
+    as expected, its own (`1994-handler-base`, "True True True") among them. No new seam finding.
 - **R8:** #316, once its SIP is accepted.
 - **R9:** Outcome Evaluation's instruments, once their SIP is accepted.
 - **#2204b** at any of them.
