@@ -12,7 +12,8 @@ plan-review tier's diagnostic (`2-2-0-cut-shakeout.yaml`, `2-2-0-cut-tier-diag.y
 before-and-after comparison (`2-3-0-list-order-comparison.yaml`, one campaign per arm, under
 `docs/plans/verification-sets/2-3-0-list-order-comparison-preregistration.md`), and #2205's
 before-and-after comparison (`2-3-0-error-message-comparison.yaml`, one campaign per arm, under
-`docs/plans/verification-sets/2-3-0-error-message-comparison-preregistration.md`).
+`docs/plans/verification-sets/2-3-0-error-message-comparison-preregistration.md`), and the 2.3 cut's shakeout
+(`2-3-0-cut-shakeout.yaml`, under `docs/plans/2-3-0-cut-preregistration.md` §2).
 Campaigns an operator runs for their own purposes are theirs to keep, wherever they like.
 
 **A definition is the record of a campaign only when it reconciles with the stored campaign:** the same

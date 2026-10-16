@@ -94,7 +94,7 @@ five largest units split into named steps (#1994). The set measures:
 | # | prediction | read from | falsified by |
 |---|---|---|---|
 | P1 | every model call in every roll is served by TensorFold, on `qwen3.8-27b-tf-nvfp4` | the agents' per-call metrics over each roll's window: `squadops_llm_call_seconds_count` by `engine` and `model` | any call counted under another engine or model in a roll's window |
-| P2 | every tracked loaded check answers its expected value in every roll, the structural rounds' rows among them (`1992-runtime`, `1994-qa-agent`, `1994-handler-base`, `1994-executor-task`, `1994-correction-runner`, `1994-task-plan`) | each roll's record, its "Loaded, not built" section, against `scripts/dev/loaded_checks.yaml` | any tracked row unanswered, or answering a value other than its `expect` |
+| P2 | every tracked loaded check answers its expected value in every roll, the structural rounds' rows among them (`1992-runtime`, `1993-runtime`, `1993-agent`, `2062-runtime`, `2062-agent`, `1994-qa-agent`, `1994-handler-base`, `1994-executor-task`, `1994-correction-runner`, `1994-task-plan`) | each roll's record, its "Loaded, not built" section, against `scripts/dev/loaded_checks.yaml` | any tracked row unanswered, or answering a value other than its `expect` |
 | P3 | every roll's cycle declares memory disabled and pins only a disabled snapshot with no entries (SIP-0110 §5i, the owner's ruling at 2.2's cut); every consuming task records a `memory_disabled` exposure; every captured envelope reconstructs byte for byte (2.2's P1, carried) | each roll's cycle row, `memory_exposures`, and `verify_authoring_envelopes.py` | a pinned snapshot that is enabled or holds an entry, a consuming task with no exposure or another status, or an envelope that does not reconstruct |
 | P4 | in the shakeout, every plan gate whose plan meets the tier's conditions is approved by it, with `decided_by = system:plan_review_tier` and each condition's reading in the notes; a gate that fails one escalates (2.2's P3 and P4, carried) | the shakeout's gate decisions and escalation rows | a qualifying gate decided by anyone else, a tier approval missing a condition's reading, or a tier approval on a gate that fails a condition |
 
@@ -156,7 +156,7 @@ five largest units split into named steps (#1994). The set measures:
   scan is clean, and with the preview's sha256 (`--expect-sha256`). Accepting SIPs and anything security-related stay
   the owner's.
 
-The supervisor registers the set when §1's conditions hold, and launches it.
+The supervisor registers the set when the four conditions at the top hold, and launches it.
 
 ## 10. The set's readings
 
