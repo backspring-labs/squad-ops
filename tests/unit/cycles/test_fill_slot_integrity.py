@@ -733,3 +733,79 @@ class TestSignatureDivergences:
     def test_unparseable_emission_diverges_nowhere(self):
         # The syntax gate owns broken emissions; the caller owns the skip.
         assert signature_divergences(declared_route_signatures(_SEED), "def broken(:\n") == []
+
+
+# ---------------------------------------------------------------------------
+# #2378: a parameter added beside the scaffold's, read from neither the path nor the body
+# ---------------------------------------------------------------------------
+
+_DELETE_SEED = """
+from fastapi import APIRouter
+router = APIRouter()
+
+@router.delete("/runs/{run_id}/participants", response_model=RunEvent)
+def delete_runs_run_id_participants(run_id: str):
+    ...
+"""
+
+
+@pytest.mark.parametrize(
+    ("signature", "held"),
+    [
+        ("run_id: str, name: Annotated[str, Query()]", True),
+        ("run_id: str, name: str | None = None", True),
+        ("run_id: str, name: Optional[str] = None", True),
+        ("run_id: str, name: Union[str, None] = None", True),
+        ("run_id: str, limit: int = 10", True),
+        ("run_id: str, names: list[str] = Query([])", True),
+        ("run_id: str, request: Request", True),
+        ("run_id: str, store = Depends(get_store)", True),
+        ("run_id: str, token: str = fastapi.Header(None)", True),
+        ("run_id: str, names: list[str]", False),
+        ("run_id: str, name: str = Body(...)", False),
+        ("run_id: str, name: Annotated[str, Body()]", False),
+        ("run_id: str, payload: ParticipantName", False),
+        ('id: str, name: str = Query("")', False),
+    ],
+    ids=[
+        "Annotated with Query",
+        "X | None",
+        "Optional",
+        "Union with None",
+        "a scalar with a default",
+        "a list marked Query",
+        "the request",
+        "a dependency",
+        "a qualified Header",
+        "a list FastAPI reads from the body",
+        "a scalar marked Body",
+        "Annotated with Body",
+        "a model",
+        "the scaffold's parameter renamed beside an addition",
+    ],
+)
+def test_an_added_parameter_passes_only_when_it_is_neither_path_nor_body(signature, held):
+    """#2378. Bug caught, both ways: a handler that reads a query parameter beside the
+    scaffold's path parameter refused; or the allowance letting through an added body
+    parameter, which changes the request the contract pins."""
+    emitted = _DELETE_SEED.replace("(run_id: str)", f"({signature})")
+
+    details = signature_divergences(declared_route_signatures(_DELETE_SEED), emitted)
+
+    assert (details == []) is held, details
+
+
+def test_the_restore_path_reports_what_the_check_refuses_and_nothing_more():
+    """The storage-time restore reports the same parameter divergences the check fails on. Bug
+    caught: the evidence record calling an allowed query parameter a divergence, or missing a
+    refused body one."""
+    allowed = _DELETE_SEED.replace("(run_id: str)", '(run_id: str, name: str = Query(""))')
+    refused = _DELETE_SEED.replace("(run_id: str)", "(run_id: str, payload: ParticipantName)")
+
+    _, allowed_divs = restore_declared_status_codes(_DELETE_SEED, allowed)
+    _, refused_divs = restore_declared_status_codes(_DELETE_SEED, refused)
+
+    assert [d for d in allowed_divs if "parameters" in d.detail] == []
+    assert [d.detail for d in refused_divs if "parameters" in d.detail] == [
+        "scaffold-owned parameters ['run_id'] emitted as ['run_id', 'payload']"
+    ]

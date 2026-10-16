@@ -1123,3 +1123,23 @@ checks:
       from squadops.api.routes.campaigns.campaigns import answer_escalation as a
       print("answered_by_kind" in R.model_fields, "_materialize_after_close(" in inspect.getsource(a))
     expect: "True True"
+  - id: "2378-runtime"
+    what: "the signature check accepts a query parameter added beside the scaffold's and still refuses an added body one (#2378)"
+    container: squadops-runtime-api
+    code: |
+      from squadops.cycles.fill_slot_integrity import declared_route_signatures as d, signature_divergences as s
+      seed = '@router.delete("/r/{run_id}")\ndef f(run_id: str):\n    ...\n'
+      query = seed.replace("(run_id: str)", '(run_id: str, name: str = Query(""))')
+      body = seed.replace("(run_id: str)", "(run_id: str, payload: M)")
+      print(s(d(seed), query), len(s(d(seed), body)))
+    expect: "[] 1"
+  - id: "2378-dev"
+    what: "the developer's own evaluation of the signature check accepts the added query parameter too (#2378)"
+    container: squadops-neo
+    code: |
+      from squadops.cycles.fill_slot_integrity import declared_route_signatures as d, signature_divergences as s
+      seed = '@router.delete("/r/{run_id}")\ndef f(run_id: str):\n    ...\n'
+      query = seed.replace("(run_id: str)", '(run_id: str, name: str = Query(""))')
+      body = seed.replace("(run_id: str)", "(run_id: str, payload: M)")
+      print(s(d(seed), query), len(s(d(seed), body)))
+    expect: "[] 1"

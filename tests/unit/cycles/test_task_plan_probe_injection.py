@@ -12,6 +12,7 @@ Mirrors the 98.3 criteria-index injection tests in
 from __future__ import annotations
 
 from datetime import UTC, datetime
+from pathlib import Path
 
 import pytest
 
@@ -488,3 +489,73 @@ def test_jsx_fill_slots_are_out_of_scope():
 # A qa.test task claiming a fill slot is unreachable: the qa-artifact-
 # ownership validation net rejects the plan outright (verified while writing
 # these tests) — the dev-only guard has no reachable counterexample to pin.
+
+
+_LEAVE = """    - { method: POST, path: "/runs/{run_id}/leave", summary: leave run by participant name,
+        request: ParticipantName, response: RunEvent,
+        errors: [run_not_found, participant_not_found, validation_error] }   # §5.5
+"""
+#: The 2.3 cut's first counted roll (#2378): the manifest chose a query parameter, in prose.
+_DELETE_BY_QUERY = """    - { method: DELETE, path: "/runs/{run_id}/participants",
+        summary: "leave a run by participant name (query param name)",
+        response: RunEvent, errors: [run_not_found, participant_not_found] }
+"""
+_SEEDED = "def delete_runs_run_id_participants(run_id: str):"
+
+
+@pytest.mark.parametrize(
+    ("signature", "status"),
+    [
+        ('(run_id: str, name: str = Query(""))', "passed"),
+        ('(run_id: str, name: str = "")', "passed"),
+        ('(id: str, name: str = Query(""))', "failed"),
+        ('(name: str = Query(""))', "failed"),
+        ("(run_id: str, payload: ParticipantName)", "failed"),
+    ],
+    ids=[
+        "the roll's refused handler, Query",
+        "its first attempt, a bare default",
+        "a renamed path parameter",
+        "a dropped scaffold parameter",
+        "an added body parameter",
+    ],
+)
+async def test_a_handler_reading_a_declared_query_parameter_passes_its_bound_check(
+    tmp_path, signature, status
+):
+    """#2378, entered at ``generate_task_plan`` with the cut's manifest shape: the scaffold seeds
+    the slot, the plan binds the check from that seed, and the evaluator reads the developer's
+    handler. Bug caught: the conventional FastAPI handler for a query parameter the manifest
+    chose is refused, so the repair works around the check. A scaffold parameter dropped or
+    renamed, or a body one added, is still refused."""
+    from squadops.cycles.acceptance_checks import get_check
+    from squadops.stacks.scaffold import InterfaceManifest, expand
+
+    text = (
+        Path(__file__).resolve().parents[3]
+        / "examples"
+        / "03_group_run"
+        / "interface_manifest.yaml"
+    ).read_text(encoding="utf-8")
+    manifest = InterfaceManifest.from_yaml(text.replace(_LEAVE, _DELETE_BY_QUERY))
+    cycle, run, profile = _implementation_setup()
+    envs = generate_task_plan(
+        cycle,
+        run,
+        profile,
+        plan=_plan_claiming(["backend/routes.py"]),
+        contract=_contract(),
+        interface_manifest=manifest,
+    )
+    [check] = _fill_slot_checks(envs, "development.develop")
+    seed = next(f["content"] for f in expand(manifest) if f["name"] == "backend/routes.py")
+    emitted = seed.replace(_SEEDED, f"def delete_runs_run_id_participants{signature}:")
+    if "(id: str" in signature:
+        emitted = emitted.replace('"/runs/{run_id}/participants"', '"/runs/{id}/participants"')
+    (tmp_path / "backend").mkdir()
+    (tmp_path / "backend" / "routes.py").write_text(emitted, encoding="utf-8")
+
+    result = await get_check("fill_slot_signature").evaluate(check.params, tmp_path)
+
+    assert _SEEDED in seed
+    assert result.status == status, result.reason
