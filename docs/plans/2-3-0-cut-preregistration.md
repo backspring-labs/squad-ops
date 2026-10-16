@@ -1,9 +1,9 @@
 # 2.3.0 — pre-registration of the cut's set (plan §3 step 9, the cut's criteria)
 
-**Status: DRAFT, written 2026-10-15 on the owner's ruling (§9).** It registers when the conditions below hold and the
-pins in §6 are read; nothing in the set launches before then. The plan leaves the regression set's size and the
-shakeout's exit rule to this document, written when the line's last batch is built (the 2.3 plan §7), as 2.0, 2.1 and
-2.2 did. The owner's ruling sets its numbers: **2.2's** (§9).
+**Status: REGISTERED 2026-10-16 at 06:26 ET**, when the four conditions below held and §6's pins were read. Written
+2026-10-15 on the owner's ruling (§9), as a draft (#2373). Nothing in the set launched before registration. The plan
+leaves the regression set's size and the shakeout's exit rule to this document, written when the line's last batch is
+built (the 2.3 plan §7), as 2.0, 2.1 and 2.2 did. The owner's ruling sets its numbers: **2.2's** (§9).
 
 **What must be true before it is registered:**
 1. **The line's last batch is built, merged and deployed** (§6): #1994's last two rounds, the correction runner and the
@@ -35,7 +35,8 @@ shakeout's exit rule to this document, written when the line's last batch is bui
 
      The audit sink holds 164 of its events and no refused launch. The runtime's log holds no box wait and no error,
      and no agent logged an error in the window. **The loop took two rounds.**
-4. **The pins are read** (§6), and nothing in the set has launched. **Met:** PREFLIGHT_TIME.
+4. **The pins are read** (§6), and nothing in the set has launched. **Met:** read at 10:26Z on 2026-10-16 (06:26 ET),
+   both counting preflights clean.
 
 ---
 
@@ -147,7 +148,7 @@ five largest units split into named steps (#1994). The set measures:
 | model | `qwen3.8-27b-tf-nvfp4` on TensorFold, the frozen NVFP4 recipe: every agent's `SQUADOPS__LLM__MODEL` and provider |
 | loaded checks | 114 tracked rows in each config. On the deploy, `verify_loaded.py` from the main checkout: 115 loaded, 0 not; the two #2318 rows, run with `--only` from this branch: both loaded. Both counting preflights clean |
 | set configs | `2-3-0-cut-regression-fastapi-react.yaml` **`e7e9ba20d97e604a…`**, `2-3-0-cut-regression-nextjs.yaml` **`56bf3289964e4020…`** (sha256) |
-| HEAD at preflight | PREFLIGHT_HEAD |
+| HEAD at preflight | **`9ca3ff8c`**, this registration's branch, at both counting preflights (10:26Z). The preflight only reads it; roll 1 pins the HEAD it launches from, this registration's merge. Its difference from the deploy commit is #2376 (a maintainer script), the set's configs and loaded-check rows, and prose. Nothing under `src/` or `adapters/` differs |
 
 ---
 
