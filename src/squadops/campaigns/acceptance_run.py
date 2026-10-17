@@ -20,7 +20,7 @@ here knows a stack. Nothing here writes a tree.
 from __future__ import annotations
 
 import dataclasses
-from collections.abc import Awaitable, Callable, Iterable, Mapping
+from collections.abc import Awaitable, Callable, Collection, Iterable, Mapping
 from dataclasses import dataclass
 
 from squadops.campaigns.acceptance import (
@@ -98,6 +98,7 @@ async def evaluate_increment(
     frozen: Iterable[FrozenCriterion],
     declared_routes: Mapping[str, tuple[str, ...]],
     rendered: Mapping[str, frozenset[str] | None],
+    unseeded: Collection[str],
     run: Runner,
     invocation: Iterable[str],
     retired: Iterable[str],
@@ -161,7 +162,7 @@ async def evaluate_increment(
         )
     frozen_results = accumulated_acceptance(increment_id, candidate.identity, held_by, runs)
     frozen_results = _changed_verifiers_blocked(frozen_results, frozen, candidate)
-    routes = route_rendering(declared_routes, rendered)
+    routes = route_rendering(declared_routes, rendered, unseeded=unseeded)
     return IncrementEvaluation(
         acceptance=increment_acceptance(tuple(discriminations), frozen_results, routes),
         discriminations=tuple(discriminations),

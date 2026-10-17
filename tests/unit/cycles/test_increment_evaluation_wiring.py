@@ -448,3 +448,63 @@ def test_a_collection_two_prefixes_could_serve_is_left_unseeded():
     manifest = InterfaceManifest.from_yaml(yaml.safe_dump(raw, sort_keys=False))
 
     assert "/runs/{run_id}" not in route_seeds(manifest)
+
+
+def test_a_page_spelled_apart_from_its_api_is_seeded_by_its_parameter():
+    """#2398, entered at ``generate_task_plan`` on the 2.3.1 shakeout calibration's own manifest
+    (``cyc_bda7ed244671``): its detail page is ``/run/:run_id`` and its API ``/runs``. Bug
+    caught: the collection read from the page's spelling (``/run``, which has no create), so the
+    page is never read and every increment of the campaign is blocked whatever it builds."""
+    from squadops.stacks.scaffold_contract import create_request_body
+
+    manifest = InterfaceManifest.from_yaml(
+        (_REPLAYS / "2-3-1-shakeout-calibration-interface_manifest.yaml").read_text()
+    )
+    run = Run("run_i", "cyc_inc", 3, "running", "system", "cfg", workload_type="implementation")
+
+    *_, evaluation = generate_task_plan(
+        _cycle(True), run, PROFILE, plan=_PLAN, interface_manifest=manifest, change_request=STORED
+    )
+
+    [create] = [ep for ep in manifest.api.endpoints if (ep.method, ep.path) == ("POST", "/runs")]
+    assert evaluation.task_type == "qa.evaluate_increment"
+    assert evaluation.inputs["increment_route_seeds"] == {
+        "/run/:run_id": {
+            "method": "POST",
+            "path": "/runs",
+            "json": create_request_body(manifest, create),
+            "param": "run_id",
+            "segment": ":run_id",
+        }
+    }
+
+
+@pytest.mark.parametrize(
+    ("added", "route"),
+    [
+        # Two collections carry the parameter: neither is the page's, so none is guessed.
+        ({"method": "GET", "path": "/archive/{run_id}"}, "/run/:run_id"),
+        # No endpoint carries the page's parameter (a 1.7.2 roll's ``/run/:id`` over
+        # ``/runs/{run_id}``, ``cyc_37f52053d14d``): the name is not matched by likeness.
+        (None, "/run/:id"),
+    ],
+    ids=["two-collections-carry-it", "no-endpoint-carries-it"],
+)
+def test_a_page_its_parameter_does_not_place_is_left_unseeded_and_named(added, route):
+    """#2398. Bugs caught: a guess (the seed posted to a collection the page may not show), or
+    an unseeded page recorded in the words for a page the browser read and found wanting."""
+    from squadops.campaigns.increment_tree import route_seeds, unseeded_routes
+
+    raw = yaml.safe_load(
+        (_REPLAYS / "2-3-1-shakeout-calibration-interface_manifest.yaml").read_text()
+    )
+    if added:
+        raw["api"]["endpoints"].append({**added, "summary": "x", "response": "Run"})
+    [detail] = [r for r in raw["frontend"]["routes"] if r["path"] == "/run/:run_id"]
+    detail["path"] = route
+    manifest = InterfaceManifest.from_yaml(yaml.safe_dump(raw, sort_keys=False))
+
+    seeds = route_seeds(manifest)
+
+    assert seeds == {}
+    assert unseeded_routes(["/", "/create", route], seeds) == {route}

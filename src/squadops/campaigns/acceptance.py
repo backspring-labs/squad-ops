@@ -21,7 +21,7 @@ rejected otherwise.
 
 from __future__ import annotations
 
-from collections.abc import Mapping
+from collections.abc import Collection, Mapping
 from dataclasses import dataclass, field
 from enum import StrEnum
 
@@ -192,10 +192,16 @@ class RouteResult:
     #: The view's other declared anchors this reading did not show — state-dependent (a list's
     #: rows on an empty list, an error banner): recorded, not judged (§24p).
     not_shown: tuple[str, ...] = ()
+    #: A parameterized route no seed brings into being (#2398): blocked because nothing could
+    #: reach its page, not because a page was read and failed.
+    unseeded: bool = False
 
 
 def route_rendering(
-    declared: Mapping[str, tuple[str, ...]], rendered: Mapping[str, frozenset[str] | None]
+    declared: Mapping[str, tuple[str, ...]],
+    rendered: Mapping[str, frozenset[str] | None],
+    *,
+    unseeded: Collection[str],
 ) -> tuple[RouteResult, ...]:
     """Each declared route against the test ids found on its page (§8.3): it renders when its
     view's ROOT anchor does — the first declared id, stamped on the view's container (#659).
@@ -203,12 +209,13 @@ def route_rendering(
     Not every declared id: a view's anchors include states that exclude each other (a list's
     rows and its empty state; a form and its error), so one reading of a correct page never shows
     them all — the first live reading failed a correct app that way (§24p). The rest are recorded
-    as ``not_shown``. ``None`` is a page that was never rendered or read: blocked, never a pass."""
+    as ``not_shown``. ``None`` is a page that was never rendered or read: blocked, never a pass.
+    ``unseeded`` names the routes of those that nothing could reach (``unseeded_routes``)."""
     results = []
     for path, testids in sorted(declared.items()):
         seen = rendered.get(path)
         if seen is None:
-            results.append(RouteResult(path, Held.BLOCKED_UNVERIFIED))
+            results.append(RouteResult(path, Held.BLOCKED_UNVERIFIED, unseeded=path in unseeded))
             continue
         root, rest = (testids[0], testids[1:]) if testids else (None, ())
         missing = (root,) if root is not None and root not in seen else ()
@@ -255,11 +262,13 @@ def increment_acceptance(
             unmet.append(f"frozen {r.criterion_id}: {r.detail}")
         elif r.held is Held.BLOCKED_UNVERIFIED:
             blocked.append(f"frozen {r.criterion_id}: {r.detail}")
-    for r in routes:
-        if r.held is Held.BROKEN:
-            unmet.append(f"route {r.path}: missing {', '.join(r.missing)}")
-        elif r.held is Held.BLOCKED_UNVERIFIED:
-            blocked.append(f"route {r.path}: not rendered")
+    for route in routes:
+        if route.held is Held.BROKEN:
+            unmet.append(f"route {route.path}: missing {', '.join(route.missing)}")
+        elif route.unseeded:
+            blocked.append(f"route {route.path}: not read, no seed brings its page into being")
+        elif route.held is Held.BLOCKED_UNVERIFIED:
+            blocked.append(f"route {route.path}: not rendered")
     if unmet:
         return IncrementAcceptance(IncrementVerdict.REJECTED, tuple(unmet), tuple(blocked))
     if blocked:

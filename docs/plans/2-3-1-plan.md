@@ -4,7 +4,8 @@
 earlier the same day. After the 2.3.0 cut the owner placed five items here: "place the 2.3.1 candidates you listed
 after the cut", and "yes" to adding #2381 the same way. D2 adds a sixth, #2384. A seventh, #2394, came out of the
 regression pair's first round: the owner ruled at ~19:44 ET the same day, "approve #2394 for 2.3.1, #2395 to 2.4" (D4).
-This plan says how each is built, how the line is verified, and what it leaves out.
+An eighth, #2398, came out of the first shakeout: the owner ruled at 11:42 ET on 2026-10-17, "approve #2398 for
+2.3.1" (D5). This plan says how each is built, how the line is verified, and what it leaves out.
 
 **What 2.3.1 is.** A patch on the 2.3 line (CLAUDE.md, #281: urgent or small fixes, either lane). Every item was found
 on the 2.3 line, most of them by its cut. None is urgent: each is a defect that is small, understood, and cheaper to fix
@@ -17,11 +18,13 @@ now than to carry into 2.4, whose first campaigns start measuring outcomes. The 
 > - a correct handler for a declared query parameter is not refused;
 > - a check that ran and passed is not recorded as skipped;
 > - a cycle that failed does not read `accepted`;
-> - a Next.js suite that renders a page fails or passes on its own assertions, not on the scaffold's config.
+> - a Next.js suite that renders a page fails or passes on its own assertions, not on the scaffold's config;
+> - an increment's detail page is read whatever the manifest calls it, and a page nothing could reach is recorded as
+>   never read, not as one that failed to render.
 
 ---
 
-## 1. The seven items
+## 1. The eight items
 
 ### #2322: the runtime API's unused RabbitMQ connection and channel are removed
 
@@ -103,6 +106,34 @@ now than to carry into 2.4, whose first campaigns start measuring outcomes. The 
 - **What it does not fix:** the roll would still have failed. With the config fixed, the plan's page tests see only
   the loading state, because a server render never runs a page's data-loading effect. That is #2395, placed in 2.4.
 
+### #2398: a detail page spelled apart from its API collection is seeded by its parameter (D5, ruled in)
+
+- **The defect:** to read a detail page, the evaluator first creates the resource it shows. `route_seeds`
+  (`src/squadops/campaigns/increment_tree.py`) took the page's own spelling as the API collection. The shakeout's
+  calibration (`cyc_bda7ed244671`) declared `/run/:run_id` over `POST /runs`, so it looked for `POST /run`, found none,
+  and gave the page no seed.
+  - The page was never read. The evaluation recorded `route /run/:run_id: not rendered`, the words for a page the
+    browser loaded and found wanting, and no log line said why.
+  - The calibration fixes the page's spelling for every later increment, so no build in the campaign could pass.
+    Increment 1's build and its repair each met all four criteria and were blocked on that route alone.
+  - Across every stored manifest, 4 of 598 parameterized routes had no seed, all spelled `/run/...`.
+- **The fix:**
+  - When the page's spelling names no create at all, the collection is the one the API names for the same
+    parameter. `GET /runs/{run_id}` names `/runs` for `:run_id`.
+  - When no endpoint carries the parameter, or two collections do, the page stays unseeded and is not guessed. The
+    same holds for a spelling that two creates could serve, as before.
+  - A page no seed reaches is logged, and recorded as `not read, no seed brings its page into being`, in the
+    evaluation and in the boot audit.
+  - With the fix, 597 of the 598 stored routes are seeded. The one left is a 1.7.2 roll's `/run/:id` over
+    `{run_id}`, a name no endpoint carries.
+- **The tests:**
+  - The wiring test enters at `generate_task_plan` with the calibration's own manifest, stored as a fixture. The
+    evaluation it plans is handed the seed `POST /runs` for `/run/:run_id`.
+  - Two cases stay unseeded and named: two collections carry the parameter, or none does.
+  - The handler, the evaluation and the audit each record an unseeded page in those words, and a seeded page that went
+    unread as `not rendered`.
+  - The new tests fail on main's code.
+
 ### #2297, a read first: does QA's test author see the leave endpoint's method and path?
 
 - **The defect:** QA's backend test for leaving a run guessed the endpoint's method or path and got 405. That was 2 of
@@ -174,6 +205,10 @@ QA's prompt (#2297). So unlike 2.2.1, a campaign alone can't show the build unch
   read in its wiring test, and in the roll-up of any cycle in the pair or the shakeout that does fail.
 - **#2394, live:** only a plan that asks QA to render a page reaches it. One of the 17 Next.js cycles in the 2.3 line's
   verification sets did, so the second pair probably won't. It is read in its integration test.
+- **#2398, live:** only a calibration that spells its detail page apart from its API reaches the new path, which 3 of
+  598 stored routes did. A fresh shakeout's calibration authors its own manifest, so it may spell the page `/runs/...`,
+  and then the path is read in its wiring test only. Every increment evaluation still reads its pages through the
+  changed function.
 
 **Round 1, the first pair** on `dep_4da309b688d4` (69ddf158), from 16:33 to 18:08 ET:
 - FastAPI + React, `cyc_ee3b645e51bd`: accepted, 21 of 21 criteria verified, one correction round.
@@ -182,6 +217,19 @@ QA's prompt (#2297). So unlike 2.2.1, a campaign alone can't show the build unch
 - Both answered all 125 loaded checks, the six 2.3.1 rows as expected.
 - The reading stopped the line for the owner. Its cause, #2394 under #2395, was reproduced on the run's rebuilt tree.
   The shakeout was not launched. Round 2 is the pair again on the deploy with #2394, then the shakeout.
+
+**Round 2, the second pair** on `dep_aad7eb54eacc` (de7a09a7), from 20:12 to 21:05 ET:
+- FastAPI + React, `cyc_12d8a215d46f`: accepted, 20 of 20 criteria verified, no correction round.
+- Next.js, `cyc_c0245ee52747`: accepted, 15 of 15 criteria verified, no correction round.
+- Both answered all 126 loaded checks, #2394's row among them. The pair held.
+
+**The first shakeout**, `cmp_dadc7c019ad6`, on the same deploy:
+- The calibration, `cyc_bda7ed244671`, was accepted, 20 of 20.
+- Increment 1, a run capacity (`prop_bfe02fc06b87`), was approved by the delegate at 21:37 ET. Its build
+  (`cyc_f479d21e05ac`) and its repair (`cyc_7c01dc033550`) each met all four criteria and read `/` and `/create` as
+  held. Each was blocked on `route /run/:run_id: not rendered`.
+- The campaign escalated at 22:16 ET under its policy. Its cause was #2398, and the line stopped for the owner.
+  Round 3 is the pair again on the deploy with #2398, then a fresh shakeout on the same deploy.
 
 ---
 
@@ -192,10 +240,12 @@ QA's prompt (#2297). So unlike 2.2.1, a campaign alone can't show the build unch
    2.3.1, or a re-placement to 2.4 with the read.
 3. The rebuild, the loaded checks, the pair and the shakeout. Then the cut.
 4. After the first pair (D4): #2394 in its own PR, the rebuild and the loaded checks, the pair again, then the shakeout.
+5. After the first shakeout (D5): #2398 in its own PR, the rebuild and the loaded checks, the pair again, then a fresh
+   shakeout.
 
 ---
 
-## 5. Decisions (ruled 2026-10-16)
+## 5. Decisions (ruled 2026-10-16 and 2026-10-17)
 
 | # | decision | recommendation | ruling |
 |---|---|---|---|
@@ -203,3 +253,4 @@ QA's prompt (#2297). So unlike 2.2.1, a campaign alone can't show the build unch
 | D2 | **#2384, a failed cycle rolling up `accepted`** | **in 2.3.1.** It is a correctness defect in the cycle roll-up that every consumer reads: the API, the console and the release package, which had to work around it at the 2.3 cut. The fix is to let a failed run's adverse verdict stand at cycle scope unless a later run re-executes its work. Read the resolver's callers first | **approved** |
 | D3 | **who runs the line** | **the supervisor, on the 2.3 line's terms:** build in §4's order, merge on green with main's run read, rebuilds and uncounted runs. Through the cut, including the tag and the records upload once §3's exit rule holds and the release PR merges with main green. If a reading fails, it stops for the owner. Accepting SIPs and anything security-related stay the owner's. The grant ends at the 2.3.1 cut | **approved** |
 | D4 | **#2394 and #2395, from the first pair** (§3, round 1) | **#2394 in 2.3.1:** a one-line fix to a scaffold-owned file that no role can repair, with an integration test, then the pair again on the new deploy. **#2395 in 2.4:** it is a design choice between a planning rule and a DOM test environment for the stack. *The alternative:* both in 2.4 and the Next.js roll re-run on the same deploy, which needed a ruling that the finding does not count against the exit rule | **approved**: "approve #2394 for 2.3.1, #2395 to 2.4" |
+| D5 | **#2398, from the first shakeout** (§3) | **in 2.3.1:** the evaluation read a page it never visited as "not rendered", which is the claim this patch makes. 2.4's campaigns would hit it whenever a plan spells a page apart from its API. Then rebuild, the pair again and a fresh shakeout, about three hours. *The alternative:* §3's rule that a finding outside a changed seam is filed and placed. #2398 to 2.4 and a fresh shakeout on the same deploy, which needed a ruling that this escalation does not count against the exit rule | **approved**: "approve #2398 for 2.3.1" |

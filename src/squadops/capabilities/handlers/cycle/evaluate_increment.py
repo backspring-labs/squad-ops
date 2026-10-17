@@ -29,6 +29,7 @@ from squadops.campaigns.evaluator_trees import FileTree, TestSurface
 from squadops.campaigns.increment_tree import (
     INCREMENT_EVALUATION_ARTIFACT_TYPE,
     INCREMENT_EVALUATION_FILENAME,
+    unseeded_routes,
 )
 from squadops.capabilities.handlers.base import (
     CapabilityHandler,
@@ -146,6 +147,7 @@ class QAEvaluateIncrementHandler(CapabilityHandler):
             ),
             declared_routes=declared,
             rendered=await _rendered(stack, candidate_files, declared, inputs),
+            unseeded=unseeded_routes(declared, inputs.get("increment_route_seeds") or {}),
             run=partial(run_suite, framework, timeout_seconds=_SUITE_TIMEOUT_SECONDS),
             invocation=(framework,),
             retired=retired,

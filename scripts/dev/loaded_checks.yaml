@@ -1126,6 +1126,25 @@ checks:
       from squadops.stacks import stack_nextjs_ts as s
       print("esbuild: { jsx: 'automatic' }" in s._VITEST_CONFIG, "_VITEST_CONFIG" in inspect.getsource(s.expand_nextjs_ts))
     expect: "True True"
+  - id: "2398"
+    what: "a detail page spelled apart from its API collection (/run/:run_id over /runs) is seeded by its parameter, and a page no seed reaches is named unseeded (#2398)"
+    container: squadops-runtime-api
+    code: |
+      from types import SimpleNamespace as N
+      from squadops.campaigns import increment_tree as t
+      api = N(endpoints=[N(method="GET", path="/runs/{run_id}"), N(method="POST", path="/runs/{run_id}/participants")])
+      print(t._collection_carrying(api, "run_id"), sorted(t.unseeded_routes(["/", "/run/:id"], {})))
+    expect: "/runs ['/run/:id']"
+  - id: "2398-qa"
+    what: "the increment evaluation records a page no seed reaches as unseeded, not as a page that failed to render (#2398)"
+    container: squadops-eve
+    code: |
+      import inspect
+      from squadops.campaigns.acceptance import increment_acceptance, route_rendering
+      from squadops.capabilities.handlers.cycle import evaluate_increment as e
+      routes = route_rendering({"/run/:run_id": ("v",)}, {}, unseeded={"/run/:run_id"})
+      print("unseeded=unseeded_routes(" in inspect.getsource(e), increment_acceptance((), (), routes).blocked[0])
+    expect: "True route /run/:run_id: not read, no seed brings its page into being"
   - id: "2322"
     what: "the runtime API holds no AMQP connection of its own: every publish goes through the queue port (#2322)"
     container: squadops-runtime-api

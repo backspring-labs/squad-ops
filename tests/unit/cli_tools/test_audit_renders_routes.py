@@ -35,27 +35,45 @@ def _load():
 audit = _load()
 
 DECLARED = {"/": ("runs-view", "run-list"), "/runs/{run_id}": ("run-detail-view",)}
+SEEDED = {"/runs/{run_id}": {"method": "POST", "path": "/runs", "param": "run_id"}}
 
 
 @pytest.mark.parametrize(
-    ("rendered", "expected"),
+    ("rendered", "seeds", "expected"),
     [
-        ({"/": frozenset({"runs-view"}), "/runs/{run_id}": frozenset({"run-detail-view"})}, []),
+        (
+            {"/": frozenset({"runs-view"}), "/runs/{run_id}": frozenset({"run-detail-view"})},
+            SEEDED,
+            [],
+        ),
         (
             {"/": frozenset({"runs-view"}), "/runs/{run_id}": frozenset({"not-found-state"})},
+            SEEDED,
             ["/runs/{run_id}: rendered without its view's root ('run-detail-view',)"],
         ),
         (
             {"/": frozenset({"runs-view"}), "/runs/{run_id}": None},
+            SEEDED,
             ["/runs/{run_id}: not read (blocked_unverified), so not seen to render"],
         ),
+        # #2398: the page nothing could reach fails as unseeded, not as a page that was looked at.
+        (
+            {"/": frozenset({"runs-view"}), "/runs/{run_id}": None},
+            {},
+            ["/runs/{run_id}: not read, no seed brings its page into being"],
+        ),
     ],
-    ids=["every-view-rendered", "detail-page-without-its-view", "detail-page-never-read"],
+    ids=[
+        "every-view-rendered",
+        "detail-page-without-its-view",
+        "detail-page-never-read",
+        "detail-page-unseeded",
+    ],
 )
-def test_each_declared_route_is_judged_by_the_evaluations_judge(rendered, expected):
+def test_each_declared_route_is_judged_by_the_evaluations_judge(rendered, seeds, expected):
     """A list's rows are state (an empty list shows none), so only each view's root anchor is
     judged, as §24p judges it. A page never read fails: the audit did not see it render."""
-    assert audit.route_failures(DECLARED, rendered) == expected
+    assert audit.route_failures(DECLARED, rendered, seeds) == expected
 
 
 def test_the_routes_are_read_in_the_render_container_with_the_runs_own_seeds():

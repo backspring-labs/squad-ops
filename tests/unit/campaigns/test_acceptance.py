@@ -166,12 +166,15 @@ def test_a_route_renders_when_its_views_root_anchor_does():
             "/": frozenset({"runs-list-view", "empty-state", "create-run-link"}),
             "/runs/:run_id": frozenset({"capacity-status"}),  # not the detail view
         },
+        unseeded=(),
     )
     assert results == (
         RouteResult("/", Held.HELD, (), ("run-row",)),
         RouteResult("/runs/:run_id", Held.BROKEN, ("run-detail-view",)),
     )
-    assert route_rendering({"/new": ("x",)}, {}) == (RouteResult("/new", Held.BLOCKED_UNVERIFIED),)
+    assert route_rendering({"/new": ("x",)}, {}, unseeded=()) == (
+        RouteResult("/new", Held.BLOCKED_UNVERIFIED),
+    )
 
 
 # --- the increment -------------------------------------------------------------------------------

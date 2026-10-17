@@ -12,7 +12,7 @@ from __future__ import annotations
 import dataclasses
 import json
 import logging
-from collections.abc import Mapping
+from collections.abc import Iterable, Mapping
 from typing import Any
 
 from squadops.campaigns.change_request import derive_footprint_from, load_stored_change_request
@@ -302,9 +302,12 @@ def route_seeds(manifest: Any) -> dict[str, dict[str, Any]]:
     """What brings a parameterized route's page into being (§8.3): for a declared client route
     with one parameter (``/runs/:run_id``), the create request on its collection (``POST
     /runs``) with the body the create probe sends (``create_request_body``), and the
-    parameter the created resource's id fills. A route with no such create, or more than one
-    parameter, has no seed: its page cannot be reached, so it is never rendered and stays
-    ``blocked_unverified``, never passed. A route with no parameter needs none."""
+    parameter the created resource's id fills. The collection is the route's own spelling
+    when the API serves it, and otherwise the one the API names for the same parameter: a
+    manifest may spell its page apart from its API (``/run/:run_id`` over ``GET
+    /runs/{run_id}``, #2398). A route with no such create, or more than one parameter, has no
+    seed: its page cannot be reached, so it is never rendered and stays ``blocked_unverified``
+    (``unseeded_routes``), never passed. A route with no parameter needs none."""
 
     api = getattr(manifest, "api", None)
     creates = {
@@ -322,10 +325,18 @@ def route_seeds(manifest: Any) -> dict[str, dict[str, Any]]:
         # A manifest with an API base path writes its endpoints under it (a Next.js app's
         # ``/api/runs`` for its ``/runs/{run_id}`` page, #1973); the collection is either.
         base = str(getattr(api, "base_path", "") or "").rstrip("/")
+        written = _under_a_written_prefix(creates, collection)
         endpoint = (
             creates.get(collection)
             or (creates.get(base + collection) if base else None)
-            or _under_a_written_prefix(creates, collection)
+            or (written[0] if len(written) == 1 else None)
+            # A page spelled apart from its API (#2398), only when its spelling names no create
+            # at all: one two creates could serve stays unseeded.
+            or (
+                None
+                if written
+                else creates.get(_collection_carrying(api, route_param(params[0])) or "")
+            )
         )
         if endpoint is None:
             continue
@@ -340,19 +351,43 @@ def route_seeds(manifest: Any) -> dict[str, dict[str, Any]]:
     return seeds
 
 
-def _under_a_written_prefix(creates: dict[str, Any], collection: str) -> Any:
-    """The create a manifest wrote under a prefix of its own instead of in ``base_path``: a
+def _under_a_written_prefix(creates: dict[str, Any], collection: str) -> list[Any]:
+    """The creates a manifest wrote under a prefix of its own instead of in ``base_path``: a
     Next.js app's ``/api/runs`` with no base path (2.1 rebuild 2's roll, ``cyc_d94c3742bb88``).
-    The one POST whose path is the collection beneath leading segments; ``None`` when none is or
-    more than one is, so an ambiguous page stays unseeded, never guessed."""
+    Each POST whose path is the collection beneath leading segments. One is the page's; more than
+    one leaves an ambiguous page unseeded, never guessed."""
     if collection == "/":
-        return None
-    found = [
+        return []
+    return [
         endpoint
         for path, endpoint in creates.items()
         if path.endswith(collection) and path[: -len(collection)].startswith("/")
     ]
-    return found[0] if len(found) == 1 else None
+
+
+def _collection_carrying(api: Any, param: str | None) -> str | None:
+    """The collection the API names for a route's parameter (#2398): the path before the segment
+    every endpoint carrying ``{param}`` writes it at (``/runs`` from ``GET /runs/{run_id}`` and
+    ``POST /runs/{run_id}/participants``). ``None`` when no endpoint carries it or two
+    collections do, so an ambiguous page stays unseeded, never guessed."""
+    found = set()
+    for endpoint in getattr(api, "endpoints", None) or ():
+        segments = str(endpoint.path).split("/")
+        at = [i for i, s in enumerate(segments) if param and route_param(s) == param]
+        if at:
+            found.add("/".join(segments[: at[0]]) or "/")
+    return found.pop() if len(found) == 1 else None
+
+
+def unseeded_routes(routes: Iterable[str], seeds: Mapping[str, Any]) -> frozenset[str]:
+    """The parameterized routes no seed brings into being (#2398). Their pages are never read,
+    and the record says so, instead of the words for a page the browser read and found
+    wanting."""
+    return frozenset(
+        route
+        for route in routes
+        if route not in seeds and any(route_param(s) is not None for s in route.split("/"))
+    )
 
 
 def route_param(segment: str) -> str | None:
