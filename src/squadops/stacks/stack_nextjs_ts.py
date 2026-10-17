@@ -270,12 +270,20 @@ export default nextConfig
 #: checkpoint (``cyc_79f70a0bbac1``) the qa author spent a self-eval pass writing one.
 VITEST_SUITE_GLOB = "**/__tests__/**/*.test.ts"
 
+#: ``esbuild.jsx`` (#2394): without it vite compiled each page's JSX as ``React.createElement``,
+#: and a Next.js page does not import React, so a suite that rendered one failed "React is not
+#: defined" inside the page module, where no repair either role may make reaches it. The 2.3.1
+#: regression pair's Next.js roll (``cyc_31a49b2cdde6``) ended there, and so did a qa.test on
+#: 1.8.1 (``cyc_4d9602ce0a66``).
 _VITEST_CONFIG = (
     """// The `@` alias is declared twice by necessity: tsconfig.json `paths` covers `tsc` and
 // `next build`, but vitest resolves through vite, which does not read tsconfig paths —
 // without this block every suite importing app code the way this stack teaches it
 // (`@/lib/store`) fails collection with "Failed to load url", including the scaffold's
 // own harness test. The two declarations must agree; a test pins them together.
+// `esbuild.jsx` is set here for the same reason: tsconfig.json's `"jsx": "preserve"` leaves
+// JSX to `next build`, and vite would otherwise compile a page's JSX for a React import the
+// page does not have.
 import { defineConfig } from 'vitest/config'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -283,6 +291,7 @@ import { fileURLToPath } from 'node:url'
 const root = path.dirname(fileURLToPath(import.meta.url))
 
 export default defineConfig({
+  esbuild: { jsx: 'automatic' },
   resolve: { alias: { '@': root } },
   test: { environment: 'node', include: ['"""
     + VITEST_SUITE_GLOB
