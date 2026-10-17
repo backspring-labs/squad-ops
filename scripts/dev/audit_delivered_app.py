@@ -308,17 +308,23 @@ def render_declared_routes(
 
 
 def route_failures(
-    declared: dict[str, tuple[str, ...]], rendered: dict[str, frozenset[str] | None]
+    declared: dict[str, tuple[str, ...]],
+    rendered: dict[str, frozenset[str] | None],
+    seeds: dict[str, dict],
 ) -> list[str]:
     """A failure line per declared route that did not render its view's root anchor, judged by
     the evaluation's own judge (``route_rendering``, §24p). A page that was never read is a
     failure here too: an audit that could not look has not seen the page render."""
     from squadops.campaigns.acceptance import Held, route_rendering
+    from squadops.campaigns.increment_tree import unseeded_routes
 
     failures = []
-    for result in route_rendering(declared, rendered):
+    unseeded = unseeded_routes(declared, seeds)
+    for result in route_rendering(declared, rendered, unseeded=unseeded):
         if result.held is Held.BROKEN:
             failures.append(f"{result.path}: rendered without its view's root {result.missing}")
+        elif result.unseeded:
+            failures.append(f"{result.path}: not read, no seed brings its page into being")
         elif result.held is not Held.HELD:
             failures.append(f"{result.path}: not read ({result.held}), so not seen to render")
     return failures
@@ -393,6 +399,7 @@ async def _audit(args: argparse.Namespace) -> int:
         route_failures(
             declared,
             render_declared_routes(files, stack, declared, seeds, container=args.render_container),
+            seeds,
         )
         if declared
         else []

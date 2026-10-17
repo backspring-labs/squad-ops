@@ -1,0 +1,181 @@
+# The interface manifest of cyc_bda7ed244671 (the 2.3.1 shakeout campaign's calibration, cmp_dadc7c019ad6,
+# 2026-10-17), as stored: its detail page spelled /run/:run_id over the API's /runs (#2398).
+version: 1
+kind: interface_manifest
+project_id: group_run
+source_prd: "PRD: group_run (1-Hour Cycle MVP+) v0.5"
+stack: fullstack_fastapi_react
+scope: >
+  Core group-run coordination: create, list, detail, join, leave, and
+  duplicate-name rejection with in-memory persistence. Deliberately excludes
+  PRD §4.1 expansion items (capacity, datetime sort, seed, enhanced
+  messaging), authentication, persistent storage, and real-time features.
+entities:
+  - name: Participant
+    fields:
+      - { name: name, type: string, required: true }
+      - { name: joined_at, type: string, required: true, generated: true }
+  - name: Run
+    fields:
+      - { name: id, type: string, required: true, generated: true }
+      - { name: title, type: string, required: true }
+      - { name: datetime, type: string, required: true }
+      - { name: meeting_location, type: string, required: true }
+      - { name: distance, type: string, required: false, default: null }
+      - { name: pace_target, type: string, required: false, default: null }
+      - { name: route_notes, type: string, required: false, default: null }
+      - { name: participants, type: "list[Participant]", required: true, default: [] }
+  - name: RunSummary
+    fields:
+      - { name: id, type: string, required: true }
+      - { name: title, type: string, required: true }
+      - { name: datetime, type: string, required: true }
+      - { name: meeting_location, type: string, required: true }
+      - { name: participant_count, type: integer, required: true }
+api:
+  base_path: /api
+  request_shapes:
+    RunCreate:
+      required: [title, datetime, meeting_location]
+      optional: [distance, pace_target, route_notes]
+    ParticipantJoin:
+      required: [name]
+  endpoints:
+    - method: POST
+      path: /runs
+      summary: create a run event
+      request: RunCreate
+      response: Run
+      success_status: 201
+      errors: [validation_error]
+    - method: GET
+      path: /runs
+      summary: list all run events
+      response: "list[RunSummary]"
+    - method: GET
+      path: /runs/{run_id}
+      summary: full run detail including participant list
+      response: Run
+      errors: [run_not_found]
+    - method: POST
+      path: /runs/{run_id}/participants
+      summary: join a run as a named participant
+      request: ParticipantJoin
+      response: Participant
+      success_status: 201
+      errors: [run_not_found, duplicate_name, validation_error]
+    - method: DELETE
+      path: /runs/{run_id}/participants/{name}
+      summary: leave a run by participant name
+      response: null
+      success_status: 204
+      errors: [run_not_found, participant_not_found]
+  error_contract:
+    shape: '{"error": {"code": "...", "message": "..."}}'
+    codes:
+      validation_error:
+        http: 422
+      run_not_found:
+        http: 404
+      participant_not_found:
+        http: 404
+      duplicate_name:
+        http: 409
+frontend:
+  framework: react_vite
+  routes:
+    - path: /
+      view: RunsListView
+      purpose: display upcoming runs with participant counts and a create action
+      testids:
+        - runs-list-view
+        - run-list
+        - run-item
+        - run-title
+        - run-datetime
+        - run-location
+        - participant-count
+        - create-run-link
+        - empty-state
+    - path: /create
+      view: CreateRunView
+      purpose: form to create a new run event with required and optional fields
+      testids:
+        - create-run-view
+        - create-run-form
+        - run-title-input
+        - run-datetime-input
+        - run-location-input
+        - run-distance-input
+        - run-pace-input
+        - run-notes-input
+        - create-run-submit
+        - create-error
+    - path: /run/:run_id
+      view: RunDetailView
+      purpose: run detail with participant list, join form, and leave form
+      testids:
+        - run-detail-view
+        - run-title
+        - run-datetime
+        - run-location
+        - run-distance
+        - run-pace
+        - run-notes
+        - participant-list
+        - participant-name
+        - join-form
+        - join-name-input
+        - join-submit
+        - leave-form
+        - leave-name-input
+        - leave-submit
+        - detail-error
+        - action-error
+persistence: in_memory
+decisions:
+  - id: name-case-insensitivity
+    choice: >
+      Duplicate-name check is case-insensitive. The store normalizes
+      participant names to lowercase for comparison but preserves the
+      original casing for display.
+    warrant: "PRD §5.4 — 'default recommendation: case-insensitive uniqueness'"
+  - id: leave-missing-participant
+    choice: >
+      DELETE /runs/{run_id}/participants/{name} returns 404 with code
+      participant_not_found when the name is not on the run, rather than a
+      silent no-op.
+    warrant: >
+      PRD §5.5 — 'choose one and document in QA handoff.' 404 is the
+      conventional REST signal for a resource that does not exist and gives
+      the frontend a distinct error to display.
+  - id: datetime-is-opaque-string
+    choice: >
+      The datetime field is a free-form string with no parsing, format
+      validation, or timezone handling at any layer.
+    warrant: "PRD §5.1 — 'string input acceptable for MVP'"
+  - id: no-pagination
+    choice: >
+      GET /runs returns all runs in a single unpaginated response in
+      insertion order.
+    warrant: >
+      PRD §5.2 describes a simple list with no pagination requirement.
+      Target use is a small local group; run counts are expected to be
+      single-digit.
+  - id: join-returns-created-participant
+    choice: >
+      POST /runs/{run_id}/participants returns 201 with the created
+      Participant object. The frontend re-fetches GET /runs/{run_id} after
+      a successful join or leave to update the participant list and count.
+    warrant: >
+      Conventional REST: a POST to a sub-collection returns the created
+      resource. PRD §5.4 'immediately' is satisfied by the client re-fetch
+      on the mutation response; PRD §5.2 explicitly allows 'page reload'
+      refresh semantics.
+
+provenance:
+  mode: authored
+  cycle_id: cyc_bda7ed244671
+  task_id: task-run_114a2592-003-development.author_manifest
+  attempts: 1
+  revisions: []

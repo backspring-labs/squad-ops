@@ -114,6 +114,32 @@ async def test_each_declared_route_is_judged_by_what_its_page_rendered(pages, pa
     assert document["routes"][0]["held"] == held
 
 
+_SEED = {"method": "POST", "path": "/runs", "json": {}, "param": "run_id", "segment": ":run_id"}
+
+
+@pytest.mark.parametrize(
+    ("seeds", "blocked"),
+    [
+        ({"/runs/:run_id": _SEED}, "route /runs/:run_id: not rendered"),
+        ({}, "route /runs/:run_id: not read, no seed brings its page into being"),
+    ],
+    ids=["seeded-but-unread", "unseeded"],
+)
+async def test_an_unread_page_is_named_by_why_it_was_not_read(pages, seeds, blocked):
+    """#2398, through the handler, with the seeds its plan handed it. Bug caught: a page nothing
+    could reach recorded in the words for a page the browser failed to load, so the record and
+    the repair's brief point at the app."""
+    pages["/runs/:run_id"] = None
+
+    _, document = await _evaluate(
+        increment_declared_routes={"/runs/:run_id": ["run-detail-view"]},
+        increment_route_seeds=seeds,
+    )
+
+    assert document["verdict"] == "blocked_unverified"
+    assert document["blocked"] == [blocked]
+
+
 @pytest.mark.parametrize(
     ("overrides", "error"),
     [

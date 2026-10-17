@@ -182,6 +182,7 @@ def _reachable_path(
     if not any(route_param(s) is not None for s in route.split("/")):
         return route
     if seed is None:
+        logger.warning("route rendering: no seed brings %s into being, so it is not read", route)
         return None
     created = steps.seed(api + str(seed["path"]), seed["json"])
     identifier = created.get("id") if isinstance(created, Mapping) else None

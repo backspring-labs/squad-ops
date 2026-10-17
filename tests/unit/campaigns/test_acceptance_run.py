@@ -49,7 +49,9 @@ def _frozen(cid: str, path: str):
     return FrozenCriterion(cid, path, freeze_bundle(cid, ACCEPTED, path, SURFACE, INVOCATION))
 
 
-async def _evaluate(new, frozen, routes=None, rendered=None, retired=(), candidate=None):
+async def _evaluate(
+    new, frozen, routes=None, rendered=None, retired=(), candidate=None, unseeded=()
+):
     return await evaluate_increment(
         increment_id="inc_1",
         accepted=ACCEPTED,
@@ -59,6 +61,7 @@ async def _evaluate(new, frozen, routes=None, rendered=None, retired=(), candida
         frozen=frozen,
         declared_routes=routes or {},
         rendered=rendered or {},
+        unseeded=unseeded,
         run=run_generated_tests,
         invocation=INVOCATION,
         retired=retired,
@@ -107,19 +110,29 @@ async def test_setup_only_failures_a_broken_frozen_criterion_and_a_missing_bundl
 
 
 @pytest.mark.parametrize(
-    ("new", "routes", "rendered"),
+    ("new", "routes", "unseeded", "blocked"),
     [
         # A new criterion whose test file the candidate never wrote.
-        ([NewCriterion("C4", "criteria/test_C4.py")], {}, {}),
+        ([NewCriterion("C4", "criteria/test_C4.py")], {}, (), "criterion C4: not run"),
         # A declared route nobody rendered.
-        ([], {"/runs": ("run-list",)}, {}),
+        ([], {"/runs": ("run-list",)}, (), "route /runs: not rendered"),
+        # #2398: a detail page nothing could bring into being, named as such, not as a page the
+        # browser read and found wanting.
+        (
+            [],
+            {"/run/:run_id": ("run-detail-view",)},
+            ("/run/:run_id",),
+            "route /run/:run_id: not read, no seed brings its page into being",
+        ),
     ],
-    ids=["unwritten-criterion", "unrendered-route"],
+    ids=["unwritten-criterion", "unrendered-route", "unseeded-route"],
 )
-async def test_what_could_not_be_read_blocks_and_never_accepts(new, routes, rendered):
-    """SIP-0096: blocked_unverified never reads as accepted."""
-    result = await _evaluate(new, [], routes, rendered)
+async def test_what_could_not_be_read_blocks_and_never_accepts(new, routes, unseeded, blocked):
+    """SIP-0096: blocked_unverified never reads as accepted, and the record says what was not
+    read and why."""
+    result = await _evaluate(new, [], routes, {}, unseeded=unseeded)
     assert result.acceptance.verdict is IncrementVerdict.BLOCKED_UNVERIFIED
+    assert result.acceptance.blocked == (blocked,)
 
 
 @pytest.mark.parametrize(
