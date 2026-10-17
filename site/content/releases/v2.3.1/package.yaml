@@ -680,3 +680,20 @@ showcase:
     The round-3 Next.js roll''s timeline is shown beside it because its rejection,
     on #2395, is the line''s one adverse reading'
   role: shakeout
+records:
+  asset: squadops-2.3.1-records.tar.gz
+  sha256: e8c83dca15dcccecd5773e378be5bbe434ece3740b0ddc0f1838a5c4b817b1e2
+  files: 89
+  campaigns:
+  - cmp_dadc7c019ad6
+  - cmp_dc2abcf0af3a
+  engine_records: []
+  bytes: 223296
+  attached_at: '2026-10-17T21:11:03Z'
+  scanned:
+    secret_values: 68
+    patterns:
+    - langfuse key
+    - api key (sk-)
+    - jwt
+    - private key
