@@ -325,11 +325,14 @@ checks:
   - id: "2084"
     what: a page's collection is found under a prefix written into each endpoint path
     container: squadops-runtime-api
+    # Since #2398 the helper returns every create beneath a prefix: `route_seeds` takes the one
+    # and leaves a page two could serve unseeded (test_a_collection_two_prefixes_could_serve_is_
+    # left_unseeded). The row printed `create None` before.
     code: |
       from squadops.campaigns import increment_tree
       under = getattr(increment_tree, "_under_a_written_prefix", None)
       print(under and under({"/api/runs": "create"}, "/runs"), under and under({"/api/runs": 1, "/v2/runs": 2}, "/runs"))
-    expect: create None
+    expect: "['create'] [1, 2]"
   - id: "1985"
     what: the package roots import nothing, so a leaf import loads a handful of modules, not 144
     container: squadops-runtime-api
