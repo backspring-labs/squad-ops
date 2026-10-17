@@ -18,9 +18,9 @@ original_filename: "SIP-Project-Lifecycle-Management.md"
 **Roles Impacted:** External Product Owner/Maintainer; Lead, Strategy, Dev, QA, Data  
 **Date:** 2026-10-16  
 **Revised:** 2026-10-17  
-**Document Revision:** 5 — the owner's design review of 2026-10-17 (PR #2401) reconciled: SIP-0047 retired as a runtime contract (Q30), instruction records owned by SIP-0110 (Q31), *Project Record* and *Project Development Profile* in place of *Project Manifest* (Q32), the Pulse IDEAs non-normative and SIP-0070's Pulse kept (Q33), greenfield creation required (Q34), and the 2.4 ownership and integration contract (Q35, §8)  
+**Document Revision:** 5 — the owner's design review of 2026-10-17 (PR #2401) reconciled: SIP-0047 retired as a runtime contract (Q30), instruction records owned by SIP-0110 (Q31), *Project Record* and a development configuration record in place of *Project Manifest* (Q32), that record named the *Project Development Configuration* (Q36), the Pulse IDEAs non-normative and SIP-0070's Pulse kept (Q33), greenfield creation required (Q34), and the 2.4 ownership and integration contract (Q35, §8)  
 **Source Baseline:** `backspring-labs/squad-ops`, `main`, commit `7aecfa0b3ff6576f115eba10c2ee3465774e997d` (freshly pulled and inspected 2026-10-17); revision 5's added claims read at `c294ec79`, one docs-only commit later  
-**Related SIPs:** SIP-0047 (Cycle Data Layout, Project Registry and `CycleDataStore`: implemented, retired as a runtime contract, Q30); SIP-0064 (Project Cycle Request API); SIP-0065 (CLI for Cycle Execution); SIP-0070 (Pulse Checks: the Cycle and Pulse this SIP keeps); SIP-0072 (its *development profile*, Q36); SIP-0074 (Console Cycle Operations UX); SIP-0102 (sandbox workspaces); SIP-0103 (Squad-Authored Manifest: owns the word *manifest*); SIP-0105 (stack blueprints); SIP-0108 (benchmark registry); SIP-0109 (Campaign Orchestration); SIP-0110 (Cross-Cycle Memory: project instructions); Outcome Evaluation (proposed, PR #1963: the Spark lane's 2.4 feature); the Godot/Roblox game development SIP (filed separately; builds on FR-17)  
+**Related SIPs:** SIP-0047 (Cycle Data Layout, Project Registry and `CycleDataStore`: implemented, retired as a runtime contract, Q30); SIP-0064 (Project Cycle Request API); SIP-0065 (CLI for Cycle Execution); SIP-0070 (Pulse Checks: the Cycle and Pulse this SIP keeps); SIP-0072 (its *development profile*, kept to one meaning by Q36); SIP-0074 (Console Cycle Operations UX); SIP-0102 (sandbox workspaces); SIP-0103 (Squad-Authored Manifest: owns the word *manifest*); SIP-0105 (stack blueprints); SIP-0108 (benchmark registry); SIP-0109 (Campaign Orchestration); SIP-0110 (Cross-Cycle Memory: project instructions); Outcome Evaluation (proposed, PR #1963: the Spark lane's 2.4 feature); Game Development Platform (proposed, PR #2405: the Godot/Roblox SIP, filed separately; builds on FR-17)  
 **SIP Number:** Provisional—allocate the next available identifier only after checking the current registry.
 
 ## Intake check
@@ -29,7 +29,7 @@ Checked against `sips/PORTFOLIO.md` on 2026-10-17, before this draft was recorde
 System"). Revision 4 was filed as the owner wrote it, and its findings were Q30–Q33 in the portfolio's
 §4. **The owner ruled on all four on 2026-10-17** (the design review of PR #2401), adding a greenfield
 ruling (Q34) and the 2.4 parallel development agreement (Q35). Revision 5 reconciles the body with the
-rulings. Revision 5's own intake found one more overlap (Q36), which waits for the owner.
+rulings. Revision 5's own intake found one more overlap (Q36), and the owner ruled it the same day.
 
 - **Overlaps, and the boundary each gets:**
   - **SIP-0047** (Cycle Data Layout, Project Registry and `CycleDataStore`, implemented 2025-11-29) is
@@ -52,14 +52,14 @@ rulings. Revision 5's own intake found one more overlap (Q36), which waits for t
     configuration and drift detection. There is one instruction store, SIP-0110's (§4, §B.5.1, FR-21).
     SIP-0110 §5k records the same boundary.
   - **SIP-0103's manifest:** one word, two meanings. **Ruled (Q32):** this SIP's records are the
-    *Project Record* and the *Project Development Profile* (§B.5), and the existing registry stays the
+    *Project Record* and the *Project Development Configuration* (§B.5), and the existing registry stays the
     authoritative source of Project identity and lifecycle.
   - **SIP-0072's *development profile*** (§10a, implemented: `DevelopmentProfile`, `DEVELOPMENT_PROFILES`,
     and the cycle request's `development_profile` key, which names the stack and which `prepare_cycle()`
-    checks against `build_profile`) shares two words with Q32's *Project Development Profile*. **Open
-    (Q36):** revision 5 applies the ruled name, always in full, and recommends *Project Development
-    Configuration* instead (§B.5).
-  - **SIP-0105** (stack blueprint) and the technical part of the Development Profile; **SIP-0108**'s
+    checks against `build_profile`) shared two words with Q32's *Project Development Profile*. **Ruled (Q36):**
+    the record is the *Project Development Configuration*, so *development profile* keeps SIP-0072's one
+    meaning (§B.5).
+  - **SIP-0105** (stack blueprint) and the technical part of the Development Configuration; **SIP-0108**'s
     benchmark registry and the reference/benchmark profile: where a stack and a benchmark are declared.
     The boundary is stated in §B.4.1.
   - **SIP-0070** (Pulse Checks): its cadence-bounded Pulse is the one this SIP keeps (§A.2, Q33).
@@ -73,10 +73,10 @@ rulings. Revision 5's own intake found one more overlap (Q36), which waits for t
     are added beside them.
 - **Conflict, ruled:** SIP-0047 prescribes the `cycle_data/<project_id>/<execution cycle ID>/` layout and a
   `CycleDataStore`, which this SIP does not restore (Q30).
-- **Cited sources the repository does not hold yet:** `IDEA_Cycle_Orchestrator_Pulses_and_Surges.md` and
-  `IDEA_Cycle_and_Pulse_Execution_Model.md` are kept as non-normative history (Q33). They enter
-  `docs/ideas/` in this PR, each with an intake row, when the owner supplies the files. The Godot/Roblox
-  game development SIP is filed separately as its own draft.
+- **Cited sources, now in the repository:** `docs/ideas/IDEA_Cycle_Orchestrator_Pulses_and_Surges.md` and
+  `docs/ideas/IDEA_Cycle_and_Pulse_Execution_Model.md` are kept as non-normative history (Q33), each with
+  a header saying so and an intake row in the portfolio. The Godot/Roblox game development SIP is filed
+  as its own draft, `sips/proposed/SIP-Game-Development-Platform.md` (PR #2405).
 
 **Ruled 2026-10-17** (the owner's design review of PR #2401; the portfolio's §4 records each):
 - **Q30:** SIP-0047 is retired as an active runtime contract. Its implemented status stays as history and
@@ -91,6 +91,9 @@ rulings. Revision 5's own intake found one more overlap (Q36), which waits for t
   The game SIP is filed separately, and FR-17 describes what this SIP offers future game adapters.
 - **Q34:** greenfield Project creation is a required capability and stays in the completion scope.
   Brownfield development is the first acceptance benchmark. Game-specific adapters stay separate.
+- **Q36:** the second record is renamed the *Project Development Configuration*, the owner's own phrase in
+  Q31, so that *development profile* keeps SIP-0072 §10a's one meaning (the owner agreed the
+  recommendation the same day).
 - **Q35:** the 2.4 parallel development agreement (§8): the MacBook lane owns this SIP, the Spark lane owns
   Outcome Evaluation, and the two meet at six shared contracts. This PR stays proposal-only until the
   owner approves it, and no integration branch is created yet.
@@ -125,7 +128,7 @@ amendment the owner rules.
 
 **Revision 4:** Clarifies external owner decision rights, establishes inherited quality before source changes, defines precedence and drift handling for development instructions, and makes an existing external product the first end-to-end proof. The detailed CLI reconciliation and implementation contracts are retained in the appendices.
 
-**Revision 5:** Reconciles the owner's design review of 2026-10-17. SIP-0047 is retired as a runtime contract. Instruction records belong to SIP-0110, and this SIP discovers repository instructions, holds development configuration and detects drift. The *Project Manifest* becomes the Project Record and the Project Development Profile. SIP-0070's Cycle and Pulse are kept. Greenfield creation is required. §8 records the 2.4 ownership and integration contract with Outcome Evaluation: shared contracts, integration regression scenarios and gates.
+**Revision 5:** Reconciles the owner's design review of 2026-10-17. SIP-0047 is retired as a runtime contract. Instruction records belong to SIP-0110, and this SIP discovers repository instructions, holds development configuration and detects drift. The *Project Manifest* becomes the Project Record and the Project Development Configuration (Q32, named by Q36). SIP-0070's Cycle and Pulse are kept. Greenfield creation is required. §8 records the 2.4 ownership and integration contract with Outcome Evaluation: shared contracts, integration regression scenarios and gates.
 
 # 1. Direction and intended outcome
 
@@ -161,15 +164,15 @@ Approved but unintegrated development commits may seed later work under explicit
 
 # 4. Quality baseline and development instructions
 
-**Observe the product before changing it.** Baseline evidence binds the repository commit, applicable commands/working directories, the Development Profile revision and instruction sources, dependency/toolchain/environment identity and actual results. An inherited FAIL stays FAIL. A check that could not execute stays UNVERIFIED. Neither is silently converted to a successful result because the squad did not cause it.
+**Observe the product before changing it.** Baseline evidence binds the repository commit, applicable commands/working directories, the Development Configuration revision and instruction sources, dependency/toolchain/environment identity and actual results. An inherited FAIL stays FAIL. A check that could not execute stays UNVERIFIED. Neither is silently converted to a successful result because the squad did not cause it.
 
 Check results and regression attribution are separate: a candidate may retain an inherited defect, introduce a regression, resolve a defect or have insufficient evidence for attribution. Owner-approved policy determines whether scoped development can proceed with identified inherited issues. The squad is not automatically tasked with fixing every pre-existing defect, and missing evidence does not grant a waiver. These are verification records of the product's own checks; outcome evidence (independent held-out scenarios, quality baselines, outcome contribution) is Outcome Evaluation's (§8.3).
 
-**Bind SquadOps configuration to the product's instructions.** Applicable runtime access restrictions and authorized owner/maintainer decisions govern the work; applicable contribution rules and repository-native build/test definitions govern product execution; the Project Development Profile records how to execute them. Explicit, authorized exceptions are versioned and auditable. A stale profile cannot silently override current product instructions, and repository content cannot grant runtime privileges.
+**Bind SquadOps configuration to the product's instructions.** Applicable runtime access restrictions and authorized owner/maintainer decisions govern the work; applicable contribution rules and repository-native build/test definitions govern product execution; the Project Development Configuration records how to execute them. Explicit, authorized exceptions are versioned and auditable. A stale profile cannot silently override current product instructions, and repository content cannot grant runtime privileges.
 
 **Instructions are SIP-0110's records** (Q31). This SIP finds the instruction sources in the product's repository, holds the development configuration and detects drift. SIP-0110 records the instructions themselves: their revisions, their applicability, and the snapshot that pins them when a standalone Cycle is created or a Campaign is admitted. There is one instruction store, SIP-0110's. A changed upstream instruction reaches Cycles and Campaigns admitted afterwards. One already admitted keeps what it bound, and changes only through SIP-0110's authorized, recorded re-binding (§B.5.1).
 
-Before feature-source changes, inspect relevant upstream changes to instructions, build/test scripts, dependencies and toolchains. Reconcile/revalidate the affected profile and baseline checks before relying on them. Unresolved policy conflicts stop the affected operation and are reported through existing governance. Verification is scoped to relevant changes and the agreed contract rather than requiring an indiscriminate rerun of every check.
+Before feature-source changes, inspect relevant upstream changes to instructions, build/test scripts, dependencies and toolchains. Reconcile/revalidate the affected Development Configuration and baseline checks before relying on them. Unresolved policy conflicts stop the affected operation and are reported through existing governance. Verification is scoped to relevant changes and the agreed contract rather than requiring an indiscriminate rerun of every check.
 
 Registration readiness, development eligibility, engineering-candidate acceptance and external integration remain separately visible. A registered Project can have pending baseline work; that state is not a claim that the product passes its checks.
 
@@ -202,7 +205,7 @@ An external product maintainer supplies an unfamiliar supported repository with 
 - Registration assigns a stable Project ID and complete out-of-repository metadata with no onboarding changes to product source or required SquadOps files.
 - The squad records owner delegation, effective instructions and the agreed build/test results at the pinned unmodified source, including inherited defects or UNVERIFIED checks where present.
 - A first Cycle delivers a scoped feature, relevant QA and a traceable contribution through the product's normal acceptance/integration process.
-- An outside developer advances the repository or relevant development instructions. A later Cycle detects/reconciles the change, refreshes affected profile/baseline evidence and delivers another feature through the same Project.
+- An outside developer advances the repository or relevant development instructions. A later Cycle detects/reconciles the change, refreshes affected Development Configuration and baseline evidence and delivers another feature through the same Project.
 - Internal candidate approval, check results/regression attribution, pending contributions and confirmed integrated revisions remain distinguishable throughout.
 - Handoff/archival retains pending work and evidence while the product remains usable with its native toolchain. Existing registered references such as `group_run` retain compatibility.
 
@@ -217,7 +220,7 @@ Greenfield creation is the second required demonstration, after this one (Q34). 
 | | MacBook lane | Spark lane |
 |---|---|---|
 | owns | Project Lifecycle Management (this SIP) | Outcome Evaluation |
-| builds | the Project Record and the registry cutover; the Project Development Profile; managed clones; inherited verification baselines; Git revisions and their mappings; repository instruction discovery and drift detection; the project CLI and API writes | the held-out scenario store and runner; quality baselines; the intervention ledger's classifications; outcome contribution and the derived metrics; the campaign objective's outcome measure (its §4.7, a SIP-0109 amendment) |
+| builds | the Project Record and the registry cutover; the Project Development Configuration; managed clones; inherited verification baselines; Git revisions and their mappings; repository instruction discovery and drift detection; the project CLI and API writes | the held-out scenario store and runner; quality baselines; the intervention ledger's classifications; outcome contribution and the derived metrics; the campaign objective's outcome measure (its §4.7, a SIP-0109 amendment) |
 | never builds | an outcome evaluation subsystem: scenarios, a scenario runner, quality baselines or outcome readings | a project model of its own, or behavior that assumes a Project is a predefined sample application |
 
 A change to a file the other lane owns goes through that lane's review (CLAUDE.md, "Versioning & Release Cadence": features are pinned by file ownership). The sandbox (`src/squadops/sandbox/`, SIP-0102) is the Spark lane's.
@@ -227,7 +230,7 @@ A change to a file the other lane owns goes through that lane's review (CLAUDE.m
 | contract | today's seam | this SIP adds | Outcome Evaluation reads or adds | the rule |
 |---|---|---|---|---|
 | 1. Project identity and source revision | `Project` (`src/squadops/cycles/models.py:293`); `ProjectRegistryPort`; `config/projects.yaml` | the Project Record as the registry entry; the development-baseline and integrated-upstream Git revisions | reads the Project ID and the Git revision of the tree it evaluated, and records both with each result | one registry for every reader; Project IDs immutable; a Git commit is never stored as a sandbox hash or an accepted-tree identity |
-| 2. `prepare_cycle()` input and context | `prepare_cycle()` (`src/squadops/api/routes/cycles/cycles.py:387`); `CycleCreateRequest` (`src/squadops/api/cycle_schemas.py:40`, `extra="forbid"`); `cycle_request_body()`; the Campaign launcher (`src/squadops/campaigns/launch_requests.py`) | typed source context and source preconditions, persisted before dispatch (§D.3); the Development Profile revision | its draft changes the campaign objective (its §4.7) rather than this seam; any field it pins at admission is typed and its own | each lane adds its own typed fields and repurposes none of the other's; the standalone and Campaign preparation tests run on every change; SIP-0110's #2179 changes this seam in 2.4.0 too |
+| 2. `prepare_cycle()` input and context | `prepare_cycle()` (`src/squadops/api/routes/cycles/cycles.py:387`); `CycleCreateRequest` (`src/squadops/api/cycle_schemas.py:40`, `extra="forbid"`); `cycle_request_body()`; the Campaign launcher (`src/squadops/campaigns/launch_requests.py`) | typed source context and source preconditions, persisted before dispatch (§D.3); the Development Configuration revision | its draft changes the campaign objective (its §4.7) rather than this seam; any field it pins at admission is typed and its own | each lane adds its own typed fields and repurposes none of the other's; the standalone and Campaign preparation tests run on every change; SIP-0110's #2179 changes this seam in 2.4.0 too |
 | 3. `WorkspaceStore` integration | `src/squadops/sandbox/workspace.py` (SIP-0102) | a Git checkout at a pinned commit exposed as the live tree; verified changes captured back to Git; a mapping from sandbox revision to Git commit | stands up the delivered app in the sandbox and evaluates it (SIP-0109 §8.3); names the tree it evaluated | sandbox revisions stay content hashes; no second live tree; no scenario file enters a workspace |
 | 4. Campaign accepted-tree identities | `infra/migrations/1630_campaign_accepted_tree.sql`; `src/squadops/campaigns/increment_tree.py` (SIP-0109) | a mapping from each accepted tree to the Git revision it became | reads regression against the previous accepted tree (its §4.1) | SIP-0109 owns the identity; both lanes read it as SIP-0109 defines it; the mapping lives in this SIP's records |
 | 5. Outcome assessment references | Outcome Evaluation's per-increment results (to be built) | references to them in Project history and handoff (FR-09) | produces them, with the Project ID, the cycle ID and the revisions of contracts 1 and 3 | this SIP stores the reference and the goal-level result only; it never stores steps and never recomputes a reading |
@@ -240,7 +243,7 @@ A change to a file the other lane owns goes through that lane's review (CLAUDE.m
 - **This SIP evaluates no outcomes.** Its checks are the product's own build and test checks, run through the existing verification path (FR-10, FR-20) and reported as check results (PASS, FAIL, UNVERIFIED) with regression attribution. They are verification records. Independent held-out scenarios, quality baselines (Lighthouse, axe, lint), the intervention ledger and outcome contribution are Outcome Evaluation's, and this SIP stores references to them.
 - **Outcome Evaluation takes a Project as any registered product:** an existing external repository with its own layout and tooling, a greenfield product, or a reference application. Scenario surfaces come from the scenario's authors and the Project's own interface; a scenario that cannot run reports `blocked_unverified` (its §4.1). A sample application's routes, fixtures or interface manifest are never a default.
 - **Held-out scenario independence, as this SIP keeps it:**
-  1. Scenario steps and checks never enter the Project Record, the Development Profile, the Project Context (FR-04), handoff metadata (FR-09), a project instruction or its references (SIP-0110), a managed clone, a workspace or the product repository.
+  1. Scenario steps and checks never enter the Project Record, the Development Configuration, the Project Context (FR-04), handoff metadata (FR-09), a project instruction or its references (SIP-0110), a managed clone, a workspace or the product repository.
   2. Scenarios are stored outside every location this SIP manages: the product repository, the managed clone cache and the workspace roots.
   3. Repository instruction discovery reads the product repository only. A scenario store is never an instruction source.
   4. What reaches this SIP's records is what Outcome Evaluation shows the squad (its §4.1): each scenario's goal and its result, by reference.
@@ -253,7 +256,7 @@ Each enters at the seam the live cycle uses and asserts what reaches the other l
 | id | scenario | what it proves | lane |
 |---|---|---|---|
 | IR-1 | After the registry cutover, `group_run`, `hello_squad`, `run_crysis`, `play_game` and `agent_chess` create Cycles through `cycles create` and `POST /api/v1/projects/{project_id}/cycles` | the same IDs, PRD resolution, cycle and run IDs and artifact paths; `projects list/show` changed only by added fields | MacBook |
-| IR-2 | One Project at one pinned revision, launched standalone and through the Campaign launcher | both reach `prepare_cycle()` with the same typed source context and Development Profile revision, and each pins a SIP-0110 snapshot under its own snapshot owner | MacBook, with SIP-0110's #2179 |
+| IR-2 | One Project at one pinned revision, launched standalone and through the Campaign launcher | both reach `prepare_cycle()` with the same typed source context and Development Configuration revision, and each pins a SIP-0110 snapshot under its own snapshot owner | MacBook, with SIP-0110's #2179 |
 | IR-3 | A Campaign is admitted; an outside commit then changes a repository instruction source | the Campaign's later Cycles keep the admission binding and carry a drift finding; a standalone Cycle created afterwards binds the new content; a re-binding changes the Campaign only as a recorded intervention | MacBook, with SIP-0110's #2179 |
 | IR-4 | An increment of an external Project runs with an outcome suite | no scenario step in any rendered prompt (Outcome Evaluation §7, prediction 2), the Project Context, handoff metadata, a project instruction, the managed clone, a workspace or the product repository | both |
 | IR-5 | An accepted increment of an external Project | sandbox revision, Git commit, Campaign accepted tree and Outcome Evaluation result resolve to one another through this SIP's mappings, and none is stored in another's field | both |
@@ -292,7 +295,7 @@ The directional requirements above and the functional requirements below are nor
 | Appendix | Contents |
 |---|---|
 | A | Verified implementation baseline, execution semantics and problem statements |
-| B | Detailed source/workspace design, the Project Record and Development Profile, and the external repository contract |
+| B | Detailed source/workspace design, the Project Record and Development Configuration, and the external repository contract |
 | C | Functional requirements FR-01 through FR-21 and non-functional requirements |
 | D | Existing CLI/API contracts, proposed additions and compatibility checks |
 | E | Implementation plan, primary delivery path, migration, roles and Definition of Done |
@@ -310,7 +313,7 @@ The source baseline above was inspected after a fast-forward pull. Repository-re
 | CLI | Typer groups `projects`, `cycles`, `campaigns`, `artifacts` and `baseline` are registered in the existing `squadops` executable. `projects list/show` have hidden `ls/cat` aliases. | Extend `projects` with lifecycle writes and richer reads. Preserve existing names and aliases. |
 | Project API | `GET /api/v1/projects`, `GET /api/v1/projects/{project_id}`, and `GET /api/v1/projects/{project_id}/prd-content`. | Add authenticated lifecycle writes on the existing resource surface; evolve responses compatibly. |
 | Registry | `ProjectRegistryPort` exposes `list_projects()` and `get_project()`. Runtime constructs `create_project_registry("config")`. `ConfigProjectRegistry` loads and caches `config/projects.yaml`, which it identifies as the canonical runtime source. | Add durable writes and an explicit provider cutover; do not introduce a registry that existing readers bypass. |
-| Project model | `project_id`, `name`, `description`, `created_at`, `tags`, `prd_path`. Existing entries include `hello_squad`, `run_crysis`, `group_run`, `play_game`, and `agent_chess`. | Add lifecycle, ownership, source, quality and accepted-source metadata (the Project Record) and a Development Profile reference while preserving existing fields/IDs. |
+| Project model | `project_id`, `name`, `description`, `created_at`, `tags`, `prd_path`. Existing entries include `hello_squad`, `run_crysis`, `group_run`, `play_game`, and `agent_chess`. | Add lifecycle, ownership, source, quality and accepted-source metadata (the Project Record) and a Development Configuration reference while preserving existing fields/IDs. |
 | Cycle creation | `squadops cycles create <project_id> --squad-profile <id>` uses request profiles, optional `--prd`, `--set`, and `--notes`; posts to `/api/v1/projects/{project_id}/cycles`. Creation starts the first run immediately. Server-side `prepare_cycle()` resolves the Project through the existing registry. | Enrich that shared preparation path with Project eligibility and pinned source/workspace context. No alternate launch command or execution path. |
 | Cycle persistence | The implemented table is `cycle_registry`, with `project_id TEXT NOT NULL`; Runs have their own records. The inspected migrations do not define the earlier draft's `projects` table or `execution_cycle` table. | Add the Project persistence migration and backfill before enforcing database referential integrity. Preserve `cycle_id` and `run_id`. |
 | Artifacts | `ArtifactVaultPort`, runtime-selected filesystem adapter, project/cycle/run-scoped artifact APIs and PRD ingestion already exist. Default artifact root is `data/artifacts`. | Store new lifecycle evidence through existing artifact contracts, adding metadata only where needed. |
@@ -333,11 +336,11 @@ The implemented Cycle/Run orchestration remains the execution authority, and SIP
 
 Recovery is the repair loop at a pulse boundary and the correction loop's decisions, its rewind included (SIP-0086). Projects, Campaigns, repositories, workspaces and reference benchmarks MUST NOT introduce alternative Cycle lifecycle authority, close a pulse or change cadence. This SIP preserves current Cycle and Pulse behavior (IR-10).
 
-**The Pulse IDEAs are history (Q33).** `IDEA_Cycle_Orchestrator_Pulses_and_Surges.md` and `IDEA_Cycle_and_Pulse_Execution_Model.md` are kept as non-normative design history. Their Pulse is a coordination-topology change that only the orchestrator emits and that marks the legal rewind boundary, and their Surge groups the tasks begun at one Pulse. SIP-0070's Pulse is cadence-bounded instead, and the code holds no Surge. Where they differ, SIP-0070 and the code govern.
+**The Pulse IDEAs are history (Q33).** `docs/ideas/IDEA_Cycle_Orchestrator_Pulses_and_Surges.md` and `docs/ideas/IDEA_Cycle_and_Pulse_Execution_Model.md` are kept as non-normative design history, each headed as such. Their Pulse is a coordination-topology change that only the orchestrator emits and that marks the legal rewind boundary, and their Surge groups the tasks begun at one Pulse. SIP-0070's Pulse is cadence-bounded instead, and the code holds no Surge. Where they differ, SIP-0070 and the code govern.
 
 ## A.3 Why this matters now
 
-Godot and Roblox support is useful only if SquadOps can build genuine applications independently of its test fixtures. A game development SIP, filed separately (Q33), builds on this one through the capabilities FR-17 lists. Game engines are technical targets of ordinary Projects, with no project registry or orchestration of their own.
+Godot and Roblox support is useful only if SquadOps can build genuine applications independently of its test fixtures. A game development SIP, filed separately (Q33; `sips/proposed/SIP-Game-Development-Platform.md`, PR #2405), builds on this one through the capabilities FR-17 lists. Game engines are technical targets of ordinary Projects, with no project registry or orchestration of their own.
 
 This SIP also supports web applications, APIs, utilities, and subsequent supported development domains.
 
@@ -373,7 +376,7 @@ This SIP also supports web applications, APIs, utilities, and subsequent support
 |---|---|---|
 | **Project** | SquadOps identity and development engagement record for an independently owned product | Persistent metadata; may have many Campaigns and Cycles; references external source |
 | **Project Record** | The registry's entry for a Project: identity, lifecycle status, external product authority and delegation, the external source binding, and the development-baseline and integrated-upstream revisions | Authoritative in the selected Project registry (`ProjectRegistryPort`), which stays the source of Project identity and lifecycle (Q32); versioned; extends today's `Project` fields |
-| **Project Development Profile** | Versioned development configuration: repository-native commands, working directories and toolchain, the technical target, workspace mode, the repository's instruction sources, and quality-contract and benchmark-profile references | Stored with SquadOps Project metadata; no required file in product source; its revision is pinned when a unit is admitted (§B.5.1) |
+| **Project Development Configuration** | Versioned: repository-native commands, working directories and toolchain, the technical target, workspace mode, the repository's instruction sources, and quality-contract and benchmark-profile references | Stored with SquadOps Project metadata; no required file in product source; its revision is pinned when a unit is admitted (§B.5.1) |
 | **Product Source** | Externally owned authoritative repository and its product-defined structure | Can be maintained independently of SquadOps; referenced by Project metadata |
 | **Managed clone/cache** | SquadOps-controlled copy used to obtain and stage product source | Rebuildable from pinned revisions; does not replace external repository authority |
 | **Project Workspace** | Isolated working copy used to build or inspect a Project | Managed; can be recreated from known source revision |
@@ -411,7 +414,7 @@ Existing squadops CLI: projects / cycles / campaigns / artifacts / baseline
                               |
         Project Lifecycle service + existing ProjectRegistryPort
                               |
-  Single selected registry provider: Project Record + Development Profile
+  Single selected registry provider: Project Record + Development Configuration
                               |
       External authoritative repo + pinned development/integrated refs
                               |
@@ -436,7 +439,7 @@ The CLI remains an API client. Filesystem/Git operations run in authorized runti
 
 **Managed clone and workspace:** SquadOps may clone the external repository into its own configured cache, then use isolated branches/worktrees at pinned revisions for Cycles and Campaigns. Management controls the checkout location, lease, permissions and evidence capture. It does not grant authority to restructure the product. Disposable working copies can be recreated after all unintegrated work is durably retained; the external repository remains authoritative.
 
-**Cycle evidence:** immutable or versioned artifacts and references associated with Project, Cycle and Run through existing artifact and telemetry services. New Development Profile revisions, handoffs and source-promotion evidence reuse `ArtifactVaultPort` where appropriate.
+**Cycle evidence:** immutable or versioned artifacts and references associated with Project, Cycle and Run through existing artifact and telemetry services. New Development Configuration revisions, handoffs and source-promotion evidence reuse `ArtifactVaultPort` where appropriate.
 
 Current default layouts (preserved by this SIP):
 
@@ -487,20 +490,20 @@ Reference source MAY remain at its legacy path until migrated. The registry/sour
 
 ### B.4.1 Where a stack and a benchmark are declared (SIP-0105, SIP-0108)
 
-- **SIP-0105's stack blueprints** describe the stacks SquadOps scaffolds (`fullstack_fastapi_react`, `nextjs_ts`). A greenfield Project built on one names the blueprint in its Development Profile and does not restate it. An existing product's layout and tooling are its own: its Development Profile records them, and no blueprint is applied to it.
-- **SIP-0108's benchmark registry** holds graded counted rolls, each with its assessment and code lineage. A Project's benchmark profile (above) names what a reference Project is evaluated against. The profile holds no grades and the registry defines no Project. A registry row cites the Project ID, as its cycle does, and once this SIP ships it can cite the Project's source revision and Development Profile revision as lineage.
+- **SIP-0105's stack blueprints** describe the stacks SquadOps scaffolds (`fullstack_fastapi_react`, `nextjs_ts`). A greenfield Project built on one names the blueprint in its Development Configuration and does not restate it. An existing product's layout and tooling are its own: its Development Configuration records them, and no blueprint is applied to it.
+- **SIP-0108's benchmark registry** holds graded counted rolls, each with its assessment and code lineage. A Project's benchmark profile (above) names what a reference Project is evaluated against. The profile holds no grades and the registry defines no Project. A registry row cites the Project ID, as its cycle does, and once this SIP ships it can cite the Project's source revision and Development Configuration revision as lineage.
 - **Outcome Evaluation's held-out scenarios** are a third corpus, in their own store (§8.3). A benchmark profile never holds scenario steps.
 
-## B.5 Project Record and Project Development Profile
+## B.5 Project Record and Project Development Configuration
 
 Two records take the place of revision 4's *Project Manifest* (Q32; SIP-0103 owns the word *manifest*):
 
 - the **Project Record**, the registry's entry: identity, lifecycle, external product authority (the owner/maintainer, delegated engineering authority, the versioned acceptance policy and owner decisions) and the external source binding. The existing registry stays the authoritative source of Project identity and lifecycle;
-- the **Project Development Profile**, the versioned development configuration the Record references.
+- the **Project Development Configuration**, versioned, which the Record references.
 
 Both are **SquadOps Project metadata**, stored in its registry/artifact storage by default. An in-repository export is optional and explicitly opt-in; enrollment does not create `.squadops/`, rewrite existing metadata or require either record to live in the product tree.
 
-*Project Development Profile* is the ruled name, written in full every time. SIP-0072 §10a already uses *development profile* for a stack's settings bundle, selected per Cycle by the cycle request's `development_profile` key. The Development Profile names its stack in a field called `stack`, and the bare words stay SIP-0072's. The overlap is Q36, open: the recommendation is *Project Development Configuration*, the owner's own phrase in Q31.
+*Project Development Configuration* is the ruled name (Q36). Q32 first named the record the *Project Development Profile*, which shared two words with SIP-0072 §10a's *development profile*: a stack's settings bundle, selected per Cycle by the cycle request's `development_profile` key. The rename keeps *development profile* to that one meaning. The Development Configuration names its stack in a field called `stack`, and none of its keys reuse `development_profile`.
 
 The fields below are proposed schema additions, not a claim that the current CLI accepts them:
 
@@ -529,13 +532,13 @@ project:
     publishing: approval_required
   classification:
     reference_app: false
-  development_profile_ref: project-metadata/development-profile@7
+  development_configuration_ref: project-metadata/development-configuration@7
 ```
 
 ```yaml
-# The Project Development Profile: versioned development configuration
-api_version: squadops.project-development-profile/v1
-profile:
+# The Project Development Configuration, versioned
+api_version: squadops.project-development-configuration/v1
+configuration:
   project_id: prj-space-adventure
   revision: 7
   technical:
@@ -555,23 +558,23 @@ profile:
   benchmark_profile_ref: null
 ```
 
-**Authority.** After the provider cutover in FR-03, the selected writable registry is authoritative for the Project Record: SquadOps identity, lifecycle status, access/engagement ownership and the configured external source locator. The product repository remains authoritative for source history and integrated refs. The Development Profile is versioned configuration that the Record references. An exported file of either is a declaration, and never a second registry. Before cutover, YAML remains the implemented lookup authority, and nothing shadows it. Conflicts MUST be rejected or reconciled by an explicit, auditable operation.
+**Authority.** After the provider cutover in FR-03, the selected writable registry is authoritative for the Project Record: SquadOps identity, lifecycle status, access/engagement ownership and the configured external source locator. The product repository remains authoritative for source history and integrated refs. The Development Configuration is versioned configuration that the Record references. An exported file of either is a declaration, and never a second registry. Before cutover, YAML remains the implemented lookup authority, and nothing shadows it. Conflicts MUST be rejected or reconciled by an explicit, auditable operation.
 
-`commands_ref` and `contract_ref` in this example resolve through SquadOps Project metadata, not mandatory product files. The actual default branch is discovered/configured per product; `main` is illustrative. Repository commands, working directories and toolchain/environment bindings are recorded in the versioned Development Profile and reference existing product tooling. Record the repository revision and the instruction-source and build-definition digests that informed the profile; stale metadata must be revalidated under FR-21. Record inherited build/test evidence separately under FR-20. Engine-specific keys belong under a versioned technical target, not in core Project Lifecycle logic.
+`commands_ref` and `contract_ref` in this example resolve through SquadOps Project metadata, not mandatory product files. The actual default branch is discovered/configured per product; `main` is illustrative. Repository commands, working directories and toolchain/environment bindings are recorded in the versioned Development Configuration and reference existing product tooling. Record the repository revision and the instruction-source and build-definition digests that informed the Development Configuration; stale metadata must be revalidated under FR-21. Record inherited build/test evidence separately under FR-20. Engine-specific keys belong under a versioned technical target, not in core Project Lifecycle logic.
 
 ### B.5.1 Product authority, repository instructions and SIP-0110's records
 
 The external product owner/maintainer owns product intent, priorities, scope, constraints, quality expectations and final product acceptance. The owner may delegate engineering decisions, candidate acceptance and contribution/integration actions through explicit Project policy. Strategy interprets intent and proposes work; Lead acts within that delegation. A SquadOps role has no implicit authority to replace the owner's roadmap or acceptance criteria. Existing valid delegation remains effective across Cycles; this is not a requirement to request a new approval for every routine authorized action.
 
-**Precedence among the product's authorities** (this SIP's): applicable runtime access restrictions and authorized owner/maintainer decisions first; then the product's applicable contribution/development rules and native build/test definitions; then the Development Profile, which records how to execute them. The profile is an execution binding, not an independent source of product policy. Owner-approved exceptions are explicit, versioned owner decisions in the Project Record, each referenceable by revision. Runtime access restrictions are enforced at the API, tool and worker boundaries (FR-13), so no instruction text can widen them, and repository instructions cannot grant credentials, widen runtime permissions or override access restrictions. If an unresolved conflict affects execution or contribution, block the affected operation and surface the conflict; do not silently choose a stale profile or infer permission from repository text.
+**Precedence among the product's authorities** (this SIP's): applicable runtime access restrictions and authorized owner/maintainer decisions first; then the product's applicable contribution/development rules and native build/test definitions; then the Development Configuration, which records how to execute them. The profile is an execution binding, not an independent source of product policy. Owner-approved exceptions are explicit, versioned owner decisions in the Project Record, each referenceable by revision. Runtime access restrictions are enforced at the API, tool and worker boundaries (FR-13), so no instruction text can widen them, and repository instructions cannot grant credentials, widen runtime permissions or override access restrictions. If an unresolved conflict affects execution or contribution, block the affected operation and surface the conflict; do not silently choose a stale profile or infer permission from repository text.
 
 **How instructions reach a task** (Q31). SIP-0110 owns project-instruction records, their versioning, their applicability and their snapshot binding. This SIP owns the external product's authority, the discovery of instructions in its repository, the development configuration and the detection of drift. There is one instruction store, SIP-0110's:
 
-- **Discovery** (this SIP) lists the repository's instruction sources at a pinned commit, each with its path and content digest, in the Development Profile. The list is configuration, and reaches no task by itself.
+- **Discovery** (this SIP) lists the repository's instruction sources at a pinned commit, each with its path and content digest, in the Development Configuration. The list is configuration, and reaches no task by itself.
 - **The record** (SIP-0110 §A.3.2) is a project instruction, confirmed under `memory:instruct` with its applicability (task types, roles, stacks) by a person acting within the owner's recorded delegation. Where it cites a repository source, that source is a required reference. This SIP may propose a record's text and applicability; SIP-0110's confirmation puts it in force.
-- **Binding** (SIP-0110 §0.7, §A.3.7) happens when a unit is admitted: a standalone Cycle when it is created, a Campaign when it is admitted. A repository reference resolves to the source at the commit the unit's source context pins at that moment, and the resolved content digest is recorded with the binding. The Development Profile revision and the source revision are pinned at the same moment, in the unit's source context (FR-04), so a unit's instructions and the commands they describe come from the same commit.
+- **Binding** (SIP-0110 §0.7, §A.3.7) happens when a unit is admitted: a standalone Cycle when it is created, a Campaign when it is admitted. A repository reference resolves to the source at the commit the unit's source context pins at that moment, and the resolved content digest is recorded with the binding. The Development Configuration revision and the source revision are pinned at the same moment, in the unit's source context (FR-04), so a unit's instructions and the commands they describe come from the same commit.
 - **Precedence in the prompt** is SIP-0110's slot precedence (§A.3.6): authoritative records outrank task instructions, which outrank project instructions, which outrank lessons. The product's owner decisions and its repository rules are authoritative records there, ordered among themselves by the paragraph above.
-- **Drift detection** (this SIP), before dispatch: compare the instruction sources, build/test scripts, dependency/toolchain definitions and contribution policy at the unit's pinned commit with those the Development Profile and the inherited verification baseline were validated against. Changed relevant inputs invalidate the affected profile and baseline evidence until reconciled and revalidated. Unrelated changes need no blanket rerun, because the quality contract names the affected checks. Refresh the profile within existing authority where the change is routine; surface a policy conflict when a new owner decision is actually required.
+- **Drift detection** (this SIP), before dispatch: compare the instruction sources, build/test scripts, dependency/toolchain definitions and contribution policy at the unit's pinned commit with those the Development Configuration and the inherited verification baseline were validated against. Changed relevant inputs invalidate the affected profile and baseline evidence until reconciled and revalidated. Unrelated changes need no blanket rerun, because the quality contract names the affected checks. Refresh the profile within existing authority where the change is routine; surface a policy conflict when a new owner decision is actually required.
 
 **Instruction changes against admitted snapshots:**
 
@@ -579,7 +582,7 @@ The external product owner/maintainer owns product intent, priorities, scope, co
 |---|---|---|---|
 | an outside edit to a repository instruction source | binds the new content at its pinned commit; drift detection names the change, and the affected checks are revalidated before they are relied on (FR-21) | keeps what it bound; the change is recorded as a drift finding on the Cycle | keeps what it bound at admission; the drift finding is recorded on the Campaign |
 | a project instruction confirmed, revised, narrowed or withdrawn in SIP-0110 | binds the in-force revision | keeps its pinned revision unless re-bound | keeps its pinned revision unless re-bound |
-| a new Development Profile revision | pins the new revision | keeps its pinned revision | keeps the revision it pinned at admission |
+| a new Development Configuration revision | pins the new revision | keeps its pinned revision | keeps the revision it pinned at admission |
 | a drift finding that needs an owner decision | the affected operation waits for the decision | the affected operation is held | the affected operation is held and escalated through SIP-0109's queue |
 
 **Changed upstream instructions never modify an admitted snapshot.** A running unit changes what it bound only by SIP-0110's re-binding (§A.3.7): an authorized, recorded intervention, forward when no dispatched task used the old binding and a restart otherwise, with the unit's measurements set apart from the first affected task. Routine upstream edits need no re-confirmation, because a confirmed instruction that cites a repository source binds that source's content afresh at each admission.
@@ -651,7 +654,7 @@ On `create`, the system MUST:
 2. Assign or validate a unique immutable `project_id`.
 3. Register the Project, including initial lifecycle status.
 4. Provision source at a product-approved external destination, or bind an approved pre-provisioned repository; create an isolated managed development copy.
-5. Produce the initial Project Record, Project Development Profile and intent records in SquadOps Project metadata storage, without requiring files in product source.
+5. Produce the initial Project Record, Project Development Configuration and intent records in SquadOps Project metadata storage, without requiring files in product source.
 6. Validate basic tool/environment capability declarations.
 7. Set the Project to `READY`, or record a diagnosable registration failure. Registration readiness is distinct from evidence that the product currently passes its build/tests; execution eligibility must also account for the inherited baseline and acceptance policy in FR-20.
 
@@ -678,10 +681,10 @@ Preserve `ProjectRegistryPort.list_projects()` and `get_project()`, the current 
 - external authoritative repository type/locator and product-defined base/integration refs;
 - development-baseline and integrated-upstream commit identities, plus contribution mode and pending integration state;
 - managed clone/workspace configuration and readiness, kept distinct from authoritative source location;
-- the Project Record version and the current Development Profile revision;
+- the Project Record version and the current Development Configuration revision;
 - technical target and quality contract references;
 - external owner/maintainer, delegated authority, versioned acceptance policy and owner decisions, registration provenance and timestamps;
-- the repository instruction sources the Development Profile lists, and inherited verification-baseline evidence references (instruction records stay in SIP-0110's store);
+- the repository instruction sources the Development Configuration lists, and inherited verification-baseline evidence references (instruction records stay in SIP-0110's store);
 - references linking source promotions to relevant Campaign accepted trees, sandbox revisions and verification artifacts.
 
 Migration MUST import the current YAML Projects without changing IDs, names, tags or PRD associations, reconcile all persisted `cycle_registry.project_id` and Campaign project references, and report unknown or conflicting IDs before enforcing foreign keys. Preserve an explicit mapping for SIP-0047's `is_internal` and `updated_at` fields if adopted; neither exists in the inspected Project model. `is_internal` MUST NOT imply benchmark membership; preserve current classification tags.
@@ -694,10 +697,10 @@ Existing artifact pointers and Campaign acceptance records remain in their ownin
 
 Extend the existing Project lookup and shared Cycle preparation path to resolve a typed **Project Context** for Project-aware agents/tools, containing:
 
-- project ID, Project Record version and Development Profile revision;
+- project ID, Project Record version and Development Configuration revision;
 - authoritative external repository/ref, pinned development baseline, last confirmed integrated-upstream revision and any pending contribution;
 - workspace locator and workspace permission mode;
-- target capability profile;
+- the technical target and its capability gaps, from the Development Configuration;
 - owner-approved quality/acceptance contract and applicable inherited-baseline policy;
 - the unit's SIP-0110 snapshot reference (the project instructions it pinned, with their repository references bound at the pinned commit) and inherited verification evidence;
 - relevant Campaign ID (if one exists);
@@ -713,7 +716,7 @@ The Project Workspace Manager MUST integrate with the existing sandbox `Workspac
 - operate from configured roots, never hardcoded framework/sample paths;
 - allocate separate workspaces for concurrent tasks/Cycles per policy;
 - create/checkout the exact pinned source revision requested, preserving repository-relative paths and configured subdirectory roots;
-- use repository-native build/test commands from the Development Profile, with caches and runtime configuration outside committed product source by default;
+- use repository-native build/test commands from the Development Configuration, with caches and runtime configuration outside committed product source by default;
 - prevent path traversal, symlink escapes, and unsafe write targets;
 - control read-only vs read-write access;
 - provide lock/lease semantics for same-project conflicting writes;
@@ -774,7 +777,7 @@ This SIP adds Project eligibility/source-context integration and a mapping betwe
 A subsequent Cycle MUST be able to resolve, without relying solely on model memory:
 
 1. the authoritative external repository/ref, approved development baseline, confirmed integrated-upstream revision and any pending contribution;
-2. the Project Record version and the Development Profile revision;
+2. the Project Record version and the Development Configuration revision;
 3. relevant PRD/design baseline and change requests;
 4. owner-approved quality contract, inherited baseline findings and latest candidate/integration verification, with references to Outcome Evaluation's results for prior increments (goals and results only, never steps; §8.2 contract 5);
 5. the SIP-0110 snapshot each earlier unit pinned, the drift findings since, and owner-approved exceptions;
@@ -782,7 +785,7 @@ A subsequent Cycle MUST be able to resolve, without relying solely on model memo
 7. unresolved known defects and decisions;
 8. previous Cycle IDs and artifact references.
 
-Carry this forward through durable, versioned **Project Handoff** metadata. Reuse artifact baseline references, existing Campaign accepted-tree/increment seeding and sandbox revision evidence; add the missing Project-level mapping from source revisions to Development Profile revisions across standalone Cycles and Campaigns. SIP-0110's lessons may enrich context but MUST NOT be the only continuity source; its project instructions are binding by its own rules.
+Carry this forward through durable, versioned **Project Handoff** metadata. Reuse artifact baseline references, existing Campaign accepted-tree/increment seeding and sandbox revision evidence; add the missing Project-level mapping from source revisions to Development Configuration revisions across standalone Cycles and Campaigns. SIP-0110's lessons may enrich context but MUST NOT be the only continuity source; its project instructions are binding by its own rules.
 
 Every new Cycle record MUST explicitly pin its base source revision and target Project before dispatch. The server may resolve the current accepted revision for an existing caller that omits a new source-precondition option; explicit stale preconditions must be rejected. A failed or rewound Cycle MUST NOT change the accepted Project baseline by implication.
 
@@ -832,7 +835,7 @@ At minimum, distinguish:
 - release/publish;
 - archive/restore.
 
-Credential material MUST reside in appropriate secret storage, never in the Project Record, the Development Profile or Cycle source evidence. Repository access/contribution rights do not transfer product ownership or authorize restructuring. Upstream writes, branch pushes, review requests and direct integration follow the product's configured permissions and governance.
+Credential material MUST reside in appropriate secret storage, never in the Project Record, the Development Configuration or Cycle source evidence. Repository access/contribution rights do not transfer product ownership or authorize restructuring. Upstream writes, branch pushes, review requests and direct integration follow the product's configured permissions and governance.
 
 ## FR-14 — Eventing and auditability
 
@@ -852,14 +855,14 @@ Promotion and remote-push operations MUST be idempotent or guarded by revision p
 
 ## FR-16 — Lifecycle disposal without data loss
 
-Archiving prevents future ordinary Cycle starts but retains external source references, Project Record and Development Profile revisions, releases, QA artifacts, Cycle history and all unresolved/unintegrated work. Archiving or deleting a managed clone does not delete or archive the external product repository. Restoring runs validation before returning the Project to `READY`. Final deletion, including retention policies and destructive cleanup approvals, is left to a separate explicit policy.
+Archiving prevents future ordinary Cycle starts but retains external source references, Project Record and Development Configuration revisions, releases, QA artifacts, Cycle history and all unresolved/unintegrated work. Archiving or deleting a managed clone does not delete or archive the external product repository. Restoring runs validation before returning the Project to `READY`. Final deletion, including retention policies and destructive cleanup approvals, is left to a separate explicit policy.
 
 ## FR-17 — Capabilities for future target adapters, games among them
 
-Game-specific adapters belong to their own SIPs (Q33, Q34); the Godot/Roblox game development SIP is filed separately. This SIP provides what any such adapter builds on:
+Game-specific adapters belong to their own SIPs (Q33, Q34); the Godot/Roblox game development SIP is filed separately (`sips/proposed/SIP-Game-Development-Platform.md`, PR #2405). This SIP provides what any such adapter builds on:
 
 - creation and import of the product through this lifecycle (FR-01, FR-02), as an ordinary Project with no registry or orchestration of its own;
-- a technical target recorded in the Development Profile, with its native commands, toolchain and asset handling, and an explicit capability gap when a target is unsupported;
+- a technical target recorded in the Development Configuration, with its native commands, toolchain and asset handling, and an explicit capability gap when a target is unsupported;
 - the product's files in Project source and its workspaces, never in shared sample-application directories (FR-05);
 - a resolved Project Context and an isolated workspace before any adapter runs (FR-04, FR-05);
 - the Project's quality contract, so that a target's own checks (gameplay tests, for a game) run through the existing verification path and link to the Project, Cycle and Run (FR-10);
@@ -878,7 +881,7 @@ Creating/registering a Project does not start a Cycle or incur execution work by
 
 ## FR-19 — Preserve external product independence
 
-Registration MUST support an external repository with no SquadOps metadata files and no onboarding edits to its source tree. The Project Record, the Development Profile with its build/test bindings, and governance metadata must all be storable under the SquadOps Project. Optional repository-side integration files are an authorized product change, never a prerequisite.
+Registration MUST support an external repository with no SquadOps metadata files and no onboarding edits to its source tree. The Project Record, the Development Configuration with its build/test bindings, and governance metadata must all be storable under the SquadOps Project. Optional repository-side integration files are an authorized product change, never a prerequisite.
 
 Managed cloning/importing MUST preserve repository history and layout. Use configurable product-defined roots, native commands and toolchains. Persist external-repository/ref bindings and development/integrated revisions, detect contributions made outside SquadOps, and deliver changes under the product's branch/review/integration policy. Support must be declared honestly for the target; a capability limitation must not silently trigger source relocation or restructuring.
 
@@ -889,7 +892,7 @@ The product's native build/test commands MUST remain usable with their documente
 Before feature implementation on an unfamiliar repository or a materially changed baseline, capture the agreed build/test verification against the pinned unmodified source in the managed execution environment. Preserve:
 
 - repository/ref, exact commit and relevant dependency/lockfile state;
-- the effective Development Profile revision, instruction sources and command/working-directory definitions;
+- the effective Development Configuration revision, instruction sources and command/working-directory definitions;
 - runtime/toolchain/environment identity needed to interpret or reproduce results;
 - attempted checks, results, evidence and relevant execution limits;
 - pre-existing failures, missing prerequisites and checks that remain UNVERIFIED.
@@ -900,25 +903,25 @@ Evaluate candidate changes against relevant baseline evidence. Persist check res
 
 ## FR-21 — Respect instruction precedence and revalidate drift
 
-The external owner/maintainer retains product intent and final acceptance authority; SquadOps roles act within explicit delegation. Effective instructions obey Appendix B.5.1: the product's authorities in this SIP's order, recorded and pinned as SIP-0110's project instructions (Q31). Version the Development Profile and bind it to the source, instruction sources and build definitions it describes. Native repository tooling and maintainer policy cannot be silently replaced by stale external metadata.
+The external owner/maintainer retains product intent and final acceptance authority; SquadOps roles act within explicit delegation. Effective instructions obey Appendix B.5.1: the product's authorities in this SIP's order, recorded and pinned as SIP-0110's project instructions (Q31). Version the Development Configuration and bind it to the source, instruction sources and build definitions it describes. Native repository tooling and maintainer policy cannot be silently replaced by stale external metadata.
 
-Before feature-source changes, inspect/reconcile relevant upstream instruction, build/test, dependency and toolchain changes at the unit's pinned commit (drift detection, B.5.1). Pin the Development Profile revision in the unit's source context beside its SIP-0110 snapshot, and record both in handoff metadata. Revalidate affected commands and inherited-baseline evidence before relying on them; repeat relevant checks at integration when source/configuration drift requires it. A change found after a unit was admitted is a drift finding on that unit and never modifies what it bound; only SIP-0110's re-binding does. If an owner-policy decision is needed, stop the affected operation and report the conflict through existing governance. Routine profile refresh within delegated authority does not require an extra approval ceremony. Repository content cannot elevate runtime permissions.
+Before feature-source changes, inspect/reconcile relevant upstream instruction, build/test, dependency and toolchain changes at the unit's pinned commit (drift detection, B.5.1). Pin the Development Configuration revision in the unit's source context beside its SIP-0110 snapshot, and record both in handoff metadata. Revalidate affected commands and inherited-baseline evidence before relying on them; repeat relevant checks at integration when source/configuration drift requires it. A change found after a unit was admitted is a drift finding on that unit and never modifies what it bound; only SIP-0110's re-binding does. If an owner-policy decision is needed, stop the affected operation and report the conflict through existing governance. Routine profile refresh within delegated authority does not require an extra approval ceremony. Repository content cannot elevate runtime permissions.
 
 ## C.1 Non-functional requirements
 
 **Compatibility.** Existing WarmBoot/reference application invocation and recorded history MUST remain accessible through a documented migration/alias mapping. Do not delete, rename, or move legacy data without a validated migration and rollback plan.
 
-**Data integrity.** IDs immutable; preserve existing registry-based Project validation and add Project–Cycle foreign keys only after registry migration/backfill; Development Profile and source revision pinning explicit; promotion uses compare-and-swap/expected-base checks or equivalent controls.
+**Data integrity.** IDs immutable; preserve existing registry-based Project validation and add Project–Cycle foreign keys only after registry migration/backfill; Development Configuration and source revision pinning explicit; promotion uses compare-and-swap/expected-base checks or equivalent controls.
 
 **Isolation.** Workspaces and artifact paths derive from validated IDs/configuration, with directory/permissions boundaries enforced across projects.
 
 **Idempotency.** Duplicate create/import/provision requests with the same idempotency key MUST not create duplicate Projects or silently overwrite source.
 
-**Recoverability and portability.** SquadOps can reconstruct a development copy from external repository revision, out-of-repository Project metadata, tool profile and dependency configuration; evidence remains independently retrievable. The product remains usable outside SquadOps, with native source layout/build instructions and preserved upstream history.
+**Recoverability and portability.** SquadOps can reconstruct a development copy from external repository revision, out-of-repository Project metadata, toolchain and dependency configuration; evidence remains independently retrievable. The product remains usable outside SquadOps, with native source layout/build instructions and preserved upstream history.
 
 **Performance.** Registry lookups and workspace provisioning MUST be measured. Configurable operational thresholds SHOULD be defined after baseline measurement instead of inventing universal timings.
 
-**Extensibility.** Project types/targets (web, API, Godot, Roblox, other) are profile/adapters, not core lifecycle special cases.
+**Extensibility.** Project types/targets (web, API, Godot, Roblox, other) are Development Configuration targets and adapters, not core lifecycle special cases.
 
 **Least privilege.** Agents use scoped Project capabilities; creation, promotion, publication and archive/restore policies enforced centrally.
 
@@ -952,14 +955,14 @@ These routes are **new**, not claims of current support. The implementation may 
 | Proposed API | Purpose / related CLI extension |
 |---|---|
 | `POST /api/v1/projects` | Register/provision with `origin.mode: new`, `import` or `attach`; used by `projects create/import/attach`. |
-| `PUT /api/v1/projects/{project_id}` | Version-preconditioned Project Record and Development Profile update; `projects update`. |
+| `PUT /api/v1/projects/{project_id}` | Version-preconditioned Project Record and Development Configuration update; `projects update`. |
 | `POST /api/v1/projects/{project_id}/validate` | Validate readiness; `projects validate`. |
 | `POST /api/v1/projects/{project_id}/archive` and `/restore` | Govern reversible lifecycle transitions. |
 | `GET /api/v1/projects/{project_id}/history` | Project lifecycle/source/evidence history; `projects history`. |
 | `/api/v1/projects/{project_id}/workspaces` | Provision/read/release through the authorized repository/workspace service, integrating sandbox revisions. |
 | `/api/v1/projects/{project_id}/source-baseline` and its proposal/promotion resources | Read/propose/promote accepted Git source with expected-base and evidence bindings. Distinct from existing artifact `/baseline`. |
 
-Every mutation carries an idempotency key and actor/correlation data. Responses return `project_id`, the Project Record version and Development Profile revision, operation correlation and explicit readiness/status; secrets are excluded. Long provisioning uses the existing 202 convention with a queryable operation reference; Project `show` exposes readiness.
+Every mutation carries an idempotency key and actor/correlation data. Responses return `project_id`, the Project Record version and Development Configuration revision, operation correlation and explicit readiness/status; secrets are excluded. Long provisioning uses the existing 202 convention with a queryable operation reference; Project `show` exposes readiness.
 
 Illustrative **new** registration request (the source destination/locator must be resolved and authorized before readiness):
 
@@ -969,7 +972,7 @@ Illustrative **new** registration request (the source destination/locator must b
   "name": "Space Adventure",
   "description": "A 3D exploration game built in Godot",
   "origin": {"mode": "new"},
-  "technical_profile": {"type": "game", "target": "godot"},
+  "technical": {"project_type": "game", "target": "godot"},
   "source": {"mode": "external_product", "development_copy": "managed_clone"},
   "governance": {"promotion": "approval_required"}
 }
@@ -1046,7 +1049,7 @@ squadops projects restore <project-id> --idempotency-key project-restore-001
 squadops projects history <project-id>
 ```
 
-The existing `projects show` reports the Project Record, its Development Profile revision, source baseline, operation state and readiness. Final schemas/options for workspace and source-promotion subcommands must be specified before implementation, using the source-baseline distinction above. Any optional convenience aliases are additive; `project`, `inspect`, `cycle start`, `--objective` and `--campaign` do not become replacement spellings for existing contracts.
+The existing `projects show` reports the Project Record, its Development Configuration revision, source baseline, operation state and readiness. Final schemas/options for workspace and source-promotion subcommands must be specified before implementation, using the source-baseline distinction above. Any optional convenience aliases are additive; `project`, `inspect`, `cycle start`, `--objective` and `--campaign` do not become replacement spellings for existing contracts.
 
 After registration is `READY`, independent work uses the same existing entry point:
 
@@ -1080,7 +1083,7 @@ Appendix A.1 and Appendix F.5 record completed source inspection at the pinned r
 | Source/workspaces | Sandbox `WorkspaceStore`, stale-base checks, revisions, leases, path containment and artifact capture; existing `VersionControlPort`/Git adapter | External source locator, managed clone/import/attach/checkout, product-defined contribution policy and guarded candidate/integration tracking. |
 | Continuity | Artifact baselines, Campaign accepted trees and increment seeding, existing memory as enrichment | Durable Project handoff and mapping among Git commit, sandbox revision, Campaign tree and artifact evidence. |
 | Campaigns | Existing CLI/API, policies, control log, launch intents and promotion gates | Project readiness/archive/source integration at shared launch/preparation seams; no new Campaign FSM. |
-| Evidence/QA | `ArtifactVaultPort`, current artifact APIs, contract binding and typed verification | Project lifecycle/handoff evidence types and profile integration for arbitrary targets. |
+| Evidence/QA | `ArtifactVaultPort`, current artifact APIs, contract binding and typed verification | Project lifecycle/handoff evidence types and Development Configuration integration for arbitrary targets. |
 
 Source inspection does not verify the user's running deployment, migrations, credentials or remote workers. The implementation plan must validate those separately when rollout requires them, and resolve remaining adapter/schema choices from Appendix F.4 before adding their surfaces.
 
@@ -1104,14 +1107,14 @@ Project repository management remains separate from evidence storage: the extern
 User supplies external product repo, retaining its layout and ownership
   -> register Project ID + out-of-repository development metadata
   -> clone/import for development or attach under approved isolation policy
-  -> resolve owner delegation + native instructions; pin upstream/development/profile revisions
+  -> resolve owner delegation + native instructions; pin the upstream and Development Configuration revisions
   -> run agreed build/tests on unmodified source and record inherited defects/UNVERIFIED checks
   -> Cycle adds a feature in isolated workspace without onboarding restructuring
   -> QA + approved candidate; preserve pending work for subsequent Cycles
   -> authorized branch/review request/patch delivery under product policy
   -> confirm upstream integration and record the actual resulting commit
   -> external developer advances the product before the next Cycle
-  -> reconcile source/instruction drift, refresh affected baseline/profile evidence
+  -> reconcile source/instruction drift, refresh affected baseline and Development Configuration evidence
   -> deliver a second scoped feature against the same Project and external repository
 ```
 
@@ -1121,7 +1124,7 @@ User supplies external product repo, retaining its layout and ownership
 PRD received
   -> Project created/registered
   -> product-approved external Git source initialized with a product-appropriate layout
-  -> Project Record, Project Development Profile and managed development workspace established
+  -> Project Record, Project Development Configuration and managed development workspace established
   -> existing cycles create / shared preparation pins project_id and accepted source baseline
   -> squad builds and tests
   -> QA evidence stored through the existing artifact/verification contracts
@@ -1144,7 +1147,7 @@ Existing group_run fixture
 ```text
 New Godot or Roblox game intent
   -> create ordinary Project
-  -> game-specific technical target resolved from the Development Profile
+  -> game-specific technical target resolved from the Development Configuration
   -> engine adapter (the game SIP's) works against isolated Project workspace
   -> (Roblox) remote Studio worker validates as required
   -> game quality evidence linked to Project/Cycle
@@ -1156,7 +1159,7 @@ New Godot or Roblox game intent
 These are implementation slices, not fixed Campaign stages or Cycle counts.
 
 1. **Existing-product registration and authority:** add the writable registry cutover and the minimum existing-CLI enrollment flow; record external repository/ref, owner delegation and out-of-repository metadata while preserving list/show and historical IDs.
-2. **Repository-native discovery and inherited baseline:** managed clone/pinned checkout, existing workspace/lease integration, native instruction/profile resolution, agreed baseline build/tests and honest readiness/defect reporting.
+2. **Repository-native discovery and inherited baseline:** managed clone/pinned checkout, existing workspace/lease integration, native instruction and Development Configuration resolution, agreed baseline build/tests and honest readiness/defect reporting.
 3. **First scoped feature through the shared Cycle path:** typed Project context and source preconditions, implementation/verification against inherited evidence, approved candidate and the product's normal contribution/integration process.
 4. **Second feature after an outside contribution:** detect source and instruction drift, reconcile with policy, refresh affected baseline checks, and continue through the same Project/Cycle or existing Campaign authority. Demonstrate durable handoff and independent product usability.
 5. **Complete lifecycle and rollout:** richer update/history/archive/restore, concurrency/conflict recovery, validated provider rollback and existing-reference/Campaign regression proof. Any mutation enabled earlier must already meet its authorization/idempotency requirements.
@@ -1173,7 +1176,7 @@ Game-specific adapters and other technical targets belong to their own SIPs and 
 - Preserve `projects list/show`, `cycles create`, global output behavior, auth/config, existing artifact-baseline commands and current resource paths; add fields/options compatibly.
 - Keep existing vault and sandbox layouts in place. New external source bindings and development clones do not relocate old artifacts, alter artifact IDs or drop Run lineage.
 - Add Project eligibility/source context to both standalone and Campaign launch paths; verify existing reference execution and Campaign acceptance behavior for parity.
-- Feature-gate lifecycle writes and provider selection where rollout requires it. On rollback, retain new Project Records, source repositories, Development Profile revisions and evidence. Do not switch to YAML-only reads if that would make post-cutover Projects disappear; provide an explicit read-compatible rollback path.
+- Feature-gate lifecycle writes and provider selection where rollout requires it. On rollback, retain new Project Records, source repositories, Development Configuration revisions and evidence. Do not switch to YAML-only reads if that would make post-cutover Projects disappear; provide an explicit read-compatible rollback path.
 - Refuse writes when the selected provider cannot support them, and expose provisioning failures/readiness through the existing Project read surface.
 - Remove any legacy sample-specific dispatch only after compatibility criteria are satisfied; do not assume such dispatch is the existing canonical Cycle path.
 
@@ -1196,7 +1199,7 @@ No role is granted authority to bypass the orchestrator's Cycle/Pulse invariants
 - [ ] There is exactly one selected authoritative Project registry/identity model; YAML seed/cutover preserves existing IDs and new Projects are visible to all runtime readers.
 - [ ] Project ID remains stable across Campaigns/Cycles/workspaces.
 - [ ] Independent Projects can be registered without an entry in any sample-app catalog.
-- [ ] The Project Record schema and Development Profile resolution are versioned and validated.
+- [ ] The Project Record schema and Development Configuration resolution are versioned and validated.
 
 ### External product independence
 
@@ -1232,11 +1235,11 @@ No role is granted authority to bypass the orchestrator's Cycle/Pulse invariants
 
 ### Generalized quality and instruction continuity
 
-- [ ] The agreed build/test baseline is recorded at the pinned unmodified source revision before feature-source changes, including effective commands/profile, environment, inherited failures and UNVERIFIED checks.
+- [ ] The agreed build/test baseline is recorded at the pinned unmodified source revision before feature-source changes, including effective commands and Development Configuration, environment, inherited failures and UNVERIFIED checks.
 - [ ] Candidate check results are separate from regression attribution; inherited FAIL remains FAIL, unknown attribution remains explicit, and proceeding with inherited defects follows owner-approved policy.
-- [ ] Applicable owner/maintainer policy and repository-native tooling constrain the Development Profile; conflicting or stale metadata cannot silently win.
-- [ ] Source, relevant instruction, build/test, dependency or toolchain drift invalidates affected profile/baseline evidence until reconciled and revalidated.
-- [ ] Both standalone and Campaign-launched work receive pinned source, Development Profile, SIP-0110 snapshot and baseline references through the shared preparation path.
+- [ ] Applicable owner/maintainer policy and repository-native tooling constrain the Development Configuration; conflicting or stale metadata cannot silently win.
+- [ ] Source, relevant instruction, build/test, dependency or toolchain drift invalidates affected Development Configuration and baseline evidence until reconciled and revalidated.
+- [ ] Both standalone and Campaign-launched work receive pinned source, Development Configuration, SIP-0110 snapshot and baseline references through the shared preparation path.
 - [ ] Project instructions live only in SIP-0110's store; a repository instruction source reaches a task only as a required reference, bound at admission to the unit's pinned commit.
 - [ ] An upstream instruction change after admission leaves the admitted snapshot unchanged and is recorded as a drift finding; only SIP-0110's re-binding changes what the unit bound (IR-3).
 - [ ] A non-sample Project can define and execute its owner-approved quality contract.
@@ -1273,7 +1276,7 @@ No role is granted authority to bypass the orchestrator's Cycle/Pulse invariants
 - [ ] Every PR that changed a shared contract named it, carried the other lane's review and added its wiring test (G4).
 - [ ] IR-1 to IR-10 pass on a deploy carrying both lanes (G5, G6).
 
-**Primary end-to-end success demonstration:** A product maintainer supplies an unfamiliar existing external repository and a scoped feature request. SquadOps registers it without source-tree changes, resolves the owner's delegation and repository-native instructions, pins an unmodified build/test baseline, and delivers a verified feature through the product's normal contribution process. Another developer then advances the source or development instructions. A later Cycle detects/reconciles that drift, refreshes affected profile/baseline evidence and delivers a second feature through the same SquadOps Project. Candidate acceptance, inherited defects, regression findings and confirmed upstream integration remain distinct. Product source/builds remain independently usable and `group_run` compatibility is preserved. Greenfield product creation is the second required proof, after this one.
+**Primary end-to-end success demonstration:** A product maintainer supplies an unfamiliar existing external repository and a scoped feature request. SquadOps registers it without source-tree changes, resolves the owner's delegation and repository-native instructions, pins an unmodified build/test baseline, and delivers a verified feature through the product's normal contribution process. Another developer then advances the source or development instructions. A later Cycle detects/reconciles that drift, refreshes affected Development Configuration and baseline evidence and delivers a second feature through the same SquadOps Project. Candidate acceptance, inherited defects, regression findings and confirmed upstream integration remain distinct. Product source/builds remain independently usable and `group_run` compatibility is preserved. Greenfield product creation is the second required proof, after this one.
 
 # Appendix F — Supporting models and pinned source evidence
 
@@ -1302,7 +1305,7 @@ A Project may be developed through a stand-alone Cycle without a Campaign. A ben
 ```text
 Project ID: prj-space-adventure
   Project Record: version 4
-  Development Profile: revision 7
+  Development Configuration: revision 7
   External Repository: <product-owned-repository-locator>
   Target Ref: <product-defined-integration-ref>
   Owner Delegation/Acceptance Policy: <versioned-policy-ref>
@@ -1318,7 +1321,7 @@ Project ID: prj-space-adventure
       Run: run_example0001
       QA: <candidate-verification-artifact-id>
       Regression Attribution: <baseline-comparison-evidence-ref>
-      Tested Configuration: <pinned-source-profile-environment-binding>
+      Tested Configuration: <pinned-source-configuration-environment-binding>
       Workspace Revision: <sandbox-content-hash>
       Campaign Accepted Tree: <accepted-tree-hash> [if applicable]
       Outcome Evaluation: <result-reference> [goals and results only]
@@ -1339,16 +1342,16 @@ Project ID: prj-space-adventure
 | SIP-0109 | **Accepted, shipped in parts** (from v2.0.0): control log, launch authority, accepted-tree continuity and promotion; preserve and map to Project source. |
 | SIP-0047 (`sips/implemented/SIP-0047-Cycle-Data-Layout-Project.md`, originally `SIP_CYCLE_DATA_STORE.md`) | **Implemented 2025-11-29; retired as a runtime contract** (Q30, its §12a). Its principles of identity, traceability and durable evidence carry forward (E.2); its store and layout are not restored. |
 | SIP-0070 | **Implemented**: the Cycle and the cadence-bounded Pulse this SIP keeps (A.2). |
-| SIP-0072 | **Implemented**: its §10a *development profile*, a stack's settings bundle (Q36, B.5). |
-| SIP-0103 | **Implemented**: owns the word *manifest*; this SIP's records are the Project Record and the Project Development Profile (Q32). |
+| SIP-0072 | **Implemented**: its §10a *development profile*, a stack's settings bundle, keeps that one meaning (Q36, B.5). |
+| SIP-0103 | **Implemented**: owns the word *manifest*; this SIP's records are the Project Record and the Project Development Configuration (Q32, Q36). |
 | SIP-0105 / SIP-0108 | Stack blueprints and the benchmark registry; boundaries in B.4.1. |
 | SIP-0110 | **Accepted**: owns project-instruction records, their versioning, applicability and snapshot binding (Q31; its §5k). |
 | Outcome Evaluation (proposed, PR #1963) | The Spark lane's 2.4 feature: independent held-out scenarios, quality baselines and outcome contribution; six shared contracts (§8). |
-| `IDEA_Cycle_Orchestrator_Pulses_and_Surges.md` | **Non-normative history** (Q33). Where its Pulse differs from SIP-0070's cadence-based Pulse, SIP-0070 governs. |
-| `IDEA_Cycle_and_Pulse_Execution_Model.md` | **Non-normative history**, earlier than the IDEA above (Q33). |
+| `docs/ideas/IDEA_Cycle_Orchestrator_Pulses_and_Surges.md` | **Non-normative history** (Q33), headed as such. Where its Pulse differs from SIP-0070's cadence-based Pulse, SIP-0070 governs. The `CYCLE_PROTOCOL.md` it cites is not in the repository. |
+| `docs/ideas/IDEA_Cycle_and_Pulse_Execution_Model.md` | **Non-normative history** (Q33), headed as such. It reads as the earlier of the two: its Pulse groups work, the reading the IDEA above corrects. Its task flow policies were built as `FlowMode`. |
 | `docs/ideas/Git workflow.txt` | Git traceability and stable `main`; extend for Project-owned repositories without assuming framework-specific WarmBoot branch conventions apply to all products. |
 | `docs/ideas/Doc traceability.txt` (its Process ID proposal) | Reuse traceability for product features and tests; a Project ID is not a Process ID. |
-| The Godot/Roblox game development SIP (filed separately) | **Downstream consumer**: builds on FR-17; engine adapters operate on independent Project workspaces, not sample-app locations. |
+| Game Development Platform (proposed, `sips/proposed/SIP-Game-Development-Platform.md`, PR #2405) | **Downstream consumer**: builds on FR-17; engine adapters operate on independent Project workspaces, not sample-app locations. |
 | Existing Campaign implementation | Optional for standalone Project work; reuse current policy, launcher, accepted-tree records and shared Cycle preparation. |
 
 ## F.4 Remaining design decisions and validation
@@ -1360,16 +1363,16 @@ Project ID: prj-space-adventure
 - Define how Campaign promotion, Project source promotion and overlapping Campaigns reconcile without changing accepted state by implication or bypassing existing approval/control logs.
 - Choose safe default permissions for external repository attachment and define server/remote-worker path resolution; a client-local directory is not automatically an authorized runtime path.
 - Specify registration reservation, brief upload, finalization and recovery as an idempotent operation, including queryable pending/failure results.
-- Define archive handling for active Campaigns/Cycles, required source, Project Record and Development Profile evidence for restoration, and project-level quality history as acceptance expectations evolve.
+- Define archive handling for active Campaigns/Cycles, required source, Project Record and Development Configuration evidence for restoration, and project-level quality history as acceptance expectations evolve.
 - Define inherited-baseline evidence and candidate-comparison records, preserving check status independently of attribution, environment gaps and owner-authorized continuation policy.
 - Define relevant-drift detection and affected-operation conflict handling through the existing governance/event paths; do not create a parallel approval or orchestration system.
 - Define the repository reference with SIP-0110 (§8.2 contract 6): its resolver at the unit's pinned commit and its recorded digest. It lands as a numbered amendment to SIP-0110, in the PR that builds it, after #2179.
 - Define the confirmation path for repository-derived project instructions under the owner's recorded delegation while SIP-0110 has no project membership model (its Q27: admins hold `memory:instruct`).
 - Define the Project Record's owner-decision entries: their shape, versioning and reference form.
-- Define how a unit's own in-scope change to build or test definitions reaches the Development Profile for its later Cycles, within the admission rule of B.5.1.
+- Define how a unit's own in-scope change to build or test definitions reaches the Development Configuration for its later Cycles, within the admission rule of B.5.1.
 - Confirm new target-specific tooling and asset requirements independently; current source inspection does not prove game-engine support or running-deployment readiness.
 
-**Scope note:** SIP-0047 (originally `SIP_CYCLE_DATA_STORE.md`, 2025-11-26) was implemented in the v0 tree and is retired as a runtime contract (Q30). Revision 2 reconciled the draft with freshly pulled source; Revision 3 clarified external product ownership. Revision 4 retains that evidence and adds owner authority, inherited quality baselines, instruction precedence/drift and an existing-product-first acceptance path. Revision 5 reconciles the owner's design review of 2026-10-17 (Q30–Q35) and records Q36. Proposed lifecycle writes and new development contracts are not claimed as implemented. The pinned source inspection is not a fresh deployment verification.
+**Scope note:** SIP-0047 (originally `SIP_CYCLE_DATA_STORE.md`, 2025-11-26) was implemented in the v0 tree and is retired as a runtime contract (Q30). Revision 2 reconciled the draft with freshly pulled source; Revision 3 clarified external product ownership. Revision 4 retains that evidence and adds owner authority, inherited quality baselines, instruction precedence/drift and an existing-product-first acceptance path. Revision 5 reconciles the owner's design review of 2026-10-17 (Q30–Q36). Proposed lifecycle writes and new development contracts are not claimed as implemented. The pinned source inspection is not a fresh deployment verification.
 
 ## F.5 Pinned implementation evidence
 
@@ -1411,4 +1414,4 @@ All paths below are relative to `backspring-labs/squad-ops` at commit `7aecfa0b3
 | 2 | 2026-10-17 | Reconciles against freshly pulled `main`: requires existing CLI/API reuse; separates existing vs new operations; specifies YAML-to-writable registry cutover; preserves ArtifactVault, sandbox and Campaign authority; distinguishes source/artifact/tree baselines; updates delivery and acceptance criteria. |
 | 3 | 2026-10-17 | Clarifies SquadOps as a development team for independently owned products: external authoritative source, out-of-repository Project metadata, managed clones/worktrees, preserved repository-native layout/tooling, external-contribution reconciliation and separate candidate/integrated revision tracking. |
 | 4 | 2026-10-17 | Keeps external owner authority explicit; adds inherited build/test baselines and separate regression attribution; defines instruction precedence/profile drift; makes enhancement of an existing external product across outside contributions the primary proof; separates the directional core from detailed implementation appendices. |
-| 5 | 2026-10-17 | Reconciles the owner's design review (PR #2401). Q30: SIP-0047 retired as a runtime contract, its principles kept (A.1, E.2). Q31: instruction records, versioning, applicability and snapshot binding are SIP-0110's; this SIP discovers repository instructions, holds development configuration and detects drift, and an admitted snapshot changes only by re-binding (B.5.1, FR-21). Q32: the Project Record and Project Development Profile replace the Project Manifest (B.5). Q33: the Pulse IDEAs non-normative, SIP-0070's Pulse kept (A.2), FR-17 restated as capabilities for future adapters. Q34: greenfield creation required (E.4.6). Q35: the 2.4 parallel development agreement (§8). Adds the boundaries with SIP-0105 and SIP-0108 (B.4.1) and with Outcome Evaluation (§8.3); renames *check outcome* to *check result*; records Q36. |
+| 5 | 2026-10-17 | Reconciles the owner's design review (PR #2401). Q30: SIP-0047 retired as a runtime contract, its principles kept (A.1, E.2). Q31: instruction records, versioning, applicability and snapshot binding are SIP-0110's; this SIP discovers repository instructions, holds development configuration and detects drift, and an admitted snapshot changes only by re-binding (B.5.1, FR-21). Q32: the Project Record and Project Development Configuration replace the Project Manifest (B.5). Q33: the Pulse IDEAs non-normative, SIP-0070's Pulse kept (A.2), FR-17 restated as capabilities for future adapters. Q34: greenfield creation required (E.4.6). Q35: the 2.4 parallel development agreement (§8). Adds the boundaries with SIP-0105 and SIP-0108 (B.4.1) and with Outcome Evaluation (§8.3); renames *check outcome* to *check result*. Q36, ruled the same day: the second record named the *Project Development Configuration*, and its keys renamed to match (B.5). The Pulse IDEAs committed under `docs/ideas/` with non-normative headers; the game SIP filed (PR #2405). |
