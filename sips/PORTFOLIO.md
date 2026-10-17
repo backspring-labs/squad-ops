@@ -66,13 +66,14 @@ items go to each SIP's next touch, with Q22 for the decisions.
 
 ---
 
-## 2. Proposed SIPs (30 at the audit; 13 deprecated 2026-10-05 by Q14; 16 live after Cross-Cycle Memory's acceptance as SIP-0110, 2026-10-06)
+## 2. Proposed SIPs (30 at the audit; 13 deprecated 2026-10-05 by Q14; 16 live after Cross-Cycle Memory's acceptance as SIP-0110, 2026-10-06; 17 with Project Lifecycle Management, filed 2026-10-17)
 
 Class: **live** (wanted, not built), **partly absorbed** (some built or owned elsewhere),
 **superseded**, **stale** (names architecture or releases that no longer exist).
 
 | proposal | class | placement it states | action |
 |---|---|---|---|
+| Project Lifecycle Management (`SIP-Project-Lifecycle-Management`; the owner's draft, revision 4, filed 2026-10-17) | live | the owner's direction 2026-10-17: a **2.4** feature on the MacBook lane, beside Outcome Evaluation's feature half on the Spark; placed at acceptance | Q30–Q33 |
 | Outcome Evaluation (PR #1963) | live | instruments **2.4** (moved from 2.3, 2026-10-15, the owner); the feature half follows them | Q1, Q3 |
 | Memory Entry Points (epic #2173; drafted 2026-10-09 on the owner's direction) | **accepted 2026-10-09 and absorbed into SIP-0110** (§5g, Appendix A); the proposal file is **deprecated** with a pointer there | 2.3.0 (#2174, #2175, #2176), 2.4.0 (#2177–#2183), 2.5.0 (#2184): SIP-0110's ledger | Q25–Q29, ruled |
 | Verification Yield | partly absorbed | ledger 2026-10-04: #1960 (2.1), #1965 (crew, 2.1 window), #1966 (after memory) | done 2026-10-04 |
@@ -117,6 +118,7 @@ Class: **live** (wanted, not built), **partly absorbed** (some built or owned el
 | 11. profiles, framing order, the calibration yardstick | the profile taxonomy (#316); Planning Sequence; Test-First; SIP-0109's pinned definitions and calibration | anything that renames a profile or changes greenfield framing moves the outer loop's baseline | pinned definitions keep resolving old names indefinitely; greenfield changes land between campaigns, with calibration before and after (Q13) |
 | 12. deployment and transport | SIP-0028; Edge; Comms Delivery Guarantees; SIP-0081 | environment profiles, remote nodes | SIP-0081 owns profiles; Edge owns remote nodes if kept; Comms owns delivery semantics only |
 | 13. decision records | SIP-0012; Design Decision Register; #950; #1031 | where design decisions are recorded | the Design Decision Register, or #950, is the home (Q12) |
+| 14. the project and its source | Project Lifecycle Management; SIP-0047; SIP-0064, 0065, 0074; SIP-0102; SIP-0109; SIP-0110's project instructions (#2179) | the project registry, where a product's source lives, and which instructions a cycle runs under | Project Lifecycle Management owns the project record, the external repository binding and the Git revisions; SIP-0102 keeps the live tree, SIP-0109 its launch and accepted trees, and SIP-0064/0065 their routes and commands. Open: SIP-0047's status (Q30), the instruction boundary with SIP-0110 (Q31), the word *manifest* (Q32) |
 
 ---
 
@@ -179,6 +181,18 @@ The owner's words: "accept 2185 with Q25–Q29 as drafted". Each ruling is recor
 | Q28 | chat beyond joi | not required; a config flag | SIP-0110 §5g, §A.8 |
 | Q29 | conversation-history retention | set before #2180 ships | SIP-0110 §5g, §A.8 |
 
+### Open: Project Lifecycle Management (intake 2026-10-17)
+
+Found at the draft's intake check. Each waits for the owner's ruling, and both documents name it until
+then.
+
+| # | decision | the recommendation | recorded in |
+|---|---|---|---|
+| Q30 | SIP-0047, implemented, whose `CycleDataStore` left with `_v0_legacy/` (`dd105d1a`) | deprecate it with a pointer to this SIP, which takes over its project-registry concern; its layout is not imposed | the draft's intake check |
+| Q31 | who owns a project's instructions: SIP-0110's *project instructions* record (#2179, 2.4.0) or this draft's development instructions (§B.5.1, FR-21) | SIP-0110 stores and pins the record; this SIP decides which instructions apply and when they have drifted, and pins the effective set through that record, with no second store | the draft's intake check; SIP-0110 once ruled |
+| Q32 | *manifest*: SIP-0103's, implemented, and the draft's *Project Manifest* | the newer document renames its term, as Q3 did | the draft's intake check |
+| Q33 | sources the draft cites that the repository does not hold: the two Pulse and Surge IDEAs and the Godot/Roblox SIP | commit the IDEAs to `docs/ideas/` in this PR, each with an intake row; file the game SIP as its own draft; restate FR-17 as what this SIP offers a game target | the draft's intake check |
+
 ---
 
 ## 5. Housekeeping found by the audit
@@ -216,3 +230,4 @@ The owner's words: "accept 2185 with Q25–Q29 as drafted". Each ruling is recor
 | 2026-10-09 | TensorFold Provider Adapter (the owner's direction: plug in TensorFold for its decode rate) | **overlaps** SIP-0106 entirely, by design: one more adapter behind its seam, under its gates, conformance suite, dark-ship rule and A/B protocol; Atlas's and vLLM's negatives are its evidence. **Overlaps** SIP-0110 (the 2.2 window pins the engine, so nothing runs on the Spark until it closes; the capture corpus is the trial's instrument; an engine change is a listed-input change and re-checks the lesson), SIP-0073 (a registry entry with family `qwen3.8`, or the lesson silently stops applying), SIP-0109 §24an (the quiet-box launch rule reads resident models) and #1177/#1178 (one engine resident at a time). **Conflicts:** placement in 2.3, a feature-free stabilization line, needed SIP-0106 §4.3's even/odd waiver; **resolved** by the owner's Q1 ruling (2.3, dark) the same day | the draft's header |
 | 2026-10-09 | TensorFold Provider Adapter, revision 2 (the owner's review of revision 1) | **new overlaps, no conflict.** It now **amends SIP-0106's port**, backward-compatibly: optional `seed` and `thinking_budget` request fields refused where unsupported, a normalized `termination`, and `LLMContextOverflowError`. It touches **the executor's failure taxonomy** (D5; a context overflow is held as infrastructure, never retried unchanged or repaired) and **#2149/#431's cap path** (termination read where reported, tokens otherwise). It **builds #1177's guard** (retired unbuilt) as an engine switch, a prerequisite of G0. Scope narrowed to GB10 CUDA; the Mac workflow removed | the draft's revision 2 note |
 | 2026-10-09 | TensorFold Provider Adapter, accepted as **SIP-0111** (the owner's review of revision 2) | **no new overlap, no conflict.** Q6 (the port amendments) and Q7 (the memory floors, as initial safety floors validated in S) approved with implementation requirements; accepted for numbering and for S, G0 and G1 in 2.3 after the 2.2 cut; G2 conditional; G3 and G4 separate; adoption to rest on end-to-end cycle quality, latency, stability and recoverability | SIP-0111's header |
+| 2026-10-17 | Project Lifecycle Management (the owner's draft, revision 4; the owner's direction: a 2.4 feature on the MacBook lane) | **overlaps** SIP-0109 (launcher, accepted trees, brownfield scenario), SIP-0102 (the live tree), SIP-0064/0065/0074 (the routes and commands it extends), SIP-0105 and SIP-0108 (where a stack and a benchmark are declared): boundaries stated in the draft. **Overlaps** SIP-0110's project instructions (#2179) with its development instructions: Q31. **One word, two meanings:** *manifest*, with SIP-0103 (Q32). **Conflict:** SIP-0047, implemented, prescribes the layout the draft declines to impose (Q30). **Three cited sources the repository does not hold** (Q33) | the draft's intake check; §3 cluster 14; §4's open queue |
