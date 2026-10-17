@@ -5,7 +5,9 @@ earlier the same day. After the 2.3.0 cut the owner placed five items here: "pla
 after the cut", and "yes" to adding #2381 the same way. D2 adds a sixth, #2384. A seventh, #2394, came out of the
 regression pair's first round: the owner ruled at ~19:44 ET the same day, "approve #2394 for 2.3.1, #2395 to 2.4" (D4).
 An eighth, #2398, came out of the first shakeout: the owner ruled at 11:42 ET on 2026-10-17, "approve #2398 for
-2.3.1" (D5). This plan says how each is built, how the line is verified, and what it leaves out.
+2.3.1" (D5). Round 3's Next.js roll was rejected on #2395, already placed in 2.4: the owner chose on 2026-10-17 to
+count the round for the exit rule and run the shakeout (D6). This plan says how each is built, how the line is
+verified, and what it leaves out.
 
 **What 2.3.1 is.** A patch on the 2.3 line (CLAUDE.md, #281: urgent or small fixes, either lane). Every item was found
 on the 2.3 line, most of them by its cut. None is urgent: each is a defect that is small, understood, and cheaper to fix
@@ -231,6 +233,39 @@ QA's prompt (#2297). So unlike 2.2.1, a campaign alone can't show the build unch
 - The campaign escalated at 22:16 ET under its policy. Its cause was #2398, and the line stopped for the owner.
   Round 3 is the pair again on the deploy with #2398, then a fresh shakeout on the same deploy.
 
+**Round 3, the third pair** on `dep_d35eb75c759b` (7aecfa0b), from 12:18 to 14:43 ET on 2026-10-17. `verify_loaded.py`
+answered all 127 loaded checks on the deploy. Each record carries the 124 its squad containers answer, as expected,
+the 2.3.1 rows among them; the other three run in the generalist's, the sandbox service's and the console's containers.
+- FastAPI + React, `cyc_a627e48d622d`: accepted, 21 of 21 criteria verified, one correction round.
+- Next.js, `cyc_bbedc850e6ff`: rejected, 16 of 17 criteria verified, in 114 minutes. The boot audit passed: the app
+  installs, builds and boots, answers its 4 contract probes, and each of its 3 declared routes renders its view. The one
+  criterion not credited was the QA suite `__tests__/runs_ui.test.ts`, on #2395:
+  - one version of the suite declared a DOM environment the stack doesn't seed (`Cannot find package 'jsdom'`), and was
+    never collected;
+  - another rendered the pages on the server, and 4 of its 14 tests saw only their loading state;
+  - each of the two repairs that changed the suite passed patch verification's 34 static rows and was refused at the
+    retest, which runs the suite;
+  - the round sent to the developer is #1581's unanimity rule abstaining as designed: the lead's labels were
+    `["test", "ui"]`, and `ui` carries no suite-side token. The developer said in prose that the file was QA's and
+    changed nothing, and the round was refunded;
+  - the last `qa.test` emission ran out of its 12,288-token cap, and the lead chose `continue`.
+- No new seam finding. The Next.js plan has asked QA for page tests in 2 of the line's 3 rolls, recorded on #2395. The
+  line stopped for the owner, who counted the round (D6).
+
+**The second shakeout**, `cmp_dc2abcf0af3a`, on the same deploy, from 15:31 to 16:39 ET:
+- The calibration, `cyc_fd8c6216afac`, was accepted. Its manifest spells the detail page as its API does
+  (`/runs/:run_id` over `POST /runs`), so #2398's fallback was not reached; every increment evaluation read its pages
+  through the changed function.
+- Increment 1, a leave button beside each participant (`prop_67f6ecfb2e3f`), was approved by the delegate at 15:59 ET.
+  Its build, `cyc_cbf65f6fb670`, met T1–T2 on its first cycle, and every route held.
+- Increment 2, the detail view's empty optional fields hidden (`prop_6c331e858068`), was approved at 16:19 ET. Its
+  build, `cyc_f6bfb0b88ebd`, met T3–T5 on its first cycle, T1–T2 held, and every route held.
+- The campaign closed `success` on its objective (row 3, `objective_met`), with no repair or retry cycle and no
+  escalation.
+
+**The exit rule held** on `dep_d35eb75c759b`, in three rounds of the pair and two shakeouts: round 3's pair, counted by
+the owner (D6), and the second shakeout, with no new seam finding.
+
 ---
 
 ## 4. Sequencing
@@ -242,6 +277,7 @@ QA's prompt (#2297). So unlike 2.2.1, a campaign alone can't show the build unch
 4. After the first pair (D4): #2394 in its own PR, the rebuild and the loaded checks, the pair again, then the shakeout.
 5. After the first shakeout (D5): #2398 in its own PR, the rebuild and the loaded checks, the pair again, then a fresh
    shakeout.
+6. After round 3 (D6): the fresh shakeout on the same deploy, then the cut.
 
 ---
 
@@ -254,3 +290,4 @@ QA's prompt (#2297). So unlike 2.2.1, a campaign alone can't show the build unch
 | D3 | **who runs the line** | **the supervisor, on the 2.3 line's terms:** build in §4's order, merge on green with main's run read, rebuilds and uncounted runs. Through the cut, including the tag and the records upload once §3's exit rule holds and the release PR merges with main green. If a reading fails, it stops for the owner. Accepting SIPs and anything security-related stay the owner's. The grant ends at the 2.3.1 cut | **approved** |
 | D4 | **#2394 and #2395, from the first pair** (§3, round 1) | **#2394 in 2.3.1:** a one-line fix to a scaffold-owned file that no role can repair, with an integration test, then the pair again on the new deploy. **#2395 in 2.4:** it is a design choice between a planning rule and a DOM test environment for the stack. *The alternative:* both in 2.4 and the Next.js roll re-run on the same deploy, which needed a ruling that the finding does not count against the exit rule | **approved**: "approve #2394 for 2.3.1, #2395 to 2.4" |
 | D5 | **#2398, from the first shakeout** (§3) | **in 2.3.1:** the evaluation read a page it never visited as "not rendered", which is the claim this patch makes. 2.4's campaigns would hit it whenever a plan spells a page apart from its API. Then rebuild, the pair again and a fresh shakeout, about three hours. *The alternative:* §3's rule that a finding outside a changed seam is filed and placed. #2398 to 2.4 and a fresh shakeout on the same deploy, which needed a ruling that this escalation does not count against the exit rule | **approved**: "approve #2398 for 2.3.1" |
+| D6 | **round 3's Next.js rejection** (§3, round 3) | **count it and run the shakeout:** the roll's only failure was #2395, placed in 2.4 by D4, and its boot audit passed; no new seam finding. *The alternatives:* #2395's smaller fix (a planning rule for the stack) in 2.3.1, then the pair again and the shakeout, about 4–5 hours; or hold for the owner's own read | **approved**: the owner chose to count round 3 and run the shakeout |
