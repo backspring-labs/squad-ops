@@ -1,0 +1,18 @@
+tag: v2.3.1
+applied_at: '2026-10-17T21:11:32+00:00'
+worktrees_removed:
+- /home/jladd/Code/wt-2305
+- /home/jladd/Code/wt-231
+- /home/jladd/Code/wt-231cut
+- /home/jladd/Code/wt-231r2
+- /home/jladd/Code/wt-231r3
+- /home/jladd/Code/wt-231reg
+- /home/jladd/Code/wt-2322
+- /home/jladd/Code/wt-2378
+- /home/jladd/Code/wt-2381
+- /home/jladd/Code/wt-2384
+- /home/jladd/Code/wt-2394
+- /home/jladd/Code/wt-2398
+branches_deleted:
+- docs/2-3-0-release-package
+problems: []
