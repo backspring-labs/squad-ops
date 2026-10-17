@@ -787,6 +787,8 @@ campaigns:
   definitions:
   - path: examples/03_group_run/campaigns/2-3-0-cut-shakeout.yaml
     sha256: c92590ec20a3afdbae78287d4fdf236b141b504ffe85bdcc5ef06ec83c0420c5
+  - path: examples/03_group_run/campaigns/2-3-1-cut-shakeout.yaml
+    sha256: 3cb4b766f28b6aac3197ce849d73c4395581b1b678ef418459a90a115b651f4d
   package_identity: 8b17db3d5c301803c46e7d3f7731d856ea46da928e43a07c6475bf3cea6f99e1
   package_artifact: art_aca3734912ad
 - campaign_id: cmp_b69e3002b760
@@ -803,6 +805,8 @@ campaigns:
   definitions:
   - path: examples/03_group_run/campaigns/2-3-0-cut-shakeout.yaml
     sha256: c92590ec20a3afdbae78287d4fdf236b141b504ffe85bdcc5ef06ec83c0420c5
+  - path: examples/03_group_run/campaigns/2-3-1-cut-shakeout.yaml
+    sha256: 3cb4b766f28b6aac3197ce849d73c4395581b1b678ef418459a90a115b651f4d
   package_identity: 4cb6c0f934faa51cd07451be53299fdec19683ea3703a2b9c2d28217d98a1e51
   package_artifact: art_52bc49c9f82e
 - campaign_id: cmp_3f67e906eb2d
@@ -818,6 +822,43 @@ campaigns:
   definitions:
   - path: examples/03_group_run/campaigns/2-3-0-cut-shakeout.yaml
     sha256: c92590ec20a3afdbae78287d4fdf236b141b504ffe85bdcc5ef06ec83c0420c5
+  - path: examples/03_group_run/campaigns/2-3-1-cut-shakeout.yaml
+    sha256: 3cb4b766f28b6aac3197ce849d73c4395581b1b678ef418459a90a115b651f4d
   package_identity: 5c5d8bd60789d939a649bab956a0ba1f6661173b3dcf185c631573e8623cba4a
   package_artifact: art_ebd26242afc6
+- campaign_id: cmp_dadc7c019ad6
+  created: '2026-10-17T01:06:27.151444+00:00'
+  state: completed
+  outcome: aborted
+  create_reason: "2.3.1's shakeout campaign (docs/plans/2-3-1-plan.md \xA73, D1): uncounted, on dep_aad7eb54eacc,\
+    \ after the round-2 pair held"
+  recorded_definition:
+    path: examples/03_group_run/campaigns/2-3-1-cut-shakeout.yaml
+    sha256: 3cb4b766f28b6aac3197ce849d73c4395581b1b678ef418459a90a115b651f4d
+  recorded_reconciles: true
+  definitions:
+  - path: examples/03_group_run/campaigns/2-3-0-cut-shakeout.yaml
+    sha256: c92590ec20a3afdbae78287d4fdf236b141b504ffe85bdcc5ef06ec83c0420c5
+  - path: examples/03_group_run/campaigns/2-3-1-cut-shakeout.yaml
+    sha256: 3cb4b766f28b6aac3197ce849d73c4395581b1b678ef418459a90a115b651f4d
+  package_identity: f7748dcc3b7d9592d55e1812490e0e7234317f24845ed04c7bd03d2979463fbc
+  package_artifact: art_b76b85f4c61e
+- campaign_id: cmp_dc2abcf0af3a
+  created: '2026-10-17T19:31:59.104356+00:00'
+  state: completed
+  outcome: success
+  create_reason: "2.3.1's second shakeout campaign (docs/plans/2-3-1-plan.md \xA73, D5): uncounted, on\
+    \ dep_d35eb75c759b with #2398; the owner counted round 3 (Next.js rejected on #2395, placed in 2.4)\
+    \ and ruled the shakeout run"
+  recorded_definition:
+    path: examples/03_group_run/campaigns/2-3-1-cut-shakeout.yaml
+    sha256: 3cb4b766f28b6aac3197ce849d73c4395581b1b678ef418459a90a115b651f4d
+  recorded_reconciles: true
+  definitions:
+  - path: examples/03_group_run/campaigns/2-3-0-cut-shakeout.yaml
+    sha256: c92590ec20a3afdbae78287d4fdf236b141b504ffe85bdcc5ef06ec83c0420c5
+  - path: examples/03_group_run/campaigns/2-3-1-cut-shakeout.yaml
+    sha256: 3cb4b766f28b6aac3197ce849d73c4395581b1b678ef418459a90a115b651f4d
+  package_identity: 97c6a080b9042f573a5e0efb922822bb9b9b88b15316fe345bdc466ea89af24e
+  package_artifact: art_5d31ef6165a3
 examples_only: []
