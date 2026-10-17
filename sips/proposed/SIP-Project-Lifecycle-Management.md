@@ -18,8 +18,8 @@ original_filename: "SIP-Project-Lifecycle-Management.md"
 **Roles Impacted:** External Product Owner/Maintainer; Lead, Strategy, Dev, QA, Data  
 **Date:** 2026-10-16  
 **Revised:** 2026-10-17  
-**Document Revision:** 5 — the owner's design review of 2026-10-17 (PR #2401) reconciled: SIP-0047 retired as a runtime contract (Q30), instruction records owned by SIP-0110 (Q31), *Project Record* and a development configuration record in place of *Project Manifest* (Q32), that record named the *Project Development Configuration* (Q36), the Pulse IDEAs non-normative and SIP-0070's Pulse kept (Q33), greenfield creation required (Q34), and the 2.4 ownership and integration contract (Q35, §8)  
-**Source Baseline:** `backspring-labs/squad-ops`, `main`, commit `7aecfa0b3ff6576f115eba10c2ee3465774e997d` (freshly pulled and inspected 2026-10-17); revision 5's added claims read at `c294ec79`, one docs-only commit later  
+**Document Revision:** 6 — the Spark lane's compatibility review of §8 applied (§8.6). Revision 5: the owner's design review of 2026-10-17 (PR #2401) reconciled: SIP-0047 retired as a runtime contract (Q30), instruction records owned by SIP-0110 (Q31), *Project Record* and a development configuration record in place of *Project Manifest* (Q32), that record named the *Project Development Configuration* (Q36), the Pulse IDEAs non-normative and SIP-0070's Pulse kept (Q33), greenfield creation required (Q34), and the 2.4 ownership and integration contract (Q35, §8)  
+**Source Baseline:** `backspring-labs/squad-ops`, `main`, commit `7aecfa0b3ff6576f115eba10c2ee3465774e997d` (freshly pulled and inspected 2026-10-17); revision 6's added claims read at `9fa8b5e8`; revision 5's added claims read at `c294ec79`, one docs-only commit later  
 **Related SIPs:** SIP-0047 (Cycle Data Layout, Project Registry and `CycleDataStore`: implemented, retired as a runtime contract, Q30); SIP-0064 (Project Cycle Request API); SIP-0065 (CLI for Cycle Execution); SIP-0070 (Pulse Checks: the Cycle and Pulse this SIP keeps); SIP-0072 (its *development profile*, kept to one meaning by Q36); SIP-0074 (Console Cycle Operations UX); SIP-0102 (sandbox workspaces); SIP-0103 (Squad-Authored Manifest: owns the word *manifest*); SIP-0105 (stack blueprints); SIP-0108 (benchmark registry); SIP-0109 (Campaign Orchestration); SIP-0110 (Cross-Cycle Memory: project instructions); Outcome Evaluation (proposed, PR #1963: the Spark lane's 2.4 feature); Game Development Platform (proposed, PR #2405: the Godot/Roblox SIP, filed separately; builds on FR-17)  
 **SIP Number:** Provisional—allocate the next available identifier only after checking the current registry.
 
@@ -30,6 +30,8 @@ System"). Revision 4 was filed as the owner wrote it, and its findings were Q30�
 §4. **The owner ruled on all four on 2026-10-17** (the design review of PR #2401), adding a greenfield
 ruling (Q34) and the 2.4 parallel development agreement (Q35). Revision 5 reconciles the body with the
 rulings. Revision 5's own intake found one more overlap (Q36), and the owner ruled it the same day.
+Revision 6 applies the Spark lane's compatibility review of §8 (§8.6) and finds no new overlap. Its
+gates read the 2.4 plan draft (#2387: D2, D3, D4), which places both lanes' features.
 
 - **Overlaps, and the boundary each gets:**
   - **SIP-0047** (Cycle Data Layout, Project Registry and `CycleDataStore`, implemented 2025-11-29) is
@@ -43,7 +45,7 @@ rulings. Revision 5's own intake found one more overlap (Q36), and the owner rul
     accepted trees to Git revisions.
   - **SIP-0102** (sandbox): `WorkspaceStore`'s live trees, revisions and leases. The boundary is stated
     here (FR-05, §B.3): a managed clone reaches the sandbox through its existing boundaries, never as a
-    second live tree, and a sandbox content hash is never a Git commit. It is one of the six contracts
+    second live tree, and a sandbox content hash is never a Git commit. It is one of the seven contracts
     shared with the Spark lane (§8.2).
   - **SIP-0110** (Cross-Cycle Memory): its *project instructions* record kind, pinned in the unit
     snapshot (Appendix A §A.3.6–§A.3.7, placed in 2.4.0 as #2179). **Ruled (Q31):** SIP-0110 owns
@@ -63,8 +65,8 @@ rulings. Revision 5's own intake found one more overlap (Q36), and the owner rul
     benchmark registry and the reference/benchmark profile: where a stack and a benchmark are declared.
     The boundary is stated in §B.4.1.
   - **SIP-0070** (Pulse Checks): its cadence-bounded Pulse is the one this SIP keeps (§A.2, Q33).
-  - **Outcome Evaluation** (proposed, PR #1963; the Spark lane's 2.4 feature): six shared contracts
-    (§8.2). This SIP evaluates no outcomes, and Outcome Evaluation takes a Project as any registered
+  - **Outcome Evaluation** (proposed, PR #1963; the Spark lane's 2.4 feature): seven shared contracts
+    (§8.2), six named by the owner (Q35) and one added by the Spark lane's review (§8.6). This SIP evaluates no outcomes, and Outcome Evaluation takes a Project as any registered
     product (§8.3). Its *quality baselines* (Lighthouse, axe, lint) and this SIP's *inherited
     verification baseline* (the product's own checks on unmodified source) are different records, named
     in full each time.
@@ -95,7 +97,8 @@ rulings. Revision 5's own intake found one more overlap (Q36), and the owner rul
   Q31, so that *development profile* keeps SIP-0072 §10a's one meaning (the owner agreed the
   recommendation the same day).
 - **Q35:** the 2.4 parallel development agreement (§8): the MacBook lane owns this SIP, the Spark lane owns
-  Outcome Evaluation, and the two meet at six shared contracts. This PR stays proposal-only until the
+  Outcome Evaluation, and the two meet at six shared contracts (a seventh added by the Spark lane's
+  review, §8.6). This PR stays proposal-only until the
   owner approves it, and no integration branch is created yet.
 
 ## Delivery ledger (current as of 2026-10-17)
@@ -129,6 +132,8 @@ amendment the owner rules.
 **Revision 4:** Clarifies external owner decision rights, establishes inherited quality before source changes, defines precedence and drift handling for development instructions, and makes an existing external product the first end-to-end proof. The detailed CLI reconciliation and implementation contracts are retained in the appendices.
 
 **Revision 5:** Reconciles the owner's design review of 2026-10-17. SIP-0047 is retired as a runtime contract. Instruction records belong to SIP-0110, and this SIP discovers repository instructions, holds development configuration and detects drift. The *Project Manifest* becomes the Project Record and the Project Development Configuration (Q32, named by Q36). SIP-0070's Cycle and Pulse are kept. Greenfield creation is required. §8 records the 2.4 ownership and integration contract with Outcome Evaluation: shared contracts, integration regression scenarios and gates.
+
+**Revision 6:** Applies the Spark lane's compatibility review of §8 (§8.6). No outcome result reaches a squad role through the Project Context or the handoff before Outcome Evaluation's phase 2, and after it only the proposal run. A scenario never runs against a live tree. The independence list covers squad task inputs and squad containers. Each lane's feature is done on its own evidence. Contract 7, how a product is started for evaluation, is added, and contracts 1, 2, 3 and 5 and IR-7 are corrected.
 
 # 1. Direction and intended outcome
 
@@ -213,7 +218,7 @@ Greenfield creation is the second required demonstration, after this one (Q34). 
 
 # 8. The 2.4 parallel development agreement
 
-**Ruled by the owner, 2026-10-17** (Q35, the design review of PR #2401). This SIP is 2.4's feature on the MacBook lane. Outcome Evaluation (proposed, PR #1963) is 2.4's feature on the Spark lane. The lanes develop independently and meet at the six contracts in §8.2. Outcome Evaluation's column in §8.2 is this SIP's reading of its draft (revision 1), for the Spark lane to confirm or correct (§8.6).
+**Ruled by the owner, 2026-10-17** (Q35, the design review of PR #2401). This SIP is 2.4's feature on the MacBook lane. Outcome Evaluation (proposed, PR #1963) is 2.4's feature on the Spark lane. The lanes develop independently and meet at the contracts in §8.2: the six the owner named, and a seventh the Spark lane's review added. Outcome Evaluation's column in §8.2 is this SIP's reading of its draft (revision 1) as the Spark lane's review corrected it (§8.6). Where that column goes past revision 1, it is the Spark lane's intent for Outcome Evaluation's design review (the 2.4 plan's D2), not ruled design.
 
 ## 8.1 Ownership
 
@@ -229,12 +234,13 @@ A change to a file the other lane owns goes through that lane's review (CLAUDE.m
 
 | contract | today's seam | this SIP adds | Outcome Evaluation reads or adds | the rule |
 |---|---|---|---|---|
-| 1. Project identity and source revision | `Project` (`src/squadops/cycles/models.py:293`); `ProjectRegistryPort`; `config/projects.yaml` | the Project Record as the registry entry; the development-baseline and integrated-upstream Git revisions | reads the Project ID and the Git revision of the tree it evaluated, and records both with each result | one registry for every reader; Project IDs immutable; a Git commit is never stored as a sandbox hash or an accepted-tree identity |
-| 2. `prepare_cycle()` input and context | `prepare_cycle()` (`src/squadops/api/routes/cycles/cycles.py:387`); `CycleCreateRequest` (`src/squadops/api/cycle_schemas.py:40`, `extra="forbid"`); `cycle_request_body()`; the Campaign launcher (`src/squadops/campaigns/launch_requests.py`) | typed source context and source preconditions, persisted before dispatch (§D.3); the Development Configuration revision | its draft changes the campaign objective (its §4.7) rather than this seam; any field it pins at admission is typed and its own | each lane adds its own typed fields and repurposes none of the other's; the standalone and Campaign preparation tests run on every change; SIP-0110's #2179 changes this seam in 2.4.0 too |
-| 3. `WorkspaceStore` integration | `src/squadops/sandbox/workspace.py` (SIP-0102) | a Git checkout at a pinned commit exposed as the live tree; verified changes captured back to Git; a mapping from sandbox revision to Git commit | stands up the delivered app in the sandbox and evaluates it (SIP-0109 §8.3); names the tree it evaluated | sandbox revisions stay content hashes; no second live tree; no scenario file enters a workspace |
+| 1. Project identity and source revision | `Project` (`src/squadops/cycles/models.py:293`); `ProjectRegistryPort`; `config/projects.yaml` | the Project Record as the registry entry; the development-baseline and integrated-upstream Git revisions | records the Project ID and the identity of the tree it evaluated; the Git revision is resolved through contract 4's mapping, joined by the cycle ID, and never copied into a result | one registry for every reader; Project IDs immutable; a Git commit is never stored as a sandbox hash or an accepted-tree identity |
+| 2. `prepare_cycle()` input and context | `prepare_cycle()` (`src/squadops/api/routes/cycles/cycles.py:387`); `CycleCreateRequest` (`src/squadops/api/cycle_schemas.py:40`, `extra="forbid"`); `cycle_request_body()`; the Campaign launcher (`src/squadops/campaigns/launch_requests.py`); Campaign admission: `CampaignCreateRequest` (`src/squadops/api/campaign_schemas.py:55`) setting `CampaignObjective` (`src/squadops/campaigns/models.py:273`) | typed source context and source preconditions, persisted before dispatch (§D.3); the Development Configuration revision | nothing at `prepare_cycle()` or in a launch request. At Campaign admission, its §4.7 fields (`outcome_suite`, `outcome_target`, `quality_baseline`) on `CampaignObjective`, and the suite pinned on the campaign at creation (phase 1, intent) | each lane adds its own typed fields and repurposes none of the other's; FR-08's Project eligibility and Outcome Evaluation's objective fields meet at Campaign admission; the standalone and Campaign preparation tests run on every change; SIP-0110's #2179 changes this seam in 2.4.0 too |
+| 3. `WorkspaceStore` integration | `src/squadops/sandbox/workspace.py` (SIP-0102) | a Git checkout at a pinned commit exposed as the live tree; verified changes captured back to Git; a mapping from sandbox revision to Git commit | stands up the evaluated tree from its identity (SIP-0109's `FileTree.identity`, `src/squadops/campaigns/evaluator_trees.py:60`) and names it by that identity, never by sandbox revision | sandbox revisions stay content hashes; no second live tree; no scenario file enters a workspace. A sandbox revision ID (`compute_revision_id`, `src/squadops/sandbox/models.py:78`) and a tree identity are different hashes of the same files, and are never compared. A scenario never runs against a live tree: the evaluated tree is started in a disposable copy whose writes are discarded, so nothing a scenario caused is captured into a revision or a commit |
 | 4. Campaign accepted-tree identities | `infra/migrations/1630_campaign_accepted_tree.sql`; `src/squadops/campaigns/increment_tree.py` (SIP-0109) | a mapping from each accepted tree to the Git revision it became | reads regression against the previous accepted tree (its §4.1) | SIP-0109 owns the identity; both lanes read it as SIP-0109 defines it; the mapping lives in this SIP's records |
-| 5. Outcome assessment references | Outcome Evaluation's per-increment results (to be built) | references to them in Project history and handoff (FR-09) | produces them, with the Project ID, the cycle ID and the revisions of contracts 1 and 3 | this SIP stores the reference and the goal-level result only; it never stores steps and never recomputes a reading |
+| 5. Outcome assessment references | Outcome Evaluation's evaluation records (to be built): one per evaluation run, a cycle against one suite | references to them in Project history (FR-09) | produces them: the evaluation ID and suite digest, with the Project ID, the campaign and cycle IDs, and the evaluated and previous accepted tree identities | this SIP stores the reference in Project history. It never stores steps and never recomputes a reading. No outcome result reaches a squad role's inputs through the Project Context or the handoff until Outcome Evaluation's phase 2 is ruled, and after it only the proposal run's (its §4.5) |
 | 6. Project instructions and snapshot binding | SIP-0110 §0.7, §A.3.6–§A.3.8; #2179 (2.4.0) | repository instruction discovery; drift findings; the resolver for a repository reference at the unit's pinned commit (§B.5.1) | compared increments read the instruction sets their units pinned; a set that differs between them is a changed listed input (SIP-0110 §0.12) | one store, SIP-0110's; an admitted snapshot changes only by SIP-0110's re-binding |
+| 7. Starting the product for evaluation (added by the Spark lane's review) | the Development Configuration's `technical.commands_ref` (§B.5); for a blueprint Project, the stack's probe and render profiles (`profile_for_stack`, `src/squadops/capabilities/handlers/probe_runner.py:133`; `render_profile_for`, `src/squadops/capabilities/handlers/route_rendering.py:77`) | the commands to install, build and start the product at a given tree, its readiness check, and the base URLs or entry points it serves, versioned with the Development Configuration | reads those commands at the Development Configuration revision the unit pinned | Outcome Evaluation never infers how to start a product from a sample application; a Project with no declaration reports every scenario `blocked_unverified`, with that reason |
 
 **Every change to a shared contract** names the contract in its PR body, carries the other lane's review, adds a wiring test that enters at the caller the live cycle uses (`docs/TEST_QUALITY_STANDARD.md`, anti-pattern 6a), and is additive: no field is repurposed or removed.
 
@@ -243,10 +249,10 @@ A change to a file the other lane owns goes through that lane's review (CLAUDE.m
 - **This SIP evaluates no outcomes.** Its checks are the product's own build and test checks, run through the existing verification path (FR-10, FR-20) and reported as check results (PASS, FAIL, UNVERIFIED) with regression attribution. They are verification records. Independent held-out scenarios, quality baselines (Lighthouse, axe, lint), the intervention ledger and outcome contribution are Outcome Evaluation's, and this SIP stores references to them.
 - **Outcome Evaluation takes a Project as any registered product:** an existing external repository with its own layout and tooling, a greenfield product, or a reference application. Scenario surfaces come from the scenario's authors and the Project's own interface; a scenario that cannot run reports `blocked_unverified` (its §4.1). A sample application's routes, fixtures or interface manifest are never a default.
 - **Held-out scenario independence, as this SIP keeps it:**
-  1. Scenario steps and checks never enter the Project Record, the Development Configuration, the Project Context (FR-04), handoff metadata (FR-09), a project instruction or its references (SIP-0110), a managed clone, a workspace or the product repository.
+  1. Scenario steps and checks never enter the Project Record, the Development Configuration, the Project Context (FR-04), handoff metadata (FR-09), a project instruction or its references (SIP-0110), a managed clone, a workspace, the product repository, a squad task's inputs or any squad agent's container. The scenario runner runs outside every squad agent's container.
   2. Scenarios are stored outside every location this SIP manages: the product repository, the managed clone cache and the workspace roots.
   3. Repository instruction discovery reads the product repository only. A scenario store is never an instruction source.
-  4. What reaches this SIP's records is what Outcome Evaluation shows the squad (its §4.1): each scenario's goal and its result, by reference.
+  4. This SIP's records hold the evaluation record's reference (contract 5). No outcome result reaches a squad role through the Project Context or the handoff until Outcome Evaluation's phase 2 is ruled; after it, only the proposal run sees each scenario's goal and result (its §4.5).
   5. IR-4 (§8.4) tests 1–4.
 
 ## 8.4 Integration regression scenarios
@@ -258,10 +264,10 @@ Each enters at the seam the live cycle uses and asserts what reaches the other l
 | IR-1 | After the registry cutover, `group_run`, `hello_squad`, `run_crysis`, `play_game` and `agent_chess` create Cycles through `cycles create` and `POST /api/v1/projects/{project_id}/cycles` | the same IDs, PRD resolution, cycle and run IDs and artifact paths; `projects list/show` changed only by added fields | MacBook |
 | IR-2 | One Project at one pinned revision, launched standalone and through the Campaign launcher | both reach `prepare_cycle()` with the same typed source context and Development Configuration revision, and each pins a SIP-0110 snapshot under its own snapshot owner | MacBook, with SIP-0110's #2179 |
 | IR-3 | A Campaign is admitted; an outside commit then changes a repository instruction source | the Campaign's later Cycles keep the admission binding and carry a drift finding; a standalone Cycle created afterwards binds the new content; a re-binding changes the Campaign only as a recorded intervention | MacBook, with SIP-0110's #2179 |
-| IR-4 | An increment of an external Project runs with an outcome suite | no scenario step in any rendered prompt (Outcome Evaluation §7, prediction 2), the Project Context, handoff metadata, a project instruction, the managed clone, a workspace or the product repository | both |
+| IR-4 | An increment of an external Project runs with an outcome suite | no scenario step in any rendered prompt (Outcome Evaluation §7, prediction 2), any stored squad task envelope, any squad agent's container, the Project Context, handoff metadata, a project instruction, the managed clone, a workspace or the product repository; no outcome result in the Project Context or the handoff before phase 2 | both |
 | IR-5 | An accepted increment of an external Project | sandbox revision, Git commit, Campaign accepted tree and Outcome Evaluation result resolve to one another through this SIP's mappings, and none is stored in another's field | both |
-| IR-6 | An external Project with its own layout and no SquadOps interface manifest runs through Outcome Evaluation | scenarios run on the surfaces their authors declare or report `blocked_unverified`; nothing falls back to a sample application | Spark |
-| IR-7 | A greenfield Project, created at an owner-approved external destination, runs its first Cycle (after E.4.6 ships) | Outcome Evaluation reads it as it reads any other Project | both |
+| IR-6 | An external Project with its own layout and no SquadOps interface manifest runs through Outcome Evaluation, started by contract 7's commands | scenarios run on the surfaces their authors declare or report `blocked_unverified`; a surface kind the product lacks is recorded not applicable; nothing falls back to a sample application | Spark |
+| IR-7 | A greenfield Project, created at an owner-approved external destination, runs its first Campaign (after E.4.6 ships) | Outcome Evaluation reads it as it reads any other Project | both |
 | IR-8 | A Project registered after the cutover | `projects show`, standalone creation, the Campaign launcher and Outcome Evaluation's reads see it at once, with no YAML shadow | MacBook |
 | IR-9 | A product with an inherited failing native check | the check stays FAIL with attribution `inherited`; Outcome Evaluation's reading of the same increment is its own; neither record derives from or rewrites the other | both |
 | IR-10 | The counted regression pair on a deploy carrying both lanes, with `lessons: disabled` (SIP-0110) | the cadence policy, pulse-boundary checks and correction paths are unchanged, and the pair holds its verdict; a difference in pulse or correction behavior is a finding | both |
@@ -274,19 +280,32 @@ Each enters at the seam the live cycle uses and asserts what reaches the other l
 | G2 | until the owner creates one | no integration branch | ruled 2026-10-17 |
 | G3 | before acceptance | the Spark lane's compatibility review of §8.2 recorded in §8.6 | ruled 2026-10-17 |
 | G4 | every PR touching a shared contract | §8.2's rule: the contract named, the other lane's review, a wiring test, additive only | proposed for the owner's final review |
-| G5 | on the integration branch, when the owner opens it | IR-1 to IR-10 pass on a deploy carrying both lanes before either lane's 2.4 feature is called done | proposed for the owner's final review |
-| G6 | the 2.4 cut | IR-1 to IR-10 pass on the cut deploy; the brownfield demonstration (§7) is pre-registered and read; greenfield (E.4.6) is shipped, or placed with an open issue and named in the cut record; the cut record states what each lane's evidence does not cover (CLAUDE.md, "Release cut") | proposed for the owner's final review |
+| G5 | on the integration branch, when the owner opens it | IR-1 to IR-10 are the integration's evidence, run on a deploy carrying both lanes. Each lane's 2.4 feature is done on its own evidence; an IR scenario whose other-lane prerequisite has not shipped reports *not run*, with its reason, in the cut record | proposed for the owner's final review; revised by the Spark lane's review |
+| G6 | the 2.4 cut | IR-1 to IR-10 pass on the cut deploy, or report *not run* with the missing prerequisite named (G5). IR-4 to IR-9 need Outcome Evaluation's phase 1 only; its phase 2 is conditional (the 2.4 plan's D4) and not required; the brownfield demonstration (§7) is pre-registered and read; greenfield (E.4.6) is shipped, or placed with an open issue and named in the cut record; the cut record states what each lane's evidence does not cover (CLAUDE.md, "Release cut") | proposed for the owner's final review; phase 2 clause from the Spark lane's review |
+| G7 | the 2.4 measurement window (the 2.4 plan's D3) | both lanes agree on the window's frozen deploy, and neither lane deploys a change inside the window | proposed by the Spark lane's review, for the owner's final review |
 
 ## 8.6 The Spark lane's compatibility review
 
-**Status: requested, not yet given.** It is recorded here, with who reviewed and when, before acceptance (G3). The questions:
+**Given 2026-10-17** (19:20 ET), by the Spark lane's supervisor session (Claude Code on the Spark), on §8.1–§8.6 at `b4bbeb56`: PR #2401's comment of 2026-10-17 (`issuecomment-6242996612`). Gate G3 is met.
 
-1. Do §8.2's rows describe Outcome Evaluation's seams as its lane will build them? In particular, does it pin anything at `prepare_cycle()` or at Campaign admission (contract 2)?
-2. How does Outcome Evaluation name the tree it evaluated: by sandbox revision, by accepted tree, or both? This SIP maps both to a Git commit (contracts 3 and 4).
-3. For a Project with no SquadOps interface manifest, or no browser surface, how are a scenario's surfaces declared (IR-6)?
-4. Where will held-out scenarios be stored, so that §8.3's location rule holds?
-5. Which identifier should Project history reference for an outcome result (contract 5)?
-6. Does an outcome comparison need the instruction sets its units pinned to match (contract 6)?
+**It rests on** Outcome Evaluation revision 1 (`sips/proposed/SIP-Outcome-Evaluation.md` on `main` at `9fa8b5e8`, last changed in `903c046f`: §4.1–§4.7, §6, §7), the 2.4 plan draft (#2387 at `11066598`, §1.2–§1.4) and `main`'s code at `9fa8b5e8`. Outcome Evaluation's design review (the 2.4 plan's D2) is not ruled, so an answer past revision 1 is the Spark lane's **intent**, not ruled design. It found nothing in conflict with the owner's four constraints.
+
+| question | the Spark lane's answer | where this SIP takes it |
+|---|---|---|
+| 1. Does Outcome Evaluation pin anything at `prepare_cycle()` or at Campaign admission? | Nothing at `prepare_cycle()` or in a launch request. At Campaign admission, its §4.7 fields on `CampaignObjective`, set by `CampaignCreateRequest`; phase 1's suite is pinned on the campaign at creation (intent) | contract 2 |
+| 2. How is the evaluated tree named? | By SIP-0109's tree identity with its cycle ID: `FileTree.identity` for the tree it ran on, `AcceptedTree.identity` (`src/squadops/campaigns/progress.py:612`) for the one it compares against. Never by sandbox revision (a different hash of the same files) and never by Git commit (a candidate has none yet). **Unverified:** whether a candidate's evaluated identity equals the identity its promotion records; the join to the accepted tree goes through the cycle ID | contracts 1 and 3 |
+| 3. Surfaces for a Project with no interface manifest or no browser surface? | Revision 1 can evaluate only a SquadOps blueprint app; revision 2 changes that (intent). A scenario declares its own surfaces by kind (HTTP endpoints, browser pages, later others such as FR-17's game surfaces); a manifest, where one exists, only checks they exist; a scenario sets up its own data. With no browser surface, browser scenarios, Lighthouse and axe are *not applicable*, apart from `blocked_unverified`; a surface kind with no runner yet is `blocked_unverified`. Lint is recorded as not measured off the scaffold stacks, and the product's own linter is never used in its place (that is FR-20's inherited check). Starting the product needs a declaration Outcome Evaluation cannot own | contract 7; IR-6 |
+| 4. Where are held-out scenarios stored? | A store of their own in the runtime API's Postgres, behind their own port, with no route a squad agent's identity can read; not the artifact vault. The runner fetches the steps by suite digest per run, holds them in memory, and runs outside every squad agent's container (intent; where, is for Outcome Evaluation's design review) | §8.3 item 1; IR-4 |
+| 5. Which identifier does Project history reference? | The evaluation record's ID with the suite's content digest: one record per evaluation run, since one cycle can be evaluated more than once (a re-run after `blocked_unverified`, a #1959 replay, a second suite) | contract 5 |
+| 6. Do compared units' pinned instruction sets need to match? | Not for a per-increment reading: a scenario reads the app, and a campaign's increments share its admission binding. For a comparison of squad behaviour across units, they are a listed input, never a gate (SIP-0110 §0.12) | contract 6, as drafted |
+
+**Changes it asked for, all applied in revision 6:**
+- *Conflicts:* outcome results kept out of squad roles' inputs before phase 2, and after it given only to the proposal run (contract 5, FR-04, FR-09 item 4, §8.3 item 4); no scenario against a live tree (contract 3); squad task inputs and squad containers added to the independence list and IR-4 (§8.3 item 1); each lane done on its own evidence, with a *not run* allowance in the cut record (G5, G6), and the window's frozen deploy (G7).
+- *Corrections:* contracts 1, 2 and 3; IR-7 reads "its first Campaign", since Outcome Evaluation's unit is a campaign's calibration and its increments (its revision 1 §4.1–§4.2).
+- *Missing:* contract 7, how the product is started for evaluation.
+- *Agreed as drafted:* §8.1; contracts 4 and 6; §8.3 items 2, 3 and 5; IR-1 to IR-3, IR-5, IR-8 to IR-10 (IR-10's pair is standalone cycles, so Outcome Evaluation does not run in it); IR-6 once contract 7 exists; G1 to G4; G6 with its phase-2 change.
+
+**What the Spark lane changes on its side,** in Outcome Evaluation's revision 2 for the owner's design review: scenarios declare their surfaces, a manifest is optional, and the runner runs outside the squad's containers (its §4.1); phase 1's suite is pinned on the campaign; the evaluation record and its ID; *not applicable* kept apart from `blocked_unverified`; and its *outcome* term renamed before phase 1 ships (the portfolio's Q3), which contract 5's names follow.
 
 # 9. Detailed contracts and implementation appendices
 
@@ -545,7 +564,7 @@ configuration:
     project_type: game
     target: godot
     stack: null                 # a SIP-0105 blueprint, for a greenfield Project built on one
-    commands_ref: project-metadata/technical-commands-v1
+    commands_ref: project-metadata/technical-commands-v1   # install, build, test and start; readiness; entry points (§8.2 contract 7)
   workspace:
     mode: managed_clone
     preserve_repository_layout: true
@@ -707,7 +726,7 @@ Extend the existing Project lookup and shared Cycle preparation path to resolve 
 - implemented `cycle_id` and `run_id` once allocated (SIP-0047's execution cycle ID never reached the current tree, so there is no alias to map);
 - available prior accepted releases and Cycle evidence indexes.
 
-The Project Context must be derived from authoritative records rather than untrusted free-text hints. It never carries a held-out scenario's steps or checks (§8.3).
+The Project Context must be derived from authoritative records rather than untrusted free-text hints. It never carries a held-out scenario's steps or checks (§8.3), and it carries no outcome result until Outcome Evaluation's phase 2 is ruled, and after it only into the proposal run (§8.2 contract 5).
 
 ## FR-05 — Workspace provision and isolation
 
@@ -779,7 +798,7 @@ A subsequent Cycle MUST be able to resolve, without relying solely on model memo
 1. the authoritative external repository/ref, approved development baseline, confirmed integrated-upstream revision and any pending contribution;
 2. the Project Record version and the Development Configuration revision;
 3. relevant PRD/design baseline and change requests;
-4. owner-approved quality contract, inherited baseline findings and latest candidate/integration verification, with references to Outcome Evaluation's results for prior increments (goals and results only, never steps; §8.2 contract 5);
+4. owner-approved quality contract, inherited baseline findings and latest candidate/integration verification. Project history keeps references to Outcome Evaluation's evaluation records (§8.2 contract 5); no outcome result reaches a squad role's inputs through the handoff until Outcome Evaluation's phase 2 is ruled, and after it only the proposal run's;
 5. the SIP-0110 snapshot each earlier unit pinned, the drift findings since, and owner-approved exceptions;
 6. prior release/build artifact indexes;
 7. unresolved known defects and decisions;
@@ -1272,9 +1291,10 @@ No role is granted authority to bypass the orchestrator's Cycle/Pulse invariants
 
 ### Integration with Outcome Evaluation (2.4)
 
-- [ ] The Spark lane's compatibility review of §8.2 is recorded in §8.6 (G3).
+- [x] The Spark lane's compatibility review of §8.2 is recorded in §8.6 (G3).
 - [ ] Every PR that changed a shared contract named it, carried the other lane's review and added its wiring test (G4).
-- [ ] IR-1 to IR-10 pass on a deploy carrying both lanes (G5, G6).
+- [ ] IR-1 to IR-10 pass on a deploy carrying both lanes, or report *not run* with the missing prerequisite named (G5, G6).
+- [ ] Starting an external product for evaluation goes through the Development Configuration's commands (§8.2 contract 7).
 
 **Primary end-to-end success demonstration:** A product maintainer supplies an unfamiliar existing external repository and a scoped feature request. SquadOps registers it without source-tree changes, resolves the owner's delegation and repository-native instructions, pins an unmodified build/test baseline, and delivers a verified feature through the product's normal contribution process. Another developer then advances the source or development instructions. A later Cycle detects/reconciles that drift, refreshes affected Development Configuration and baseline evidence and delivers a second feature through the same SquadOps Project. Candidate acceptance, inherited defects, regression findings and confirmed upstream integration remain distinct. Product source/builds remain independently usable and `group_run` compatibility is preserved. Greenfield product creation is the second required proof, after this one.
 
@@ -1346,7 +1366,7 @@ Project ID: prj-space-adventure
 | SIP-0103 | **Implemented**: owns the word *manifest*; this SIP's records are the Project Record and the Project Development Configuration (Q32, Q36). |
 | SIP-0105 / SIP-0108 | Stack blueprints and the benchmark registry; boundaries in B.4.1. |
 | SIP-0110 | **Accepted**: owns project-instruction records, their versioning, applicability and snapshot binding (Q31; its §5k). |
-| Outcome Evaluation (proposed, PR #1963) | The Spark lane's 2.4 feature: independent held-out scenarios, quality baselines and outcome contribution; six shared contracts (§8). |
+| Outcome Evaluation (proposed, PR #1963) | The Spark lane's 2.4 feature: independent held-out scenarios, quality baselines and outcome contribution; seven shared contracts (§8), reviewed by the Spark lane (§8.6). |
 | `docs/ideas/IDEA_Cycle_Orchestrator_Pulses_and_Surges.md` | **Non-normative history** (Q33), headed as such. Where its Pulse differs from SIP-0070's cadence-based Pulse, SIP-0070 governs. The `CYCLE_PROTOCOL.md` it cites is not in the repository. |
 | `docs/ideas/IDEA_Cycle_and_Pulse_Execution_Model.md` | **Non-normative history** (Q33), headed as such. It reads as the earlier of the two: its Pulse groups work, the reading the IDEA above corrects. Its task flow policies were built as `FlowMode`. |
 | `docs/ideas/Git workflow.txt` | Git traceability and stable `main`; extend for Project-owned repositories without assuming framework-specific WarmBoot branch conventions apply to all products. |
@@ -1415,3 +1435,4 @@ All paths below are relative to `backspring-labs/squad-ops` at commit `7aecfa0b3
 | 3 | 2026-10-17 | Clarifies SquadOps as a development team for independently owned products: external authoritative source, out-of-repository Project metadata, managed clones/worktrees, preserved repository-native layout/tooling, external-contribution reconciliation and separate candidate/integrated revision tracking. |
 | 4 | 2026-10-17 | Keeps external owner authority explicit; adds inherited build/test baselines and separate regression attribution; defines instruction precedence/profile drift; makes enhancement of an existing external product across outside contributions the primary proof; separates the directional core from detailed implementation appendices. |
 | 5 | 2026-10-17 | Reconciles the owner's design review (PR #2401). Q30: SIP-0047 retired as a runtime contract, its principles kept (A.1, E.2). Q31: instruction records, versioning, applicability and snapshot binding are SIP-0110's; this SIP discovers repository instructions, holds development configuration and detects drift, and an admitted snapshot changes only by re-binding (B.5.1, FR-21). Q32: the Project Record and Project Development Configuration replace the Project Manifest (B.5). Q33: the Pulse IDEAs non-normative, SIP-0070's Pulse kept (A.2), FR-17 restated as capabilities for future adapters. Q34: greenfield creation required (E.4.6). Q35: the 2.4 parallel development agreement (§8). Adds the boundaries with SIP-0105 and SIP-0108 (B.4.1) and with Outcome Evaluation (§8.3); renames *check outcome* to *check result*. Q36, ruled the same day: the second record named the *Project Development Configuration*, and its keys renamed to match (B.5). The Pulse IDEAs committed under `docs/ideas/` with non-normative headers; the game SIP filed (PR #2405). |
+| 6 | 2026-10-17 | Applies the Spark lane's compatibility review of §8 (§8.6, PR #2401's comment `issuecomment-6242996612`, read at `b4bbeb56`): outcome results kept out of squad roles' inputs before Outcome Evaluation's phase 2 (contract 5, FR-04, FR-09); no scenario against a live tree (contract 3); squad task inputs and containers in the independence list and IR-4; each lane done on its own evidence (G5, G6) and the window's frozen deploy (G7); contracts 1, 2 and 3 and IR-7 corrected; contract 7 added, how a product is started for evaluation. |
