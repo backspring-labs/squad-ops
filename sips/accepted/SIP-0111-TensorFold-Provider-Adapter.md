@@ -1067,6 +1067,14 @@ host service installed once with the owner's sudo, which after a kill switches t
      registry identity and model family, never `qwen3.8`, with nothing carried over from the 27B.
 - **This departs from Q4** ("don't plan to use the 1.0.x version") **and from this SIP's v0.6.6 scope.** Production
   stays on 0.6.6 (§9d, §9k) until this row's own G4.
+- **Flash-Next has two checkpoints to test on 1.x.** The owner agreed the same day to add the second ("sure add"):
+  - the MLX affine 4-bit with the MTP head, which 1.1.0 serves natively on one GPU;
+  - NVIDIA's quantization-aware-distilled (QAD) checkpoint, `nvidia/Qwen3.8-Flash-Next-FP4-Local` (revision
+    `b9ce18a6`, 102.3 GB). It becomes eligible when a TensorFold release serves it on one GPU without the
+    experimental label.
+
+  Both are probed on the same tuning prompts, one at a time, since the two together are 215.5 GB. One goes on to
+  the held-out run.
 - **It comes after 2.4 and the Outcome Evaluation work.** The owner, the same day: "I think this model change will come after 2.4 and the outcome evaluation work". So it isn't placed in
   2.4, and it doesn't run during 2.4's measurement.
 - **The row stays unplaced.** Before it runs, the owner rules on:
@@ -1075,7 +1083,9 @@ host service installed once with the owner's sudo, which after a kill switches t
   - the disk for the Flash-Next checkpoint;
   - the bars for the engine question, fixed before any held-out run (§9a item 4).
 - **The path is the supervisor's draft, in #2230's body, for the owner's review at placement:**
-  1. an exploratory probe of each candidate, on tuning prompts only;
+  1. an exploratory probe of each candidate, on tuning prompts only, with its predictions written down first. For
+     the QAD checkpoint, the predictions are fewer output-cap hits and thinking runaways than the MLX 4-bit, and
+     decode about a quarter slower;
   2. a native image pinned by sha256, and the switch's serve command for each engine line;
   3. the adapter and the harness, checked against the native wire;
   4. S, G0 and G1 for each checkpoint, on the 132-envelope held-out plan, with every arm's stored answers scored on
@@ -1093,6 +1103,18 @@ host service installed once with the owner's sudo, which after a kill switches t
   (`TensorFold/Qwen3.8-Flash-Next-MLX-4bit-MTP`, revision `2b170fa6`, 113.2 GB). The EXL3 pack 2.3 measured is
   served only by the Python engine
   ([`flash-next-cuda.md`](https://github.com/ashhart/TensorFold/blob/v1.1.0/docs/recipes/flash-next-cuda.md)).
+- **NVIDIA's QAD checkpoint** ([its card](https://huggingface.co/nvidia/Qwen3.8-Flash-Next-FP4-Local)):
+  - **What it is:** its routed experts are NVFP4, trained by distillation against the BF16 model. The training adds
+    separate losses for ending the thinking and ending the answer, and 2.3's Flash-Next misses were of that kind.
+    On the EXL3 pack it hit the 12,288-token cap twice and ran away thinking once.
+  - **NVIDIA's figures:** 91.5% on GPQA Diamond against BF16's 92.2%, and 88.7% on ToolEvalBench against 89.4%.
+    The card gives no comparison with the MLX 4-bit or the EXL3 pack.
+  - **On TensorFold:** 1.1.0's notes call a ModelOpt NVFP4 Flash-Next experimental, on two ranks. Its one-GB10
+    measurements are in TensorFold's pull request 952, still open:
+    - drafted decode: 64.1–64.6 tok/s on code and 40.7–41.1 on chat, against the MLX 4-bit's 84.2 and 62.6;
+    - a cold 8,192-token prompt: 7.11 s, about the MLX 4-bit's rate;
+    - the prompt cache: not qualified with drafting on that path.
+  - **Its terms:** the NVIDIA Open Model Agreement, over the Qwen Community License.
 - **Not yet read: which 27B checkpoints native CUDA reads.**
   - 1.1.0's notes name MLX checkpoints for the Qwen CUDA family. They don't name NVIDIA's NVFP4 export.
   - If native CUDA doesn't read NVFP4, the engine question holds `TensorFold/Qwen3.8-27B-MLX-4bit` fixed on both
@@ -1130,3 +1152,4 @@ said "I will want to tackle this move to 1.1.0 - but not just yet". The owner th
 eventually upgrading to TensorFold 1.x, and on evaluating its performance against 0.6 and the 27B against Flash-Next.
 On the PR that records this section (#2423), the owner set its sequencing: "I think this model change will come after 2.4 and the outcome evaluation work".
 The supervisor rewrote #2230 (its comment `issuecomment-6250014247` records the redirection) and drafted this section.
+Asked whether to add NVIDIA's QAD checkpoint as a second Flash-Next checkpoint, the owner answered "sure add".
