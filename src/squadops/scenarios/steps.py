@@ -185,7 +185,11 @@ async def run_scenario(scenario: Mapping[str, Any], send: Send) -> ScenarioRun:
             for name, path in (step.get("save") or {}).items():
                 names[name] = extract(response.body, str(path))
         except _Missing as e:
-            return ended("failed", first_failing_step=number, detail=f"step {number}: {e}")
+            return ended(
+                "failed",
+                first_failing_step=number,
+                detail=f"step {number} answered {response.status}: {e}",
+            )
     for check in scenario["checks"]:
         try:
             seen = _check(check, responses)

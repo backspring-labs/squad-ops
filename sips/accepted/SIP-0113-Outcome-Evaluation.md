@@ -652,6 +652,20 @@ within them, for the owner's review.
   - three scenarios passed, the admin route among them, with the secret in no result;
   - readiness at an undeclared path failed the start;
   - no copy or container was left.
+- **§7 prediction 1, read live on the Spark (2026-10-18):** the held-out capacity scenario (a run with
+  one place refuses a second runner, and its list keeps the first). Each tree was started by its stack's
+  environment contract from the vault's delivered tree:
+
+  | tree | identity | result |
+  |---|---|---|
+  | the reference baseline `cyc_7a4b7a6fbf0e` | `dcff44b8…`, its pinned `baseline_tree` | **failed** at step 3: the second join answered 200, not 409 |
+  | the reference increment `cyc_20246018f2b8` | `4692c159…` | **passed** |
+
+  The baseline's identity equalling its pin shows the delivered tree's `FileTree.identity` is the identity
+  SIP-0109 records for an accepted tree.
+- **An authoring rule the run settled:** a scenario's HTTP surfaces name the backend's own paths
+  (`/runs`). A manifest's `api.base_path` (`/api`) is the frontend's dev-proxy prefix, and the backend
+  answers it 404.
 - **Still to build for #2414:**
   - the evaluation service (the vault's tree, the record, the increment's hook, reporting-only);
   - §7's predictions 1, 2 and 6, read live on the reference scenario.
