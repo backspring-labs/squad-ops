@@ -18,6 +18,7 @@ from enum import StrEnum
 from typing import Any
 
 from squadops.cycles.models import GateDecisionValue
+from squadops.stacks.scaffold import hosts_campaign_increments
 
 # =============================================================================
 # Enums
@@ -318,8 +319,9 @@ _POSITIVE_POLICY_FIELDS = frozenset(
 
 @dataclass(frozen=True)
 class CampaignPolicy:
-    """The campaign's limits and bounds (§9.5, §15). Every field is required: a limit is set from
-    its basis and recorded, never defaulted (the 2.0 plan's limits ruling)."""
+    """The campaign's limits and bounds (§9.5, §15). Every limit is required: a limit is set from
+    its basis and recorded, never defaulted (the 2.0 plan's limits ruling). The stack is not a
+    limit, and its absence is declared, not defaulted: it is the campaign profiles' own (§24bs)."""
 
     # §9.5's limits
     max_cycles: int
@@ -347,6 +349,11 @@ class CampaignPolicy:
     squad_profile: str
     # §24bj: who decides the plan gates of the cycles this campaign launches
     plan_gate: PlanGate
+    # §24bs (#2443): the stack every cycle the campaign launches builds on, passed to each launch
+    # as its ``build_profile`` and ``development_profile``. ``None`` is the campaign profiles' own
+    # stack, as a cycle that overrides none runs its profile's; a policy stored before it was
+    # declarable reads as that.
+    stack: str | None = None
 
     @classmethod
     def from_stored(cls, data: Mapping[str, Any]) -> CampaignPolicy:
@@ -387,6 +394,11 @@ class CampaignPolicy:
             proposal_profile=self.proposal_profile,
             squad_profile=self.squad_profile,
         )
+        if self.stack is not None and not hosts_campaign_increments(self.stack):
+            raise ValueError(
+                f"CampaignPolicy.stack {self.stack!r} is not a stack a campaign can run on: it "
+                "needs a scaffold that declares where a criterion's test file lives (§8.1)"
+            )
 
 
 @dataclass(frozen=True)

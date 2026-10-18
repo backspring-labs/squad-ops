@@ -248,6 +248,33 @@ def test_a_creation_without_a_definition_keeps_the_hash_it_was_stored_with():
     # as that absence; the tier is a different creation.
     tiered = campaign("cmp_hash0000001", policy=policy(plan_gate="tier"))
     assert creation_request_hash(tiered, actor="owner", actor_role="admin", reason="r") != before
+    # §24bs: a stack left undeclared is how the creation above was stored; a declared one is a
+    # different creation.
+    stacked = campaign("cmp_hash0000001", policy=policy(stack="nextjs_ts"))
+    assert creation_request_hash(stacked, actor="owner", actor_role="admin", reason="r") != before
+
+
+@pytest.mark.parametrize("stack", ["python_cli_builder", "", "nextjs"])
+def test_a_stack_a_campaign_cannot_run_on_is_refused(stack):
+    """§24bs (#2443). Bug caught: a campaign accepted on a stack that has no scaffold or nowhere
+    to put a criterion's test, whose first increment can only fail; or an empty stack read as
+    the profiles' own instead of refused."""
+    with pytest.raises(ValueError, match="not a stack a campaign can run on"):
+        policy(stack=stack)
+
+
+def test_a_policy_stored_before_the_stack_reads_as_its_profiles_own():
+    """§24bs. Bug caught: every campaign stored before the field unreadable, as the Postgres
+    loader builds its policy from the stored row."""
+    import dataclasses
+
+    from squadops.campaigns.models import CampaignPolicy
+
+    stored = dataclasses.asdict(policy())
+    del stored["stack"]
+
+    assert CampaignPolicy.from_stored(stored).stack is None
+    assert CampaignPolicy.from_stored({**stored, "stack": "nextjs_ts"}).stack == "nextjs_ts"
 
 
 @pytest.mark.parametrize(

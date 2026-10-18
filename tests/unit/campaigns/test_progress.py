@@ -645,6 +645,41 @@ def test_the_increment_launch_reads_its_profile_from_the_policy():
     )
 
 
+@pytest.mark.parametrize(
+    ("stack", "built_on"),
+    [("nextjs_ts", "nextjs_ts"), (None, None)],
+    ids=["declared", "the-profiles-own"],
+)
+def test_every_launch_kind_carries_the_campaigns_stack(stack, built_on):
+    """§24bs (#2443). Bug caught: a Next.js campaign whose calibration, increments or bound
+    cycles build on FastAPI, because one launch kind dropped the stack the others carry; or a
+    campaign that declares none overriding its profiles' own stack."""
+    from squadops.campaigns.launch_requests import (
+        bound_launch,
+        calibration_launch,
+        increment_launch,
+    )
+    from squadops.campaigns.models import AcceptedTree
+
+    c = campaign(
+        CID,
+        policy=policy(proposal_profile="campaign-increment", stack=stack),
+        accepted=AcceptedTree("sha-1", "cyc_cal"),
+    )
+    bodies = {
+        "calibration": calibration_launch(c).cycle_request["body"],
+        "increment": increment_launch(c, MANIFEST).cycle_request["body"],
+        "repair": bound_launch(
+            c, CycleKind.REPAIR, {"proposal_id": "p"}, ["art_1"], None
+        ).cycle_request["body"],
+    }
+
+    for kind, body in bodies.items():
+        overrides = body["execution_overrides"]
+        carried = (overrides.get("build_profile"), overrides.get("development_profile"))
+        assert carried == (built_on, built_on), kind
+
+
 async def test_a_proposal_only_increment_escalates_to_the_owner(calibrating):
     """§24f: until delta framing exists, an increment cycle runs its proposal alone and ends
     with no verdict. Bug caught: that cycle read as accepted (a propose loop that never builds)

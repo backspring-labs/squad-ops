@@ -479,3 +479,34 @@ async def test_a_launch_that_fails_for_another_reason_stays_pending_unescalated(
     [intent] = await world.campaigns.launch_intents(CID)
     assert intent.state is LaunchIntentState.PENDING
     assert (await world.campaigns.get_campaign(CID)).state is CampaignState.CALIBRATING
+
+
+@pytest.mark.parametrize(
+    ("stack", "built_on"),
+    [("nextjs_ts", "nextjs_ts"), (None, "fullstack_fastapi_react")],
+    ids=["declared", "the-profiles-own"],
+)
+async def test_a_campaigns_stack_reaches_its_calibration_cycle_by_the_create_path(stack, built_on):
+    """§24bs (#2443), contract 2's wiring: entered at the start route, read back from the cycle
+    the create path made. Bug caught: a campaign that declares Next.js calibrating on FastAPI
+    because its launch carried a profile name and nothing about the stack, or one that declares
+    none built on anything but its calibration profile's own stack."""
+    w = _World()
+    await w.campaigns.create_campaign(
+        campaign(
+            CID,
+            policy=policy(
+                calibration_profile="validated-fullstack", squad_profile="full-38", stack=stack
+            ),
+        ),
+        actor="owner",
+        actor_role="admin",
+        reason="r",
+        idempotency_key="create",
+    )
+
+    resp = w.start()
+
+    [cycle_id] = resp.json()["launched_cycles"]
+    config = (await w.cycles.get_cycle(cycle_id)).resolved_config()
+    assert (config["build_profile"], config["development_profile"]) == (built_on, built_on)

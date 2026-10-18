@@ -2003,6 +2003,14 @@ def _stack(stack: str) -> ScaffoldStack:
     return known
 
 
+def hosts_campaign_increments(stack: str) -> bool:
+    """True when a campaign can run on ``stack`` (#2443): it is scaffoldable, and it declares
+    where a campaign criterion's own test file lives (SIP-0109 §8.1), without which an
+    increment's criteria have nowhere to go."""
+    known = _STACKS.get(stack) if stack else None
+    return known is not None and bool(known.criterion_test_files)
+
+
 def render_profile_name_for(stack: str) -> str:
     """The render profile ``stack`` declares (SIP-0109 §8.3), or ``""`` for a stack whose pages
     cannot be read — or one not registered."""

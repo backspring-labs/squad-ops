@@ -43,6 +43,9 @@ class CampaignPolicyDTO(BaseModel):
     squad_profile: str
     #: §24bj: required, so a definition that does not declare it is refused at creation.
     plan_gate: PlanGate
+    #: §24bs (#2443): the stack every cycle the campaign launches builds on. Omitted, it is the
+    #: campaign profiles' own.
+    stack: str | None = None
 
 
 class CampaignDefinitionDTO(BaseModel):
