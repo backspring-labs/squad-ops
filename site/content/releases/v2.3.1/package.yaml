@@ -1,0 +1,699 @@
+version: 2.3.1
+tag: v2.3.1
+previous_tag: v2.3.0
+date: '2026-10-17'
+commit: f459197b4740feb1389b1ed6fa360df91845c5b3
+narrative: "**The 2.3 line's first patch: what a campaign's records and checks say\
+  \ is what happened** (plan\n`docs/plans/2-3-1-plan.md`). It fixes defects the 2.3\
+  \ cut found, and two that its own verification found: the\nregression pair's first\
+  \ round found #2394, and the first shakeout found #2398. The owner ruled each in\
+  \ (D4, D5). A\npatch on the 2.3 line, feature-free.\n\n**The evidence** (the plan's\
+  \ §3, D1). The exit rule is the pair and the shakeout on one deploy, with no new\
+  \ seam finding.\n- Each fix's wiring test enters where a live cycle enters, and\
+  \ each is checked to fail without its change.\n- **Round 1**, on `dep_4da309b688d4`\
+  \ (69ddf158):\n  - FastAPI + React `cyc_ee3b645e51bd` was accepted, 21 of 21.\n\
+  \  - Next.js `cyc_31a49b2cdde6` was rejected on #2394, a scaffold config no role\
+  \ can repair, after two correction\n    rounds.\n- **Round 2**, on `dep_aad7eb54eacc`\
+  \ (de7a09a7). The pair held:\n  - FastAPI + React `cyc_12d8a215d46f`, 20 of 20,\
+  \ and Next.js `cyc_c0245ee52747`, 15 of 15, with no correction round\n    in either.\n\
+  \  - The first shakeout, `cmp_dadc7c019ad6`, then escalated on #2398. Its calibration\
+  \ was accepted 20 of 20. Increment\n    1's build and repair each met all four criteria,\
+  \ and each was blocked on a detail page that was never read.\n- **Round 3**, on\
+  \ `dep_d35eb75c759b` (7aecfa0b), with every one of the 127 loaded checks answering:\n\
+  \  - FastAPI + React `cyc_a627e48d622d` was accepted, 21 of 21, after one correction\
+  \ round.\n  - Next.js `cyc_bbedc850e6ff` was rejected, 16 of 17, on #2395, which\
+  \ is placed in 2.4. Its boot audit passed: the app\n    installs, builds and boots,\
+  \ answers its 4 contract probes, and renders each of its 3 declared routes. The\
+  \ plan asked\n    QA for page tests the stack can't run. One version of the suite\
+  \ needed a DOM library the stack doesn't seed, so it\n    was never collected. Another\
+  \ rendered the pages on the server and saw only their loading state. Each repair\
+  \ passed\n    patch verification's static rows and was refused at the retest.\n\
+  \  - The owner counted the round for the exit rule, since its only failure was #2395,\
+  \ a finding already placed (D6).\n- **The second shakeout**, `cmp_dc2abcf0af3a`,\
+  \ on the same deploy, closed `success` on its objective in 68 minutes:\n  - its\
+  \ calibration `cyc_fd8c6216afac` was accepted;\n  - both increments were accepted\
+  \ on their first cycle, with no repair or retry cycle and no escalation. The first\
+  \ added a\n    leave button beside each participant (`cyc_cbf65f6fb670`, T1–T2).\
+  \ The second hid the detail view's empty optional\n    fields (`cyc_f6bfb0b88ebd`,\
+  \ T3–T5), and T1–T2 held;\n  - every route held, and each detail page was seeded\
+  \ and read. The supervisor approved each proposal as written, as the\n    shakeout's\
+  \ delegate.\n\n**Campaigns (SIP-0109).**\n- **A detail page spelled apart from its\
+  \ API collection is read.** To read a detail page, the increment evaluation\n  first\
+  \ creates the resource the page shows.\n  - It had taken the page's own spelling\
+  \ as the API collection, so `/run/:run_id` over `POST /runs` got no seed. The\n\
+  \    page was never read, and every increment of the campaign was blocked whatever\
+  \ it built.\n  - When the spelling names no create, the collection is now the one\
+  \ the API names for the same parameter\n    (`GET /runs/{run_id}`). When none does,\
+  \ or two do, the page stays unseeded.\n  - A page no seed reaches is logged, and\
+  \ is recorded as `not read, no seed brings its page into being` in the\n    evaluation\
+  \ and the boot audit, not as \"not rendered\".\n  - Of the 598 parameterized routes\
+  \ in every stored manifest, 597 are now seeded (#2398; #2399, #2400).\n- **A late\
+  \ answer on a closed campaign reaches the stored digest:**\n  - the answer route\
+  \ materializes the package again, as a close or an abort does;\n  - the answer records\
+  \ who gave it, `human:<principal>` or `agent:<principal>` (`campaigns answer --as-agent`),\
+  \ as a\n    gate decision does;\n  - its digest line ends its sentence once.\n\n\
+  \  `answered_by` reads `human:owner` where it read `owner`. The one historical row\
+  \ keeps its bare principal\n  (#2305; #2389).\n\n**Verification.**\n- **A failed\
+  \ cycle does not read `accepted`.** A failed run's adverse verdict now stands at\
+  \ cycle scope, unless a later\n  run of the same workload re-executed its work.\
+  \ The 2.3 cut's set 1 fourth roll had read `verdict: accepted` beside\n  `status:\
+  \ failed`, and the 2.3.0 package carried a warning for it (#2384; #2391).\n- **Patch\
+  \ verification banks a row it could not execute before the repair's execution of\
+  \ the same criterion,** so the\n  execution is the criterion's final state. A backend-only\
+  \ increment's three view compiles had read `missing_tooling`\n  after a developer\
+  \ repair executed and passed them. This could understate a record but not reject\
+  \ a correct increment\n  (#2381; #2392).\n\n**Scaffold.**\n- **The signature check\
+  \ accepts a query parameter added beside the scaffold's,** and still refuses a removed\
+  \ or renamed\n  scaffold parameter, or an added body one. A correct handler reading\
+  \ `name: str = Query(\"\")` had been refused, and the\n  accepted repair worked\
+  \ around it with a module-level `ContextVar`. The proper fix, an endpoint that declares\
+  \ its\n  query parameters, stays with 2.4's output-quality work (#2378, the smaller\
+  \ fix; #2390).\n- **The Next.js scaffold's vitest config compiles a page's JSX for\
+  \ the runtime it has** (`esbuild: { jsx: 'automatic'\n  }`). A suite that rendered\
+  \ a page had failed \"React is not defined\" inside the page module, where no repair\
+  \ either\n  role may make reaches it (#2394; #2396).\n\n**Runtime.**\n- **The runtime\
+  \ API holds no AMQP connection of its own.** Every publish goes through the queue\
+  \ port, and the unused\n  connection and channel opened at startup are gone (#2322;\
+  \ #2388).\n\n**Plans and records.**\n- The 2.3.1 plan, adopted, with its rulings\
+  \ D1–D6 and each round's record (#2386, #2396, #2399, and this release).\n- The\
+  \ regression pair configs for rounds 1–3 and the shakeout campaign's definition\
+  \ (#2393, #2397, #2400).\n- The v2.3.0 package: the cut's evidence, screenshots,\
+  \ the records on the Release and housekeeping (#2385).\n\n**Placed in 2.4, not fixed\
+  \ here:**\n- #2297: QA's test author was shown the leave endpoint and used it exactly.\
+  \ The planned \"empty name\" case can't be\n  expressed against a name in the path.\
+  \ It is an output-quality finding.\n- #2395: a Next.js plan asks QA for page-state\
+  \ tests that the stack's vitest can't run.\n- #2378's proper fix.\n\n**What the\
+  \ evidence does not cover:**\n- **#2305** needs a closed campaign with a pending\
+  \ escalation, so it is read in its wiring test only.\n- **#2378** needs a manifest\
+  \ that chooses a query parameter. No manifest on the line chose one, so it is read\
+  \ in its\n  wiring test and its loaded checks only.\n- **#2384** needs a run that\
+  \ fails on a framework error. Round 1's Next.js implementation run failed on a plan\
+  \ defect,\n  and its cycle read `rejected`. No run failed on a framework error,\
+  \ the case the 2.3 cut's roll hit, so it is read in\n  its wiring test and its loaded\
+  \ check.\n- **#2394** needs a plan that asks QA to render a page. Round 3's Next.js\
+  \ plan did, and its pages compiled and rendered under the suite. The tests then\
+  \ failed on #2395.\n- **#2398** needs a calibration that spells its detail page\
+  \ apart from its API. The second shakeout's calibration\n  spelled it as its API\
+  \ does (`/runs/:run_id`), so the fallback did not run live. It is read in its wiring\
+  \ test against\n  the first shakeout's stored manifest, in both loaded checks on\
+  \ the deploy, and over the 598 stored routes.\n- **The tagged tree against the validated\
+  \ deploy** (`7aecfa0b`, `dep_d35eb75c759b`): nothing under `src/` or\n  `adapters/`\
+  \ differs. The differences are the round-3 configs, one loaded check's expected\
+  \ answer (#2400), the version\n  and the release's documents.\n\n**Upgrade from\
+  \ 2.3.0:** no migration and no configuration change. Rebuild the runtime API and\
+  \ the agents."
+pull_requests:
+- number: 2403
+  title: 'chore(release): 2.3.1 — what a campaign''s records and checks say is what
+    happened: bump, markers, CHANGELOG, ROADMAP entry, the record, the SIP sweep'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-10-17'
+- number: 2400
+  title: 'docs(plans): 2.3.1''s round-3 regression pair configs, uncounted, on dep_d35eb75c759b
+    from 7aecfa0b; the 2084 loaded row reads the seed helper as it now answers'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-10-17'
+- number: 2399
+  title: 'fix(campaigns): a detail page spelled apart from its API collection is seeded
+    by its parameter, and a page no seed reaches is recorded as never read'
+  author: jasonLadd
+  labels: []
+  closes:
+  - 2398
+  merged_at: '2026-10-17'
+- number: 2397
+  title: 'docs(plans): 2.3.1''s round-2 regression pair configs — uncounted, on dep_aad7eb54eacc
+    from de7a09a7'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-10-17'
+- number: 2396
+  title: 'fix(scaffold): the Next.js vitest config compiles a page''s JSX for the
+    runtime it has, so a suite that renders a page reaches its assertions'
+  author: jasonLadd
+  labels: []
+  closes:
+  - 2394
+  merged_at: '2026-10-17'
+- number: 2393
+  title: 'docs(plans): 2.3.1''s regression pair configs and shakeout campaign — uncounted,
+    on dep_4da309b688d4 from 69ddf158'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-10-16'
+- number: 2392
+  title: 'fix(correction): patch verification banks a row it could not execute before
+    the repair''s execution of the same criterion'
+  author: jasonLadd
+  labels: []
+  closes:
+  - 2381
+  merged_at: '2026-10-16'
+- number: 2391
+  title: 'fix(verification): a failed run''s adverse verdict stands at cycle scope,
+    so a failed cycle does not read accepted'
+  author: jasonLadd
+  labels: []
+  closes:
+  - 2384
+  merged_at: '2026-10-16'
+- number: 2390
+  title: 'fix(scaffold): the signature check accepts a query parameter added beside
+    the scaffold''s, and still refuses a removed, renamed or added body one'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-10-16'
+- number: 2389
+  title: 'fix(campaigns): a late answer on a closed campaign reaches the stored digest,
+    says who gave it, and ends its sentence once'
+  author: jasonLadd
+  labels: []
+  closes:
+  - 2305
+  merged_at: '2026-10-16'
+- number: 2388
+  title: 'fix(runtime): the runtime API holds no AMQP connection of its own — every
+    publish goes through the queue port'
+  author: jasonLadd
+  labels: []
+  closes:
+  - 2322
+  merged_at: '2026-10-16'
+- number: 2386
+  title: 'docs(plans): the 2.3.1 plan, adopted — the five items the owner placed after
+    the 2.3 cut, and the failed-cycle roll-up'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-10-16'
+- number: 2385
+  title: 'docs(release): the v2.3.0 package — the cut''s evidence, screenshots, records
+    on the Release, housekeeping'
+  author: jasonLadd
+  labels: []
+  closes: []
+  merged_at: '2026-10-16'
+sip_moves: []
+sip_amendments:
+- sip: SIP-0088-Agent-Runtime-Modes
+  status: accepted
+- sip: SIP-0090-Agent-Embodiment-Substrate
+  status: accepted
+- sip: SIP-0091-Duty-Durability-via-Temporal
+  status: accepted
+- sip: SIP-0092-Implementation-Plan-Improvement
+  status: accepted
+- sip: SIP-0093-Multi-Role-Plan-Authoring
+  status: accepted
+- sip: SIP-0101-Cycle-Replay-Harness
+  status: accepted
+- sip: SIP-0102-Ephemeral-Application-Sandbox
+  status: accepted
+- sip: SIP-0105-Stack-Blueprint-Contract
+  status: accepted
+- sip: SIP-0109-Campaign-Orchestration
+  status: accepted
+- sip: SIP-0110-Cross-Cycle-Memory
+  status: accepted
+- sip: SIP-0111-TensorFold-Provider-Adapter
+  status: accepted
+- sip: SIP-Agent-Comms-Delivery-Guarantees
+  status: proposed
+- sip: SIP-Cycle-Request-Profile-Naming-Taxonomy
+  status: proposed
+cycles:
+- cycle_id: cyc_ee3b645e51bd
+  role: shakeout
+  captured: true
+  status: completed
+  verdict: accepted
+  verified:
+  - acceptance:additive_containment
+  - acceptance:assertion_kinds_match
+  - acceptance:client_mock_surface
+  - acceptance:command_exit_zero
+  - acceptance:contract_assertions_match
+  - acceptance:declared_imports
+  - acceptance:dom_anchor_queries
+  - acceptance:endpoint_defined
+  - acceptance:fill_slot_signature
+  - acceptance:frontend_compiles
+  - acceptance:function_defined
+  - acceptance:harness_boundary
+  - acceptance:import_present
+  - acceptance:module_imports
+  - acceptance:regex_match
+  - acceptance:undefined_names
+  - acceptance:unterminated_source
+  - acceptance_criteria_prose
+  - expected_artifacts
+  - frontend_build
+  - no_self_mocking_tests
+  - no_stub_fallback_tests
+  - non_stub_files
+  - required_files
+  - tests_pass
+  - vc-probe-runs
+  - vc-probe-runs-join
+  - vc-probe-runs-join-duplicate
+  - vc-probe-runs-leave
+  - vc-probe-runs-rejects-blank
+  failed: []
+  required_unmet: []
+  unverified: []
+  run_count: 2
+- cycle_id: cyc_31a49b2cdde6
+  role: shakeout
+  captured: true
+  status: failed
+  verdict: rejected
+  verified:
+  - acceptance:additive_containment
+  - acceptance:assertion_kinds_match
+  - acceptance:declared_imports
+  - acceptance:dom_anchor_queries
+  - acceptance:frontend_compiles
+  - acceptance:undefined_names
+  - acceptance:unterminated_source
+  - acceptance_criteria_prose
+  - expected_artifacts
+  - frontend_build
+  - no_self_mocking_tests
+  - no_stub_fallback_tests
+  - non_stub_files
+  - required_files
+  - tests_pass
+  - vc-probe-api-runs
+  - vc-probe-api-runs-join
+  - vc-probe-api-runs-join-duplicate
+  - vc-probe-api-runs-leave
+  - vc-probe-api-runs-rejects-blank
+  failed:
+  - tests_pass
+  required_unmet: []
+  unverified: []
+  run_count: 3
+- cycle_id: cyc_12d8a215d46f
+  role: shakeout
+  captured: true
+  status: completed
+  verdict: accepted
+  verified:
+  - acceptance:additive_containment
+  - acceptance:assertion_kinds_match
+  - acceptance:client_mock_surface
+  - acceptance:command_exit_zero
+  - acceptance:contract_assertions_match
+  - acceptance:declared_imports
+  - acceptance:dom_anchor_queries
+  - acceptance:endpoint_defined
+  - acceptance:fill_slot_signature
+  - acceptance:frontend_compiles
+  - acceptance:function_defined
+  - acceptance:harness_boundary
+  - acceptance:import_present
+  - acceptance:module_imports
+  - acceptance:undefined_names
+  - acceptance:unterminated_source
+  - acceptance_criteria_prose
+  - expected_artifacts
+  - frontend_build
+  - no_self_mocking_tests
+  - no_stub_fallback_tests
+  - non_stub_files
+  - required_files
+  - tests_pass
+  - vc-probe-runs
+  - vc-probe-runs-join
+  - vc-probe-runs-join-duplicate
+  - vc-probe-runs-rejects-blank
+  failed: []
+  required_unmet: []
+  unverified: []
+  run_count: 2
+- cycle_id: cyc_c0245ee52747
+  role: shakeout
+  captured: true
+  status: completed
+  verdict: accepted
+  verified:
+  - acceptance:additive_containment
+  - acceptance:assertion_kinds_match
+  - acceptance:declared_imports
+  - acceptance:dom_anchor_queries
+  - acceptance:frontend_compiles
+  - acceptance:undefined_names
+  - acceptance:unterminated_source
+  - acceptance_criteria_prose
+  - expected_artifacts
+  - frontend_build
+  - no_self_mocking_tests
+  - no_stub_fallback_tests
+  - non_stub_files
+  - required_files
+  - tests_pass
+  - vc-probe-api-runs
+  - vc-probe-api-runs-join
+  - vc-probe-api-runs-join-duplicate
+  - vc-probe-api-runs-leave
+  failed: []
+  required_unmet: []
+  unverified: []
+  run_count: 2
+- cycle_id: cyc_bda7ed244671
+  role: shakeout
+  captured: true
+  status: completed
+  verdict: accepted
+  verified:
+  - acceptance:additive_containment
+  - acceptance:assertion_kinds_match
+  - acceptance:client_mock_surface
+  - acceptance:command_exit_zero
+  - acceptance:contract_assertions_match
+  - acceptance:declared_imports
+  - acceptance:dom_anchor_queries
+  - acceptance:endpoint_defined
+  - acceptance:fill_slot_signature
+  - acceptance:frontend_compiles
+  - acceptance:function_defined
+  - acceptance:harness_boundary
+  - acceptance:import_present
+  - acceptance:module_imports
+  - acceptance:undefined_names
+  - acceptance:unterminated_source
+  - acceptance_criteria_prose
+  - expected_artifacts
+  - frontend_build
+  - no_self_mocking_tests
+  - no_stub_fallback_tests
+  - non_stub_files
+  - required_files
+  - tests_pass
+  - vc-probe-runs
+  - vc-probe-runs-participants
+  - vc-probe-runs-participants-duplicate
+  - vc-probe-runs-rejects-blank
+  failed: []
+  required_unmet: []
+  unverified: []
+  run_count: 2
+- cycle_id: cyc_f479d21e05ac
+  role: shakeout
+  captured: true
+  status: completed
+  verdict: accepted
+  verified:
+  - acceptance:additive_containment
+  - acceptance:assertion_kinds_match
+  - acceptance:client_mock_surface
+  - acceptance:command_exit_zero
+  - acceptance:contract_assertions_match
+  - acceptance:declared_imports
+  - acceptance:dom_anchor_queries
+  - acceptance:endpoint_defined
+  - acceptance:fill_slot_signature
+  - acceptance:frontend_compiles
+  - acceptance:function_defined
+  - acceptance:harness_boundary
+  - acceptance:import_present
+  - acceptance:module_imports
+  - acceptance:undefined_names
+  - acceptance:unterminated_source
+  - acceptance_criteria_prose
+  - expected_artifacts
+  - frontend_build
+  - no_self_mocking_tests
+  - no_stub_fallback_tests
+  - non_stub_files
+  - required_files
+  - tests_pass
+  - vc-probe-runs
+  - vc-probe-runs-participants
+  - vc-probe-runs-participants-duplicate
+  - vc-probe-runs-rejects-blank
+  failed: []
+  required_unmet: []
+  unverified: []
+  run_count: 3
+- cycle_id: cyc_7c01dc033550
+  role: shakeout
+  captured: true
+  status: completed
+  verdict: accepted
+  verified:
+  - acceptance:additive_containment
+  - acceptance:assertion_kinds_match
+  - acceptance:client_mock_surface
+  - acceptance:command_exit_zero
+  - acceptance:contract_assertions_match
+  - acceptance:declared_imports
+  - acceptance:dom_anchor_queries
+  - acceptance:endpoint_defined
+  - acceptance:fill_slot_signature
+  - acceptance:frontend_compiles
+  - acceptance:function_defined
+  - acceptance:harness_boundary
+  - acceptance:import_present
+  - acceptance:module_imports
+  - acceptance:undefined_names
+  - acceptance:unterminated_source
+  - acceptance_criteria_prose
+  - expected_artifacts
+  - frontend_build
+  - no_self_mocking_tests
+  - no_stub_fallback_tests
+  - non_stub_files
+  - required_files
+  - tests_pass
+  - vc-probe-runs
+  - vc-probe-runs-participants
+  - vc-probe-runs-participants-duplicate
+  - vc-probe-runs-rejects-blank
+  failed: []
+  required_unmet: []
+  unverified: []
+  run_count: 1
+- cycle_id: cyc_a627e48d622d
+  role: shakeout
+  captured: true
+  status: completed
+  verdict: accepted
+  verified:
+  - acceptance:additive_containment
+  - acceptance:assertion_kinds_match
+  - acceptance:client_mock_surface
+  - acceptance:command_exit_zero
+  - acceptance:contract_assertions_match
+  - acceptance:declared_imports
+  - acceptance:dom_anchor_queries
+  - acceptance:endpoint_defined
+  - acceptance:fill_slot_signature
+  - acceptance:frontend_compiles
+  - acceptance:function_defined
+  - acceptance:harness_boundary
+  - acceptance:import_present
+  - acceptance:module_imports
+  - acceptance:undefined_names
+  - acceptance:unterminated_source
+  - acceptance_criteria_prose
+  - expected_artifacts
+  - frontend_build
+  - no_self_mocking_tests
+  - no_stub_fallback_tests
+  - non_stub_files
+  - required_files
+  - tests_pass
+  - vc-probe-runs
+  - vc-probe-runs-join
+  - vc-probe-runs-join-duplicate
+  - vc-probe-runs-leave
+  - vc-probe-runs-rejects-blank
+  failed: []
+  required_unmet: []
+  unverified: []
+  run_count: 2
+- cycle_id: cyc_bbedc850e6ff
+  role: shakeout
+  captured: true
+  status: completed
+  verdict: rejected
+  verified:
+  - acceptance:additive_containment
+  - acceptance:assertion_kinds_match
+  - acceptance:declared_imports
+  - acceptance:dom_anchor_queries
+  - acceptance:frontend_compiles
+  - acceptance:undefined_names
+  - acceptance:unterminated_source
+  - acceptance_criteria_prose
+  - expected_artifacts
+  - frontend_build
+  - no_self_mocking_tests
+  - no_stub_fallback_tests
+  - non_stub_files
+  - required_files
+  - tests_pass
+  - vc-probe-api-runs
+  - vc-probe-api-runs-join
+  - vc-probe-api-runs-join-duplicate
+  - vc-probe-api-runs-leave
+  failed:
+  - tests_pass
+  required_unmet: []
+  unverified: []
+  run_count: 2
+- cycle_id: cyc_fd8c6216afac
+  role: shakeout
+  captured: true
+  status: completed
+  verdict: accepted
+  verified:
+  - acceptance:additive_containment
+  - acceptance:assertion_kinds_match
+  - acceptance:client_mock_surface
+  - acceptance:command_exit_zero
+  - acceptance:contract_assertions_match
+  - acceptance:declared_imports
+  - acceptance:dom_anchor_queries
+  - acceptance:endpoint_defined
+  - acceptance:fill_slot_signature
+  - acceptance:frontend_compiles
+  - acceptance:function_defined
+  - acceptance:harness_boundary
+  - acceptance:import_present
+  - acceptance:module_imports
+  - acceptance:undefined_names
+  - acceptance:unterminated_source
+  - acceptance_criteria_prose
+  - expected_artifacts
+  - frontend_build
+  - no_self_mocking_tests
+  - no_stub_fallback_tests
+  - non_stub_files
+  - required_files
+  - tests_pass
+  - vc-probe-runs
+  - vc-probe-runs-join
+  - vc-probe-runs-join-duplicate
+  - vc-probe-runs-leave
+  - vc-probe-runs-ordered
+  - vc-probe-runs-rejects-blank
+  - vc-probe-runs-seed
+  failed: []
+  required_unmet: []
+  unverified: []
+  run_count: 2
+- cycle_id: cyc_cbf65f6fb670
+  role: shakeout
+  captured: true
+  status: completed
+  verdict: accepted
+  verified:
+  - acceptance:additive_containment
+  - acceptance:assertion_kinds_match
+  - acceptance:client_mock_surface
+  - acceptance:command_exit_zero
+  - acceptance:declared_imports
+  - acceptance:dom_anchor_queries
+  - acceptance:endpoint_defined
+  - acceptance:frontend_compiles
+  - acceptance:import_present
+  - acceptance:module_imports
+  - acceptance:undefined_names
+  - acceptance:unterminated_source
+  - acceptance_criteria_prose
+  - expected_artifacts
+  - frontend_build
+  - no_self_mocking_tests
+  - no_stub_fallback_tests
+  - non_stub_files
+  - required_files
+  - tests_pass
+  - vc-probe-runs
+  - vc-probe-runs-join
+  - vc-probe-runs-join-duplicate
+  - vc-probe-runs-leave
+  - vc-probe-runs-ordered
+  - vc-probe-runs-rejects-blank
+  - vc-probe-runs-seed
+  failed: []
+  required_unmet: []
+  unverified: []
+  run_count: 3
+- cycle_id: cyc_f6bfb0b88ebd
+  role: shakeout
+  captured: true
+  status: completed
+  verdict: accepted
+  verified:
+  - acceptance:additive_containment
+  - acceptance:assertion_kinds_match
+  - acceptance:client_mock_surface
+  - acceptance:command_exit_zero
+  - acceptance:declared_imports
+  - acceptance:dom_anchor_queries
+  - acceptance:endpoint_defined
+  - acceptance:frontend_compiles
+  - acceptance:import_present
+  - acceptance:module_imports
+  - acceptance:undefined_names
+  - acceptance:unterminated_source
+  - acceptance_criteria_prose
+  - expected_artifacts
+  - frontend_build
+  - no_self_mocking_tests
+  - no_stub_fallback_tests
+  - non_stub_files
+  - required_files
+  - tests_pass
+  - vc-probe-runs
+  - vc-probe-runs-join
+  - vc-probe-runs-join-duplicate
+  - vc-probe-runs-leave
+  - vc-probe-runs-ordered
+  - vc-probe-runs-rejects-blank
+  - vc-probe-runs-seed
+  failed: []
+  required_unmet: []
+  unverified: []
+  run_count: 3
+screenshots:
+- prefect-flow-run-round-3-nextjs-qa-page-suite-refused-at-each-retest-on-2395.png
+- prefect-flow-run-shakeout-increment-2-built-and-accepted-on-its-first-cycle.png
+- shakeout-increment-2-a-run-s-detail-with-a-leave-button-beside-each-participant.png
+- shakeout-increment-2-a-run-without-distance-pace-or-notes-hides-those-fields.png
+- shakeout-increment-2-the-create-run-form.png
+- shakeout-increment-2-the-run-list.png
+showcase:
+  cycle_id: cyc_f6bfb0b88ebd
+  reason: 'the second shakeout''s last increment on the 2.3.1 deploy: the app the
+    campaign evolved in two increments, a leave button beside each participant and
+    a run''s empty optional fields hidden, each built and accepted on its first cycle.
+    The round-3 Next.js roll''s timeline is shown beside it because its rejection,
+    on #2395, is the line''s one adverse reading'
+  role: shakeout
+records:
+  asset: squadops-2.3.1-records.tar.gz
+  sha256: e8c83dca15dcccecd5773e378be5bbe434ece3740b0ddc0f1838a5c4b817b1e2
+  files: 89
+  campaigns:
+  - cmp_dadc7c019ad6
+  - cmp_dc2abcf0af3a
+  engine_records: []
+  bytes: 223296
+  attached_at: '2026-10-17T21:11:03Z'
+  scanned:
+    secret_values: 68
+    patterns:
+    - langfuse key
+    - api key (sk-)
+    - jwt
+    - private key

@@ -14,7 +14,7 @@ Implemented: promoted at the v2.0.0 cut's SIP sweep (2026-10-04), by §13c's rea
 **Targets:** acceptance decision in the open, against the 1e ledger through roll 17 — per the §10.4 amendment (2026-08-14); implementation in whatever feature window the owner assigns. The change is qa-surface-scoped and stack-opt-in (§8), so it can ride as an even-minor feature or land per-stack.
 **Builds on:** SIP-0100 (scaffold ownership, fill slots, the frozen harness — this SIP is its test-side counterpart), SIP-0098 (verification contract; shells derive from the same manifest facts as the behavioral probes), #818 (criteria packs — the per-stack seam, including its asymmetric-default ruling), #877 (execution-model guidance — the experiment whose measured result motivates this), #866 (context completeness), #884 (the cross-role suite rewrite this SIP's frozen spine bounds).
 
-## Delivery ledger (current as of 2026-10-16)
+## Delivery ledger (current as of 2026-10-17)
 
 Kept by the rule in CLAUDE.md ("SIP System"): one row per part, updated in the PR that ships or re-places it, read at each release cut. Built from the read-only SIP-portfolio audit of 2026-10-04; `sips/PORTFOLIO.md` indexes it.
 
@@ -29,7 +29,7 @@ Kept by the rule in CLAUDE.md ("SIP System"): one row per part, updated in the P
 | §10.3 economics metric | *unverified* | — |
 | stack #1 parity (#1122) | **dropped** (closed `not_planned` 2026-09-29, the owner's 1.9.0 ruling) | — |
 | §4.3's "any role", re-read by SIP-0107 §46d item 4 (a dev edit to slot bodies is dropped) | **recorded** (§13c) | SIP-0107 §46d |
-| a failing slot assertion routed by demonstrated defect ownership, its location only saying who wrote it (§13d) | **unplaced** | #2153: the routing code stays as it is through SIP-0110's window, and is placed after it |
+| a failing slot assertion routed by demonstrated defect ownership, its location only saying who wrote it (§13d) | **placed** | 2.4.0, #2153: built after Outcome Evaluation's measurement window and measured on its yardstick (the 2.4 plan's D8, ruled 2026-10-17). SIP-0110's window, which held it, closed at the 2.2 cut |
 
 **What closes this SIP:** **Closed: promoted to implemented at the v2.0.0 cut's SIP sweep (2026-10-04),** by §13c's reading. Nothing remains placed. The §10.3 economics metric is unverified and is not a promotion criterion. §13d's routing (#2153) is a follow-on to an implemented SIP, recorded so it does not read as shipped.
 
