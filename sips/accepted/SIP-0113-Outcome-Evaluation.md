@@ -1,13 +1,15 @@
 ---
 sip_uid: '1791124609460026'
-status: proposed
+status: accepted
 title: Outcome Evaluation
 author: Jason Ladd
 created_at: '2026-10-04T00:00:00Z'
+sip_number: 113
+updated_at: '2026-10-17T23:13:12.320896Z'
 ---
-# SIP-XXXX: Outcome Evaluation
+# SIP-0113: Outcome Evaluation
 
-**Status:** Proposed (revision 2, for the owner's acceptance)
+**Status:** Accepted (2026-10-17, revision 2)
 **Revision:** 2 (2026-10-17)
 **Target:** 2.4, on the Spark lane (the 2.4 plan, adopted 2026-10-17, `docs/plans/2-4-0-plan.md`):
 - **phase 1, the instruments, reporting only:** committed for the 2.4 cut (the plan's D1 and §6.1);
@@ -69,22 +71,22 @@ contracts (its §8.2). §4.8 says what this SIP produces and reads at each.
 ## Delivery ledger (current as of 2026-10-17)
 
 One row per part that ships separately. Statuses as CLAUDE.md defines them. The 2.4 plan places phase 1 in 2.4
-(committed) and phase 2 in 2.4 conditionally. **Each part's issue is filed at acceptance,** so until then the rows
-read *unplaced*, with the plan's placement named.
+(committed) and phase 2 in 2.4 conditionally. **Phase 1's parts are placed** with the issues filed at acceptance
+(2026-10-17), each labelled `sip:0113`. Phase 2's parts stay *unplaced* until the owner rules D4 on the window's record.
 
 | part | status | where |
 |---|---|---|
 | phase 0: increment replay outside its campaign (#1959) | **shipped** | v2.1.0, PR #2026 |
 | phase 0: the per-increment scorecard (#1960) | **shipped** | v2.1.0, PR #2027 |
 | phase 0: reporting-only lint findings on the delivered app (#1937) | **shipped** | v2.1.0, PR #2088 |
-| phase 1: the scenario store and its suites (§4.1) | **unplaced** | 2.4 by the 2.4 plan (D1, D2); its issue is filed at acceptance |
-| phase 1: the runner, outside the squad's containers, on a disposable copy (§4.1; needs the sandbox's X-3, Project Lifecycle Management §8.2.2) | **unplaced** | 2.4 by the 2.4 plan; its issue is filed at acceptance |
-| phase 1: the evaluation record and its reference (§4.1, contract 5) | **unplaced** | 2.4 by the 2.4 plan; its issue is filed at acceptance |
-| phase 1: the quality baselines, Lighthouse, axe and lint (§4.2) | **unplaced** | 2.4 by the 2.4 plan; its issue is filed at acceptance |
-| phase 1: the intervention ledger's classifications (§4.3) | **unplaced** | 2.4 by the 2.4 plan; its issue is filed at acceptance |
-| phase 1: contribution and the derived metrics in the digest (§4.4, §4.6) | **unplaced** | 2.4 by the 2.4 plan; its issue is filed at acceptance |
-| phase 2: the proposer sees each goal's result (§4.5) | **unplaced** | 2.4 if D4 rules it in; otherwise the next even release |
-| phase 2: the objective's scenario measure, read by SIP-0109 §10 row 3, as a SIP-0109 amendment (§4.7) | **unplaced** | 2.4 if D4 rules it in; otherwise the next even release |
+| phase 1: the scenario store, its suites and the campaign's suite pin (§4.1, §4.7) | **placed** | 2.4.0, #2413 |
+| phase 1: the runner, outside the squad's containers, on a disposable copy (§4.1; needs the sandbox's X-3, #2421) | **placed** | 2.4.0, #2414 |
+| phase 1: the evaluation record and its reference (§4.1, contract 5) | **placed** | 2.4.0, #2415 |
+| phase 1: the quality baselines, Lighthouse, axe and lint, in the evaluator's image (§4.2) | **placed** | 2.4.0, #2416 |
+| phase 1: the intervention ledger's classifications (§4.3) | **placed** | 2.4.0, #2417 |
+| phase 1: contribution and the derived metrics in the digest (§4.4, §4.6) | **placed** | 2.4.0, #2418 |
+| phase 2: the proposer sees each goal's result (§4.5) | **unplaced** | 2.4 if D4 rules it in, with its issue filed then; otherwise the next even release |
+| phase 2: the objective's scenario measure, read by SIP-0109 §10 row 3, as a SIP-0109 amendment (§4.7) | **unplaced** | 2.4 if D4 rules it in, with its issue filed then; otherwise the next even release |
 | quality gates where phase 1's data supports a threshold (§4.2, §6) | **unplaced** | with phase 2, each with its phase-1 evidence |
 
 **What closes this SIP:** phase 1 shipped and phase 2 shipped, or phase 2 dropped by a numbered amendment the owner
@@ -101,8 +103,8 @@ dimension, its verdict and criteria, and that name stays (portfolio Q3). So the 
 - **contribution:** what it called outcome contribution (§4.4);
 - **the scenario measure:** §4.7's addition to the objective, with its fields `scenario_suite` and `scenario_target`.
 
-**Two names stay until the owner rules (A1):**
-- the SIP's own name;
+**Two names stay** (A1, ruled; the owner, 2026-10-17: "approve A1-A3 as recommended and accept 2406"):
+- the SIP's own name, *Outcome Evaluation*;
 - the idea's named metrics (Autonomous Outcome Reliability, the Autonomous Work Envelope).
 
 ## 1. Summary
@@ -220,7 +222,7 @@ from the idea: create a run, join it, leave it, and confirm the participant list
 - **The runner runs outside every squad agent's container.** §8.3's environment is the QA role's container, a squad
   task that is handed its inputs (`src/squadops/capabilities/handlers/cycle/evaluate_increment.py:3-5`). Running
   scenarios there would put their steps in a squad task's inputs.
-  - **Proposed home (A3):** the sandbox service (SIP-0102, the Spark lane's).
+  - **Its home (A3, ruled 2026-10-17):** the sandbox service (SIP-0102, the Spark lane's).
   - **Why there:** it already starts applications in least-privilege containers and launches the containers it needs.
 - **The evaluated tree is started in a disposable copy,** built from the tree and discarded afterwards. It is never
   the live tree.
@@ -310,8 +312,9 @@ calibration's reading is the campaign's **baseline**.
 **Where Lighthouse and axe are installed:**
 - **Ruled (D2):** they are added to an image, with the lock files' audit. The ruling named the QA image, because
   Chromium is there for route rendering.
-- **Revision 2 proposes the evaluator's image instead (A2).** The baselines measure the instance the scenarios read,
-  and revision 2 runs that instance outside the squad's containers.
+- **A2 (ruled 2026-10-17) moves them to the evaluator's image,** with the same lock-file audit. The baselines measure
+  the instance the scenarios read, and that instance runs outside the squad's containers. The evaluator's image is a new
+  image, which the sandbox service launches. It carries headless Chromium, Lighthouse, axe and the scenario driver.
 
 **Reporting-only until a later decision** (§6). A threshold becomes a gate only in an even release,
 with the reporting-only data in hand: the noise of each measure on unchanged code, and its
@@ -498,17 +501,19 @@ Revision 1 asked five questions. The owner ruled the 2.4 plan's recommendations:
    only in phase 2 (§4.1).
 2. **Who authors the first suite?** The supervisor drafts it, and the owner approves it. It is frozen and
    content-addressed before the window.
-3. **Lighthouse and axe:** added to an image, with the lock files' audit. The ruling named the QA image. A2 asks
-   whether revision 2's evaluator image replaces it.
+3. **Lighthouse and axe:** added to an image, with the lock files' audit. The ruling named the QA image. A2,
+   ruled at acceptance, puts them in the evaluator's image instead (§4.2).
 4. **The work classes:** the increment count, the PRD tier, and attended or unattended, declared in the objective
    (§4.6).
 5. **Phase 2's placement:** 2.4, conditional on the window's record (D1, D4).
 
 The ruling also renamed the SIP's *outcome* term (§0).
 
-### 8.1 For the owner at acceptance (A4 is ruled)
+### 8.1 Ruled at acceptance
 
-| # | question | recommendation |
+All four are ruled as recommended: A4 through SIP-0112's Q40, and A1 to A3 at acceptance (the owner, 2026-10-17: "approve A1-A3 as recommended and accept 2406").
+
+| # | question | the ruling |
 |---|---|---|
 | A1 | **The SIP's own name.** The term is renamed (§0). Does the SIP's name follow, along with the idea's metric names (AOR)? | **Keep "Outcome Evaluation".** Both lanes, the 2.4 plan and Project Lifecycle Management's contracts cite it, and the clash with SIP-0108 was in the records' terms, which are renamed. Renaming it later is a numbered amendment |
 | A2 | **Where Lighthouse and axe are installed.** D2 named the QA image | **the evaluator's image,** with the same lock-file audit. The baselines measure the instance the scenarios read, which revision 2 runs outside the squad's containers |
@@ -536,6 +541,8 @@ The ruling also renamed the SIP's *outcome* term (§0).
     - prediction 6;
     - the four acceptance questions (A1–A4).
   - **Phasing:** phase 1 committed in 2.4, and phase 2 conditional.
+  - **Accepted 2026-10-17** (the owner, 2026-10-17: "approve A1-A3 as recommended and accept 2406"), with A1 to A3 ruled as recommended. Phase 1's parts are placed in 2.4.0 with
+    their issues.
   - **After the MacBook lane's review of §4.8** (PR #2406's comment `issuecomment-6244691653`, which found no
     mismatch on this side):
     - contract 5 is named *evaluation references*;
