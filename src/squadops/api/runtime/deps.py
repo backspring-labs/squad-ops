@@ -37,6 +37,7 @@ from squadops.ports.events.cycle_event_bus import CycleEventBusPort
 from squadops.ports.events.noop import NoOpCycleEventBus
 from squadops.ports.llm.provider import LLMPort
 from squadops.ports.runtime.assignments import AssignmentPort
+from squadops.projects.registration import LocatorPolicy
 
 if TYPE_CHECKING:
     from squadops.api.runtime.health_checker import HealthChecker
@@ -115,6 +116,11 @@ def _required(request: Request, name: str, port: str) -> Any:
 def get_project_registry(request: Request) -> ProjectRegistryPort:
     """Return the ProjectRegistryPort (T14: never None at call sites)."""
     return _required(request, "project_registry", "ProjectRegistryPort")
+
+
+def get_project_locator_policy(request: Request) -> LocatorPolicy:
+    """The deploy's registration locator rules (SIP-0112 R5), built from config at start."""
+    return _required(request, "project_locator_policy", "LocatorPolicy")
 
 
 def get_cycle_registry(request: Request) -> CycleRegistryPort:

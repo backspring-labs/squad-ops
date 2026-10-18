@@ -37,13 +37,14 @@ def create_project_registry(provider: str, **kwargs) -> ProjectRegistryPort:
         from adapters.cycles.config_project_registry import ConfigProjectRegistry
 
         return ConfigProjectRegistry(**kwargs)
-    elif provider == "postgres":
+    elif provider in ("postgres", "postgres_read_only"):
         pool = kwargs.get("pool")
         if pool is None:
-            raise ValueError("pool is required for postgres project registry provider")
+            raise ValueError(f"pool is required for {provider} project registry provider")
         from adapters.cycles.postgres_project_registry import PostgresProjectRegistry
 
-        return PostgresProjectRegistry(pool=pool)
+        # R3: the read-only value is the rollback's write gate, every Project still readable.
+        return PostgresProjectRegistry(pool=pool, writable=provider == "postgres")
     raise ValueError(f"Unknown project registry provider: {provider}")
 
 

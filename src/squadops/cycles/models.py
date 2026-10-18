@@ -177,6 +177,20 @@ class ProjectNotReadyError(CycleError):
     contract 1): registering, archived or failed. A typed refusal, never a 404."""
 
 
+class ProjectRegistryReadOnlyError(CycleError):
+    """Raised when a Project is written through a registry that refuses writes (SIP-0112
+    FR-03, R3): the config file, or the writable registry with its write gate closed."""
+
+
+class ProjectIdTakenError(CycleError):
+    """Raised when a registration names a Project ID the registry already holds."""
+
+
+class RegistrationKeyConflictError(CycleError):
+    """Raised when an idempotency key that already registered a Project arrives with different
+    content: a replay must repeat its request exactly."""
+
+
 class ArtifactNotFoundError(CycleError):
     """Raised when an artifact_id cannot be found."""
 

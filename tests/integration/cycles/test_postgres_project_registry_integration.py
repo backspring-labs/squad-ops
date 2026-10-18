@@ -174,3 +174,104 @@ async def test_the_projects_cycles_hold_are_read_from_the_cycle_table(pool):
         )
 
     assert REFERENCED in await PostgresProjectRegistry(pool).referenced_project_ids()
+
+
+def _registration(key="import-1", **overrides):
+    from squadops.projects.registration import LocatorPolicy, prepare_registration
+
+    fields = {
+        "idempotency_key": key,
+        "name": "Tally",
+        "repo_uri": "https://code.example.invalid/tally/tally.git",
+        "base_ref": "refs/heads/main",
+        "contribution_mode": "review_request",
+        "owner": "Tally Maintainer",
+        "delegated_actions": ["contribution"],
+        "policy": LocatorPolicy(),
+        **overrides,
+    }
+    return prepare_registration(**fields)
+
+
+async def test_a_registration_is_written_registering_and_read_back_whole(pool):
+    """E.4.1, IR-8. Bugs caught: a field lost between the registration and the record; the
+    record written READY before its source is proven; the event missing its key, so a retry
+    could not replay."""
+    registry = PostgresProjectRegistry(pool)
+    await registry.seed_from_config(await _config_projects(), source="config/projects.yaml")
+
+    project, replayed = await registry.register_project(_registration(), actor="owner")
+
+    assert replayed is False
+    assert (project.project_id, project.lifecycle_status) == (
+        "prj-tally",
+        ProjectLifecycleStatus.REGISTERING,
+    )
+    assert project.source.base_ref == "refs/heads/main"
+    assert project.ownership.owner == "Tally Maintainer"
+    assert [p.project_id for p in await registry.list_projects()][-1] == "prj-tally"
+    assert await registry.get_project("prj-tally") == project
+    async with pool.acquire() as conn:
+        event = await conn.fetchrow(
+            "SELECT operation, actor, idempotency_key, record_version FROM project_record_events "
+            "WHERE project_id = 'prj-tally'"
+        )
+    assert dict(event) == {
+        "operation": "register",
+        "actor": "owner",
+        "idempotency_key": "import-1",
+        "record_version": 1,
+    }
+
+
+async def test_a_retry_replays_and_another_body_under_its_key_is_refused(pool):
+    from squadops.cycles.models import RegistrationKeyConflictError
+
+    registry = PostgresProjectRegistry(pool)
+    first, _ = await registry.register_project(_registration(), actor="owner")
+
+    again, replayed = await registry.register_project(_registration(), actor="owner")
+    with pytest.raises(RegistrationKeyConflictError, match="import-1"):
+        await registry.register_project(_registration(base_ref="refs/heads/dev"), actor="owner")
+
+    assert (again, replayed) == (first, True)
+    async with pool.acquire() as conn:
+        assert await conn.fetchval("SELECT count(*) FROM project_record_events") == 1
+
+
+async def test_two_retries_racing_under_one_key_register_once(pool):
+    """Bug caught: a retry racing its original, both past the key check, so the loser fails
+    on the unique index as a 500 instead of replaying."""
+    import asyncio
+
+    registry = PostgresProjectRegistry(pool)
+
+    results = await asyncio.gather(
+        *(registry.register_project(_registration(), actor="owner") for _ in range(4))
+    )
+
+    assert sorted(replayed for _, replayed in results) == [False, True, True, True]
+    assert len({project for project, _ in results}) == 1
+
+
+async def test_a_taken_id_and_a_closed_gate_write_nothing(pool):
+    from squadops.cycles.models import ProjectIdTakenError, ProjectRegistryReadOnlyError
+
+    registry = PostgresProjectRegistry(pool)
+    await registry.seed_from_config(await _config_projects(), source="config/projects.yaml")
+
+    with pytest.raises(ProjectIdTakenError, match="play_game"):
+        await registry.register_project(_registration(project_id="play_game"), actor="owner")
+    with pytest.raises(ProjectRegistryReadOnlyError, match="gated off"):
+        await PostgresProjectRegistry(pool, writable=False).register_project(
+            _registration(), actor="owner"
+        )
+
+    assert (await registry.get_project("play_game")).name != "Tally"
+    async with pool.acquire() as conn:
+        assert (
+            await conn.fetchval(
+                "SELECT count(*) FROM project_record_events WHERE operation = 'register'"
+            )
+            == 0
+        )

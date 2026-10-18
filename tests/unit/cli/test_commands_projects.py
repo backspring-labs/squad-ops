@@ -81,3 +81,73 @@ class TestProjectsShow:
         mock_get_client.return_value = mock
         result = runner.invoke(app, ["projects", "show", "nope"])
         assert result.exit_code == exit_codes.NOT_FOUND
+
+
+_IMPORT_ARGS = [
+    "projects",
+    "import",
+    "--repo",
+    "https://code.example.invalid/tally/tally.git",
+    "--name",
+    "Tally",
+    "--base-ref",
+    "refs/heads/main",
+    "--contribution-mode",
+    "review_request",
+    "--owner",
+    "Tally Maintainer",
+    "--delegate",
+    "contribution",
+    "--delegate",
+    "candidate_acceptance",
+]
+
+
+class TestProjectsImport:
+    """SIP-0112 E.4.1 (D.5, D.6). Bugs caught: a flag dropped between the command line and the
+    body; a retry minting a fresh key, so a dropped connection registers twice; a failure
+    printed without the key a safe retry needs."""
+
+    @patch("squadops.cli.commands.projects._get_client")
+    def test_the_body_carries_every_flag_and_a_minted_key_is_printed(self, mock_get_client):
+        client = MagicMock()
+        client.post.side_effect = lambda path, json: {
+            "project": {
+                "project_id": "prj-tally",
+                "lifecycle_status": "REGISTERING",
+                "record_version": 1,
+            },
+            "idempotency_key": json["idempotency_key"],
+            "replayed": False,
+        }
+        mock_get_client.return_value = client
+
+        result = runner.invoke(app, _IMPORT_ARGS)
+
+        [(path,), kwargs] = client.post.call_args
+        body = kwargs["json"]
+        assert (result.exit_code, path) == (0, "/api/v1/projects")
+        assert body["origin"] == {"mode": "import"}
+        assert body["source"] == {
+            "repo_uri": "https://code.example.invalid/tally/tally.git",
+            "base_ref": "refs/heads/main",
+            "contribution_mode": "review_request",
+            "repository_root": ".",
+        }
+        assert body["ownership"]["delegated_actions"] == ["contribution", "candidate_acceptance"]
+        assert "project_id" not in body
+        assert body["idempotency_key"].startswith("cli-")
+        assert "registered: prj-tally REGISTERING" in result.output
+        assert body["idempotency_key"] in result.output
+
+    @patch("squadops.cli.commands.projects._get_client")
+    def test_a_given_key_is_resent_and_a_failure_names_it(self, mock_get_client):
+        client = MagicMock()
+        client.post.side_effect = CLIError("422 LOCATOR_REFUSED", exit_codes.GENERAL_ERROR)
+        mock_get_client.return_value = client
+
+        result = runner.invoke(app, [*_IMPORT_ARGS, "--idempotency-key", "import-7"])
+
+        assert client.post.call_args.kwargs["json"]["idempotency_key"] == "import-7"
+        assert result.exit_code == exit_codes.GENERAL_ERROR
+        assert "idempotency key import-7" in result.output

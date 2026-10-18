@@ -47,3 +47,25 @@ class ProjectOwnership:
     owner: str
     delegated_actions: tuple[str, ...] = ()
     acceptance_policy_ref: str | None = None
+
+
+class ContributionMode(StrEnum):
+    """How a verified change reaches the external product (FR-06): its owner's process, never
+    SquadOps's. Recorded at registration; E.4.3 delivers through it."""
+
+    #: a pull or merge request against ``base_ref``, for the product's own review
+    REVIEW_REQUEST = "review_request"
+    #: a patch handed to the owner to apply
+    PATCH_EXPORT = "patch_export"
+    #: a push to ``base_ref``, only where the owner has delegated integration
+    DIRECT_PUSH = "direct_push"
+
+
+class DelegatedAction(StrEnum):
+    """What the product's owner delegates to SquadOps (§B.5.1). Anything not named stays the
+    owner's; no role has implicit authority over the product."""
+
+    ENGINEERING_DECISIONS = "engineering_decisions"
+    CANDIDATE_ACCEPTANCE = "candidate_acceptance"
+    CONTRIBUTION = "contribution"
+    INTEGRATION = "integration"

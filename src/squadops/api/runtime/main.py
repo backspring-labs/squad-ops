@@ -74,6 +74,7 @@ from squadops.projects.cutover import (
     problems_on_the_config_provider,
     unknown_project_ids,
 )
+from squadops.projects.registration import LocatorPolicy
 
 from .deps import PORT_SLOTS
 from .logging_setup import configure_logging, quiet_routine_successes
@@ -327,8 +328,9 @@ async def _cut_over_project_registry(provider: str, registry, pool) -> None:
     """SIP-0112 FR-03 (#2408): the registry cutover, read at every start. Raises, and the
     runtime API does not serve, when a Project would be missing, shadowed or hidden.
 
-    - ``postgres``: seed each config/projects.yaml entry not seeded before, then refuse unless
-      every one is in the registry as seeded. Squad profiles' seed logs a failure and carries on;
+    - ``postgres`` or ``postgres_read_only``: seed each config/projects.yaml entry not seeded
+      before, then refuse unless every one is in the registry as seeded. The seed is the
+      cutover's own bookkeeping, so the write gate (R3) closes registration, not it. Squad profiles' seed logs a failure and carries on;
       this one can't, since an existing project would read as 404 (IR-1).
     - ``config``: refuse when the writable registry holds a registered Project, which this
       provider cannot read (R3: a rollback never makes a Project disappear).
@@ -400,9 +402,12 @@ async def _init_cycle_subsystem(state, config, pool) -> None:
 
     project_provider = config.cycles.project_registry_provider
     project_registry = create_project_registry(
-        project_provider, **({"pool": pool} if project_provider == "postgres" else {})
+        project_provider, **({"pool": pool} if project_provider != "config" else {})
     )
     await _cut_over_project_registry(project_provider, project_registry, pool)
+    state.project_locator_policy = LocatorPolicy.of(
+        config.projects.locator_allowed_hosts, config.projects.locator_local_roots
+    )
     # #1976: a transient database failure is retried inside the registry, never by its callers.
     cycle_registry = create_cycle_registry(
         config.cycles.registry_provider,

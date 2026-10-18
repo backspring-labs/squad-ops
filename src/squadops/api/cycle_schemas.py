@@ -176,6 +176,49 @@ class BaselinePromoteRequest(BaseModel):
 # =============================================================================
 
 
+class ProjectOriginRequest(BaseModel):
+    """How the Project's source comes to exist (SIP-0112 D.2). E.4.1 registers an existing
+    repository; ``new`` (greenfield, E.4.6) and ``attach`` (in place, E.4.7) come later."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    mode: Literal["import"]
+
+
+class ProjectSourceRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    repo_uri: str = Field(min_length=1, max_length=2000)
+    base_ref: str = Field(min_length=1, max_length=255)
+    contribution_mode: Literal["review_request", "patch_export", "direct_push"]
+    repository_root: str = "."
+
+
+class ProjectOwnershipRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    owner: str = Field(min_length=1, max_length=200)
+    delegated_actions: list[
+        Literal["engineering_decisions", "candidate_acceptance", "contribution", "integration"]
+    ] = Field(default_factory=list)
+    acceptance_policy_ref: str | None = None
+
+
+class ProjectRegistrationRequest(BaseModel):
+    """Register an existing product (SIP-0112 FR-02, E.4.1): ``POST /api/v1/projects``."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    idempotency_key: str = Field(min_length=1, max_length=200)
+    project_id: str | None = None
+    name: str = Field(min_length=1, max_length=200)
+    description: str = ""
+    tags: list[str] = Field(default_factory=list)
+    origin: ProjectOriginRequest
+    source: ProjectSourceRequest
+    ownership: ProjectOwnershipRequest
+
+
 class ProjectSourceResponse(BaseModel):
     """The external source binding (SIP-0112 §B.5): the authoritative locator and its refs."""
 
@@ -207,6 +250,14 @@ class ProjectResponse(BaseModel):
     source: ProjectSourceResponse | None
     ownership: ProjectOwnershipResponse | None
     development_configuration_revision: int | None
+
+
+class ProjectRegistrationResponse(BaseModel):
+    """A registration, applied or replayed: the Project, and the key a retry resends (D.6)."""
+
+    project: ProjectResponse
+    idempotency_key: str
+    replayed: bool
 
 
 class GateDecisionResponse(BaseModel):
