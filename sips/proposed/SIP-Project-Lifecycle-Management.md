@@ -266,7 +266,7 @@ whose data this SIP or Outcome Evaluation creates get a schema here.
 | 4 | when SIP-0109 records a promotion | an accepted tree with no Git mapping yet is reported as unmapped | SIP-0109's identity, unchanged; the mapping is this SIP's record | IR-5 |
 | 5 | when Outcome Evaluation writes an evaluation record | Project history shows *not evaluated*, never an inferred result; a reference whose record cannot be read is kept and marked unresolved | `OutcomeEvaluationRef` carries a schema version; its names follow Outcome Evaluation's rename (Q3) | write the fixture's recorded reference into Project history; read it back; refuse an unknown major version |
 | 6 | when SIP-0110 pins the unit's snapshot | as SIP-0110 rules: a binding instruction that cannot be resolved holds dispatch | SIP-0110's | IR-3 |
-| 7 | when a Development Configuration revision is confirmed (E.4.2) | no declaration: every scenario is `blocked_unverified`, reason "no start declaration"; a start or readiness failure: `blocked_unverified`, reason "start failed"; a newer revision never applies to a unit already pinned | part of the Development Configuration's schema version | start the fixture from its declaration; a missing declaration; a readiness timeout |
+| 7 | when a Development Configuration revision is confirmed (E.4.2) | no declaration: every scenario is `blocked_unverified`, reason "no start declaration"; a start or readiness failure: `blocked_unverified`, reason "start failed"; a declaration that needs a secret: `blocked_unverified`, reason "secret not available", until the owner rules how secrets reach an evaluation (Q40); a newer revision never applies to a unit already pinned | part of the Development Configuration's schema version | start the fixture from its declaration; a missing declaration; a readiness timeout |
 
 **Identifiers never substitute for one another.** A Project ID, a Git commit (40 hexadecimal
 characters), a sandbox revision ID (`compute_revision_id`), a Campaign tree identity
@@ -293,7 +293,7 @@ OutcomeEvaluationRef:
   evaluation_id: str                       # Outcome Evaluation's record ID, opaque here
   suite_digest: str                        # the suite's content digest
   project_id: str
-  campaign_id: str
+  campaign_id: str | null                  # null only outside a campaign: the reference scenario (SIP-0109 §11a, #1804) and #1959 replays
   cycle_id: str
   evaluated_tree_identity: str             # SIP-0109 FileTree.identity
   previous_accepted_tree_identity: str | null
@@ -307,7 +307,7 @@ start:
   readiness: {kind: http | tcp | command, target: str, timeout_seconds: int}
   entry_points:                            # at least one
     - {kind: http_base | ui_base | other, url: str}
-  environment: {NAME: secret://ref}        # references only, never values
+  environment: {NAME: secret://ref}        # references only, never values; none resolved for evaluation until Q40 is ruled
 ```
 
 ### 8.2.2 How a Git checkout becomes the live tree
@@ -320,15 +320,21 @@ start:
   `get_revision()`), written into the managed clone and committed there. This SIP records the commit
   beside the sandbox revision it came from. The sandbox never runs Git.
 - **Three changes inside the sandbox, each a cross-lane task:** the Spark lane owns the files and reviews
-  them, and the 2.4 plan names who builds them.
+  them, and the 2.4 plan names who builds them (#2387's D12 recommends the Spark lane, with the MacBook
+  lane reviewing each as its consumer).
   - **X-1, a revision origin for a Git checkout.** `RevisionOrigin` is a closed set: `scaffold_seed`,
     `agent_patch`, `promoted_outputs`, `acceptance_assembly` (`src/squadops/sandbox/models.py:23`).
   - **X-2, binary files.** `seed()`, `current_files()` and revision persistence read and write UTF-8 text
     only. Until X-2 ships, a product with binary files is refused at seeding with that capability gap,
     and none of its files are dropped.
-  - **X-3, a product's declared commands.** `ExecutionSandboxPort` runs a stack's install, build, tests
-    and start (`src/squadops/ports/sandbox.py:33`). Contract 7 needs it, or the evaluation runner, to run
-    a product's own declaration.
+  - **X-3, a product's declared commands, in a disposable copy.** `ExecutionSandboxPort` runs a stack's
+    install, build, tests and start (`src/squadops/ports/sandbox.py:33`), and `start_application` mounts
+    the cycle's live tree and runs the app as its owner, so the app can write its state there
+    (`adapters/sandbox/container_backend.py:157-164`, `:316-321`). Contract 7 needs the sandbox, or the
+    evaluation runner, to run a product's own declaration at the revision the unit pinned, and to start
+    that revision in a disposable copy built from it and discarded afterwards, never the live tree
+    (contract 3). Declared commands keep the sandbox's least-privilege posture (`cap_drop_all`,
+    `no_new_privileges`, the workspace owner's uid).
 - **Neither feature waits on the other's internals:** E.4.2 works for text-only products before X-2, and
   the fixture (§8.2.3) stands in for each lane's outputs until they ship.
 
@@ -440,6 +446,8 @@ window deploy. This SIP states them; the plan sequences them.
 - *Corrections:* contracts 1, 2 and 3; IR-7 reads "its first Campaign", since Outcome Evaluation's unit is a campaign's calibration and its increments (its revision 1 §4.1–§4.2).
 - *Missing:* contract 7, how the product is started for evaluation; approved by the owner as written, 2026-10-17.
 - *Agreed as drafted:* §8.1; contracts 4 and 6; §8.3 items 2, 3 and 5; IR-1 to IR-3, IR-5, IR-8 to IR-10 (IR-10's pair is standalone cycles, so Outcome Evaluation does not run in it); IR-6 once contract 7 exists; G1 to G4; G6 with its phase-2 change.
+
+**Its review of revision 7** (2026-10-17, PR #2401's comment `issuecomment-6244205163`, read at `3755c352`) agrees with §8.2.1, §8.3.1 and the fixture, and found nothing that conflicts with Outcome Evaluation's revision 2 as the Spark lane intends it. Its two changes are applied: X-3 starts a pinned revision in a disposable copy, and `OutcomeEvaluationRef.campaign_id` is nullable. It raised Q40 for the owner, how secrets reach an evaluation, with the interim rule now in contract 7's row. Its design notes on X-1 to X-3 are for their G4 reviews.
 
 **What the Spark lane changes on its side,** in Outcome Evaluation's revision 2 for the owner's design review: scenarios declare their surfaces, a manifest is optional, and the runner runs outside the squad's containers (its §4.1); phase 1's suite is pinned on the campaign; the evaluation record and its ID; *not applicable* kept apart from `blocked_unverified`; and its *outcome* term renamed before phase 1 ships (the portfolio's Q3), which contract 5's names follow.
 
@@ -1588,4 +1596,4 @@ All paths below are relative to `backspring-labs/squad-ops` at commit `7aecfa0b3
 | 4 | 2026-10-17 | Keeps external owner authority explicit; adds inherited build/test baselines and separate regression attribution; defines instruction precedence/profile drift; makes enhancement of an existing external product across outside contributions the primary proof; separates the directional core from detailed implementation appendices. |
 | 5 | 2026-10-17 | Reconciles the owner's design review (PR #2401). Q30: SIP-0047 retired as a runtime contract, its principles kept (A.1, E.2). Q31: instruction records, versioning, applicability and snapshot binding are SIP-0110's; this SIP discovers repository instructions, holds development configuration and detects drift, and an admitted snapshot changes only by re-binding (B.5.1, FR-21). Q32: the Project Record and Project Development Configuration replace the Project Manifest (B.5). Q33: the Pulse IDEAs non-normative, SIP-0070's Pulse kept (A.2), FR-17 restated as capabilities for future adapters. Q34: greenfield creation required (E.4.6). Q35: the 2.4 parallel development agreement (§8). Adds the boundaries with SIP-0105 and SIP-0108 (B.4.1) and with Outcome Evaluation (§8.3); renames *check outcome* to *check result*. Q36, ruled the same day: the second record named the *Project Development Configuration*, and its keys renamed to match (B.5). The Pulse IDEAs committed under `docs/ideas/` with non-normative headers; the game SIP filed (PR #2405). |
 | 6 | 2026-10-17 | Applies the Spark lane's compatibility review of §8 (§8.6, PR #2401's comment `issuecomment-6242996612`, read at `b4bbeb56`): outcome results kept out of squad roles' inputs before Outcome Evaluation's phase 2 (contract 5, FR-04, FR-09); no scenario against a live tree (contract 3); squad task inputs and containers in the independence list and IR-4; each lane done on its own evidence (G5, G6) and the window's frozen deploy (G7); contracts 1, 2 and 3 and IR-7 corrected; contract 7 added, how a product is started for evaluation, approved by the owner as written, 2026-10-17. The owner ruled the same day that the 2.4 cut requires greenfield (E.4.6) shipped (G6), approved G4–G7 as written, and kept the author as Framework Committee. |
-| 7 | 2026-10-17 | The tightening review: each contract's availability, absent or stale behavior, versioning and minimum test, with schemas for contracts 1, 5 and 7 (§8.2.1); the sandbox boundary and the cross-lane tasks X-1 to X-3 (§8.1, §8.2.2); the shared fixture (§8.2.3); status vocabularies (§8.3.1); evidence tiers and the *not run* record (§8.5, the owner's clarification); the 2.4 plan cross-reference; FR-02's required and optional levels; E.4's dependencies, rollback moved into E.4.1, and E.4.5 required before close but not in 2.4 (the owner's ruling); F.4 classified. |
+| 7 | 2026-10-17 | The tightening review: each contract's availability, absent or stale behavior, versioning and minimum test, with schemas for contracts 1, 5 and 7 (§8.2.1); the sandbox boundary and the cross-lane tasks X-1 to X-3 (§8.1, §8.2.2); the shared fixture (§8.2.3); status vocabularies (§8.3.1); evidence tiers and the *not run* record (§8.5, the owner's clarification); the 2.4 plan cross-reference; FR-02's required and optional levels; E.4's dependencies, rollback moved into E.4.1, and E.4.5 required before close but not in 2.4 (the owner's ruling); F.4 classified. Then the Spark lane's review of revision 7: X-3 runs in a disposable copy, `campaign_id` nullable, and Q40 opened for the owner (how secrets reach an evaluation). |
