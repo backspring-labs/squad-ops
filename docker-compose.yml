@@ -863,6 +863,8 @@ services:
       PREFECT_API_PUBLIC_URL: http://localhost:4200
       LANGFUSE_API_URL: http://squadops-langfuse:3000
       LANGFUSE_API_PUBLIC_URL: http://localhost:3001
+      # #2431: the console reads every setting here as required; the realm names its tab.
+      SQUADOPS_REALM: ${SQUADOPS_REALM:-squadops-dev}
       KEYCLOAK_URL: http://squadops-keycloak:8080/realms/${SQUADOPS_REALM:-squadops-dev}
       KEYCLOAK_PUBLIC_URL: http://${SQUADOPS_HOST:-localhost}:8180/realms/${SQUADOPS_REALM:-squadops-dev}
       CONSOLE_CLIENT_ID: squadops-console
