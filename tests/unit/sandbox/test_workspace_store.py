@@ -350,6 +350,62 @@ class TestExecutableBit:
         assert store.current_files("cyc_1") == {}
 
 
+class TestDisposableCopy:
+    def test_a_copy_holds_exactly_the_pinned_revision_and_is_gone_after(self, store):
+        """X-3a (#2421), contract 3. Bug caught: a copy that drops a binary or an executable
+        bit, carries an install's untracked node_modules, outlives the command, or shares
+        files with the live tree."""
+        files = {**FILES, "assets/mark.png": PNG, "gradlew": "#!/bin/sh\n"}
+        rev = store.seed("cyc_1", files, origin=RevisionOrigin.GIT_CHECKOUT, executable={"gradlew"})
+        ws = store.workspace_dir("cyc_1")
+        (ws / "node_modules").mkdir()
+        (ws / "node_modules/x.js").write_text("installed", encoding="utf-8")
+
+        with store.disposable_copy("cyc_1", rev.revision_id) as copy:
+            held = {
+                p.relative_to(copy).as_posix(): p.read_bytes()
+                for p in copy.rglob("*")
+                if p.is_file()
+            }
+            assert held == {p: content_bytes(c) for p, c in files.items()}
+            assert (copy / "gradlew").stat().st_mode & 0o100
+            (copy / "backend/main.py").write_text("changed in the copy", encoding="utf-8")
+
+        assert not copy.exists()
+        assert store.verify_pinned("cyc_1", rev.revision_id)
+
+    def test_a_tree_that_moves_while_it_is_copied_yields_no_copy(self, store, monkeypatch):
+        """Bug caught (the MacBook lane's review of #2447): a patch landing between the pin's
+        check and the read, so the copy mixed two revisions and a check ran on a tree no
+        revision names."""
+        rev = store.seed("cyc_1", FILES, origin=RevisionOrigin.SCAFFOLD_SEED)
+        read, reads = store.current_files, []
+
+        def a_patch_lands_after_the_pin_check(cycle_id, **kw):
+            reads.append(cycle_id)
+            files = read(cycle_id, **kw)
+            return files if len(reads) == 1 else {**files, "backend/main.py": "patched meanwhile"}
+
+        monkeypatch.setattr(store, "current_files", a_patch_lands_after_the_pin_check)
+
+        with pytest.raises(StaleBaseRevisionError, match="moved while"):
+            with store.disposable_copy("cyc_1", rev.revision_id):
+                pass
+        assert not (store._cycle_dir("cyc_1") / "copies").exists() or not any(
+            (store._cycle_dir("cyc_1") / "copies").iterdir()
+        )
+
+    def test_no_copy_is_taken_from_a_tree_that_left_its_pin(self, store):
+        """Bug caught: a copy of whatever the live tree holds, so a command ran on content no
+        revision names."""
+        rev = store.seed("cyc_1", FILES, origin=RevisionOrigin.SCAFFOLD_SEED)
+        (store.workspace_dir("cyc_1") / "backend/main.py").write_text("drift", encoding="utf-8")
+
+        with pytest.raises(StaleBaseRevisionError):
+            with store.disposable_copy("cyc_1", rev.revision_id):
+                pass
+
+
 class TestPinningAndRecovery:
     def test_verify_pinned_detects_out_of_band_mutation(self, store):
         """Bug caught: clean-room verification passing against a tree that no

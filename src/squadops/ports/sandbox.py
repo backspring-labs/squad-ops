@@ -18,6 +18,7 @@ from collections.abc import Mapping
 
 from squadops.sandbox.models import (
     BuildResult,
+    CommandResult,
     DiagnosticsResult,
     FileContent,
     InstallResult,
@@ -89,6 +90,20 @@ class ExecutionSandboxPort(ABC):
     ) -> PatchResult:
         """Apply content changes (path → new content, ``None`` = delete) on top
         of ``base``, cutting a new revision (§4.6 boundary)."""
+        ...
+
+    @abstractmethod
+    async def run_declared_command(
+        self,
+        *,
+        revision: WorkspaceRevision,
+        command: tuple[str, ...],
+        working_dir: str = ".",
+        setup: tuple[tuple[str, ...], ...] = (),
+        timeout_seconds: float | None = None,
+    ) -> CommandResult:
+        """Run a product's own declared command, after its setup commands, against the
+        revision, in a disposable copy discarded afterwards (X-3a, #2421; SIP-0102 §11d)."""
         ...
 
     @abstractmethod

@@ -13,6 +13,7 @@ from collections.abc import Mapping
 from squadops.ports.sandbox import ExecutionSandboxPort
 from squadops.sandbox.models import (
     BuildResult,
+    CommandResult,
     DiagnosticsResult,
     FileContent,
     InstallResult,
@@ -86,6 +87,20 @@ class NoOpExecutionSandbox(ExecutionSandboxPort):
         return PatchResult(
             new_revision_id=base.revision_id,
             **self._common(OperationName.APPLY_WORKSPACE_PATCH, base.revision_id),
+        )
+
+    async def run_declared_command(
+        self,
+        *,
+        revision: WorkspaceRevision,
+        command: tuple[str, ...],
+        working_dir: str = ".",
+        setup: tuple[tuple[str, ...], ...] = (),
+        timeout_seconds: float | None = None,
+    ) -> CommandResult:
+        return CommandResult(
+            command=tuple(command),
+            **self._common(OperationName.RUN_DECLARED_COMMAND, revision.revision_id),
         )
 
     async def read_build_diagnostics(self, *, revision: WorkspaceRevision) -> DiagnosticsResult:

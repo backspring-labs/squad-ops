@@ -18,6 +18,7 @@ import httpx
 from squadops.ports.sandbox import ExecutionSandboxPort
 from squadops.sandbox.models import (
     BuildResult,
+    CommandResult,
     DiagnosticsResult,
     FileContent,
     InstallResult,
@@ -43,6 +44,7 @@ _RESULT_TYPES: dict[str, type[OperationResult]] = {
         ProbeResult,
         PatchResult,
         DiagnosticsResult,
+        CommandResult,
     )
 }
 
@@ -182,6 +184,30 @@ class HttpExecutionSandbox(ExecutionSandboxPort):
             },
         )
         return _rehydrate(payload)
+
+    async def run_declared_command(
+        self,
+        *,
+        revision: WorkspaceRevision,
+        command: tuple[str, ...],
+        working_dir: str = ".",
+        setup: tuple[tuple[str, ...], ...] = (),
+        timeout_seconds: float | None = None,
+    ) -> CommandResult:
+        payload = await self._operate(
+            revision,
+            OperationName.RUN_DECLARED_COMMAND,
+            {
+                "command": list(command),
+                "working_dir": working_dir,
+                "setup": [list(step) for step in setup],
+                "timeout_seconds": timeout_seconds,
+            },
+        )
+        result = _rehydrate(payload)
+        if not isinstance(result, CommandResult):
+            raise SandboxServiceError(200, f"expected a CommandResult, got {type(result).__name__}")
+        return result
 
     async def read_build_diagnostics(self, *, revision: WorkspaceRevision) -> DiagnosticsResult:
         payload = await self._operate(revision, OperationName.READ_BUILD_DIAGNOSTICS, {})
