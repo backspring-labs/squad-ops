@@ -51,6 +51,14 @@ MODEL_SPECS: dict[str, ModelSpec] = {
         reasoning_control=ReasoningControl.NONE,
         family="qwen2.5",
     ),
+    # The `lite-14b` squad's model (#2435); its context length is the one `ollama show` reports.
+    "qwen2.5:14b": ModelSpec(
+        name="qwen2.5:14b",
+        context_window=32_768,
+        default_max_completion=4_096,
+        reasoning_control=ReasoningControl.NONE,
+        family="qwen2.5",
+    ),
     "qwen2.5:32b": ModelSpec(
         name="qwen2.5:32b",
         context_window=32_768,
