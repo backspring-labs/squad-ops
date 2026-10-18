@@ -18,6 +18,7 @@ app gets the bridge it needs to publish its one port to loopback.
 from __future__ import annotations
 
 import asyncio
+import dataclasses
 import shutil
 import time
 import uuid
@@ -341,23 +342,26 @@ async def _tcp_answers(port: int, *, connect_timeout: float) -> bool:
 
 
 def _redacted(evaluation: TreeEvaluation, secrets: Collection[str]) -> TreeEvaluation:
-    """The evaluation with every resolved secret's value replaced (Q40: never in a log, a record
-    or an agent's input). An app may log its environment, or answer with a token, and the start's
-    last lines and each step's detail are returned as written. Longest first, so a value that
-    contains another is replaced whole."""
+    """The evaluation with every resolved secret's value replaced in its free text (Q40: never in a
+    log, a record or an agent's input). An app may log its environment, or answer with a token, and
+    the start's detail, its last lines and each step's detail are returned as written. Only those
+    are scrubbed: a short secret (``pass``) must not rewrite a result (``passed``), an identity or
+    a scenario id (the MacBook lane's review of #2450). Longest first, so a value that contains
+    another is replaced whole."""
     values = sorted({v for v in secrets if v}, key=len, reverse=True)
     if not values:
         return evaluation
 
-    def scrub(value: Any) -> Any:
-        if isinstance(value, str):
-            for secret in values:
-                value = value.replace(secret, _REDACTED)
-            return value
-        if isinstance(value, list):
-            return [scrub(v) for v in value]
-        if isinstance(value, dict):
-            return {k: scrub(v) for k, v in value.items()}
-        return value
+    def scrub(text: str | None) -> str | None:
+        if text is None:
+            return None
+        for secret in values:
+            text = text.replace(secret, _REDACTED)
+        return text
 
-    return TreeEvaluation.from_dict(scrub(evaluation.as_dict()))
+    return dataclasses.replace(
+        evaluation,
+        start_detail=scrub(evaluation.start_detail),
+        startup_diagnostics=tuple(scrub(line) or "" for line in evaluation.startup_diagnostics),
+        runs=tuple(dataclasses.replace(run, detail=scrub(run.detail)) for run in evaluation.runs),
+    )

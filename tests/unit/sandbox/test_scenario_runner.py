@@ -295,3 +295,19 @@ def _any_port_app():
         return httpx.Response(200, json={"name": "apples", "count": 1})
 
     return lambda: httpx.AsyncClient(transport=httpx.MockTransport(handler))
+
+
+async def test_a_short_secret_is_scrubbed_from_free_text_only(tmp_path):
+    """The MacBook lane's review of #2450. Bug caught: a secret like ``pass`` rewriting a
+    ``passed`` result into ``[redacted]ed``, or a tree identity or scenario id that happens to
+    contain it, so the record no longer says what ran."""
+    result = await _evaluate(
+        _runner(tmp_path, _Container(), app=_echo("pass")),
+        environment={"TALLY_ADMIN_TOKEN": "pass"},
+        scenarios=[{**SCENARIO, "scenario_id": "passes-through"}],
+    )
+
+    [run] = result.runs
+    assert (run.scenario_id, run.result) == ("passes-through", "failed")
+    assert "pass" not in (run.detail or "").replace("[redacted]", "")
+    assert result.tree_identity == FileTree.of(TREE).identity

@@ -653,9 +653,9 @@ by the MacBook lane as consumer (G4), for the owner's review.
   nothing a scenario does reaches a revision. This widens §7 item 2 the way §11d did: the argv is the
   product's own declaration, never an agent's output.
 - **The evaluation secrets** (SIP-0112 Q40) reach only the app container's environment. They are never
-  written or journaled, and every value is replaced with `[redacted]` in everything the runner returns:
-  an app may log its environment or answer with a token, and the start's last lines and each step's
-  detail are returned as written.
+  written or journaled, and every value is replaced with `[redacted]` in the free text the runner
+  returns. An app may log its environment or answer with a token, and the start's detail, its last lines
+  and each step's detail are returned as written. Results, identities and ids are left alone.
 - **An evaluated tree's keys are checked before anything is written** (`workspace.tree_path`): a key that
   is absolute, climbs out with `..` or isn't in its normal form is refused, and nothing runs. The tree is
   a squad's files from the vault, and a key like `../<cycle>/workspace/x` would otherwise write into a

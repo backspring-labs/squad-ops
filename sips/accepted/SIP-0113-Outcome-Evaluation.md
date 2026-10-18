@@ -654,7 +654,9 @@ within them, for the owner's review.
   the copy, whatever happened (§7 prediction 6).
 - **The steps and the evaluation secrets** travel in the request and are held for the call. They are
   never written or journaled. The secrets reach only the app's environment (Q40), and every value is
-  redacted from what the runner returns, the app's own last lines and each step's detail included.
+  redacted from the free text the runner returns: the start's detail, the app's own last lines and each
+  step's detail. Results, identities and ids are never touched, so a short secret can't rewrite
+  `passed` (the MacBook lane's review).
 - **An evaluated tree's keys are checked before the copy is written:** absolute, climbing or
   non-normal keys are refused, and nothing runs (contract 3: never the live tree).
 - **Not built yet, on #2421:** the declared entry points, so scenarios reach the readiness port's root;
