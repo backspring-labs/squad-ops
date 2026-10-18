@@ -54,7 +54,7 @@ author: Backspring Labs / SquadOps
 >
 > **Placement revised 2026-10-04, by the owner's ruling** (after reviewing the draft again during the 2.0
 > counted set). The 2026-10-01 note above stays as the record. **The delivery ledger, current as of
-> 2026-10-07** (read at the 2.1.0 cut):
+> 2026-10-17** (read at the 2.1.0 cut; #1966 placed by the 2.4 plan):
 >
 > | part | status | where |
 > |---|---|---|
@@ -64,7 +64,7 @@ author: Backspring Labs / SquadOps
 > | verification-cost reporting (§17–§18, §23): the qa tasks' tokens and the verification share of an increment | **shipped** | 2.1.0, PR #2027 (#1960's per-increment scorecard, SIP-0109 §24bb). No separate build |
 > | verification-cost reporting: test-file churn | **unplaced** | it needs the vault's per-increment trees (SIP-0109 §24bb records why #2027 does not split it) |
 > | the framework suite's test-value audit, fault corpus, detection matrix and deletion experiment (§10–§28) | **unplaced: the crew's** (the owner's ruling, 2026-10-04). It was not run in the 2.1 window | #1965, open. Measurement only. Each deletion is an owner-approved PR. The corpus also serves `SIP-Outcome-Evaluation`'s first prediction |
-> | risk-first qa and builder instructions (§19, §35–§38) | **placed: 2.4 or later**, an A/B adopted no earlier than after Cross-Cycle Memory's finding (the 2.2 plan §1; the ROADMAP's 2.4 row). It was not built in 2.1 | #1966, run with #1959 (increment replay) and read with #1960. Never in the same release as memory, so each change's effect stays readable |
+> | risk-first qa and builder instructions (§19, §35–§38) | **placed: 2.4.0**, the A/B (the 2.4 plan's D6, ruled 2026-10-17). Adopting it is a separate ruling, not before Outcome Evaluation's phase-2 decision. It was not built in 2.1 | #1966, run with #1959 (increment replay) and read with #1960. Never in the same release as memory, so each change's effect stays readable |
 > | the stub-based red gate for greenfield cycles (§7's mechanism there) | **owned by `SIP-Test-First-Verification`** | unchanged from the 2026-10-01 note |
 > | automation of classification, mutation runs and gap detection (§45 phase 4), and the follow-ons (§56) | **unplaced, deliberately** | after #1965 reads. The SIP's own §45 orders it so |
 >

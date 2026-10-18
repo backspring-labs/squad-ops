@@ -25,9 +25,9 @@ Kept by the rule in CLAUDE.md ("SIP System"): one row per part, updated in the P
 | 93.1 proposal and merge schemas | **shipped** | v1.1.0 |
 | 93.2 role proposers | **shipped** | v1.1.0 |
 | 93.3 merger + cutover | **shipped** | v1.1.0 |
-| 93.4 gate package, telemetry, degraded-sole-author surfacing, console hooks | **placed**: folded into #950 (§15a) | 2.4 or later, #950, the plan-gate review packet, after Outcome Evaluation |
+| 93.4 gate package, telemetry, degraded-sole-author surfacing, console hooks | **placed**: folded into #950 (§15a) | 2.5 or later, #950, the plan-gate review packet, after Outcome Evaluation: not in 2.4 (the 2.4 plan's D10, ruled 2026-10-17), re-read at its cut |
 | §5.8 merge rules 2–5 (compatible-criteria merge, strictest-wins, `rejected_tasks`, conflicts block the gate) | **dropped** (§15a) | re-proposed on evidence |
-| §10 required tests (sole-author handler, gate package) | **placed**: folded into #950 with 93.4 (§15a) | 2.4 or later, #950 |
+| §10 required tests (sole-author handler, gate package) | **placed**: folded into #950 with 93.4 (§15a) | 2.5 or later, #950 (the 2.4 plan's D10) |
 | §5.11 parallel fan-out | **dropped** by §15a: built sequential | `task_plan.py:147-149` |
 
 **What closes this SIP:** **Ready to promote** with §15a (ruled 2026-10-04): 93.4 and its tests go to #950, rules 2–5 are dropped, and the fan-out is sequential.
