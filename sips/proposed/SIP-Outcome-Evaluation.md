@@ -24,7 +24,8 @@ that idea's **evaluation half**; the rest stays in the idea as its charter.
 - SIP-0109 §8.3 (route rendering in a real browser);
 - the Nostromo IDEA (`docs/ideas/nostromo-framework-optimization-crew.md`).
 
-**Meets:** Project Lifecycle Management (proposed, PR #2401), the MacBook lane's 2.4 feature, at seven shared
+**Meets:** Project Lifecycle Management (SIP-0112, `sips/accepted/SIP-0112-Project-Lifecycle-Management.md`, accepted
+2026-10-17), the MacBook lane's 2.4 feature, at seven shared
 contracts (its §8.2). §4.8 says what this SIP produces and reads at each.
 
 ---
@@ -55,13 +56,13 @@ contracts (its §8.2). §4.8 says what this SIP produces and reads at each.
 >   §8's question 5 is answered by Q1.
 >
 > **Intake check, revision 2 (2026-10-17).** One new overlap, by design:
-> - **Project Lifecycle Management** (proposed, PR #2401; the owner's Q35, 2026-10-17) makes a Project any
+> - **Project Lifecycle Management** (SIP-0112, accepted 2026-10-17; the owner's Q35) makes a Project any
 >   registered product: an existing external repository, a greenfield product or a reference application.
 >   The two SIPs meet at seven shared contracts, and their boundary is stated in both:
 >   - this SIP builds no project model, and assumes no Project is a sample application;
 >   - Project Lifecycle Management builds no scenario, runner, quality baseline or reading of its own.
 >
->   The Spark lane's compatibility review of its §8 (that PR's §8.6) is recorded there. Its intent is this
+>   The Spark lane's compatibility review of its §8 is recorded in its §8.6. Its intent is this
 >   revision's design (§4.1, §4.8).
 > - **No conflict.**
 
@@ -126,7 +127,7 @@ This SIP adds **scenario evidence** beside the output evidence, and keeps the tw
 **The rule the idea states, adopted here:** a campaign cannot claim increased autonomy unless product
 quality meets its baseline. An autonomy number never travels without the quality reading beside it.
 
-**Any registered Project** (Project Lifecycle Management, PR #2401) is evaluated the same way. That covers an existing
+**Any registered Project** (Project Lifecycle Management, SIP-0112) is evaluated the same way. That covers an existing
 external repository with its own layout and tooling, a greenfield product, and a reference application such as
 `group_run`. A sample application's routes, fixtures or interface manifest are never a default (§4.1).
 
@@ -169,7 +170,7 @@ external repository with its own layout and tooling, a greenfield product, and a
 - `SIP-Campaign-Self-Improvement-and-Test-Bay`: SquadOps improving itself;
 - SIP-0110 (Cross-Cycle Memory): what the squad recalls across cycles. Its outcome metrics (revision 2's
   recall-versus-outcome split) are one consumer of this SIP's evidence;
-- Project Lifecycle Management (PR #2401): what a Project is, its source, its revisions and its own checks. This SIP
+- Project Lifecycle Management (SIP-0112): what a Project is, its source, its revisions and its own checks. This SIP
   reads its records at seven contracts (§4.8) and keeps a product's own checks apart from its scenarios.
 
 ## 4. The design
@@ -237,9 +238,15 @@ from the idea: create a run, join it, leave it, and confirm the participant list
   - **This SIP never infers how to start a product from a sample application.**
 - **The steps are held in memory only.** The runner fetches them by suite digest for each run. It writes them
   nowhere the evaluated app's process can read.
-- **Secrets:** a start declaration may reference secrets (`secret://`). How a product's secrets reach an evaluation
-  environment is a security decision, and it is the owner's (A4, the same question as Project Lifecycle Management's
-  Q40). Until it is ruled, the runner resolves no secret reference.
+- **Secrets: evaluation-scoped only** (ruled 2026-10-17, A4 and SIP-0112's Q40: the owner, "approve Q40 as
+  recommended").
+  - **What the runner resolves:** only the references a Project declares for evaluation, in its start declaration's
+    `evaluation_environment` (SIP-0112 §8.2.1), and that the owner approves per Project.
+  - **What they are:** test credentials, never the product's production secrets.
+  - **How they are handled:** they are resolved into the disposable copy's environment at start, and discarded with
+    the copy. They are never written to a file, a log, a record or a squad agent's input.
+  - **If a reference isn't declared and approved,** it is not resolved, and every scenario that needs it is
+    `blocked_unverified`, reason "secret not available".
 
 **The result**, per scenario per increment:
 - **when it runs:** `passed`, `failed` or `blocked_unverified` (SIP-0096). It carries the steps taken, the first
@@ -410,7 +417,7 @@ amendment Q3 requires.
 
 ### 4.8 What this SIP produces and reads at the shared contracts
 
-Project Lifecycle Management (PR #2401) states the seven contracts in its §8.2 and §8.2.1. This SIP's side of each is:
+Project Lifecycle Management (SIP-0112) states the seven contracts in its §8.2 and §8.2.1. This SIP's side of each is:
 
 | contract | this SIP |
 |---|---|
@@ -422,7 +429,7 @@ Project Lifecycle Management (PR #2401) states the seven contracts in its §8.2 
 | 6. project instructions | names each unit's pinned set as a listed input when comparing units (§4.6) |
 | 7. starting the product | reads the start declaration at the revision the unit pinned; never infers one; with none, every scenario is `blocked_unverified` |
 
-The shared fixture (Project Lifecycle Management §8.2.3) carries this SIP's recorded evaluation reference, which the
+The shared fixture (SIP-0112 §8.2.3, #2407) carries this SIP's recorded evaluation reference, which the
 Spark lane adds in the fixture's PR (the 2.4 plan's D12).
 
 ## 5. Not in this SIP (they stay in the idea, or belong elsewhere)
@@ -499,14 +506,14 @@ Revision 1 asked five questions. The owner ruled the 2.4 plan's recommendations:
 
 The ruling also renamed the SIP's *outcome* term (§0).
 
-### 8.1 For the owner at acceptance
+### 8.1 For the owner at acceptance (A4 is ruled)
 
 | # | question | recommendation |
 |---|---|---|
 | A1 | **The SIP's own name.** The term is renamed (§0). Does the SIP's name follow, along with the idea's metric names (AOR)? | **Keep "Outcome Evaluation".** Both lanes, the 2.4 plan and Project Lifecycle Management's contracts cite it, and the clash with SIP-0108 was in the records' terms, which are renamed. Renaming it later is a numbered amendment |
 | A2 | **Where Lighthouse and axe are installed.** D2 named the QA image | **the evaluator's image,** with the same lock-file audit. The baselines measure the instance the scenarios read, which revision 2 runs outside the squad's containers |
 | A3 | **Where the runner runs** | **the sandbox service** (SIP-0102). It already launches least-privilege containers, and it holds the docker socket. It needs the `sandbox` profile on every deploy that evaluates. No compose change is needed. The browser runs in a container the service launches from the evaluator image, and receives a run's steps on its input, never on a mounted path |
-| A4 | **Secrets in a start declaration** (Project Lifecycle Management's contract 7). This is #2401's Q40: one question, so one ruling answers both | **the owner's security decision.** #2401's recommendation is evaluation-scoped secrets only: references the Project declares for evaluation and the owner approves per Project. They are test credentials, never the product's production secrets. They are resolved into the disposable copy's environment at start, and never written to a file, a log, a record or a squad agent's input. This SIP's runner can keep that rule. Until it is ruled, no secret reference is resolved, and a product that needs one reports every scenario `blocked_unverified`, with reason "secret not available" |
+| A4 | **Secrets in a start declaration** (SIP-0112's contract 7). The same question as SIP-0112's Q40, so one ruling answers both | **Ruled 2026-10-17** (Q40, the owner: "approve Q40 as recommended"): evaluation-scoped secrets only. The runner resolves only the references a Project declares in `evaluation_environment` and the owner approves per Project. They are test credentials, never production secrets. They are resolved into the disposable copy's environment at start, never written to a file, a log, a record or a squad agent's input, and discarded with the copy (§4.1) |
 
 ## 9. Revision history
 
@@ -515,7 +522,7 @@ The ruling also renamed the SIP's *outcome* term (§0).
 - **Revision 2 (2026-10-17), for the owner's acceptance:**
   - **The owner's answers to §8,** ruled as the 2.4 plan's D2.
   - **The term renamed** (§0).
-  - **The Spark lane's compatibility review of Project Lifecycle Management** (PR #2401 §8.6), made design:
+  - **The Spark lane's compatibility review of Project Lifecycle Management** (SIP-0112 §8.6), made design:
     - scenarios declare their own surfaces by kind, and a manifest is optional;
     - the runner runs outside the squad's containers, on a disposable copy of the evaluated tree;
     - scenarios live in a store of their own;
@@ -535,4 +542,9 @@ The ruling also renamed the SIP's *outcome* term (§0).
     - *scenario result* is added to §0;
     - *not measured* follows *not applicable*'s rules, and AOR's "every quality baseline held" covers only measures
       that ran;
-    - A4 is named as #2401's Q40.
+    - A4 is named as SIP-0112's Q40.
+  - **After SIP-0112's acceptance (2026-10-17):**
+    - A4 is ruled through Q40;
+    - the start declaration's secrets key is `evaluation_environment`;
+    - SIP-0112 is cited by number;
+    - the shared fixture is #2407.
