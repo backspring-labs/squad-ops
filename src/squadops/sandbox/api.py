@@ -16,10 +16,7 @@ becomes the caller.
 
 from __future__ import annotations
 
-import base64
-import binascii
 import hmac
-from collections.abc import Mapping
 
 from fastapi import Depends, FastAPI, Header, HTTPException, Request
 from fastapi.responses import JSONResponse
@@ -30,6 +27,8 @@ from squadops.sandbox.models import (
     OperationName,
     RevisionOrigin,
     WorkspaceRevision,
+    decode_binary,
+    wire_files,
 )
 from squadops.sandbox.service import SandboxService
 from squadops.sandbox.workspace import (
@@ -56,21 +55,6 @@ class SeedRequest(BaseModel):
     executable: list[str] = Field(default_factory=list)
     origin: str = RevisionOrigin.SCAFFOLD_SEED
     created_at: str | None = None
-
-
-def _decode_binary(binary_files: Mapping[str, str], *, alongside: Mapping) -> dict[str, bytes]:
-    """The wire's base64-encoded binary files (X-2, #2420), refusing a path also sent as
-    text: which content was meant is not the sandbox's to guess."""
-    both = sorted(set(binary_files) & set(alongside))
-    if both:
-        raise ValueError(f"paths sent both as text and as binary: {both}")
-    decoded: dict[str, bytes] = {}
-    for path, encoded in binary_files.items():
-        try:
-            decoded[path] = base64.b64decode(encoded, validate=True)
-        except binascii.Error as e:
-            raise ValueError(f"binary file {path!r} is not valid base64: {e}") from e
-    return decoded
 
 
 class OperationRequest(BaseModel):
@@ -113,7 +97,7 @@ async def _op_probe(service: SandboxService, revision: WorkspaceRevision, params
 
 async def _op_patch(service: SandboxService, revision: WorkspaceRevision, params: dict):
     try:
-        binary = _decode_binary(params.get("binary_files", {}), alongside=params["files"])
+        binary = decode_binary(params.get("binary_files", {}), alongside=params["files"])
         return await service.apply_workspace_patch(
             base=revision,
             files={**params["files"], **binary},
@@ -158,7 +142,7 @@ _OPERATIONS = {
 
 async def _handle_seed(service: SandboxService, cycle_id: str, body: SeedRequest) -> dict:
     try:
-        binary = _decode_binary(body.binary_files, alongside=body.files)
+        binary = decode_binary(body.binary_files, alongside=body.files)
         revision = await service.seed_workspace(
             cycle_id,
             {**body.files, **binary},
@@ -171,6 +155,23 @@ async def _handle_seed(service: SandboxService, cycle_id: str, body: SeedRequest
     except (WorkspaceEscapeError, WorkspaceStoreError, ValueError) as e:
         raise _error(400, "INVALID_SEED", str(e)) from e
     return revision.to_dict()
+
+
+async def _handle_read(service: SandboxService, cycle_id: str, revision_id: str) -> dict:
+    """A pinned revision's content (contract 3; SIP-0112's E.4.3 captures a change back from it),
+    in the seed's wire form: text under ``files``, the rest base64 under ``binary_files``."""
+    revision = service.get_revision(cycle_id, revision_id)
+    if revision is None:
+        raise _error(404, "REVISION_NOT_FOUND", f"cycle {cycle_id} holds no revision {revision_id}")
+    try:
+        content = await service.read_workspace_revision(revision)
+    except StaleBaseRevisionError as e:
+        raise _error(409, "STALE_BASE_REVISION", str(e)) from e
+    return {
+        "revision": content.revision.to_dict(),
+        **wire_files(content.files),
+        "executable": sorted(content.executable),
+    }
 
 
 async def _handle_operate(service: SandboxService, cycle_id: str, body: OperationRequest) -> dict:
@@ -249,5 +250,12 @@ def create_app(service: SandboxService, *, service_token: str) -> FastAPI:
     )
     async def operate(cycle_id: str, body: OperationRequest) -> dict:
         return await _handle_operate(service, cycle_id, body)
+
+    @app.get(
+        "/api/v1/workspaces/{cycle_id}/revisions/{revision_id}",
+        dependencies=[Depends(require_identity)],
+    )
+    async def read_revision(cycle_id: str, revision_id: str) -> dict:
+        return await _handle_read(service, cycle_id, revision_id)
 
     return app

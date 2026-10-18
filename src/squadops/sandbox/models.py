@@ -15,6 +15,8 @@ rule as ``BoundScaffoldRecord``).
 
 from __future__ import annotations
 
+import base64
+import binascii
 import hashlib
 from collections.abc import Collection, Mapping
 from dataclasses import dataclass
@@ -102,6 +104,39 @@ def content_bytes(content: FileContent) -> bytes:
     return content.encode("utf-8") if isinstance(content, str) else bytes(content)
 
 
+def wire_files(files: Mapping[str, FileContent | None]) -> dict:
+    """Content for the wire (X-2, #2420): text and deletions under ``files``, and each file
+    that isn't UTF-8 base64-encoded under ``binary_files``. A text-only message carries no
+    ``binary_files``, so it is what it was before bytes were carried. Both directions use it:
+    the client's seeds and patches, and the service's revision reads (#2451's consumer)."""
+    text: dict[str, str | None] = {}
+    binary: dict[str, str] = {}
+    for path, content in files.items():
+        if isinstance(content, bytes):
+            try:
+                text[path] = content.decode("utf-8")
+            except UnicodeDecodeError:
+                binary[path] = base64.b64encode(content).decode("ascii")
+        else:
+            text[path] = content
+    return {"files": text, **({"binary_files": binary} if binary else {})}
+
+
+def decode_binary(binary_files: Mapping[str, str], *, alongside: Mapping) -> dict[str, bytes]:
+    """The wire's base64-encoded binary files (X-2, #2420), refusing a path also sent as
+    text: which content was meant is not the reader's to guess."""
+    both = sorted(set(binary_files) & set(alongside))
+    if both:
+        raise ValueError(f"paths sent both as text and as binary: {both}")
+    decoded: dict[str, bytes] = {}
+    for path, encoded in binary_files.items():
+        try:
+            decoded[path] = base64.b64decode(encoded, validate=True)
+        except binascii.Error as e:
+            raise ValueError(f"binary file {path!r} is not valid base64: {e}") from e
+    return decoded
+
+
 def compute_revision_id(files: Mapping[str, FileContent], executable: Collection[str] = ()) -> str:
     """Content-addressed revision id — deterministic and order-independent over
     (path, content) pairs, so identical workspace content always pins the same
@@ -186,6 +221,17 @@ class WorkspaceRevision:
             parent_revision_id=d.get("parent_revision_id"),
             created_at=d.get("created_at"),
         )
+
+
+@dataclass(frozen=True)
+class RevisionContent:
+    """A pinned revision's files and executable bits, read from the live tree only while it
+    matches the pin (contract 3; SIP-0112's E.4.3 captures a change back from it). The store
+    keeps hashes, not contents, so this is the tree as it stands, held to the revision's ID."""
+
+    revision: WorkspaceRevision
+    files: Mapping[str, FileContent]
+    executable: frozenset[str] = frozenset()
 
 
 @dataclass(frozen=True, kw_only=True)

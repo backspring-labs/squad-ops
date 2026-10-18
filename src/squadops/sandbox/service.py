@@ -31,6 +31,7 @@ from squadops.sandbox.models import (
     OperationStatus,
     PatchResult,
     ProbeResult,
+    RevisionContent,
     RevisionOrigin,
     StartResult,
     StopResult,
@@ -85,6 +86,14 @@ class SandboxService(ExecutionSandboxPort):
 
     def verify_pinned(self, cycle_id: str, revision_id: str) -> bool:
         return self._store.verify_pinned(cycle_id, revision_id)
+
+    def get_revision(self, cycle_id: str, revision_id: str) -> WorkspaceRevision | None:
+        return self._store.get_revision(cycle_id, revision_id)
+
+    async def read_workspace_revision(self, revision: WorkspaceRevision) -> RevisionContent:
+        files, executable = self._store.read_pinned(revision.cycle_id, revision.revision_id)
+        stored = self._store.get_revision(revision.cycle_id, revision.revision_id) or revision
+        return RevisionContent(revision=stored, files=files, executable=executable)
 
     # -- delegated execution operations --------------------------------------
 

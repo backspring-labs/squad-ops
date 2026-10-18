@@ -371,21 +371,9 @@ class WorkspaceStore:
         store keeps hashes, not contents, so the copy is taken from the live tree, and only
         while the tree matches its pin. Nothing a command does reaches the live tree or a
         revision."""
-        if not self.verify_pinned(cycle_id, revision_id):
-            raise StaleBaseRevisionError(
-                f"live tree no longer matches revision {revision_id}: no copy is taken from it"
-            )
-        tracked = self._revision_paths(cycle_id, revision_id)
-        executable = self._live_executables(cycle_id, revision_id, tracked)
+        files, executable = self.read_pinned(cycle_id, revision_id)
         copy = self._cycle_dir(cycle_id) / "copies" / uuid.uuid4().hex
         try:
-            files = self.current_files(cycle_id, tracked=tracked)
-            # The pin is checked before the read, and a patch could land between the two, so
-            # what was read is held to the pin too: a copy is one revision, never a mix of two.
-            if compute_revision_id(files, executable) != revision_id:
-                raise StaleBaseRevisionError(
-                    f"live tree moved while revision {revision_id} was copied: no copy is taken"
-                )
             for rel, content in files.items():
                 target = copy / rel
                 target.parent.mkdir(parents=True, exist_ok=True)
@@ -396,6 +384,28 @@ class WorkspaceStore:
             yield copy
         finally:
             shutil.rmtree(copy, ignore_errors=True)
+
+    def read_pinned(
+        self, cycle_id: str, revision_id: str
+    ) -> tuple[dict[str, FileContent], frozenset[str]]:
+        """Exactly the pinned revision's files and executable bits, read from the live tree only
+        while it matches its pin (contract 3). The store keeps hashes, not contents, so the tree is
+        the only copy. A disposable copy (X-3a) and a revision read (SIP-0112's E.4.3 capture) both
+        take it this way."""
+        if not self.verify_pinned(cycle_id, revision_id):
+            raise StaleBaseRevisionError(
+                f"live tree no longer matches revision {revision_id}: nothing is read from it"
+            )
+        tracked = self._revision_paths(cycle_id, revision_id)
+        executable = self._live_executables(cycle_id, revision_id, tracked)
+        files = self.current_files(cycle_id, tracked=tracked)
+        # The pin is checked before the read, and a patch could land between the two, so what
+        # was read is held to the pin too: a read is one revision, never a mix of two.
+        if compute_revision_id(files, executable) != revision_id:
+            raise StaleBaseRevisionError(
+                f"live tree moved while revision {revision_id} was read: nothing is returned"
+            )
+        return files, executable
 
     def verify_pinned(self, cycle_id: str, revision_id: str) -> bool:
         """§4.6 verification pinning: does the live tree match the named
