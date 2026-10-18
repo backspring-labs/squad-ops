@@ -33,8 +33,15 @@ class RevisionOrigin:
     #: every acceptance verdict names the tree it ran against. Identity-only
     #: in 1.5 (nothing reconstructs from it until SIP-0102 steps 3-4).
     ACCEPTANCE_ASSEMBLY = "acceptance_assembly"
+    #: SIP-0112 §8.2.2 (X-1, #2419): a Project's Git checkout at a pinned commit,
+    #: seeded as the cycle's live tree by Project Lifecycle Management. The
+    #: sandbox never runs Git: the commit lives in that SIP's revision-to-commit
+    #: mapping, never on the revision.
+    GIT_CHECKOUT = "git_checkout"
 
-    ALL = frozenset({SCAFFOLD_SEED, AGENT_PATCH, PROMOTED_OUTPUTS, ACCEPTANCE_ASSEMBLY})
+    ALL = frozenset(
+        {SCAFFOLD_SEED, AGENT_PATCH, PROMOTED_OUTPUTS, ACCEPTANCE_ASSEMBLY, GIT_CHECKOUT}
+    )
 
 
 class OperationStatus:
