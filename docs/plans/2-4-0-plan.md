@@ -240,7 +240,7 @@ each one as its consumer (G4).
 |---|---|---|---|
 | **X-1** (#2419): a revision origin for a Git checkout | `RevisionOrigin` is a closed set (`src/squadops/sandbox/models.py:23`), and a revision with any other origin is refused (`:103`) | E.4.2 can't seed a checkout without it | first, right after the fixture: E.4.2 waits on it |
 | **X-2** (#2420): binary files | seeding, reading the tree and persisting revisions handle UTF-8 text only (`src/squadops/sandbox/workspace.py:205`). Until X-2 ships, a product with binary files is refused at seeding, with that gap named | most real repositories carry some binary files (images, fonts) | before the brownfield demonstration, unless its product is text-only. Every existing revision ID stays the same: hashing the raw bytes gives today's digest for UTF-8 text |
-| **X-3** (#2421): a product's own commands | `ExecutionSandboxPort` (`src/squadops/ports/sandbox.py:33`) runs the environment's fixed install, build, test and start commands | contract 7: Outcome Evaluation starts an external product from its declaration | with Outcome Evaluation's runner, before IR-6 |
+| **X-3** (#2421): a product's own commands | `ExecutionSandboxPort` (`src/squadops/ports/sandbox.py:33`) runs the environment's fixed install, build, test and start commands | contract 7: Outcome Evaluation starts an external product from its declaration | **split 2026-10-18 (the lanes, on #2407):** X-3a, a declared command such as a product's check, run against a pinned revision in a disposable copy, straight after X-2 and before E.4.2's inherited baseline (FR-20); X-3b, starting the product from its declaration with readiness and the evaluation secrets, with Outcome Evaluation's runner, before IR-6 |
 
 **X-3 also starts a pinned revision in a disposable copy.** Today's start mounts the cycle's live tree and runs the app as
 the tree's owner, so the app can write its state there (`adapters/sandbox/container_backend.py:157-164`, `:316-321`). Contract 3 rules that out
@@ -367,6 +367,7 @@ own evidence, #2183's acceptance matrix, live.
 | #2306 | a converging repair ended as a plan defect: read the 12 recent terminations first, then fix | the read early; the fix after the window if the read finds converging repairs |
 | #1756 | the full rendered request stored once per generation, readable by id, with the redaction applied | early, as an instrument: it reaches the seams the authoring envelopes don't |
 | #2253 | QA's output budget: read the headroom across every recorded `qa.test` call, then decide | the read early; any budget change only between measurements, named in the record |
+| #2443, a campaign's stack (found 2026-10-18, a prerequisite of D3) | a campaign can't run on Next.js: each launch carries only a profile name, and every campaign profile pins FastAPI. The campaign's policy gains its stack, passed to every launch as an override; a contract 2 field, with the MacBook lane's review (G4), and a SIP-0109 amendment | **before the window's pre-registration:** the window runs two campaigns per stack (D3), and a Next.js campaign has never run, so uncounted Next.js shakeout campaigns come first |
 | #2395 (placed in 2.4 by the owner, the 2.3.1 plan's D4) | a Next.js plan asks QA for page-state tests the stack's vitest can't run: one suite needed a DOM library the stack doesn't seed, another rendered on the server and saw only the loading state (2.3.1's round 3) | **before the window's deploy freezes:** it rejected 2.3.1's last Next.js roll, and the window runs two Next.js campaigns, so left in place it would decide their increments rather than the app's outcome |
 | #2297 (placed in 2.4 by the owner after the 2.3.0 cut) | QA's test author was shown the leave endpoint and used it exactly, but the planned "empty name" case can't be expressed against a name in the path | after the window, with the other output-quality changes (D8) |
 
@@ -407,6 +408,7 @@ cut.
 **The dependencies across the lanes,** and only these:
 - the fixture before either lane's first contract PR;
 - X-1 before E.4.2;
+- X-3a before E.4.2's inherited baseline (split from X-3 on 2026-10-18, #2407);
 - X-2 before the brownfield demonstration, unless its product is text-only;
 - contract 7 (E.4.2) and X-3 before Outcome Evaluation reads any external Project (IR-6, the shared demonstration);
 - the registry cutover never inside the window;
