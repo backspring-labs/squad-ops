@@ -267,7 +267,7 @@ class HttpScenarioRunner(ScenarioRunnerPort):
         scenarios: Sequence[Mapping[str, Any]],
         environment: Mapping[str, str],
     ) -> TreeEvaluation:
-        wire = _wire_files(tree)
+        wire = wire_files(tree)
         payload = await self._sandbox._post(
             "/api/v1/evaluations",
             {
