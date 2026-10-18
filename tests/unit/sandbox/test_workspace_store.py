@@ -41,6 +41,18 @@ class TestSeed:
         with pytest.raises(AlreadySeededError):
             store.seed("cyc_1", {"other.py": "x"}, origin=RevisionOrigin.SCAFFOLD_SEED)
 
+    def test_a_refused_seed_leaves_no_file_for_the_next_seed_to_inherit(self, store):
+        """Bug caught: a seed refused at its revision (an unknown origin) after its files were
+        written. The next seed's tree then holds files its revision doesn't name, and it fails
+        its own pin."""
+        with pytest.raises(ValueError, match="unknown revision origin"):
+            store.seed("cyc_1", {"stray.py": "x = 1\n"}, origin="git_clone")
+        assert store.current_files("cyc_1") == {}
+
+        rev = store.seed("cyc_1", FILES, origin=RevisionOrigin.SCAFFOLD_SEED)
+        assert store.current_files("cyc_1") == FILES
+        assert store.verify_pinned("cyc_1", rev.revision_id)
+
 
 class TestPatch:
     def test_patch_applies_modify_add_delete_and_chains_lineage(self, store):
@@ -91,6 +103,36 @@ class TestPatch:
                 files={path: "owned"},
                 origin=RevisionOrigin.AGENT_PATCH,
             )
+
+    @pytest.mark.parametrize(
+        ("files", "origin", "error"),
+        [
+            # the first path is applied before the second escapes
+            (
+                {"backend/main.py": "print('b')\n", "../outside.py": "x"},
+                RevisionOrigin.AGENT_PATCH,
+                WorkspaceEscapeError,
+            ),
+            ({"backend/main.py": "print('b')\n", "frontend/index.html": None}, "warm", ValueError),
+        ],
+    )
+    def test_a_refused_patch_leaves_the_live_tree_on_its_base(self, store, files, origin, error):
+        """Bug caught: a patch refused part-way after some paths were written or deleted. The
+        live tree no longer matches its base, so every later patch is refused as stale."""
+        seed = store.seed("cyc_1", FILES, origin=RevisionOrigin.SCAFFOLD_SEED)
+        with pytest.raises(error):
+            store.apply_patch(
+                "cyc_1", base_revision_id=seed.revision_id, files=files, origin=origin
+            )
+
+        assert store.current_files("cyc_1") == FILES
+        rev, _ = store.apply_patch(
+            "cyc_1",
+            base_revision_id=seed.revision_id,
+            files={"backend/main.py": "print('c')\n"},
+            origin=RevisionOrigin.AGENT_PATCH,
+        )
+        assert store.verify_pinned("cyc_1", rev.revision_id)
 
 
 class TestDerivedStateExclusion:

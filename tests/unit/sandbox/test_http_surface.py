@@ -11,7 +11,13 @@ import pytest
 from adapters.sandbox.http_client import HttpExecutionSandbox, SandboxServiceError
 from squadops.sandbox.api import create_app
 from squadops.sandbox.evidence import OperationEvidenceJournal
-from squadops.sandbox.models import BuildResult, OperationName, PatchResult
+from squadops.sandbox.models import (
+    BuildResult,
+    OperationName,
+    PatchResult,
+    RevisionOrigin,
+    compute_revision_id,
+)
 from squadops.sandbox.service import SandboxService
 from squadops.sandbox.workspace import WorkspaceStore
 
@@ -159,3 +165,34 @@ async def test_revision_cycle_mismatch_is_rejected(stack):
         )
     assert response.status_code == 400
     assert response.json()["error"]["code"] == "CYCLE_MISMATCH"
+
+
+async def test_a_git_checkout_seed_keeps_its_origin_from_the_client_to_disk(stack, tmp_path):
+    """X-1 (#2419), contract 3's wiring: the seed Project Lifecycle Management's checkout makes.
+    Bug caught: the origin refused at the revision, dropped in transit so the API's default
+    files the checkout as a scaffold seed, or unreadable once persisted. Its ID stays the
+    content hash, and an agent's patch on it chains from it, as a capture back to Git reads."""
+    store, _, _, sandbox, _ = stack
+    seed = await sandbox.seed_workspace("cyc_1", FILES, origin=RevisionOrigin.GIT_CHECKOUT)
+    patch = await sandbox.apply_workspace_patch(base=seed, files={"backend/main.py": "b = 2\n"})
+
+    persisted = WorkspaceStore(tmp_path / "cycles").get_revision("cyc_1", seed.revision_id)
+    assert (seed.origin, persisted) == (RevisionOrigin.GIT_CHECKOUT, seed)
+    assert seed.revision_id == compute_revision_id(FILES)
+    head = store.latest_revision("cyc_1")
+    assert (head.revision_id, head.parent_revision_id) == (patch.new_revision_id, seed.revision_id)
+
+
+async def test_an_unknown_seed_origin_is_refused_and_writes_nothing(stack):
+    """Bug caught: the closed origin set opened to any string at the HTTP surface, or a
+    refused seed leaving its files in the live tree for the next seed to inherit."""
+    store, _, _, _, client_factory = stack
+    async with client_factory() as client:
+        response = await client.post(
+            "/api/v1/workspaces/cyc_1/seed",
+            json={"files": FILES, "origin": "git_clone"},
+            headers={"Authorization": f"Bearer {TOKEN}"},
+        )
+    assert response.status_code == 400
+    assert response.json()["error"]["code"] == "INVALID_SEED"
+    assert store.current_files("cyc_1") == {}

@@ -197,15 +197,17 @@ class WorkspaceStore:
             ):
                 return head
             raise AlreadySeededError(f"cycle {cycle_id} is already seeded with other content")
-        ws = self.provision(cycle_id)
         safe = {_safe_relpath(p): c for p, c in files.items()}
+        # Cut before writing: a seed the revision refuses (an unknown origin) must leave no
+        # file behind, or the next seed's tree holds files its revision doesn't name.
+        revision = WorkspaceRevision.cut(
+            cycle_id=cycle_id, origin=origin, files=safe, created_at=created_at
+        )
+        ws = self.provision(cycle_id)
         for rel, content in safe.items():
             target = ws / rel
             target.parent.mkdir(parents=True, exist_ok=True)
             target.write_text(content, encoding="utf-8")
-        revision = WorkspaceRevision.cut(
-            cycle_id=cycle_id, origin=origin, files=safe, created_at=created_at
-        )
         self._persist(revision, safe)
         return revision
 
@@ -230,7 +232,6 @@ class WorkspaceStore:
             raise StaleBaseRevisionError(
                 f"live tree no longer matches base revision {base_revision_id}"
             )
-        ws = self.workspace_dir(cycle_id)
         changed: list[str] = []
         merged = dict(current)
         for path, content in files.items():
@@ -238,15 +239,21 @@ class WorkspaceStore:
             changed.append(rel)
             if content is None:
                 merged.pop(rel, None)
-                (ws / rel).unlink(missing_ok=True)
             else:
                 merged[rel] = content
-                target = ws / rel
-                target.parent.mkdir(parents=True, exist_ok=True)
-                target.write_text(content, encoding="utf-8")
+        # Merge and cut before touching the tree: a patch refused part-way (an escaping path,
+        # an unknown origin) must leave the live tree on its base, or every later patch is stale.
         revision = WorkspaceRevision.cut(
             cycle_id=cycle_id, origin=origin, files=merged, parent=base, created_at=created_at
         )
+        ws = self.workspace_dir(cycle_id)
+        for rel in changed:
+            target = ws / rel
+            if rel in merged:
+                target.parent.mkdir(parents=True, exist_ok=True)
+                target.write_text(merged[rel], encoding="utf-8")
+            else:
+                target.unlink(missing_ok=True)
         self._persist(revision, merged)
         return revision, tuple(sorted(changed))
 
