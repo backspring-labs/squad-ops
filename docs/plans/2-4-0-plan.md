@@ -380,6 +380,7 @@ own evidence, #2183's acceptance matrix, live.
 | #1965, the framework suite's test-value audit | the crew's first optimization experiment, an outer-loop item with no 2.4 dependency | the owner's to place |
 | the squad authoring its own backlog | portfolio Q1: 2.6, with its own SIP. The squad chooses features only once there's an independent measure of whether a feature helped | 2.6 |
 | #2184, retiring the legacy store | placed 2.5.0 (SIP-0110) | 2.5 |
+| #2433, the Spark board-thermal rule's no-data alert on boxes without that board, and the deploy never starting node-exporter | the owner on 2026-10-18: "we can pickup 2433 in 2.5 if it's not a blocker to anything". It isn't one: on the Spark both exporters run and the rule reads Normal, and nothing in 2.4 reads them. The MacBook pays log noise until then | 2.5 |
 | #2286, TensorFold operator keys | credentials: the owner's to place | the owner |
 | #2287, a box-level operator lease | no 2.4 dependency | the owner's to place |
 
