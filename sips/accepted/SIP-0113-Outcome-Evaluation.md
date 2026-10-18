@@ -68,7 +68,7 @@ contracts (its §8.2). §4.8 says what this SIP produces and reads at each.
 >   revision's design (§4.1, §4.8).
 > - **No conflict.**
 
-## Delivery ledger (current as of 2026-10-17)
+## Delivery ledger (current as of 2026-10-18)
 
 One row per part that ships separately. Statuses as CLAUDE.md defines them. The 2.4 plan places phase 1 in 2.4
 (committed) and phase 2 in 2.4 conditionally. **Phase 1's parts are placed** with the issues filed at acceptance
@@ -83,7 +83,7 @@ One row per part that ships separately. Statuses as CLAUDE.md defines them. The 
 | phase 1: the runner, outside the squad's containers, on a disposable copy (§4.1; needs the sandbox's X-3, #2421) | **placed** | 2.4.0, #2414 |
 | phase 1: the evaluation record and its reference (§4.1, contract 5) | **placed** | 2.4.0, #2415 |
 | phase 1: the quality baselines, Lighthouse, axe and lint, in the evaluator's image (§4.2) | **placed** | 2.4.0, #2416 |
-| phase 1: the intervention ledger's classifications (§4.3) | **placed** | 2.4.0, #2417 |
+| phase 1: the intervention ledger's classifications (§4.3) | **shipped** (§10d) | 2.4.0, PR #2454, issue #2417 |
 | phase 1: contribution and the derived metrics in the digest (§4.4, §4.6) | **placed** | 2.4.0, #2418 |
 | phase 2: the proposer sees each goal's result (§4.5) | **unplaced** | 2.4 if D4 rules it in, with its issue filed then; otherwise the next even release |
 | phase 2: the objective's scenario measure, read by SIP-0109 §10 row 3, as a SIP-0109 amendment (§4.7) | **unplaced** | 2.4 if D4 rules it in, with its issue filed then; otherwise the next even release |
@@ -555,3 +555,30 @@ All four are ruled as recommended: A4 through SIP-0112's Q40, and A1 to A3 at ac
     - the start declaration's secrets key is `evaluation_environment`;
     - SIP-0112 is cited by number;
     - the shared fixture is #2407.
+
+## 10. Post-acceptance amendments
+
+### 10d. The intervention ledger as built (2026-10-18, §4.3, §7 prediction 5; #2417; implementer's record, for the owner)
+
+- **A projection of SIP-0109's control log, never a second record of it** (`squadops.outcomes.ledger`).
+  An applied row is an intervention in three cases:
+  - a `rule` that returns or rejects a proposal (an approval is the gate as designed);
+  - an `escalation_closed` whose state is `resolved` (an escalated plan gate a person decided);
+  - a `pause`, `resume`, `abort`, `classify` or `escalation_answered` by anyone but the system's own
+    roles (`executor`, `sweep`, `launcher`, `completion`). A limit's pause is the campaign running,
+    not an intervention.
+
+  SIP-0110's re-binding joins when #2179 adds its row.
+- **Outcome Evaluation's record holds only the classifications** (migration 1920), keyed by the row:
+  the reason and severity from §4.3's lists, "could the squad have resolved it?" as the supervisor's
+  labelled opinion, and a note. A later classification of the same row revises it. A declared entry
+  records an action outside the interface.
+- **Prediction 5 is read in every ledger read:** `unclassified` names the intervention rows not yet
+  classified, and `orphaned` names the classifications whose row isn't one of this campaign's
+  interventions. `matches_the_control_log` is true only when both are empty.
+- **`/api/v1/intervention-ledgers/{campaign_id}`:**
+  - **reading:** `campaigns:read`;
+  - **classifying and declaring:** `campaigns:supervise`, the supervisor's seat. A classification
+    must name one of the campaign's own intervention rows.
+- **Constants, not enums.** Several of the words are other vocabularies' too (`implementation` is a
+  workload, `recovery` a prompt mode), and #380's guard reads every such literal as an enum's shadow.

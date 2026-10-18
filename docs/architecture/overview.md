@@ -127,6 +127,11 @@ four seams.
 Coordination between agents and handlers: `AgentOrchestrator`, the handler registry and the
 `HandlerExecutor`.
 
+### `squadops.outcomes`
+Outcome Evaluation's readings beside its scenarios (SIP-0113 §4.2–§4.6), starting with the intervention
+ledger (§4.3): each person's or supervisor's action on a campaign, projected from SIP-0109's control log
+and classified by its reason and severity, plus declared entries for actions outside the interface.
+
 ### `squadops.ports`
 The port interfaces, the contracts between the domain and external systems: secrets, queue, cycle
 registry, auth, audit, LLM observability, sandbox and the rest.
@@ -209,6 +214,10 @@ NoOp port stubs for bootstrapping a `PortsBundle` (SIP-0066).
 
 ### `adapters.observability`
 Health-check reporting over HTTP, for the operations dashboard.
+
+### `adapters.outcomes`
+The intervention ledger's store (SIP-0113 §4.3): Postgres beside the campaigns whose control logs it
+classifies, and in memory for tests.
 
 ### `adapters.persistence`
 Postgres through asyncpg: the runtime connection pool and the runtime ports, and the chat repository
