@@ -119,7 +119,7 @@ before the SIP closes and need not ship in 2.4 (the owner, the same day). Depend
 | part | status | where |
 |---|---|---|
 | §8.2.3 the shared fixture product and contract tests, landing before either lane's first shared-contract PR (the MacBook lane writes it; the Spark lane adds its recorded reference, the 2.4 plan's D12) | **shipped**: Tally, with each lane's recorded outputs in four forms and the fixture's own checks (`tests/fixtures/shared_contract/`). Each contract test lands with the PR that builds its seam (agreed on #2407) | 2.4.0, PR #2440, issue #2407 |
-| E.4.1 existing-product registration and authority: the writable registry cutover, its validated rollback and minimum enrollment | **placed** | 2.4.0, #2408 |
+| E.4.1 existing-product registration and authority: the writable registry cutover, its validated rollback and minimum enrollment | **shipped**: the writable registry with its cutover from `config/projects.yaml` and guarded rollback (#2444), and registration through `POST /api/v1/projects` and `squadops projects import` behind the locator rules and the write gate (#2452). The owner's R1–R6 are on #2408. Owner decisions take the event table's `owner_decision` operation, written from E.4.4 (#2411) | 2.4.0, PRs #2444 and #2452, issue #2408 |
 | E.4.2 repository-native discovery and the inherited baseline, with the start declaration (§8.2 contract 7) | **placed** | 2.4.0, #2409 |
 | E.4.3 the first scoped feature through the shared cycle path | **placed** | 2.4.0, #2410 |
 | E.4.4 the second feature after an outside contribution | **placed** | 2.4.0, #2411 |
