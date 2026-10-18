@@ -36,6 +36,8 @@ class _Docker:
             return BoundedRun(None, b"", b"") if self._run_times_out else BoundedRun(0, b"ok", b"")
         if argv[1] == "kill":
             return BoundedRun(1 if self._kill_stderr else 0, b"", self._kill_stderr)
+        if argv[1] == "rm":
+            return BoundedRun(0, b"", b"")
         raise AssertionError(f"unexpected docker command {argv}")
 
     def run_name(self) -> str:
@@ -44,6 +46,9 @@ class _Docker:
 
     def killed(self) -> list[str]:
         return [c[2] for c in self.commands if c[1] == "kill"]
+
+    def removed(self) -> list[str]:
+        return [c[-1] for c in self.commands if c[1] == "rm"]
 
 
 @pytest.fixture
@@ -64,6 +69,7 @@ async def test_a_sandbox_operation_that_times_out_kills_its_container(docker, tm
     store = WorkspaceStore(tmp_path / "cycles")
     revision = store.seed("cyc_1", {"a.py": "x\n"}, origin=RevisionOrigin.SCAFFOLD_SEED)
     backend = ContainerBackend(
+        app_network=None,
         container=DockerAdapter(),
         store=store,
         image="sandbox:pinned",
@@ -95,3 +101,19 @@ async def test_a_container_already_gone_still_reports_the_timeout(docker):
         await DockerAdapter().run(ContainerSpec(image="i", timeout_seconds=5))
 
     assert fake.killed() == [fake.run_name()]
+
+
+@pytest.mark.parametrize("given", [None, "squadops-app-cyc_1-abc"], ids=["generated", "the-specs"])
+async def test_a_detached_start_that_times_out_is_removed_by_its_name(docker, given):
+    """#2451 part 4 (the MacBook lane's note on #2450). Bug caught: a ``docker run -d`` that
+    outlives its limit leaving an unnamed container nobody can find, holding its port and its
+    copy; or a spec's own name, the one the app network addresses, not used."""
+    fake = docker(run_times_out=True)
+    spec = ContainerSpec(image="sandbox:pinned", command=["serve"], timeout_seconds=1, name=given)
+
+    with pytest.raises(ToolContainerError, match="timed out"):
+        await DockerAdapter().run_detached(spec)
+
+    name = fake.run_name()
+    assert name == (given or name) and name.startswith("squadops-app-")
+    assert fake.removed() == [name]

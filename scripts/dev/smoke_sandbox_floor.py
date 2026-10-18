@@ -41,6 +41,7 @@ async def main() -> int:
     store = WorkspaceStore(ROOT / "cycles")
     contract = FULLSTACK_FASTAPI_REACT
     backend = ContainerBackend(
+        app_network=None,  # a host run: apps publish to loopback (#2451 part 4)
         container=DockerAdapter(),
         store=store,
         image=contract.image,

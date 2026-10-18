@@ -356,6 +356,7 @@ async def _audit(args: argparse.Namespace) -> int:
     store = WorkspaceStore(_AUDIT_ROOT / "cycles")
     env = get_environment_contract(stack)
     backend = ContainerBackend(
+        app_network=None,  # a host run: apps publish to loopback (#2451 part 4)
         container=DockerAdapter(),
         store=store,
         image=env.image,

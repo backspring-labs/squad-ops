@@ -24,7 +24,9 @@ from __future__ import annotations
 
 import asyncio
 import posixpath
+import re
 import time
+import uuid
 from collections.abc import Callable, Mapping
 from pathlib import Path
 from typing import Any
@@ -84,6 +86,7 @@ class ContainerBackend(NoOpExecutionSandbox):
         environment_contract_id: str | None = None,
         cache_root: Path | None = None,
         build_mutates_source: bool = False,
+        app_network: str | None,
     ) -> None:
         self._container = container
         self._store = store
@@ -102,10 +105,14 @@ class ContainerBackend(NoOpExecutionSandbox):
         self._readiness_timeout = readiness_timeout_seconds
         self._poll_interval = poll_interval_seconds
         self._http_client_factory = http_client_factory or (lambda: httpx.AsyncClient(timeout=5.0))
-        # cycle_id → (container_id, host_port). Runtime units are short-lived;
+        # #2451 part 4: where the runtime unit runs. On the app network it is reached by container
+        # name with no host port (the service is a container, and the host's loopback is not its
+        # own); None, as on a host run, publishes to loopback.
+        self._app_network = app_network
+        # cycle_id → (container_id, base_url). Runtime units are short-lived;
         # a service restart orphans nothing durable (`--rm` containers), and
         # the labeled-container sweep is 102.2+ hardening.
-        self._running: dict[str, tuple[str, int]] = {}
+        self._running: dict[str, tuple[str, str]] = {}
 
     def _cache_volumes(self) -> tuple[tuple[str, str], ...]:
         """Read-through download caches (§4.7): pip/npm download caches shared
@@ -419,6 +426,14 @@ class ContainerBackend(NoOpExecutionSandbox):
                 return False
             await asyncio.sleep(self._poll_interval)
 
+    def _placement(self, cycle_id: str) -> dict:
+        """Where the runtime unit runs: on the app network under a name of its own, or published to
+        loopback (#2451 part 4)."""
+        if self._app_network is None:
+            return {"publish_ports": (self._app_port,)}
+        safe = re.sub(r"[^a-zA-Z0-9_.-]", "-", cycle_id)[:40]
+        return {"network": self._app_network, "name": f"squadops-app-{safe}-{uuid.uuid4().hex[:8]}"}
+
     async def start_application(self, *, revision: WorkspaceRevision) -> StartResult:
         self._require_pinned(OperationName.START_APPLICATION, revision)
         base = {
@@ -446,26 +461,29 @@ class ContainerBackend(NoOpExecutionSandbox):
             volumes=((str(self._store.workspace_dir(revision.cycle_id)), _WORKSPACE_MOUNT),),
             working_dir=_WORKSPACE_MOUNT,
             timeout_seconds=self._timeout_seconds,
-            # The runtime unit publishes its declared endpoint to loopback, so
-            # it keeps the default bridge network for the floor; the 102.2
-            # policy network restores deny-by-default with a declared opening.
+            # On the app network (#2451 part 4) the runtime unit has no route out and no host
+            # port, and is reached by its name. Without one, it publishes its declared endpoint
+            # to loopback on the default bridge, the floor a host run keeps.
             memory_limit=self._memory_limit,
             cpu_limit=self._cpu_limit,
             pids_limit=self._pids_limit,
             cap_drop_all=True,
             no_new_privileges=True,
             user=self._workspace_user(revision.cycle_id),
-            publish_ports=(self._app_port,),
+            **self._placement(revision.cycle_id),
         )
         started = time.monotonic()
         try:
             container_id = await self._container.run_detached(spec)
-            host_port = await self._container.resolve_host_port(container_id, self._app_port)
+            if spec.network is not None:
+                base_url = f"http://{spec.name}:{self._app_port}"
+            else:
+                host_port = await self._container.resolve_host_port(container_id, self._app_port)
+                base_url = f"http://127.0.0.1:{host_port}"
         except ToolContainerError as e:
             return StartResult(
                 **base, status=OperationStatus.NOT_RUN, ran=False, unavailable_reason=str(e)
             )
-        base_url = f"http://127.0.0.1:{host_port}"
         ready = await self._await_ready(base_url)
         duration = time.monotonic() - started
         if not ready:
@@ -510,7 +528,7 @@ class ContainerBackend(NoOpExecutionSandbox):
                 startup_diagnostics=diagnostics,
                 cleanup_handle=container_id,
             )
-        self._running[revision.cycle_id] = (container_id, host_port)
+        self._running[revision.cycle_id] = (container_id, base_url)
         return StartResult(
             **base,
             status=OperationStatus.SUCCEEDED,
@@ -551,11 +569,11 @@ class ContainerBackend(NoOpExecutionSandbox):
                 ran=False,
                 unavailable_reason="application is not running",
             )
-        _container_id, host_port = running
+        _container_id, base_url = running
         started = time.monotonic()
         try:
             async with self._http_client_factory() as client:
-                response = await client.request(method, f"http://127.0.0.1:{host_port}{path}")
+                response = await client.request(method, f"{base_url}{path}")
         except (httpx.HTTPError, OSError) as e:
             # The app is up but unreachable/unresponsive on its declared
             # endpoint — that is the application's failure, not the probe's.

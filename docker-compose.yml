@@ -1035,6 +1035,9 @@ services:
       # No default: create_app refuses to start without a token, and compose refuses to resolve
       # without one (#2006: the token had no home, so a recreated service could not start).
       SQUADOPS__SANDBOX__SERVICE_TOKEN: ${SQUADOPS_SANDBOX_SERVICE_TOKEN:?required, written by scripts/dev/ops/deploy_credentials.py ensure (#2006)}
+      # #2451 part 4 (the owner's ruling, 2026-10-18): the apps it starts run on this internal,
+      # no-egress network by container name, with no host port. The service joins it below.
+      SQUADOPS__SANDBOX__APP_NETWORK: squadops-sandbox-apps
     volumes:
       # The sandbox service is the ONLY socket holder (SIP-0102 §4.3).
       - /var/run/docker.sock:/var/run/docker.sock
@@ -1045,6 +1048,7 @@ services:
       - ${SQUADOPS_SANDBOX_ROOT:-/tmp/squadops-sandbox}:${SQUADOPS_SANDBOX_ROOT:-/tmp/squadops-sandbox}
     networks:
       - squadnet
+      - sandbox-apps
     restart: unless-stopped
 volumes:
   rabbitmq_data: {}
@@ -1074,3 +1078,9 @@ secrets:
 networks:
   squadnet:
     driver: bridge
+  # #2451 part 4: the sandbox's apps, by container name, with no route out (internal). Its name is
+  # fixed, not project-prefixed, so SQUADOPS__SANDBOX__APP_NETWORK names it exactly.
+  sandbox-apps:
+    name: squadops-sandbox-apps
+    driver: bridge
+    internal: true

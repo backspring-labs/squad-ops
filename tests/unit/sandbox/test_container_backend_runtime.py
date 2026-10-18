@@ -99,6 +99,7 @@ def seeded(store):
 
 def _backend(container, store, script):
     return ContainerBackend(
+        app_network=None,
         container=container,
         store=store,
         image="sandbox:pinned",
@@ -278,3 +279,48 @@ class TestStopApplication:
         result = await backend.stop_application(revision=seeded, cleanup_handle="cid-app")
         assert result.status == OperationStatus.SUCCEEDED
         assert result.detail == "already stopped"
+
+
+class _RecordingClient(FakeHTTPClient):
+    def __init__(self, script: list, urls: list[str]):
+        super().__init__(script)
+        self._urls = urls
+
+    async def request(self, method: str, url: str):
+        self._urls.append(url)
+        return await super().request(method, url)
+
+
+class _NetworkContainer(RuntimeFakeContainer):
+    async def resolve_host_port(self, container_id: str, container_port: int) -> int:
+        raise AssertionError("an app on the app network publishes no host port")
+
+
+class TestOnTheAppNetwork:
+    async def test_the_runtime_unit_is_reached_by_its_name_with_no_host_port(self, store, seeded):
+        """#2451 part 4, the owner's ruling. Bug caught: inside a deploy the service is a
+        container, and an app published to the host's loopback is out of its reach, so readiness
+        and every probe fail to connect; or the app keeps a host port beside the network."""
+        container, urls = _NetworkContainer(), []
+        backend = ContainerBackend(
+            app_network="squadops-sandbox-apps",
+            container=container,
+            store=store,
+            image="sandbox:pinned",
+            operation_commands=COMMANDS,
+            readiness_timeout_seconds=0.05,
+            poll_interval_seconds=0.01,
+            http_client_factory=lambda: _RecordingClient([FakeResponse(200)], urls),
+        )
+
+        started = await backend.start_application(revision=seeded)
+        probed = await backend.probe_http_endpoint(
+            revision=seeded, probe_id="p1", method="GET", path="/api/items"
+        )
+
+        [spec] = container.specs
+        base = f"http://{spec.name}:8000"
+        assert (spec.network, spec.publish_ports) == ("squadops-sandbox-apps", ())
+        assert spec.name.startswith("squadops-app-cyc_1-")
+        assert (started.ready, started.endpoints) == (True, (base,))
+        assert probed.ran and urls[-1] == f"{base}/api/items"

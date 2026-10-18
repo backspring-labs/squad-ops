@@ -84,7 +84,11 @@ def seeded(store):
 
 def _backend(container, store, commands=COMMANDS):
     return ContainerBackend(
-        container=container, store=store, image="sandbox:pinned", operation_commands=commands
+        app_network=None,
+        container=container,
+        store=store,
+        image="sandbox:pinned",
+        operation_commands=commands,
     )
 
 
@@ -109,6 +113,7 @@ class TestHardenedSpecRendering:
         download caches would let cached deps substitute for undeclared ones."""
         container = FakeContainer()
         backend = ContainerBackend(
+            app_network=None,
             container=container,
             store=store,
             image="sandbox:pinned",
@@ -162,6 +167,7 @@ class TestOutcomeClassification:
         preflight block) or as present (a false pass) — unverifiable must
         stay None."""
         backend = ContainerBackend(
+            app_network=None,
             container=FakeContainer(image_present=image_present),
             store=store,
             image="sandbox:pinned",
@@ -179,6 +185,7 @@ class TestOutcomeClassification:
         """Bug caught: §7 item 4's second half — results without the contract
         identity cannot prove which environment declaration they ran under."""
         backend = ContainerBackend(
+            app_network=None,
             container=FakeContainer(),
             store=store,
             image="sandbox:pinned",
@@ -259,6 +266,7 @@ class TestBuildMutatesSource:
 
     def _mutating_backend(self, container, store):
         return ContainerBackend(
+            app_network=None,
             container=container,
             store=store,
             image="sandbox:pinned",
@@ -320,6 +328,7 @@ class TestWorkspaceOwnerUser:
     async def test_env_pins_home_and_user_neutral_caches(self, tmp_path, store, seeded):
         container = FakeContainer()
         backend = ContainerBackend(
+            app_network=None,
             container=container,
             store=store,
             image="sandbox:pinned",
