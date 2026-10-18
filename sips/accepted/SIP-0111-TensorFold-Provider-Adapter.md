@@ -123,7 +123,7 @@ Placed by the owner's Q1 ruling (2026-10-09). The rows are ordered as the work r
 | a seed on every TensorFold call, G3's finding (§9j) | **shipped** | 2.3.0, #2283, closing #2281 |
 | G4: cutover | **shipped** | 2.3.0, #2285, closing #2229 and #2284 (the switch records the deploy, §9k): adopted by the owner on G3's evidence on 2026-10-13 (§9j). The Spark serves on TensorFold from 2026-10-13 20:01 ET (dep_1724f586cc3a), and its cutover pair passed (§9k) |
 | the memory watchdog as a host service that restores Ollama after a kill (§9l) | **shipped** | 2.3.0, #2289, closing #2288 |
-| a second candidate, Qwen3.8-Flash-Next on TensorFold, on its own gate path: screening, its own recipe, G0 and G1 (§9a) | **placed** | 2.4.0, #2230: moved from 2.3 by the owner on 2026-10-12 ("skip to next release"). Not measured in 2.3, which is not a negative |
+| a second candidate, Qwen3.8-Flash-Next on TensorFold, on its own gate path: screening, its own recipe, G0 and G1 (§9a) | **unplaced** | deliberately, #2230: the owner on 2026-10-15, "no second tensorfold candidate at this time", kept by the 2.4 plan's D9 (ruled 2026-10-17) until the owner places it. It had moved from 2.3 by the owner on 2026-10-12 ("skip to next release"). Not measured in 2.3, which is not a negative |
 
 **What closes this SIP:** G4 decided (adopted, or parked with its record), with each earlier row shipped or its negative
 recorded.

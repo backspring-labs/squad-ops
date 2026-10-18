@@ -1,13 +1,15 @@
 # 2.4.0 plan — the yardstick first: Outcome Evaluation leads and measures before it changes anything, and Project Lifecycle Management develops products SquadOps doesn't own
 
-**Status: DRAFT (2026-10-16), for the owner's review of §7.** The headline's shape is ruled. The owner, on 2026-10-16,
+**Status: ADOPTED (2026-10-17).** The owner ruled every decision in §7: D1 on 2026-10-16, D13 on 2026-10-17, and D2–D12
+and D14 the same evening ("approve D2-D12 and D14 as recommended"). The headline's shape came first. The owner, on 2026-10-16,
 agreed to the supervisor's recommendation ("agree, draft the 2.4 plan that way after the cut"):
 - Outcome Evaluation leads 2.4;
 - its design review comes early;
 - its feature half is conditional on its instruments' data arriving in the line;
-- if that data is late, SIP-0110's memory entry points carry 2.4 as its feature.
+- if that data is late, SIP-0110's memory entry points carry 2.4 as its feature. D14 (2026-10-17) replaces this
+  fallback: Project Lifecycle Management is then the headline.
 
-This plan proposes everything else, and nothing starts before §7 is ruled. 2.3.1 cut on 2026-10-17.
+This plan proposed everything else, and the owner ruled it (§7). 2.3.1 cut on 2026-10-17.
 
 **Revised 2026-10-17: Project Lifecycle Management is added** (§2). The owner made it 2.4's feature on the MacBook
 lane (Q35, PR #2401), so the release carries one feature per lane. D1 stands for the Spark lane's. The SIP's §8.5
@@ -45,7 +47,7 @@ and by its own rules, both when the product already exists and when SquadOps cre
 ### 1.1 The design review, first
 
 The SIP is still proposed, and accepting it is the owner's design review. Its §8 asks five questions. This plan's
-recommendations are in §7 (D2). The review comes before any of the SIP's code, and its answers become the accepted
+rulings are in §7 (D2). The review comes before any of the SIP's code, and its answers become the accepted
 text.
 
 Two things the review should also settle, both found while drafting this plan:
@@ -72,7 +74,7 @@ As the SIP's §6 lists them:
 **Nothing in phase 1 changes a row, a gate or a prompt.** A scenario result reaches no squad role. This is the line's
 first build, on branches, merged in reviewable steps, each with its wiring test and loaded check.
 
-**The first suite** is authored outside the implementing roles. This plan recommends the supervisor drafts it and the
+**The first suite** is authored outside the implementing roles. The owner ruled that the supervisor drafts it and the
 owner approves it (D2, the SIP's question 2), following the auditor rule the owner set for lessons: a frontier model
 drafts, a person approves, and the squad's own model drafts none. The suite is frozen and content-addressed before the
 window starts.
@@ -81,7 +83,7 @@ window starts.
 
 Phase 2's thresholds have to come from measured noise, not guesses. So phase 1 runs on a window of campaigns,
 pre-registered before the first one launches.
-- **Recommended (D3):** four campaigns, two per stack, of three increments each, on one frozen deploy. The deploy is
+- **Ruled (D3):** four campaigns, two per stack, of three increments each, on one frozen deploy. The deploy is
   frozen for both lanes (Project Lifecycle Management's G7, ruled): neither deploys a change inside the window (§2.6).
 - **They double as the next build-side memory experiment** (SIP-0110's ledger, unplaced; the 2.3 plan's D6 put it in
   2.4 beside Outcome Evaluation). That experiment needs multi-increment campaigns on both stacks with memory on and no
@@ -129,7 +131,8 @@ Phase 2 is the SIP's §4.5 and §4.7:
 - each measure that phase 2 would gate has a spread inside its tolerance.
 
 The owner reads the window's record and decides. If the data is late or doesn't support it, phase 2 moves to the
-next even release with the record, and **the memory entry points carry 2.4 as its feature** (§3).
+next even release with the record. **Project Lifecycle Management is then the release's headline, with phase 1 as the
+yardstick** (D14), and the memory entry points ship as placed (§3).
 
 **SIP-0109 §24ap's deferred row joins phase 2:** accepted increments' `prd_delta` text to the proposer ("a 2.4
 question", ruled 2026-10-03). It is the same seam: what the proposer is shown.
@@ -218,7 +221,7 @@ freezes, and which integration scenario exercises it.
 - **What comes with it:** each lane's recorded outputs. Each is recorded valid, with a field missing, with an unknown
   schema version, and with a stale commit.
 - **How it lands:** as one PR both lanes review, before either lane's first contract PR.
-- **Recommended (D12):** the MacBook lane writes it, and the Spark lane adds its recorded evaluation reference in the
+- **Ruled (D12):** the MacBook lane writes it, and the Spark lane adds its recorded evaluation reference in the
   same PR.
 
 **Every PR that changes a shared contract** must:
@@ -229,7 +232,7 @@ freezes, and which integration scenario exercises it.
 
 ### 2.4 The three sandbox changes (its §8.2.2)
 
-The sandbox is the Spark lane's. **Recommended (D12):** the Spark lane builds all three, and the MacBook lane reviews
+The sandbox is the Spark lane's. **Ruled (D12):** the Spark lane builds all three, and the MacBook lane reviews
 each one as its consumer (G4).
 
 | change | what it fixes on `main` | what needs it | when |
@@ -280,7 +283,7 @@ integration branch (G5).
 - **The window's deploy is frozen for both lanes, and neither lane deploys a change inside the window** (G7, §1.3).
   - The window runs `group_run` campaigns, and the registry cutover (E.4.1) changes how `group_run` is resolved.
   - So the cutover deploys before the freeze, with IR-1 read, or after the window closes.
-  - **Recommended (D12):** before the freeze if IR-1 has passed, otherwise after the window.
+  - **Ruled (D12):** before the freeze if IR-1 has passed, otherwise after the window.
 - **The demonstrations need a live deploy.** The lanes agree where they run: on the Spark, or on the MacBook's own
   deploy. If they run on the Spark, they run outside the window (D12).
 - **Project Lifecycle Management's slices run on the MacBook lane's own schedule.** This plan fixes only where they meet
@@ -344,14 +347,14 @@ needed to deliver the entry points, and they don't block it. So they build in pa
   only when the operator writes one. The window's campaigns write none, so the entry points don't touch the window's
   readings.
 
-**If phase 2 moves,** the entry points are the release's headline feature. #2183's acceptance matrix, live, is then
-the headline's evidence.
+**If phase 2 moves,** Project Lifecycle Management is the release's headline (D14). The entry points are claimed on their
+own evidence, #2183's acceptance matrix, live.
 
 ---
 
 ## 4. Riding along
 
-### 4.1 In 2.4 (recommended)
+### 4.1 In 2.4
 
 | item | what | when in the line |
 |---|---|---|
@@ -362,8 +365,10 @@ the headline's evidence.
 | #2306 | a converging repair ended as a plan defect: read the 12 recent terminations first, then fix | the read early; the fix after the window if the read finds converging repairs |
 | #1756 | the full rendered request stored once per generation, readable by id, with the redaction applied | early, as an instrument: it reaches the seams the authoring envelopes don't |
 | #2253 | QA's output budget: read the headroom across every recorded `qa.test` call, then decide | the read early; any budget change only between measurements, named in the record |
+| #2395 (placed in 2.4 by the owner, the 2.3.1 plan's D4) | a Next.js plan asks QA for page-state tests the stack's vitest can't run: one suite needed a DOM library the stack doesn't seed, another rendered on the server and saw only the loading state (2.3.1's round 3) | **before the window's deploy freezes:** it rejected 2.3.1's last Next.js roll, and the window runs two Next.js campaigns, so left in place it would decide their increments rather than the app's outcome |
+| #2297 (placed in 2.4 by the owner after the 2.3.0 cut) | QA's test author was shown the leave endpoint and used it exactly, but the planned "empty name" case can't be expressed against a name in the path | after the window, with the other output-quality changes (D8) |
 
-### 4.2 Not in 2.4 (recommended)
+### 4.2 Not in 2.4
 
 | item | why | where |
 |---|---|---|
@@ -425,10 +430,10 @@ cut.
 target met with a quality baseline held, and the proposer aims at what still fails. The evidence is the window's
 record and phase 2's own reading.
 
-**If phase 2 moves,** the claim is the entry points: an operator's instruction reaches the task it names and only
-that task, and chat works on the memory substrate. The evidence is the acceptance matrix, live. Phase 1's instruments
-still ship as reporting only, so the release carries the yardstick either way. That is D1, ruled. D14 asks whether it
-still applies now that Project Lifecycle Management is committed.
+**If phase 2 moves,** the headline is Project Lifecycle Management (D14, below), and phase 1's instruments still ship as
+reporting only, so the release carries the yardstick either way. The entry points are claimed on their own evidence,
+the acceptance matrix, live: an operator's instruction reaches the task it names and only that task, and chat works on
+the memory substrate.
 
 **Project Lifecycle Management's claim stands on its own evidence either way** (G5):
 - SquadOps develops an independently owned product in its own repository:
@@ -496,24 +501,24 @@ reading beside it (Outcome Evaluation §1).
 
 ---
 
-## 7. Decisions for the owner
+## 7. The owner's decisions
 
-| # | decision | status | recommendation |
+| # | decision | status | the ruling (as recommended, unless the row says otherwise) |
 |---|---|---|---|
 | D1 | **the headline** | **ruled** 2026-10-16. Q35 added the MacBook lane's feature (2026-10-17) | **ruled 2026-10-16:** Outcome Evaluation leads; its design review comes early; phase 2 is conditional on phase 1's data; the entry points carry 2.4 if it moves. **Since then (2026-10-17):** the owner made Project Lifecycle Management the MacBook lane's 2.4 feature (Q35, PR #2401). D1 stands for the Spark lane's (§2) |
-| D2 | **Outcome Evaluation's five questions** (its §8) | open. The Spark lane's intent from its #2401 review (the runner, the storage, the surfaces) is for this review | **(1)** steps held out, goals visible, as drafted. **(2)** The supervisor drafts the first suite and the owner approves it, frozen before the window. **(3)** Lighthouse and axe in the QA image, with the lock files' audit. **(4)** The first work classes: increment count, PRD tier, and attended or unattended, declared in the objective. **(5)** Phase 2 in 2.4, conditional (D1, D4). Also rename the SIP's "outcome" term (§1.1) |
-| D3 | **the window** | open. G7, ruled, freezes the window's deploy for both lanes | **four campaigns, two per stack, three increments each, on one frozen deploy,** pre-registered. With memory on and no build-side lesson approved, they double as SIP-0110's next build-side experiment |
-| D4 | **phase 2's condition** | open | **the window's record shows:** the scenarios discriminate, holding out holds, contribution is not the acceptance count, and each measure phase 2 would gate is stable. The owner decides on that record |
-| D5 | **the entry points** | open. The entry points are placed in 2.4.0 (SIP-0110) | **in 2.4 as placed,** in parallel. **Q29: conversation history's retention** is the owner's, set before #2180 ships |
-| D6 | **#1966** | open | **the A/B in 2.4; adoption a separate ruling,** not before phase 2's decision |
-| D7 | **#316** | open | **in 2.4, after its SIP's design review,** landing before the window's deploy freezes |
-| D8 | **the 2.3 cut's output-quality findings** | open | **#2378's proper fix and #2153's build after the window,** each measured on the yardstick. **#2306 and #2253 as reads first.** **#1756 early,** as an instrument |
-| D9 | **#2230** | open | **unplaced, deliberately,** with the owner's words of 2026-10-15, until the owner places it. If ruled, its SIP-0111 ledger row moves to unplaced in this plan's PR before it merges |
-| D10 | **the judgement steps (#557, #949, #950) and #1978** | open | **not in 2.4;** re-read at 2.4's cut |
-| D11 | **who runs the line** | open. Q35 split the line into two lanes | **the supervisor runs the Spark lane, on the 2.3 line's terms:** build in §5's order, merge on green with main's run read, rebuilds and uncounted runs. The MacBook lane is run by its own session, on its own grant. **The owner's:** the SIP acceptances (Outcome Evaluation, #316, Project Lifecycle Management), opening the integration branch (G2), the first suite's approval, Q29, the phase-2 decision, lesson approvals, compose changes, and the tag and Release unless delegated at the cut |
-| D12 | **when the lanes meet** (§2; the contracts and gates are Project Lifecycle Management's, ruled) | open | **(1)** The shared fixture first: the MacBook lane writes it, the Spark lane adds its recorded evaluation reference, and both review. **(2)** X-1 to X-3 are built by the Spark lane, which owns the sandbox, and reviewed by the MacBook lane: X-1 right after the fixture; X-2 before the brownfield demonstration unless its product is text-only; X-3 with phase 1's runner, including starting a pinned revision in a disposable copy. **(3)** The registry cutover deploys before the window's freeze if IR-1 has passed, otherwise after the window (G7). **(4)** The lanes agree where the demonstrations run; on the Spark, they run outside the window |
+| D2 | **Outcome Evaluation's five questions** (its §8) | **ruled** 2026-10-17, as recommended. The Spark lane's intent from its #2401 review (the runner, the storage, the surfaces) is for this review | **(1)** steps held out, goals visible, as drafted. **(2)** The supervisor drafts the first suite and the owner approves it, frozen before the window. **(3)** Lighthouse and axe in the QA image, with the lock files' audit. **(4)** The first work classes: increment count, PRD tier, and attended or unattended, declared in the objective. **(5)** Phase 2 in 2.4, conditional (D1, D4). Also rename the SIP's "outcome" term (§1.1) |
+| D3 | **the window** | **ruled** 2026-10-17, as recommended. G7, ruled, freezes the window's deploy for both lanes | **four campaigns, two per stack, three increments each, on one frozen deploy,** pre-registered. With memory on and no build-side lesson approved, they double as SIP-0110's next build-side experiment |
+| D4 | **phase 2's condition** | **ruled** 2026-10-17, as recommended | **the window's record shows:** the scenarios discriminate, holding out holds, contribution is not the acceptance count, and each measure phase 2 would gate is stable. The owner decides on that record |
+| D5 | **the entry points** | **ruled** 2026-10-17, as recommended. The entry points are placed in 2.4.0 (SIP-0110) | **in 2.4 as placed,** in parallel. **Q29: conversation history's retention** is the owner's, set before #2180 ships |
+| D6 | **#1966** | **ruled** 2026-10-17, as recommended | **the A/B in 2.4; adoption a separate ruling,** not before phase 2's decision |
+| D7 | **#316** | **ruled** 2026-10-17, as recommended | **in 2.4, after its SIP's design review,** landing before the window's deploy freezes |
+| D8 | **the 2.3 cut's output-quality findings** | **ruled** 2026-10-17, as recommended | **#2378's proper fix and #2153's build after the window,** each measured on the yardstick. **#2306 and #2253 as reads first.** **#1756 early,** as an instrument |
+| D9 | **#2230** | **ruled** 2026-10-17, as recommended | **unplaced, deliberately,** with the owner's words of 2026-10-15, until the owner places it. Its SIP-0111 ledger row moved to unplaced in this plan's PR |
+| D10 | **the judgement steps (#557, #949, #950) and #1978** | **ruled** 2026-10-17, as recommended | **not in 2.4;** re-read at 2.4's cut |
+| D11 | **who runs the line** | **ruled** 2026-10-17, as recommended. Q35 split the line into two lanes | **the supervisor runs the Spark lane, on the 2.3 line's terms:** build in §5's order, merge on green with main's run read, rebuilds and uncounted runs. The MacBook lane is run by its own session, on its own grant. **The owner's:** the SIP acceptances (Outcome Evaluation, #316, Project Lifecycle Management), opening the integration branch (G2), the first suite's approval, Q29, the phase-2 decision, lesson approvals, compose changes, and the tag and Release unless delegated at the cut |
+| D12 | **when the lanes meet** (§2; the contracts and gates are Project Lifecycle Management's, ruled) | **ruled** 2026-10-17, as recommended | **(1)** The shared fixture first: the MacBook lane writes it, the Spark lane adds its recorded evaluation reference, and both review. **(2)** X-1 to X-3 are built by the Spark lane, which owns the sandbox, and reviewed by the MacBook lane: X-1 right after the fixture; X-2 before the brownfield demonstration unless its product is text-only; X-3 with phase 1's runner, including starting a pinned revision in a disposable copy. **(3)** The registry cutover deploys before the window's freeze if IR-1 has passed, otherwise after the window (G7). **(4)** The lanes agree where the demonstrations run; on the Spark, they run outside the window |
 | D13 | **the shared demonstration** (§2.7) | **ruled** 2026-10-17 | **The owner's choice:** the proposed vehicle for the cross-lane scenarios (IR-4, IR-5, IR-6 and IR-9), not a release requirement. If it can't run, its scenarios report *not run* (G5) |
-| D14 | **D1's fallback, now that Project Lifecycle Management is committed** | open | D1 makes the memory entry points 2.4's headline if phase 2 moves, so that an even minor has a feature. Project Lifecycle Management now meets that on its own. **Recommended:** if phase 2 moves, the release's headline is Project Lifecycle Management, with phase 1 as the yardstick, and the entry points ship as placed and are claimed on their own acceptance matrix (#2183). D1 stands until the owner rules this |
+| D14 | **D1's fallback, now that Project Lifecycle Management is committed** | **ruled** 2026-10-17, as recommended | D1 made the memory entry points 2.4's headline if phase 2 moves, so that an even minor has a feature. Project Lifecycle Management now meets that on its own. **Recommended:** if phase 2 moves, the release's headline is Project Lifecycle Management, with phase 1 as the yardstick, and the entry points ship as placed and are claimed on their own acceptance matrix (#2183). This replaces D1's fallback |
 
 ---
 
