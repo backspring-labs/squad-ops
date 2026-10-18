@@ -123,7 +123,7 @@ Placed by the owner's Q1 ruling (2026-10-09). The rows are ordered as the work r
 | a seed on every TensorFold call, G3's finding (§9j) | **shipped** | 2.3.0, #2283, closing #2281 |
 | G4: cutover | **shipped** | 2.3.0, #2285, closing #2229 and #2284 (the switch records the deploy, §9k): adopted by the owner on G3's evidence on 2026-10-13 (§9j). The Spark serves on TensorFold from 2026-10-13 20:01 ET (dep_1724f586cc3a), and its cutover pair passed (§9k) |
 | the memory watchdog as a host service that restores Ollama after a kill (§9l) | **shipped** | 2.3.0, #2289, closing #2288 |
-| the upgrade to TensorFold 1.x, measured two ways: the engine, 1.x against 0.6.6 on the 27B; and the model, the 27B against Flash-Next on 1.x. S, G0 and G1 per checkpoint, then G2 to G4 for what is selected (§9m, which replaces §9a item 5's second candidate) | **unplaced** | deliberately, #2230: the owner on 2026-10-18, "I will want to tackle this move to 1.1.0 - but not just yet". The second candidate it replaces was unplaced by the owner on 2026-10-15 ("no second tensorfold candidate at this time") and kept so by the 2.4 plan's D9 (ruled 2026-10-17). 2.3 ran only an exploratory measure of Flash-Next, and not measuring it is not a negative |
+| the upgrade to TensorFold 1.x, measured two ways: the engine, 1.x against 0.6.6 on the 27B; and the model, the 27B against Flash-Next on 1.x. S, G0 and G1 per checkpoint, then G2 to G4 for what is selected (§9m, which replaces §9a item 5's second candidate) | **unplaced** | deliberately, #2230: the owner on 2026-10-18, "I will want to tackle this move to 1.1.0 - but not just yet", and on its sequencing, "I think this model change will come after 2.4 and the outcome evaluation work". The second candidate it replaces was unplaced by the owner on 2026-10-15 ("no second tensorfold candidate at this time") and kept so by the 2.4 plan's D9 (ruled 2026-10-17). 2.3 ran only an exploratory measure of Flash-Next, and not measuring it is not a negative |
 
 **What closes this SIP:** G4 decided (adopted, or parked with its record), with each earlier row shipped or its negative
 recorded.
@@ -1067,6 +1067,8 @@ host service installed once with the owner's sudo, which after a kill switches t
      registry identity and model family, never `qwen3.8`, with nothing carried over from the 27B.
 - **This departs from Q4** ("don't plan to use the 1.0.x version") **and from this SIP's v0.6.6 scope.** Production
   stays on 0.6.6 (§9d, §9k) until this row's own G4.
+- **It comes after 2.4 and the Outcome Evaluation work.** The owner, the same day: "I think this model change will come after 2.4 and the outcome evaluation work". So it isn't placed in
+  2.4, and it doesn't run during 2.4's measurement.
 - **The row stays unplaced.** Before it runs, the owner rules on:
   - its placement;
   - the 1.x release pinned at the start;
@@ -1119,10 +1121,12 @@ host service installed once with the owner's sudo, which after a kill switches t
   - its §4.6 names only the project-instruction set as a listed input;
   - SIP-0111 owns the switch and its gates.
 
-  Two questions are the owner's: whether SIP-0113 adds the engine and the model to its listed inputs, and whether
-  this row may run during its measurement.
+  The owner's sequencing settles when this row runs: after 2.4 and the Outcome Evaluation work. One question stays
+  open, to be ruled before the row is placed. Should SIP-0113 add the engine and the model to its listed inputs? A
+  comparison made after the switch, against baselines measured before it, spans the change.
 
 **Who ruled it.** The owner, on 2026-10-18. After the supervisor assessed the effort of #2230 on 1.1.0, the owner
 said "I will want to tackle this move to 1.1.0 - but not just yet". The owner then directed that #2230 focus on
 eventually upgrading to TensorFold 1.x, and on evaluating its performance against 0.6 and the 27B against Flash-Next.
+On the PR that records this section (#2423), the owner set its sequencing: "I think this model change will come after 2.4 and the outcome evaluation work".
 The supervisor rewrote #2230 (its comment `issuecomment-6250014247` records the redirection) and drafted this section.

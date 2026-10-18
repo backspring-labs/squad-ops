@@ -375,7 +375,7 @@ own evidence, #2183's acceptance matrix, live.
 | item | why | where |
 |---|---|---|
 | #557, #949, #950: the judgement steps | they follow Outcome Evaluation and are measured on it, and 2.4 already changes the proposer. Adding judgement steps would make neither change readable | 2.5 or later, re-read at 2.4's cut |
-| #2230, the upgrade to TensorFold 1.x (redirected by the owner on 2026-10-18 from Qwen3.8-Flash-Next on TensorFold; SIP-0111 §9m) | the owner on 2026-10-15: "no second tensorfold candidate at this time"; on 2026-10-18: "I will want to tackle this move to 1.1.0 - but not just yet" | **unplaced, deliberately,** with the owner's words, until the owner places it (D9) |
+| #2230, the upgrade to TensorFold 1.x (redirected by the owner on 2026-10-18 from Qwen3.8-Flash-Next on TensorFold; SIP-0111 §9m) | the owner on 2026-10-15: "no second tensorfold candidate at this time"; on 2026-10-18: "I will want to tackle this move to 1.1.0 - but not just yet", and "I think this model change will come after 2.4 and the outcome evaluation work" | **unplaced, deliberately,** with the owner's words, until the owner places it (D9) |
 | #1978, test-first verification | "after Outcome Evaluation's baseline": it needs phase 1's data first | 2.5 or later |
 | #1965, the framework suite's test-value audit | the crew's first optimization experiment, an outer-loop item with no 2.4 dependency | the owner's to place |
 | the squad authoring its own backlog | portfolio Q1: 2.6, with its own SIP. The squad chooses features only once there's an independent measure of whether a feature helped | 2.6 |
