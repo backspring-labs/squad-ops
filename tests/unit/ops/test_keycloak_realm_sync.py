@@ -323,3 +323,74 @@ def test_no_realm_export_commits_a_users_password(export_name):
     export = json.loads((_ROOT / "infra" / "auth" / export_name).read_text())
 
     assert [u["username"] for u in export.get("users", []) if u.get("credentials")] == []
+
+
+class _ScriptedToken:
+    """The admin-token endpoint answering each request in turn: a status code, ``"refused"``, or
+    the token; with a clock the retry's pauses advance."""
+
+    def __init__(self, answers):
+        self.answers, self.calls, self.now = list(answers), 0, 0.0
+
+    def __call__(self, base_url, admin, password):
+        import urllib.error
+
+        self.calls += 1
+        answer = self.answers.pop(0) if self.answers else self.last
+        self.last = answer
+        if answer == "refused":
+            raise urllib.error.URLError("Connection refused")
+        if isinstance(answer, int):
+            raise urllib.error.HTTPError(base_url, answer, "Bad Request", None, None)
+        return answer
+
+    def sleep(self, seconds):
+        self.now += seconds
+
+
+@pytest.mark.parametrize(
+    ("answers", "calls"),
+    [([400, 400, "t"], 3), ([503, "t"], 2), (["refused", "t"], 2)],
+    ids=["pool-recovering", "starting", "not-listening"],
+)
+def test_the_sync_waits_out_a_keycloak_that_is_recovering(monkeypatch, capsys, answers, calls):
+    """#2426, entered at the sync's ``main``, as the deploy runs it. Bug caught: the 2026-10-18
+    MacBook deploy recreated Postgres under a running Keycloak, whose first token request drew a
+    dead pooled connection and was answered 400; the sync gave up at once, and the realms went
+    without the exports' new clients and roles."""
+    token = _ScriptedToken(answers)
+    monkeypatch.setenv("KEYCLOAK_ADMIN_PASSWORD", "x")
+    monkeypatch.setattr(sync, "admin_token", token)
+    monkeypatch.setattr(sync, "_clock", lambda: token.now)
+    monkeypatch.setattr(sync, "_sleep", token.sleep)
+    monkeypatch.setattr(sync, "_request", lambda *a, **k: (404, {}))
+    monkeypatch.setattr(sync, "sync_export", lambda base_url, tok, export: f"synced with {tok}")
+
+    assert sync.main([str(_ROOT / "infra" / "auth" / "squadops-realm.json")]) == 0
+
+    assert token.calls == calls
+    captured = capsys.readouterr()
+    assert "synced with t" in captured.out
+    assert "retrying" in captured.err
+
+
+@pytest.mark.parametrize(
+    ("answers", "calls"),
+    [([401], 1), ([400], 1 + sync.TOKEN_RETRY_SECONDS // 3)],
+    ids=["wrong-password-at-once", "still-failing-at-the-deadline"],
+)
+def test_the_sync_fails_when_waiting_cannot_help_or_has_run_out(
+    monkeypatch, capsys, answers, calls
+):
+    """Bugs caught: a wrong password retried for a minute before it is reported, and a Keycloak
+    that never recovers retried forever, so the deploy hangs rather than fails."""
+    token = _ScriptedToken(answers)
+    monkeypatch.setenv("KEYCLOAK_ADMIN_PASSWORD", "x")
+    monkeypatch.setattr(sync, "admin_token", token)
+    monkeypatch.setattr(sync, "_clock", lambda: token.now)
+    monkeypatch.setattr(sync, "_sleep", token.sleep)
+
+    assert sync.main([str(_ROOT / "infra" / "auth" / "squadops-realm.json")]) == 1
+
+    assert token.calls == calls
+    assert f"admin token failed: HTTP Error {answers[0]}" in capsys.readouterr().err

@@ -232,9 +232,13 @@ docker compose up -d --wait rabbitmq postgres redis prefect-server
 # exports into existing realms (partialImport, ifResourceExists=SKIP — idempotent,
 # non-destructive); a realm that does not exist yet is left to --import-realm.
 # #2006: the sync also sets each client's secret from .env (sync_keycloak_realms, secrets.sh).
+# #2426: a failed sync fails the deploy, like every other deferred step (#370). It was a yellow
+# line the success banner followed, so realms went without the exports' new clients and roles.
 if docker compose config --services | grep -q '^squadops-keycloak$'; then
-    sync_keycloak_realms \
-        || echo -e "${YELLOW}⚠️  Keycloak realm sync failed — existing realms may lack new clients/roles (#372) or the deploy's client secrets (#2006)${NC}"
+    if ! sync_keycloak_realms; then
+        REALM_SYNC_FAILED=1
+        echo -e "${RED}❌ Keycloak realm sync failed — existing realms may lack new clients/roles (#372) or the deploy's client secrets (#2006)${NC}"
+    fi
 fi
 
 # Back up the database before anything else touches it (#1181). Cheap insurance at the
@@ -555,6 +559,7 @@ DEPLOY_FAILED=0
 [ "${SANDBOX_FAILED:-0}" = "1" ] && DEPLOY_FAILED=1
 [ "${AGENTS_RESTART_FAILED:-0}" = "1" ] && DEPLOY_FAILED=1
 [ "${PROMPT_SYNC_FAILED:-0}" = "1" ] && DEPLOY_FAILED=1
+[ "${REALM_SYNC_FAILED:-0}" = "1" ] && DEPLOY_FAILED=1
 [ "${DEPLOY_RECORD_FAILED:-0}" = "1" ] && DEPLOY_FAILED=1
 if [ "$DEPLOY_FAILED" = "1" ]; then
     echo -e "${RED}⚠️  Rebuild and deploy completed WITH FAILURES (details below).${NC}"
@@ -606,6 +611,12 @@ if [ "${AGENTS_RESTART_FAILED:-0}" = "1" ]; then
     echo -e "${RED}❌ Agent restart failed for:${FAILED_AGENTS}${NC}"
     echo -e "${RED}   These agents keep running their previous image (stale code).${NC}"
     echo -e "${YELLOW}   Retry: ./scripts/dev/ops/rebuild_and_deploy.sh agents${FAILED_AGENTS}${NC}"
+fi
+if [ "${REALM_SYNC_FAILED:-0}" = "1" ]; then
+    echo ""
+    echo -e "${RED}❌ The Keycloak realm sync failed (#2426): the realms may lack the exports' new clients${NC}"
+    echo -e "${RED}   and roles, or the deploy's client secrets. Its reason is above. Once Keycloak answers:${NC}"
+    echo -e "${YELLOW}   python3 scripts/dev/ops/keycloak_realm_sync.py --password-file secrets/keycloak_admin_password.txt infra/auth/squadops-realm*.json${NC}"
 fi
 if [ "${DEPLOY_RECORD_FAILED:-0}" = "1" ]; then
     echo ""

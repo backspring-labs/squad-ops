@@ -167,3 +167,46 @@ def test_every_loaded_check_row_is_complete():
 
     rows = yaml.safe_load(loaded.CHECKS.read_text())["checks"]
     assert rows and all({"id", "what", "container", "code", "expect"} <= set(r) for r in rows)
+
+
+@pytest.mark.parametrize(
+    ("container", "exists", "exec_rc", "row_line", "summary", "expected_exit"),
+    [
+        ("squadops-sandbox-service", False, None, "skip #r1", "0 loaded, 0 not, 1 skipped", 0),
+        ("squadops-sandbox-service", True, 1, "FAIL #r1", "0 loaded, 1 not", 1),
+        ("squadops-nat", False, 1, "FAIL #r1", "0 loaded, 1 not", 1),
+    ],
+    ids=["opt-in-not-running", "opt-in-running-but-broken", "always-on-missing"],
+)
+def test_a_missing_opt_in_container_is_skipped_and_any_other_still_fails(
+    tmp_path, monkeypatch, capsys, container, exists, exec_rc, row_line, summary, expected_exit
+):
+    """Bug caught (#2426): every deploy without the opt-in sandbox read ``126 loaded, 1 not``
+    and exited 1 on row #1982 (``No such container``); and the opposite, a skip that also hides
+    a sandbox that runs and is broken, or a missing agent. Entered at ``main`` with the shipped
+    ``docker-compose.yml`` naming which containers a profile gates; nothing reaches docker."""
+    import subprocess
+
+    checks = tmp_path / "loaded_checks.yaml"
+    checks.write_text(
+        f"checks:\n  - {{id: r1, what: w, container: {container}, code: print(1), expect: '1'}}\n"
+    )
+    monkeypatch.setattr(loaded, "CHECKS", checks)
+
+    def run(cmd, **kwargs):
+        if cmd[:2] == ["docker", "inspect"]:
+            return subprocess.CompletedProcess(cmd, 0 if exists else 1, "", "")
+        if cmd[:2] == ["docker", "exec"]:
+            return subprocess.CompletedProcess(
+                cmd, exec_rc, "", f"Error response from daemon: No such container: {container}"
+            )
+        return subprocess.CompletedProcess(cmd, 0, "dep_x describes what runs: 20 services", "")
+
+    monkeypatch.setattr(loaded.subprocess, "run", run)
+
+    assert loaded.main([]) == expected_exit
+    out = capsys.readouterr().out
+    assert f"{row_line} {container}" in out
+    assert summary in out.splitlines()
+    if not exists and container == "squadops-sandbox-service":
+        assert "sandbox-service does not run on this deploy" in out

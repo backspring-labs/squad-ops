@@ -33,6 +33,7 @@ import argparse
 import json
 import os
 import sys
+import time
 import urllib.error
 import urllib.parse
 import urllib.request
@@ -71,6 +72,36 @@ def admin_token(base_url: str, admin: str, password: str) -> str:
     )
     with urllib.request.urlopen(req, timeout=15) as resp:
         return json.load(resp)["access_token"]
+
+
+#: #2426: how long the admin-token request is retried. A deploy that recreates Postgres under a
+#: running Keycloak leaves dead connections in Keycloak's pool, and a request that draws one is
+#: answered 400 until the pool discards them: 14 s on the MacBook's 2026-10-18 deploy, whose sync
+#: failed once and was read as a warning.
+TOKEN_RETRY_SECONDS = 60
+_TOKEN_RETRY_PAUSE_SECONDS = 3
+_clock = time.monotonic
+_sleep = time.sleep
+
+
+def admin_token_when_ready(base_url: str, admin: str, password: str) -> str:
+    """``admin_token``, retried for ``TOKEN_RETRY_SECONDS`` while Keycloak answers 400 or 5xx or
+    refuses the connection (#2426). Any other answer, such as 401 for a wrong password, raises at
+    once: waiting does not change it."""
+    give_up = _clock() + TOKEN_RETRY_SECONDS
+    while True:
+        try:
+            return admin_token(base_url, admin, password)
+        except urllib.error.HTTPError as exc:
+            if (exc.code != 400 and exc.code < 500) or _clock() >= give_up:
+                raise
+            why = f"answered {exc.code}"
+        except urllib.error.URLError as exc:
+            if _clock() >= give_up:
+                raise
+            why = f"unreachable ({exc.reason})"
+        print(f"keycloak_realm_sync: admin token {why}; retrying", file=sys.stderr)
+        _sleep(_TOKEN_RETRY_PAUSE_SECONDS)
 
 
 def _request(base_url: str, token: str, method: str, path: str, body: dict | None = None):
@@ -268,7 +299,7 @@ def main(argv: list[str] | None = None) -> int:
         )
         return 2
     try:
-        token = admin_token(args.base_url, args.admin, password)
+        token = admin_token_when_ready(args.base_url, args.admin, password)
     except (urllib.error.URLError, KeyError, ValueError) as exc:
         print(f"keycloak_realm_sync: admin token failed: {exc}", file=sys.stderr)
         return 1
