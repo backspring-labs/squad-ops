@@ -20,8 +20,10 @@ exporters:
   prometheus:
     endpoint: 0.0.0.0:8889
     namespace: squadops
+  # #2424: basic is one summary line per batch. The traces and logs pipelines reach only this
+  # exporter; at normal it printed each batch whole.
   debug:
-    verbosity: normal
+    verbosity: basic
   # Optional: Add OTLP exporter for Jaeger if needed
   # otlp/jaeger:
   #   endpoint: jaeger:4317
@@ -40,10 +42,12 @@ service:
       receivers: [otlp]
       processors: [batch, resource]
       exporters: [debug]
+    # #2424: Prometheus is where the metrics are read. Sent to debug as well, every batch was
+    # printed to the collector's log, about 250 lines a minute while a cycle runs (#2204).
     metrics:
       receivers: [otlp]
       processors: [batch, resource]
-      exporters: [prometheus, debug]
+      exporters: [prometheus]
     logs:
       receivers: [otlp]
       processors: [batch, resource]

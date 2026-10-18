@@ -895,11 +895,9 @@ services:
     restart: unless-stopped
 
   otel-collector:
-    image: otel/opentelemetry-collector:latest
+    image: otel/opentelemetry-collector:0.147.0  # pinned, as Prometheus and Grafana are (#2424)
     container_name: squadops-otel-collector
     command: ["--config=/etc/otel-collector/config.yaml"]
-    environment:
-      OTEL_COLLECTOR_VERSION: "0.138.0"  # Set version for health check
     volumes:
       - ./infra/otel-collector/config.yaml:/etc/otel-collector/config.yaml
     ports:
@@ -914,7 +912,7 @@ services:
       - squadnet
     restart: unless-stopped
   prometheus:
-    image: prom/prometheus:latest
+    image: prom/prometheus:v3.10.0  # pinned (#2424)
     container_name: squadops-prometheus
     # #581
     healthcheck:
@@ -975,7 +973,7 @@ services:
       - squadnet
     restart: unless-stopped
   grafana:
-    image: grafana/grafana:latest
+    image: grafana/grafana:12.4.1  # pinned (#2424)
     container_name: squadops-grafana
     # #581
     healthcheck:
@@ -987,6 +985,9 @@ services:
       - GF_SECURITY_ADMIN_USER=admin
       - GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_ADMIN_PASSWORD:?required, written by scripts/dev/ops/deploy_credentials.py ensure (#2006)}
       - GF_INSTALL_PLUGINS=
+      # #2424: usage reporting is on by default; its daily collection failed on a plugin this
+      # deploy does not install, and it sent usage data outside the deploy.
+      - GF_ANALYTICS_REPORTING_ENABLED=false
     volumes:
       - ./infra/grafana/provisioning:/etc/grafana/provisioning
       - ./infra/grafana/dashboards:/var/lib/grafana/dashboards
