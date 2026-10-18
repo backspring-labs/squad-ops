@@ -46,7 +46,7 @@ from squadops.cycles.models import (
     TaskFlowPolicy,
     WorkloadType,
 )
-from squadops.cycles.task_plan import generate_task_plan
+from squadops.cycles.task_plan import builder_assembles, generate_task_plan
 from squadops.cycles.verification_contract import VerificationContract
 from squadops.stacks.scaffold import InterfaceManifest
 
@@ -355,3 +355,56 @@ def test_an_increment_without_its_change_request_is_refused(monkeypatch):
     observed = _observe(_cases()["increment_without_its_change_request"], monkeypatch)
     assert observed["envelopes"] is None
     assert "has no approved change request" in observed["raised"]
+
+
+@pytest.mark.parametrize(
+    ("defaults", "workload", "with_builder"),
+    [
+        ({"build_tasks": True}, None, True),
+        ({"build_tasks": True}, None, False),
+        ({}, None, True),
+        (
+            {"implementation_plan": True, "workload_sequence": [{"type": "implementation"}]},
+            WorkloadType.IMPLEMENTATION,
+            True,
+        ),
+        (
+            {"implementation_plan": True, "workload_sequence": [{"type": "implementation"}]},
+            WorkloadType.IMPLEMENTATION,
+            False,
+        ),
+        ({"workload_sequence": [{"type": "framing"}]}, WorkloadType.FRAMING, True),
+    ],
+    ids=[
+        "legacy-build-builder",
+        "legacy-build-no-builder",
+        "legacy-plan-only",
+        "implementation-builder",
+        "implementation-no-builder",
+        "framing-only",
+    ],
+)
+def test_preflight_reads_builder_assembly_as_plan_generation_does(
+    defaults, workload, with_builder, monkeypatch
+):
+    """#2437: create-time preflight refuses exactly the cycles whose plan the #392 check would
+    refuse, by asking ``builder_assembles``. Entered at ``generate_task_plan`` with no
+    ``build_profile``. Bug caught: the two readings drifting, so preflight refuses a cycle that
+    would have run, or accepts one that fails after framing."""
+    import dataclasses
+
+    profile = (
+        _PROFILE
+        if with_builder
+        else dataclasses.replace(
+            _PROFILE, agents=tuple(a for a in _PROFILE.agents if "builder" not in a.serves_roles)
+        )
+    )
+    cycle = _cycle(defaults, {})
+    case: dict[str, Any] = {"cycle": cycle, "run": _run(workload)}
+    if workload == WorkloadType.IMPLEMENTATION:
+        case["plan"] = _plan([])
+    observed = _observe({**case, "profile": profile}, monkeypatch)
+    refused = observed["raised"] is not None and "build_profile is required" in observed["raised"]
+
+    assert builder_assembles(profile, cycle.resolved_config()) is refused

@@ -485,6 +485,27 @@ def _has_builder_role(profile: SquadProfile) -> bool:
     return serves_role(profile, "builder")
 
 
+def builder_assembles(profile: SquadProfile, config: Mapping[str, Any]) -> bool:
+    """Whether a cycle of ``config`` on ``profile`` dispatches a builder task (#2437).
+
+    The step selection's own reading, for the whole cycle: an ``implementation`` workload in
+    ``workload_sequence`` (``_resolve_workload_steps``), or, with no sequence, the legacy
+    ``build_tasks`` flag (``_resolve_legacy_steps``), on a squad serving the builder role. Each
+    adds ``builder.assemble``, which the #392 check below refuses without a ``build_profile``.
+    Cycle-create preflight asks it, so that cycle is refused before its framing runs.
+    """
+    if not _has_builder_role(profile):
+        return False
+    sequence = config.get("workload_sequence") or []
+    if sequence:
+        return any(
+            (entry.get("type") if isinstance(entry, Mapping) else None)
+            == WorkloadType.IMPLEMENTATION
+            for entry in sequence
+        )
+    return bool(config.get("build_tasks"))
+
+
 def _check_required_roles(
     profile_id: str, required: set[str], available: set[str], label: str = ""
 ) -> None:

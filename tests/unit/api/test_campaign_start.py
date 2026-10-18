@@ -115,7 +115,9 @@ def _sandbox_provider(monkeypatch):
 async def world() -> _World:
     w = _World()
     await w.campaigns.create_campaign(
-        campaign(CID, policy=policy(calibration_profile="framing", squad_profile="full-38")),
+        campaign(
+            CID, policy=policy(calibration_profile="validated-fullstack", squad_profile="full-38")
+        ),
         actor="owner",
         actor_role="admin",
         reason="r",
@@ -139,7 +141,11 @@ async def test_a_start_launches_the_calibration_cycle_by_the_cycle_create_path(w
     assert resp.status_code == 200
     assert body["campaign"]["state"] == CampaignState.CALIBRATING
     assert (intent.state, intent.cycle_id) == (LaunchIntentState.LAUNCHED, cycle_id)
-    assert (cycle.campaign_id, cycle.kind, cycle.request_profile) == (CID, "calibration", "framing")
+    assert (cycle.campaign_id, cycle.kind, cycle.request_profile) == (
+        CID,
+        "calibration",
+        "validated-fullstack",
+    )
     assert (cycle.squad_profile_id, cycle.created_by) == ("full-38", "campaign-launcher")
     assert (run.run_number, run.status, run.workload_type) == (1, "queued", "framing")
     assert world.executor.started == [(cycle_id, run.run_id, "full-38")]
@@ -265,7 +271,9 @@ async def test_a_launch_interrupted_before_its_mark_is_finished_by_the_next_drai
     creating a second cycle, or the found cycle left without its first run."""
     w = _World(_MarkFailsOnce())
     await w.campaigns.create_campaign(
-        campaign(CID, policy=policy(calibration_profile="framing", squad_profile="full-38")),
+        campaign(
+            CID, policy=policy(calibration_profile="validated-fullstack", squad_profile="full-38")
+        ),
         actor="owner",
         actor_role="admin",
         reason="r",

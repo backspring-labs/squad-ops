@@ -31,6 +31,7 @@ from collections.abc import Iterable, Mapping
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any
 
+from squadops.capabilities.handlers.build_profiles import BUILD_PROFILES
 from squadops.capabilities.handlers.fault_injection import (
     FAULTS,
     UnknownFault,
@@ -46,6 +47,7 @@ from squadops.cycles.models import (
     WORKLOAD_REQUIRED_ROLES,
     WorkloadType,
 )
+from squadops.cycles.task_plan import builder_assembles
 from squadops.llm.model_registry import get_model_spec
 from squadops.stacks.scaffold import development_profile_for, resolve_development_profile
 
@@ -212,6 +214,44 @@ def bind_mode_authoring_decision(config: Mapping[str, Any]) -> PreflightDecision
                     f"`plan_authoring_contributors` (any of {roles}) in the request "
                     "profile or `execution_overrides`, or drop `contract_ref` to run in "
                     "author mode."
+                ),
+            ),
+        )
+    )
+
+
+def builder_build_profile_decision(
+    profile: SquadProfile, config: Mapping[str, Any]
+) -> PreflightDecision:
+    """Block a cycle whose builder would assemble with no ``build_profile`` (#2437).
+
+    A squad serving the builder role gets ``builder.assemble`` in every implementation workload,
+    and plan generation refuses that task without a ``build_profile`` (#392: a builder must not
+    assemble for an assumed stack). Without this check the refusal came at the start of the
+    implementation run, after a whole framing workload and a gate approval: ``cyc_68e254dcf2b7``
+    spent 7m21s framing on ``lite-14b`` under the ``build`` request profile, which sets none,
+    then failed in 0 s.
+
+    Blocks rather than warns, per this module's rule: the squad's roles, the requested workloads
+    and ``build_profile`` are all in the resolved config at create time, and whether the builder
+    assembles is the step selection's own reading (``task_plan.builder_assembles``).
+    """
+    if config.get("build_profile") or not builder_assembles(profile, config):
+        return PreflightDecision()
+    known = ", ".join(f"`{name}`" for name in sorted(BUILD_PROFILES))
+    return PreflightDecision(
+        blocking=(
+            Finding(
+                code="builder_without_build_profile",
+                severity="block",
+                message=(
+                    f"squad profile `{profile.profile_id}` serves the builder role and this "
+                    "cycle has a build step, so its builder would assemble, but no "
+                    "`build_profile` is set. The implementation run would fail at its start, "
+                    "after the whole framing workload (#392: a builder does not assemble for an "
+                    f"assumed stack). Set `build_profile` (one of {known}) in the request "
+                    "profile or with `--set build_profile=<profile>`, or choose a squad "
+                    "without a builder."
                 ),
             ),
         )
