@@ -11,7 +11,7 @@ from __future__ import annotations
 
 import base64
 import dataclasses
-from collections.abc import Callable, Mapping
+from collections.abc import Callable, Collection, Mapping
 
 import httpx
 
@@ -126,11 +126,13 @@ class HttpExecutionSandbox(ExecutionSandboxPort):
         files: Mapping[str, FileContent],
         *,
         origin: str = RevisionOrigin.SCAFFOLD_SEED,
+        executable: Collection[str] = (),
         created_at: str | None = None,
     ) -> WorkspaceRevision:
+        modes = {"executable": sorted(executable)} if executable else {}
         payload = await self._post(
             f"/api/v1/workspaces/{cycle_id}/seed",
-            {**_wire_files(files), "origin": origin, "created_at": created_at},
+            {**_wire_files(files), **modes, "origin": origin, "created_at": created_at},
         )
         return WorkspaceRevision.from_dict(payload)
 

@@ -16,7 +16,7 @@ rule as ``BoundScaffoldRecord``).
 from __future__ import annotations
 
 import hashlib
-from collections.abc import Mapping
+from collections.abc import Collection, Mapping
 from dataclasses import dataclass
 
 
@@ -97,17 +97,25 @@ def content_bytes(content: FileContent) -> bytes:
     return content.encode("utf-8") if isinstance(content, str) else bytes(content)
 
 
-def compute_revision_id(files: Mapping[str, FileContent]) -> str:
+def compute_revision_id(files: Mapping[str, FileContent], executable: Collection[str] = ()) -> str:
     """Content-addressed revision id — deterministic and order-independent over
     (path, content) pairs, so identical workspace content always pins the same
     revision (the §4.6 verification-pinning primitive). It hashes each file's
     bytes, so a text file and its UTF-8 encoding name the same revision, and
-    every revision cut before bytes were carried (X-2) keeps its id."""
+    every revision cut before bytes were carried (X-2) keeps its id.
+
+    ``executable`` names the files whose executable bit is set (X-2, #2420). It
+    joins the hash only when it names one, after every file and behind a NUL that
+    no path can begin with, so a revision with no executable file keeps its id."""
     h = hashlib.sha256()
     for path in sorted(files):
         h.update(path.encode("utf-8"))
         h.update(b"\x00")
         h.update(hashlib.sha256(content_bytes(files[path])).digest())
+    if executable:
+        h.update(b"\x00executable")
+        for path in sorted(executable):
+            h.update(b"\x00" + path.encode("utf-8"))
     return h.hexdigest()
 
 
@@ -136,22 +144,24 @@ class WorkspaceRevision:
         cycle_id: str,
         origin: str,
         files: Mapping[str, FileContent],
+        executable: Collection[str] = (),
         parent: WorkspaceRevision | None = None,
         created_at: str | None = None,
     ) -> WorkspaceRevision:
         """Cut a revision from workspace content at a §4.6 boundary."""
         return cls(
-            revision_id=compute_revision_id(files),
+            revision_id=compute_revision_id(files, executable),
             cycle_id=cycle_id,
             origin=origin,
             parent_revision_id=parent.revision_id if parent else None,
             created_at=created_at,
         )
 
-    def matches(self, files: Mapping[str, FileContent]) -> bool:
-        """§4.6 verification pinning: True iff this exact content is what the
-        revision was cut from. Clean-room verification fails on a mismatch."""
-        return compute_revision_id(files) == self.revision_id
+    def matches(self, files: Mapping[str, FileContent], executable: Collection[str] = ()) -> bool:
+        """§4.6 verification pinning: True iff this exact content, and these
+        executable files, are what the revision was cut from. Clean-room
+        verification fails on a mismatch."""
+        return compute_revision_id(files, executable) == self.revision_id
 
     def to_dict(self) -> dict:
         return {

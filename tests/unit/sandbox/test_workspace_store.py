@@ -287,6 +287,44 @@ class TestTrackedDerivedNames:
         assert store.current_files("cyc_1") == {}
 
 
+class TestExecutableBit:
+    GRADLEW = {**FILES, "gradlew": "#!/bin/sh\necho build\n"}
+
+    def test_an_executable_file_keeps_its_bit_and_its_pin_through_a_patch(self, store, tmp_path):
+        """Bug caught (X-2, #2420): a checkout's ./gradlew seeded without its executable bit, so
+        a declared command that runs it fails with Permission denied, or a patch to it dropping
+        the bit."""
+        seed = store.seed(
+            "cyc_1", self.GRADLEW, origin=RevisionOrigin.GIT_CHECKOUT, executable={"gradlew"}
+        )
+        script = store.workspace_dir("cyc_1") / "gradlew"
+        assert script.stat().st_mode & 0o100
+
+        rev, _ = store.apply_patch(
+            "cyc_1",
+            base_revision_id=seed.revision_id,
+            files={"gradlew": "#!/bin/sh\necho build two\n"},
+            origin=RevisionOrigin.AGENT_PATCH,
+        )
+        assert store.current_executables("cyc_1") == {"gradlew"}
+        assert WorkspaceStore(tmp_path / "cycles").verify_pinned("cyc_1", rev.revision_id)
+
+    def test_a_file_that_loses_its_bit_no_longer_matches_its_pin(self, store):
+        """Bug caught: the bit recorded but never compared, so a script that lost it verifies."""
+        seed = store.seed(
+            "cyc_1", self.GRADLEW, origin=RevisionOrigin.GIT_CHECKOUT, executable={"gradlew"}
+        )
+        (store.workspace_dir("cyc_1") / "gradlew").chmod(0o644)
+
+        assert not store.verify_pinned("cyc_1", seed.revision_id)
+
+    def test_an_executable_path_the_seed_does_not_carry_is_refused(self, store):
+        """Bug caught: a mode for a file that isn't there accepted and silently dropped."""
+        with pytest.raises(ValueError, match="doesn't carry"):
+            store.seed("cyc_1", FILES, origin=RevisionOrigin.GIT_CHECKOUT, executable={"gradlew"})
+        assert store.current_files("cyc_1") == {}
+
+
 class TestPinningAndRecovery:
     def test_verify_pinned_detects_out_of_band_mutation(self, store):
         """Bug caught: clean-room verification passing against a tree that no

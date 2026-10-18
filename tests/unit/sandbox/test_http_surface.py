@@ -279,3 +279,17 @@ async def test_a_patch_the_store_refuses_is_a_400_and_leaves_the_tree(stack, par
     error = response.json()["error"]
     assert error["code"] == "INVALID_PATCH" and why in error["message"]
     assert store.verify_pinned("cyc_1", seed.revision_id)
+
+
+async def test_a_seed_through_the_client_carries_the_executable_bit(stack):
+    """Bug caught (X-2, #2420): the executable set dropped on the wire, so the sandbox seeds
+    ./gradlew without its bit while the caller believes it carried it."""
+    store, _, _, sandbox, _ = stack
+    files = {**FILES, "gradlew": "#!/bin/sh\n"}
+
+    seed = await sandbox.seed_workspace(
+        "cyc_1", files, origin=RevisionOrigin.GIT_CHECKOUT, executable={"gradlew"}
+    )
+
+    assert seed.revision_id == compute_revision_id(files, {"gradlew"})
+    assert store.current_executables("cyc_1") == {"gradlew"}

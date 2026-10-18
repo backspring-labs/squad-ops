@@ -52,6 +52,8 @@ class SeedRequest(BaseModel):
     #: X-2 (#2420): each file that isn't UTF-8 text, base64-encoded. A text-only seed
     #: sends none, so its request is what it was before bytes were carried.
     binary_files: dict[str, str] = Field(default_factory=dict)
+    #: X-2 (#2420): the files to seed with their executable bit set.
+    executable: list[str] = Field(default_factory=list)
     origin: str = RevisionOrigin.SCAFFOLD_SEED
     created_at: str | None = None
 
@@ -140,7 +142,11 @@ async def _handle_seed(service: SandboxService, cycle_id: str, body: SeedRequest
     try:
         binary = _decode_binary(body.binary_files, alongside=body.files)
         revision = service.seed_workspace(
-            cycle_id, {**body.files, **binary}, origin=body.origin, created_at=body.created_at
+            cycle_id,
+            {**body.files, **binary},
+            origin=body.origin,
+            executable=body.executable,
+            created_at=body.created_at,
         )
     except AlreadySeededError as e:
         raise _error(409, "ALREADY_SEEDED", str(e)) from e

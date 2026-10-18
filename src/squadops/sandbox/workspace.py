@@ -24,6 +24,7 @@ import hashlib
 import json
 import re
 import shutil
+import stat
 from collections.abc import Collection, Mapping
 from pathlib import Path
 
@@ -154,17 +155,8 @@ class WorkspaceStore:
         Each file is read as the bytes on disk (X-2, #2420): text when they are
         UTF-8, otherwise the bytes themselves. Never in universal-newline mode,
         which read a seeded ``\\r\\n`` file back as ``\\n`` and failed its own pin."""
-        ws = self.workspace_dir(cycle_id)
-        if not ws.is_dir():
-            return {}
         files: dict[str, FileContent] = {}
-        for p in sorted(ws.rglob("*")):
-            if not p.is_file():
-                continue
-            rel = p.relative_to(ws)
-            key = str(rel).replace("\\", "/")
-            if _EXCLUDED_SEGMENTS.intersection(rel.parts) and key not in tracked:
-                continue
+        for key, p in self._live_paths(cycle_id, tracked):
             data = p.read_bytes()
             try:
                 content: FileContent = data.decode("utf-8")
@@ -173,9 +165,38 @@ class WorkspaceStore:
             files[key] = content
         return files
 
+    def current_executables(
+        self, cycle_id: str, *, tracked: Collection[str] = ()
+    ) -> frozenset[str]:
+        """The live tree's files whose owner-executable bit is set (X-2, #2420): a
+        script a product's declared command runs directly, such as ``./gradlew``."""
+        return frozenset(
+            key for key, p in self._live_paths(cycle_id, tracked) if p.stat().st_mode & stat.S_IXUSR
+        )
+
+    def _live_paths(self, cycle_id: str, tracked: Collection[str]) -> list[tuple[str, Path]]:
+        ws = self.workspace_dir(cycle_id)
+        if not ws.is_dir():
+            return []
+        live: list[tuple[str, Path]] = []
+        for p in sorted(ws.rglob("*")):
+            if not p.is_file():
+                continue
+            rel = p.relative_to(ws)
+            key = str(rel).replace("\\", "/")
+            if _EXCLUDED_SEGMENTS.intersection(rel.parts) and key not in tracked:
+                continue
+            live.append((key, p))
+        return live
+
     # -- revisions ----------------------------------------------------------
 
-    def _persist(self, revision: WorkspaceRevision, files: Mapping[str, FileContent]) -> None:
+    def _persist(
+        self,
+        revision: WorkspaceRevision,
+        files: Mapping[str, FileContent],
+        executable: Collection[str] = (),
+    ) -> None:
         rev_dir = self._revisions_dir(revision.cycle_id)
         rev_dir.mkdir(parents=True, exist_ok=True)
         manifest = {
@@ -183,6 +204,7 @@ class WorkspaceStore:
             "files": {
                 p: hashlib.sha256(content_bytes(c)).hexdigest() for p, c in sorted(files.items())
             },
+            "executable": sorted(executable),
         }
         (rev_dir / f"{revision.revision_id}.json").write_text(
             json.dumps(manifest, indent=2), encoding="utf-8"
@@ -197,10 +219,16 @@ class WorkspaceStore:
 
     def _revision_paths(self, cycle_id: str, revision_id: str) -> frozenset[str]:
         """Every path a persisted revision holds as content (its manifest's files)."""
+        return frozenset(self._manifest(cycle_id, revision_id).get("files", ()))
+
+    def _revision_executables(self, cycle_id: str, revision_id: str) -> frozenset[str]:
+        """The files a persisted revision holds as executable. A manifest written before
+        modes were carried names none, as none of its files had the bit."""
+        return frozenset(self._manifest(cycle_id, revision_id).get("executable", ()))
+
+    def _manifest(self, cycle_id: str, revision_id: str) -> dict:
         path = self._revisions_dir(cycle_id) / f"{revision_id}.json"
-        if not path.is_file():
-            return frozenset()
-        return frozenset(json.loads(path.read_text(encoding="utf-8"))["files"])
+        return json.loads(path.read_text(encoding="utf-8")) if path.is_file() else {}
 
     def get_revision(self, cycle_id: str, revision_id: str) -> WorkspaceRevision | None:
         path = self._revisions_dir(cycle_id) / f"{revision_id}.json"
@@ -215,31 +243,41 @@ class WorkspaceStore:
         files: Mapping[str, FileContent],
         *,
         origin: str,
+        executable: Collection[str] = (),
         created_at: str | None = None,
     ) -> WorkspaceRevision:
         """Write the initial tree and cut the first revision (§4.6 boundary).
+        ``executable`` names the files to seed with their executable bit set
+        (X-2, #2420), each one a file the seed carries.
 
         Idempotent for retries: re-seeding identical content returns the
         existing revision; re-seeding different content over a seeded
         workspace is an error, never a silent overwrite."""
         tracked = None if origin in RevisionOrigin.TRACKED_TREE else ()
         safe = {_safe_relpath(p, tracked=tracked): c for p, c in files.items()}
+        modes = frozenset(_safe_relpath(p, tracked=tracked) for p in executable)
+        if not modes <= safe.keys():
+            raise ValueError(
+                f"executable paths the seed doesn't carry: {sorted(modes - safe.keys())}"
+            )
         head = self.latest_revision(cycle_id)
         if head is not None:
-            if compute_revision_id(safe) == head.revision_id:
+            if compute_revision_id(safe, modes) == head.revision_id:
                 return head
             raise AlreadySeededError(f"cycle {cycle_id} is already seeded with other content")
         # Cut before writing: a seed the revision refuses (an unknown origin) must leave no
         # file behind, or the next seed's tree holds files its revision doesn't name.
         revision = WorkspaceRevision.cut(
-            cycle_id=cycle_id, origin=origin, files=safe, created_at=created_at
+            cycle_id=cycle_id, origin=origin, files=safe, executable=modes, created_at=created_at
         )
         ws = self.provision(cycle_id)
         for rel, content in safe.items():
             target = ws / rel
             target.parent.mkdir(parents=True, exist_ok=True)
             target.write_bytes(content_bytes(content))
-        self._persist(revision, safe)
+            if rel in modes:
+                target.chmod(target.stat().st_mode | 0o111)
+        self._persist(revision, safe, modes)
         return revision
 
     def apply_patch(
@@ -260,7 +298,7 @@ class WorkspaceStore:
             raise WorkspaceStoreError(f"unknown base revision: {base_revision_id}")
         base_paths = self._revision_paths(cycle_id, base_revision_id)
         current = self.current_files(cycle_id, tracked=base_paths)
-        if not base.matches(current):
+        if not base.matches(current, self.current_executables(cycle_id, tracked=base_paths)):
             raise StaleBaseRevisionError(
                 f"live tree no longer matches base revision {base_revision_id}"
             )
@@ -273,10 +311,18 @@ class WorkspaceStore:
                 merged.pop(rel, None)
             else:
                 merged[rel] = content
+        # A patched file keeps its mode (writing in place keeps it), and a deleted one drops
+        # out; a file the patch adds is not executable.
+        modes = self._revision_executables(cycle_id, base_revision_id) & merged.keys()
         # Merge and cut before touching the tree: a patch refused part-way (an escaping path,
         # an unknown origin) must leave the live tree on its base, or every later patch is stale.
         revision = WorkspaceRevision.cut(
-            cycle_id=cycle_id, origin=origin, files=merged, parent=base, created_at=created_at
+            cycle_id=cycle_id,
+            origin=origin,
+            files=merged,
+            executable=modes,
+            parent=base,
+            created_at=created_at,
         )
         ws = self.workspace_dir(cycle_id)
         for rel in changed:
@@ -286,7 +332,7 @@ class WorkspaceStore:
                 target.write_bytes(content_bytes(merged[rel]))
             else:
                 target.unlink(missing_ok=True)
-        self._persist(revision, merged)
+        self._persist(revision, merged, modes)
         return revision, tuple(sorted(changed))
 
     def verify_pinned(self, cycle_id: str, revision_id: str) -> bool:
@@ -296,7 +342,10 @@ class WorkspaceStore:
         if revision is None:
             return False
         tracked = self._revision_paths(cycle_id, revision_id)
-        return revision.matches(self.current_files(cycle_id, tracked=tracked))
+        return revision.matches(
+            self.current_files(cycle_id, tracked=tracked),
+            self.current_executables(cycle_id, tracked=tracked),
+        )
 
     # -- leases and cleanup -------------------------------------------------
 

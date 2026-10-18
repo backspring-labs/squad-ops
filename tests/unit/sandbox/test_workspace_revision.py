@@ -17,6 +17,14 @@ FILES = {"backend/main.py": "print('a')\n", "frontend/index.html": "<html></html
 
 
 class TestRevisionIdDeterminism:
+    def test_an_executable_bit_changes_the_id_only_when_one_is_set(self):
+        """Bug caught (X-2, #2420): a mode-only change hashing as no change, so a script that
+        lost its executable bit still matched its pin; or the bit joining every id, so every
+        revision cut before modes were carried would stop matching its tree."""
+        plain = compute_revision_id(FILES)
+        assert compute_revision_id(FILES, executable=()) == plain
+        assert compute_revision_id(FILES, executable={"backend/main.py"}) != plain
+
     def test_text_hashes_as_its_utf8_bytes_so_existing_ids_are_unchanged(self):
         """Bug caught: carrying bytes (X-2, #2420) changing how text hashes, so every revision
         cut before it would stop matching its own tree. The literal is this tree's id on
