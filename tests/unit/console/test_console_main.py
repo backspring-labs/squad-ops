@@ -6,9 +6,11 @@ ContinuumRuntime and its dependencies are mocked to avoid import errors.
 
 from __future__ import annotations
 
+import importlib
+import os
 import sys
 from pathlib import Path
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, patch
 
 import pytest
 from fastapi import APIRouter
@@ -46,7 +48,12 @@ sys.path.insert(0, str(Path(__file__).parents[3] / "console" / "app"))
 
 # Now import main — it will pick up our mocked continuum modules
 from httpx import ASGITransport, AsyncClient  # noqa: E402
-from main import COMMAND_HANDLERS, app  # noqa: E402
+
+from tests.unit.console.console_settings import compose_settings  # noqa: E402
+
+# #2431: the console requires every setting compose gives it.
+with patch.dict(os.environ, compose_settings()):
+    from main import COMMAND_HANDLERS, REQUIRED_SETTINGS, app  # noqa: E402
 
 
 class TestConsoleMain:
@@ -173,3 +180,42 @@ def test_the_access_log_drops_only_a_successful_health_probe(method, path, statu
         {"msg": '%s - "%s %s HTTP/%s" %d', "args": ("c", method, path, "1.1", status)}
     )
     assert bool(logging.getLogger("uvicorn.access").filter(record)) is kept
+
+
+def test_every_setting_the_console_requires_is_one_compose_gives_it():
+    """#2431. Bugs caught: a setting the console requires that compose does not give it, so the
+    console no longer starts; and the realm left out of compose again, which a default hid until
+    every deploy's tab read "(dev)"."""
+    assert "SQUADOPS_REALM" in REQUIRED_SETTINGS
+    assert set(REQUIRED_SETTINGS) <= set(compose_settings())
+
+
+@pytest.mark.parametrize(
+    ("name", "value", "starts"),
+    [
+        ("SQUADOPS_REALM", None, False),
+        ("KEYCLOAK_PUBLIC_URL", "", False),
+        ("REDIS_URL", None, False),
+        ("REDIS_URL", "", True),
+    ],
+    ids=["realm-missing", "public-url-empty", "redis-missing", "redis-empty-selects-memory"],
+)
+def test_a_missing_setting_stops_the_console_naming_it(name, value, starts):
+    """#2431, at the console's import, as uvicorn's ``main:app`` loads it. Bugs caught: a missing
+    or empty setting replaced by a URL nobody configured; and in-memory sessions reached by
+    leaving ``REDIS_URL`` out, rather than by setting it empty."""
+    settings = compose_settings()
+    if value is None:
+        settings.pop(name)
+    else:
+        settings[name] = value
+    loaded = sys.modules.pop("main")
+    try:
+        with patch.dict(os.environ, settings, clear=True):
+            if starts:
+                assert importlib.import_module("main").REDIS_URL == ""
+            else:
+                with pytest.raises(RuntimeError, match=f"console: {name} is required"):
+                    importlib.import_module("main")
+    finally:
+        sys.modules["main"] = loaded
