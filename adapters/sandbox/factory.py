@@ -11,6 +11,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from adapters.sandbox.container_backend import ContainerBackend
+from adapters.sandbox.scenario_runner import ContainerScenarioRunner
 from adapters.tools.docker import DockerAdapter
 from squadops.config.schema import SandboxClientConfig, SandboxConfig
 from squadops.core.secrets import SecretManager
@@ -38,8 +39,9 @@ def create_sandbox_service(config: SandboxConfig) -> SandboxService:
         backend: ExecutionSandboxPort | None = None
     elif config.provider == "docker":
         contract = get_environment_contract(config.environment)
+        container = DockerAdapter()
         backend = ContainerBackend(
-            container=DockerAdapter(),
+            container=container,
             store=store,
             image=config.image or contract.image,
             operation_commands=contract.commands(),
@@ -49,11 +51,20 @@ def create_sandbox_service(config: SandboxConfig) -> SandboxService:
             build_mutates_source=contract.build_mutates_source,
             cache_root=Path(config.cache_root) if config.cache_root else None,
         )
+        # SIP-0113 §4.1, A3 (#2414): the scenario runner, beside the cycle's execution, on the same
+        # image and posture. Each stack's environment contract starts a blueprint tree.
+        runner = ContainerScenarioRunner(
+            container=container,
+            root=root,
+            image=config.image or contract.image,
+            install_network=contract.install_network,
+        )
         return SandboxService(
             store=store,
             journal=journal,
             backend=backend,
             environment_report=backend.environment_report,
+            scenario_runner=runner,
         )
     else:
         raise ValueError(f"Unknown sandbox provider: {config.provider}")

@@ -358,3 +358,62 @@ async def test_a_declared_command_the_sandbox_cannot_run_as_given_is_a_400(stack
         )
     assert response.status_code == 400
     assert response.json()["error"]["code"] == "INVALID_COMMAND"
+
+
+async def test_an_evaluation_travels_the_client_to_the_runner_and_back(tmp_path):
+    """#2414, the runner's wiring: the call the runtime API's evaluation service makes, entered at
+    its client. Bug caught: a binary file or an executable bit lost on the wire (the tree then
+    hashes to another identity and is refused), the declared start or the scenarios dropped, or
+    the runs lost in rehydration."""
+    from adapters.sandbox.http_client import HttpScenarioRunner
+    from adapters.sandbox.scenario_runner import ContainerScenarioRunner
+    from squadops.campaigns.evaluator_trees import FileTree
+    from tests.unit.sandbox.test_scenario_runner import DECLARED, SCENARIO, TREE, _app, _Container
+
+    root = tmp_path / "cycles"
+    container = _Container()
+    runner = ContainerScenarioRunner(
+        container=container, root=root, image="sandbox:pinned", http_client_factory=_app()
+    )
+    app = create_app(
+        SandboxService(
+            store=WorkspaceStore(root),
+            journal=OperationEvidenceJournal(root),
+            scenario_runner=runner,
+        ),
+        service_token=TOKEN,
+    )
+    client = HttpScenarioRunner(
+        base_url="http://exec",
+        service_token=TOKEN,
+        http_client_factory=lambda: httpx.AsyncClient(
+            transport=httpx.ASGITransport(app=app), base_url="http://exec"
+        ),
+    )
+
+    result = await client.evaluate_tree(
+        tree=TREE,
+        tree_identity=FileTree.of(TREE).identity,
+        executable={"run.sh"},
+        stack=None,
+        declared=DECLARED,
+        scenarios=[SCENARIO],
+        environment={},
+    )
+
+    assert container.held[0]["assets/logo.png"] == TREE["assets/logo.png"]
+    assert container.specs[1].command == list(DECLARED.start)
+    assert [(r.scenario_id, r.result) for r in result.runs] == [("counts", "passed")]
+
+
+async def test_a_sandbox_without_a_runner_answers_503(stack):
+    """Bug caught: an evaluation on a deploy that runs no runner answered as if it ran, or as a
+    500 the caller can't tell from a product's failure."""
+    _, _, _, _, client_factory = stack
+    async with client_factory() as client:
+        response = await client.post(
+            "/api/v1/evaluations",
+            json={"tree": {}, "tree_identity": "0" * 64, "scenarios": []},
+            headers={"Authorization": f"Bearer {TOKEN}"},
+        )
+    assert (response.status_code, response.json()["error"]["code"]) == (503, "RUNNER_UNAVAILABLE")

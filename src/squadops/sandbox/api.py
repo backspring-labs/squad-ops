@@ -37,6 +37,7 @@ from squadops.sandbox.workspace import (
     WorkspaceEscapeError,
     WorkspaceStoreError,
 )
+from squadops.scenarios.runner import DeclaredStart
 
 
 def _error(status_code: int, code: str, message: str) -> HTTPException:
@@ -55,6 +56,20 @@ class SeedRequest(BaseModel):
     executable: list[str] = Field(default_factory=list)
     origin: str = RevisionOrigin.SCAFFOLD_SEED
     created_at: str | None = None
+
+
+class EvaluationRequest(BaseModel):
+    """SIP-0113 §4.1 (#2414): an evaluated tree, by its FileTree.identity, and the scenarios to
+    run against it. The steps and the evaluation secrets are held for the call, never written."""
+
+    tree: dict[str, str]
+    binary_tree: dict[str, str] = Field(default_factory=dict)
+    executable: list[str] = Field(default_factory=list)
+    tree_identity: str
+    stack: str | None = None
+    declared: dict | None = None
+    scenarios: list[dict]
+    environment: dict[str, str] = Field(default_factory=dict)
 
 
 class OperationRequest(BaseModel):
@@ -157,6 +172,27 @@ async def _handle_seed(service: SandboxService, cycle_id: str, body: SeedRequest
     return revision.to_dict()
 
 
+async def _handle_evaluation(service: SandboxService, body: EvaluationRequest) -> dict:
+    """SIP-0113 §4.1 (#2414): one evaluated tree, started and evaluated by the scenario runner."""
+    runner = service.scenario_runner
+    if runner is None:
+        raise _error(503, "RUNNER_UNAVAILABLE", "this sandbox runs no scenario runner")
+    try:
+        binary = decode_binary(body.binary_tree, alongside=body.tree)
+        result = await runner.evaluate_tree(
+            tree={**body.tree, **binary},
+            tree_identity=body.tree_identity,
+            executable=body.executable,
+            stack=body.stack,
+            declared=DeclaredStart.from_dict(body.declared) if body.declared else None,
+            scenarios=body.scenarios,
+            environment=body.environment,
+        )
+    except (KeyError, TypeError, ValueError) as e:
+        raise _error(400, "INVALID_EVALUATION", str(e)) from e
+    return result.as_dict()
+
+
 async def _handle_read(service: SandboxService, cycle_id: str, revision_id: str) -> dict:
     """A pinned revision's content (contract 3; SIP-0112's E.4.3 captures a change back from it),
     in the seed's wire form: text under ``files``, the rest base64 under ``binary_files``."""
@@ -236,6 +272,10 @@ def create_app(service: SandboxService, *, service_token: str) -> FastAPI:
             "service": "sandbox",
             "environment": await service.environment_report(),
         }
+
+    @app.post("/api/v1/evaluations", dependencies=[Depends(require_identity)])
+    async def evaluate(body: EvaluationRequest) -> dict:
+        return await _handle_evaluation(service, body)
 
     @app.post(
         "/api/v1/workspaces/{cycle_id}/seed",

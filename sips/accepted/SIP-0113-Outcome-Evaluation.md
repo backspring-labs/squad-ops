@@ -622,6 +622,40 @@ within them, for the owner's review.
   reference with both nullable fields null as nulls. The record yields exactly the fixture's valid
   reference.
 
+### 10c. The scenario runner as built (2026-10-18, §4.1, A3; X-3b; #2414, #2421; implementer's record, for the owner)
+
+- **Where it runs:** `ContainerScenarioRunner`, in the sandbox service (A3). The service answers it at
+  `POST /api/v1/evaluations`, and the runtime API calls it through `HttpScenarioRunner`.
+- **What one call does:** it takes an evaluated tree, by its `FileTree.identity`, and refuses files that
+  hash to anything else. It writes a disposable copy with binaries and executable bits included, and
+  starts it.
+  - **A Project's own start declaration** (contract 7, read by `declared_start`) means a 2xx from its
+    declared target.
+  - **A blueprint** starts by its stack's environment contract: install, build, start, and today's
+    transport-level readiness (#520/#622).
+
+  It then runs each scenario's steps from the service over loopback. Last, it stops the app and removes
+  the copy, whatever happened (§7 prediction 6).
+- **The steps and the evaluation secrets** travel in the request and are held for the call. They are
+  never written, journaled or returned. The secrets reach only the app's environment (Q40).
+- **The vocabulary** is in `squadops.scenarios.steps`.
+  - **Steps:** `http` actions, with saved values threaded into later paths and bodies, and an optional
+    `expect_status`.
+  - **Checks:** a status, or a JSON path's value, length or contents.
+  - **How a scenario ends:** a transport failure, an unexpected status or an unanswerable save fails it
+    at that step. An unknown action or check is `blocked_unverified`, `no_runner`. A browser's action is
+    `browser_unavailable` until the evaluator's image runs pages (A2).
+- **A start that fails** runs no scenario. It carries why: the setup step that exited, or the readiness
+  that timed out, with the app's own last lines.
+- **Read live on the Spark's Docker** with the shared fixture's tree and its recorded declaration:
+  - the tree hashed to the recorded identity;
+  - three scenarios passed, the admin route among them, with the secret in no result;
+  - readiness at an undeclared path failed the start;
+  - no copy or container was left.
+- **Still to build for #2414:**
+  - the evaluation service (the vault's tree, the record, the increment's hook, reporting-only);
+  - §7's predictions 1, 2 and 6, read live on the reference scenario.
+
 ### 10d. The intervention ledger as built (2026-10-18, §4.3, §7 prediction 5; #2417; implementer's record, for the owner)
 
 - **A projection of SIP-0109's control log, never a second record of it** (`squadops.outcomes.ledger`).

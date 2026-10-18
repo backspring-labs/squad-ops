@@ -10,11 +10,13 @@ rehydrated into their concrete semantic types via the journal's
 from __future__ import annotations
 
 import dataclasses
-from collections.abc import Callable, Collection, Mapping
+from collections.abc import Callable, Collection, Mapping, Sequence
+from typing import Any
 
 import httpx
 
 from squadops.ports.sandbox import ExecutionSandboxPort
+from squadops.ports.scenarios import ScenarioRunnerPort
 from squadops.sandbox.models import (
     BuildResult,
     CommandResult,
@@ -34,6 +36,7 @@ from squadops.sandbox.models import (
     decode_binary,
     wire_files,
 )
+from squadops.scenarios.runner import DeclaredStart, TreeEvaluation
 
 _RESULT_TYPES: dict[str, type[OperationResult]] = {
     cls.__name__: cls
@@ -231,3 +234,51 @@ class HttpExecutionSandbox(ExecutionSandboxPort):
             {**wire_files(files), "origin": origin},
         )
         return _rehydrate(payload)
+
+
+class HttpScenarioRunner(ScenarioRunnerPort):
+    """SIP-0113's runner over the sandbox service's API (#2414). The runtime API calls it with the
+    evaluated tree and the suite's scenarios, so the steps travel in the request, in memory. An
+    evaluation installs, builds and starts the tree before any scenario runs, hence the long
+    timeout."""
+
+    def __init__(
+        self,
+        *,
+        base_url: str,
+        service_token: str,
+        http_client_factory: Callable[[], httpx.AsyncClient] | None = None,
+    ) -> None:
+        self._sandbox = HttpExecutionSandbox(
+            base_url=base_url,
+            service_token=service_token,
+            http_client_factory=http_client_factory
+            or (lambda: httpx.AsyncClient(timeout=httpx.Timeout(1800.0, connect=10.0))),
+        )
+
+    async def evaluate_tree(
+        self,
+        *,
+        tree: Mapping[str, bytes | str],
+        tree_identity: str,
+        executable: Collection[str],
+        stack: str | None,
+        declared: DeclaredStart | None,
+        scenarios: Sequence[Mapping[str, Any]],
+        environment: Mapping[str, str],
+    ) -> TreeEvaluation:
+        wire = _wire_files(tree)
+        payload = await self._sandbox._post(
+            "/api/v1/evaluations",
+            {
+                "tree": wire["files"],
+                "binary_tree": wire.get("binary_files", {}),
+                "executable": sorted(executable),
+                "tree_identity": tree_identity,
+                "stack": stack,
+                "declared": declared.as_dict() if declared else None,
+                "scenarios": [dict(s) for s in scenarios],
+                "environment": dict(environment),
+            },
+        )
+        return TreeEvaluation.from_dict(payload)

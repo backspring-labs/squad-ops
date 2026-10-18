@@ -80,7 +80,7 @@ Kept by the rule in CLAUDE.md ("SIP System"): one row per part, updated in the P
 | X-1: a `git_checkout` revision origin (§11d; SIP-0112 §8.2.2) | **shipped** | 2.4.0, PR #2441, issue #2419 |
 | X-2: a checkout's tracked tree round-trips: bytes, line endings, tracked derived names, the executable bit (§11d) | **shipped** | 2.4.0, PR #2442, issue #2420 |
 | X-3a: a product's declared command, run against a pinned revision in a disposable copy (§11d) | **shipped** | 2.4.0, PR #2447 |
-| X-3b: starting a product from its declaration, with readiness and the evaluation secrets, built with SIP-0113's scenario runner (§11d; SIP-0112 Q40) | **placed** | 2.4.0, #2421 |
+| X-3b: starting a product from its declaration, with readiness and the evaluation secrets, built with SIP-0113's scenario runner (§11d, §11e; SIP-0112 Q40) | **placed** | 2.4.0, #2421 |
 | the runtime API as the service's caller: its own client selector, the service's URL and token, the service's provider split from the preflight's (§11f; #2451 parts 1–3) | **shipped** | 2.4.0, PR #2456 |
 | a pinned revision's content, read through the port from the live tree only while it matches its pin (§11i; SIP-0112's E.4.3 capture) | **shipped** | 2.4.0, PR #2461 |
 
@@ -636,6 +636,24 @@ was agreed on #2407: E.4.2's inherited baseline runs a product's checks, which w
 **Who ruled it.** The owner accepted SIP-0112 with X-1 to X-3 in its §8.2.2 (2026-10-17), and D12
 assigns them. The tracked-name and executable-bit rules and the X-3 split are the implementer's, reviewed
 by the MacBook lane as consumer (G4), for the owner's review.
+
+### 11e. The sandbox runs SIP-0113's scenario runner, and X-3b starts a product from its declaration (2026-10-18, §4.6, §7 items 2, 3 and 10; SIP-0113 §4.1 A3; #2414, #2421; implementer's record, for the owner)
+
+- **A second surface, `POST /api/v1/evaluations`,** beside the cycle's operations. It takes an evaluated
+  tree by its `FileTree.identity`, not a workspace revision, as SIP-0112's contract 3 asks of Outcome
+  Evaluation. The tree's files are refused unless they hash to that identity, which is §7 item 3 for a
+  tree that never had a workspace.
+- **X-3b, the start:**
+  - **from a product's declaration** (setup argvs, start argv, port, a 2xx readiness);
+  - **or from its stack's environment contract,** as today.
+
+  Either way it runs in a disposable copy that is removed afterwards. The live tree is never mounted, so
+  nothing a scenario does reaches a revision. This widens §7 item 2 the way §11d did: the argv is the
+  product's own declaration, never an agent's output.
+- **The evaluation secrets** (SIP-0112 Q40) reach only the app container's environment. They are never
+  written, journaled or returned.
+- **Posture:** setup gets the install network. The app gets the bridge to publish its one port to
+  loopback, with caps dropped, no new privileges and the copy owner's uid.
 
 ### 11f. The runtime API calls the sandbox service: its own client selector, and the service's URL and token (2026-10-18, §4.1, §11c, §11d; #2451; the owner's ruling)
 

@@ -19,6 +19,7 @@ from __future__ import annotations
 from collections.abc import Awaitable, Callable, Collection, Mapping
 
 from squadops.ports.sandbox import ExecutionSandboxPort
+from squadops.ports.scenarios import ScenarioRunnerPort
 from squadops.sandbox.evidence import OperationEvidenceJournal
 from squadops.sandbox.models import (
     BuildResult,
@@ -54,11 +55,18 @@ class SandboxService(ExecutionSandboxPort):
         journal: OperationEvidenceJournal,
         backend: ExecutionSandboxPort | None = None,
         environment_report: Callable[[], Awaitable[dict | None]] | None = None,
+        scenario_runner: ScenarioRunnerPort | None = None,
     ) -> None:
         self._store = store
         self._journal = journal
         self._backend = backend
         self._environment_report = environment_report
+        self._scenario_runner = scenario_runner
+
+    @property
+    def scenario_runner(self) -> ScenarioRunnerPort | None:
+        """SIP-0113's runner (A3, #2414), or None where the deploy runs none."""
+        return self._scenario_runner
 
     async def environment_report(self) -> dict | None:
         """The backend's environment facts (contract id, image presence) for
