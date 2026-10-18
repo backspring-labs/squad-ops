@@ -289,7 +289,8 @@ construction" also passes when a binding is deleted outright:
    in the test declares, per root, the provider-selected bindings it is expected to perform —
    the runtime API: LLM, queue, A2A client, project registry, cycle registry, deploy registry
    (#1720), squad profile, artifact vault, workflow tracker, event bus, LLM observability, flow
-   executor, auth — with `record_deploy`'s own LLM, squad profile and deploy registry; the
+   executor, auth, the sandbox client (#2451) — with `record_deploy`'s own LLM, squad profile and
+   deploy registry; the
    agent entrypoint: LLM, queue, filesystem, memory, prompt repository, prompt asset source,
    telemetry, LLM observability, and the A2A server behind its switch; the sandbox: the
    service; bootstrap: secrets — and asserts **exactly one factory call per expected

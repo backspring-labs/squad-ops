@@ -12,7 +12,7 @@ from pathlib import Path
 
 from adapters.sandbox.container_backend import ContainerBackend
 from adapters.tools.docker import DockerAdapter
-from squadops.config.schema import SandboxConfig
+from squadops.config.schema import SandboxClientConfig, SandboxConfig
 from squadops.core.secrets import SecretManager
 from squadops.ports.sandbox import ExecutionSandboxPort
 from squadops.sandbox.environment import get_environment_contract
@@ -66,6 +66,23 @@ def create_execution_sandbox(config: SandboxConfig) -> ExecutionSandboxPort:
     if config.provider == "noop":
         return NoOpExecutionSandbox()
     return create_sandbox_service(config)
+
+
+def create_sandbox_client(config: SandboxClientConfig | None) -> ExecutionSandboxPort | None:
+    """The runtime API's client of the sandbox service (#2451, the owner's ruling of 2026-10-18):
+    one binding for every caller in the runtime API, SIP-0112's seeding and SIP-0113's runner
+    alike. ``none`` is no client: each caller reads the sandbox as unavailable. An absent section
+    is refused, since the selector is required where it is read (#1568)."""
+    if config is None:
+        raise ValueError(
+            "the runtime API needs SQUADOPS__SANDBOX_CLIENT__PROVIDER (none | http): it is required "
+            "where it is read (#1568, #2451)"
+        )
+    if config.provider == "none":
+        return None
+    from adapters.sandbox.http_client import HttpExecutionSandbox
+
+    return HttpExecutionSandbox(base_url=config.service_url, service_token=config.service_token)
 
 
 def resolve_service_token(config: SandboxConfig, secret_manager: SecretManager | None) -> str:

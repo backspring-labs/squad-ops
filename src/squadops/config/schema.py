@@ -405,6 +405,33 @@ class SandboxConfig(BaseModel):
     )
 
 
+class SandboxClientConfig(BaseModel):
+    """How the runtime API calls the sandbox service (#2451, ruled by the owner 2026-10-18).
+
+    Its own section, apart from ``SandboxConfig``: that one is the service's (and the
+    cycle-create preflight's, which reads it unchanged), and its env reader refuses fields it
+    doesn't know. The runtime API requires this section at startup; no other process reads it.
+    """
+
+    provider: Literal["none", "http"] = Field(
+        description="The runtime API's sandbox client (required where read, #1568): http calls "
+        "the sandbox service; none calls nothing, and every caller reads it as unavailable"
+    )
+    service_url: str = Field(default="", description="The sandbox service's base URL")
+    service_token: str = Field(
+        default="", description="The sandbox service's bearer token (supports secret://)"
+    )
+
+    @model_validator(mode="after")
+    def _http_names_its_service(self) -> "SandboxClientConfig":
+        if self.provider == "http" and not (self.service_url and self.service_token):
+            raise ValueError(
+                "sandbox_client.provider 'http' names its service: set "
+                "SQUADOPS__SANDBOX_CLIENT__SERVICE_URL and SQUADOPS__SANDBOX_CLIENT__SERVICE_TOKEN"
+            )
+        return self
+
+
 class KeycloakTokenPolicyConfig(BaseModel):
     """Keycloak token lifetime policy (SIP-0063)."""
 
@@ -970,6 +997,11 @@ class AppConfig(BaseModel):
     sandbox: SandboxConfig = Field(
         ...,
         description="Ephemeral Application Sandbox configuration (SIP-0102; required selector, #1568)",
+    )
+    # The runtime API's client of the sandbox service (#2451). Optional here because only the
+    # runtime API reads it, and it refuses to start without it (``create_sandbox_client``).
+    sandbox_client: SandboxClientConfig | None = Field(
+        default=None, description="The runtime API's sandbox client (#2451)"
     )
 
     # Private attributes for runtime state (not part of config validation)

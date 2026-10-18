@@ -233,6 +233,10 @@ services:
       SQUADOPS__TELEMETRY__BACKEND: otel  # required, never defaulted (#1568)
       SQUADOPS__TELEMETRY__OTLP_ENDPOINT: http://otel-collector:4317  # the runtime's activity metrics (#2204)
       SQUADOPS__SANDBOX__PROVIDER: ${SQUADOPS__SANDBOX__PROVIDER:?set it in .env (see .env.example) — required, never defaulted (#1568)}  # the cycle-create preflight reads it
+      # #2451: the runtime API's client of the sandbox service, apart from the preflight's selector.
+      SQUADOPS__SANDBOX_CLIENT__PROVIDER: ${SQUADOPS__SANDBOX_CLIENT__PROVIDER:?set it in .env (see .env.example) — required, never defaulted (#1568)}
+      SQUADOPS__SANDBOX_CLIENT__SERVICE_URL: http://squadops-sandbox-service:8002
+      SQUADOPS__SANDBOX_CLIENT__SERVICE_TOKEN: ${SQUADOPS_SANDBOX_SERVICE_TOKEN:?required, written by scripts/dev/ops/deploy_credentials.py ensure (#2006)}
       # Duty-transition scheduler (SIP-0089 §2.4). runtime-api is the single
       # central writer of agent mode (D16) — keep this enabled on exactly one
       # runtime-api instance (no leader election yet).
@@ -1024,7 +1028,7 @@ services:
     ports:
       - "127.0.0.1:8002:8002"  # loopback-only (SIP-0102 transport decision)
     environment:
-      SQUADOPS__SANDBOX__PROVIDER: ${SQUADOPS__SANDBOX__PROVIDER:?set it in .env (see .env.example) — required, never defaulted (#1568)}
+      SQUADOPS__SANDBOX__PROVIDER: ${SQUADOPS_SANDBOX_SERVICE_PROVIDER:?set it in .env (see .env.example) — the service's own provider, apart from the runtime's (#2451)}
       SQUADOPS__SANDBOX__IMAGE: ${SQUADOPS_SANDBOX_IMAGE:-}
       SQUADOPS__SANDBOX__WORKSPACE_ROOT: ${SQUADOPS_SANDBOX_ROOT:-/tmp/squadops-sandbox}/cycles
       SQUADOPS__SANDBOX__CACHE_ROOT: ${SQUADOPS_SANDBOX_ROOT:-/tmp/squadops-sandbox}/caches

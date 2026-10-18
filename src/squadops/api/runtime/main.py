@@ -427,6 +427,11 @@ async def _init_cycle_subsystem(state, config, pool) -> None:
         config.cycles.registry_provider,
         **({"pool": pool} if config.cycles.registry_provider == "postgres" else {}),
     )
+    # #2451 (the owner's ruling of 2026-10-18): the one client of the sandbox service, for every
+    # caller here. Refused at startup without its selector.
+    from adapters.sandbox.factory import create_sandbox_client
+
+    sandbox_client = create_sandbox_client(config.sandbox_client)
     squad_profile_provider = config.cycles.squad_profile_provider
     if squad_profile_provider == "postgres":
         squad_profile = create_squad_profile_port("postgres", pool=pool)
@@ -609,6 +614,7 @@ async def _init_cycle_subsystem(state, config, pool) -> None:
     state.deploy_registry = deploy_registry
     state.campaign_registry = campaign_registry
     state.intervention_ledger = intervention_ledger
+    state.sandbox_client = sandbox_client
     state.campaign_progress = campaign_progress
     state.squad_profile = squad_profile
     state.artifact_vault = artifact_vault
