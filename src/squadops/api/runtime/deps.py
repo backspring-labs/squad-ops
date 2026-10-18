@@ -57,6 +57,7 @@ PORT_SLOTS = (
     "deploy_registry",  # #1720
     "campaign_registry",  # SIP-0109 §16
     "intervention_ledger",  # SIP-0113 §4.3 (#2417)
+    "sandbox_client",  # #2451: the runtime API's client of the sandbox service
     "squad_profile",
     "artifact_vault",
     "flow_executor",
@@ -153,6 +154,11 @@ def get_squad_profile_port(request: Request) -> SquadProfilePort:
 def get_intervention_ledger(request: Request):
     """SIP-0113 §4.3 (#2417): the intervention ledger's store, beside the campaign registry."""
     return _slot(request, "intervention_ledger")
+
+
+def get_sandbox_client(request: Request):
+    """#2451: the runtime API's client of the sandbox service, or None where it calls none."""
+    return _slot(request, "sandbox_client")
 
 
 def get_memory_store(request: Request):

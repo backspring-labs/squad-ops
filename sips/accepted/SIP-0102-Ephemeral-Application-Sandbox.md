@@ -81,6 +81,7 @@ Kept by the rule in CLAUDE.md ("SIP System"): one row per part, updated in the P
 | X-2: a checkout's tracked tree round-trips: bytes, line endings, tracked derived names, the executable bit (§11d) | **shipped** | 2.4.0, PR #2442, issue #2420 |
 | X-3a: a product's declared command, run against a pinned revision in a disposable copy (§11d) | **shipped** | 2.4.0, PR #2447 |
 | X-3b: starting a product from its declaration, with readiness and the evaluation secrets, built with SIP-0113's scenario runner (§11d; SIP-0112 Q40) | **placed** | 2.4.0, #2421 |
+| the runtime API as the service's caller: its own client selector, the service's URL and token, the service's provider split from the preflight's (§11f; #2451 parts 1–3) | **shipped** | 2.4.0, PR #2456 |
 
 **What closes this SIP:** Steps 3, 5, 6, 7 shipped or dropped. Until a clean-room requirement returns, they are unplaced by ruling (§11c, 2026-10-04).
 
@@ -622,9 +623,10 @@ three sandbox changes, and the 2.4 plan's D12 has the Spark lane build them. The
 **A step 5a gap, closed here.** X-1 and X-2 shipped in #2441 and #2442 without this amendment. X-2's
 tracked-name rule changes §4.6, so this, the first sandbox PR after them, records both.
 
-**§11c, for these products.** The runtime API reaches this sandbox only where the deploy sets
-`SQUADOPS__SANDBOX__PROVIDER=http` and runs the sandbox service (`rebuild_and_deploy.sh sandbox`).
-SIP-0112's E.4.2 uses it that way. §11c's ruling for campaign evaluation stands.
+**§11c, for these products.** *(The selector named here is superseded by §11f.)* The runtime API reaches
+this sandbox only where the deploy sets `SQUADOPS__SANDBOX__PROVIDER=http` and runs the sandbox service
+(`rebuild_and_deploy.sh sandbox`). SIP-0112's E.4.2 uses it that way. §11c's ruling for campaign
+evaluation stands.
 
 **Evidence.** SIP-0112 §8.2.2, accepted by the owner. The MacBook lane's G4 reviews of #2441 and #2442
 raised the tracked names, the executable bit, and the bit's scope to a checkout's lineage. The X-3 split
@@ -633,3 +635,54 @@ was agreed on #2407: E.4.2's inherited baseline runs a product's checks, which w
 **Who ruled it.** The owner accepted SIP-0112 with X-1 to X-3 in its §8.2.2 (2026-10-17), and D12
 assigns them. The tracked-name and executable-bit rules and the X-3 split are the implementer's, reviewed
 by the MacBook lane as consumer (G4), for the owner's review.
+
+### 11f. The runtime API calls the sandbox service: its own client selector, and the service's URL and token (2026-10-18, §4.1, §11c, §11d; #2451; the owner's ruling)
+
+SIP-0112's E.4.2 seeds a product's checkout into this sandbox from the runtime API, and SIP-0113's
+evaluation service runs its scenarios here (§11e). Neither could. The runtime API had no client of the
+service, compose gave it neither the service's URL nor its token, and one variable,
+`SQUADOPS__SANDBOX__PROVIDER`, was read both by the runtime's cycle-create preflight and by the
+service for its own backend.
+
+**What changed.**
+- **The runtime API binds one client of the service,** `adapters.sandbox.factory.create_sandbox_client`,
+  called once by `_init_cycle_subsystem` and read through `deps.get_sandbox_client`. E.4.2's seeding and
+  SIP-0113's runner share it.
+- **It has its own selector,** `sandbox_client.provider` (`SQUADOPS__SANDBOX_CLIENT__PROVIDER`:
+  `http` | `none`). It is required: the runtime API refuses to start without it (#1568).
+  - `http` calls the service. Compose gives the runtime API `http://squadops-sandbox-service:8002` and
+    the service's token, and a client missing either is refused at config load.
+  - `none` binds no client, and each caller reads the sandbox as unavailable.
+- **The section belongs to the runtime API alone.** It carries the service's token, so the seven agents
+  never load it. `AppConfig` holds it as optional, and the root's factory refuses it absent.
+  `test_composition_roots.py` asserts that the runtime API's compose service names it and that no other
+  service does.
+- **The service's own provider has its own variable,** `SQUADOPS_SANDBOX_SERVICE_PROVIDER` (`docker` |
+  `noop`). Compose writes it into the service's `SQUADOPS__SANDBOX__PROVIDER`. **The runtime's
+  preflight is unchanged:** it still reads `SQUADOPS__SANDBOX__PROVIDER`.
+- **The service runs on the deploys where E.4.2 or the 2.4 window runs,** the MacBook and the Spark
+  (`rebuild_and_deploy.sh sandbox`).
+- **Superseded:** §11c's "no client wired", and §11d's selector. The runtime API reaches the sandbox where
+  `SQUADOPS__SANDBOX_CLIENT__PROVIDER=http` and the service runs. §11c's ruling for campaign evaluation
+  stands.
+
+**Not covered here, ruled for the next PR: inside a deploy, the service can't reach an app it starts**
+(#2451's fourth part). `DockerAdapter.run_detached` publishes an app's port on the host's loopback, and the
+service is a container on `squadnet`, whose `127.0.0.1` is its own. So readiness, `probe_http_endpoint`
+and every scenario step fail to connect there. The flaw predates SIP-0113: `start_application` has always
+had it, unseen because the service has always been `noop`. The live runs for #2447, #2450 and #2453
+worked because they ran on the host. The owner ruled the fix on #2451 the same day: an internal,
+no-egress `sandbox-apps` network that the service joins, with apps on it by container name and no host
+port, its name reaching the service through a required `SQUADOPS__SANDBOX__APP_NETWORK`. The PR that
+builds it records it and adds its ledger row. Until then, a live evaluation runs from the host.
+
+**Evidence.** #2451's three parts, read against `docker-compose.yml`, `deps.py` and the preflight. The
+wiring test enters at `load_config` with the env compose writes and asserts the seeded tree at a
+sandbox service app (`tests/unit/sandbox/test_sandbox_client_factory.py`).
+
+**Who ruled it.** The owner, 2026-10-18, on #2451 (recorded by the MacBook session): "approved as
+proposed (D11's compose ruling …): 1. The runtime API gets the sandbox service's URL and token. 2. The
+runtime API's sandbox selector is split from the service's own, and its cycle-create preflight is
+unchanged. 3. The opt-in sandbox service runs on the deploys where E.4.2 or the window runs: the MacBook
+and the Spark." The section's scope to the runtime API is the implementer's, for the MacBook lane's
+review (G4).
