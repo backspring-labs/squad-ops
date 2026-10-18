@@ -10,25 +10,17 @@ builds, or a cycle the mapping doesn't know, would let a Project history join pa
 from __future__ import annotations
 
 import re
-from pathlib import Path
 
 import pytest
 
 from squadops.campaigns.evaluator_trees import FileTree
 from tests.fixtures.shared_contract.repository import (
     FORMS,
-    FixtureRepository,
-    build_repository,
     recorded,
     tracked_files,
 )
 
 _GIT_COMMIT = re.compile(r"[0-9a-f]{40}")
-
-
-@pytest.fixture
-def repository(tmp_path: Path) -> FixtureRepository:
-    return build_repository(tmp_path / "tally")
 
 
 def _commits_for(tree_identity: str) -> list[str]:

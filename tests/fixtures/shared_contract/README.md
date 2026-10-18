@@ -90,7 +90,7 @@ Contracts 4 and 6 keep SIP-0109's and SIP-0110's tests, with IR-5 and IR-3.
 ```python
 from tests.fixtures.shared_contract.repository import build_repository, recorded, tracked_files
 
-repo = build_repository(tmp_path / "tally")      # repo.first_commit, repo.second_commit
-files = tracked_files(repo.path, repo.second_commit)   # {path: bytes}, the binary asset included
+repo = build_repository(tmp_path / "tally")  # repo.first_commit, repo.second_commit
+files = tracked_files(repo.path, repo.second_commit)  # {path: bytes}, the binary asset included
 context = recorded("project_source_context", "stale_commit")
 ```

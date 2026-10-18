@@ -15,7 +15,6 @@ import subprocess
 import time
 import urllib.error
 import urllib.request
-from pathlib import Path
 
 import pytest
 
@@ -31,11 +30,6 @@ from tests.fixtures.shared_contract.repository import (
 )
 
 _VERSION_KEYS = ("schema", "api_version")
-
-
-@pytest.fixture
-def repository(tmp_path: Path) -> FixtureRepository:
-    return build_repository(tmp_path / "tally")
 
 
 def _flatten(value, prefix: tuple = ()) -> dict[tuple, object]:
