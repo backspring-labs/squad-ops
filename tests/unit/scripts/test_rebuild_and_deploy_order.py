@@ -179,3 +179,26 @@ def test_a_deploy_keeps_the_engine_its_env_records_and_refuses_a_half_done_switc
         assert done.returncode == 0, done.stdout
         assert ("ollama-step" in done.stdout) is (outcome == "ollama")
         assert "deployed" in done.stdout
+
+
+@pytest.mark.parametrize(("sync_rc", "flag"), [(1, "1"), (0, "0")], ids=["failed", "synced"])
+def test_a_failed_realm_sync_fails_the_deploy(sync_rc, flag):
+    """#2426. Bug caught: a failed Keycloak realm sync printed a yellow line and the deploy ended
+    "complete" with exit 0, so the realms went without the exports' new clients and roles (the
+    MacBook's 2026-10-18 deploy). The script's own sync block runs here, with compose and the sync
+    stubbed; that the flag fails the deploy is read from the banner's list, as for the others."""
+    text = SCRIPT.read_text()
+    start = text.index("if docker compose config --services | grep -q '^squadops-keycloak$'")
+    block = text[start : text.index("\nfi\n", start) + 4]
+    probe = (
+        "docker() { echo squadops-keycloak; }\n"
+        f"sync_keycloak_realms() {{ return {sync_rc}; }}\n"
+        "RED= YELLOW= NC=\n"
+        f"{block}"
+        'echo "REALM_SYNC_FAILED=${REALM_SYNC_FAILED:-0}"\n'
+    )
+    done = subprocess.run(["bash", "-c", probe], capture_output=True, text=True, check=False)
+
+    assert done.returncode == 0, done.stderr
+    assert done.stdout.splitlines()[-1] == f"REALM_SYNC_FAILED={flag}"
+    assert '[ "${REALM_SYNC_FAILED:-0}" = "1" ] && DEPLOY_FAILED=1' in text
