@@ -250,6 +250,17 @@ class ProjectResponse(BaseModel):
     source: ProjectSourceResponse | None
     ownership: ProjectOwnershipResponse | None
     development_configuration_revision: int | None
+    development_baseline_commit: str | None
+    integrated_upstream_commit: str | None
+    validation_diagnostic: str | None
+
+
+class ProjectValidationRequest(BaseModel):
+    """Validate a registered Project (SIP-0112 E.4.2): reach its source, record what was found."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    idempotency_key: str = Field(min_length=1, max_length=200)
 
 
 class ProjectRegistrationResponse(BaseModel):

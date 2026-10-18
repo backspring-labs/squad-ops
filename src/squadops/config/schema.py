@@ -642,6 +642,15 @@ class ProjectsConfig(BaseModel):
         default_factory=list,
         description="Absolute directories under which a local repository path is allowed (R5)",
     )
+    #: E.4.2: the managed clones' cache. A cache: the external repository stays authoritative,
+    #: and a lost clone is fetched again (§B.3). Under cycle_data, as the sandbox's workspaces are.
+    clone_cache_root: Path = Field(
+        default=Path("cycle_data/repo_cache"),
+        description="Where the managed clones of registered products are kept (SIP-0112 FR-05)",
+    )
+    git_timeout_seconds: float = Field(
+        default=300.0, gt=0, description="The longest one clone, fetch or read may take"
+    )
 
 
 class SchedulerConfig(BaseModel):

@@ -28,6 +28,9 @@ from squadops.tools.security import PathSecurityPolicy
 if TYPE_CHECKING:
     from squadops.core.secret_manager import SecretManager
 
+    from squadops.ports.projects.source_repository import SourceRepositoryPort
+    from squadops.projects.registration import LocatorPolicy
+
 
 def create_filesystem_provider(
     provider: str,
@@ -131,3 +134,13 @@ def create_vcs_provider(
         return raw_adapter
 
     raise ValueError(f"Unknown VCS provider: {provider}")
+
+
+def create_source_repository(
+    *, cache_root: Path, policy: LocatorPolicy, timeout_seconds: float
+) -> SourceRepositoryPort:
+    """The managed clone of each registered product's repository (SIP-0112 E.4.2), Git's. The
+    runtime API's alone: an agent's VCS tool never reaches a registered repository."""
+    from adapters.tools.git_source import GitSourceRepository
+
+    return GitSourceRepository(cache_root, policy, timeout_seconds=timeout_seconds)

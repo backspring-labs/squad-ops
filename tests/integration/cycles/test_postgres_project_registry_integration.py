@@ -275,3 +275,53 @@ async def test_a_taken_id_and_a_closed_gate_write_nothing(pool):
             )
             == 0
         )
+
+
+async def test_a_validation_moves_a_registration_ready_or_failed_and_a_retry_recovers(pool):
+    """E.4.2, §B.6. Bugs caught: READY written without the commit contract 1 pins; a failure's
+    diagnostic surviving the retry that fixed it; a validation applied twice under one key; a
+    READY Project validated again here, where re-validation is E.4.4's drift."""
+    from squadops.cycles.models import ProjectStateConflictError
+
+    registry = PostgresProjectRegistry(pool)
+    await registry.register_project(_registration(), actor="owner")
+    commit = "c" * 40
+
+    failed, _ = await registry.record_validation(
+        "prj-tally", commit=None, diagnostic="clone: denied", actor="owner", idempotency_key="v-1"
+    )
+    ready, replayed = await registry.record_validation(
+        "prj-tally", commit=commit, diagnostic=None, actor="owner", idempotency_key="v-2"
+    )
+    again, again_replayed = await registry.record_validation(
+        "prj-tally", commit=commit, diagnostic=None, actor="owner", idempotency_key="v-2"
+    )
+    with pytest.raises(ProjectStateConflictError, match="READY"):
+        await registry.record_validation(
+            "prj-tally", commit=commit, diagnostic=None, actor="owner", idempotency_key="v-3"
+        )
+
+    assert (failed.lifecycle_status, failed.validation_diagnostic, failed.record_version) == (
+        ProjectLifecycleStatus.FAILED_REGISTRATION,
+        "clone: denied",
+        2,
+    )
+    assert (ready.lifecycle_status, ready.record_version, replayed) == (
+        ProjectLifecycleStatus.READY,
+        3,
+        False,
+    )
+    assert (ready.development_baseline_commit, ready.integrated_upstream_commit) == (commit, commit)
+    assert ready.validation_diagnostic is None
+    assert (again, again_replayed) == (ready, True)
+    async with pool.acquire() as conn:
+        events = await conn.fetch(
+            "SELECT operation, record_version, detail FROM project_record_events "
+            "WHERE project_id = 'prj-tally' ORDER BY record_version"
+        )
+    assert [(e["operation"], e["record_version"]) for e in events] == [
+        ("register", 1),
+        ("validate", 2),
+        ("validate", 3),
+    ]
+    assert events[2]["detail"] == {"from": "FAILED_REGISTRATION", "commit": commit}

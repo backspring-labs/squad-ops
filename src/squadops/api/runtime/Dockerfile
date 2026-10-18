@@ -25,9 +25,11 @@ WORKDIR /app
 ENV SQUADOPS_BASE_PATH=/app
 
 # Install system dependencies
+# git: the managed clones of registered products (SIP-0112 E.4.2, FR-06)
 RUN apt-get update && apt-get install -y \
     curl \
     gcc \
+    git \
     python3-dev \
     && rm -rf /var/lib/apt/lists/*
 

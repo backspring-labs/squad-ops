@@ -5,6 +5,7 @@ Unit tests for project commands (SIP-0065 §6.3).
 import json
 from unittest.mock import MagicMock, patch
 
+import pytest
 from typer.testing import CliRunner
 
 from squadops.cli import exit_codes
@@ -151,3 +152,41 @@ class TestProjectsImport:
         assert client.post.call_args.kwargs["json"]["idempotency_key"] == "import-7"
         assert result.exit_code == exit_codes.GENERAL_ERROR
         assert "idempotency key import-7" in result.output
+
+
+class TestProjectsValidate:
+    """SIP-0112 E.4.2. Bug caught: a failed validation exiting 0, so a script that registers
+    and validates carries on with a Project that can never run a Cycle."""
+
+    @pytest.mark.parametrize(
+        ("status", "commit", "diagnostic", "exit_code", "shown"),
+        [
+            ("READY", "c" * 40, None, 0, "prj-tally READY: " + "c" * 40),
+            ("FAILED_REGISTRATION", None, "clone: denied", 1, "FAILED_REGISTRATION: clone: denied"),
+        ],
+    )
+    @patch("squadops.cli.commands.projects._get_client")
+    def test_the_outcome_is_printed_and_a_failure_exits_nonzero(
+        self, mock_get_client, status, commit, diagnostic, exit_code, shown
+    ):
+        client = MagicMock()
+        client.post.return_value = {
+            "project": {
+                "project_id": "prj-tally",
+                "lifecycle_status": status,
+                "development_baseline_commit": commit,
+                "validation_diagnostic": diagnostic,
+            },
+            "idempotency_key": "v-1",
+            "replayed": False,
+        }
+        mock_get_client.return_value = client
+
+        result = runner.invoke(
+            app, ["projects", "validate", "prj-tally", "--idempotency-key", "v-1"]
+        )
+
+        assert client.post.call_args.args == ("/api/v1/projects/prj-tally/validate",)
+        assert client.post.call_args.kwargs == {"json": {"idempotency_key": "v-1"}}
+        assert result.exit_code == exit_code
+        assert shown in result.output

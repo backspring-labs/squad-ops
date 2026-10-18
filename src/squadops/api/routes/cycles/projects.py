@@ -11,13 +11,19 @@ from squadops.api.cycle_schemas import (
     ProjectRegistrationRequest,
     ProjectRegistrationResponse,
     ProjectResponse,
+    ProjectValidationRequest,
 )
 from squadops.api.errors import http_error
 from squadops.api.middleware.auth import require_scopes
 from squadops.api.routes.cycles.mapping import project_to_response
-from squadops.api.runtime.deps import get_project_locator_policy, get_project_registry
+from squadops.api.runtime.deps import (
+    get_project_locator_policy,
+    get_project_registry,
+    get_source_repository,
+)
 from squadops.auth.models import Identity, Scope
 from squadops.projects.registration import RegistrationRefused, prepare_registration
+from squadops.projects.validation import validate_project
 
 router = APIRouter(prefix="/api/v1/projects", tags=["projects"])
 
@@ -64,6 +70,30 @@ async def register_project(
     return ProjectRegistrationResponse(
         project=project_to_response(project),
         idempotency_key=registration.idempotency_key,
+        replayed=replayed,
+    )
+
+
+@router.post("/{project_id}/validate")
+async def validate_registered_project(
+    request: Request,
+    project_id: str,
+    body: ProjectValidationRequest,
+    identity: Identity | None = Depends(require_scopes(Scope.ADMIN_WRITE)),
+) -> ProjectRegistrationResponse:
+    """Reach a registered Project's source through the managed clone (SIP-0112 E.4.2): READY
+    at the base ref's commit, or FAILED_REGISTRATION with the reason. A failure is an answer,
+    not an error: the Project records it, and a retry validates again."""
+    project, replayed = await validate_project(
+        project_id,
+        registry=get_project_registry(request),
+        repository=get_source_repository(request),
+        actor=identity.user_id if identity is not None else "anonymous",
+        idempotency_key=body.idempotency_key,
+    )
+    return ProjectRegistrationResponse(
+        project=project_to_response(project),
+        idempotency_key=body.idempotency_key,
         replayed=replayed,
     )
 

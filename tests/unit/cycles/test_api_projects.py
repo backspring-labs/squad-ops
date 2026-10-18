@@ -118,6 +118,9 @@ class TestTheProjectRecordAddsFieldsOnly:
             "source": None,
             "ownership": None,
             "development_configuration_revision": None,
+            "development_baseline_commit": None,
+            "integrated_upstream_commit": None,
+            "validation_diagnostic": None,
         }
 
     def test_a_registered_projects_source_and_owner_reach_the_response(
@@ -316,3 +319,82 @@ class TestRegisterProject:
         assert registry.register_project.await_count == (1 if expected == 201 else 0)
         if expected == 201:
             assert registry.register_project.await_args.kwargs == {"actor": "someone"}
+
+
+class TestValidateProject:
+    """``POST /api/v1/projects/{id}/validate`` (SIP-0112 E.4.2), at the route the CLI calls.
+    Bugs caught: the route reading a different registry or clone than the runtime wires; a
+    failed validation answered as an error rather than recorded and returned."""
+
+    @pytest.fixture
+    def wired(self, client, mock_project_registry):
+        from squadops.projects.models import (
+            CheckoutTree,
+            ProjectLifecycleStatus,
+            ProjectSource,
+        )
+
+        source = ProjectSource(
+            repo_uri="https://code.example.invalid/tally.git",
+            base_ref="refs/heads/main",
+            contribution_mode="review_request",
+        )
+        project = Project(
+            project_id="prj-tally", name="Tally", description="", created_at=NOW, source=source
+        )
+        mock_project_registry.get_project.return_value = project
+
+        async def record(project_id, *, commit, diagnostic, actor, idempotency_key):
+            status = (
+                ProjectLifecycleStatus.READY
+                if commit
+                else ProjectLifecycleStatus.FAILED_REGISTRATION
+            )
+            return (
+                Project(
+                    project_id=project_id,
+                    name="Tally",
+                    description="",
+                    created_at=NOW,
+                    source=source,
+                    lifecycle_status=status,
+                    development_baseline_commit=commit,
+                    integrated_upstream_commit=commit,
+                    validation_diagnostic=diagnostic,
+                ),
+                False,
+            )
+
+        mock_project_registry.record_validation.side_effect = record
+        clone = AsyncMock()
+        clone.sync.return_value = "c" * 40
+        clone.tree_at.return_value = CheckoutTree(
+            "c" * 40, {}, frozenset(), frozenset(), frozenset()
+        )
+        client.app.state.source_repository = clone
+        return clone
+
+    def test_a_reached_source_answers_ready_at_its_commit(self, client, wired):
+        resp = client.post("/api/v1/projects/prj-tally/validate", json={"idempotency_key": "v-1"})
+
+        project = resp.json()["project"]
+        assert resp.status_code == 200
+        assert (project["lifecycle_status"], project["development_baseline_commit"]) == (
+            "READY",
+            "c" * 40,
+        )
+        wired.sync.assert_awaited_once_with(
+            "prj-tally", "https://code.example.invalid/tally.git", "refs/heads/main"
+        )
+
+    def test_an_unreachable_source_is_recorded_and_answered_not_raised(self, client, wired):
+        from squadops.projects.models import SourceUnavailable
+
+        wired.sync.side_effect = SourceUnavailable("git clone failed: denied", reason="clone")
+
+        resp = client.post("/api/v1/projects/prj-tally/validate", json={"idempotency_key": "v-2"})
+
+        project = resp.json()["project"]
+        assert resp.status_code == 200
+        assert project["lifecycle_status"] == "FAILED_REGISTRATION"
+        assert project["validation_diagnostic"] == "clone: git clone failed: denied"

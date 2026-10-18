@@ -36,3 +36,24 @@ class ProjectRegistryPort(ABC):
             ProjectIdTakenError: The Project ID is held.
             RegistrationKeyConflictError: The key registered different content.
         """
+
+    @abstractmethod
+    async def record_validation(
+        self,
+        project_id: str,
+        *,
+        commit: str | None,
+        diagnostic: str | None,
+        actor: str,
+        idempotency_key: str,
+    ) -> tuple[Project, bool]:
+        """Record a registered Project's validation (SIP-0112 E.4.2, §B.6): READY at ``commit``
+        when its source was reached, FAILED_REGISTRATION with ``diagnostic`` when not. Exactly
+        one of the two is given. Returns the Project and whether this replayed an earlier
+        validation under the same key.
+
+        Raises:
+            ProjectRegistryReadOnlyError: The registry refuses writes.
+            ProjectStateConflictError: The Project is not REGISTERING or FAILED_REGISTRATION.
+            RegistrationKeyConflictError: The key recorded a different validation.
+        """

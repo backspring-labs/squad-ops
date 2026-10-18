@@ -11,6 +11,7 @@ import typer
 from squadops.cli.client import CLIError
 from squadops.cli.client import get_client as _get_client
 from squadops.cli.output import print_detail, print_error, print_json, print_success, print_table
+from squadops.projects.models import ProjectLifecycleStatus
 
 app = typer.Typer(name="projects", help="Manage projects")
 
@@ -137,3 +138,36 @@ def import_project(
         f"{verb}: {project['project_id']} {project['lifecycle_status']} "
         f"(record version {project['record_version']}, key {data['idempotency_key']})"
     )
+
+
+@app.command("validate")
+def validate_project(
+    ctx: typer.Context,
+    project_id: str = typer.Argument(...),
+    idempotency_key: str | None = typer.Option(None, "--idempotency-key"),
+):
+    """Reach a registered product's source (SIP-0112 E.4.2): READY at its base ref's commit, or
+    FAILED_REGISTRATION with the reason. Run it again to retry a failed registration."""
+    fmt = ctx.obj.get("format", "table") if ctx.obj else "table"
+    key = idempotency_key or f"cli-{uuid.uuid4().hex}"
+    try:
+        client = _get_client(ctx)
+        data = client.post(f"/api/v1/projects/{project_id}/validate", json={"idempotency_key": key})
+        client.close()
+    except CLIError as e:
+        print_error(f"{e} (idempotency key {key})")
+        raise typer.Exit(code=e.exit_code) from e
+
+    if fmt == "json":
+        print_json(data)
+        return
+    project = data["project"]
+    status = project["lifecycle_status"]
+    found = (
+        project["development_baseline_commit"]
+        if status == ProjectLifecycleStatus.READY
+        else project["validation_diagnostic"]
+    )
+    print_success(f"{project['project_id']} {status}: {found} (key {data['idempotency_key']})")
+    if status != ProjectLifecycleStatus.READY:
+        raise typer.Exit(code=1)

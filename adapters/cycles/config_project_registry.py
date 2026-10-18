@@ -69,3 +69,9 @@ class ConfigProjectRegistry(ProjectRegistryPort):
             "the config provider is read-only: config/projects.yaml is edited, never written. "
             "Registration needs cycles.project_registry_provider: postgres (SIP-0112 FR-03)"
         )
+
+    async def record_validation(self, project_id, *, commit, diagnostic, actor, idempotency_key):
+        raise ProjectRegistryReadOnlyError(
+            "the config provider is read-only: its sample applications have no external source "
+            "to validate (SIP-0112 FR-03)"
+        )

@@ -72,6 +72,9 @@ def project_to_response(project: Project) -> ProjectResponse:
             else None
         ),
         development_configuration_revision=project.development_configuration_revision,
+        development_baseline_commit=project.development_baseline_commit,
+        integrated_upstream_commit=project.integrated_upstream_commit,
+        validation_diagnostic=project.validation_diagnostic,
     )
 
 
