@@ -666,14 +666,15 @@ service for its own backend.
   `SQUADOPS__SANDBOX_CLIENT__PROVIDER=http` and the service runs. §11c's ruling for campaign evaluation
   stands.
 
-**Not covered, and not yet ruled: inside a deploy, the service can't reach an app it starts** (#2451's
-fourth part). `DockerAdapter.run_detached` publishes an app's port on the host's loopback, and the
+**Not covered here, ruled for the next PR: inside a deploy, the service can't reach an app it starts**
+(#2451's fourth part). `DockerAdapter.run_detached` publishes an app's port on the host's loopback, and the
 service is a container on `squadnet`, whose `127.0.0.1` is its own. So readiness, `probe_http_endpoint`
 and every scenario step fail to connect there. The flaw predates SIP-0113: `start_application` has always
 had it, unseen because the service has always been `noop`. The live runs for #2447, #2450 and #2453
-worked because they ran on the host. The proposal on #2451 is an internal network for the apps, named to
-the service by a required `SQUADOPS__SANDBOX__APP_NETWORK`. Until it is ruled and built, a live
-evaluation runs from the host.
+worked because they ran on the host. The owner ruled the fix on #2451 the same day: an internal,
+no-egress `sandbox-apps` network that the service joins, with apps on it by container name and no host
+port, its name reaching the service through a required `SQUADOPS__SANDBOX__APP_NETWORK`. The PR that
+builds it records it and adds its ledger row. Until then, a live evaluation runs from the host.
 
 **Evidence.** #2451's three parts, read against `docker-compose.yml`, `deps.py` and the preflight. The
 wiring test enters at `load_config` with the env compose writes and asserts the seeded tree at a
