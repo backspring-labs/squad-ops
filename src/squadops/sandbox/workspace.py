@@ -379,7 +379,14 @@ class WorkspaceStore:
         executable = self._live_executables(cycle_id, revision_id, tracked)
         copy = self._cycle_dir(cycle_id) / "copies" / uuid.uuid4().hex
         try:
-            for rel, content in self.current_files(cycle_id, tracked=tracked).items():
+            files = self.current_files(cycle_id, tracked=tracked)
+            # The pin is checked before the read, and a patch could land between the two, so
+            # what was read is held to the pin too: a copy is one revision, never a mix of two.
+            if compute_revision_id(files, executable) != revision_id:
+                raise StaleBaseRevisionError(
+                    f"live tree moved while revision {revision_id} was copied: no copy is taken"
+                )
+            for rel, content in files.items():
                 target = copy / rel
                 target.parent.mkdir(parents=True, exist_ok=True)
                 target.write_bytes(content_bytes(content))

@@ -374,6 +374,27 @@ class TestDisposableCopy:
         assert not copy.exists()
         assert store.verify_pinned("cyc_1", rev.revision_id)
 
+    def test_a_tree_that_moves_while_it_is_copied_yields_no_copy(self, store, monkeypatch):
+        """Bug caught (the MacBook lane's review of #2447): a patch landing between the pin's
+        check and the read, so the copy mixed two revisions and a check ran on a tree no
+        revision names."""
+        rev = store.seed("cyc_1", FILES, origin=RevisionOrigin.SCAFFOLD_SEED)
+        read, reads = store.current_files, []
+
+        def a_patch_lands_after_the_pin_check(cycle_id, **kw):
+            reads.append(cycle_id)
+            files = read(cycle_id, **kw)
+            return files if len(reads) == 1 else {**files, "backend/main.py": "patched meanwhile"}
+
+        monkeypatch.setattr(store, "current_files", a_patch_lands_after_the_pin_check)
+
+        with pytest.raises(StaleBaseRevisionError, match="moved while"):
+            with store.disposable_copy("cyc_1", rev.revision_id):
+                pass
+        assert not (store._cycle_dir("cyc_1") / "copies").exists() or not any(
+            (store._cycle_dir("cyc_1") / "copies").iterdir()
+        )
+
     def test_no_copy_is_taken_from_a_tree_that_left_its_pin(self, store):
         """Bug caught: a copy of whatever the live tree holds, so a command ran on content no
         revision names."""

@@ -614,6 +614,8 @@ three sandbox changes, and the 2.4 plan's D12 has the Spark lane build them. The
     dropped, with no new privileges, as the workspace owner. X-3a carries no secrets.
   - **How it ended is typed:** `exited` with its status, `setup_failed`, `timeout`, `command_not_found`
     (127) and `command_not_executable` (126). The last two are not-run, never a failed check (§4.4).
+  - **A limit:** the command runs offline, so a check that needs the network fails. A product declares
+    such a check as needing its environment, and SIP-0112's E.4.2 records it UNVERIFIED.
 - **Still X-3b (#2421, with SIP-0113's runner #2414):** starting a product from its declaration, with
   readiness and the owner-approved evaluation secrets (SIP-0112 Q40).
 
