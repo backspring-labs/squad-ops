@@ -79,6 +79,7 @@ Kept by the rule in CLAUDE.md ("SIP System"): one row per part, updated in the P
 | campaign evaluation through this sandbox | **dropped** by §11c: SIP-0109 evaluates and renders routes in the qa container (runtime-api cannot reach the sandbox), the accepted path | SIP-0109 §24n, §24p |
 | X-1: a `git_checkout` revision origin (§11d; SIP-0112 §8.2.2) | **shipped** | 2.4.0, PR #2441, issue #2419 |
 | X-2: a checkout's tracked tree round-trips: bytes, line endings, tracked derived names, the executable bit (§11d) | **shipped** | 2.4.0, PR #2442, issue #2420 |
+| X-3a: a product's declared command, run against a pinned revision in a disposable copy (§11d) | **shipped** | 2.4.0, PR #2447 |
 | X-3b: starting a product from its declaration, with readiness and the evaluation secrets, built with SIP-0113's scenario runner (§11d; SIP-0112 Q40) | **placed** | 2.4.0, #2421 |
 
 **What closes this SIP:** Steps 3, 5, 6, 7 shipped or dropped. Until a clean-room requirement returns, they are unplaced by ruling (§11c, 2026-10-04).
