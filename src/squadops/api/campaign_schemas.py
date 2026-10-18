@@ -69,6 +69,10 @@ class CampaignCreateRequest(BaseModel):
     #: Optional (#1954): the definition file, recorded on the creation row. ``campaigns create
     #: --file`` always sends it; a caller with no file sends none.
     definition: CampaignDefinitionDTO | None = None
+    #: SIP-0113 §4.7, phase 1 (#2413; SIP-0109 §24bt): the digest of an approved held-out scenario
+    #: suite, pinned on the campaign in Outcome Evaluation's own record. No SIP-0109 decision reads
+    #: it. Optional: a campaign created without one is evaluated by no suite.
+    scenario_suite: str | None = None
 
 
 class ControlRequest(BaseModel):

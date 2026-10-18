@@ -152,6 +152,11 @@ and the request renderer. Prompt content lives here as managed assets, never as 
 Agent runtime state (SIP-0089): runtime modes, activity, focus leases, assignments and duty windows.
 A pure coordination layer that depends on ports only, never on adapters.
 
+### `squadops.scenarios`
+Outcome Evaluation's held-out scenarios (SIP-0113 §4.1, §4.7): a scenario's goal, held-out steps,
+checks and surfaces, content-addressed, and a suite of them that the supervisor drafts and the owner
+approves before a campaign pins it. No squad-side package imports it (IR-4).
+
 ### `squadops.sandbox`
 The execution sandbox domain (SIP-0102): the service that builds and runs a delivered app in
 isolation, and its entrypoint (`squadops.sandbox.main`, a composition root).
@@ -209,6 +214,10 @@ Model servers: Ollama, vLLM's OpenAI-compatible API, and Atlas (SIP-0106).
 Semantic memory on LanceDB, and Cross-Cycle Memory's store (Postgres beside the cycle registry, and
 in memory for tests) with the recall that answers from a unit's pinned snapshot.
 
+
+### `adapters.scenarios`
+The held-out scenario store (SIP-0113 §4.1): Postgres beside the campaigns that pin its suites, and
+in memory for tests. Never the artifact vault, which is where squad tasks' inputs come from.
 ### `adapters.noop`
 NoOp port stubs for bootstrapping a `PortsBundle` (SIP-0066).
 

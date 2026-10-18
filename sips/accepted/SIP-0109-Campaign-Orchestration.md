@@ -3532,3 +3532,24 @@ finding of its own.
 **Who ruled it.** Not the owner yet. The supervisor built it under the 2.4 grant (the plan's D11), as the
 prerequisite of D3's ruled window. It's for the owner's review. It is a contract 2 field (SIP-0112 §8.2), so it
 carries the MacBook lane's review (G4).
+
+### 24bt. Campaign creation names a held-out scenario suite, kept in Outcome Evaluation's record (2026-10-18, §15, §16; SIP-0113 §4.7 phase 1, #2413; implementer's record, for the owner)
+
+**What changed.** `CampaignCreateRequest` gains an optional `scenario_suite`: the digest of a held-out
+scenario suite the owner approved (SIP-0113 §4.1, the 2.4 plan's D2).
+- **The check comes first.** It runs before the campaign is created: a suite nothing holds, or a draft,
+  is refused with 422 and creates no campaign.
+- **The pin comes after, in SIP-0113's own record** (`campaign_scenario_suites`, migration 1900), keyed by
+  the campaign the creation returned. A replayed creation replays its pin, and a retry that names another
+  suite is refused with 409 `SUITE_ALREADY_PINNED`.
+- **This SIP's state is unchanged.** It is not on `CampaignPolicy`, it doesn't enter the creation's replay
+  hash, and no decision, row or launch of this SIP reads it.
+- **Phase 2's `scenario_suite`, `scenario_target` and `quality_baseline` on `CampaignObjective`** (SIP-0113
+  §4.7) remain that phase's, with their own amendment if it is built.
+
+**The evidence.** SIP-0113 §4.7 places the phase-1 pin at Campaign creation, and SIP-0112 §8.2's contract
+2 has each lane add its own typed fields there and repurpose none. #2413 builds it, with its wiring test at
+`POST /api/v1/campaigns` (`tests/unit/api/test_campaign_scenario_suite.py`).
+
+**Who ruled it.** The owner accepted SIP-0113 with this placement (2026-10-17). The supervisor built it
+under the 2.4 grant (D11). It is a contract 2 field, so it carries the MacBook lane's review (G4).

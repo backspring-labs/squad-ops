@@ -59,6 +59,7 @@ from squadops.api.runtime.deps import (
     get_cycle_event_bus,
     get_cycle_registry,
     get_memory_store,
+    get_scenario_store,
 )
 from squadops.auth.models import Identity, Role, Scope
 from squadops.campaigns import lifecycle
@@ -97,6 +98,7 @@ from squadops.campaigns.projection import project
 from squadops.cycles.gate_attribution import compose_decided_by
 from squadops.cycles.models import CycleStatus
 from squadops.memory.pinning import pin_campaign
+from squadops.scenarios.suites import SuiteRefused, pin_campaign_suite, require_pinnable
 
 logger = logging.getLogger(__name__)
 
@@ -236,6 +238,7 @@ async def create_campaign(
         )
         _require_profiles(campaign.policy)
         definition = CampaignDefinition(**body.definition.model_dump()) if body.definition else None
+        scenarios = await _pinnable_scenario_store(request, body.scenario_suite)
         result = await _registry(request).create_campaign(
             campaign,
             actor=actor,
@@ -246,8 +249,33 @@ async def create_campaign(
         )
     except ValueError as e:
         raise HTTPException(422, _validation(str(e))) from e
+    if scenarios is not None and body.scenario_suite is not None:
+        # SIP-0113 §4.7 (§24bt): pinned after the creation, by the campaign it names, so a
+        # replayed creation replays its pin and a different suite for the same one is refused.
+        try:
+            await pin_campaign_suite(
+                scenarios, result.campaign.campaign_id, body.scenario_suite, actor=actor, at=now
+            )
+        except SuiteRefused as e:
+            raise HTTPException(409, error_body(e.code, str(e))) from e
     _project(request, result, identity)
     return _result(result)
+
+
+async def _pinnable_scenario_store(request: Request, digest: str | None):
+    """The scenario store, when the creation names a suite that can be pinned: stored and
+    approved (the 2.4 plan's D2). Checked before the campaign exists, so a refused suite creates
+    nothing."""
+    if digest is None:
+        return None
+    store = get_scenario_store(request)
+    if store is None:
+        raise ValueError("scenario_suite: the scenario store is not configured on this deploy")
+    try:
+        await require_pinnable(store, digest)
+    except SuiteRefused as e:
+        raise ValueError(f"scenario_suite: {e}") from e
+    return store
 
 
 @router.get("")

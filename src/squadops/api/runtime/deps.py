@@ -58,6 +58,7 @@ PORT_SLOTS = (
     "campaign_registry",  # SIP-0109 §16
     "intervention_ledger",  # SIP-0113 §4.3 (#2417)
     "sandbox_client",  # #2451: the runtime API's client of the sandbox service
+    "scenario_store",  # SIP-0113 §4.1 (#2413): held-out scenario suites
     "squad_profile",
     "artifact_vault",
     "flow_executor",
@@ -159,6 +160,11 @@ def get_intervention_ledger(request: Request):
 def get_sandbox_client(request: Request):
     """#2451: the runtime API's client of the sandbox service, or None where it calls none."""
     return _slot(request, "sandbox_client")
+
+
+def get_scenario_store(request: Request):
+    """SIP-0113 §4.1 (#2413): the held-out scenario store, beside the campaign registry."""
+    return _slot(request, "scenario_store")
 
 
 def get_memory_store(request: Request):

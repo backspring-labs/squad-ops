@@ -558,6 +558,34 @@ All four are ruled as recommended: A4 through SIP-0112's Q40, and A1 to A3 at ac
 
 ## 10. Post-acceptance amendments
 
+### 10a. The scenario store as built (2026-10-18, §4.1, §4.7 phase 1, #2413; implementer's record, for the owner)
+
+**What it fixes that §4.1 left open.**
+- **Who reads a suite, by scope** (`squadops.auth.models`):
+  - `scenarios:read` gives a suite's goals, surfaces and state, never its steps or checks. It's held by
+    the owner (`admin`), the supervisor and triage.
+  - `scenarios:draft` is the supervisor's (D2) and the owner's.
+  - `scenarios:approve` is the owner's alone. It approves a suite, and **reads its full content, steps
+    included**, so the owner approves what was drafted.
+  - No squad agent's role (`agent`) holds any of them.
+- **How steps reach the runner:** in process. The evaluation service in the runtime API reads them from
+  the store by suite digest and hands them to the runner over the sandbox's authenticated channel (#2414).
+  No route is added for the runner to read them.
+- **The boundary in code:** no module under `squadops.agents`, `capabilities`, `prompts` or `execution`
+  imports the scenarios' domain, port or store (`test_held_out_scenarios_stay_out_of_the_squads_reach.py`).
+- **Surfaces by kind:** `http_endpoint` (a method and a path) and `page` (a path). The name isn't `http`:
+  that would read as the same value as unrelated `"http"` literals across the codebase (#380's guard).
+- **Steps and checks** are mappings naming an `action` and a `check`. Their vocabulary is the runner's
+  (#2414), and a step it can't run is `blocked_unverified`, as §4.1 rules.
+- **Content addressing:** a scenario's version is the hash of its canonical content, and a suite's digest
+  is the hash of its scenarios' ids and versions. Its name is a label, and the order isn't counted. The
+  Postgres store recomputes the digest on every read, and refuses a row whose content no longer hashes to
+  its key.
+- **The campaign's pin** (§4.7, phase 1) is recorded in SIP-0109 §24bt.
+
+**Who ruled it.** The owner accepted §4.1 and §4.7 (2026-10-17). These are the implementer's choices
+within them, for the owner's review.
+
 ### 10d. The intervention ledger as built (2026-10-18, §4.3, §7 prediction 5; #2417; implementer's record, for the owner)
 
 - **A projection of SIP-0109's control log, never a second record of it** (`squadops.outcomes.ledger`).
