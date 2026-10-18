@@ -190,3 +190,44 @@ class TestProjectsValidate:
         assert client.post.call_args.kwargs == {"json": {"idempotency_key": "v-1"}}
         assert result.exit_code == exit_code
         assert shown in result.output
+
+
+class TestProjectsConfigure:
+    """SIP-0112 E.4.2. Bug caught: a recording sent against no revision, so the server's version
+    precondition can't refuse a concurrent one; the file's other keys leaking into the body."""
+
+    @patch("squadops.cli.commands.projects._get_client")
+    def test_the_current_revision_is_read_and_sent_as_the_expected_one(
+        self, mock_get_client, tmp_path
+    ):
+        spec = tmp_path / "dev.yaml"
+        spec.write_text("technical: {project_type: service}\nnotes: ignored\n")
+        client = MagicMock()
+        client.get.return_value = {"development_configuration_revision": 3}
+        client.post.return_value = {
+            "configuration": {
+                "revision": 4,
+                "document": {"configuration": {"instruction_sources": [{}]}},
+            },
+            "idempotency_key": "c-1",
+            "replayed": False,
+        }
+        mock_get_client.return_value = client
+
+        result = runner.invoke(
+            app, ["projects", "configure", "prj-tally", "-f", str(spec), "--idempotency-key", "c-1"]
+        )
+
+        assert result.exit_code == 0, result.output
+        assert client.post.call_args.kwargs["json"] == {
+            "idempotency_key": "c-1",
+            "expected_revision": 3,
+            "technical": {"project_type": "service"},
+        }
+        assert "revision 4 (1 instruction source(s) found" in " ".join(result.output.split())
+
+    def test_an_unreadable_file_exits_before_any_call(self, tmp_path):
+        result = runner.invoke(
+            app, ["projects", "configure", "prj-tally", "-f", str(tmp_path / "missing.yaml")]
+        )
+        assert result.exit_code == 2

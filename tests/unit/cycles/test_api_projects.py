@@ -398,3 +398,90 @@ class TestValidateProject:
         assert resp.status_code == 200
         assert project["lifecycle_status"] == "FAILED_REGISTRATION"
         assert project["validation_diagnostic"] == "clone: git clone failed: denied"
+
+
+class TestDevelopmentConfigurationRoutes:
+    """``/api/v1/projects/{id}/development-configuration(s)`` (SIP-0112 E.4.2), at the routes
+    the CLI calls. Bugs caught: a malformed declaration answered 500 instead of naming its
+    field; the stored document altered between the registry and the response."""
+
+    @pytest.fixture
+    def configured(self, client, mock_project_registry, tmp_path):
+        import copy
+
+        from squadops.projects.models import CheckoutTree, ProjectSource
+        from tests.fixtures.shared_contract.repository import (
+            build_repository,
+            recorded,
+            tracked_files,
+        )
+
+        repo = build_repository(tmp_path / "tally")
+        mock_project_registry.get_project.return_value = Project(
+            project_id="prj-tally",
+            name="Tally",
+            description="",
+            created_at=NOW,
+            source=ProjectSource(
+                repo_uri="https://code.example.invalid/tally.git",
+                base_ref="refs/heads/main",
+                contribution_mode="review_request",
+            ),
+            development_baseline_commit=repo.second_commit,
+        )
+
+        async def record(configuration, **kwargs):
+            return configuration, False
+
+        mock_project_registry.record_development_configuration.side_effect = record
+        clone = AsyncMock()
+        clone.tree_at.return_value = CheckoutTree(
+            repo.second_commit,
+            tracked_files(repo.path, repo.second_commit),
+            frozenset(),
+            frozenset(),
+            frozenset(),
+        )
+        client.app.state.source_repository = clone
+        valid = recorded("development_configuration", "valid")
+        return copy.deepcopy(valid["configuration"]["technical"]), valid
+
+    def test_a_recording_answers_the_stored_document(self, client, configured):
+        technical, valid = configured
+
+        resp = client.post(
+            "/api/v1/projects/prj-tally/development-configurations",
+            json={"idempotency_key": "c-1", "expected_revision": 0, "technical": technical},
+        )
+
+        assert resp.status_code == 201
+        assert resp.json()["configuration"]["document"] == valid
+        assert resp.json()["replayed"] is False
+
+    def test_a_malformed_declaration_is_refused_naming_its_field(
+        self, client, configured, mock_project_registry
+    ):
+        technical, _ = configured
+        technical["commands"]["start"]["start"] = "python3 -m tally serve"
+
+        resp = client.post(
+            "/api/v1/projects/prj-tally/development-configurations",
+            json={"idempotency_key": "c-1", "expected_revision": 0, "technical": technical},
+        )
+
+        error = resp.json()["detail"]["error"]
+        assert (resp.status_code, error["code"]) == (422, "CONFIGURATION_INVALID")
+        assert error["details"] == {"field": "technical.commands.start.start"}
+        mock_project_registry.record_development_configuration.assert_not_awaited()
+
+    def test_the_current_revision_reads_back(self, client, configured, mock_project_registry):
+        from squadops.projects.development_configuration import parse_configuration
+
+        _, valid = configured
+        mock_project_registry.get_development_configuration.return_value = parse_configuration(
+            valid
+        )
+
+        resp = client.get("/api/v1/projects/prj-tally/development-configuration")
+
+        assert resp.json() == {"project_id": "prj-tally", "revision": 1, "document": valid}

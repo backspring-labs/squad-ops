@@ -15,6 +15,7 @@ from squadops.cycles.models import (
     BaselineNotAllowedError,
     CycleError,
     CycleNotFoundError,
+    DevelopmentConfigurationNotFoundError,
     GateAlreadyDecidedError,
     IllegalStateTransitionError,
     PreflightRejectedError,
@@ -28,6 +29,7 @@ from squadops.cycles.models import (
     RegistrationKeyConflictError,
     RunNotFoundError,
     RunTerminalError,
+    StaleConfigurationRevisionError,
     ValidationError,
 )
 
@@ -37,10 +39,12 @@ _ERROR_MAP: list[ErrorRow] = [
     (RunNotFoundError, 404, "RUN_NOT_FOUND"),
     (ArtifactNotFoundError, 404, "ARTIFACT_NOT_FOUND"),
     (ProfileNotFoundError, 404, "PROFILE_NOT_FOUND"),
+    (DevelopmentConfigurationNotFoundError, 404, "DEVELOPMENT_CONFIGURATION_NOT_FOUND"),
     (ProjectNotReadyError, 409, "PROJECT_NOT_READY"),
     (ProjectRegistryReadOnlyError, 409, "PROJECT_REGISTRY_READ_ONLY"),
     (ProjectIdTakenError, 409, "PROJECT_ID_TAKEN"),
     (ProjectStateConflictError, 409, "PROJECT_STATE_CONFLICT"),
+    (StaleConfigurationRevisionError, 409, "STALE_CONFIGURATION_REVISION"),
     (RegistrationKeyConflictError, 409, "IDEMPOTENCY_KEY_CONFLICT"),
     (IllegalStateTransitionError, 409, "ILLEGAL_STATE_TRANSITION"),
     (GateAlreadyDecidedError, 409, "GATE_ALREADY_DECIDED"),

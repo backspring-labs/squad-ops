@@ -188,6 +188,15 @@ class ProjectStateConflictError(CycleError):
     again here (re-validation against drift is E.4.4's)."""
 
 
+class DevelopmentConfigurationNotFoundError(CycleError):
+    """Raised when a Project has no Development Configuration, or not the revision asked for."""
+
+
+class StaleConfigurationRevisionError(CycleError):
+    """Raised when a Development Configuration is recorded against a revision that is no longer
+    the current one: another revision was recorded first (§D.2's version precondition)."""
+
+
 class ProjectIdTakenError(CycleError):
     """Raised when a registration names a Project ID the registry already holds."""
 

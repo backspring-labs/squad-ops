@@ -12,7 +12,12 @@ from pathlib import Path
 
 import yaml
 
-from squadops.cycles.models import Project, ProjectNotFoundError, ProjectRegistryReadOnlyError
+from squadops.cycles.models import (
+    DevelopmentConfigurationNotFoundError,
+    Project,
+    ProjectNotFoundError,
+    ProjectRegistryReadOnlyError,
+)
 from squadops.ports.cycles.project_registry import ProjectRegistryPort
 
 logger = logging.getLogger(__name__)
@@ -74,4 +79,17 @@ class ConfigProjectRegistry(ProjectRegistryPort):
         raise ProjectRegistryReadOnlyError(
             "the config provider is read-only: its sample applications have no external source "
             "to validate (SIP-0112 FR-03)"
+        )
+
+    async def record_development_configuration(
+        self, configuration, *, actor, idempotency_key, request_hash
+    ):
+        raise ProjectRegistryReadOnlyError(
+            "the config provider is read-only: a Development Configuration needs the writable "
+            "registry (SIP-0112 FR-03)"
+        )
+
+    async def get_development_configuration(self, project_id, revision=None):
+        raise DevelopmentConfigurationNotFoundError(
+            f"Project {project_id} is a sample application: it has no Development Configuration"
         )

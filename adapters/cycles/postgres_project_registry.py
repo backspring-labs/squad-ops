@@ -15,14 +15,20 @@ from datetime import UTC, datetime
 import asyncpg
 
 from squadops.cycles.models import (
+    DevelopmentConfigurationNotFoundError,
     Project,
     ProjectIdTakenError,
     ProjectNotFoundError,
     ProjectRegistryReadOnlyError,
     ProjectStateConflictError,
     RegistrationKeyConflictError,
+    StaleConfigurationRevisionError,
 )
 from squadops.ports.cycles.project_registry import ProjectRegistryPort
+from squadops.projects.development_configuration import (
+    DevelopmentConfiguration,
+    parse_configuration,
+)
 from squadops.projects.models import (
     ProjectLifecycleStatus,
     ProjectOwnership,
@@ -266,6 +272,119 @@ class PostgresProjectRegistry(ProjectRegistryPort):
                 now,
             )
             return await self._read(conn, project_id), False
+
+    # --- the Development Configuration (§B.5, E.4.2) ---
+
+    async def record_development_configuration(
+        self,
+        configuration: DevelopmentConfiguration,
+        *,
+        actor: str,
+        idempotency_key: str,
+        request_hash: str,
+    ) -> tuple[DevelopmentConfiguration, bool]:
+        """One transaction, under the Project's row lock: the revision's row, the Project's
+        current revision and record version, and the event."""
+        if not self._writable:
+            raise ProjectRegistryReadOnlyError(
+                "the project registry's writes are gated off (postgres_read_only)"
+            )
+        project_id = configuration.project_id
+        async with self._pool.acquire() as conn, conn.transaction():
+            row = await conn.fetchrow(
+                "SELECT record_version, development_configuration_revision FROM project_records "
+                "WHERE project_id = $1 FOR UPDATE",
+                project_id,
+            )
+            if row is None:
+                raise ProjectNotFoundError(f"Project not found: {project_id}")
+            prior = await conn.fetchrow(
+                "SELECT project_id, request_hash, detail FROM project_record_events "
+                "WHERE idempotency_key = $1",
+                idempotency_key,
+            )
+            if prior is not None:
+                if prior["request_hash"] != request_hash or prior["project_id"] != project_id:
+                    raise RegistrationKeyConflictError(
+                        f"idempotency key {idempotency_key!r} recorded different content"
+                    )
+                return await self._configuration(
+                    conn, project_id, prior["detail"]["revision"]
+                ), True
+            current = row["development_configuration_revision"] or 0
+            if configuration.revision != current + 1:
+                raise StaleConfigurationRevisionError(
+                    f"Project {project_id} is at Development Configuration revision {current}; "
+                    f"revision {configuration.revision} doesn't follow it"
+                )
+            now = datetime.now(UTC)
+            version = row["record_version"] + 1
+            await conn.execute(
+                "INSERT INTO project_development_configurations (project_id, revision, document, "
+                "validated_at_commit, recorded_by, recorded_at) VALUES ($1, $2, $3, $4, $5, $6)",
+                project_id,
+                configuration.revision,
+                configuration.to_document(),
+                configuration.validated_at_commit,
+                actor,
+                now,
+            )
+            await conn.execute(
+                "UPDATE project_records SET development_configuration_revision = $2, "
+                "record_version = $3, updated_at = $4 WHERE project_id = $1",
+                project_id,
+                configuration.revision,
+                version,
+                now,
+            )
+            await conn.execute(
+                "INSERT INTO project_record_events (event_id, project_id, operation, "
+                "record_version, actor, idempotency_key, request_hash, detail, recorded_at) "
+                "VALUES ($1, $2, 'configure', $3, $4, $5, $6, $7, $8)",
+                _event_id(),
+                project_id,
+                version,
+                actor,
+                idempotency_key,
+                request_hash,
+                {
+                    "revision": configuration.revision,
+                    "at_commit": configuration.validated_at_commit,
+                },
+                now,
+            )
+        return configuration, False
+
+    async def get_development_configuration(
+        self, project_id: str, revision: int | None = None
+    ) -> DevelopmentConfiguration:
+        async with self._pool.acquire() as conn:
+            if revision is None:
+                revision = await conn.fetchval(
+                    "SELECT development_configuration_revision FROM project_records "
+                    "WHERE project_id = $1",
+                    project_id,
+                )
+                if revision is None:
+                    raise DevelopmentConfigurationNotFoundError(
+                        f"Project {project_id} has no Development Configuration"
+                    )
+            return await self._configuration(conn, project_id, revision)
+
+    async def _configuration(
+        self, conn, project_id: str, revision: int
+    ) -> DevelopmentConfiguration:
+        document = await conn.fetchval(
+            "SELECT document FROM project_development_configurations "
+            "WHERE project_id = $1 AND revision = $2",
+            project_id,
+            revision,
+        )
+        if document is None:
+            raise DevelopmentConfigurationNotFoundError(
+                f"Project {project_id} has no Development Configuration revision {revision}"
+            )
+        return parse_configuration(document)
 
     async def _read(self, conn, project_id: str) -> Project:
         row = await conn.fetchrow(

@@ -325,3 +325,50 @@ async def test_a_validation_moves_a_registration_ready_or_failed_and_a_retry_rec
         ("validate", 3),
     ]
     assert events[2]["detail"] == {"from": "FAILED_REGISTRATION", "commit": commit}
+
+
+async def test_configuration_revisions_follow_one_another_and_read_back_as_recorded(pool):
+    """E.4.2, §B.5. Bugs caught: a revision overwritten instead of added; a recording against a
+    stale revision accepted, losing the other; a document that doesn't read back as written."""
+    import dataclasses
+
+    from squadops.cycles.models import (
+        DevelopmentConfigurationNotFoundError,
+        StaleConfigurationRevisionError,
+    )
+    from squadops.projects.development_configuration import parse_configuration
+
+    registry = PostgresProjectRegistry(pool)
+    await registry.register_project(_registration(), actor="owner")
+    with pytest.raises(DevelopmentConfigurationNotFoundError):
+        await registry.get_development_configuration("prj-tally")
+    first = dataclasses.replace(
+        parse_configuration(recorded_configuration()), project_id="prj-tally", revision=1
+    )
+
+    _, replayed = await registry.record_development_configuration(
+        first, actor="owner", idempotency_key="c-1", request_hash="h1"
+    )
+    again, again_replayed = await registry.record_development_configuration(
+        first, actor="owner", idempotency_key="c-1", request_hash="h1"
+    )
+    with pytest.raises(StaleConfigurationRevisionError, match="revision 1"):
+        await registry.record_development_configuration(
+            first, actor="owner", idempotency_key="c-2", request_hash="h2"
+        )
+    second = dataclasses.replace(first, revision=2, target="python3")
+    await registry.record_development_configuration(
+        second, actor="owner", idempotency_key="c-3", request_hash="h3"
+    )
+
+    assert (replayed, again_replayed, again) == (False, True, first)
+    assert await registry.get_development_configuration("prj-tally") == second
+    assert await registry.get_development_configuration("prj-tally", 1) == first
+    project = await registry.get_project("prj-tally")
+    assert (project.development_configuration_revision, project.record_version) == (2, 3)
+
+
+def recorded_configuration():
+    from tests.fixtures.shared_contract.repository import recorded
+
+    return recorded("development_configuration", "valid")

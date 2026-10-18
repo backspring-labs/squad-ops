@@ -263,6 +263,33 @@ class ProjectValidationRequest(BaseModel):
     idempotency_key: str = Field(min_length=1, max_length=200)
 
 
+class DevelopmentConfigurationRequest(BaseModel):
+    """Record a Project's next Development Configuration revision (SIP-0112 §B.5, E.4.2).
+    ``expected_revision`` is the current one (0 for the first), so a concurrent recording is
+    refused rather than silently superseded (§D.2's version precondition)."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    idempotency_key: str = Field(min_length=1, max_length=200)
+    expected_revision: int = Field(ge=0)
+    technical: dict[str, Any]
+    quality: dict[str, Any] | None = None
+
+
+class DevelopmentConfigurationResponse(BaseModel):
+    """One revision, as it is stored and read: the document is contract 7's carrier."""
+
+    project_id: str
+    revision: int
+    document: dict[str, Any]
+
+
+class DevelopmentConfigurationRecordedResponse(BaseModel):
+    configuration: DevelopmentConfigurationResponse
+    idempotency_key: str
+    replayed: bool
+
+
 class ProjectRegistrationResponse(BaseModel):
     """A registration, applied or replayed: the Project, and the key a retry resends (D.6)."""
 

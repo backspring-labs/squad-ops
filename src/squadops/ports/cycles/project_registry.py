@@ -6,6 +6,7 @@ ProjectRegistryPort — abstract interface for project lookup (SIP-0064 §7.1), 
 from abc import ABC, abstractmethod
 
 from squadops.cycles.models import Project
+from squadops.projects.development_configuration import DevelopmentConfiguration
 from squadops.projects.registration import ProjectRegistration
 
 
@@ -56,4 +57,33 @@ class ProjectRegistryPort(ABC):
             ProjectRegistryReadOnlyError: The registry refuses writes.
             ProjectStateConflictError: The Project is not REGISTERING or FAILED_REGISTRATION.
             RegistrationKeyConflictError: The key recorded a different validation.
+        """
+
+    @abstractmethod
+    async def record_development_configuration(
+        self,
+        configuration: DevelopmentConfiguration,
+        *,
+        actor: str,
+        idempotency_key: str,
+        request_hash: str,
+    ) -> tuple[DevelopmentConfiguration, bool]:
+        """Record ``configuration`` as its Project's next revision (SIP-0112 §B.5, E.4.2), which
+        must follow the current one. Returns it and whether this replayed an earlier recording
+        under the same key.
+
+        Raises:
+            ProjectRegistryReadOnlyError: The registry refuses writes.
+            StaleConfigurationRevisionError: Its revision doesn't follow the current one.
+            RegistrationKeyConflictError: The key recorded different content.
+        """
+
+    @abstractmethod
+    async def get_development_configuration(
+        self, project_id: str, revision: int | None = None
+    ) -> DevelopmentConfiguration:
+        """A Project's Development Configuration: ``revision``, or the current one.
+
+        Raises:
+            DevelopmentConfigurationNotFoundError: None is recorded, or not that revision.
         """
