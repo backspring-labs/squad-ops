@@ -364,6 +364,7 @@ class CommandResult(OperationResult):
 def declared_argv(argv: tuple[str, ...] | list[str]) -> tuple[str, ...]:
     """A declared command's argv (X-3a, #2421): a non-empty sequence of non-empty strings, run
     as given, never through a shell. Anything else is the declaration's error."""
-    if not argv or not all(isinstance(a, str) and a for a in argv):
+    # A string is a sequence of strings too: "ls -l" would run as ('l', 's', ' ', '-', 'l').
+    if isinstance(argv, str) or not argv or not all(isinstance(a, str) and a for a in argv):
         raise ValueError(f"a declared command is a non-empty argv of non-empty strings: {argv!r}")
     return tuple(argv)

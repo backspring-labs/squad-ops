@@ -16,38 +16,71 @@ from __future__ import annotations
 
 from collections.abc import Mapping
 from dataclasses import dataclass, field
+from pathlib import PurePosixPath
 from typing import Any
 from urllib.parse import urlsplit
 
+from squadops.scenarios.evaluation import BlockedReason
 from squadops.scenarios.steps import ScenarioRun
 
 
 class StartUndeclared(ValueError):
-    """A start declaration this runner can't read: every scenario is ``blocked_unverified``,
-    reason ``no_start_declaration`` (SIP-0112 §8.2.1)."""
+    """No start declaration, or one that breaks contract 7's schema: every scenario is
+    ``blocked_unverified``, reason ``no_start_declaration`` (SIP-0112 §8.2.1). E.4.2 validates
+    each revision when it is recorded, so a stored one reaching here malformed is a defect there.
+    """
+
+    reason = BlockedReason.NO_START_DECLARATION
+
+
+class ReadinessUnsupported(ValueError):
+    """A valid readiness kind this runner doesn't check: ``command``, whose target the contract
+    names as a string and not an argv. Every scenario is ``blocked_unverified``, ``no_runner``."""
+
+    reason = BlockedReason.NO_RUNNER
+
+
+class ReadinessKind:
+    """Contract 7's readiness kinds (SIP-0112 §8.2.1). The runner checks ``http`` (a 2xx from
+    the target) and ``tcp`` (a connection to its port)."""
+
+    HTTP = "http"
+    TCP = "tcp"
+    COMMAND = "command"
+    CHECKED = frozenset({HTTP, TCP})
+    ALL = frozenset({HTTP, TCP, COMMAND})
 
 
 @dataclass(frozen=True)
 class DeclaredStart:
     """A product's own start (contract 7): setup argvs, then the start argv, in the copy. The
-    port is the one the product listens on inside it, and readiness is a 2xx from
-    ``ready_path``."""
+    port is the one the product listens on inside it. Readiness is a 2xx from ``ready_path``
+    (``http``) or a connection to the port (``tcp``). ``configuration_revision`` is the
+    Development Configuration revision the declaration came from, recorded on the evaluation."""
 
     start: tuple[str, ...]
     port: int
+    ready_kind: str
     ready_path: str
+    ready_timeout_seconds: float
     setup: tuple[tuple[str, ...], ...] = ()
     working_dir: str = "."
-    ready_timeout_seconds: float = 30.0
+    configuration_revision: int | None = None
+
+    def __post_init__(self) -> None:
+        if self.ready_kind not in ReadinessKind.CHECKED:
+            raise ReadinessUnsupported(f"no runner for readiness {self.ready_kind!r}")
 
     def as_dict(self) -> dict[str, Any]:
         return {
             "start": list(self.start),
             "port": self.port,
+            "ready_kind": self.ready_kind,
             "ready_path": self.ready_path,
+            "ready_timeout_seconds": self.ready_timeout_seconds,
             "setup": [list(s) for s in self.setup],
             "working_dir": self.working_dir,
-            "ready_timeout_seconds": self.ready_timeout_seconds,
+            "configuration_revision": self.configuration_revision,
         }
 
     @classmethod
@@ -55,41 +88,88 @@ class DeclaredStart:
         return cls(
             start=tuple(d["start"]),
             port=int(d["port"]),
+            ready_kind=str(d["ready_kind"]),
             ready_path=str(d["ready_path"]),
+            ready_timeout_seconds=float(d["ready_timeout_seconds"]),
             setup=tuple(tuple(s) for s in d.get("setup", ())),
             working_dir=str(d.get("working_dir", ".")),
-            ready_timeout_seconds=float(d.get("ready_timeout_seconds", 30.0)),
+            configuration_revision=d.get("configuration_revision"),
         )
 
 
-def declared_start(declaration: Mapping[str, Any] | None) -> DeclaredStart:
+def _argv(value: Any, where: str) -> tuple[str, ...]:
+    if not isinstance(value, list | tuple) or not value:
+        raise StartUndeclared(f"{where} is an argv, a list of strings, never one string: {value!r}")
+    if not all(isinstance(a, str) and a for a in value):
+        raise StartUndeclared(f"{where} is a list of non-empty strings: {value!r}")
+    return tuple(value)
+
+
+def _working_directory(value: Any) -> str:
+    path = PurePosixPath(str(value).strip() or ".")
+    if path.is_absolute() or ".." in path.parts:
+        raise StartUndeclared(f"working_directory {value!r} is a path inside the repository")
+    return str(path)
+
+
+def declared_start(
+    declaration: Mapping[str, Any] | None, *, configuration_revision: int
+) -> DeclaredStart:
     """A Development Configuration's start declaration (SIP-0112 §8.2.1, contract 7), as the
-    runner runs it. Its URLs are as the product sees them, loopback on its declared port. The
-    runner publishes that port and keeps the path."""
+    runner runs it, from the revision it was recorded in. Its URLs are as the product sees them,
+    loopback on its declared port: the runner publishes that port and keeps the path.
+
+    Contract 7's schema is checked here, so a malformed declaration is refused as one, not met
+    later as a failed start: an argv is a list of strings (``"python3 -m tally"`` is refused,
+    never split), ``install`` and ``build`` are lists of argvs, the working directory stays in
+    the repository, and readiness names its timeout."""
     if not declaration or not declaration.get("start"):
         raise StartUndeclared("the Project declares no start")
-    readiness = declaration.get("readiness") or {}
-    if readiness.get("kind") != "http":
-        raise StartUndeclared(f"no runner for readiness {readiness.get('kind')!r}")
-    target = urlsplit(str(readiness.get("target", "")))
-    if target.port is None:
-        raise StartUndeclared(f"readiness target {readiness.get('target')!r} names no port")
+    start = _argv(declaration["start"], "start")
+    setup: list[tuple[str, ...]] = []
+    for key in ("install", "build"):
+        entries = declaration.get(key) or []
+        if not isinstance(entries, list | tuple):
+            raise StartUndeclared(f"{key} is a list of argvs: {entries!r}")
+        setup += [_argv(argv, f"each {key} step") for argv in entries]
+    readiness = declaration.get("readiness")
+    if not isinstance(readiness, Mapping):
+        raise StartUndeclared("the declaration names no readiness")
+    kind = readiness.get("kind")
+    if kind not in ReadinessKind.ALL:
+        raise StartUndeclared(f"readiness kind {kind!r} is not one of {sorted(ReadinessKind.ALL)}")
+    if kind == ReadinessKind.COMMAND:
+        raise ReadinessUnsupported(f"no runner for readiness {kind!r}")
+    timeout = readiness.get("timeout_seconds")
+    if isinstance(timeout, bool) or not isinstance(timeout, int | float) or timeout <= 0:
+        raise StartUndeclared(
+            f"readiness names its timeout_seconds, a positive number: {timeout!r}"
+        )
+    raw = str(readiness.get("target", ""))
+    target = urlsplit(raw if "://" in raw else f"{kind}://{raw}")
+    try:
+        port = target.port
+    except ValueError as e:
+        raise StartUndeclared(f"readiness target {raw!r}: {e}") from e
+    if port is None:
+        raise StartUndeclared(f"readiness target {raw!r} names no port")
     return DeclaredStart(
-        start=tuple(declaration["start"]),
-        port=target.port,
-        ready_path=target.path or "/",
-        setup=tuple(
-            tuple(argv) for key in ("install", "build") for argv in declaration.get(key) or ()
-        ),
-        working_dir=str(declaration.get("working_directory", ".")),
-        ready_timeout_seconds=float(readiness.get("timeout_seconds", 30)),
+        start=start,
+        port=port,
+        ready_kind=kind,
+        ready_path=(target.path or "/") if kind == ReadinessKind.HTTP else "",
+        ready_timeout_seconds=float(timeout),
+        setup=tuple(setup),
+        working_dir=_working_directory(declaration.get("working_directory", ".")),
+        configuration_revision=configuration_revision,
     )
 
 
 @dataclass(frozen=True)
 class TreeEvaluation:
     """One tree's evaluation in the runner. ``started`` False carries why (``start_detail`` and
-    the app's own last lines), and then no scenario ran."""
+    the app's own last lines), and then no scenario ran. ``configuration_revision`` names the
+    Development Configuration revision that started it, ``None`` for a blueprint."""
 
     tree_identity: str
     started: bool
@@ -97,6 +177,7 @@ class TreeEvaluation:
     startup_diagnostics: tuple[str, ...] = ()
     runs: tuple[ScenarioRun, ...] = field(default_factory=tuple)
     duration_seconds: float = 0.0
+    configuration_revision: int | None = None
 
     def as_dict(self) -> dict[str, Any]:
         return {
@@ -106,6 +187,7 @@ class TreeEvaluation:
             "startup_diagnostics": list(self.startup_diagnostics),
             "runs": [r.as_dict() for r in self.runs],
             "duration_seconds": self.duration_seconds,
+            "configuration_revision": self.configuration_revision,
         }
 
     @classmethod
@@ -117,4 +199,5 @@ class TreeEvaluation:
             startup_diagnostics=tuple(d.get("startup_diagnostics", ())),
             runs=tuple(ScenarioRun(**r) for r in d.get("runs", ())),
             duration_seconds=d.get("duration_seconds", 0.0),
+            configuration_revision=d.get("configuration_revision"),
         )

@@ -444,15 +444,22 @@ class TestDeclaredCommand:
             (dict(command=("make", "test"), working_dir="../outside"), "not a workspace-relative"),
             (dict(command=()), "non-empty argv"),
             (dict(command=("make", "")), "non-empty argv"),
+            (dict(command="make test"), "non-empty argv"),
             (dict(command=("make",), timeout_seconds=0), "must be positive"),
         ],
-        ids=["escaping-directory", "empty-argv", "empty-argument", "zero-timeout"],
+        ids=[
+            "escaping-directory",
+            "empty-argv",
+            "empty-argument",
+            "a-shell-string",
+            "zero-timeout",
+        ],
     )
     async def test_a_declaration_the_sandbox_cannot_run_as_given_runs_nothing(
         self, store, seeded, kwargs, error
     ):
         """Bug caught: a working directory that leaves the copy, or a malformed argv, run anyway
-        instead of refused as the declaration's error."""
+        instead of refused as the declaration's error; a shell string run as one-letter argvs."""
         container = _WritingContainer()
 
         with pytest.raises((ValueError, WorkspaceStoreError), match=error):

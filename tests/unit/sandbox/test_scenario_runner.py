@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import json
 from pathlib import Path
 
@@ -16,7 +17,13 @@ from tests.unit.sandbox.test_container_backend import FakeContainer
 
 TREE = {"app.py": "print('app')\n", "assets/logo.png": b"\x89PNG\x00", "run.sh": "#!/bin/sh\n"}
 DECLARED = DeclaredStart(
-    start=("python3", "app.py"), port=18407, ready_path="/healthz", setup=(("make", "build"),)
+    start=("python3", "app.py"),
+    port=18407,
+    ready_kind="http",
+    ready_path="/healthz",
+    ready_timeout_seconds=30.0,
+    setup=(("make", "build"),),
+    configuration_revision=3,
 )
 SCENARIO = {
     "scenario_id": "counts",
@@ -30,12 +37,16 @@ SCENARIO = {
 class _Container(FakeContainer):
     """Records every spec, what the copy held at each run, and the teardown."""
 
-    def __init__(self, setup_exit: int = 0):
+    def __init__(self, setup_exit: int = 0, logs: str = "Traceback: boom\n", host_port=49999):
         super().__init__(
             ContainerResult("", setup_exit, "", "build failed\n" if setup_exit else "")
         )
         self.held: list[dict[str, bytes]] = []
         self.torn_down: list[str] = []
+        self._logs, self._host_port = logs, host_port
+
+    async def resolve_host_port(self, container_id: str, container_port: int) -> int:
+        return self._host_port
 
     async def run(self, spec: ContainerSpec) -> ContainerResult:
         self._hold(spec)
@@ -59,7 +70,7 @@ class _Container(FakeContainer):
         self.torn_down.append(f"remove {container_id}")
 
     async def logs(self, container_id: str, tail: int | None = None) -> str:
-        return "Traceback: boom\n"
+        return self._logs
 
 
 def _app(health: int = 200):
@@ -117,6 +128,7 @@ async def test_a_declared_start_runs_its_scenarios_in_a_copy_that_is_gone_after(
         p: (c.encode() if isinstance(c, str) else c) for p, c in TREE.items()
     }
     assert (result.started, [r.result for r in result.runs]) == (True, ["passed"])
+    assert result.configuration_revision == 3  # the revision that started it, on the record
     assert "evaluation-token" not in json.dumps(result.as_dict())
     assert container.torn_down == ["stop cid-detached", "remove cid-detached"]
     assert not any((tmp_path / "sandbox" / "evaluations").iterdir())
@@ -183,3 +195,103 @@ async def test_a_request_the_runner_cannot_trust_runs_nothing(tmp_path, change, 
     with pytest.raises(ValueError, match=message):
         await _evaluate(_runner(tmp_path, container), **change)
     assert container.specs == []
+
+
+@pytest.mark.parametrize(
+    "key", ["../other/workspace/x", "/abs/x", "a/../b", "./app.py"], ids=str.strip
+)
+async def test_a_tree_key_that_would_write_outside_the_copy_is_refused_and_nothing_runs(
+    tmp_path, key
+):
+    """Contract 3: never the live tree (blocker 2 of #2450's review). The tree is a squad's
+    files from the vault. Bug caught: ``../<cycle>/workspace/x`` or an absolute key written
+    outside the copy, into a cycle's live tree."""
+    container = _Container()
+    tree = {**TREE, key: "escaped\n"}
+
+    with pytest.raises(ValueError, match="not a workspace-relative path|normal form"):
+        await _evaluate(
+            _runner(tmp_path, container), tree=tree, tree_identity=FileTree.of(tree).identity
+        )
+
+    assert container.specs == []
+    assert not (tmp_path / "other").exists() and not (tmp_path / "sandbox").exists()
+
+
+async def test_a_secret_the_app_logs_or_answers_with_never_reaches_the_result(tmp_path):
+    """Q40: never in a log, a record or an agent's input (blocker 3 of #2450's review). Bug
+    caught: an app that logs its environment, or answers with the token, puts the evaluation
+    secret into the start's last lines or a step's detail, and so into the evaluation record."""
+    leaky = "TALLY_ADMIN_TOKEN=evaluation-token\nTraceback: boom\n"
+    echoing = DeclaredStart(**{**DECLARED.__dict__, "ready_timeout_seconds": 0.05})
+
+    not_ready = await _evaluate(
+        _runner(tmp_path / "a", _Container(logs=leaky), app=_app(health=503)), declared=echoing
+    )
+    answered = await _evaluate(
+        _runner(tmp_path / "b", _Container(), app=_echo("evaluation-token")),
+        scenarios=[
+            {**SCENARIO, "checks": [{"check": "json", "step": 1, "path": "count", "equals": 1}]}
+        ],
+    )
+
+    for result in (not_ready, answered):
+        assert "evaluation-token" not in json.dumps(result.as_dict())
+    assert not_ready.startup_diagnostics == ("TALLY_ADMIN_TOKEN=[redacted]", "Traceback: boom")
+    assert "[redacted]" in answered.runs[0].detail
+
+
+def _echo(secret: str):
+    """An app whose answer carries the token it was started with."""
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/healthz":
+            return httpx.Response(200, text="ok")
+        return httpx.Response(200, json={"count": f"token {secret}"})
+
+    return lambda: httpx.AsyncClient(transport=httpx.MockTransport(handler))
+
+
+async def _hold(reader: asyncio.StreamReader, writer: asyncio.StreamWriter) -> None:
+    await reader.read()  # an app's listener: the connection stays open until the client goes
+
+
+async def _drop(reader: asyncio.StreamReader, writer: asyncio.StreamWriter) -> None:
+    writer.close()  # Docker's port proxy with nothing behind it: accept, then close at once
+
+
+@pytest.mark.parametrize(
+    ("listener", "ready"),
+    [(_hold, True), (_drop, False), (None, False)],
+    ids=["the-app-listens", "only-the-proxy-accepts", "nothing-listens"],
+)
+async def test_a_tcp_readiness_is_a_connection_the_app_holds(tmp_path, listener, ready):
+    """Contract 7's ``tcp`` kind (blocker 1 of #2450's review). Bug caught: a tcp declaration
+    refused; or read as ready with nothing listening, including when Docker's proxy accepts on
+    the published port before the app binds, so scenarios run against no app (read live on the
+    Spark: step 1 answered "Server disconnected without sending a response")."""
+    server = await asyncio.start_server(listener or _drop, "127.0.0.1", 0)
+    port = server.sockets[0].getsockname()[1]
+    if listener is None:
+        server.close()
+        await server.wait_closed()
+    declared = DeclaredStart(
+        **{**DECLARED.__dict__, "ready_kind": "tcp", "ready_path": "", "ready_timeout_seconds": 0.6}
+    )
+    try:
+        result = await _evaluate(
+            _runner(tmp_path, _Container(host_port=port), app=_any_port_app()), declared=declared
+        )
+    finally:
+        server.close()
+
+    assert result.started is ready
+    if not ready:
+        assert "not ready at port 18407" in result.start_detail
+
+
+def _any_port_app():
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, json={"name": "apples", "count": 1})
+
+    return lambda: httpx.AsyncClient(transport=httpx.MockTransport(handler))
