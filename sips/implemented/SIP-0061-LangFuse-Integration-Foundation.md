@@ -859,3 +859,40 @@ LLMObservabilityPort (NEW)           ← LLM-specific telemetry
 - **v3 (addendum)**: Added call-site responsibility (Section 5.3), nullable `CorrelationContext` with hierarchy factories (Section 6.2), `record_event` using `StructuredEvent` (Section 6.1), buffer/flush/shutdown policies (Section 6.6), `close()` on port (Section 6.1), CI gating for contract tests (Section 10.2), `build_generation_record` helper (Section 6.7), implementation phasing (Section 13).
 - **v4 (fix list)**: Added `generation_id` (UUID4) to `GenerationRecord` and mapping table; clarified prompt text capture vs prompt-layer metadata; added concurrency safety note to adapter internals (Section 9); defined `health()` return contract; clarified `LangFuseAdapter` implements `LLMObservabilityPort` only (not `EventPort`); renamed `sample_rate` → `sample_rate_percent`; rephrased overhead NFR as enqueue-path p95 latency.
 - **v5 (doc + spec consistency)**: Marked Section 6.1 as single canonical port definition; added explicit `generation_id` REQUIRED rule with caller responsibility (Section 6.7); added CorrelationContext scope consistency rule (Section 6.2); locked `record_event` to `StructuredEvent` exclusively — no dict overload; split NFR overhead into three tiers (enqueue / flush / close) with distinct budgets (Section 11); expanded CI gating with explicit skip logic and env var requirements (Section 10.5); added `flush()` + `close()` to orchestrator call-site responsibility (Section 5.3).
+
+## E. Post-implementation amendments
+
+### E.1 The capped display text, and the full request beside it (2026-10-18, §6.5, §6.7; #1756; the 2.4 plan's D8)
+
+**What changed.** §6.7's record says `prompt_text` is the "Full prompt (subject to redaction)". Main
+has not done that since `d7155221` (2026-03-07), which capped `prompt_text`, `response_text` and,
+later, `reasoning_text` at `MAX_OBSERVABILITY_TEXT_LENGTH`, 10,000 characters, with no amendment. Two
+investigations could not read what a model was sent, because the cap cut the prompt before the part in
+question (#1723, and deploy B's repair in 1.8.1).
+- **The cap stays on the display fields.** A prompt longer than the cap is also kept whole as
+  `GenerationRecord.full_prompt_text`, set by `build_generation_record` only when the prompt exceeds the
+  cap. A short prompt is stored once.
+- **The adapter redacts it like the other text fields,** then stores it in the generation's metadata
+  under `full_prompt` (`squadops.telemetry.full_text`): gzip and base64, with its length and sha256, so
+  a damaged copy is refused rather than read.
+- **It is readable by generation id:** `scripts/dev/read_full_prompt.py <generation_id>` reads LangFuse's
+  public API and prints the whole request.
+- **The cost, measured on the Spark** (LangFuse's generations, the 30 days to 2026-10-18):
+  - 5,874 generations, with prompts of median 10,136 tokens, p99 26,740 and max 29,909;
+  - the stored form is 0.55 of the raw text, on 189 recent prompts;
+  - so roughly 131 MB in LangFuse's database per 30 days at that rate.
+- **Not covered:** the response and the reasoning text keep the cap. #1756 asked for the request.
+
+**§6.5's connection-string redaction is corrected.** Its pattern, `://[^:]+:([^@]+)@`, crossed lines. A
+prompt naming `http://localhost:8000/api` and any later `@` (every FastAPI decorator) redacted all the
+text between them: a constructed prompt kept 76 of its 5,820 characters. The pattern now matches a
+URL's userinfo, which holds no whitespace: `://[^:/@\s]*:([^@\s]+)@`. A password with `/`, or with no
+user before it (`redis://:password@host`), is still redacted, and now so is the empty-user form, which
+the old pattern missed. The generic key pattern's false positives on the framework's own ids loosen a
+secret pattern, so they wait on the owner, in #2462.
+
+**Who ruled it.** The 2.4 plan's D8, ruled by the owner 2026-10-17: "#1756 early, as an instrument."
+That supersedes #1756's 2026-10-03 placement as the crew's commissioning work. The storage choice, among
+#1756's candidates, is the implementer's: the observability store, by generation id, behind the redaction
+the adapter already applies. The redaction fix is the implementer's too, since it makes the pattern match
+what it says it matches. Both are for the owner's review.

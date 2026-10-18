@@ -22,6 +22,7 @@ from typing import Any
 from adapters.telemetry.langfuse.redaction import get_redaction_strategy
 from squadops.config.schema import LangFuseConfig
 from squadops.ports.telemetry.llm_observability import LLMObservabilityPort
+from squadops.telemetry.full_text import FULL_PROMPT_KEY, encode_full_text
 from squadops.telemetry.models import (
     CorrelationContext,
     GenerationRecord,
@@ -202,6 +203,12 @@ class LangFuseAdapter(LLMObservabilityPort):
             reasoning_text=(
                 self._redaction.redact(record.reasoning_text)
                 if record.reasoning_text is not None
+                else None
+            ),
+            # #1756: the fourth text field, redacted like the rest before it is buffered.
+            full_prompt_text=(
+                self._redaction.redact(record.full_prompt_text)
+                if record.full_prompt_text is not None
                 else None
             ),
         )
@@ -446,6 +453,12 @@ class LangFuseAdapter(LLMObservabilityPort):
                     "reasoning_text": record.reasoning_text,
                     "attempt": record.attempt,
                     "outcome": record.outcome,
+                    # #1756: the whole request, compressed, when the display text is capped.
+                    **(
+                        {FULL_PROMPT_KEY: encode_full_text(record.full_prompt_text)}
+                        if record.full_prompt_text is not None
+                        else {}
+                    ),
                     "prompt_layer_set_id": prompt_layers.prompt_layer_set_id,
                     "prompt_layers": [
                         {

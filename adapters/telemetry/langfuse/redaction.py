@@ -39,8 +39,14 @@ _API_KEY_PATTERNS: list[re.Pattern[str]] = [
 _PASSWORD_PATTERNS: list[re.Pattern[str]] = [
     # password=... or password:... in connection strings / config
     re.compile(r"(?:password|passwd|pwd)\s*[=:]\s*\S+", re.IGNORECASE),
-    # Connection string password component
-    re.compile(r"://[^:]+:([^@]+)@"),
+    # Connection string password component: a URL's userinfo, which holds no whitespace. Before
+    # #1756 the two classes crossed lines, so ``http://localhost:8000/api`` and any later ``@``
+    # (every FastAPI decorator) redacted everything between them: a constructed prompt with both
+    # kept 76 of its 5,820 characters, and the 30 days of stored generations to 2026-10-18 that
+    # carry a redaction averaged a third shorter than those that don't. A password may hold
+    # ``/``; an unencoded space would not be a URL. The user may
+    # be empty, as in Redis's ``redis://:password@host``.
+    re.compile(r"://[^:/@\s]*:([^@\s]+)@"),
 ]
 
 # PII patterns (strict mode only)
