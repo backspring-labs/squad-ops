@@ -125,7 +125,9 @@ def create_duty_scheduler(
         coordinator = create_runtime_coordinator(pool)
 
     poll_interval = config.runtime.scheduler.poll_interval_seconds
-    logger.warning(
+    # INFO (#2425): this is how every deploy runs, and a warning on every start teaches a reader
+    # to skip warnings. The one-instance rule is compose's: it defines one runtime-api.
+    logger.info(
         "Duty scheduler ACTIVE (poll=%ss). The coordinator is the single writer "
         "of agent runtime mode; run exactly one runtime-api instance with the "
         "scheduler enabled (no leader election yet).",

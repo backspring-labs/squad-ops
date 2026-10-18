@@ -26,6 +26,29 @@ from session_store import MemorySessionStore, RedisSessionStore
 
 logger = logging.getLogger("squadops.console")
 
+
+class HealthProbeSuccessFilter(logging.Filter):
+    """Drops uvicorn's access line for ``GET /health`` answered 2xx (#2425).
+
+    The container's health check sends one every 30 s, and Docker keeps its own history of them,
+    so the line has no reader. A failed probe and every other request are still logged. The
+    runtime API drops the same routine successes (``squadops.api.runtime.logging_setup``); this
+    image does not carry that package, hence its own copy. uvicorn's access record carries
+    ``(client, method, path, http_version, status)``; a record of any other shape passes.
+    """
+
+    def filter(self, record: logging.LogRecord) -> bool:
+        args = record.args
+        if not isinstance(args, tuple) or len(args) < 5:
+            return True
+        method, path, status = args[1], args[2], args[4]
+        probe = method == "GET" and path == "/health"
+        return not (probe and isinstance(status, int) and 200 <= status < 300)
+
+
+# On the logger, not a handler: uvicorn's startup dictConfig replaces its handlers.
+logging.getLogger("uvicorn.access").addFilter(HealthProbeSuccessFilter())
+
 # ── Environment ──────────────────────────────────────────────────────────────
 
 SQUADOPS_API_URL = os.environ.get("SQUADOPS_API_URL", "http://runtime-api:8001")

@@ -151,3 +151,25 @@ class TestHostProxy:
     async def test_an_upstream_failure_is_passed_on_never_an_empty_reading(self, monkeypatch):
         resp, _ = await self._get(monkeypatch, 503, {"detail": "down"})
         assert (resp.status_code, resp.json()) == (503, {"error": "upstream unavailable"})
+
+
+@pytest.mark.parametrize(
+    ("method", "path", "status", "kept"),
+    [
+        ("GET", "/health", 200, False),
+        ("GET", "/health", 503, True),
+        ("GET", "/api/registry/", 200, True),
+        ("POST", "/health", 200, True),
+    ],
+    ids=["probe-ok", "probe-failed", "other-route", "other-method"],
+)
+def test_the_access_log_drops_only_a_successful_health_probe(method, path, status, kept):
+    """#2425, read through the access logger as importing ``main`` leaves it. Bugs caught: the
+    filter never installed (every 30 s probe back in the log), or one that also hides a failed
+    probe or a person's request."""
+    import logging
+
+    record = logging.makeLogRecord(
+        {"msg": '%s - "%s %s HTTP/%s" %d', "args": ("c", method, path, "1.1", status)}
+    )
+    assert bool(logging.getLogger("uvicorn.access").filter(record)) is kept

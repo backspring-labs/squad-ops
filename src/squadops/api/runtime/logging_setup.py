@@ -17,6 +17,7 @@ from __future__ import annotations
 import logging
 import os
 import sys
+from collections.abc import Iterable
 
 # Marks our handler so a re-import (or a second call under test) re-uses it rather
 # than stacking duplicates on the root logger.
@@ -39,6 +40,47 @@ _AUDIT_ROTATE_COUNT = 5
 #: #560: third-party chatter demoted below INFO — httpx logs a line per Prefect POST
 #: (``/api/logs/``, ``/api/task_runs/``, ``set_state``), three per task-state transition.
 _QUIET_LOGGERS = {"httpx": logging.WARNING, "httpcore": logging.WARNING}
+
+ACCESS_LOGGER_NAME = "uvicorn.access"
+
+
+class RoutineSuccessFilter(logging.Filter):
+    """Drops uvicorn's access record for a routine request answered 2xx (#2425).
+
+    A routine request is one whose success is recorded elsewhere, so its access line has no
+    reader. A non-2xx answer is still logged, and at DEBUG every line comes back. uvicorn logs
+    each request as ``'%s - "%s %s HTTP/%s" %d'`` with ``(client, method, path, http_version,
+    status)``; a record of any other shape passes untouched.
+    """
+
+    def __init__(self, routine: Iterable[tuple[str, str]]) -> None:
+        super().__init__()
+        self.routine = frozenset(routine)
+
+    def filter(self, record: logging.LogRecord) -> bool:
+        if logging.getLogger().isEnabledFor(logging.DEBUG):
+            return True
+        args = record.args
+        if not isinstance(args, tuple) or len(args) < 5:
+            return True
+        method, path, status = args[1], args[2], args[4]
+        routine = (method, path) in self.routine
+        return not (routine and isinstance(status, int) and 200 <= status < 300)
+
+
+def quiet_routine_successes(routine: Iterable[tuple[str, str]]) -> None:
+    """Drop the access line of each ``(method, path)`` answered 2xx (#2425). The caller names the
+    routes from their own declarations. Idempotent: a second call replaces the set.
+
+    On the logger, not a handler: uvicorn's startup dictConfig replaces the access logger's
+    handlers and keeps its filters.
+    """
+    access = logging.getLogger(ACCESS_LOGGER_NAME)
+    existing = next((f for f in access.filters if isinstance(f, RoutineSuccessFilter)), None)
+    if existing is not None:
+        existing.routine = frozenset(routine)
+        return
+    access.addFilter(RoutineSuccessFilter(routine))
 
 
 def _resolve_level(level: str | None) -> int:
