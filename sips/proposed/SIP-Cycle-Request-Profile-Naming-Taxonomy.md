@@ -17,8 +17,45 @@ created_at: '2026-07-01T00:00:00Z'
 **Status:** Proposed
 **Authors:** SquadOps Architecture (Spark lane)
 **Created:** 2026-07-01
-**Revision:** 2 (2026-10-13; revision 1 was 2026-07-01)
+**Revision:** 3 (2026-10-18; revision 2 was 2026-10-13, revision 1 2026-07-01)
 **Tracking:** #316 (holds the deferred #279 fold)
+
+## Revision 3 (2026-10-18): the inventory re-read, `framing` answered, and a campaign's stack
+
+Read against `main` at f821a607, for the owner's design review (the 2.4 plan's D7: in 2.4, landing before the
+window's deploy freezes). Revision 2 below still stands. This section changes three facts and adds one decision.
+
+- **21 profiles, one new since revision 2:**
+  - **`campaign-increment-asks`** (#2280, 2026-10-13) is a diagnostic: `campaign-increment` verbatim, with one fault
+    declared, and a test asserts the parity. It is the campaign's, so it joins R2.4's campaign set, outside the
+    operator's listing.
+  - **Two keys left every profile:** #2355 and #2358 removed `max_consecutive_failures` and `max_task_seconds`, which
+    nothing read. R2.1's columns don't include either.
+  - **R2.3 still holds:** `validated-fullstack` differs from `validation` in the same six keys.
+- **R2.1's open question, answered: `framing` builds.**
+  - **What runs:** with a `workload_sequence`, the `build_tasks` flag isn't read. The implementation phase runs the
+    implementation steps (define-done, develop, QA's tests), or the builder's assembly on a squad that has a builder
+    (`src/squadops/cycles/task_plan.py:558-563`, and `builder_assembles` at `:488-506`).
+  - **So `framing` is** `build` without output validation (`max_self_eval_passes: 0`), plus two planning pulse checks.
+    Its name says planning only.
+  - **Its mapping:** none. It is frozen under its old name with the rest (R2.4), outside the operator's listing, and
+    maps to no new name. Only its own test names it (`tests/unit/contracts/test_planning_profile.py`); the campaign
+    tests use the string as an arbitrary value.
+  - **`pulse-check` is the same:** `default` plus pulse checks, and only its tests name it. Pulse checks are a
+    structured list, so an operator who wants them sets them as an override.
+- **A campaign can't set its stack (#2443), and Scheme A depends on that.**
+  - **The gap:** R2.4 sets the stack at create time, never in a name. But a campaign has no create time of its own.
+    Each launch builds its request from a profile name alone (`src/squadops/campaigns/launch_requests.py`), and every
+    campaign profile pins `fullstack_fastapi_react`. So the only way a campaign could run on Next.js today is a
+    profile per stack (`campaign-increment-nextjs`, …), the combinatorial trap §2 describes.
+  - **The fix (#2443):** the campaign's policy carries the stack, and every launch passes it as an override. The
+    campaign set then stays as it is on every stack.
+  - **The window needs it too:** it runs two campaigns per stack (the 2.4 plan's D3), and a Next.js campaign has
+    never run.
+
+**R2.5's decisions, with one added:**
+
+5. **A campaign carries its stack in its policy (#2443),** not in its profiles' names.
 
 ## Revision 2 (2026-10-13): the facts re-read against main, and what they change
 
