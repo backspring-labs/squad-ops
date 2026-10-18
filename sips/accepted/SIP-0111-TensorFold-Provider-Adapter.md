@@ -109,7 +109,7 @@ Checked against `sips/PORTFOLIO.md` on 2026-10-09, and again for revision 2 (CLA
 - **Conflicts:** one, **resolved by the owner on 2026-10-09** (Q1). 2.3 is feature-free by rule, and G0–G2 are placed
   there, dark, under SIP-0106 §4.3's waiver.
 
-## Delivery ledger (current as of 2026-10-17)
+## Delivery ledger (current as of 2026-10-18)
 
 Placed by the owner's Q1 ruling (2026-10-09). The rows are ordered as the work runs.
 
@@ -123,7 +123,7 @@ Placed by the owner's Q1 ruling (2026-10-09). The rows are ordered as the work r
 | a seed on every TensorFold call, G3's finding (§9j) | **shipped** | 2.3.0, #2283, closing #2281 |
 | G4: cutover | **shipped** | 2.3.0, #2285, closing #2229 and #2284 (the switch records the deploy, §9k): adopted by the owner on G3's evidence on 2026-10-13 (§9j). The Spark serves on TensorFold from 2026-10-13 20:01 ET (dep_1724f586cc3a), and its cutover pair passed (§9k) |
 | the memory watchdog as a host service that restores Ollama after a kill (§9l) | **shipped** | 2.3.0, #2289, closing #2288 |
-| a second candidate, Qwen3.8-Flash-Next on TensorFold, on its own gate path: screening, its own recipe, G0 and G1 (§9a) | **unplaced** | deliberately, #2230: the owner on 2026-10-15, "no second tensorfold candidate at this time", kept by the 2.4 plan's D9 (ruled 2026-10-17) until the owner places it. It had moved from 2.3 by the owner on 2026-10-12 ("skip to next release"). Not measured in 2.3, which is not a negative |
+| the upgrade to TensorFold 1.x, measured two ways: the engine, 1.x against 0.6.6 on the 27B; and the model, the 27B against Flash-Next on 1.x. S, G0 and G1 per checkpoint, then G2 to G4 for what is selected (§9m, which replaces §9a item 5's second candidate) | **unplaced** | deliberately, #2230: the owner on 2026-10-18, "I will want to tackle this move to 1.1.0 - but not just yet". The second candidate it replaces was unplaced by the owner on 2026-10-15 ("no second tensorfold candidate at this time") and kept so by the 2.4 plan's D9 (ruled 2026-10-17). 2.3 ran only an exploratory measure of Flash-Next, and not measuring it is not a negative |
 
 **What closes this SIP:** G4 decided (adopted, or parked with its record), with each earlier row shipped or its negative
 recorded.
@@ -1056,3 +1056,73 @@ From this ruling:
 
 **Who ruled it.** The owner, on 2026-10-13. Asked how the watchdog should run in production, the owner chose "a": a
 host service installed once with the owner's sudo, which after a kill switches the box back to Ollama.
+
+### 9m. The second candidate becomes the upgrade to TensorFold 1.x (RULED 2026-10-18)
+
+**What changed.**
+- **#2230 no longer measures Flash-Next as a second candidate on the Python 0.6.6 engine** (§9a item 5). It is now
+  the eventual upgrade to TensorFold 1.x, measured two ways:
+  1. **the engine:** 1.x against 0.6.6, on the 27B. This answers whether to upgrade.
+  2. **the model:** the 27B against Flash-Next, on 1.x. Flash-Next keeps §9a item 5's terms: its own frozen recipe,
+     registry identity and model family, never `qwen3.8`, with nothing carried over from the 27B.
+- **This departs from Q4** ("don't plan to use the 1.0.x version") **and from this SIP's v0.6.6 scope.** Production
+  stays on 0.6.6 (§9d, §9k) until this row's own G4.
+- **The row stays unplaced.** Before it runs, the owner rules on:
+  - its placement;
+  - the 1.x release pinned at the start;
+  - the disk for the Flash-Next checkpoint;
+  - the bars for the engine question, fixed before any held-out run (§9a item 4).
+- **The path is the supervisor's draft, in #2230's body, for the owner's review at placement:**
+  1. an exploratory probe of each candidate, on tuning prompts only;
+  2. a native image pinned by sha256, and the switch's serve command for each engine line;
+  3. the adapter and the harness, checked against the native wire;
+  4. S, G0 and G1 for each checkpoint, on the 132-envelope held-out plan, with every arm's stored answers scored on
+     one framework SHA;
+  5. G2, G3 and G4 for what is selected.
+
+  A recipe change re-runs G0 and G1 (§9d).
+
+**The evidence (read 2026-10-18).**
+- **TensorFold 1.1.0, released 2026-10-18,** serves both models on CUDA through the native server: Qwen3.8-27B with
+  DFlash2, and Qwen3.8 Flash Next with its MTP head
+  ([release notes](https://github.com/ashhart/TensorFold/releases/tag/v1.1.0)). §9d's finding was that the native
+  CUDA build served only Nemotron, and its release notes now say otherwise.
+- **Native Flash-Next reads one checkpoint on one GPU:** MLX affine 4-bit, group 32, with the MTP head
+  (`TensorFold/Qwen3.8-Flash-Next-MLX-4bit-MTP`, revision `2b170fa6`, 113.2 GB). The EXL3 pack 2.3 measured is
+  served only by the Python engine
+  ([`flash-next-cuda.md`](https://github.com/ashhart/TensorFold/blob/v1.1.0/docs/recipes/flash-next-cuda.md)).
+- **Not yet read: which 27B checkpoints native CUDA reads.**
+  - 1.1.0's notes name MLX checkpoints for the Qwen CUDA family. They don't name NVIDIA's NVFP4 export.
+  - If native CUDA doesn't read NVFP4, the engine question holds `TensorFold/Qwen3.8-27B-MLX-4bit` fixed on both
+    engines. Production's NVFP4 on 0.6.6 stays the reference.
+- **The native server keeps the Python server's wire names:**
+  - the request gauges;
+  - `max_model_len`, `invalid_api_key` and `context_length_exceeded`;
+  - the thinking controls;
+  - `--api-key-file`.
+
+  Their behaviour is read from the native source at the pinned tag before any harness call, as §5.7 read the
+  Python source.
+- **The vendor's Flash-Next numbers on one GB10:**
+  - 84.2 tok/s drafted on code, and 62.6 on chat;
+  - a cold 12,001-token prompt in 10.4 s, against 6.7 s on the Python engine.
+- **A forecast, which the probe tests.** 2.3's exploratory run measured Flash-Next at 0.37 of Ollama's wall-clock
+  (#2199), and the 27B's held-out reading was 0.438 (§9e). Against those, Flash-Next on 1.1.0 is forecast near
+  0.33–0.37. §9a item 6's guide asks it for about 0.29.
+
+**What it means.**
+- **This section replaces §9a item 5.** Its rules for Flash-Next carry over. §9a items 1–4 and 6 apply to every
+  candidate here.
+- **SIP-0111 stays accepted while this row is open,** as it did while the second candidate was unplaced.
+- **An overlap with SIP-0113, Outcome Evaluation,** recorded in the portfolio's intake log:
+  - switching the engine or the model while it measures changes an input that its comparisons across units read;
+  - its §4.6 names only the project-instruction set as a listed input;
+  - SIP-0111 owns the switch and its gates.
+
+  Two questions are the owner's: whether SIP-0113 adds the engine and the model to its listed inputs, and whether
+  this row may run during its measurement.
+
+**Who ruled it.** The owner, on 2026-10-18. After the supervisor assessed the effort of #2230 on 1.1.0, the owner
+said "I will want to tackle this move to 1.1.0 - but not just yet". The owner then directed that #2230 focus on
+eventually upgrading to TensorFold 1.x, and on evaluating its performance against 0.6 and the 27B against Flash-Next.
+The supervisor rewrote #2230 (its comment `issuecomment-6250014247` records the redirection) and drafted this section.
