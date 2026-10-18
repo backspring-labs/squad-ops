@@ -96,6 +96,7 @@ dimension, its verdict and criteria, and that name stays (portfolio Q3). So the 
 - **scenario evidence:** what revision 1 called outcome evidence. It sits beside the output evidence the squad's own
   criteria produce;
 - **held-out scenarios**, or **scenarios:** what it called outcome scenarios;
+- **scenario result:** one scenario's `passed`, `failed` or `blocked_unverified` on one increment (§4.1);
 - **contribution:** what it called outcome contribution (§4.4);
 - **the scenario measure:** §4.7's addition to the objective, with its fields `scenario_suite` and `scenario_target`.
 
@@ -237,8 +238,8 @@ from the idea: create a run, join it, leave it, and confirm the participant list
 - **The steps are held in memory only.** The runner fetches them by suite digest for each run. It writes them
   nowhere the evaluated app's process can read.
 - **Secrets:** a start declaration may reference secrets (`secret://`). How a product's secrets reach an evaluation
-  environment is a security decision, and it is the owner's (A4). Until it is ruled, the runner resolves no secret
-  reference.
+  environment is a security decision, and it is the owner's (A4, the same question as Project Lifecycle Management's
+  Q40). Until it is ruled, the runner resolves no secret reference.
 
 **The result**, per scenario per increment:
 - **when it runs:** `passed`, `failed` or `blocked_unverified` (SIP-0096). It carries the steps taken, the first
@@ -291,6 +292,8 @@ It carries:
 **What does not apply:**
 - On a Project with no pages, Lighthouse and axe are **not applicable**.
 - #1937's rule sets exist only for the scaffold stacks. On any other product, lint is recorded **not measured**.
+- **What *not measured* and *not applicable* mean:** each is a record that the measure did not run or does not
+  apply, and neither is evidence. Neither counts in any rate, and neither ever reads as a baseline held.
 - The product's own linter is never used in its place. That is Project Lifecycle Management's inherited check, a
   separate record.
 
@@ -371,6 +374,8 @@ Computed in the digest from the records, never stored as a judgement:
 - **Autonomous Outcome Reliability (AOR), per work class:** the share of campaigns of that class that
   reached their objective with no intervention above an `advisory` severity, every quality
   baseline held, and every safety guarantee intact.
+  - **"Every quality baseline held" covers only the measures that ran.** A measure recorded *not measured* or
+    *not applicable* is named beside the reading and is never counted as held (§4.2).
 - **The Autonomous Work Envelope (AWE):** AOR across the work classes.
   - A **work class** is declared in the objective, never inferred. That keeps two campaigns comparable only when they
     declared the same class.
@@ -413,7 +418,7 @@ Project Lifecycle Management (PR #2401) states the seven contracts in its §8.2 
 | 2. `prepare_cycle()` and Campaign admission | adds nothing at `prepare_cycle()` or in a launch request; adds `scenario_suite` at Campaign creation (§4.7) |
 | 3. `WorkspaceStore` | evaluates a disposable copy, never the live tree; no scenario file enters a workspace; names trees by identity, never by sandbox revision |
 | 4. Campaign accepted trees | reads regression against the previous accepted tree, by SIP-0109's identity |
-| 5. outcome references | produces the evaluation record and its reference, with the campaign ID nullable (§4.1); its names follow §0 |
+| 5. evaluation references | produces the evaluation record and its reference (`OutcomeEvaluationRef`), with the campaign ID nullable (§4.1); its names follow §0 |
 | 6. project instructions | names each unit's pinned set as a listed input when comparing units (§4.6) |
 | 7. starting the product | reads the start declaration at the revision the unit pinned; never infers one; with none, every scenario is `blocked_unverified` |
 
@@ -501,7 +506,7 @@ The ruling also renamed the SIP's *outcome* term (§0).
 | A1 | **The SIP's own name.** The term is renamed (§0). Does the SIP's name follow, along with the idea's metric names (AOR)? | **Keep "Outcome Evaluation".** Both lanes, the 2.4 plan and Project Lifecycle Management's contracts cite it, and the clash with SIP-0108 was in the records' terms, which are renamed. Renaming it later is a numbered amendment |
 | A2 | **Where Lighthouse and axe are installed.** D2 named the QA image | **the evaluator's image,** with the same lock-file audit. The baselines measure the instance the scenarios read, which revision 2 runs outside the squad's containers |
 | A3 | **Where the runner runs** | **the sandbox service** (SIP-0102). It already launches least-privilege containers, and it holds the docker socket. It needs the `sandbox` profile on every deploy that evaluates. No compose change is needed. The browser runs in a container the service launches from the evaluator image, and receives a run's steps on its input, never on a mounted path |
-| A4 | **Secrets in a start declaration** (Project Lifecycle Management's contract 7) | **the owner's security decision.** Until it is ruled, no secret reference is resolved, and a product that needs one reports every scenario `blocked_unverified`, with reason "secret not available" |
+| A4 | **Secrets in a start declaration** (Project Lifecycle Management's contract 7). This is #2401's Q40: one question, so one ruling answers both | **the owner's security decision.** #2401's recommendation is evaluation-scoped secrets only: references the Project declares for evaluation and the owner approves per Project. They are test credentials, never the product's production secrets. They are resolved into the disposable copy's environment at start, and never written to a file, a log, a record or a squad agent's input. This SIP's runner can keep that rule. Until it is ruled, no secret reference is resolved, and a product that needs one reports every scenario `blocked_unverified`, with reason "secret not available" |
 
 ## 9. Revision history
 
@@ -524,3 +529,10 @@ The ruling also renamed the SIP's *outcome* term (§0).
     - prediction 6;
     - the four acceptance questions (A1–A4).
   - **Phasing:** phase 1 committed in 2.4, and phase 2 conditional.
+  - **After the MacBook lane's review of §4.8** (PR #2406's comment `issuecomment-6244691653`, which found no
+    mismatch on this side):
+    - contract 5 is named *evaluation references*;
+    - *scenario result* is added to §0;
+    - *not measured* follows *not applicable*'s rules, and AOR's "every quality baseline held" covers only measures
+      that ran;
+    - A4 is named as #2401's Q40.
