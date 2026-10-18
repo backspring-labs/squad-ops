@@ -1471,7 +1471,7 @@ What is now normative here:
 - **Q26:** #2171 closed as not planned, and its silent failure moved to #2174;
 - **Q27:** admins only hold `memory:note` and `memory:instruct` until a membership model exists;
 - **Q28:** chat beyond joi is not required, and stays a config flag;
-- **Q29:** conversation-history retention is set before #2180 ships.
+- **Q29:** conversation-history retention, set before #2180 ships, and ruled 2026-10-17 (§A.8).
 
 Q25 and Q26 were the proposal's two conflicts, so both are resolved.
 
@@ -2647,4 +2647,10 @@ All five were ruled as drafted ("accept 2185 with Q25–Q29 as drafted", SIP-011
 - **Q28: chat beyond joi.** **Not required.** It stays a config flag (`a2a_messaging_enabled`), and nothing here depends
   on it.
 - **Q29: conversation-history retention.** **Set before #2180 ships:** how long sessions are kept, and whether a person
-  can delete their own.
+  can delete their own. **Ruled 2026-10-17** (the owner, 2026-10-17: "approve Q29 as recommended"):
+  - **No automatic expiry** while the deploy has one operator. It is revisited if the deploy gains users.
+  - **A person may delete their own sessions.** Deleting a session removes its messages.
+    - Chat checks ownership before it reads history (#2175); the delete applies the same check.
+    - The delete answers 204, with no body (the API standard's rule 6).
+  - **A memory record already confirmed from a deleted session stays,** marked as coming from a deleted session,
+    because confirming it was its own act.

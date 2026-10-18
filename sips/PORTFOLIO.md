@@ -182,7 +182,7 @@ The owner's words: "accept 2185 with Q25–Q29 as drafted". Each ruling is recor
 | Q26 | #2171 (no agent can write its legacy store) | **closed as not planned:** the embedding path is not restored; its live defect, the silent failure, is #2174's (2.3) | SIP-0110 §5g, §A.4.5; #2171, closed |
 | Q27 | who holds `memory:note` and `memory:instruct` until a membership model exists | admins only | SIP-0110 §5g, §A.3.3 |
 | Q28 | chat beyond joi | not required; a config flag | SIP-0110 §5g, §A.8 |
-| Q29 | conversation-history retention | set before #2180 ships | SIP-0110 §5g, §A.8 |
+| Q29 | conversation-history retention | **ruled 2026-10-17** ("approve Q29 as recommended"): no automatic expiry while the deploy has one operator; a person deletes their own sessions, which removes their messages; a record confirmed from a deleted session stays, marked so | SIP-0110 §5g, §A.8 |
 
 ### Ruled 2026-10-17: Project Lifecycle Management
 

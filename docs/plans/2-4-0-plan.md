@@ -343,7 +343,8 @@ Seven placed rows, each with its open issue (SIP-0110 Appendix A, epic #2173):
 needed to deliver the entry points, and they don't block it. So they build in parallel, on their own branches.
 
 **Two things to settle before they ship:**
-- **Q29: conversation history's retention** is set before #2180 ships (D5).
+- **Q29: conversation history's retention** is ruled (2026-10-17, SIP-0110 §A.8): no automatic expiry while the deploy
+  has one operator; a person deletes their own sessions; a record confirmed from a deleted session stays, marked so.
 - **They change squad behaviour only through approved records.** A task or project instruction reaches the squad
   only when the operator writes one. The window's campaigns write none, so the entry points don't touch the window's
   readings.
@@ -510,7 +511,7 @@ reading beside it (Outcome Evaluation §1).
 | D2 | **Outcome Evaluation's five questions** (its §8) | **ruled** 2026-10-17, as recommended. The Spark lane's intent from its #2401 review (the runner, the storage, the surfaces) is for this review; written into SIP-0113, accepted 2026-10-17, where A2 moves (3)'s Lighthouse and axe to the evaluator's image | **(1)** steps held out, goals visible, as drafted. **(2)** The supervisor drafts the first suite and the owner approves it, frozen before the window. **(3)** Lighthouse and axe in the QA image, with the lock files' audit. **(4)** The first work classes: increment count, PRD tier, and attended or unattended, declared in the objective. **(5)** Phase 2 in 2.4, conditional (D1, D4). Also rename the SIP's "outcome" term (§1.1) |
 | D3 | **the window** | **ruled** 2026-10-17, as recommended. G7, ruled, freezes the window's deploy for both lanes | **four campaigns, two per stack, three increments each, on one frozen deploy,** pre-registered. With memory on and no build-side lesson approved, they double as SIP-0110's next build-side experiment |
 | D4 | **phase 2's condition** | **ruled** 2026-10-17, as recommended | **the window's record shows:** the scenarios discriminate, holding out holds, contribution is not the acceptance count, and each measure phase 2 would gate is stable. The owner decides on that record |
-| D5 | **the entry points** | **ruled** 2026-10-17, as recommended. The entry points are placed in 2.4.0 (SIP-0110) | **in 2.4 as placed,** in parallel. **Q29: conversation history's retention** is the owner's, set before #2180 ships |
+| D5 | **the entry points** | **ruled** 2026-10-17, as recommended. The entry points are placed in 2.4.0 (SIP-0110) | **in 2.4 as placed,** in parallel. **Q29: conversation history's retention** is the owner's, set before #2180 ships: **ruled 2026-10-17** (SIP-0110 §A.8) |
 | D6 | **#1966** | **ruled** 2026-10-17, as recommended | **the A/B in 2.4; adoption a separate ruling,** not before phase 2's decision |
 | D7 | **#316** | **ruled** 2026-10-17, as recommended | **in 2.4, after its SIP's design review,** landing before the window's deploy freezes |
 | D8 | **the 2.3 cut's output-quality findings** | **ruled** 2026-10-17, as recommended | **#2378's proper fix and #2153's build after the window,** each measured on the yardstick. **#2306 and #2253 as reads first.** **#1756 early,** as an instrument |
