@@ -350,6 +350,41 @@ class TestExecutableBit:
         assert store.current_files("cyc_1") == {}
 
 
+class TestDisposableCopy:
+    def test_a_copy_holds_exactly_the_pinned_revision_and_is_gone_after(self, store):
+        """X-3a (#2421), contract 3. Bug caught: a copy that drops a binary or an executable
+        bit, carries an install's untracked node_modules, outlives the command, or shares
+        files with the live tree."""
+        files = {**FILES, "assets/mark.png": PNG, "gradlew": "#!/bin/sh\n"}
+        rev = store.seed("cyc_1", files, origin=RevisionOrigin.GIT_CHECKOUT, executable={"gradlew"})
+        ws = store.workspace_dir("cyc_1")
+        (ws / "node_modules").mkdir()
+        (ws / "node_modules/x.js").write_text("installed", encoding="utf-8")
+
+        with store.disposable_copy("cyc_1", rev.revision_id) as copy:
+            held = {
+                p.relative_to(copy).as_posix(): p.read_bytes()
+                for p in copy.rglob("*")
+                if p.is_file()
+            }
+            assert held == {p: content_bytes(c) for p, c in files.items()}
+            assert (copy / "gradlew").stat().st_mode & 0o100
+            (copy / "backend/main.py").write_text("changed in the copy", encoding="utf-8")
+
+        assert not copy.exists()
+        assert store.verify_pinned("cyc_1", rev.revision_id)
+
+    def test_no_copy_is_taken_from_a_tree_that_left_its_pin(self, store):
+        """Bug caught: a copy of whatever the live tree holds, so a command ran on content no
+        revision names."""
+        rev = store.seed("cyc_1", FILES, origin=RevisionOrigin.SCAFFOLD_SEED)
+        (store.workspace_dir("cyc_1") / "backend/main.py").write_text("drift", encoding="utf-8")
+
+        with pytest.raises(StaleBaseRevisionError):
+            with store.disposable_copy("cyc_1", rev.revision_id):
+                pass
+
+
 class TestPinningAndRecovery:
     def test_verify_pinned_detects_out_of_band_mutation(self, store):
         """Bug caught: clean-room verification passing against a tree that no

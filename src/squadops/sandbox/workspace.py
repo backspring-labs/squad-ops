@@ -25,7 +25,9 @@ import json
 import re
 import shutil
 import stat
-from collections.abc import Collection, Mapping
+import uuid
+from collections.abc import Collection, Iterator, Mapping
+from contextlib import contextmanager
 from pathlib import Path
 
 from squadops.sandbox.models import (
@@ -107,6 +109,12 @@ def _safe_relpath(path: str, *, tracked: Collection[str] | None = ()) -> str:
             "(installs/build outputs live in the sandbox but are never seeded or patched)"
         )
     return rel
+
+
+def working_directory(path: str) -> str:
+    """A declared command's working directory, repository-relative (X-3a, #2421): ``""`` for the
+    tree's root, refused when it would leave the tree."""
+    return "" if str(path).strip() in ("", ".") else _safe_relpath(path, tracked=None)
 
 
 class WorkspaceStore:
@@ -355,6 +363,32 @@ class WorkspaceStore:
                 target.unlink(missing_ok=True)
         self._persist(revision, merged, modes)
         return revision, tuple(sorted(changed))
+
+    @contextmanager
+    def disposable_copy(self, cycle_id: str, revision_id: str) -> Iterator[Path]:
+        """A copy of exactly the pinned revision's files, executable bits included, for a
+        declared command to run in and be discarded after (X-3a, #2421; contract 3). The
+        store keeps hashes, not contents, so the copy is taken from the live tree, and only
+        while the tree matches its pin. Nothing a command does reaches the live tree or a
+        revision."""
+        if not self.verify_pinned(cycle_id, revision_id):
+            raise StaleBaseRevisionError(
+                f"live tree no longer matches revision {revision_id}: no copy is taken from it"
+            )
+        tracked = self._revision_paths(cycle_id, revision_id)
+        executable = self._live_executables(cycle_id, revision_id, tracked)
+        copy = self._cycle_dir(cycle_id) / "copies" / uuid.uuid4().hex
+        try:
+            for rel, content in self.current_files(cycle_id, tracked=tracked).items():
+                target = copy / rel
+                target.parent.mkdir(parents=True, exist_ok=True)
+                target.write_bytes(content_bytes(content))
+                if rel in executable:
+                    target.chmod(target.stat().st_mode | 0o111)
+            copy.mkdir(parents=True, exist_ok=True)
+            yield copy
+        finally:
+            shutil.rmtree(copy, ignore_errors=True)
 
     def verify_pinned(self, cycle_id: str, revision_id: str) -> bool:
         """§4.6 verification pinning: does the live tree match the named

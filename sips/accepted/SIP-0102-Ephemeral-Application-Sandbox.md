@@ -60,7 +60,7 @@ deferred until a second stack exists — see the §4.2 status note),
 SIP-Edge-Deployment-Profile (remote sandbox adapter target),
 SIP-Capability-Backed-Agents (toolchain-as-capability, 2.0 arc).
 
-## Delivery ledger (current as of 2026-10-17)
+## Delivery ledger (current as of 2026-10-18)
 
 Kept by the rule in CLAUDE.md ("SIP System"): one row per part, updated in the PR that ships or re-places it, read at each release cut. Built from the read-only SIP-portfolio audit of 2026-10-04; `sips/PORTFOLIO.md` indexes it.
 
@@ -77,6 +77,9 @@ Kept by the rule in CLAUDE.md ("SIP System"): one row per part, updated in the P
 | step 7: golden-path live validation (incl. #419) | **unplaced, deliberately** (§11c) | none |
 | §5 deferrals: browser probe, probe-as-peer, `expose_application` | **unplaced, deliberately** (§11c); `SIP-Outcome-Evaluation` may need `expose_application`-like hosting | none |
 | campaign evaluation through this sandbox | **dropped** by §11c: SIP-0109 evaluates and renders routes in the qa container (runtime-api cannot reach the sandbox), the accepted path | SIP-0109 §24n, §24p |
+| X-1: a `git_checkout` revision origin (§11d; SIP-0112 §8.2.2) | **shipped** | 2.4.0, PR #2441, issue #2419 |
+| X-2: a checkout's tracked tree round-trips: bytes, line endings, tracked derived names, the executable bit (§11d) | **shipped** | 2.4.0, PR #2442, issue #2420 |
+| X-3b: starting a product from its declaration, with readiness and the evaluation secrets, built with SIP-0113's scenario runner (§11d; SIP-0112 Q40) | **placed** | 2.4.0, #2421 |
 
 **What closes this SIP:** Steps 3, 5, 6, 7 shipped or dropped. Until a clean-room requirement returns, they are unplaced by ruling (§11c, 2026-10-04).
 
@@ -578,3 +581,52 @@ rendered image. `package_builds` stays declared unbuilt.
 **Evidence.** The read-only SIP-portfolio audit of 2026-10-04; SIP-0109 §24n and §24p.
 
 **Who ruled it.** the owner's rulings of 2026-10-04 on the SIP-portfolio audit (`sips/PORTFOLIO.md`): "yes, move them to 3.x including capability-backed agents. I accept all your other recommendations to keep SIPs current, reflecting what gets delivered, and where the work is targeted".
+
+### 11d. A product's Git checkout as the live tree, and the product's declared commands (2026-10-18, §4.6, §4.7, §7 items 2 and 3; SIP-0112 §8.2.2, X-1 to X-3; implementer's record, for the owner)
+
+SIP-0112 (accepted 2026-10-17) brings products SquadOps didn't build into the sandbox. Its §8.2.2 names
+three sandbox changes, and the 2.4 plan's D12 has the Spark lane build them. They change this SIP's
+§4.6 and §7 for those products, so they are recorded here.
+
+**What changed.**
+- **X-1 (#2441): a `git_checkout` revision origin.** The commit isn't on the revision: the sandbox never
+  runs Git, and SIP-0112's revision-to-commit mapping holds it.
+- **X-2 (#2442): a checkout's tracked tree comes back exactly as it went in.**
+  - **Content is text or bytes.** A revision ID hashes each file's bytes, and text hashes as its UTF-8
+    encoding, so every existing ID is unchanged.
+  - **The tree is read as the bytes on disk.** Universal-newline reading had made a seeded `\r\n` file
+    fail its own pin.
+  - **§4.6's derived-state exclusion now keeps out only what no revision names.** A `git_checkout` seed's
+    files are all content, whatever their name, so a product's tracked `package-lock.json` or `dist/` file
+    is pinned. A patch may change one its base names, but may never add one. `.git` is never content.
+    Untracked installs and builds stay out of the pin, as §4.7 has it.
+  - **The executable bit is content in a checkout's lineage.** It enters the revision ID only when a file
+    has it. A scaffold lineage ignores modes, as it always did.
+- **X-3a (this PR, #2421): `run_declared_command`, widening §7 item 2.** "Typed operations only" now has
+  one operation whose argv the caller supplies.
+  - **Whose argv:** a product's own declaration, from the Development Configuration revision SIP-0112's
+    E.4.2 confirms. It is never an agent's output, and agents still can't reach the runtime (§7 item 1).
+  - **Where it runs:** in a disposable copy of exactly the pinned revision, taken from the live tree only
+    while the tree matches its pin (§7 item 3), and discarded afterwards. Nothing a command does reaches
+    the live tree or a revision.
+  - **Posture:** setup argvs get the install network and the command gets none (§7 item 10). Caps are
+    dropped, with no new privileges, as the workspace owner. X-3a carries no secrets.
+  - **How it ended is typed:** `exited` with its status, `setup_failed`, `timeout`, `command_not_found`
+    (127) and `command_not_executable` (126). The last two are not-run, never a failed check (§4.4).
+- **Still X-3b (#2421, with SIP-0113's runner #2414):** starting a product from its declaration, with
+  readiness and the owner-approved evaluation secrets (SIP-0112 Q40).
+
+**A step 5a gap, closed here.** X-1 and X-2 shipped in #2441 and #2442 without this amendment. X-2's
+tracked-name rule changes §4.6, so this, the first sandbox PR after them, records both.
+
+**§11c, for these products.** The runtime API reaches this sandbox only where the deploy sets
+`SQUADOPS__SANDBOX__PROVIDER=http` and runs the sandbox service (`rebuild_and_deploy.sh sandbox`).
+SIP-0112's E.4.2 uses it that way. §11c's ruling for campaign evaluation stands.
+
+**Evidence.** SIP-0112 §8.2.2, accepted by the owner. The MacBook lane's G4 reviews of #2441 and #2442
+raised the tracked names, the executable bit, and the bit's scope to a checkout's lineage. The X-3 split
+was agreed on #2407: E.4.2's inherited baseline runs a product's checks, which waited on X-3.
+
+**Who ruled it.** The owner accepted SIP-0112 with X-1 to X-3 in its §8.2.2 (2026-10-17), and D12
+assigns them. The tracked-name and executable-bit rules and the X-3 split are the implementer's, reviewed
+by the MacBook lane as consumer (G4), for the owner's review.

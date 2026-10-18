@@ -126,6 +126,21 @@ async def _op_patch(service: SandboxService, revision: WorkspaceRevision, params
         raise _error(400, "INVALID_PATCH", str(e)) from e
 
 
+async def _op_declared_command(service: SandboxService, revision: WorkspaceRevision, params: dict):
+    try:
+        return await service.run_declared_command(
+            revision=revision,
+            command=tuple(params["command"]),
+            working_dir=params.get("working_dir", "."),
+            setup=tuple(tuple(step) for step in params.get("setup", ())),
+            timeout_seconds=params.get("timeout_seconds"),
+        )
+    except (TypeError, ValueError) as e:
+        # A declaration the sandbox can't run as given is the caller's error: an empty argv,
+        # a non-string argument or a non-positive timeout.
+        raise _error(400, "INVALID_COMMAND", str(e)) from e
+
+
 # The typed-operations table (§7 item 2): membership here IS the API surface.
 _OPERATIONS = {
     OperationName.INSTALL_DEPENDENCIES: _op_install,
@@ -135,6 +150,9 @@ _OPERATIONS = {
     OperationName.STOP_APPLICATION: _op_stop,
     OperationName.PROBE_HTTP_ENDPOINT: _op_probe,
     OperationName.APPLY_WORKSPACE_PATCH: _op_patch,
+    # SIP-0102 §11d: the one operation whose argv the caller supplies, from a product's own
+    # declaration (X-3a, #2421), run in a disposable copy, never the live tree.
+    OperationName.RUN_DECLARED_COMMAND: _op_declared_command,
 }
 
 

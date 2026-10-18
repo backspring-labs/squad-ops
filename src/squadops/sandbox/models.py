@@ -72,6 +72,10 @@ class OperationName:
     PROBE_HTTP_ENDPOINT = "probe_http_endpoint"
     APPLY_WORKSPACE_PATCH = "apply_workspace_patch"
     READ_BUILD_DIAGNOSTICS = "read_build_diagnostics"
+    #: SIP-0112 §8.2.2, X-3a (#2421): a product's own declared command, such as a check its
+    #: Development Configuration names, run against a pinned revision in a disposable copy
+    #: (SIP-0102 §11d). The argv is the declaration's, never an agent's output.
+    RUN_DECLARED_COMMAND = "run_declared_command"
 
     ALL = frozenset(
         {
@@ -83,6 +87,7 @@ class OperationName:
             PROBE_HTTP_ENDPOINT,
             APPLY_WORKSPACE_PATCH,
             READ_BUILD_DIAGNOSTICS,
+            RUN_DECLARED_COMMAND,
         }
     )
 
@@ -273,3 +278,46 @@ class PatchResult(OperationResult):
 @dataclass(frozen=True, kw_only=True)
 class DiagnosticsResult(OperationResult):
     entries: tuple[str, ...] = ()
+
+
+class CommandOutcome:
+    """How a declared command ended (X-3a, #2421), so a caller tells a check that failed from
+    one that never ran (SIP-0112 §8.3.1). Exit 127 and 126 are the shell's own "not found" and
+    "not executable", which the container runtime reports the same way."""
+
+    EXITED = "exited"
+    SETUP_FAILED = "setup_failed"
+    TIMEOUT = "timeout"
+    COMMAND_NOT_FOUND = "command_not_found"
+    COMMAND_NOT_EXECUTABLE = "command_not_executable"
+
+    ALL = frozenset({EXITED, SETUP_FAILED, TIMEOUT, COMMAND_NOT_FOUND, COMMAND_NOT_EXECUTABLE})
+
+
+@dataclass(frozen=True, kw_only=True)
+class CommandResult(OperationResult):
+    """A declared command's run (X-3a, #2421). ``outcome`` says how it ended. Only ``exited``
+    means the command itself ran to an exit status: ``exit_code`` 0 is a pass and anything else
+    a failure. ``failed_setup_step`` indexes the setup argv that stopped the run."""
+
+    command: tuple[str, ...] = ()
+    outcome: str | None = None
+    exit_code: int | None = None
+    stdout_tail: str = ""
+    stderr_tail: str = ""
+    failed_setup_step: int | None = None
+
+    def __post_init__(self) -> None:
+        super().__post_init__()
+        if self.outcome is not None and self.outcome not in CommandOutcome.ALL:
+            raise ValueError(f"unknown command outcome: {self.outcome!r}")
+        if self.ran and self.outcome is None:
+            raise ValueError("a declared command that ran says how it ended")
+
+
+def declared_argv(argv: tuple[str, ...] | list[str]) -> tuple[str, ...]:
+    """A declared command's argv (X-3a, #2421): a non-empty sequence of non-empty strings, run
+    as given, never through a shell. Anything else is the declaration's error."""
+    if not argv or not all(isinstance(a, str) and a for a in argv):
+        raise ValueError(f"a declared command is a non-empty argv of non-empty strings: {argv!r}")
+    return tuple(argv)

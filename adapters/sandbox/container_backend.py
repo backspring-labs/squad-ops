@@ -23,15 +23,19 @@ proxy; "bridge" is the floor).
 from __future__ import annotations
 
 import asyncio
+import posixpath
 import time
 from collections.abc import Callable, Mapping
 from pathlib import Path
+from typing import Any
 
 import httpx
 
 from squadops.ports.tools.container import ContainerPort
 from squadops.sandbox.models import (
     BuildResult,
+    CommandOutcome,
+    CommandResult,
     DiagnosticsResult,
     InstallResult,
     OperationName,
@@ -41,9 +45,10 @@ from squadops.sandbox.models import (
     StopResult,
     TestRunResult,
     WorkspaceRevision,
+    declared_argv,
 )
 from squadops.sandbox.noop import NoOpExecutionSandbox
-from squadops.sandbox.workspace import WorkspaceStore, WorkspaceStoreError
+from squadops.sandbox.workspace import WorkspaceStore, WorkspaceStoreError, working_directory
 from squadops.tools.exceptions import ToolContainerError
 from squadops.tools.models import ContainerResult, ContainerSpec
 
@@ -122,12 +127,26 @@ class ContainerBackend(NoOpExecutionSandbox):
             (str(npm_cache), "/cache/npm"),
         )
 
-    def _spec(self, operation: str, cycle_id: str, command: tuple[str, ...]) -> ContainerSpec:
-        network = (
-            self._install_network
-            if operation == OperationName.INSTALL_DEPENDENCIES
-            else "none"  # §7 item 10: deny by default
-        )
+    def _spec(
+        self,
+        operation: str,
+        cycle_id: str,
+        command: tuple[str, ...],
+        *,
+        tree: Path | None = None,
+        working_dir: str = _WORKSPACE_MOUNT,
+        network: str | None = None,
+        timeout_seconds: float | None = None,
+    ) -> ContainerSpec:
+        """The hardened run for one command. ``tree`` is the directory mounted as the
+        workspace: the live tree unless a declared command names its disposable copy."""
+        if network is None:
+            network = (
+                self._install_network
+                if operation == OperationName.INSTALL_DEPENDENCIES
+                else "none"  # §7 item 10: deny by default
+            )
+        mounted = tree if tree is not None else self._store.workspace_dir(cycle_id)
         return ContainerSpec(
             image=self._image,
             command=list(command),
@@ -140,11 +159,11 @@ class ContainerBackend(NoOpExecutionSandbox):
             if self._cache_root is not None
             else (("HOME", "/tmp"),),
             volumes=(
-                (str(self._store.workspace_dir(cycle_id)), _WORKSPACE_MOUNT),
+                (str(mounted), _WORKSPACE_MOUNT),
                 *self._cache_volumes(),
             ),
-            working_dir=_WORKSPACE_MOUNT,
-            timeout_seconds=self._timeout_seconds,
+            working_dir=working_dir,
+            timeout_seconds=timeout_seconds or self._timeout_seconds,
             network=network,
             memory_limit=self._memory_limit,
             cpu_limit=self._cpu_limit,
@@ -253,6 +272,112 @@ class ContainerBackend(NoOpExecutionSandbox):
             exit_code=run.exit_code if run else None,
             output_tail=(run.stdout + run.stderr)[-_TAIL_CHARS:] if run else "",
         )
+
+    async def run_declared_command(
+        self,
+        *,
+        revision: WorkspaceRevision,
+        command: tuple[str, ...],
+        working_dir: str = ".",
+        setup: tuple[tuple[str, ...], ...] = (),
+        timeout_seconds: float | None = None,
+    ) -> CommandResult:
+        """X-3a (#2421; SIP-0102 §11d): a product's own declared command, after its setup
+        commands, in a disposable copy of exactly the pinned revision (contract 3). Setup
+        reaches the dependency network, as an install does; the command itself gets none
+        (§7 item 10). The copy is discarded whatever happens, so nothing a command does
+        reaches the live tree or a revision."""
+        argv = declared_argv(command)
+        steps = tuple(declared_argv(step) for step in setup)
+        if timeout_seconds is not None and timeout_seconds <= 0:
+            raise ValueError(f"timeout_seconds must be positive, got {timeout_seconds}")
+        inside = posixpath.join(_WORKSPACE_MOUNT, working_directory(working_dir)).rstrip("/")
+        base: dict[str, Any] = {
+            "operation": OperationName.RUN_DECLARED_COMMAND,
+            "workspace_revision_id": revision.revision_id,
+            "image_identity": self._image,
+            "environment_contract_id": self._environment_contract_id,
+            "command": argv,
+        }
+        started = time.monotonic()
+        with self._store.disposable_copy(revision.cycle_id, revision.revision_id) as copy:
+            for index, step in enumerate(steps):
+                ended = await self._run_declared(
+                    revision.cycle_id, copy, step, inside, self._install_network, timeout_seconds
+                )
+                if ended.get("outcome") != CommandOutcome.EXITED or ended["exit_code"] != 0:
+                    # A step that ran and failed stops the run before the command; one that
+                    # never started keeps its own outcome.
+                    if ended["ran"]:
+                        ended["outcome"] = CommandOutcome.SETUP_FAILED
+                    return CommandResult(
+                        **base,
+                        **ended,
+                        failed_setup_step=index,
+                        duration_seconds=time.monotonic() - started,
+                    )
+            ended = await self._run_declared(
+                revision.cycle_id, copy, argv, inside, "none", timeout_seconds
+            )
+        return CommandResult(**base, **ended, duration_seconds=time.monotonic() - started)
+
+    async def _run_declared(
+        self,
+        cycle_id: str,
+        tree: Path,
+        argv: tuple[str, ...],
+        inside: str,
+        network: str,
+        timeout_seconds: float | None,
+    ) -> dict[str, Any]:
+        """One declared argv in the copy, read into a command result's fields."""
+        spec = self._spec(
+            OperationName.RUN_DECLARED_COMMAND,
+            cycle_id,
+            argv,
+            tree=tree,
+            working_dir=inside,
+            network=network,
+            timeout_seconds=timeout_seconds,
+        )
+        try:
+            run = await self._container.run(spec)
+        except ToolContainerError as e:
+            if "timed out" in str(e).lower():
+                # It executed until the limit: the command's own failure, as a one-shot's is.
+                return {
+                    "status": OperationStatus.FAILED,
+                    "ran": True,
+                    "outcome": CommandOutcome.TIMEOUT,
+                    "exit_classification": "timeout",
+                }
+            return {
+                "status": OperationStatus.NOT_RUN,
+                "ran": False,
+                "unavailable_reason": str(e),
+            }
+        tails = {"stdout_tail": run.stdout[-_TAIL_CHARS:], "stderr_tail": run.stderr[-_TAIL_CHARS:]}
+        if run.exit_code in _UNRUNNABLE:
+            # The command never started: missing from the image, or not executable. The
+            # environment's gap, never a failed check (§4.4).
+            outcome = _UNRUNNABLE[run.exit_code]
+            return {
+                **tails,
+                "status": OperationStatus.NOT_RUN,
+                "ran": False,
+                "outcome": outcome,
+                "exit_code": run.exit_code,
+                "unavailable_reason": f"{outcome}: {argv[0]}",
+            }
+        ok = run.exit_code == 0
+        return {
+            **tails,
+            "status": OperationStatus.SUCCEEDED if ok else OperationStatus.FAILED,
+            "ran": True,
+            "outcome": CommandOutcome.EXITED,
+            "exit_code": run.exit_code,
+            "exit_classification": None if ok else "nonzero_exit",
+        }
 
     async def read_build_diagnostics(self, *, revision: WorkspaceRevision) -> DiagnosticsResult:
         common, run = await self._one_shot(OperationName.READ_BUILD_DIAGNOSTICS, revision)
@@ -495,3 +620,10 @@ class ContainerBackend(NoOpExecutionSandbox):
                 detail=str(e),
             )
         return StopResult(**base, status=OperationStatus.SUCCEEDED, ran=True)
+
+
+#: The exit statuses a container runtime gives a command that never started.
+_UNRUNNABLE = {
+    127: CommandOutcome.COMMAND_NOT_FOUND,
+    126: CommandOutcome.COMMAND_NOT_EXECUTABLE,
+}

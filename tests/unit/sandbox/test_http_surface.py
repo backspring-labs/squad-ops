@@ -293,3 +293,68 @@ async def test_a_seed_through_the_client_carries_the_executable_bit(stack):
 
     assert seed.revision_id == compute_revision_id(files, {"gradlew"})
     assert store.current_executables("cyc_1") == {"gradlew"}
+
+
+async def test_a_declared_command_travels_the_client_to_the_backend_and_back(tmp_path):
+    """X-3a (#2421), contract 3's wiring: the operation E.4.2's inherited baseline calls, entered
+    at the client the runtime API uses. Bug caught: the argv, setup or working directory dropped
+    on the wire, or the result's outcome and exit status lost in rehydration, so a failed check
+    reads as a pass or a command that never started as a failure."""
+    from adapters.sandbox.container_backend import ContainerBackend
+    from squadops.tools.models import ContainerResult
+    from tests.unit.sandbox.test_container_backend import _WritingContainer
+
+    root = tmp_path / "cycles"
+    store = WorkspaceStore(root)
+    container = _WritingContainer(
+        ContainerResult("", 0, "built\n", ""), ContainerResult("", 1, "", "FAILED (failures=1)\n")
+    )
+    backend = ContainerBackend(
+        container=container, store=store, image="sandbox:pinned", operation_commands={}
+    )
+    app = create_app(
+        SandboxService(store=store, journal=OperationEvidenceJournal(root), backend=backend),
+        service_token=TOKEN,
+    )
+    sandbox = HttpExecutionSandbox(
+        base_url="http://exec",
+        service_token=TOKEN,
+        http_client_factory=lambda: httpx.AsyncClient(
+            transport=httpx.ASGITransport(app=app), base_url="http://exec"
+        ),
+    )
+    seed = await sandbox.seed_workspace("cyc_1", FILES, origin=RevisionOrigin.GIT_CHECKOUT)
+
+    result = await sandbox.run_declared_command(
+        revision=seed,
+        command=("python3", "-m", "unittest", "discover", "-s", "checks"),
+        working_dir="backend",
+        setup=(("python3", "tools/build.py"),),
+    )
+
+    assert [s.command for s in container.specs] == [
+        ["python3", "tools/build.py"],
+        ["python3", "-m", "unittest", "discover", "-s", "checks"],
+    ]
+    assert container.specs[1].working_dir == "/workspace/backend"
+    assert (result.outcome, result.exit_code, result.ran) == ("exited", 1, True)
+    assert result.command == ("python3", "-m", "unittest", "discover", "-s", "checks")
+    assert "FAILED (failures=1)" in result.stderr_tail
+
+
+async def test_a_declared_command_the_sandbox_cannot_run_as_given_is_a_400(stack):
+    """Bug caught: a malformed declaration answered 500, or run anyway."""
+    _, _, _, sandbox, client_factory = stack
+    seed = await sandbox.seed_workspace("cyc_1", FILES)
+    async with client_factory() as client:
+        response = await client.post(
+            "/api/v1/workspaces/cyc_1/operations",
+            json={
+                "operation": OperationName.RUN_DECLARED_COMMAND,
+                "revision": seed.to_dict(),
+                "params": {"command": []},
+            },
+            headers={"Authorization": f"Bearer {TOKEN}"},
+        )
+    assert response.status_code == 400
+    assert response.json()["error"]["code"] == "INVALID_COMMAND"

@@ -22,6 +22,7 @@ from squadops.ports.sandbox import ExecutionSandboxPort
 from squadops.sandbox.evidence import OperationEvidenceJournal
 from squadops.sandbox.models import (
     BuildResult,
+    CommandResult,
     DiagnosticsResult,
     FileContent,
     InstallResult,
@@ -35,8 +36,9 @@ from squadops.sandbox.models import (
     StopResult,
     TestRunResult,
     WorkspaceRevision,
+    declared_argv,
 )
-from squadops.sandbox.workspace import WorkspaceStore
+from squadops.sandbox.workspace import WorkspaceStore, working_directory
 
 _NO_BACKEND = "no execution backend configured"
 
@@ -182,6 +184,40 @@ class SandboxService(ExecutionSandboxPort):
             revision,
             lambda: self._backend.read_build_diagnostics(revision=revision),
         )
+
+    async def run_declared_command(
+        self,
+        *,
+        revision: WorkspaceRevision,
+        command: tuple[str, ...],
+        working_dir: str = ".",
+        setup: tuple[tuple[str, ...], ...] = (),
+        timeout_seconds: float | None = None,
+    ) -> CommandResult:
+        # Refused here, whether or not a backend runs it: a malformed declaration is the
+        # caller's error, never an environment that could not run it.
+        command = declared_argv(command)
+        setup = tuple(declared_argv(step) for step in setup)
+        working_directory(working_dir)
+        if timeout_seconds is not None and timeout_seconds <= 0:
+            raise ValueError(f"timeout_seconds must be positive, got {timeout_seconds}")
+        backend = self._backend
+
+        async def call() -> CommandResult:
+            assert backend is not None  # _delegate answers not_run without calling, when None
+            return await backend.run_declared_command(
+                revision=revision,
+                command=command,
+                working_dir=working_dir,
+                setup=setup,
+                timeout_seconds=timeout_seconds,
+            )
+
+        result = await self._delegate(
+            OperationName.RUN_DECLARED_COMMAND, CommandResult, revision, call, command=command
+        )
+        assert isinstance(result, CommandResult)
+        return result
 
     # -- workspace mutation (never delegated) --------------------------------
 
