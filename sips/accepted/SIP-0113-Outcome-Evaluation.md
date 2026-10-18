@@ -587,6 +587,13 @@ All four are ruled as recommended: A4 through SIP-0112's Q40, and A1 to A3 at ac
   Postgres store recomputes the digest on every read, and refuses a row whose content no longer hashes to
   its key.
 - **The campaign's pin** (§4.7, phase 1) is recorded in SIP-0109 §24bt.
+- **The CLI** is `squadops scenarios`:
+  - `draft --file` is the supervisor's;
+  - `review` (the full content) and `approve` are the owner's;
+  - `list` and `show` give goals and surfaces only.
+
+  A suite's file is refused inside any Git working tree, so a held-out suite can't be committed into what the squad
+  is built from. Approving a digest approves exactly the content reviewed under it.
 
 **Who ruled it.** The owner accepted §4.1 and §4.7 (2026-10-17). These are the implementer's choices
 within them, for the owner's review.
