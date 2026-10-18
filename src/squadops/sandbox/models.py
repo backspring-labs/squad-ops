@@ -82,15 +82,27 @@ class OperationName:
     )
 
 
-def compute_revision_id(files: Mapping[str, str]) -> str:
+#: A workspace file's content (X-2, #2420): text, or the raw bytes of a file that
+#: isn't UTF-8 (an image, a font). Text is written and hashed as its UTF-8 encoding.
+FileContent = str | bytes
+
+
+def content_bytes(content: FileContent) -> bytes:
+    """The bytes a file's content is written to disk and hashed as."""
+    return content.encode("utf-8") if isinstance(content, str) else bytes(content)
+
+
+def compute_revision_id(files: Mapping[str, FileContent]) -> str:
     """Content-addressed revision id — deterministic and order-independent over
     (path, content) pairs, so identical workspace content always pins the same
-    revision (the §4.6 verification-pinning primitive)."""
+    revision (the §4.6 verification-pinning primitive). It hashes each file's
+    bytes, so a text file and its UTF-8 encoding name the same revision, and
+    every revision cut before bytes were carried (X-2) keeps its id."""
     h = hashlib.sha256()
     for path in sorted(files):
         h.update(path.encode("utf-8"))
         h.update(b"\x00")
-        h.update(hashlib.sha256(files[path].encode("utf-8")).digest())
+        h.update(hashlib.sha256(content_bytes(files[path])).digest())
     return h.hexdigest()
 
 
@@ -118,7 +130,7 @@ class WorkspaceRevision:
         *,
         cycle_id: str,
         origin: str,
-        files: Mapping[str, str],
+        files: Mapping[str, FileContent],
         parent: WorkspaceRevision | None = None,
         created_at: str | None = None,
     ) -> WorkspaceRevision:
@@ -131,7 +143,7 @@ class WorkspaceRevision:
             created_at=created_at,
         )
 
-    def matches(self, files: Mapping[str, str]) -> bool:
+    def matches(self, files: Mapping[str, FileContent]) -> bool:
         """§4.6 verification pinning: True iff this exact content is what the
         revision was cut from. Clean-room verification fails on a mismatch."""
         return compute_revision_id(files) == self.revision_id

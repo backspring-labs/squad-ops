@@ -23,6 +23,7 @@ from squadops.sandbox.evidence import OperationEvidenceJournal
 from squadops.sandbox.models import (
     BuildResult,
     DiagnosticsResult,
+    FileContent,
     InstallResult,
     OperationName,
     OperationResult,
@@ -68,7 +69,7 @@ class SandboxService(ExecutionSandboxPort):
     def seed_workspace(
         self,
         cycle_id: str,
-        files: Mapping[str, str],
+        files: Mapping[str, FileContent],
         *,
         origin: str = RevisionOrigin.SCAFFOLD_SEED,
         created_at: str | None = None,
@@ -185,7 +186,7 @@ class SandboxService(ExecutionSandboxPort):
         self,
         *,
         base: WorkspaceRevision,
-        files: Mapping[str, str | None],
+        files: Mapping[str, FileContent | None],
         origin: str = RevisionOrigin.AGENT_PATCH,
     ) -> PatchResult:
         """Apply the patch through the store (stale-base guarded, §4.6

@@ -20,6 +20,7 @@ from squadops.sandbox.models import (
 )
 from squadops.sandbox.service import SandboxService
 from squadops.sandbox.workspace import WorkspaceStore
+from tests.fixtures.shared_contract.repository import build_repository, recorded, tracked_files
 
 TOKEN = "tok-123"
 FILES = {"backend/main.py": "print('a')\n"}
@@ -195,4 +196,56 @@ async def test_an_unknown_seed_origin_is_refused_and_writes_nothing(stack):
         )
     assert response.status_code == 400
     assert response.json()["error"]["code"] == "INVALID_SEED"
+    assert store.current_files("cyc_1") == {}
+
+
+async def test_the_shared_fixture_seeds_and_captures_to_its_recorded_revisions(stack, tmp_path):
+    """X-2 (#2420), contract 3's wiring on the shared fixture (#2407): its Git checkout, binary
+    asset included, seeded through the client the runtime API uses, then its verified change
+    patched on. Bug caught: bytes lost or mangled on the wire or on disk, or a hashing change,
+    so the sandbox's revisions stop equalling the ones the MacBook lane's mapping records."""
+    store, _, _, sandbox, _ = stack
+    repo = build_repository(tmp_path / "tally")
+    first = tracked_files(repo.path, repo.first_commit)
+    second = tracked_files(repo.path, repo.second_commit)
+    mapping = recorded("workspace_commit_mapping", "valid")
+    seeded, captured = mapping["entries"]
+    cycle = mapping["cycle_id"]
+
+    seed = await sandbox.seed_workspace(cycle, first, origin=RevisionOrigin.GIT_CHECKOUT)
+    change: dict = {p: c for p, c in second.items() if first.get(p) != c}
+    change.update(dict.fromkeys(first.keys() - second.keys()))
+    patch = await sandbox.apply_workspace_patch(base=seed, files=change)
+
+    assert (seed.revision_id, patch.new_revision_id) == (
+        seeded["sandbox_revision_id"],
+        captured["sandbox_revision_id"],
+    )
+    asset = store.workspace_dir(cycle) / "assets" / "mark.png"
+    assert asset.read_bytes() == second["assets/mark.png"]
+    assert store.verify_pinned(cycle, patch.new_revision_id)
+
+
+@pytest.mark.parametrize(
+    ("body", "why"),
+    [
+        (
+            {"files": {"a.png": "x"}, "binary_files": {"a.png": "eA=="}},
+            "both as text and as binary",
+        ),
+        ({"files": {}, "binary_files": {"a.png": "not base64!"}}, "not valid base64"),
+    ],
+    ids=["a-path-sent-both-ways", "undecodable-bytes"],
+)
+async def test_binary_content_the_sandbox_cannot_read_is_refused_at_seeding(stack, body, why):
+    """Bug caught: a path sent both as text and as bytes settled by dict order, or undecodable
+    bytes seeded as something else."""
+    store, _, _, _, client_factory = stack
+    async with client_factory() as client:
+        response = await client.post(
+            "/api/v1/workspaces/cyc_1/seed", json=body, headers={"Authorization": f"Bearer {TOKEN}"}
+        )
+    assert response.status_code == 400
+    error = response.json()["error"]
+    assert error["code"] == "INVALID_SEED" and why in error["message"]
     assert store.current_files("cyc_1") == {}

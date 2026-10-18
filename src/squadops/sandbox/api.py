@@ -16,7 +16,10 @@ becomes the caller.
 
 from __future__ import annotations
 
+import base64
+import binascii
 import hmac
+from collections.abc import Mapping
 
 from fastapi import Depends, FastAPI, Header, HTTPException, Request
 from fastapi.responses import JSONResponse
@@ -46,8 +49,26 @@ def _error(status_code: int, code: str, message: str) -> HTTPException:
 
 class SeedRequest(BaseModel):
     files: dict[str, str]
+    #: X-2 (#2420): each file that isn't UTF-8 text, base64-encoded. A text-only seed
+    #: sends none, so its request is what it was before bytes were carried.
+    binary_files: dict[str, str] = Field(default_factory=dict)
     origin: str = RevisionOrigin.SCAFFOLD_SEED
     created_at: str | None = None
+
+
+def _decode_binary(binary_files: Mapping[str, str], *, alongside: Mapping) -> dict[str, bytes]:
+    """The wire's base64-encoded binary files (X-2, #2420), refusing a path also sent as
+    text: which content was meant is not the sandbox's to guess."""
+    both = sorted(set(binary_files) & set(alongside))
+    if both:
+        raise ValueError(f"paths sent both as text and as binary: {both}")
+    decoded: dict[str, bytes] = {}
+    for path, encoded in binary_files.items():
+        try:
+            decoded[path] = base64.b64decode(encoded, validate=True)
+        except binascii.Error as e:
+            raise ValueError(f"binary file {path!r} is not valid base64: {e}") from e
+    return decoded
 
 
 class OperationRequest(BaseModel):
@@ -89,9 +110,10 @@ async def _op_probe(service: SandboxService, revision: WorkspaceRevision, params
 
 
 async def _op_patch(service: SandboxService, revision: WorkspaceRevision, params: dict):
+    binary = _decode_binary(params.get("binary_files", {}), alongside=params["files"])
     return await service.apply_workspace_patch(
         base=revision,
-        files=params["files"],
+        files={**params["files"], **binary},
         origin=params.get("origin", RevisionOrigin.AGENT_PATCH),
     )
 
@@ -110,8 +132,9 @@ _OPERATIONS = {
 
 async def _handle_seed(service: SandboxService, cycle_id: str, body: SeedRequest) -> dict:
     try:
+        binary = _decode_binary(body.binary_files, alongside=body.files)
         revision = service.seed_workspace(
-            cycle_id, body.files, origin=body.origin, created_at=body.created_at
+            cycle_id, {**body.files, **binary}, origin=body.origin, created_at=body.created_at
         )
     except AlreadySeededError as e:
         raise _error(409, "ALREADY_SEEDED", str(e)) from e

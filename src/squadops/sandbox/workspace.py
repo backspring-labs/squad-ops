@@ -28,8 +28,10 @@ from collections.abc import Mapping
 from pathlib import Path
 
 from squadops.sandbox.models import (
+    FileContent,
     WorkspaceRevision,
     compute_revision_id,
+    content_bytes,
 )
 
 _CYCLE_ID_RE = re.compile(r"[A-Za-z0-9_\-]+")
@@ -132,31 +134,40 @@ class WorkspaceStore:
         self._revisions_dir(cycle_id).mkdir(parents=True, exist_ok=True)
         return ws
 
-    def current_files(self, cycle_id: str) -> dict[str, str]:
+    def current_files(self, cycle_id: str) -> dict[str, FileContent]:
         """The live tree as a path → content mapping, excluding derived state
-        (``_EXCLUDED_SEGMENTS``) — revision content is source, not installs."""
+        (``_EXCLUDED_SEGMENTS``) — revision content is source, not installs.
+
+        Each file is read as the bytes on disk (X-2, #2420): text when they are
+        UTF-8, otherwise the bytes themselves. Never in universal-newline mode,
+        which read a seeded ``\\r\\n`` file back as ``\\n`` and failed its own pin."""
         ws = self.workspace_dir(cycle_id)
         if not ws.is_dir():
             return {}
-        files: dict[str, str] = {}
+        files: dict[str, FileContent] = {}
         for p in sorted(ws.rglob("*")):
             if not p.is_file():
                 continue
             rel = p.relative_to(ws)
             if _EXCLUDED_SEGMENTS.intersection(rel.parts):
                 continue
-            files[str(rel).replace("\\", "/")] = p.read_text(encoding="utf-8")
+            data = p.read_bytes()
+            try:
+                content: FileContent = data.decode("utf-8")
+            except UnicodeDecodeError:
+                content = data
+            files[str(rel).replace("\\", "/")] = content
         return files
 
     # -- revisions ----------------------------------------------------------
 
-    def _persist(self, revision: WorkspaceRevision, files: Mapping[str, str]) -> None:
+    def _persist(self, revision: WorkspaceRevision, files: Mapping[str, FileContent]) -> None:
         rev_dir = self._revisions_dir(revision.cycle_id)
         rev_dir.mkdir(parents=True, exist_ok=True)
         manifest = {
             "revision": revision.to_dict(),
             "files": {
-                p: hashlib.sha256(c.encode("utf-8")).hexdigest() for p, c in sorted(files.items())
+                p: hashlib.sha256(content_bytes(c)).hexdigest() for p, c in sorted(files.items())
             },
         }
         (rev_dir / f"{revision.revision_id}.json").write_text(
@@ -180,7 +191,7 @@ class WorkspaceStore:
     def seed(
         self,
         cycle_id: str,
-        files: Mapping[str, str],
+        files: Mapping[str, FileContent],
         *,
         origin: str,
         created_at: str | None = None,
@@ -207,7 +218,7 @@ class WorkspaceStore:
         for rel, content in safe.items():
             target = ws / rel
             target.parent.mkdir(parents=True, exist_ok=True)
-            target.write_text(content, encoding="utf-8")
+            target.write_bytes(content_bytes(content))
         self._persist(revision, safe)
         return revision
 
@@ -216,7 +227,7 @@ class WorkspaceStore:
         cycle_id: str,
         *,
         base_revision_id: str,
-        files: Mapping[str, str | None],
+        files: Mapping[str, FileContent | None],
         origin: str,
         created_at: str | None = None,
     ) -> tuple[WorkspaceRevision, tuple[str, ...]]:
@@ -251,7 +262,7 @@ class WorkspaceStore:
             target = ws / rel
             if rel in merged:
                 target.parent.mkdir(parents=True, exist_ok=True)
-                target.write_text(merged[rel], encoding="utf-8")
+                target.write_bytes(content_bytes(merged[rel]))
             else:
                 target.unlink(missing_ok=True)
         self._persist(revision, merged)

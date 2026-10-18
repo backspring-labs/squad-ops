@@ -19,6 +19,7 @@ from collections.abc import Mapping
 from squadops.sandbox.models import (
     BuildResult,
     DiagnosticsResult,
+    FileContent,
     InstallResult,
     PatchResult,
     ProbeResult,
@@ -83,7 +84,7 @@ class ExecutionSandboxPort(ABC):
         self,
         *,
         base: WorkspaceRevision,
-        files: Mapping[str, str | None],
+        files: Mapping[str, FileContent | None],
         origin: str = RevisionOrigin.AGENT_PATCH,
     ) -> PatchResult:
         """Apply content changes (path → new content, ``None`` = delete) on top

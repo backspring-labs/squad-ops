@@ -9,6 +9,7 @@ rehydrated into their concrete semantic types via the journal's
 
 from __future__ import annotations
 
+import base64
 import dataclasses
 from collections.abc import Callable, Mapping
 
@@ -18,6 +19,7 @@ from squadops.ports.sandbox import ExecutionSandboxPort
 from squadops.sandbox.models import (
     BuildResult,
     DiagnosticsResult,
+    FileContent,
     InstallResult,
     OperationName,
     OperationResult,
@@ -51,6 +53,23 @@ class SandboxServiceError(Exception):
     def __init__(self, status_code: int, message: str) -> None:
         super().__init__(f"sandbox service returned {status_code}: {message}")
         self.status_code = status_code
+
+
+def _wire_files(files: Mapping[str, FileContent | None]) -> dict:
+    """Content for the wire (X-2, #2420): text and deletions under ``files``, and each file
+    that isn't UTF-8 base64-encoded under ``binary_files``. A text-only request carries no
+    ``binary_files``, so it is what it was before bytes were carried."""
+    text: dict[str, str | None] = {}
+    binary: dict[str, str] = {}
+    for path, content in files.items():
+        if isinstance(content, bytes):
+            try:
+                text[path] = content.decode("utf-8")
+            except UnicodeDecodeError:
+                binary[path] = base64.b64encode(content).decode("ascii")
+        else:
+            text[path] = content
+    return {"files": text, **({"binary_files": binary} if binary else {})}
 
 
 def _rehydrate(payload: dict) -> OperationResult:
@@ -104,14 +123,14 @@ class HttpExecutionSandbox(ExecutionSandboxPort):
     async def seed_workspace(
         self,
         cycle_id: str,
-        files: Mapping[str, str],
+        files: Mapping[str, FileContent],
         *,
         origin: str = RevisionOrigin.SCAFFOLD_SEED,
         created_at: str | None = None,
     ) -> WorkspaceRevision:
         payload = await self._post(
             f"/api/v1/workspaces/{cycle_id}/seed",
-            {"files": dict(files), "origin": origin, "created_at": created_at},
+            {**_wire_files(files), "origin": origin, "created_at": created_at},
         )
         return WorkspaceRevision.from_dict(payload)
 
@@ -170,12 +189,12 @@ class HttpExecutionSandbox(ExecutionSandboxPort):
         self,
         *,
         base: WorkspaceRevision,
-        files: Mapping[str, str | None],
+        files: Mapping[str, FileContent | None],
         origin: str = RevisionOrigin.AGENT_PATCH,
     ) -> PatchResult:
         payload = await self._operate(
             base,
             OperationName.APPLY_WORKSPACE_PATCH,
-            {"files": dict(files), "origin": origin},
+            {**_wire_files(files), "origin": origin},
         )
         return _rehydrate(payload)

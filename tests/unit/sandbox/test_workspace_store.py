@@ -2,7 +2,7 @@
 
 import pytest
 
-from squadops.sandbox.models import RevisionOrigin
+from squadops.sandbox.models import RevisionOrigin, content_bytes
 from squadops.sandbox.workspace import (
     AlreadySeededError,
     StaleBaseRevisionError,
@@ -11,6 +11,7 @@ from squadops.sandbox.workspace import (
 )
 
 FILES = {"backend/main.py": "print('a')\n", "frontend/index.html": "<html></html>\n"}
+PNG = b"\x89PNG\r\n\x1a\n\x00\x00\x00\rIHDR"  # a PNG's header: not UTF-8
 
 
 @pytest.fixture
@@ -132,6 +133,42 @@ class TestPatch:
             files={"backend/main.py": "print('c')\n"},
             origin=RevisionOrigin.AGENT_PATCH,
         )
+        assert store.verify_pinned("cyc_1", rev.revision_id)
+
+
+class TestContentAsBytes:
+    @pytest.mark.parametrize(
+        "files",
+        [
+            {"assets/mark.png": PNG, "app.py": "x = 1\n"},
+            {"run.bat": "@echo off\r\necho hi\r\n"},
+            {"legacy.txt": "one\rtwo\r"},
+        ],
+        ids=["binary-asset", "crlf-line-endings", "cr-line-endings"],
+    )
+    def test_a_seeded_file_reads_back_as_its_bytes_and_holds_its_pin(self, store, tmp_path, files):
+        """Bug caught (X-2, #2420): a file that isn't UTF-8 crashing the read, or text read in
+        universal-newline mode, so a seeded \\r\\n file read back as \\n and failed its own pin.
+        Both are ordinary in a product's Git checkout."""
+        rev = store.seed("cyc_1", files, origin=RevisionOrigin.GIT_CHECKOUT)
+
+        on_disk = {p: (store.workspace_dir("cyc_1") / p).read_bytes() for p in files}
+        assert on_disk == {p: content_bytes(c) for p, c in files.items()}
+        read_back = store.current_files("cyc_1")
+        assert {p: content_bytes(c) for p, c in read_back.items()} == on_disk
+        assert WorkspaceStore(tmp_path / "cycles").verify_pinned("cyc_1", rev.revision_id)
+
+    def test_a_patch_replaces_a_binary_file_byte_for_byte(self, store):
+        """Bug caught: patch content written as text, so a changed image is refused or mangled."""
+        seed = store.seed("cyc_1", {"assets/mark.png": PNG}, origin=RevisionOrigin.GIT_CHECKOUT)
+        rev, changed = store.apply_patch(
+            "cyc_1",
+            base_revision_id=seed.revision_id,
+            files={"assets/mark.png": PNG + b"\xff"},
+            origin=RevisionOrigin.AGENT_PATCH,
+        )
+        assert changed == ("assets/mark.png",)
+        assert (store.workspace_dir("cyc_1") / "assets/mark.png").read_bytes() == PNG + b"\xff"
         assert store.verify_pinned("cyc_1", rev.revision_id)
 
 

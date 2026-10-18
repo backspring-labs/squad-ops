@@ -14,6 +14,7 @@ from squadops.ports.sandbox import ExecutionSandboxPort
 from squadops.sandbox.models import (
     BuildResult,
     DiagnosticsResult,
+    FileContent,
     InstallResult,
     OperationName,
     OperationStatus,
@@ -78,7 +79,7 @@ class NoOpExecutionSandbox(ExecutionSandboxPort):
         self,
         *,
         base: WorkspaceRevision,
-        files: Mapping[str, str | None],
+        files: Mapping[str, FileContent | None],
         origin: str = RevisionOrigin.AGENT_PATCH,
     ) -> PatchResult:
         # Nothing is applied: the "new" revision is the untouched base.
