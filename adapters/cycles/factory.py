@@ -30,11 +30,20 @@ if TYPE_CHECKING:
 
 
 def create_project_registry(provider: str, **kwargs) -> ProjectRegistryPort:
-    """Create a ProjectRegistryPort adapter."""
+    """Create a ProjectRegistryPort adapter: the config file before SIP-0112's cutover, the
+    writable registry after it (FR-03, #2408). One selector, ``cycles.project_registry_provider``,
+    chooses it for every reader."""
     if provider == "config":
         from adapters.cycles.config_project_registry import ConfigProjectRegistry
 
         return ConfigProjectRegistry(**kwargs)
+    elif provider == "postgres":
+        pool = kwargs.get("pool")
+        if pool is None:
+            raise ValueError("pool is required for postgres project registry provider")
+        from adapters.cycles.postgres_project_registry import PostgresProjectRegistry
+
+        return PostgresProjectRegistry(pool=pool)
     raise ValueError(f"Unknown project registry provider: {provider}")
 
 

@@ -52,6 +52,7 @@ _ENV = {
     # #1568: and so is every other selector.
     "SQUADOPS__CYCLES__REGISTRY_PROVIDER": "memory",
     "SQUADOPS__CYCLES__SQUAD_PROFILE_PROVIDER": "config",
+    "SQUADOPS__CYCLES__PROJECT_REGISTRY_PROVIDER": "config",
     "SQUADOPS__PROMPTS__ASSET_SOURCE_PROVIDER": "filesystem",
     "SQUADOPS__TELEMETRY__BACKEND": "null",
     "SQUADOPS__SANDBOX__PROVIDER": "noop",

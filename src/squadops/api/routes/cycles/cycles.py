@@ -62,6 +62,7 @@ from squadops.cycles.models import (
     CycleStatus,
     Gate,
     PreflightRejectedError,
+    ProjectNotReadyError,
     Run,
     RunNotFoundError,
     SquadProfile,
@@ -400,8 +401,13 @@ async def prepare_cycle(
 ) -> PreparedCycle:
     """Build and preflight a cycle and its first run from a create request: the route's body,
     or a campaign launch's (SIP-0109 §12b), which also names the campaign and the cycle's kind.
-    Raises before anything is persisted when the project is unknown or a preflight blocks."""
-    await ports.project_registry.get_project(project_id)
+    Raises before anything is persisted when the project is unknown, its lifecycle accepts no
+    Cycle (SIP-0112 contract 1: registering, archived or failed) or a preflight blocks."""
+    project = await ports.project_registry.get_project(project_id)
+    if not project.lifecycle_status.accepts_cycles:
+        raise ProjectNotReadyError(
+            f"Project {project_id} is {project.lifecycle_status.value}: a Cycle needs it READY"
+        )
 
     # Resolve squad profile snapshot
     profile, snapshot_hash = await ports.squad_profile.resolve_snapshot(body.squad_profile_id)

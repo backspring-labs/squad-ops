@@ -65,6 +65,13 @@ from squadops.cycles.cycle_assessment import AssessorIdentity
 from squadops.execution.cycle_evidence import assess_cycle
 from squadops.execution.reply_router import ReplyRouter
 from squadops.memory.reconcile import reconcile_recent
+from squadops.projects.cutover import (
+    CutoverProblem,
+    RegistryCutoverRefused,
+    problems_after_seeding,
+    problems_on_the_config_provider,
+    unknown_project_ids,
+)
 
 from .deps import PORT_SLOTS
 from .logging_setup import configure_logging, quiet_routine_successes
@@ -312,6 +319,49 @@ async def _init_log_forwarding(state, config) -> None:
     state.log_forwarder = await create_log_forwarder(config.prefect)
 
 
+async def _cut_over_project_registry(provider: str, registry, pool) -> None:
+    """SIP-0112 FR-03 (#2408): the registry cutover, read at every start. Raises, and the
+    runtime API does not serve, when a Project would be missing, shadowed or hidden.
+
+    - ``postgres``: seed each config/projects.yaml entry not seeded before, then refuse unless
+      every one is in the registry as seeded. Squad profiles' seed logs a failure and carries on;
+      this one can't, since an existing project would read as 404 (IR-1).
+    - ``config``: refuse when the writable registry holds a registered Project, which this
+      provider cannot read (R3: a rollback never makes a Project disappear).
+    """
+    from adapters.cycles.config_project_registry import ConfigProjectRegistry
+    from adapters.cycles.postgres_project_registry import writable_registry_provenances
+
+    if provider == "config":
+        records = await writable_registry_provenances(pool) if pool is not None else None
+        problems = problems_on_the_config_provider(records or {})
+        if problems:
+            raise RegistryCutoverRefused(problems)
+        return
+
+    records = await writable_registry_provenances(pool)
+    if records is None:
+        raise RegistryCutoverRefused(
+            [CutoverProblem("*", "project_records is missing: migration 1800 has not applied")]
+        )
+    config_projects = await ConfigProjectRegistry().list_projects()
+    seeded = await registry.seed_from_config(config_projects, source="config/projects.yaml")
+    if seeded:
+        logger.info("Seeded %d project(s) from config/projects.yaml: %s", len(seeded), seeded)
+    records = await registry.provenances()
+    problems = problems_after_seeding([p.project_id for p in config_projects], records)
+    if problems:
+        raise RegistryCutoverRefused(problems)
+    unknown = unknown_project_ids(await registry.referenced_project_ids(), records)
+    if unknown:
+        logger.warning(
+            "Cycles or campaigns name %d project(s) the registry does not hold, kept as they "
+            "are (FR-03): %s",
+            len(unknown),
+            unknown,
+        )
+
+
 async def _init_cycle_subsystem(state, config, pool) -> None:
     """Initialize SIP-0064 cycle ports + SIP-0066 orchestrator.
 
@@ -344,7 +394,11 @@ async def _init_cycle_subsystem(state, config, pool) -> None:
     )
     from adapters.cycles.workflow_tracker_factory import create_workflow_tracker
 
-    project_registry = create_project_registry("config")
+    project_provider = config.cycles.project_registry_provider
+    project_registry = create_project_registry(
+        project_provider, **({"pool": pool} if project_provider == "postgres" else {})
+    )
+    await _cut_over_project_registry(project_provider, project_registry, pool)
     # #1976: a transient database failure is retried inside the registry, never by its callers.
     cycle_registry = create_cycle_registry(
         config.cycles.registry_provider,

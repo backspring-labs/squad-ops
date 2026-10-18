@@ -12,6 +12,8 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from enum import StrEnum
 
+from squadops.projects.models import ProjectLifecycleStatus, ProjectOwnership, ProjectSource
+
 # =============================================================================
 # Enums (str, Enum) — following config/schema.py SSLMode pattern
 # =============================================================================
@@ -170,6 +172,11 @@ class ProjectNotFoundError(CycleError):
     """Raised when a project_id cannot be found."""
 
 
+class ProjectNotReadyError(CycleError):
+    """Raised when a Cycle is prepared for a Project whose lifecycle accepts none (SIP-0112
+    contract 1): registering, archived or failed. A typed refusal, never a 404."""
+
+
 class ArtifactNotFoundError(CycleError):
     """Raised when an artifact_id cannot be found."""
 
@@ -291,7 +298,11 @@ def resolve_config(applied_defaults: dict, execution_overrides: dict) -> dict:
 
 @dataclass(frozen=True)
 class Project:
-    """Pre-registered project entity. SIP-0064 §8.1."""
+    """A registered Project. SIP-0064 §8.1, extended by SIP-0112's Project Record (E.4.1).
+
+    The fields after ``prd_path`` are the record's. A Project the config registry reads is a
+    sample application shipped in the image: ``READY`` at version 1, with no external source.
+    """
 
     project_id: str
     name: str
@@ -299,6 +310,11 @@ class Project:
     created_at: datetime
     tags: tuple[str, ...] = ()
     prd_path: str | None = None
+    lifecycle_status: ProjectLifecycleStatus = ProjectLifecycleStatus.READY
+    record_version: int = 1
+    source: ProjectSource | None = None
+    ownership: ProjectOwnership | None = None
+    development_configuration_revision: int | None = None
 
 
 @dataclass(frozen=True)

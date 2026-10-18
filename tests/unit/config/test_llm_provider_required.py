@@ -44,7 +44,11 @@ def _rest() -> dict:
         "auth": AuthConfig(enabled=False, provider="disabled"),
         "tools": ToolsConfig(filesystem=FilesystemToolConfig(provider="local")),
         # #1568: every other selector section, each naming its provider.
-        "cycles": CyclesConfig(registry_provider="memory", squad_profile_provider="config"),
+        "cycles": CyclesConfig(
+            registry_provider="memory",
+            squad_profile_provider="config",
+            project_registry_provider="config",
+        ),
         "prompts": PromptsConfig(asset_source_provider="filesystem"),
         "telemetry": TelemetryConfig(backend="null"),
         "sandbox": SandboxConfig(provider="noop"),

@@ -176,6 +176,23 @@ class BaselinePromoteRequest(BaseModel):
 # =============================================================================
 
 
+class ProjectSourceResponse(BaseModel):
+    """The external source binding (SIP-0112 §B.5): the authoritative locator and its refs."""
+
+    repo_uri: str
+    base_ref: str
+    contribution_mode: str
+    repository_root: str
+
+
+class ProjectOwnershipResponse(BaseModel):
+    """The external product's authority (SIP-0112 §B.5.1)."""
+
+    owner: str
+    delegated_actions: list[str]
+    acceptance_policy_ref: str | None
+
+
 class ProjectResponse(BaseModel):
     project_id: str
     name: str
@@ -183,6 +200,13 @@ class ProjectResponse(BaseModel):
     created_at: datetime
     tags: list[str]
     has_prd: bool = False
+    # SIP-0112's Project Record (E.4.1): added fields only, so a client reading the six above is
+    # unchanged (D.6). A sample application reads READY at version 1 with no source or owner.
+    lifecycle_status: str
+    record_version: int
+    source: ProjectSourceResponse | None
+    ownership: ProjectOwnershipResponse | None
+    development_configuration_revision: int | None
 
 
 class GateDecisionResponse(BaseModel):

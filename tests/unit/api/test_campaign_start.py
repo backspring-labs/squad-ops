@@ -56,14 +56,16 @@ class _Deploys:
 
 
 class _World:
-    def __init__(self, campaigns: MemoryCampaignRegistry | None = None) -> None:
+    def __init__(
+        self, campaigns: MemoryCampaignRegistry | None = None, project_registry=None
+    ) -> None:
         self.campaigns = campaigns or MemoryCampaignRegistry()
         self.cycles = MemoryCycleRegistry()
         self.executor = _Executor()
         self.launch = CampaignLaunchService(
             campaigns=self.campaigns,
             creation=CreationPorts(
-                project_registry=create_project_registry("config"),
+                project_registry=project_registry or create_project_registry("config"),
                 squad_profile=create_squad_profile_port("config"),
                 cycle_registry=self.cycles,
                 deploy_registry=_Deploys(),
@@ -510,3 +512,39 @@ async def test_a_campaigns_stack_reaches_its_calibration_cycle_by_the_create_pat
     [cycle_id] = resp.json()["launched_cycles"]
     config = (await w.cycles.get_cycle(cycle_id)).resolved_config()
     assert (config["build_profile"], config["development_profile"]) == (built_on, built_on)
+
+
+async def test_a_launch_for_a_project_that_is_not_ready_escalates_as_the_create_path_refuses_it():
+    """SIP-0112 contract 1 (#2408), at the Campaign launcher: a Project still REGISTERING is seen,
+    and refused as not ready. Bugs caught: the launcher bypassing the readiness check that the
+    create route makes, so a campaign launches a Cycle for a product whose source was never
+    reached; or the refusal surfacing as a fault the next drain repeats instead of an escalation."""
+    import dataclasses
+
+    from squadops.projects.models import ProjectLifecycleStatus
+
+    config = create_project_registry("config")
+    registering = dataclasses.replace(
+        await config.get_project("group_run"), lifecycle_status=ProjectLifecycleStatus.REGISTERING
+    )
+    registry = AsyncMock()
+    registry.get_project.return_value = registering
+    world = _World(project_registry=registry)
+    await world.campaigns.create_campaign(
+        campaign(
+            CID, policy=policy(calibration_profile="validated-fullstack", squad_profile="full-38")
+        ),
+        actor="owner",
+        actor_role="admin",
+        reason="r",
+        idempotency_key="create",
+    )
+
+    world.start()
+    await world.launch.drain()
+
+    log = await world.campaigns.control_log(CID)
+    [refused] = [e for e in log if e.operation is ControlOperation.LAUNCH_REFUSED]
+    assert refused.binding["refusal"].startswith("PROJECT_NOT_READY: Project group_run is ")
+    assert (await world.campaigns.get_campaign(CID)).state is CampaignState.ESCALATED
+    assert await world.cycles.list_cycles("group_run") == []

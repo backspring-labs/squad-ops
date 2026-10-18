@@ -16,7 +16,9 @@ from squadops.api.cycle_schemas import (
     GateDecisionResponse,
     GateDTO,
     IndicatorDTO,
+    ProjectOwnershipResponse,
     ProjectResponse,
+    ProjectSourceResponse,
     ReplayProvenanceDTO,
     RunResponse,
     SquadProfileResponse,
@@ -48,6 +50,28 @@ def project_to_response(project: Project) -> ProjectResponse:
         created_at=project.created_at,
         tags=list(project.tags),
         has_prd=project.prd_path is not None,
+        lifecycle_status=project.lifecycle_status.value,
+        record_version=project.record_version,
+        source=(
+            ProjectSourceResponse(
+                repo_uri=project.source.repo_uri,
+                base_ref=project.source.base_ref,
+                contribution_mode=project.source.contribution_mode,
+                repository_root=project.source.repository_root,
+            )
+            if project.source is not None
+            else None
+        ),
+        ownership=(
+            ProjectOwnershipResponse(
+                owner=project.ownership.owner,
+                delegated_actions=list(project.ownership.delegated_actions),
+                acceptance_policy_ref=project.ownership.acceptance_policy_ref,
+            )
+            if project.ownership is not None
+            else None
+        ),
+        development_configuration_revision=project.development_configuration_revision,
     )
 
 

@@ -228,6 +228,7 @@ services:
       SQUADOPS__COMMS__A2A__PROVIDER: http  # required, never defaulted (#301)
       SQUADOPS__TOOLS__FILESYSTEM__PROVIDER: local  # required, never defaulted (#301)
       SQUADOPS__CYCLES__SQUAD_PROFILE_PROVIDER: postgres  # required (#1568); profiles are data, edited through the API
+      SQUADOPS__CYCLES__PROJECT_REGISTRY_PROVIDER: ${SQUADOPS__CYCLES__PROJECT_REGISTRY_PROVIDER:?set it in .env (see .env.example) — required, never defaulted (#1568)}
       SQUADOPS__PROMPTS__ASSET_SOURCE_PROVIDER: ${SQUADOPS__PROMPTS__ASSET_SOURCE_PROVIDER:?set it in .env (see .env.example) — required, never defaulted (#1568)}
       SQUADOPS__TELEMETRY__BACKEND: otel  # required, never defaulted (#1568)
       SQUADOPS__TELEMETRY__OTLP_ENDPOINT: http://otel-collector:4317  # the runtime's activity metrics (#2204)
@@ -298,6 +299,7 @@ services:
       SQUADOPS__AUTH__PROVIDER: keycloak  # required, never defaulted (#1568)
       SQUADOPS__CYCLES__REGISTRY_PROVIDER: postgres  # required, never defaulted (#1568)
       SQUADOPS__CYCLES__SQUAD_PROFILE_PROVIDER: postgres  # required, never defaulted (#1568)
+      SQUADOPS__CYCLES__PROJECT_REGISTRY_PROVIDER: ${SQUADOPS__CYCLES__PROJECT_REGISTRY_PROVIDER:?set it in .env (see .env.example) — required, never defaulted (#1568)}
       SQUADOPS__SANDBOX__PROVIDER: ${SQUADOPS__SANDBOX__PROVIDER:?set it in .env (see .env.example) — required, never defaulted (#1568)}
     volumes:
       - max_memory_data:/app/data/memory_db
@@ -361,6 +363,7 @@ services:
       SQUADOPS__AUTH__PROVIDER: keycloak  # required, never defaulted (#1568)
       SQUADOPS__CYCLES__REGISTRY_PROVIDER: postgres  # required, never defaulted (#1568)
       SQUADOPS__CYCLES__SQUAD_PROFILE_PROVIDER: postgres  # required, never defaulted (#1568)
+      SQUADOPS__CYCLES__PROJECT_REGISTRY_PROVIDER: ${SQUADOPS__CYCLES__PROJECT_REGISTRY_PROVIDER:?set it in .env (see .env.example) — required, never defaulted (#1568)}
       SQUADOPS__SANDBOX__PROVIDER: ${SQUADOPS__SANDBOX__PROVIDER:?set it in .env (see .env.example) — required, never defaulted (#1568)}
     volumes:
       - nat_memory_data:/app/data/memory_db
@@ -445,6 +448,7 @@ services:
       SQUADOPS__AUTH__PROVIDER: keycloak  # required, never defaulted (#1568)
       SQUADOPS__CYCLES__REGISTRY_PROVIDER: postgres  # required, never defaulted (#1568)
       SQUADOPS__CYCLES__SQUAD_PROFILE_PROVIDER: postgres  # required, never defaulted (#1568)
+      SQUADOPS__CYCLES__PROJECT_REGISTRY_PROVIDER: ${SQUADOPS__CYCLES__PROJECT_REGISTRY_PROVIDER:?set it in .env (see .env.example) — required, never defaulted (#1568)}
       SQUADOPS__SANDBOX__PROVIDER: ${SQUADOPS__SANDBOX__PROVIDER:?set it in .env (see .env.example) — required, never defaulted (#1568)}
     volumes:
       - ./docker-compose.yml:/app/docker-compose.yml
@@ -510,6 +514,7 @@ services:
       SQUADOPS__AUTH__PROVIDER: keycloak  # required, never defaulted (#1568)
       SQUADOPS__CYCLES__REGISTRY_PROVIDER: postgres  # required, never defaulted (#1568)
       SQUADOPS__CYCLES__SQUAD_PROFILE_PROVIDER: postgres  # required, never defaulted (#1568)
+      SQUADOPS__CYCLES__PROJECT_REGISTRY_PROVIDER: ${SQUADOPS__CYCLES__PROJECT_REGISTRY_PROVIDER:?set it in .env (see .env.example) — required, never defaulted (#1568)}
       SQUADOPS__SANDBOX__PROVIDER: ${SQUADOPS__SANDBOX__PROVIDER:?set it in .env (see .env.example) — required, never defaulted (#1568)}
     volumes:
       - eve_memory_data:/app/data/memory_db
@@ -573,6 +578,7 @@ services:
       SQUADOPS__AUTH__PROVIDER: keycloak  # required, never defaulted (#1568)
       SQUADOPS__CYCLES__REGISTRY_PROVIDER: postgres  # required, never defaulted (#1568)
       SQUADOPS__CYCLES__SQUAD_PROFILE_PROVIDER: postgres  # required, never defaulted (#1568)
+      SQUADOPS__CYCLES__PROJECT_REGISTRY_PROVIDER: ${SQUADOPS__CYCLES__PROJECT_REGISTRY_PROVIDER:?set it in .env (see .env.example) — required, never defaulted (#1568)}
       SQUADOPS__SANDBOX__PROVIDER: ${SQUADOPS__SANDBOX__PROVIDER:?set it in .env (see .env.example) — required, never defaulted (#1568)}
     volumes:
       - data_memory_data:/app/data/memory_db
@@ -638,6 +644,7 @@ services:
       SQUADOPS__AUTH__PROVIDER: keycloak  # required, never defaulted (#1568)
       SQUADOPS__CYCLES__REGISTRY_PROVIDER: postgres  # required, never defaulted (#1568)
       SQUADOPS__CYCLES__SQUAD_PROFILE_PROVIDER: postgres  # required, never defaulted (#1568)
+      SQUADOPS__CYCLES__PROJECT_REGISTRY_PROVIDER: ${SQUADOPS__CYCLES__PROJECT_REGISTRY_PROVIDER:?set it in .env (see .env.example) — required, never defaulted (#1568)}
       SQUADOPS__SANDBOX__PROVIDER: ${SQUADOPS__SANDBOX__PROVIDER:?set it in .env (see .env.example) — required, never defaulted (#1568)}
     volumes:
       - han_memory_data:/app/data/memory_db
@@ -701,6 +708,7 @@ services:
       SQUADOPS__AUTH__PROVIDER: keycloak  # required, never defaulted (#1568)
       SQUADOPS__CYCLES__REGISTRY_PROVIDER: postgres  # required, never defaulted (#1568)
       SQUADOPS__CYCLES__SQUAD_PROFILE_PROVIDER: postgres  # required, never defaulted (#1568)
+      SQUADOPS__CYCLES__PROJECT_REGISTRY_PROVIDER: ${SQUADOPS__CYCLES__PROJECT_REGISTRY_PROVIDER:?set it in .env (see .env.example) — required, never defaulted (#1568)}
       SQUADOPS__SANDBOX__PROVIDER: ${SQUADOPS__SANDBOX__PROVIDER:?set it in .env (see .env.example) — required, never defaulted (#1568)}
     volumes:
       - bob_memory_data:/app/data/memory_db
@@ -768,6 +776,7 @@ services:
       SQUADOPS__AUTH__PROVIDER: keycloak  # required, never defaulted (#1568)
       SQUADOPS__CYCLES__REGISTRY_PROVIDER: postgres  # required, never defaulted (#1568)
       SQUADOPS__CYCLES__SQUAD_PROFILE_PROVIDER: postgres  # required, never defaulted (#1568)
+      SQUADOPS__CYCLES__PROJECT_REGISTRY_PROVIDER: ${SQUADOPS__CYCLES__PROJECT_REGISTRY_PROVIDER:?set it in .env (see .env.example) — required, never defaulted (#1568)}
       SQUADOPS__SANDBOX__PROVIDER: ${SQUADOPS__SANDBOX__PROVIDER:?set it in .env (see .env.example) — required, never defaulted (#1568)}
       SQUADOPS__DB__URL: postgresql://squadops:secret://db_password@postgres:5432/squadops
       SQUADOPS__COMMS__RABBITMQ__URL: amqp://squadops:secret://rabbitmq_password@rabbitmq:5672/

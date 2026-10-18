@@ -1081,3 +1081,62 @@ class TestCreatePinsTheMemorySnapshot:
         assert resp.status_code == 201
         mock_cycle_registry.create_run.assert_called_once()
         assert "memory_snapshot_not_pinned" in caplog.text
+
+
+class TestCreateRefusesAProjectThatIsNotReady:
+    """SIP-0112 contract 1 (#2408): ``prepare_cycle()`` with the shared fixture's Project, entered
+    at the create route. Bugs caught: a Project still registering (or archived, or failed) given
+    a Cycle; the refusal read as a 404, so a caller treats a registered Project as unknown; or a
+    refused create persisting its cycle anyway."""
+
+    @pytest.fixture
+    def fixture_project(self, mock_project_registry):
+        from squadops.cycles.models import Project
+        from tests.fixtures.shared_contract.repository import recorded
+
+        project_id = recorded("project_source_context", "valid")["project_id"]
+
+        def project(status):
+            return Project(
+                project_id=project_id,
+                name="Tally",
+                description="the shared fixture",
+                created_at=NOW,
+                lifecycle_status=status,
+            )
+
+        return project_id, project
+
+    @pytest.mark.parametrize("status", ["REGISTERING", "ARCHIVED", "FAILED_REGISTRATION"])
+    def test_a_project_that_accepts_no_cycle_is_refused_as_not_ready(
+        self, client, mock_project_registry, mock_cycle_registry, fixture_project, status
+    ):
+        from squadops.projects.models import ProjectLifecycleStatus
+
+        project_id, project = fixture_project
+        mock_project_registry.get_project.return_value = project(ProjectLifecycleStatus(status))
+
+        resp = client.post(
+            f"/api/v1/projects/{project_id}/cycles", json={"squad_profile_id": "full"}
+        )
+
+        error = resp.json()["detail"]["error"]
+        assert (resp.status_code, error["code"]) == (409, "PROJECT_NOT_READY")
+        assert status in error["message"]
+        mock_cycle_registry.create_cycle.assert_not_called()
+
+    def test_a_ready_project_is_created_as_before(
+        self, client, mock_project_registry, mock_cycle_registry, fixture_project
+    ):
+        from squadops.projects.models import ProjectLifecycleStatus
+
+        project_id, project = fixture_project
+        mock_project_registry.get_project.return_value = project(ProjectLifecycleStatus.READY)
+
+        resp = client.post(
+            f"/api/v1/projects/{project_id}/cycles", json={"squad_profile_id": "full"}
+        )
+
+        assert resp.status_code == 201
+        assert resp.json()["project_id"] == project_id
+        mock_cycle_registry.create_cycle.assert_called_once()
