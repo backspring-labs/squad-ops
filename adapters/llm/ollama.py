@@ -18,6 +18,7 @@ from squadops.llm.exceptions import (
     LLMModelNotFoundError,
     LLMTimeoutError,
 )
+from squadops.llm.model_registry import get_model_spec
 from squadops.llm.models import ChatMessage, LLMRequest, LLMResponse, ModelInfo, ReasoningLevel
 from squadops.ports.llm.provider import LLMCapability, LLMPort
 
@@ -32,6 +33,18 @@ def _seconds(data: dict[str, Any], key: str) -> float | None:
     """A duration Ollama reports in nanoseconds, in seconds; ``None`` when it reports none (#2204)."""
     value = data.get(key)
     return round(value / 1e9, 3) if isinstance(value, int | float) and value >= 0 else None
+
+
+def _served_context(model: str) -> dict[str, int]:
+    """The context the registry budgets ``model`` at, as Ollama's ``num_ctx`` (#2427).
+
+    Without it Ollama serves its own default, 4,096 tokens on the MacBook's 0.12.3, and cuts a
+    longer prompt from the front, where the system prompt is, below every guard that reads the
+    registry. A model the registry does not know sends none, as before, and cycle-create preflight
+    already says its guard is off.
+    """
+    spec = get_model_spec(model)
+    return {} if spec is None else {"num_ctx": spec.context_window}
 
 
 def _compute_tokens_per_second(data: dict[str, Any]) -> float | None:
@@ -149,6 +162,7 @@ class OllamaAdapter(LLMPort):
                 **({} if request.top_p is None else {"top_p": request.top_p}),
                 "num_predict": request.max_tokens,
                 **({} if request.seed is None else {"seed": request.seed}),
+                **_served_context(model),
             },
         }
 
@@ -245,6 +259,7 @@ class OllamaAdapter(LLMPort):
             options["top_p"] = top_p
         if seed is not None:
             options["seed"] = seed
+        options.update(_served_context(model))
         if options:
             payload["options"] = options
         if reasoning is not None:

@@ -193,3 +193,25 @@ class TestThinkingHeadroom:
         from squadops.llm.model_registry import thinking_headroom
 
         assert thinking_headroom("hyper") == 0
+
+
+def test_every_model_a_shipped_squad_profile_names_has_an_entry():
+    """#2427. Bug caught: a squad profile naming a model the registry does not know, which turns
+    off its overflow guard (cycle-create preflight warns, ``model_unregistered``) and, on Ollama,
+    leaves the served context at Ollama's own default, since the adapter sends ``num_ctx`` only
+    from an entry. The ``smoke`` squad's ``qwen2.5:3b-instruct`` was such a model."""
+    from pathlib import Path
+
+    import yaml
+
+    profiles = yaml.safe_load(
+        (Path(__file__).resolve().parents[3] / "config" / "squad-profiles.yaml").read_text()
+    )["profiles"]
+    named = {
+        (profile["profile_id"], member["model"])
+        for profile in profiles
+        for member in profile["agents"]
+        if member.get("model")
+    }
+    assert named
+    assert [pair for pair in sorted(named) if get_model_spec(pair[1]) is None] == []
