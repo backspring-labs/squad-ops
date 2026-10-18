@@ -110,12 +110,18 @@ async def _op_probe(service: SandboxService, revision: WorkspaceRevision, params
 
 
 async def _op_patch(service: SandboxService, revision: WorkspaceRevision, params: dict):
-    binary = _decode_binary(params.get("binary_files", {}), alongside=params["files"])
-    return await service.apply_workspace_patch(
-        base=revision,
-        files={**params["files"], **binary},
-        origin=params.get("origin", RevisionOrigin.AGENT_PATCH),
-    )
+    try:
+        binary = _decode_binary(params.get("binary_files", {}), alongside=params["files"])
+        return await service.apply_workspace_patch(
+            base=revision,
+            files={**params["files"], **binary},
+            origin=params.get("origin", RevisionOrigin.AGENT_PATCH),
+        )
+    except ValueError as e:
+        # The caller's error, not the service's: an unknown origin, a patch that changes
+        # nothing (a revision can't be its own parent), or bytes that don't decode. Each
+        # answered 500 before, where a seed's refusal answers 400.
+        raise _error(400, "INVALID_PATCH", str(e)) from e
 
 
 # The typed-operations table (§7 item 2): membership here IS the API surface.

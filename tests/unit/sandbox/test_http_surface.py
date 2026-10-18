@@ -249,3 +249,33 @@ async def test_binary_content_the_sandbox_cannot_read_is_refused_at_seeding(stac
     error = response.json()["error"]
     assert error["code"] == "INVALID_SEED" and why in error["message"]
     assert store.current_files("cyc_1") == {}
+
+
+@pytest.mark.parametrize(
+    ("params", "why"),
+    [
+        ({"files": {"backend/main.py": "b = 2\n"}, "origin": "warm"}, "unknown revision origin"),
+        ({"files": dict(FILES)}, "own parent"),
+        ({"files": {}, "binary_files": {"a.png": "not base64!"}}, "not valid base64"),
+    ],
+    ids=["unknown-origin", "changes-nothing", "undecodable-bytes"],
+)
+async def test_a_patch_the_store_refuses_is_a_400_and_leaves_the_tree(stack, params, why):
+    """Bug caught: a caller's bad patch answered 500, as though the service had failed, where a
+    seed's refusal answers 400. The tree stays on its base."""
+    store, _, _, sandbox, client_factory = stack
+    seed = await sandbox.seed_workspace("cyc_1", FILES)
+    async with client_factory() as client:
+        response = await client.post(
+            "/api/v1/workspaces/cyc_1/operations",
+            json={
+                "operation": OperationName.APPLY_WORKSPACE_PATCH,
+                "revision": seed.to_dict(),
+                "params": params,
+            },
+            headers={"Authorization": f"Bearer {TOKEN}"},
+        )
+    assert response.status_code == 400
+    error = response.json()["error"]
+    assert error["code"] == "INVALID_PATCH" and why in error["message"]
+    assert store.verify_pinned("cyc_1", seed.revision_id)
