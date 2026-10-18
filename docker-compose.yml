@@ -895,7 +895,7 @@ services:
     restart: unless-stopped
 
   otel-collector:
-    image: otel/opentelemetry-collector:0.138.0  # pinned, as Prometheus and Grafana are (#2424)
+    image: otel/opentelemetry-collector:0.147.0  # pinned, as Prometheus and Grafana are (#2424)
     container_name: squadops-otel-collector
     command: ["--config=/etc/otel-collector/config.yaml"]
     volumes:
@@ -912,7 +912,7 @@ services:
       - squadnet
     restart: unless-stopped
   prometheus:
-    image: prom/prometheus:v3.7.3  # pinned (#2424)
+    image: prom/prometheus:v3.10.0  # pinned (#2424)
     container_name: squadops-prometheus
     # #581
     healthcheck:
@@ -973,7 +973,7 @@ services:
       - squadnet
     restart: unless-stopped
   grafana:
-    image: grafana/grafana:12.2.1  # pinned (#2424)
+    image: grafana/grafana:12.4.1  # pinned (#2424)
     container_name: squadops-grafana
     # #581
     healthcheck:
