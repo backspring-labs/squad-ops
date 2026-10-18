@@ -12,25 +12,38 @@ Every Git call runs isolated:
 - the transports are an allow-list: https and ssh, and local paths only when the deploy configures
   a local root;
 - the locator is checked against the registration rules again at the point of use, and every
-  argument a caller supplied follows ``--end-of-options``.
+  argument a caller supplied follows ``--end-of-options``;
+- the host's resolved addresses are checked just before Git connects (#2459): a public name that
+  resolves to the deploy itself (loopback, link-local, unspecified) is refused unless the
+  allow-list names it. Git resolves the name again itself, so a name that changes its answer
+  between the two lookups is out of reach of this check; the allow-list is the firm control.
 """
 
 from __future__ import annotations
 
 import asyncio
+import ipaddress
 import os
 import re
 import shutil
+import socket
 import subprocess
 import tempfile
 from pathlib import Path
+from urllib.parse import urlsplit
 
 from squadops.ports.projects.source_repository import SourceRepositoryPort
 from squadops.projects.models import CheckoutTree, SourceUnavailable
-from squadops.projects.registration import LocatorPolicy, LocatorRefused, check_locator
+from squadops.projects.registration import (
+    LocatorPolicy,
+    LocatorRefused,
+    check_locator,
+    is_internal_address,
+)
 
 _COMMIT = re.compile(r"^[0-9a-f]{40}$")
 _PROJECT_ID = re.compile(r"^[a-z][a-z0-9_-]{1,62}$")
+_SCP_HOST = re.compile(r"^[A-Za-z0-9._-]+@(?P<host>[A-Za-z0-9.-]+):")
 
 
 class GitSourceRepository(SourceRepositoryPort):
@@ -48,7 +61,30 @@ class GitSourceRepository(SourceRepositoryPort):
             raise SourceUnavailable(str(e), reason="locator_refused") from e
         if ref.startswith("-"):
             raise SourceUnavailable(f"{ref!r} is not a ref", reason="ref_refused")
+        await asyncio.to_thread(self._refuse_internal_resolution, locator)
         return await asyncio.to_thread(self._sync, self._clone_dir(project_id), locator, ref)
+
+    def _refuse_internal_resolution(self, locator: str) -> None:
+        """#2459: a remote host whose addresses reach the deploy itself, unless allow-listed."""
+        if "://" in locator:
+            host = urlsplit(locator).hostname
+        else:
+            scp = _SCP_HOST.match(locator)
+            host = scp["host"] if scp else None
+        if not host or host.lower() in self._policy.allowed_hosts:
+            return
+        try:
+            infos = socket.getaddrinfo(host, None, proto=socket.IPPROTO_TCP)
+        except OSError as e:
+            raise SourceUnavailable(f"{host} does not resolve: {e}", reason="resolve_host") from e
+        for info in infos:
+            address = ipaddress.ip_address(info[4][0].split("%")[0])
+            if is_internal_address(address):
+                raise SourceUnavailable(
+                    f"{host} resolves to {address}, one of the deploy's own addresses: name it "
+                    "in the allow-list to use it",
+                    reason="internal_host",
+                )
 
     async def tree_at(self, project_id: str, commit: str) -> CheckoutTree:
         if not _COMMIT.match(commit):

@@ -150,3 +150,24 @@ async def test_a_commit_the_clone_lacks_and_a_bad_id_are_refused(product, clones
         "not_a_commit",
         "bad_project",
     )
+
+
+async def test_a_public_name_that_resolves_to_the_deploy_itself_is_refused(clones, monkeypatch):
+    """#2459, the clone's half. Bug caught: a registered name whose DNS points at loopback or the
+    metadata address, so the runtime API's clone reaches the deploy's own services."""
+    import socket
+
+    def resolves_to(address):
+        return lambda host, port, **kwargs: [
+            (socket.AF_INET, socket.SOCK_STREAM, 6, "", (address, 0))
+        ]
+
+    monkeypatch.setattr(socket, "getaddrinfo", resolves_to("169.254.169.254"))
+    with pytest.raises(SourceUnavailable) as refused:
+        await clones.sync("prj-tally", "https://git.example.org/o/r.git", "refs/heads/main")
+    assert refused.value.reason == "internal_host"
+
+    monkeypatch.setattr(socket, "getaddrinfo", resolves_to("127.0.0.1"))
+    with pytest.raises(SourceUnavailable) as refused:
+        await clones.sync("prj-tally", "git@git.example.org:o/r.git", "refs/heads/main")
+    assert refused.value.reason == "internal_host"
