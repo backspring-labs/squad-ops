@@ -268,7 +268,7 @@ and docs and SIP records. None of the set's evidence depends on them.
 |---|---|---|
 | [SIP-0104-Deterministic-Verification-Scaffolding-with](../../design/sips/SIP-0104-Deterministic-Verification-Scaffolding-with.md) | accepted | implemented |
 | [SIP-0109-Campaign-Orchestration](../../design/sips/SIP-0109-Campaign-Orchestration.md) | proposed | accepted |
-| [SIP-Outcome-Evaluation](../../design/sips/SIP-Outcome-Evaluation.md) | new | proposed |
+| SIP-Outcome-Evaluation | new | proposed |
 | [SIP-Verification-Yield](../../design/sips/SIP-Verification-Yield.md) | new | proposed |
 
 ## Improvement proposals amended in place

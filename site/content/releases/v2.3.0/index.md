@@ -324,7 +324,7 @@ No lifecycle change — each was edited under the status it already had (a post-
 | [SIP-Agent-Comms-Delivery-Guarantees](../../design/sips/SIP-Agent-Comms-Delivery-Guarantees.md) | proposed |
 | [SIP-Cycle-Request-Profile-Naming-Taxonomy](../../design/sips/SIP-Cycle-Request-Profile-Naming-Taxonomy.md) | proposed |
 | [SIP-Memory-Entry-Points](../../design/sips/SIP-Memory-Entry-Points.md) | deprecated |
-| [SIP-Outcome-Evaluation](../../design/sips/SIP-Outcome-Evaluation.md) | proposed |
+| SIP-Outcome-Evaluation | proposed |
 
 ## Cycle evidence
 

@@ -42,13 +42,13 @@ and by its own rules, both when the product already exists and when SquadOps cre
 
 ---
 
-## 1. The Spark lane's feature: Outcome Evaluation (`sips/proposed/SIP-Outcome-Evaluation.md`)
+## 1. The Spark lane's feature: Outcome Evaluation (SIP-0113, `sips/accepted/SIP-0113-Outcome-Evaluation.md`)
 
 ### 1.1 The design review, first
 
-The SIP is still proposed, and accepting it is the owner's design review. Its §8 asks five questions. This plan's
-rulings are in §7 (D2). The review comes before any of the SIP's code, and its answers become the accepted
-text.
+**Accepted 2026-10-17 as SIP-0113** (the owner: "approve A1-A3 as recommended and accept 2406"), after its design review and before any of its code. Its §8's five
+answers are D2's (§7), and its acceptance questions A1 to A4 are ruled in its §8.1. A2 moves D2(3)'s Lighthouse and axe
+to the evaluator's image. Phase 1's parts are placed with issues #2413–#2418.
 
 Two things the review should also settle, both found while drafting this plan:
 - **"Outcome" is already a word in an implemented SIP.** SIP-0108's `CycleAssessment` has an *outcome* dimension. The
@@ -63,8 +63,8 @@ Two things the review should also settle, both found while drafting this plan:
 As the SIP's §6 lists them:
 - **the scenario store and runner, held out:**
   - scenarios run per increment, on a disposable copy of the evaluated tree, outside every squad agent's container
-    (the Spark lane's intent for the design review, in its review of Project Lifecycle Management, PR #2401; SIP-0109
-    §8.3's environment runs in the QA role's container, which would put the steps in a squad task's inputs);
+    in the sandbox service (SIP-0113 §4.1, A3; SIP-0109 §8.3's environment runs in the QA role's container, which would
+    put the steps in a squad task's inputs);
   - results go in the package, as `passed`, `failed` or `blocked_unverified`;
   - a regression is read the way a broken frozen criterion is;
 - **quality baselines:** Lighthouse, axe and lint per increment, with deltas from the previous accepted tree;
@@ -238,9 +238,9 @@ each one as its consumer (G4).
 
 | change | what it fixes on `main` | what needs it | when |
 |---|---|---|---|
-| **X-1:** a revision origin for a Git checkout | `RevisionOrigin` is a closed set (`src/squadops/sandbox/models.py:23`), and a revision with any other origin is refused (`:103`) | E.4.2 can't seed a checkout without it | first, right after the fixture: E.4.2 waits on it |
-| **X-2:** binary files | seeding, reading the tree and persisting revisions handle UTF-8 text only (`src/squadops/sandbox/workspace.py:205`). Until X-2 ships, a product with binary files is refused at seeding, with that gap named | most real repositories carry some binary files (images, fonts) | before the brownfield demonstration, unless its product is text-only. Every existing revision ID stays the same: hashing the raw bytes gives today's digest for UTF-8 text |
-| **X-3:** a product's own commands | `ExecutionSandboxPort` (`src/squadops/ports/sandbox.py:33`) runs the environment's fixed install, build, test and start commands | contract 7: Outcome Evaluation starts an external product from its declaration | with Outcome Evaluation's runner, before IR-6 |
+| **X-1** (#2419): a revision origin for a Git checkout | `RevisionOrigin` is a closed set (`src/squadops/sandbox/models.py:23`), and a revision with any other origin is refused (`:103`) | E.4.2 can't seed a checkout without it | first, right after the fixture: E.4.2 waits on it |
+| **X-2** (#2420): binary files | seeding, reading the tree and persisting revisions handle UTF-8 text only (`src/squadops/sandbox/workspace.py:205`). Until X-2 ships, a product with binary files is refused at seeding, with that gap named | most real repositories carry some binary files (images, fonts) | before the brownfield demonstration, unless its product is text-only. Every existing revision ID stays the same: hashing the raw bytes gives today's digest for UTF-8 text |
+| **X-3** (#2421): a product's own commands | `ExecutionSandboxPort` (`src/squadops/ports/sandbox.py:33`) runs the environment's fixed install, build, test and start commands | contract 7: Outcome Evaluation starts an external product from its declaration | with Outcome Evaluation's runner, before IR-6 |
 
 **X-3 also starts a pinned revision in a disposable copy.** Today's start mounts the cycle's live tree and runs the app as
 the tree's owner, so the app can write its state there (`adapters/sandbox/container_backend.py:157-164`, `:316-321`). Contract 3 rules that out
@@ -395,7 +395,7 @@ cut.
 
 | checkpoint | MacBook lane | Spark lane | together | it starts when |
 |---|---|---|---|---|
-| **M0, ready to build** | the owner accepts Project Lifecycle Management (PR #2401): **done 2026-10-17, SIP-0112** | Outcome Evaluation's design review (D2), and #316's | this plan's decisions are ruled; the shared fixture merges, freezing contracts 1, 3, 5 and 7 (§2.3) | 2.3.1 has cut: done, 2026-10-17 |
+| **M0, ready to build** | the owner accepts Project Lifecycle Management (PR #2401): **done 2026-10-17, SIP-0112** | Outcome Evaluation's design review (D2): **done 2026-10-17, SIP-0113**; and #316's | this plan's decisions are ruled; the shared fixture merges, freezing contracts 1, 3, 5 and 7 (§2.3) | 2.3.1 has cut: done, 2026-10-17 |
 | **M1, building alone** | E.4.1, then E.4.2 (after X-1), then E.4.3 | phase 1: the scenario store and runner, the baselines, the ledger; X-1 first, X-3 with the runner, X-2 before the brownfield demonstration; #316's rename; #1756; the entry points' first rows. The early reads (#2306, #2253) need no box time | each lane's contract tests run against the fixture; every contract change goes through G4 | M0, for that lane |
 | **M2, measuring** | the registry cutover deploys before the freeze or after the window (§2.6) | the window: suite and deploy frozen (G7), four campaigns, recorded as §1.3 says | neither lane deploys inside the window | phase 1 is built and its suite approved |
 | **M3, each lane's acceptance** | the brownfield demonstration (E.4.3, then E.4.4), then greenfield (E.4.6) | the window's record read; the phase-2 decision (D4), then phase 2's build and reading, or the record that moves it; after the window, the output-quality changes (#2378, #2153, #2306's fix if any) and #1966's A/B | on the Spark, the demonstrations run outside the window | M1 for the MacBook lane; M2 for the Spark lane |
@@ -507,7 +507,7 @@ reading beside it (Outcome Evaluation §1).
 | # | decision | status | the ruling (as recommended, unless the row says otherwise) |
 |---|---|---|---|
 | D1 | **the headline** | **ruled** 2026-10-16. Q35 added the MacBook lane's feature (2026-10-17) | **ruled 2026-10-16:** Outcome Evaluation leads; its design review comes early; phase 2 is conditional on phase 1's data; the entry points carry 2.4 if it moves. **Since then (2026-10-17):** the owner made Project Lifecycle Management the MacBook lane's 2.4 feature (Q35, PR #2401). D1 stands for the Spark lane's (§2) |
-| D2 | **Outcome Evaluation's five questions** (its §8) | **ruled** 2026-10-17, as recommended. The Spark lane's intent from its #2401 review (the runner, the storage, the surfaces) is for this review | **(1)** steps held out, goals visible, as drafted. **(2)** The supervisor drafts the first suite and the owner approves it, frozen before the window. **(3)** Lighthouse and axe in the QA image, with the lock files' audit. **(4)** The first work classes: increment count, PRD tier, and attended or unattended, declared in the objective. **(5)** Phase 2 in 2.4, conditional (D1, D4). Also rename the SIP's "outcome" term (§1.1) |
+| D2 | **Outcome Evaluation's five questions** (its §8) | **ruled** 2026-10-17, as recommended. The Spark lane's intent from its #2401 review (the runner, the storage, the surfaces) is for this review; written into SIP-0113, accepted 2026-10-17, where A2 moves (3)'s Lighthouse and axe to the evaluator's image | **(1)** steps held out, goals visible, as drafted. **(2)** The supervisor drafts the first suite and the owner approves it, frozen before the window. **(3)** Lighthouse and axe in the QA image, with the lock files' audit. **(4)** The first work classes: increment count, PRD tier, and attended or unattended, declared in the objective. **(5)** Phase 2 in 2.4, conditional (D1, D4). Also rename the SIP's "outcome" term (§1.1) |
 | D3 | **the window** | **ruled** 2026-10-17, as recommended. G7, ruled, freezes the window's deploy for both lanes | **four campaigns, two per stack, three increments each, on one frozen deploy,** pre-registered. With memory on and no build-side lesson approved, they double as SIP-0110's next build-side experiment |
 | D4 | **phase 2's condition** | **ruled** 2026-10-17, as recommended | **the window's record shows:** the scenarios discriminate, holding out holds, contribution is not the acceptance count, and each measure phase 2 would gate is stable. The owner decides on that record |
 | D5 | **the entry points** | **ruled** 2026-10-17, as recommended. The entry points are placed in 2.4.0 (SIP-0110) | **in 2.4 as placed,** in parallel. **Q29: conversation history's retention** is the owner's, set before #2180 ships |

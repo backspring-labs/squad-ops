@@ -3,7 +3,7 @@
 > **Recorded 2026-10-04** as the owner wrote it, during the 2.0 counted set. The owner asked whether it
 > warranted a SIP and where it falls against Cross-Cycle Memory. **The owner agreed the recommendation the
 > same day** ("yes, save the idea and draft the SIP"):
-> - **Its evaluation half becomes a SIP:** `sips/proposed/SIP-Outcome-Evaluation.md`. That covers
+> - **Its evaluation half becomes a SIP:** `sips/accepted/SIP-0113-Outcome-Evaluation.md` (accepted 2026-10-17). That covers
 >   independent outcome scenarios, local quality baselines, an intervention ledger, a per-increment
 >   reading of outcome contribution, and AOR and the AWE as derived metrics.
 > - **The rest stays here, as the charter that SIP serves:**

@@ -267,7 +267,7 @@ No lifecycle change — each was edited under the status it already had (a post-
 | [SIP-Design-Decision-Register](../../design/sips/SIP-Design-Decision-Register.md) | proposed |
 | [SIP-Duty-Continuity-and-Handoff-Ledger](../../design/sips/SIP-Duty-Continuity-and-Handoff-Ledger.md) | proposed |
 | [SIP-Fine-Grained-Issue-Enumeration](../../design/sips/SIP-Fine-Grained-Issue-Enumeration.md) | proposed |
-| [SIP-Outcome-Evaluation](../../design/sips/SIP-Outcome-Evaluation.md) | proposed |
+| SIP-Outcome-Evaluation | proposed |
 | [SIP-Verification-Yield](../../design/sips/SIP-Verification-Yield.md) | proposed |
 
 ## Cycle evidence
