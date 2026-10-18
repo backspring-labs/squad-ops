@@ -185,3 +185,35 @@ class TestGetRedactionStrategy:
     def test_unknown_mode_raises(self):
         with pytest.raises(ValueError, match="Unknown redaction mode"):
             get_redaction_strategy("ultra")
+
+
+@pytest.mark.parametrize("mode", ["standard", "strict"])
+def test_a_url_and_a_later_decorator_keep_everything_between_them(mode):
+    """#1756. Bug caught: the connection-string pattern's classes crossing lines, so a prompt
+    naming ``http://localhost:8000/api`` and later any ``@`` (a FastAPI decorator) lost all the
+    text between: a constructed prompt kept 76 of its 5,820 characters."""
+    text = (
+        "The API runs at http://localhost:8000/api.\n"
+        + "design detail line\n" * 300
+        + "Decorators like @app.get('/runs') define routes.\n"
+    )
+
+    assert get_redaction_strategy(mode).redact(text) == text
+
+
+@pytest.mark.parametrize(
+    ("url", "redacted"),
+    [
+        (
+            "postgresql://squadops:s3cr3t@postgres:5432/db",
+            "postgresql://squadops:[REDACTED]@postgres:5432/db",
+        ),
+        ("redis://:abc/def@redis:6379/0", "redis://:[REDACTED]@redis:6379/0"),
+        ("amqp://u:p%40ss@rabbit/", "amqp://u:[REDACTED]@rabbit/"),
+    ],
+    ids=["user-and-password", "an-empty-user", "an-encoded-password"],
+)
+def test_a_urls_password_is_still_redacted(url, redacted):
+    """The other direction of #1756's narrowing. Bug caught: a password left in a connection
+    string, including one with ``/`` or with no user before it."""
+    assert get_redaction_strategy("standard").redact(url) == redacted
