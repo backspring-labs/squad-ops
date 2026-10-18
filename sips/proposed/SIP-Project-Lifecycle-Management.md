@@ -93,6 +93,7 @@ gates read the 2.4 plan draft (#2387: D2, D3, D4), which places both lanes' feat
   The game SIP is filed separately, and FR-17 describes what this SIP offers future game adapters.
 - **Q34:** greenfield Project creation is a required capability and stays in the completion scope.
   Brownfield development is the first acceptance benchmark. Game-specific adapters stay separate.
+  **Greenfield ships in 2.4:** the 2.4 cut requires E.4.6 shipped (G6; the owner, 2026-10-17).
 - **Q36:** the second record is renamed the *Project Development Configuration*, the owner's own phrase in
   Q31, so that *development profile* keeps SIP-0072 §10a's one meaning (the owner agreed the
   recommendation the same day).
@@ -109,7 +110,8 @@ numbered), *unplaced* (said deliberately), *dropped* (by the numbered amendment 
 *deferred to N.x (ruled <date>)*. Updated in the PR that ships or re-places a part
 (`tests/unit/architecture/test_sip_ledgers.py` holds it). The owner's direction of 2026-10-17 is a 2.4
 feature on the MacBook lane, beside Outcome Evaluation's feature half on the Spark; each row is placed at
-acceptance, when it has its issue. Game-specific adapters have no row here: they are their own SIPs' (Q34).
+acceptance, when it has its issue. Greenfield (E.4.6) ships in 2.4: the cut requires it (G6, the owner's
+ruling of 2026-10-17). Game-specific adapters have no row here: they are their own SIPs' (Q34).
 
 | part | status | where |
 |---|---|---|
@@ -123,7 +125,7 @@ acceptance, when it has its issue. Game-specific adapters have no row here: they
 
 **What closes this SIP:** E.4.1–E.4.6 shipped, and E.4.7 shipped or dropped. Greenfield creation (E.4.6)
 is in the completion scope by the owner's ruling of 2026-10-17 (Q34), and leaves it only by a numbered
-amendment the owner rules.
+amendment the owner rules. The 2.4 cut requires it shipped (G6, ruled the same day).
 
 ---
 
@@ -139,7 +141,7 @@ amendment the owner rules.
 
 A product owner can bring an existing repository to SquadOps, request an improvement, review the resulting contribution and return later for further development. The product keeps its source structure, native tools, history and contribution process. Other developers remain able to work on the same repository.
 
-The first success case is an unfamiliar, supported external repository enhanced through two governed iterations, with an outside contribution between them. Greenfield creation, a new product at an owner-approved external source destination with a product-appropriate structure, is a required capability (Q34): it follows the existing-product proof and is part of what completes this SIP.
+The first success case is an unfamiliar, supported external repository enhanced through two governed iterations, with an outside contribution between them. Greenfield creation, a new product at an owner-approved external source destination with a product-appropriate structure, is a required capability (Q34): it follows the existing-product proof, ships in 2.4 (G6) and is part of what completes this SIP.
 
 A SquadOps Project is the persistent development engagement record. It references the product and its repository; it is not the product's source container. The same Project ID persists across checkouts, branches, Cycles, Campaigns and accepted improvements.
 
@@ -281,7 +283,7 @@ Each enters at the seam the live cycle uses and asserts what reaches the other l
 | G3 | before acceptance | the Spark lane's compatibility review of §8.2 recorded in §8.6 | ruled 2026-10-17 |
 | G4 | every PR touching a shared contract | §8.2's rule: the contract named, the other lane's review, a wiring test, additive only | proposed for the owner's final review |
 | G5 | on the integration branch, when the owner opens it | IR-1 to IR-10 are the integration's evidence, run on a deploy carrying both lanes. Each lane's 2.4 feature is done on its own evidence; an IR scenario whose other-lane prerequisite has not shipped reports *not run*, with its reason, in the cut record | proposed for the owner's final review; revised by the Spark lane's review |
-| G6 | the 2.4 cut | IR-1 to IR-10 pass on the cut deploy, or report *not run* with the missing prerequisite named (G5). IR-4 to IR-9 need Outcome Evaluation's phase 1 only; its phase 2 is conditional (the 2.4 plan's D4) and not required; the brownfield demonstration (§7) is pre-registered and read; greenfield (E.4.6) is shipped, or placed with an open issue and named in the cut record; the cut record states what each lane's evidence does not cover (CLAUDE.md, "Release cut") | proposed for the owner's final review; phase 2 clause from the Spark lane's review |
+| G6 | the 2.4 cut | IR-1 to IR-10 pass on the cut deploy, or report *not run* with the missing prerequisite named (G5). IR-4 to IR-9 need Outcome Evaluation's phase 1 only; its phase 2 is conditional (the 2.4 plan's D4) and not required; the brownfield demonstration (§7) is pre-registered and read; greenfield (E.4.6) is shipped; the cut record states what each lane's evidence does not cover (CLAUDE.md, "Release cut") | proposed for the owner's final review; phase 2 clause from the Spark lane's review; **greenfield clause ruled 2026-10-17: shipped** |
 | G7 | the 2.4 measurement window (the 2.4 plan's D3) | both lanes agree on the window's frozen deploy, and neither lane deploys a change inside the window | proposed by the Spark lane's review, for the owner's final review |
 
 ## 8.6 The Spark lane's compatibility review
@@ -1285,7 +1287,7 @@ No role is granted authority to bypass the orchestrator's Cycle/Pulse invariants
 - [ ] An outside developer advances the repository between Cycles; the squad detects and reconciles relevant source/instruction drift before delivering a second feature through the same Project.
 - [ ] The primary proof records any inherited failures and UNVERIFIED checks truthfully; it does not rely on an artificially pristine fixture or claim inherited defects were introduced by the squad.
 - [ ] The external repository remains usable with its native tooling after the SquadOps engagement is archived; pending work/handoff evidence is preserved.
-- [ ] Greenfield proof (required, after the primary proof; Q34): a new product is created at an owner-approved external destination and evolved through the same lifecycle. Game targets are proved by their own SIP.
+- [ ] Greenfield proof (required, after the primary proof, shipped in 2.4; Q34, G6): a new product is created at an owner-approved external destination and evolved through the same lifecycle. Game targets are proved by their own SIP.
 - [ ] Archive/restore is reversible without data loss.
 - [ ] API/CLI authorizations, idempotency, failure and recovery tests pass.
 
@@ -1435,4 +1437,4 @@ All paths below are relative to `backspring-labs/squad-ops` at commit `7aecfa0b3
 | 3 | 2026-10-17 | Clarifies SquadOps as a development team for independently owned products: external authoritative source, out-of-repository Project metadata, managed clones/worktrees, preserved repository-native layout/tooling, external-contribution reconciliation and separate candidate/integrated revision tracking. |
 | 4 | 2026-10-17 | Keeps external owner authority explicit; adds inherited build/test baselines and separate regression attribution; defines instruction precedence/profile drift; makes enhancement of an existing external product across outside contributions the primary proof; separates the directional core from detailed implementation appendices. |
 | 5 | 2026-10-17 | Reconciles the owner's design review (PR #2401). Q30: SIP-0047 retired as a runtime contract, its principles kept (A.1, E.2). Q31: instruction records, versioning, applicability and snapshot binding are SIP-0110's; this SIP discovers repository instructions, holds development configuration and detects drift, and an admitted snapshot changes only by re-binding (B.5.1, FR-21). Q32: the Project Record and Project Development Configuration replace the Project Manifest (B.5). Q33: the Pulse IDEAs non-normative, SIP-0070's Pulse kept (A.2), FR-17 restated as capabilities for future adapters. Q34: greenfield creation required (E.4.6). Q35: the 2.4 parallel development agreement (§8). Adds the boundaries with SIP-0105 and SIP-0108 (B.4.1) and with Outcome Evaluation (§8.3); renames *check outcome* to *check result*. Q36, ruled the same day: the second record named the *Project Development Configuration*, and its keys renamed to match (B.5). The Pulse IDEAs committed under `docs/ideas/` with non-normative headers; the game SIP filed (PR #2405). |
-| 6 | 2026-10-17 | Applies the Spark lane's compatibility review of §8 (§8.6, PR #2401's comment `issuecomment-6242996612`, read at `b4bbeb56`): outcome results kept out of squad roles' inputs before Outcome Evaluation's phase 2 (contract 5, FR-04, FR-09); no scenario against a live tree (contract 3); squad task inputs and containers in the independence list and IR-4; each lane done on its own evidence (G5, G6) and the window's frozen deploy (G7); contracts 1, 2 and 3 and IR-7 corrected; contract 7 added, how a product is started for evaluation, approved by the owner as written, 2026-10-17. |
+| 6 | 2026-10-17 | Applies the Spark lane's compatibility review of §8 (§8.6, PR #2401's comment `issuecomment-6242996612`, read at `b4bbeb56`): outcome results kept out of squad roles' inputs before Outcome Evaluation's phase 2 (contract 5, FR-04, FR-09); no scenario against a live tree (contract 3); squad task inputs and containers in the independence list and IR-4; each lane done on its own evidence (G5, G6) and the window's frozen deploy (G7); contracts 1, 2 and 3 and IR-7 corrected; contract 7 added, how a product is started for evaluation, approved by the owner as written, 2026-10-17. The owner ruled the same day that the 2.4 cut requires greenfield (E.4.6) shipped (G6). |
