@@ -290,6 +290,22 @@ class DevelopmentConfigurationRecordedResponse(BaseModel):
     replayed: bool
 
 
+class InheritedBaselineRequest(BaseModel):
+    """Capture a Project's inherited baseline (SIP-0112 FR-20, E.4.2)."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    idempotency_key: str = Field(min_length=1, max_length=200)
+
+
+class InheritedBaselineResponse(BaseModel):
+    """The baseline, as the shared fixture records it, and whether this replayed a capture."""
+
+    project_id: str
+    document: dict[str, Any]
+    replayed: bool = False
+
+
 class ProjectRegistrationResponse(BaseModel):
     """A registration, applied or replayed: the Project, and the key a retry resends (D.6)."""
 

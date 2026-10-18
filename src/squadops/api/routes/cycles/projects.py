@@ -11,6 +11,8 @@ from squadops.api.cycle_schemas import (
     DevelopmentConfigurationRecordedResponse,
     DevelopmentConfigurationRequest,
     DevelopmentConfigurationResponse,
+    InheritedBaselineRequest,
+    InheritedBaselineResponse,
     ProjectRegistrationRequest,
     ProjectRegistrationResponse,
     ProjectResponse,
@@ -22,6 +24,7 @@ from squadops.api.routes.cycles.mapping import project_to_response
 from squadops.api.runtime.deps import (
     get_project_locator_policy,
     get_project_registry,
+    get_sandbox_client,
     get_source_repository,
 )
 from squadops.auth.models import Identity, Scope
@@ -32,6 +35,7 @@ from squadops.projects.development_configuration import (
 )
 from squadops.projects.registration import RegistrationRefused, prepare_registration
 from squadops.projects.validation import validate_project
+from squadops.projects.workspaces import SandboxUnavailable, capture_inherited_baseline
 
 router = APIRouter(prefix="/api/v1/projects", tags=["projects"])
 
@@ -167,6 +171,39 @@ async def get_development_configuration_revision(
     return _configuration(
         await get_project_registry(request).get_development_configuration(project_id, revision)
     )
+
+
+@router.post("/{project_id}/baselines", status_code=201)
+async def capture_baseline(
+    request: Request,
+    project_id: str,
+    body: InheritedBaselineRequest,
+    identity: Identity | None = Depends(require_scopes(Scope.ADMIN_WRITE)),
+) -> InheritedBaselineResponse:
+    """Run the product's own checks on its pinned, unmodified baseline in the sandbox, and record
+    what happened (SIP-0112 FR-20, E.4.2): PASS and FAIL attributed inherited, UNVERIFIED with
+    the reason a check couldn't run."""
+    try:
+        baseline, replayed = await capture_inherited_baseline(
+            project_id,
+            registry=get_project_registry(request),
+            repository=get_source_repository(request),
+            sandbox=get_sandbox_client(request),
+            actor=identity.user_id if identity is not None else "anonymous",
+            idempotency_key=body.idempotency_key,
+        )
+    except SandboxUnavailable as e:
+        raise http_error(503, "SANDBOX_UNAVAILABLE", str(e)) from e
+    return InheritedBaselineResponse(
+        project_id=project_id, document=baseline.to_document(), replayed=replayed
+    )
+
+
+@router.get("/{project_id}/baseline", dependencies=[Depends(require_scopes(Scope.CYCLES_READ))])
+async def get_baseline(request: Request, project_id: str) -> InheritedBaselineResponse:
+    """The Project's latest inherited baseline."""
+    baseline = await get_project_registry(request).get_inherited_baseline(project_id)
+    return InheritedBaselineResponse(project_id=project_id, document=baseline.to_document())
 
 
 @router.get("/{project_id}", dependencies=[Depends(require_scopes(Scope.CYCLES_READ))])

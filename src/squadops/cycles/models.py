@@ -192,6 +192,10 @@ class DevelopmentConfigurationNotFoundError(CycleError):
     """Raised when a Project has no Development Configuration, or not the revision asked for."""
 
 
+class InheritedBaselineNotFoundError(CycleError):
+    """Raised when a Project has no inherited baseline captured yet (SIP-0112 FR-20)."""
+
+
 class StaleConfigurationRevisionError(CycleError):
     """Raised when a Development Configuration is recorded against a revision that is no longer
     the current one: another revision was recorded first (§D.2's version precondition)."""

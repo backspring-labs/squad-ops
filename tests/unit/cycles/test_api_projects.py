@@ -485,3 +485,52 @@ class TestDevelopmentConfigurationRoutes:
         resp = client.get("/api/v1/projects/prj-tally/development-configuration")
 
         assert resp.json() == {"project_id": "prj-tally", "revision": 1, "document": valid}
+
+
+class TestBaselineRoutes:
+    """``/api/v1/projects/{id}/baseline(s)`` (SIP-0112 FR-20). Bugs caught: a capture with no
+    sandbox recording an empty baseline as if the checks had run; no baseline answered 500."""
+
+    def test_a_capture_without_a_sandbox_client_is_refused_and_records_nothing(
+        self, client, mock_project_registry
+    ):
+        from squadops.projects.development_configuration import parse_configuration
+        from squadops.projects.models import ProjectSource
+        from tests.fixtures.shared_contract.repository import recorded
+
+        configuration = parse_configuration(recorded("development_configuration", "valid"))
+        mock_project_registry.get_project.return_value = Project(
+            project_id="prj-tally",
+            name="Tally",
+            description="",
+            created_at=NOW,
+            source=ProjectSource(
+                "https://code.example.invalid/t.git", "refs/heads/main", "review_request"
+            ),
+            development_baseline_commit=configuration.validated_at_commit,
+        )
+        mock_project_registry.get_development_configuration.return_value = configuration
+        client.app.state.source_repository = AsyncMock()
+        client.app.state.sandbox_client = None
+
+        resp = client.post("/api/v1/projects/prj-tally/baselines", json={"idempotency_key": "b-1"})
+
+        assert (resp.status_code, resp.json()["detail"]["error"]["code"]) == (
+            503,
+            "SANDBOX_UNAVAILABLE",
+        )
+        mock_project_registry.record_inherited_baseline.assert_not_awaited()
+
+    def test_no_baseline_yet_is_not_found(self, client, mock_project_registry):
+        from squadops.cycles.models import InheritedBaselineNotFoundError
+
+        mock_project_registry.get_inherited_baseline.side_effect = InheritedBaselineNotFoundError(
+            "none"
+        )
+
+        resp = client.get("/api/v1/projects/prj-tally/baseline")
+
+        assert (resp.status_code, resp.json()["detail"]["error"]["code"]) == (
+            404,
+            "INHERITED_BASELINE_NOT_FOUND",
+        )

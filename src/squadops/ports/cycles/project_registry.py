@@ -3,11 +3,18 @@ ProjectRegistryPort — abstract interface for project lookup (SIP-0064 §7.1), 
 (SIP-0112 FR-02, E.4.1).
 """
 
+from __future__ import annotations
+
 from abc import ABC, abstractmethod
+from typing import TYPE_CHECKING
 
 from squadops.cycles.models import Project
+from squadops.projects.baseline import InheritedBaseline
 from squadops.projects.development_configuration import DevelopmentConfiguration
 from squadops.projects.registration import ProjectRegistration
+
+if TYPE_CHECKING:
+    from squadops.projects.workspaces import SourceMapping
 
 
 class ProjectRegistryPort(ABC):
@@ -86,4 +93,35 @@ class ProjectRegistryPort(ABC):
 
         Raises:
             DevelopmentConfigurationNotFoundError: None is recorded, or not that revision.
+        """
+
+    @abstractmethod
+    async def record_source_mapping(self, mapping: SourceMapping) -> None:
+        """Record one tree's three identifiers (contract 3). Recording the same one again is a
+        no-op: a seed is idempotent, and so is its mapping."""
+
+    @abstractmethod
+    async def source_mappings(
+        self, project_id: str, *, workspace_id: str | None = None
+    ) -> list[SourceMapping]:
+        """A Project's recorded mappings, oldest first, or one workspace's."""
+
+    @abstractmethod
+    async def record_inherited_baseline(
+        self,
+        baseline: InheritedBaseline,
+        *,
+        actor: str,
+        idempotency_key: str,
+        request_hash: str,
+    ) -> tuple[InheritedBaseline, bool]:
+        """Record a captured inherited baseline (FR-20). Returns it and whether this replayed an
+        earlier capture under the same key."""
+
+    @abstractmethod
+    async def get_inherited_baseline(self, project_id: str) -> InheritedBaseline:
+        """The Project's latest inherited baseline.
+
+        Raises:
+            InheritedBaselineNotFoundError: none is captured.
         """

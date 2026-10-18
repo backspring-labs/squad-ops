@@ -372,3 +372,50 @@ def recorded_configuration():
     from tests.fixtures.shared_contract.repository import recorded
 
     return recorded("development_configuration", "valid")
+
+
+async def test_mappings_resolve_both_ways_and_baselines_read_back(pool):
+    """Contract 3's mapping, and FR-20's record. Bugs caught: a seed recorded twice making two
+    rows; a mapping that can't be read back by commit, revision or tree; a baseline replay that
+    captures again; the evidence lost or mixed into the document."""
+    from squadops.cycles.models import InheritedBaselineNotFoundError
+    from squadops.projects.baseline import parse_baseline
+    from squadops.projects.workspaces import SourceMapping
+    from tests.fixtures.shared_contract.repository import recorded
+
+    registry = PostgresProjectRegistry(pool)
+    await registry.register_project(_registration(), actor="owner")
+    entry = recorded("workspace_commit_mapping", "valid")["entries"][1]
+    mapping = SourceMapping(
+        project_id="prj-tally",
+        workspace_id="baseline-prj-tally-962858eb0e32",
+        direction="seeded",
+        commit=entry["commit"],
+        sandbox_revision_id=entry["sandbox_revision_id"],
+        tree_identity=entry["tree_identity"],
+    )
+
+    await registry.record_source_mapping(mapping)
+    await registry.record_source_mapping(mapping)
+    mappings = await registry.source_mappings("prj-tally")
+
+    assert mappings == [mapping]
+    by = {m.commit: m for m in mappings}, {m.sandbox_revision_id: m for m in mappings}
+    assert by[0][entry["commit"]].sandbox_revision_id == entry["sandbox_revision_id"]
+    assert by[1][entry["sandbox_revision_id"]].commit == entry["commit"]
+
+    with pytest.raises(InheritedBaselineNotFoundError):
+        await registry.get_inherited_baseline("prj-tally")
+    baseline = parse_baseline(recorded("inherited_baseline", "valid"))
+    baseline = dataclasses.replace(baseline, project_id="prj-tally")
+    _, replayed = await registry.record_inherited_baseline(
+        baseline, actor="owner", idempotency_key="b-1", request_hash="h"
+    )
+    again, again_replayed = await registry.record_inherited_baseline(
+        baseline, actor="owner", idempotency_key="b-1", request_hash="h"
+    )
+
+    assert (replayed, again_replayed, again) == (False, True, baseline)
+    assert await registry.get_inherited_baseline("prj-tally") == baseline
+    async with pool.acquire() as conn:
+        assert await conn.fetchval("SELECT count(*) FROM project_inherited_baselines") == 1

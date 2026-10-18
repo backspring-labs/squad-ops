@@ -14,6 +14,7 @@ import yaml
 
 from squadops.cycles.models import (
     DevelopmentConfigurationNotFoundError,
+    InheritedBaselineNotFoundError,
     Project,
     ProjectNotFoundError,
     ProjectRegistryReadOnlyError,
@@ -92,4 +93,18 @@ class ConfigProjectRegistry(ProjectRegistryPort):
     async def get_development_configuration(self, project_id, revision=None):
         raise DevelopmentConfigurationNotFoundError(
             f"Project {project_id} is a sample application: it has no Development Configuration"
+        )
+
+    async def record_source_mapping(self, mapping):
+        raise ProjectRegistryReadOnlyError("the config provider records no source mappings")
+
+    async def source_mappings(self, project_id, *, workspace_id=None):
+        return []
+
+    async def record_inherited_baseline(self, baseline, *, actor, idempotency_key, request_hash):
+        raise ProjectRegistryReadOnlyError("the config provider records no baselines")
+
+    async def get_inherited_baseline(self, project_id):
+        raise InheritedBaselineNotFoundError(
+            f"Project {project_id} is a sample application: it has no inherited baseline"
         )

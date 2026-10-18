@@ -250,3 +250,42 @@ def show_configuration(
         print_json(data)
     else:
         typer.echo(yaml.safe_dump(data["document"], sort_keys=False))
+
+
+@app.command("baseline")
+def baseline(
+    ctx: typer.Context,
+    project_id: str = typer.Argument(...),
+    capture: bool = typer.Option(
+        False, "--capture", help="Run the product's checks now, rather than show the latest"
+    ),
+    idempotency_key: str | None = typer.Option(None, "--idempotency-key"),
+):
+    """A Project's inherited baseline (SIP-0112 FR-20): each of its own checks on the pinned,
+    unmodified source, PASS, FAIL or UNVERIFIED with the reason."""
+    fmt = ctx.obj.get("format", "table") if ctx.obj else "table"
+    key = idempotency_key or f"cli-{uuid.uuid4().hex}"
+    try:
+        client = _get_client(ctx)
+        data = (
+            client.post(f"/api/v1/projects/{project_id}/baselines", json={"idempotency_key": key})
+            if capture
+            else client.get(f"/api/v1/projects/{project_id}/baseline")
+        )
+        client.close()
+    except CLIError as e:
+        print_error(f"{e} (idempotency key {key})" if capture else str(e))
+        raise typer.Exit(code=e.exit_code) from e
+    if fmt == "json":
+        print_json(data)
+        return
+    document = data["document"]
+    rows = [
+        [c["id"], c["result"], c.get("attribution", ""), c.get("reason", "")]
+        for c in document["checks"]
+    ]
+    print_table(["Check", "Result", "Attribution", "Reason"], rows, quiet=False)
+    print_success(
+        f"{project_id} at {document['commit'][:12]}, configuration revision "
+        f"{document['development_configuration_revision']}"
+    )
