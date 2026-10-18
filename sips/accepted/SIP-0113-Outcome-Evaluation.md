@@ -68,7 +68,7 @@ contracts (its §8.2). §4.8 says what this SIP produces and reads at each.
 >   revision's design (§4.1, §4.8).
 > - **No conflict.**
 
-## Delivery ledger (current as of 2026-10-17)
+## Delivery ledger (current as of 2026-10-18)
 
 One row per part that ships separately. Statuses as CLAUDE.md defines them. The 2.4 plan places phase 1 in 2.4
 (committed) and phase 2 in 2.4 conditionally. **Phase 1's parts are placed** with the issues filed at acceptance
@@ -83,7 +83,7 @@ One row per part that ships separately. Statuses as CLAUDE.md defines them. The 
 | phase 1: the runner, outside the squad's containers, on a disposable copy (§4.1; needs the sandbox's X-3, #2421) | **placed** | 2.4.0, #2414 |
 | phase 1: the evaluation record and its reference (§4.1, contract 5) | **placed** | 2.4.0, #2415 |
 | phase 1: the quality baselines, Lighthouse, axe and lint, in the evaluator's image (§4.2) | **placed** | 2.4.0, #2416 |
-| phase 1: the intervention ledger's classifications (§4.3) | **placed** | 2.4.0, #2417 |
+| phase 1: the intervention ledger's classifications (§4.3) | **shipped** (§10d) | 2.4.0, PR #2454, issue #2417 |
 | phase 1: contribution and the derived metrics in the digest (§4.4, §4.6) | **placed** | 2.4.0, #2418 |
 | phase 2: the proposer sees each goal's result (§4.5) | **unplaced** | 2.4 if D4 rules it in, with its issue filed then; otherwise the next even release |
 | phase 2: the objective's scenario measure, read by SIP-0109 §10 row 3, as a SIP-0109 amendment (§4.7) | **unplaced** | 2.4 if D4 rules it in, with its issue filed then; otherwise the next even release |
