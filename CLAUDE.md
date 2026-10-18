@@ -118,7 +118,7 @@ package and its entry disagree (#1989), so read it rather than a list here.
 - **CRP Applied Defaults**: Extra keys in CRP `defaults` flow into `applied_defaults`: `build_tasks`, `plan_tasks`, `pulse_checks`, `cadence_policy`
 
 ### Agent Squad
-6 agents when builder role is present: Max (Lead), Neo (Dev), Nat (Strategy), Bob (Builder), Eve (QA), Data (Analytics). Roster is set per profile via `members:` (#173): `full` (27b) and `lite` (7b) carry all 6 incl. Bob; `smoke` (3b) is the 5-agent no-builder plumbing squad. Implementations in `src/squadops/agents/`.
+6 agents when builder role is present: Max (Lead), Neo (Dev), Nat (Strategy), Bob (Builder), Eve (QA), Data (Analytics). Roster is set per profile via `members:` (#173): `full` (27b) and `lite` (7b) carry all 6 incl. Bob; `lite-14b` is `lite` on qwen2.5:14b, the MacBook's build check (#2435); `smoke` (3b) is the 5-agent no-builder plumbing squad. Implementations in `src/squadops/agents/`.
 
 ### Agent status vs runtime state
 Don't conflate the signals. **Health = `runtime_status`, posture = `mode`** (both from `agent_runtime_state`, SIP-0089); `lifecycle_state`/`network_status` on `agent_status` are heartbeat telemetry (`network_status` is legacy/deprecated). Canonical model + the rule surfaces must conform to: `docs/agent-runtime-status-model.md` (#231).
