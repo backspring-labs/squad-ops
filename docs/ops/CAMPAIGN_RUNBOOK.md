@@ -182,6 +182,12 @@ An answer is asked once. The next proposal carries it into the accepted manifest
 `choice`, with a `warrant` naming the gate that answered it (§24ad, §24ag). An approval with blank
 notes answers nothing, and the question is asked again.
 
+**Which stack the campaign builds on is the campaign's declaration too** (`policy.stack`, §24bs,
+#2443). Every cycle it launches carries it, the calibration, each increment and every repair or
+retry, as `build_profile` and `development_profile`. Leave it out and the campaign runs on its
+profiles' own stack, `fullstack_fastapi_react`. A stack a campaign can't run on is refused at
+creation. **A Next.js campaign has never run before 2.4:** run an uncounted one first.
+
 **Who decides a plan gate is the campaign's declaration** (`policy.plan_gate`, §24bj). Every new
 definition declares it; one that does not is refused at creation:
 - `supervised`: as above. A design that asks nothing passes on its own (#807), and a question waits

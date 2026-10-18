@@ -3492,3 +3492,42 @@ so a repair is now told what broke but can't verify its fix before the evaluatio
 **Who ruled it.** Not the owner yet. The supervisor placed it in 2.3 under the owner's delegation of 2026-10-15 ("Yes I
 gave you authority!"), as the cut shakeout's seam finding: the cut's pre-registration (§3) fixes a finding and re-runs
 the shakeout. It's for the owner's review.
+
+### 24bs. A campaign declares its stack, and every cycle it launches carries it (2026-10-18, §7.3, §10a, §11, §12b, §15, #2443; implementer's correction, for the owner)
+
+**What main did.** Every launch built its cycle-create request from a profile name alone. The calibration
+used `policy.calibration_profile`, and the increment and every bound cycle used `policy.proposal_profile`
+(`src/squadops/campaigns/launch_requests.py`). None of them passed a stack. Every campaign profile pins
+`fullstack_fastapi_react`, and so does `validated-fullstack`, which every definition under
+`examples/03_group_run/campaigns/` calibrates on. `CampaignPolicy` had no stack. So a campaign could run on
+one stack only, and no test or deploy ever ran a campaign on `nextjs_ts`. Other Next.js pieces shipped in
+2.1 (§24av, §24bd, §24m's criterion paths), which made the stack look supported. The launch was the piece
+that was missing.
+
+**The evidence.** The 2.4 plan's D3 rules its measurement window as four campaigns, two per stack (SIP-0113
+§6). Preparing #316's design review found that no Next.js campaign could launch (#2443).
+
+**What changed.**
+- **`CampaignPolicy.stack`,** optional on `CampaignCreateRequest`. Every launch carries it to
+  `cycle_request_body()` as `user_values`: `build_profile` and `development_profile` together, the pair #832
+  keeps in agreement. They reach the cycle as `execution_overrides`, hashed into its config hash as any
+  override is. That's how every Next.js verification set already runs `validated-fullstack`.
+- **Undeclared, it is the campaign profiles' own stack.** That's what a cycle with no stack override runs.
+  It is declared absence, not a default this SIP invents. **Unlike `plan_gate` (§24bj) it is not required:**
+  requiring it would refuse every pinned definition, which §24bj already does for the 19 written before it.
+  This one would refuse all 34, including the pinned ones the crew re-runs.
+- **A stack a campaign can't run on is refused at creation** (422): one with no scaffold, or one that declares
+  nowhere for a criterion's test file (§8.1, `hosts_campaign_increments` in `squadops.stacks.scaffold`). An
+  empty string is refused too, never read as undeclared.
+- **Stored rows and replays are unchanged.** A policy stored without a stack reads as `None`. The stack enters
+  a creation's replay hash only when declared, so every stored creation's retry still replays, as §24bj's
+  plan gate does.
+- **Unchanged:** the profiles, the decisions and their rows, and every existing campaign's requests.
+
+**What it does not do.** It does not show that a Next.js campaign succeeds. That has never run. The window's
+Next.js campaigns are preceded by uncounted Next.js shakeout campaigns, and whatever they find is a seam
+finding of its own.
+
+**Who ruled it.** Not the owner yet. The supervisor built it under the 2.4 grant (the plan's D11), as the
+prerequisite of D3's ruled window. It's for the owner's review. It is a contract 2 field (SIP-0112 §8.2), so it
+carries the MacBook lane's review (G4).

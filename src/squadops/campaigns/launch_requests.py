@@ -20,6 +20,13 @@ from squadops.campaigns.models import (
 from squadops.contracts.cycle_request_profiles import cycle_request_body, load_profile
 
 
+def _stack_values(campaign: Campaign) -> dict:
+    """The campaign's stack, as every launch carries it (§24bs, #2443): both of a cycle's stack
+    keys, which #832 holds in agreement, or nothing when the profiles' own stack stands."""
+    stack = campaign.policy.stack
+    return {"build_profile": stack, "development_profile": stack} if stack else {}
+
+
 def calibration_launch(campaign: Campaign) -> LaunchRequest:
     """The calibration cycle (§11): the policy's calibration profile, run by its squad, on the
     campaign's project. Its accepted tree becomes the first baseline."""
@@ -30,6 +37,7 @@ def calibration_launch(campaign: Campaign) -> LaunchRequest:
             "body": cycle_request_body(
                 policy.calibration_profile,
                 squad_profile_id=policy.squad_profile,
+                user_values=_stack_values(campaign),
                 notes=f"campaign {campaign.campaign_id}: calibration (SIP-0109 §11)",
             )
         },
@@ -81,6 +89,7 @@ def increment_launch(
                 policy.proposal_profile,
                 squad_profile_id=policy.squad_profile,
                 user_values={
+                    **_stack_values(campaign),
                     "campaign_proposal": {
                         "proposal_id": f"prop_{uuid.uuid4().hex[:12]}",
                         "version": 1,
@@ -103,7 +112,7 @@ def increment_launch(
                         # #1884: behaviour a qa author judged desirable that nothing accepted
                         # required, returned as a proposal rather than a test.
                         **({"qa_proposed_behaviours": list(qa_proposed)} if qa_proposed else {}),
-                    }
+                    },
                 },
                 notes=f"campaign {campaign.campaign_id}: increment (SIP-0109 §7.3)",
             )
@@ -146,6 +155,7 @@ def bound_launch(
             f"workloads {list(keep)}"
         )
     user_values: dict = {
+        **_stack_values(campaign),
         "campaign_proposal": dict(block),
         "plan_artifact_refs": list(plan_artifact_refs),
         "workload_sequence": sequence,
