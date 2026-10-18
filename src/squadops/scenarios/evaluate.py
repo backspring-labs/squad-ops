@@ -20,7 +20,7 @@ from datetime import datetime
 from typing import TYPE_CHECKING, Any
 
 from squadops.campaigns.evaluator_trees import FileTree
-from squadops.campaigns.increment_tree import evaluated_tree_refs
+from squadops.campaigns.increment_tree import accepted_cycle_of, evaluated_tree_refs
 from squadops.scenarios.evaluation import (
     Applicability,
     BlockedReason,
@@ -29,6 +29,7 @@ from squadops.scenarios.evaluation import (
     ScenarioResult,
     evaluation_record,
 )
+from squadops.scenarios.fields import FieldAbsent, resolve
 from squadops.scenarios.models import Scenario, SurfaceKind
 from squadops.scenarios.runner import (
     DeclaredStart,
@@ -38,6 +39,7 @@ from squadops.scenarios.runner import (
 )
 from squadops.scenarios.steps import ScenarioRun
 from squadops.scenarios.suites import require_pinnable
+from squadops.stacks.scaffold import InterfaceManifest
 
 if TYPE_CHECKING:  # the ports name this package's models; the service only takes them
     from squadops.ports.scenarios import ScenarioRunnerPort, ScenarioStorePort
@@ -54,6 +56,26 @@ def declared_surfaces(entry_points: Collection[Mapping[str, Any]]) -> frozenset[
         for e in entry_points
         if e.get("kind") in ENTRY_POINT_SURFACES
     )
+
+
+#: The interface manifest a delivery's fields are named in (#2464).
+MANIFEST_FILENAME = "interface_manifest.yaml"
+
+
+async def delivered_fields(vault: Any, cycle: Any) -> dict[str, frozenset[str]]:
+    """Each entity's field names, as the evaluated delivery's own interface manifest declares
+    them (#2464): the cycle's latest manifest, or else the one of the accepted cycle it built on.
+    Empty when neither stored one, so every concept a scenario names reads as absent."""
+    for cycle_id in (cycle.cycle_id, accepted_cycle_of(cycle)):
+        if cycle_id is None:
+            continue
+        refs = await vault.list_artifacts(cycle_id=cycle_id)  # newest first
+        stored = next((r for r in refs if r.filename == MANIFEST_FILENAME), None)
+        if stored is not None:
+            _ref, content = await vault.retrieve(stored.artifact_id)
+            manifest = InterfaceManifest.from_yaml(content.decode("utf-8"))
+            return {e.name: frozenset(f.name for f in e.fields) for e in manifest.entities}
+    return {}
 
 
 def _outcome(
@@ -115,11 +137,24 @@ async def evaluate_cycle(
 
     blocked: BlockedReason | None = None
     runs: dict[str, ScenarioRun] = {}
-    if applicable and unstartable is not None:
+    # #2464: each scenario's concept fields, resolved against the delivery's own manifest. One
+    # the delivery doesn't declare can't be evaluated here: surface_absent, never failed.
+    absent: dict[str, BlockedReason] = {}
+    contents: list[dict[str, Any]] = []
+    fields = await delivered_fields(vault, cycle) if any(s.fields for s in applicable) else {}
+    for scenario in applicable:
+        try:
+            content = resolve(scenario.content(), dict(scenario.fields), fields)
+        except FieldAbsent:
+            absent[scenario.scenario_id] = BlockedReason.SURFACE_ABSENT
+            continue
+        content.pop("fields", None)
+        contents.append(content)
+    if contents and unstartable is not None:
         blocked = unstartable.reason
-    elif applicable and runner is None:
+    elif contents and runner is None:
         blocked = BlockedReason.NO_RUNNER
-    elif applicable and runner is not None:
+    elif contents and runner is not None:
         try:
             evaluated = await runner.evaluate_tree(
                 tree=tree,
@@ -127,7 +162,7 @@ async def evaluate_cycle(
                 executable=(),
                 stack=cycle.resolved_config().get("build_profile"),
                 declared=declared,
-                scenarios=[s.content() for s in applicable],
+                scenarios=contents,
                 environment=environment or {},
             )
         except RunnerUnavailable:
@@ -139,7 +174,10 @@ async def evaluate_cycle(
 
     record = evaluation_record(
         suite,
-        tuple(_outcome(s, kinds, runs.get(s.scenario_id), blocked) for s in suite.scenarios),
+        tuple(
+            _outcome(s, kinds, runs.get(s.scenario_id), absent.get(s.scenario_id) or blocked)
+            for s in suite.scenarios
+        ),
         project_id=cycle.project_id,
         campaign_id=campaign_id,
         cycle_id=cycle.cycle_id,

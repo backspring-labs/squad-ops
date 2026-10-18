@@ -680,8 +680,23 @@ within them, for the owner's review.
 - **Found while reading the window's suite live (#2464): the request bodies are not stack-neutral.** The
   PRD leaves the data model to each delivery's interface manifest (its §8). That Next.js tree names the
   run's fields `dateTime` and `meetingLocation`, where the canonical stack's names are `datetime` and
-  `location`. A create step with fixed field names therefore fails at step 1 on one of them. How the suite
-  names its fields is #2464's.
+  `location`. A create step with fixed field names therefore fails at step 1 on one of them.
+- **So a scenario names a field by its concept** (#2464; `squadops.scenarios.fields`):
+  - `@Run:location` appears as a JSON key, as a string value, or as one segment of a dotted JSON path;
+  - the scenario's `fields` lists the names a delivery may give each concept, for example
+    `Run:location: [meeting_location, location, meetingLocation]`;
+  - the evaluation service resolves each concept against the evaluated cycle's own
+    `interface_manifest.yaml`, or else that of the accepted cycle it built on, before anything runs;
+  - a delivery that declares none of the names is `blocked_unverified`, `surface_absent`, never `failed`;
+  - `fields` is in each scenario's content, so in its version, so approving a suite approves its names.
+    A scenario without `fields` keeps its content and version byte for byte.
+- **Why per delivery, not per stack** (read from the Spark's vault, 2026-10-18, 40 recent completed
+  deliveries): the canonical stack's run is `meeting_location` in 26 and `location` in 4. Next.js's is
+  snake_case in 5, camelCase in 2 and mixed in 1. Every delivery's manifest names the entity `Run`; only the
+  hand-written reference says `RunEvent`.
+- **Read live with one suite on both stacks.** On `cyc_bbedc850e6ff` (Next.js), "a created run reads back"
+  passed, and the capacity scenario was `surface_absent`: that delivery declares no capacity. On
+  `cyc_f6bfb0b88ebd` (the canonical stack), both passed.
 - **The vocabulary** is in `squadops.scenarios.steps`.
   - **Steps:** `http` actions, with saved values threaded into later paths and bodies, and an optional
     `expect_status`.
