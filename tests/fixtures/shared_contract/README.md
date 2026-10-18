@@ -39,9 +39,10 @@ configuration from the machine, so the hashes are the same on every machine:
   of Campaign `cmp_2407a0000001`, made from the first commit and captured back to Git.
 - The second commit is the Project's current development baseline. Every *stale* form points at the
   first commit instead.
-- The sandbox revision IDs are `compute_revision_id`'s scheme applied to each file's bytes. Today's
-  function takes text only, so X-2 (#2420) checks these two values when it extends the function to
-  bytes.
+- The sandbox revision IDs are `compute_revision_id` over each file's bytes, as X-2 (#2420)
+  extended it. Its wiring test seeds the first commit through the sandbox's HTTP client, patches on
+  the second, and gets exactly these two values
+  (`tests/unit/sandbox/test_http_surface.py::test_the_shared_fixture_seeds_and_captures_to_its_recorded_revisions`).
 
 ## The recorded outputs
 

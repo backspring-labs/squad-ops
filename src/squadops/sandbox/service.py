@@ -16,13 +16,14 @@ execute it (§4.4).
 
 from __future__ import annotations
 
-from collections.abc import Awaitable, Callable, Mapping
+from collections.abc import Awaitable, Callable, Collection, Mapping
 
 from squadops.ports.sandbox import ExecutionSandboxPort
 from squadops.sandbox.evidence import OperationEvidenceJournal
 from squadops.sandbox.models import (
     BuildResult,
     DiagnosticsResult,
+    FileContent,
     InstallResult,
     OperationName,
     OperationResult,
@@ -68,14 +69,17 @@ class SandboxService(ExecutionSandboxPort):
     def seed_workspace(
         self,
         cycle_id: str,
-        files: Mapping[str, str],
+        files: Mapping[str, FileContent],
         *,
         origin: str = RevisionOrigin.SCAFFOLD_SEED,
+        executable: Collection[str] = (),
         created_at: str | None = None,
     ) -> WorkspaceRevision:
         """Provision and seed the cycle workspace, cutting revision one. The
         persisted revision is the seeding's durable record."""
-        return self._store.seed(cycle_id, files, origin=origin, created_at=created_at)
+        return self._store.seed(
+            cycle_id, files, origin=origin, executable=executable, created_at=created_at
+        )
 
     def verify_pinned(self, cycle_id: str, revision_id: str) -> bool:
         return self._store.verify_pinned(cycle_id, revision_id)
@@ -185,7 +189,7 @@ class SandboxService(ExecutionSandboxPort):
         self,
         *,
         base: WorkspaceRevision,
-        files: Mapping[str, str | None],
+        files: Mapping[str, FileContent | None],
         origin: str = RevisionOrigin.AGENT_PATCH,
     ) -> PatchResult:
         """Apply the patch through the store (stale-base guarded, §4.6
