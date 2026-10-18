@@ -84,7 +84,7 @@ The revision history at the end has the earlier placements.
 
 ---
 
-## Delivery ledger (current as of 2026-10-17)
+## Delivery ledger (current as of 2026-10-18)
 
 Kept by the rule in CLAUDE.md ("SIP System"): one row per part, updated in the PR that ships or re-places it, read at each release cut. Built from the read-only SIP-portfolio audit of 2026-10-04; `sips/PORTFOLIO.md` indexes it.
 
@@ -129,6 +129,7 @@ Kept by the rule in CLAUDE.md ("SIP System"): one row per part, updated in the P
 | §24b–§24i, marked "implementer's reading, not yet ruled" | **shipped**, ratified as written (§24as) | v2.0.0 |
 | a return carries its classification, or `unclassified` with why (the 2.2 plan's D2) | **shipped** (§24bi) | 2.2.0, PR #2132 |
 | proposal-run retries bound failed proposal cycles in a row, and the failure past them pauses (§24bn) | **shipped** | 2.3.0, PR #2245, issue #2231 |
+| a campaign declares its stack, and every cycle it launches carries it (§24bs) | **shipped** | 2.4.0, PR #2446, issue #2443 |
 
 **What closes this SIP:** Its 2.1.0 rows closing, #1710's remainder ruled, and #1708's remainder shipped in 2.2.0 or ruled out of scope. §24at, the consolidated status at the v2.0.0 cut, replaces the 2.0 plan's §5a as the permanent record. Promotion follows at the sweep after the last placed row closes.
 
