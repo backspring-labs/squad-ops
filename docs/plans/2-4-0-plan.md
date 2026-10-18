@@ -13,6 +13,14 @@ This plan proposes everything else, and nothing starts before §7 is ruled. 2.3.
 lane (Q35, PR #2401), so the release carries one feature per lane. D1 stands for the Spark lane's. The SIP's §8.5
 gives this plan its schedule, and the contracts and gates are the SIP's, ruled.
 
+**Revised again 2026-10-17,** from a review the owner brought. This revision adds:
+- the contract matrix (§2.3);
+- the shared demonstration, as the owner chose it (§2.7, D13);
+- what the window records (§1.3);
+- the two-lane checkpoints (§5);
+- the scope and acceptance matrices, and what the release reads (§6);
+- each decision's status (§7).
+
 **What 2.4 is.** An even minor, a feature release, gated by at least one headline feature SIP (CLAUDE.md, #281). It is
 the first release framed by the owner's output-quality turn (2026-10-09): "things have stabilized to the point I feel
 like we can make real tweaks to focus on code and app output quality instead of continually fixing framework bugs".
@@ -32,7 +40,7 @@ and by its own rules, both when the product already exists and when SquadOps cre
 
 ---
 
-## 1. The headline: Outcome Evaluation (`sips/proposed/SIP-Outcome-Evaluation.md`)
+## 1. The Spark lane's feature: Outcome Evaluation (`sips/proposed/SIP-Outcome-Evaluation.md`)
 
 ### 1.1 The design review, first
 
@@ -79,6 +87,21 @@ pre-registered before the first one launches.
   2.4 beside Outcome Evaluation). That experiment needs multi-increment campaigns on both stacks with memory on and no
   build-side lesson approved, so memory observes and supplies nothing. The window's campaigns can be exactly that,
   which gives one set of campaigns two readings.
+
+**What the window records,** so that its readings compare only like with like:
+- the deploy, and the framework commit it was built from;
+- the scenario suite's content digest, and each scenario's version;
+- each campaign's Project and its source revision, and after the registry cutover its Development Configuration
+  revision too;
+- SIP-0110 §0.12's experiment manifest: the prompts and fragments, the squad and request profiles, the model and
+  provider settings, the policies, the evaluator, and the store's lessons and approvals;
+- the scoring rules: the contribution readings (the SIP's §4.4) and each quality measure's version.
+
+**A change inside that record ends the series.**
+- If either lane has to redeploy inside the window, the series closes.
+- The next series starts under a new record, with its own baseline and its own pre-registration (SIP-0110 §0.12).
+- No reading compares two series as though the environment were the same.
+- G7 exists to prevent this. This is what happens if it is broken.
 
 **What the window reads,** each pre-registered as a mechanism and how it is falsified (the SIP's §7):
 - the scenarios discriminate on a tree known to lack and one known to have each outcome;
@@ -134,7 +157,8 @@ no integration branch until the owner opens one (G2).
 | builds | the Project Record and the registry cutover; the Project Development Configuration, with its start declaration; managed clones; inherited verification baselines; Git revisions and their mappings; repository instruction discovery and drift detection; the project CLI and API writes | the held-out scenario store and runner; quality baselines; the intervention ledger's classifications; contribution and the derived metrics; the objective's outcome measure (a SIP-0109 amendment); the three sandbox changes (§2.4) |
 | never builds | scenarios, a scenario runner, quality baselines or outcome readings | a project model of its own, or anything that assumes a Project is a sample application |
 
-A change to a file the other lane owns carries that lane's review.
+A change to a file the other lane owns carries that lane's review. Each lane works on branches off `main` and
+integrates through reviewed PRs. There is no integration branch until the owner opens one (G2).
 
 ### 2.2 What 2.4 carries, and its two demonstrations
 
@@ -166,15 +190,27 @@ These are the SIP's delivery slices (its E.4 and its delivery ledger):
 
 ### 2.3 The seven contracts and the shared fixture (its §8.2)
 
-| contract | in brief |
-|---|---|
-| 1. Project identity and source revision | one registry for every reader. Outcome Evaluation records the identity of the tree it evaluated, never a Git commit |
-| 2. `prepare_cycle()` and Campaign admission | each lane adds its own typed fields. Outcome Evaluation adds nothing at `prepare_cycle()` and pins its suite on the campaign |
-| 3. `WorkspaceStore` | a Git checkout becomes the live tree through the sandbox's own seeding. No scenario runs against a live tree |
-| 4. Campaign accepted trees | SIP-0109's identity, mapped to the Git revision it became |
-| 5. outcome references | Project history stores Outcome Evaluation's evaluation ID and suite digest. No outcome result reaches a squad role before phase 2, and after it only the proposal run |
-| 6. project instructions | SIP-0110's one store and its binding. #2179 changes this seam in 2.4 too |
-| 7. starting the product | the Development Configuration declares install, build, start, readiness and entry points. Outcome Evaluation reads the declaration and never infers one (approved by the owner as written, 2026-10-17) |
+The SIP defines the contracts (its §8.2 and §8.2.1). This plan says who produces and reads each one, when it
+freezes, and which integration scenario exercises it.
+
+| contract | produced by | read by | frozen by | its test (the SIP's §8.2.1) | exercised by |
+|---|---|---|---|---|---|
+| 1. Project identity and source revision | the MacBook lane (`ProjectSourceContext`, E.4.1 and E.4.3) | cycle preparation, the Campaign launcher, Outcome Evaluation | the shared fixture's PR | `prepare_cycle()` with the fixture's Project: ready, not ready, and a stale commit | IR-1, IR-2, IR-5, IR-8 |
+| 2. `prepare_cycle()` and Campaign admission | both lanes, each its own fields: the MacBook lane's source context and preconditions; the Spark lane's suite pin and objective fields; SIP-0110's snapshot (#2179) | cycle and Campaign preparation | each field, when its PR merges with the other lane's review (G4) | the standalone and Campaign preparation tests, on every change | IR-2 |
+| 3. `WorkspaceStore` | the Spark lane's sandbox (X-1 to X-3); the MacBook lane's seeding and its revision-to-commit mapping | the MacBook lane's capture; Outcome Evaluation's runner | the fixture's PR for the mapping; X-1 before E.4.2 | seed the fixture at a commit, capture a change back, and resolve the mapping both ways | IR-4, IR-5 |
+| 4. Campaign accepted trees | SIP-0109, whose identity is unchanged; the MacBook lane's mapping to Git | Outcome Evaluation's regression reading; Project history | already, for the identity; the mapping with E.4.3 | IR-5 | IR-5 |
+| 5. outcome references | the Spark lane (`OutcomeEvaluationRef`) | the MacBook lane's Project history | the fixture's PR, after Outcome Evaluation renames its term (D2) | write the fixture's reference, read it back, and refuse an unknown major version | IR-4, IR-5 |
+| 6. project instructions | SIP-0110 (#2179); the MacBook lane's discovery and resolver | both lanes | when #2179 merges | IR-3 | IR-2, IR-3 |
+| 7. starting the product | the MacBook lane: the Development Configuration's start declaration (E.4.2) | Outcome Evaluation's runner, through X-3 | the fixture's PR | start the fixture from its declaration; a missing declaration; a readiness timeout | IR-6, IR-7 |
+
+- **Frozen** means the fixture's recorded output is the shape the other lane builds against. Changing it after that
+  is a shared-contract change (G4).
+- **When a contract's data is absent,** what each consumer does is the SIP's rule (its §8.2.1, "absent, stale or
+  unavailable").
+- **At the plan's level:** each lane builds against the fixture's recorded outputs until the other lane's code ships.
+  An integration scenario whose prerequisite hasn't shipped reports *not run* (G5).
+- **One of each:** there is one Project registry, one workspace authority and one source-revision model. Neither lane
+  builds a second.
 
 **The shared fixture lands first** (its §8.2.3).
 - **What it is:** one small product with its own layout, its own native commands, one check that fails before any
@@ -254,6 +290,35 @@ integration branch (G5).
   - the cutover never deploys inside the window;
   - the integration scenarios run once the owner opens the integration branch.
 
+### 2.7 The shared demonstration: the vehicle for the cross-lane scenarios
+
+**The owner's choice, 2026-10-17 (D13):** the shared demonstration is the proposed vehicle for the cross-lane
+scenarios, not a release requirement.
+
+**What it is:** one Campaign on an unfamiliar external web application that SquadOps didn't build:
+1. the product is enrolled as a Project, its native development configuration is discovered, and its source
+   revision is pinned;
+2. its inherited verification baseline is captured;
+3. a Campaign starts on it, and a feature cycle runs;
+4. the accepted tree is mapped to the Git commit it became;
+5. Outcome Evaluation starts the product from its start declaration (contract 7) and evaluates it on held-out
+   scenarios, reporting only;
+6. the evaluation record is stored with its Project, Campaign, cycle and tree references (contract 5);
+7. an outside developer pushes a change, and a second feature follows.
+
+**How it works:**
+- **What it exercises:** IR-4, IR-5, IR-6 and IR-9, live, in one run. Its purpose is to find boundary defects
+  between the lanes, not to merge the two designs.
+- **What it needs first:**
+  - contract 7 (E.4.2), X-3 and Outcome Evaluation's phase-1 runner;
+  - a scenario suite of its own, since the window's suite is written for `group_run`. The supervisor drafts it, and
+    the owner approves it (D2).
+- **What it doesn't replace:** each feature's own acceptance tests, the brownfield demonstration and the greenfield
+  proof. Those run and are read on their own, and *not run* never covers them (G6).
+- **If it can't run before the cut:** its scenarios report *not run*, each with its missing prerequisite (G5). The
+  release ships on each lane's own evidence.
+- **It stays held out:** neither the product nor the squad sees a scenario step (the SIP's §8.3, IR-4).
+
 ---
 
 ## 3. Beside it: SIP-0110's memory entry points (accepted, placed in 2.4.0)
@@ -315,27 +380,29 @@ the headline's evidence.
 
 ## 5. Sequencing: the box is the constraint
 
-Most of the work is code. The box's time goes to the window, the reads and the cut.
+Most of the work is code. The box's time goes to the window, the demonstrations, the integration scenarios and the
+cut.
 
-1. **2.3.1 cuts first.** Done, 2026-10-17.
-2. **The design reviews,** Outcome Evaluation's and #316's, as two PRs with the owner's rulings recorded, and the
-   owner's acceptance of Project Lifecycle Management (PR #2401). No box time.
-3. **The shared fixture,** one PR both lanes review (§2.3), **then X-1** (§2.4).
-4. **Phase 1's build, #316's rename, #1756, and the entry points' first rows,** on branches, merged in steps. Each
-   rebuild runs its regression pair and its loaded checks, as 2.3's rounds did. **X-3 is built with phase 1's runner,
-   and X-2 before the brownfield demonstration.** Project Lifecycle Management's slices run on the MacBook lane's
-   own schedule (§2.6).
-5. **The early reads:** #2306's terminations and #2253's headroom. No box time; they read stored records.
-6. **The window's pre-registration, then the window:** the suite frozen, the deploy frozen for both lanes (G7), four
-   campaigns. The registry cutover deploys before the freeze or after the window (§2.6).
-7. **The owner's phase-2 decision** on the window's record (D4). Then either phase 2's build and its own pre-registered
-   reading, or the record that moves it.
-8. **The output-quality changes** (#2378, #2153, #2306's fix if any), each measured on the yardstick.
-9. **#1966's A/B** on replayed increments, at any point after the window, read on its scenarios.
-10. **The entry points' acceptance matrix, live** (#2183), on the final deploy.
-11. **The integration scenarios** IR-1 to IR-10, once the owner opens the integration branch (G5).
-12. **The cut:** a pre-registered set and shakeout, written when the last batch is built, as 2.0–2.3 did, with G6's
-    conditions: the integration scenarios passed or *not run*, the brownfield demonstration read, and greenfield shipped.
+**Each lane moves through these checkpoints on its own.** They are not a serial order:
+- the window doesn't wait for the MacBook lane's demonstrations;
+- an integration scenario runs as soon as its prerequisites have shipped.
+
+| checkpoint | MacBook lane | Spark lane | together | it starts when |
+|---|---|---|---|---|
+| **M0, ready to build** | the owner accepts Project Lifecycle Management (PR #2401) | Outcome Evaluation's design review (D2), and #316's | this plan's decisions are ruled; the shared fixture merges, freezing contracts 1, 3, 5 and 7 (§2.3) | 2.3.1 has cut: done, 2026-10-17 |
+| **M1, building alone** | E.4.1, then E.4.2 (after X-1), then E.4.3 | phase 1: the scenario store and runner, the baselines, the ledger; X-1 first, X-3 with the runner, X-2 before the brownfield demonstration; #316's rename; #1756; the entry points' first rows. The early reads (#2306, #2253) need no box time | each lane's contract tests run against the fixture; every contract change goes through G4 | M0, for that lane |
+| **M2, measuring** | the registry cutover deploys before the freeze or after the window (§2.6) | the window: suite and deploy frozen (G7), four campaigns, recorded as §1.3 says | neither lane deploys inside the window | phase 1 is built and its suite approved |
+| **M3, each lane's acceptance** | the brownfield demonstration (E.4.3, then E.4.4), then greenfield (E.4.6) | the window's record read; the phase-2 decision (D4), then phase 2's build and reading, or the record that moves it; after the window, the output-quality changes (#2378, #2153, #2306's fix if any) and #1966's A/B | on the Spark, the demonstrations run outside the window | M1 for the MacBook lane; M2 for the Spark lane |
+| **M4, integrating** | IR-1, IR-2, IR-3, IR-8 | IR-6 | IR-4, IR-5, IR-7, IR-9, IR-10; the shared demonstration (§2.7) runs IR-4, IR-5, IR-6 and IR-9 live | the owner opens the integration branch (G2), and each scenario's prerequisites have shipped |
+| **M5, the cut** | — | — | the entry points' acceptance matrix, live (#2183); the cut's pre-registered set and shakeout, written when the last batch is built; the cut record, with G6's conditions (§6.2) | the last batch is built |
+
+**The dependencies across the lanes,** and only these:
+- the fixture before either lane's first contract PR;
+- X-1 before E.4.2;
+- X-2 before the brownfield demonstration, unless its product is text-only;
+- contract 7 (E.4.2) and X-3 before Outcome Evaluation reads any external Project (IR-6, the shared demonstration);
+- the registry cutover never inside the window;
+- the integration scenarios only after the owner opens the integration branch.
 
 **Box-time guides** (guides, never triggers; the owner's rule from 2.3):
 
@@ -348,6 +415,7 @@ Most of the work is code. The box's time goes to the window, the reads and the c
 | the acceptance matrix, live | ~2 h |
 | the cut's set and shakeout | ~4 h |
 | Project Lifecycle Management's two demonstrations | set in their pre-registrations, by the MacBook lane |
+| the shared demonstration | set in its pre-registration |
 
 ---
 
@@ -359,7 +427,8 @@ record and phase 2's own reading.
 
 **If phase 2 moves,** the claim is the entry points: an operator's instruction reaches the task it names and only
 that task, and chat works on the memory substrate. The evidence is the acceptance matrix, live. Phase 1's instruments
-still ship as reporting only, so the release carries the yardstick either way.
+still ship as reporting only, so the release carries the yardstick either way. That is D1, ruled. D14 asks whether it
+still applies now that Project Lifecycle Management is committed.
 
 **Project Lifecycle Management's claim stands on its own evidence either way** (G5):
 - SquadOps develops an independently owned product in its own repository:
@@ -377,24 +446,74 @@ still ship as reporting only, so the release carries the yardstick either way.
 Each would need a pre-registered comparison on the yardstick this release builds. Making that comparison possible is
 what the release is for.
 
+### 6.1 What is committed
+
+| category | what | on what authority |
+|---|---|---|
+| **committed: the cut needs it** | Project Lifecycle Management's E.4.1–E.4.4 and E.4.6, and both demonstrations; Outcome Evaluation's phase 1, reporting only; IR-1 to IR-10, each run or reported *not run*; the cut's set and shakeout | G6 and the owner's rulings of 2026-10-17; D1 |
+| **conditional** | Outcome Evaluation's phase 2 (its §4.5 and §4.7), with SIP-0109 §24ap's row | D4: built only if the window's record supports it. Its absence does not fail the release |
+| **placed, built in parallel** | the memory entry points (#2177–#2183); #316; §4.1's riding-along items | SIP-0110's placement (D5); D6 to D8 |
+| **not in 2.4** | E.4.5, before the SIP closes; E.4.7, optional; #557, #949, #950 and #1978 (D10); #2230 (D9); the rest of §4.2 | the owner's rulings; D9, D10 |
+
+Where review or box time runs short, the committed rows come first. The placed rows never displace them.
+
+### 6.2 The release acceptance matrix
+
+| tier | evidence | does the cut need it? | gate | if it is missing |
+|---|---|---|---|---|
+| **contract verification** | each contract's minimum test (the SIP's §8.2.1), green on `main` against the shared fixture | yes | G4 | the contract change does not merge |
+| **Project Lifecycle Management's acceptance** | E.4.1–E.4.4 and E.4.6 shipped; the brownfield demonstration pre-registered, run and read; the greenfield proof run and read; the SIP's E.7 checklist | yes | G6 | no cut. *Not run* never covers either demonstration |
+| **Outcome Evaluation's phase 1** | the instruments shipped reporting only, each with its wiring test and loaded check; no scenario result reaching a squad role | yes | D1 | no cut on D1's terms, unless the owner rules otherwise |
+| **Outcome Evaluation's phase 2** | its build and its own pre-registered reading, on the window's record | only if D4 rules it in | D4 | it moves to the next even release, with its record |
+| **cross-lane integration** | IR-1 to IR-10 on a deploy carrying both lanes; the shared demonstration as the live vehicle for IR-4, IR-5, IR-6 and IR-9 | each one runs, or reports *not run* | G5, G6 | *not run* names the missing prerequisite, the contract affected, the evidence that is missing and the effect on the release claim. It is never counted as passed |
+| **release evidence** | the cut's pre-registered set and shakeout; IR-10's regression pair; the cut record, saying what each lane's evidence does not cover | yes | G6 | no cut |
+
+**The gates:**
+- **G1:** Project Lifecycle Management stays proposal-only until the owner accepts it.
+- **G2:** there is no integration branch until the owner opens one.
+- **G3:** the Spark lane's compatibility review is recorded. It was met on 2026-10-17.
+- **G4 to G7:** ruled 2026-10-17 (§2.5).
+
+Changing any gate is the owner's decision.
+
+### 6.3 What the release reads
+
+| question | evidence | claimed or reported |
+|---|---|---|
+| Can SquadOps develop an independent external codebase, across an outside change? | the brownfield demonstration's two features; IR-3 | claimed, once read |
+| Does it keep source identity right? | IR-5; the tests for contracts 1, 3 and 4 | claimed |
+| Does it keep inherited failures apart from introduced ones? | IR-9; the check results' attribution (FR-20) | claimed |
+| Can it create a greenfield Project and develop it? | the greenfield proof (E.4.6); IR-7 | claimed |
+| Do the independent scenarios detect real differences, and reproducibly? | the window's discrimination reading, and each measure's spread on an unchanged tree (§1.3) | reported; it decides phase 2 |
+| Do the readings tell improvement from regression? | contribution per increment; scenario regressions | reported |
+| Is the evidence attributed correctly? | the evaluation records and their references (contract 5); IR-5 | claimed |
+| Does holding out hold? | no scenario step in any authoring envelope or squad task's inputs (§1.3; IR-4) | claimed, or recorded as a finding |
+| How the squad worked: cycle completion, cost and time per accepted increment, interventions, defects found, regressions caught | the per-increment scorecard (#1960), the intervention ledger, the issues filed, the frozen criteria and scenario regressions | reported, and never claimed as autonomy on its own |
+| Does app quality improve across increments? | contribution and the quality deltas, per increment | reported. A claim needs a pre-registered comparison, as above |
+
+Output volume and completed cycles alone are never evidence of autonomy. An autonomy reading travels with the quality
+reading beside it (Outcome Evaluation §1).
+
 ---
 
 ## 7. Decisions for the owner
 
-| # | decision | recommendation |
-|---|---|---|
-| D1 | **the headline** | **ruled 2026-10-16:** Outcome Evaluation leads; its design review comes early; phase 2 is conditional on phase 1's data; the entry points carry 2.4 if it moves. **Since then (2026-10-17):** the owner made Project Lifecycle Management the MacBook lane's 2.4 feature (Q35, PR #2401). D1 stands for the Spark lane's (§2) |
-| D2 | **Outcome Evaluation's five questions** (its §8) | **(1)** steps held out, goals visible, as drafted. **(2)** The supervisor drafts the first suite and the owner approves it, frozen before the window. **(3)** Lighthouse and axe in the QA image, with the lock files' audit. **(4)** The first work classes: increment count, PRD tier, and attended or unattended, declared in the objective. **(5)** Phase 2 in 2.4, conditional (D1, D4). Also rename the SIP's "outcome" term (§1.1) |
-| D3 | **the window** | **four campaigns, two per stack, three increments each, on one frozen deploy,** pre-registered. With memory on and no build-side lesson approved, they double as SIP-0110's next build-side experiment |
-| D4 | **phase 2's condition** | **the window's record shows:** the scenarios discriminate, holding out holds, contribution is not the acceptance count, and each measure phase 2 would gate is stable. The owner decides on that record |
-| D5 | **the entry points** | **in 2.4 as placed,** in parallel. **Q29: conversation history's retention** is the owner's, set before #2180 ships |
-| D6 | **#1966** | **the A/B in 2.4; adoption a separate ruling,** not before phase 2's decision |
-| D7 | **#316** | **in 2.4, after its SIP's design review,** landing before the window's deploy freezes |
-| D8 | **the 2.3 cut's output-quality findings** | **#2378's proper fix and #2153's build after the window,** each measured on the yardstick. **#2306 and #2253 as reads first.** **#1756 early,** as an instrument |
-| D9 | **#2230** | **unplaced, deliberately,** with the owner's words of 2026-10-15, until the owner places it. If ruled, its SIP-0111 ledger row moves to unplaced in this plan's PR before it merges |
-| D10 | **the judgement steps (#557, #949, #950) and #1978** | **not in 2.4;** re-read at 2.4's cut |
-| D11 | **who runs the line** | **the supervisor runs the Spark lane, on the 2.3 line's terms:** build in §5's order, merge on green with main's run read, rebuilds and uncounted runs. The MacBook lane is run by its own session, on its own grant. **The owner's:** the SIP acceptances (Outcome Evaluation, #316, Project Lifecycle Management), opening the integration branch (G2), the first suite's approval, Q29, the phase-2 decision, lesson approvals, compose changes, and the tag and Release unless delegated at the cut |
-| D12 | **when the lanes meet** (§2; the contracts and gates are Project Lifecycle Management's, ruled) | **(1)** The shared fixture first: the MacBook lane writes it, the Spark lane adds its recorded evaluation reference, and both review. **(2)** X-1 to X-3 are built by the Spark lane, which owns the sandbox, and reviewed by the MacBook lane: X-1 right after the fixture; X-2 before the brownfield demonstration unless its product is text-only; X-3 with phase 1's runner, including starting a pinned revision in a disposable copy. **(3)** The registry cutover deploys before the window's freeze if IR-1 has passed, otherwise after the window (G7). **(4)** The lanes agree where the demonstrations run; on the Spark, they run outside the window |
+| # | decision | status | recommendation |
+|---|---|---|---|
+| D1 | **the headline** | **ruled** 2026-10-16. Q35 added the MacBook lane's feature (2026-10-17) | **ruled 2026-10-16:** Outcome Evaluation leads; its design review comes early; phase 2 is conditional on phase 1's data; the entry points carry 2.4 if it moves. **Since then (2026-10-17):** the owner made Project Lifecycle Management the MacBook lane's 2.4 feature (Q35, PR #2401). D1 stands for the Spark lane's (§2) |
+| D2 | **Outcome Evaluation's five questions** (its §8) | open. The Spark lane's intent from its #2401 review (the runner, the storage, the surfaces) is for this review | **(1)** steps held out, goals visible, as drafted. **(2)** The supervisor drafts the first suite and the owner approves it, frozen before the window. **(3)** Lighthouse and axe in the QA image, with the lock files' audit. **(4)** The first work classes: increment count, PRD tier, and attended or unattended, declared in the objective. **(5)** Phase 2 in 2.4, conditional (D1, D4). Also rename the SIP's "outcome" term (§1.1) |
+| D3 | **the window** | open. G7, ruled, freezes the window's deploy for both lanes | **four campaigns, two per stack, three increments each, on one frozen deploy,** pre-registered. With memory on and no build-side lesson approved, they double as SIP-0110's next build-side experiment |
+| D4 | **phase 2's condition** | open | **the window's record shows:** the scenarios discriminate, holding out holds, contribution is not the acceptance count, and each measure phase 2 would gate is stable. The owner decides on that record |
+| D5 | **the entry points** | open. The entry points are placed in 2.4.0 (SIP-0110) | **in 2.4 as placed,** in parallel. **Q29: conversation history's retention** is the owner's, set before #2180 ships |
+| D6 | **#1966** | open | **the A/B in 2.4; adoption a separate ruling,** not before phase 2's decision |
+| D7 | **#316** | open | **in 2.4, after its SIP's design review,** landing before the window's deploy freezes |
+| D8 | **the 2.3 cut's output-quality findings** | open | **#2378's proper fix and #2153's build after the window,** each measured on the yardstick. **#2306 and #2253 as reads first.** **#1756 early,** as an instrument |
+| D9 | **#2230** | open | **unplaced, deliberately,** with the owner's words of 2026-10-15, until the owner places it. If ruled, its SIP-0111 ledger row moves to unplaced in this plan's PR before it merges |
+| D10 | **the judgement steps (#557, #949, #950) and #1978** | open | **not in 2.4;** re-read at 2.4's cut |
+| D11 | **who runs the line** | open. Q35 split the line into two lanes | **the supervisor runs the Spark lane, on the 2.3 line's terms:** build in §5's order, merge on green with main's run read, rebuilds and uncounted runs. The MacBook lane is run by its own session, on its own grant. **The owner's:** the SIP acceptances (Outcome Evaluation, #316, Project Lifecycle Management), opening the integration branch (G2), the first suite's approval, Q29, the phase-2 decision, lesson approvals, compose changes, and the tag and Release unless delegated at the cut |
+| D12 | **when the lanes meet** (§2; the contracts and gates are Project Lifecycle Management's, ruled) | open | **(1)** The shared fixture first: the MacBook lane writes it, the Spark lane adds its recorded evaluation reference, and both review. **(2)** X-1 to X-3 are built by the Spark lane, which owns the sandbox, and reviewed by the MacBook lane: X-1 right after the fixture; X-2 before the brownfield demonstration unless its product is text-only; X-3 with phase 1's runner, including starting a pinned revision in a disposable copy. **(3)** The registry cutover deploys before the window's freeze if IR-1 has passed, otherwise after the window (G7). **(4)** The lanes agree where the demonstrations run; on the Spark, they run outside the window |
+| D13 | **the shared demonstration** (§2.7) | **ruled** 2026-10-17 | **The owner's choice:** the proposed vehicle for the cross-lane scenarios (IR-4, IR-5, IR-6 and IR-9), not a release requirement. If it can't run, its scenarios report *not run* (G5) |
+| D14 | **D1's fallback, now that Project Lifecycle Management is committed** | open | D1 makes the memory entry points 2.4's headline if phase 2 moves, so that an even minor has a feature. Project Lifecycle Management now meets that on its own. **Recommended:** if phase 2 moves, the release's headline is Project Lifecycle Management, with phase 1 as the yardstick, and the entry points ship as placed and are claimed on their own acceptance matrix (#2183). D1 stands until the owner rules this |
 
 ---
 
@@ -404,5 +523,6 @@ what the release is for.
 - **Project Lifecycle Management's design, contracts and gates.** Its SIP states them, and accepting it is the owner's
   (§2).
 - **Whether phase 2 ships.** D4 sets the condition; the owner decides on the window's record.
+- **Any change to a gate.** G1 to G7 are the owner's rulings, and only the owner changes them.
 - **The window's and the cut's numbers.** Each is written as a pre-registration when its batch is built.
 - **Any lesson.** Memory supplies nothing until the owner approves one (SIP-0110).
