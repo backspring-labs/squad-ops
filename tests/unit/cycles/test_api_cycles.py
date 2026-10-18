@@ -713,6 +713,56 @@ class TestCreateCyclePreflight:
         mock_cycle_registry.create_cycle.assert_not_called()  # fail-fast: nothing persisted
         mock_cycle_registry.create_run.assert_not_called()
 
+    @pytest.mark.parametrize(
+        ("overrides", "status"),
+        [({}, 422), ({"build_profile": "python_cli_builder"}, 201)],
+        ids=["no-build-profile", "build-profile-set"],
+    )
+    def test_a_builder_squad_with_no_build_profile_is_refused_before_persist(
+        self, client, mock_squad_profile, mock_cycle_registry, overrides, status
+    ):
+        """#2437, at the create route with the `build` request profile's defaults (a framing
+        then an implementation workload, no build_profile) on a squad with a builder. Bug
+        caught: the decision written and never asked by the create path, so the cycle runs a
+        whole framing workload and fails when implementation starts (cyc_68e254dcf2b7)."""
+        roles = ("strat", "dev", "qa", "data", "lead", "builder")
+        builder_squad = SquadProfile(
+            profile_id="lite-14b",
+            name="Lite",
+            description="",
+            version=1,
+            agents=tuple(
+                AgentProfileEntry(
+                    agent_id=f"a-{r}", role=r, model="gpt-4", enabled=True, serves_roles=(r,)
+                )
+                for r in roles
+            ),
+            created_at=NOW,
+        )
+        mock_squad_profile.resolve_snapshot.return_value = (builder_squad, "sha256:x")
+        request = {
+            **self._REQUEST,
+            "squad_profile_id": "lite-14b",
+            "request_profile": "build",
+            "applied_defaults": {
+                "workload_sequence": [
+                    {"type": "framing", "gate": "progress_plan_review"},
+                    {"type": "implementation", "gate": None},
+                ],
+                "build_tasks": True,
+            },
+            "execution_overrides": overrides,
+        }
+
+        resp = client.post("/api/v1/projects/hello_squad/cycles", json=request)
+
+        assert resp.status_code == status
+        if status == 422:
+            err = resp.json()["detail"]["error"]
+            assert err["code"] == "PREFLIGHT_REJECTED"
+            assert "`build_profile`" in err["message"] and "`lite-14b`" in err["message"]
+            mock_cycle_registry.create_cycle.assert_not_called()
+
     def test_blocks_when_a_required_model_is_not_pulled(self, client, mock_cycle_registry):
         # backend reachable but empty → the profile's `gpt-4` is definitively absent
         with patch(

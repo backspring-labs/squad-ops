@@ -73,6 +73,7 @@ from squadops.cycles.preflight import (
     Finding,
     PreflightDecision,
     bind_mode_authoring_decision,
+    builder_build_profile_decision,
     combine,
     fault_injection_decision,
     memory_declaration_decision,
@@ -184,6 +185,9 @@ async def _run_create_preflight(
         # emission outside the fill slots, surfacing as "the plan claims nothing" a full
         # framing workload later.
         stack_development_profile_decision(config),
+        # #2437: a builder squad with a build step and no build_profile fails the moment
+        # implementation starts (#392), after the whole framing workload. Fail in seconds.
+        builder_build_profile_decision(profile, config),
         model_availability_decision(profile, await _pulled_model_names(llm_port)),
         # #1145: pulled is not the same as registered. A model the backend serves but
         # MODEL_SPECS does not know runs with the overflow guard disabled and a

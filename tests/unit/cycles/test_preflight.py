@@ -31,6 +31,7 @@ from squadops.cycles.preflight import (
     Finding,
     PreflightDecision,
     bind_mode_authoring_decision,
+    builder_build_profile_decision,
     combine,
     model_availability_decision,
     model_registration_decision,
@@ -575,3 +576,54 @@ class TestModelRegistrationDecision:
         assert len(decision.warnings) == 1
         assert "un-a" in decision.warnings[0].message
         assert "un-b" in decision.warnings[0].message
+
+
+class TestBuilderBuildProfileDecision:
+    """#2437: a squad serving the builder role, with a build step and no ``build_profile``, is
+    refused at create. Plan generation refuses its ``builder.assemble`` (#392), and that refusal
+    came at the start of implementation, after a whole framing workload (``cyc_68e254dcf2b7``)."""
+
+    BUILDER = (*PLAN_ROLES, "builder")
+
+    @pytest.mark.parametrize(
+        ("roles", "disabled", "config", "blocked"),
+        [
+            (BUILDER, (), _ws("framing", "implementation"), True),
+            (
+                BUILDER,
+                (),
+                {**_ws("framing", "implementation"), "build_profile": "nextjs_ts"},
+                False,
+            ),
+            (BUILDER, (), _ws("framing"), False),
+            (BUILDER, (), {"build_tasks": True}, True),
+            (BUILDER, (), {}, False),
+            (PLAN_ROLES, (), _ws("framing", "implementation"), False),
+            (BUILDER, ("builder",), _ws("framing", "implementation"), False),
+        ],
+        ids=[
+            "builder-implementation-no-profile",
+            "builder-implementation-with-profile",
+            "framing-only",
+            "legacy-build-tasks",
+            "legacy-plan-only",
+            "no-builder-falls-back-to-develop-and-test",
+            "builder-disabled",
+        ],
+    )
+    def test_blocks_only_a_builder_that_would_assemble_with_no_profile(
+        self, roles, disabled, config, blocked
+    ):
+        """Bugs caught: the ``build`` request profile on a builder squad accepted, to fail after
+        framing; and the opposite, a squad with no builder, a framing-only cycle or a set
+        ``build_profile`` refused."""
+        decision = builder_build_profile_decision(
+            _profile(roles, profile_id="lite-14b", disabled=disabled), config
+        )
+        assert decision.rejected is blocked
+        if blocked:
+            (finding,) = decision.blocking
+            assert finding.code == "builder_without_build_profile"
+            assert "`lite-14b`" in finding.message
+            assert "`python_cli_builder`" in finding.message
+            assert "--set build_profile=" in finding.message
