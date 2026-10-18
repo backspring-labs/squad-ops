@@ -36,7 +36,7 @@ from squadops.sandbox.models import (
     decode_binary,
     wire_files,
 )
-from squadops.scenarios.runner import DeclaredStart, TreeEvaluation
+from squadops.scenarios.runner import DeclaredStart, RunnerUnavailable, TreeEvaluation
 
 _RESULT_TYPES: dict[str, type[OperationResult]] = {
     cls.__name__: cls
@@ -268,7 +268,22 @@ class HttpScenarioRunner(ScenarioRunnerPort):
         environment: Mapping[str, str],
     ) -> TreeEvaluation:
         wire = wire_files(tree)
-        payload = await self._sandbox._post(
+        try:
+            payload = await self._post_evaluation(
+                wire, tree_identity, executable, stack, declared, scenarios, environment
+            )
+        except SandboxServiceError as e:
+            if e.status_code == 503:
+                raise RunnerUnavailable(str(e)) from e
+            raise
+        except httpx.ConnectError as e:
+            raise RunnerUnavailable(f"the sandbox service is unreachable: {e}") from e
+        return TreeEvaluation.from_dict(payload)
+
+    async def _post_evaluation(
+        self, wire, tree_identity, executable, stack, declared, scenarios, environment
+    ) -> dict:
+        return await self._sandbox._post(
             "/api/v1/evaluations",
             {
                 "tree": wire["files"],
@@ -281,4 +296,3 @@ class HttpScenarioRunner(ScenarioRunnerPort):
                 "environment": dict(environment),
             },
         )
-        return TreeEvaluation.from_dict(payload)

@@ -24,6 +24,11 @@ from squadops.scenarios.evaluation import BlockedReason
 from squadops.scenarios.steps import ScenarioRun
 
 
+class RunnerUnavailable(Exception):
+    """The deploy runs no scenario runner, or can't reach it: every applicable scenario is
+    ``blocked_unverified``, reason ``no_runner``, never passed (§4.1)."""
+
+
 class StartUndeclared(ValueError):
     """No start declaration, or one that breaks contract 7's schema: every scenario is
     ``blocked_unverified``, reason ``no_start_declaration`` (SIP-0112 §8.2.1). E.4.2 validates
