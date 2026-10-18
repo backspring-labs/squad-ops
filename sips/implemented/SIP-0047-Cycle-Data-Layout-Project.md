@@ -413,3 +413,39 @@ This SIP is considered complete when:
 
 At that point, Execution Cycles will have a **durable, inspectable, and project-anchored cycle_data substrate**, and WarmBoot will be fully migrated to this model, unblocking future work on phases, pulses, rollback, and observability.
 
+---
+
+## 12. Post-acceptance amendments
+
+### 12a. 2026-10-17 — retired as a runtime contract
+
+**Ruled by the owner, 2026-10-17** (Q30, in the design review of Project Lifecycle Management, PR #2401):
+SIP-0047 is deprecated as an active runtime contract. Its implemented status stays as history, its
+retirement is recorded here, its principles are kept, and neither its `CycleDataStore` nor its filesystem
+layout is restored.
+
+**What changed, and the evidence:**
+- **The store was built, then removed.** `CycleDataStore` was implemented in the v0 tree
+  (`_v0_legacy/agents/cycle_data/cycle_data_store.py`, called from the v0 agents and capabilities) and left
+  with `_v0_legacy/` (`dd105d1a`, 2026-02-01). Nothing in `src/` or `adapters/` implements it.
+- **The layout and the tables were not carried forward.** No migration in `infra/migrations/` creates §4's
+  `projects` table or an `execution_cycle` table, and nothing writes `cycle_data/<project_id>/<ECID>/`.
+- **What does each job on `main`:**
+  - projects: `ProjectRegistryPort`, served from `config/projects.yaml` (SIP-0064);
+  - cycles and runs: the `cycle_registry` table and its runs, keyed by `cycle_id` and `run_id` (SIP-0067);
+  - evidence: `ArtifactVaultPort`, under `data/artifacts/` by default (SIP-0064);
+  - live working trees: the sandbox's `WorkspaceStore` under `cycle_data/sandbox` (SIP-0102), which shares
+    only the directory name.
+- **Its one remnant** is `CycleDataConfig` (`cycle_data.root`, `src/squadops/config/schema.py:723`), which
+  nothing reads.
+
+**Kept, as principles:** a durable project identity that outlives any one cycle; traceability from project to
+cycle, run and evidence; evidence kept apart from product source and from scratch space. Project Lifecycle
+Management (SIP-0112, `sips/accepted/SIP-0112-Project-Lifecycle-Management.md`) carries them forward on the
+current stores.
+
+**Not restored:** the `CycleDataStore` contract (§6), the `cycle_data` layout (§5) and the `projects` table as
+§4 specifies it. A later design that needs any of them is a new SIP, specified against the current stores.
+
+**Status:** stays `implemented`, as the record of what was built in the v0 tree. Sections 1–11 describe that
+tree.

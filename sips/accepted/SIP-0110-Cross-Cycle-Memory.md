@@ -1618,6 +1618,31 @@ later work:
 **Who ruled it.** Proposed in #2257. The owner's review of that PR rules it, before it merges with the first fix batch
 (the 2.3 plan's phase 8).
 
+## 5k. The boundary with Project Lifecycle Management (2026-10-17, Q31)
+
+**Ruled by the owner, 2026-10-17,** in the design review of Project Lifecycle Management (SIP-0112, accepted 2026-10-17; PR #2401;
+`sips/PORTFOLIO.md` §4, Q31). This SIP owns project-instruction records, their versioning, their applicability and
+their snapshot binding. Project Lifecycle Management owns the external product's authority, the discovery of
+instructions in its repository, the project's development configuration and the detection of drift. There is one
+instruction store, this SIP's (`memory_instructions`, §A.3.2).
+
+**What it means here:**
+- An instruction found in a product's repository reaches a task only as this SIP's record: a project instruction,
+  confirmed under `memory:instruct` with its applicability, pinned in the snapshot owner's snapshot at admission.
+  Project Lifecycle may propose a record's text and applicability. It never writes a binding record of its own.
+- Where an instruction cites the repository's text, that text is a required reference, bound at admission to the
+  commit the unit's source context pins (§A.3.7: `@current` is the revision current at binding).
+- A changed upstream instruction therefore reaches units admitted afterwards. A running cycle or campaign keeps what
+  it bound, and changes only by re-binding (§A.3.7). Project Lifecycle records the change as a drift finding on the
+  running unit.
+
+**Unchanged by this ruling:** §0.7 and §A.3.6–§A.3.8 as written, and #2179's scope. The repository reference is a new
+reference target. It lands as a numbered amendment here, in the PR that builds it, after #2179.
+
+**The evidence.** The overlap was found at Project Lifecycle Management's intake check (revision 4's §B.5.1 and
+FR-21 pinned development instructions per cycle, with their own precedence and drift rules) and recorded as Q31.
+Project Lifecycle Management's revision 5 (§B.5.1) applies the ruling.
+
 ## 6. Mode neutrality: cycle, duty, and ambient utilization
 
 Phase 1 implements the cycle-mode loop, but the substrate is designed so duty- and

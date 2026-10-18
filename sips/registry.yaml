@@ -1,4 +1,4 @@
-last_assigned: 111
+last_assigned: 112
 sips:
 - sip_number: 3
   sip_uid: '17642554775787694'
@@ -1000,6 +1000,15 @@ sips:
   approver: jladd
   created_at: '2026-10-09T00:00:00Z'
   updated_at: '2026-10-09T16:47:58.558686Z'
+- sip_uid: '17922606138197288'
+  sip_number: 112
+  title: Project Lifecycle Management
+  path: sips/accepted/SIP-0112-Project-Lifecycle-Management.md
+  status: accepted
+  author: Framework Committee
+  approver: jladd
+  created_at: '2026-10-16T00:00:00Z'
+  updated_at: '2026-10-17T22:57:20.622081Z'
 - sip_uid: '17883224960370906'
   sip_number: null
   title: QA-First Test Strategy for 1-Hour SquadOps Cycles (group_run Focus)
