@@ -80,7 +80,7 @@ Kept by the rule in CLAUDE.md ("SIP System"): one row per part, updated in the P
 | X-1: a `git_checkout` revision origin (§11d; SIP-0112 §8.2.2) | **shipped** | 2.4.0, PR #2441, issue #2419 |
 | X-2: a checkout's tracked tree round-trips: bytes, line endings, tracked derived names, the executable bit (§11d) | **shipped** | 2.4.0, PR #2442, issue #2420 |
 | X-3a: a product's declared command, run against a pinned revision in a disposable copy (§11d) | **shipped** | 2.4.0, PR #2447 |
-| X-3b: starting a product from its declaration, with readiness and the evaluation secrets, built with SIP-0113's scenario runner (§11d, §11e; SIP-0112 Q40) | **placed** | 2.4.0, #2421 |
+| X-3b: starting a product from its declaration, with readiness and the evaluation secrets, built with SIP-0113's scenario runner (§11d, §11e; SIP-0112 Q40) | **shipped** | 2.4.0, PR #2450, issue #2421 |
 | the runtime API as the service's caller: its own client selector, the service's URL and token, the service's provider split from the preflight's (§11f; #2451 parts 1–3) | **shipped** | 2.4.0, PR #2456 |
 | a pinned revision's content, read through the port from the live tree only while it matches its pin (§11i; SIP-0112's E.4.3 capture) | **shipped** | 2.4.0, PR #2461 |
 
