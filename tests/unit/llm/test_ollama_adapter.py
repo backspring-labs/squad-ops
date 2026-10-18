@@ -292,3 +292,54 @@ class TestOllamaAdapterAsync:
 
             assert health["healthy"] is True
             assert health["models_available"] == 1
+
+
+class TestTheServedContextIsTheRegistrys:
+    """#2427: the adapter never sent ``num_ctx``, so Ollama served its own default (4,096 tokens on
+    the MacBook's 0.12.3, which logged 28 ``truncating input prompt … limit=4096``) while the
+    registry, and every guard reading it, budgeted ``qwen2.5:7b`` at 32,768."""
+
+    @staticmethod
+    def _adapter_recording(sent: list[dict]) -> OllamaAdapter:
+        import json
+
+        import httpx
+
+        def ollama(request: httpx.Request) -> httpx.Response:
+            body = json.loads(request.content)
+            sent.append(body)
+            if request.url.path == "/api/generate":
+                return httpx.Response(200, json={"response": "ok", "done": True})
+            if body.get("stream"):
+                done = {"message": {"role": "assistant", "content": ""}, "done": True}
+                part = {"message": {"role": "assistant", "content": "ok"}, "done": False}
+                return httpx.Response(200, text=f"{json.dumps(part)}\n{json.dumps(done)}\n")
+            return httpx.Response(200, json={"message": {"role": "assistant", "content": "ok"}})
+
+        adapter = OllamaAdapter()
+        adapter._client = httpx.AsyncClient(
+            base_url="http://ollama.test", transport=httpx.MockTransport(ollama)
+        )
+        return adapter
+
+    @pytest.mark.parametrize("entry", ["generate", "chat", "chat_stream_with_usage"])
+    @pytest.mark.parametrize(
+        ("model", "num_ctx"),
+        [("qwen2.5:7b", 32_768), ("qwen2.5:3b-instruct", 32_768), ("llama3.2", None)],
+        ids=["lite", "smoke", "unregistered"],
+    )
+    async def test_each_request_asks_for_the_context_the_registry_budgets(
+        self, entry, model, num_ctx
+    ):
+        """Entered at each of the adapter's model calls, the cycle handlers' streaming one among
+        them (``capabilities/handlers/cycle/base.py``), with the body read as sent. Bugs caught:
+        a path that still sends no ``num_ctx``, so a long prompt is cut from the front; and a
+        model the registry does not know sent a context nobody budgeted."""
+        sent: list[dict] = []
+        adapter = self._adapter_recording(sent)
+        if entry == "generate":
+            await adapter.generate(LLMRequest(prompt="hi", model=model))
+        else:
+            await getattr(adapter, entry)([ChatMessage(role="user", content="hi")], model=model)
+
+        assert sent[-1].get("options", {}).get("num_ctx") == num_ctx

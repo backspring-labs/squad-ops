@@ -44,6 +44,15 @@ class ModelSpec:
 
 
 MODEL_SPECS: dict[str, ModelSpec] = {
+    # The `smoke` squad's model (#2427): without an entry, cycle-create preflight warned its
+    # overflow guard was off, and Ollama served it at its own default context.
+    "qwen2.5:3b-instruct": ModelSpec(
+        name="qwen2.5:3b-instruct",
+        context_window=32_768,
+        default_max_completion=4_096,
+        reasoning_control=ReasoningControl.NONE,
+        family="qwen2.5",
+    ),
     "qwen2.5:7b": ModelSpec(
         name="qwen2.5:7b",
         context_window=32_768,
