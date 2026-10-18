@@ -11,7 +11,13 @@ from squadops.campaigns.evaluator_trees import FileTree
 from squadops.scenarios import evaluate
 from squadops.scenarios.evaluation import Applicability, BlockedReason, ScenarioResult
 from squadops.scenarios.models import parse_suite
-from squadops.scenarios.runner import DeclaredStart, RunnerUnavailable, TreeEvaluation
+from squadops.scenarios.runner import (
+    DeclaredStart,
+    ReadinessUnsupported,
+    RunnerUnavailable,
+    StartUndeclared,
+    TreeEvaluation,
+)
 from squadops.scenarios.steps import ScenarioRun
 from squadops.scenarios.suites import SuiteRefused, approve_suite, draft_suite
 from tests.unit.scenarios.suite_fixtures import SUITE
@@ -112,7 +118,14 @@ async def test_a_scenario_whose_surface_the_project_lacks_is_not_applicable_and_
     failure, or sent to the runner at all."""
     store, suite = store
     runner = _Runner()
-    start = DeclaredStart(start=("python3", "-m", "tally"), port=18407, ready_path="/healthz")
+    start = DeclaredStart(
+        start=("python3", "-m", "tally"),
+        port=18407,
+        ready_kind="http",
+        ready_path="/healthz",
+        ready_timeout_seconds=20.0,
+        configuration_revision=1,
+    )
 
     record = await _evaluate(
         store,
@@ -135,15 +148,31 @@ async def test_a_scenario_whose_surface_the_project_lacks_is_not_applicable_and_
         (None, {}, BlockedReason.NO_RUNNER),
         (_Runner(raises=RunnerUnavailable("503")), {}, BlockedReason.NO_RUNNER),
         (_Runner(started=False), {}, BlockedReason.START_FAILED),
-        (_Runner(), {"no_start_declaration": True}, BlockedReason.NO_START_DECLARATION),
+        (
+            _Runner(),
+            {"unstartable": StartUndeclared("the Project declares no start")},
+            BlockedReason.NO_START_DECLARATION,
+        ),
+        (
+            _Runner(),
+            {"unstartable": ReadinessUnsupported("no runner for readiness 'command'")},
+            BlockedReason.NO_RUNNER,
+        ),
     ],
-    ids=["no-runner", "runner-unreachable", "start-failed", "no-start-declaration"],
+    ids=[
+        "no-runner",
+        "runner-unreachable",
+        "start-failed",
+        "no-start-declaration",
+        "a-readiness-no-runner-checks",
+    ],
 )
 async def test_an_evaluation_that_cannot_run_blocks_every_applicable_scenario(
     store, runner, kw, reason
 ):
     """§4.1: never passed, never failed. Bug caught: a deploy with no runner, or a product that
-    wouldn't start, reading as scenarios that failed (or, worse, that passed)."""
+    wouldn't start, reading as scenarios that failed (or, worse, that passed); or a ``command``
+    readiness recorded as no start declaration (#2450's review)."""
     store, suite = store
 
     record = await _evaluate(store, suite, runner, **kw)

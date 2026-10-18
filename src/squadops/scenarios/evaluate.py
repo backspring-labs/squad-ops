@@ -8,8 +8,9 @@ row, gate or prompt reads what this writes, and no scenario goal or result reach
    isn't is recorded not applicable and never runs.
 4. The applicable ones run in the runner (A3), on a disposable copy.
 5. The record is written whatever happened. No runner means every applicable scenario is
-   ``blocked_unverified`` with ``no_runner``, a failed start means ``start_failed``, and an
-   undeclared start means ``no_start_declaration``. None of them is ever passed.
+   ``blocked_unverified`` with ``no_runner``, a failed start means ``start_failed``, and a start
+   the caller couldn't read carries its own reason: ``no_start_declaration`` for none or a malformed
+   one, ``no_runner`` for a readiness kind the runner doesn't check. None of them is ever passed.
 """
 
 from __future__ import annotations
@@ -29,7 +30,12 @@ from squadops.scenarios.evaluation import (
     evaluation_record,
 )
 from squadops.scenarios.models import Scenario, SurfaceKind
-from squadops.scenarios.runner import DeclaredStart, RunnerUnavailable
+from squadops.scenarios.runner import (
+    DeclaredStart,
+    ReadinessUnsupported,
+    RunnerUnavailable,
+    StartUndeclared,
+)
 from squadops.scenarios.steps import ScenarioRun
 from squadops.scenarios.suites import require_pinnable
 
@@ -93,13 +99,13 @@ async def evaluate_cycle(
     declared: DeclaredStart | None = None,
     served: frozenset[SurfaceKind] | None = None,
     environment: Mapping[str, str] | None = None,
-    no_start_declaration: bool = False,
+    unstartable: StartUndeclared | ReadinessUnsupported | None = None,
 ) -> EvaluationRecord:
     """Evaluate ``cycle``'s delivered app against an approved suite, and write the record.
 
     A blueprint cycle starts by its stack (``build_profile``). Any other Project passes its
-    ``declared`` start and the ``served`` surface kinds of its entry points, or sets
-    ``no_start_declaration`` when it declares none."""
+    ``declared`` start and the ``served`` surface kinds of its entry points, or the refusal it met
+    reading its declaration as ``unstartable``, whose ``reason`` blocks every applicable scenario."""
     suite = (await require_pinnable(store, suite_digest)).suite
     refs = await evaluated_tree_refs(vault, cycle)
     tree = {path: (await vault.retrieve(art))[1] for path, art in refs.items()}
@@ -109,8 +115,8 @@ async def evaluate_cycle(
 
     blocked: BlockedReason | None = None
     runs: dict[str, ScenarioRun] = {}
-    if applicable and no_start_declaration:
-        blocked = BlockedReason.NO_START_DECLARATION
+    if applicable and unstartable is not None:
+        blocked = unstartable.reason
     elif applicable and runner is None:
         blocked = BlockedReason.NO_RUNNER
     elif applicable and runner is not None:
