@@ -240,7 +240,7 @@ each one as its consumer (G4).
 |---|---|---|---|
 | **X-1** (#2419): a revision origin for a Git checkout | `RevisionOrigin` is a closed set (`src/squadops/sandbox/models.py:23`), and a revision with any other origin is refused (`:103`) | E.4.2 can't seed a checkout without it | first, right after the fixture: E.4.2 waits on it |
 | **X-2** (#2420): binary files | seeding, reading the tree and persisting revisions handle UTF-8 text only (`src/squadops/sandbox/workspace.py:205`). Until X-2 ships, a product with binary files is refused at seeding, with that gap named | most real repositories carry some binary files (images, fonts) | before the brownfield demonstration, unless its product is text-only. Every existing revision ID stays the same: hashing the raw bytes gives today's digest for UTF-8 text |
-| **X-3** (#2421): a product's own commands | `ExecutionSandboxPort` (`src/squadops/ports/sandbox.py:33`) runs the environment's fixed install, build, test and start commands | contract 7: Outcome Evaluation starts an external product from its declaration | with Outcome Evaluation's runner, before IR-6 |
+| **X-3** (#2421): a product's own commands | `ExecutionSandboxPort` (`src/squadops/ports/sandbox.py:33`) runs the environment's fixed install, build, test and start commands | contract 7: Outcome Evaluation starts an external product from its declaration | **split 2026-10-18 (the lanes, on #2407):** X-3a, a declared command such as a product's check, run against a pinned revision in a disposable copy, straight after X-2 and before E.4.2's inherited baseline (FR-20); X-3b, starting the product from its declaration with readiness and the evaluation secrets, with Outcome Evaluation's runner, before IR-6 |
 
 **X-3 also starts a pinned revision in a disposable copy.** Today's start mounts the cycle's live tree and runs the app as
 the tree's owner, so the app can write its state there (`adapters/sandbox/container_backend.py:157-164`, `:316-321`). Contract 3 rules that out
@@ -408,6 +408,7 @@ cut.
 **The dependencies across the lanes,** and only these:
 - the fixture before either lane's first contract PR;
 - X-1 before E.4.2;
+- X-3a before E.4.2's inherited baseline (split from X-3 on 2026-10-18, #2407);
 - X-2 before the brownfield demonstration, unless its product is text-only;
 - contract 7 (E.4.2) and X-3 before Outcome Evaluation reads any external Project (IR-6, the shared demonstration);
 - the registry cutover never inside the window;
