@@ -30,6 +30,7 @@ from squadops._version import resolve_git_sha
 from squadops.api.campaign_launch import CampaignLaunchService
 from squadops.api.error_handlers import register_domain_error_handlers
 from squadops.api.middleware.auth import AuthMiddleware, RequestIDMiddleware
+from squadops.api.routes.agent_status import HEARTBEAT_PATH
 from squadops.api.routes.agent_status import router as agent_status_router
 from squadops.api.routes.assignments import router as assignments_router
 from squadops.api.routes.auth import router as auth_router
@@ -66,7 +67,7 @@ from squadops.execution.reply_router import ReplyRouter
 from squadops.memory.reconcile import reconcile_recent
 
 from .deps import PORT_SLOTS
-from .logging_setup import configure_logging
+from .logging_setup import configure_logging, quiet_routine_successes
 
 # #427: configure application logging before any module-level log fires. uvicorn
 # configures only its own loggers and leaves the root logger untouched, so without
@@ -74,6 +75,14 @@ from .logging_setup import configure_logging
 # reach stdout and every failure is a black box. Installed at import so it survives
 # uvicorn's startup dictConfig (see logging_setup for the why).
 configure_logging()
+
+#: The container's health check probes it every 30 s (the image's HEALTHCHECK).
+HEALTH_PATH = "/health"
+#: #2425: requests whose success is recorded elsewhere, so their 2xx access line has no reader:
+#: each heartbeat sets the agent's ``last_heartbeat``, which the health checker reads, and Docker
+#: keeps its health-check history. Named from the routes' own declarations.
+ROUTINE_ACCESS = frozenset({("POST", HEARTBEAT_PATH), ("GET", HEALTH_PATH)})
+quiet_routine_successes(ROUTINE_ACCESS)
 
 logger = logging.getLogger(__name__)
 
@@ -182,7 +191,7 @@ def create_app(config: AppConfig) -> FastAPI:
     # process-wide registry — so two apps in one process each resolve their own.
     for slot in (*_STATE_SLOTS, *PORT_SLOTS):
         setattr(app.state, slot, None)
-    app.add_api_route("/health", health_check, methods=["GET"])
+    app.add_api_route(HEALTH_PATH, health_check, methods=["GET"])
     return app
 
 

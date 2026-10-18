@@ -237,11 +237,12 @@ class TestLegacyMemoryIsDormant:
         as a recall that found nothing (the shape #2171 found)."""
         from adapters.comms.chat_executor import ChatAgentExecutor
 
-        with caplog.at_level("WARNING", logger="adapters.comms.chat_executor"):
+        with caplog.at_level("INFO", logger="adapters.comms.chat_executor"):
             ChatAgentExecutor(ports=_make_ports_bundle(), role_id="comms")
 
-        warned = [r for r in caplog.records if "legacy agent memory dormant" in r.getMessage()]
-        assert [r.levelname for r in warned] == ["WARNING"]
+        # INFO, the agents' default level (#2425): said once at every start, not a warning.
+        said = [r for r in caplog.records if "legacy agent memory dormant" in r.getMessage()]
+        assert [r.levelname for r in said] == ["INFO"]
 
     @pytest.mark.parametrize(
         "user_text", ["Please remember this: the deploy is on Friday", "When is the deploy?"]

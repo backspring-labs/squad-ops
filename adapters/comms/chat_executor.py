@@ -55,7 +55,9 @@ class ChatAgentExecutor(AgentExecutor):
     def __init__(self, *, ports: PortsBundle, role_id: str) -> None:
         self._ports = ports
         self._role_id = role_id
-        logger.warning(
+        # INFO (#2425): the dormancy is the ruled state until SIP-0110 lands, said once at start
+        # where the agents log at INFO; a warning on every start teaches a reader to skip them.
+        logger.info(
             "legacy agent memory dormant: chat neither recalls nor stores (SIP-0110 §A.4.3, #2174)",
             extra={"role_id": role_id},
         )
