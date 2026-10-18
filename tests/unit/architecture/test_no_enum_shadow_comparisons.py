@@ -50,6 +50,11 @@ _ALLOWLIST: set[tuple[str, str]] = {
     # verification (#389).
     ("src/squadops/cycles/patch_verification.py", "failed"),
     ("src/squadops/cycles/patch_verification.py", "error"),
+    # SIP-0113's ScenarioResult (#2415) made "passed" an enum value. These two are not scenario
+    # results: the first counts CheckOutcome.status rows (a dataclass's vocabulary, as "failed"
+    # above), and the second tests for an acceptance row's "passed" KEY, not a status value.
+    ("src/squadops/execution/patch_acceptance.py", "passed"),
+    ("src/squadops/cycles/verification_normalize.py", "passed"),
     # Same CheckOutcome.status vocabulary again, evaluated at plan-authoring time to
     # prove a frozen-file check can pass before the run is dispatched (pf-42).
     ("src/squadops/cycles/frozen_check_validation.py", "failed"),

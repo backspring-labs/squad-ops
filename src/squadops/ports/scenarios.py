@@ -9,6 +9,7 @@ from __future__ import annotations
 
 from abc import ABC, abstractmethod
 
+from squadops.scenarios.evaluation import EvaluationRecord
 from squadops.scenarios.models import CampaignSuitePin, SuiteRecord
 
 
@@ -30,3 +31,14 @@ class ScenarioStorePort(ABC):
 
     @abstractmethod
     async def get_pin(self, campaign_id: str) -> CampaignSuitePin | None: ...
+
+    @abstractmethod
+    async def save_evaluation(self, record: EvaluationRecord) -> None:
+        """Write an evaluation run's record (#2415). A record is written once."""
+
+    @abstractmethod
+    async def get_evaluation(self, evaluation_id: str) -> EvaluationRecord | None: ...
+
+    @abstractmethod
+    async def evaluations_for_cycle(self, cycle_id: str) -> list[EvaluationRecord]:
+        """A cycle's evaluation runs, the earliest first: a cycle can be evaluated more than once."""

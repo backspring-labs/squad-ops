@@ -591,6 +591,26 @@ All four are ruled as recommended: A4 through SIP-0112's Q40, and A1 to A3 at ac
 **Who ruled it.** The owner accepted §4.1 and §4.7 (2026-10-17). These are the implementer's choices
 within them, for the owner's review.
 
+### 10b. The evaluation record and its reference as built (2026-10-18, §4.1, §4.8; contract 5; #2415; implementer's record, for the owner)
+
+- **One record per evaluation run** (`squadops.scenarios.evaluation.EvaluationRecord`, migration 1910),
+  with an `evl_` ID. It is built only against the suite it ran: each scenario appears once, at the
+  suite's version and goal.
+- **Each scenario's outcome keeps applicability apart from the result:**
+  - not applicable means no result, and counts in no rate;
+  - an applicable scenario has a result, passed, failed or `blocked_unverified`;
+  - a blocked result names its reason from §4.1's list, and nothing else names one;
+  - a failed result names its first failing step.
+- **Trees are named by `FileTree.identity` only.** The table refuses anything but 64 hex characters, so a
+  40-character Git commit can't stand in for a tree.
+- **`OutcomeEvaluationRef`'s reader** (`parse_reference`) does two things:
+  - it refuses an unknown major version with `UnknownSchemaMajor`, reading none of the reference;
+  - it refuses a reference with any field absent, `campaign_id` included, which may be null but never
+    absent.
+
+  It holds the shared fixture's four forms (`test_contract5_evaluation_reference.py`). The record yields
+  exactly the fixture's valid reference.
+
 ### 10d. The intervention ledger as built (2026-10-18, §4.3, §7 prediction 5; #2417; implementer's record, for the owner)
 
 - **A projection of SIP-0109's control log, never a second record of it** (`squadops.outcomes.ledger`).
