@@ -664,9 +664,9 @@ by the MacBook lane as consumer (G4), for the owner's review.
 - **`declared_argv` refuses a string.** A string is a sequence of strings too, so `"ls -l"` had passed
   as one-letter arguments.
 - **What X-3b doesn't ship yet, still on #2421:**
-  - **The declared entry points.** Scenarios reach the app at the readiness port's root, so an
-    `http_base` with a path prefix, or a `ui_base` on a second port, is lost. That's the runner's next
-    change, for SIP-0112's IR-6.
+  - **The declared entry points: built in the PR stacked on #2453.** Scenarios reach the `http_base`
+    entry point's port and path, and a blueprint reaches its stack's `api_prefix`. A `ui_base` waits on
+    page scenarios (SIP-0113 A2).
   - **The approved secrets' resolution.** The runner takes the resolved values. Resolving only the
     `secret://` references a Project declares and the owner approves, and refusing anything else as
     `blocked_unverified`, `secret not available` (contract 7), needs the approval record. That record

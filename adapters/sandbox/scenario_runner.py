@@ -67,6 +67,8 @@ class _Start:
         ready_timeout: float,
         working_dir: str,
         configuration_revision: int | None,
+        api_port: int,
+        api_path: str,
     ) -> None:
         self.setup, self.start, self.port = setup, start, port
         self.ready_kind, self.ready_path, self.require_2xx, self.ready_timeout = (
@@ -77,6 +79,13 @@ class _Start:
         )
         self.working_dir = working_dir
         self.configuration_revision = configuration_revision
+        # Where scenarios reach the API (#2421): the declared http_base, or the stack's own
+        # prefix on its app port. Readiness stays on ``port``.
+        self.api_port, self.api_path = api_port, api_path
+
+    @property
+    def ports(self) -> tuple[int, ...]:
+        return tuple(dict.fromkeys((self.port, self.api_port)))
 
 
 class ContainerScenarioRunner(ScenarioRunnerPort):
@@ -164,6 +173,8 @@ class ContainerScenarioRunner(ScenarioRunnerPort):
                 declared.ready_timeout_seconds,
                 workdir,
                 declared.configuration_revision,
+                declared.api_port if declared.api_port is not None else declared.port,
+                declared.api_path,
             )
         if not stack:
             raise ValueError("a tree with no start declaration names its stack")
@@ -184,6 +195,8 @@ class ContainerScenarioRunner(ScenarioRunnerPort):
             self._blueprint_ready_timeout,
             ".",
             None,
+            contract.app_port,
+            contract.api_prefix,
         )
 
     @staticmethod
@@ -227,7 +240,7 @@ class ContainerScenarioRunner(ScenarioRunnerPort):
                         start.start,
                         start.working_dir,
                         env=env,
-                        **placement(self._app_network, "eval", (start.port,)),
+                        **placement(self._app_network, "eval", start.ports),
                     )
                 )
             except ToolContainerError as e:
@@ -274,9 +287,11 @@ class ContainerScenarioRunner(ScenarioRunnerPort):
     ) -> tuple[ScenarioRun, ...]:
         try:
             host, port = await address(self._container, container_id, spec, start.port)
+            api_host, api_port = await address(self._container, container_id, spec, start.api_port)
         except ToolContainerError as e:
-            raise _StartFailed(f"the app published no port {start.port}: {e}") from e
+            raise _StartFailed(f"the app published no port {start.ports}: {e}") from e
         base = f"http://{host}:{port}"
+        api = f"http://{api_host}:{api_port}{start.api_path}"
         if not await self._ready(base, host, port, start):
             try:
                 logs = await self._container.logs(container_id)
@@ -293,7 +308,7 @@ class ContainerScenarioRunner(ScenarioRunnerPort):
                 try:
                     response = await client.request(
                         request.method,
-                        base + request.path,
+                        api + request.path,
                         json=request.json,
                         headers=dict(request.headers or {}),
                     )

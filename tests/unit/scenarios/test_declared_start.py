@@ -38,8 +38,26 @@ def test_the_fixtures_declaration_reads_as_its_own_start_from_its_revision():
         setup=(("python3", "tools/build.py"),),
         working_dir=".",
         configuration_revision=1,
+        api_port=18407,
+        api_path="",
     )
     assert DeclaredStart.from_dict(start.as_dict()) == start
+
+
+@pytest.mark.parametrize(
+    ("entry_points", "api"),
+    [
+        ([{"kind": "http_base", "url": "http://127.0.0.1:18410/v1/"}], (18410, "/v1")),
+        ([{"kind": "ui_base", "url": "http://127.0.0.1:18407/"}], (None, "")),
+    ],
+    ids=["an-api-on-another-port-and-path", "a-ui-only-product"],
+)
+def test_the_http_base_entry_point_is_where_scenarios_reach_the_api(entry_points, api):
+    """#2421's entry points. Bug caught: scenarios sent to the readiness port's root, so an API
+    on a second port or under a path prefix is lost; or a product with no API given one."""
+    start = declared_start(_declaration(entry_points=entry_points), configuration_revision=1)
+
+    assert (start.api_port, start.api_path) == api
 
 
 @pytest.mark.parametrize("target", ["127.0.0.1:18407", "tcp://127.0.0.1:18407"])
@@ -87,6 +105,8 @@ def test_a_command_readiness_is_no_runner_not_no_declaration():
             "names no port",
         ),
         (_declaration(readiness={"kind": "grpc", "target": "x:1", "timeout_seconds": 5}), "grpc"),
+        (_declaration(entry_points=[]), "at least one"),
+        (_declaration(entry_points=[{"kind": "http_base", "url": "http://x/"}]), "names no port"),
     ],
     ids=[
         "no-declaration",
@@ -98,6 +118,8 @@ def test_a_command_readiness_is_no_runner_not_no_declaration():
         "no-timeout",
         "no-port",
         "an-unknown-kind",
+        "no-entry-points",
+        "an-http-base-with-no-port",
     ],
 )
 def test_a_declaration_that_breaks_contract_7_is_refused_as_undeclared(declaration, message):

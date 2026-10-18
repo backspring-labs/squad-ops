@@ -46,6 +46,11 @@ class EnvironmentContract:
     operation_commands: tuple[tuple[str, tuple[str, ...]], ...]  # (operation, argv)
     app_port: int
     install_network: str
+    #: Where the running app serves its API, on ``app_port`` (#2421): ``""`` when at the root,
+    #: as the canonical stack's backend serves ``/runs``, or a path, as Next.js serves its API
+    #: routes under ``/api``. A held-out scenario names the PRD's paths, and the runner prefixes
+    #: this, so one suite reaches the same job on either stack (SIP-0113 §10c).
+    api_prefix: str
     #: Whether this stack's BUILD writes into its own pinned source (SIP-0102 §11
     #: amendment). False — the canonical stack's assumption — means the live tree must
     #: keep matching its revision through every operation, and §4.6's pin verification
@@ -85,6 +90,7 @@ class EnvironmentContract:
                 {"operation": op, "argv": list(argv)} for op, argv in self.operation_commands
             ],
             "app_port": self.app_port,
+            "api_prefix": self.api_prefix,
             "install_network": self.install_network,
             "build_mutates_source": self.build_mutates_source,
         }
@@ -139,6 +145,7 @@ FULLSTACK_FASTAPI_REACT = EnvironmentContract(
         ),
     ),
     app_port=8000,
+    api_prefix="",  # the backend serves the PRD's paths at the root; the Vite proxy adds /api
     install_network="bridge",
 )
 
@@ -178,6 +185,7 @@ NEXTJS_TS = EnvironmentContract(
         ),
     ),
     app_port=8000,
+    api_prefix="/api",  # App Router API routes: app/api/runs/route.ts serves /api/runs
     install_network="bridge",
     # Measured 2026-08-15 (SIP-0104 window roll 1): `next build` GENERATES
     # `next-env.d.ts` and REWRITES the scaffold's frozen `tsconfig.json`, injecting

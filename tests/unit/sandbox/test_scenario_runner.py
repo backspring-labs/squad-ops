@@ -346,3 +346,83 @@ async def test_the_app_holding_the_secrets_runs_on_the_app_network_by_name(tmp_p
     assert ("TALLY_ADMIN_TOKEN", "evaluation-token") in start_spec.env
     assert seen and set(seen) == {(start_spec.name, 18407)}
     assert [r.result for r in result.runs] == ["passed"]
+
+
+def _api_app(port: int, prefix: str, seen: list):
+    def handler(request: httpx.Request) -> httpx.Response:
+        seen.append((request.url.port, request.url.path))
+        if request.url.path in ("/", "/healthz"):
+            return httpx.Response(200, text="ok")
+        if request.url.port != port or not request.url.path.startswith(prefix + "/counters/"):
+            return httpx.Response(404, json={"detail": "not here"})
+        return httpx.Response(200, json={"name": "apples", "count": 1})
+
+    return lambda: httpx.AsyncClient(transport=httpx.MockTransport(handler))
+
+
+class _TwoPorts(_Container):
+    async def resolve_host_port(self, container_id: str, container_port: int) -> int:
+        return {18407: 49999, 18410: 49998, 8000: 49999}[container_port]
+
+
+async def test_a_nextjs_blueprint_reaches_the_prds_paths_under_its_api_prefix(tmp_path):
+    """One suite across the window's two stacks (#2464). Bug caught: a scenario's PRD path,
+    ``/counters/apples``, sent to a Next.js app at the root, where its API routes aren't, so
+    every API scenario on that stack fails 404 and reads as the product's failure."""
+    seen: list = []
+
+    result = await _evaluate(
+        _runner(tmp_path, _Container(), app=_api_app(49999, "/api", seen)),
+        stack="nextjs_ts",
+        declared=None,
+    )
+
+    assert [r.result for r in result.runs] == ["passed"]
+    assert (49999, "/api/counters/apples") in seen
+
+
+async def test_a_declared_api_on_its_own_port_and_path_is_published_and_reached(tmp_path):
+    """#2421's entry points. Bug caught: only the readiness port published, so an API declared
+    on another port can't be reached, or its path prefix dropped."""
+    seen: list = []
+    container = _TwoPorts()
+    declared = DeclaredStart(**{**DECLARED.__dict__, "api_port": 18410, "api_path": "/v1"})
+
+    result = await _evaluate(
+        _runner(tmp_path, container, app=_api_app(49998, "/v1", seen)), declared=declared
+    )
+
+    assert container.specs[-1].publish_ports == (18407, 18410)
+    assert [r.result for r in result.runs] == ["passed"]
+    assert (49998, "/v1/counters/apples") in seen
+
+
+async def test_on_the_app_network_a_declared_api_is_reached_by_name_on_its_own_port(tmp_path):
+    """#2466 with #2471: the API addressed as ``http://<name>:<api_port><api_path>``. Bug caught:
+    the API base still built on loopback's published port, so in a deploy every API scenario
+    fails to connect, or the API's port published from a network with no route out."""
+    seen: list = []
+    container = _OnTheNetwork()
+    declared = DeclaredStart(**{**DECLARED.__dict__, "api_port": 18410, "api_path": "/v1"})
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        seen.append((request.url.host, request.url.port, request.url.path))
+        if request.url.path == "/healthz":
+            return httpx.Response(200, text="ok")
+        return httpx.Response(200, json={"name": "apples", "count": 1})
+
+    result = await _evaluate(
+        _runner(
+            tmp_path,
+            container,
+            app=lambda: httpx.AsyncClient(transport=httpx.MockTransport(handler)),
+            app_network="squadops-sandbox-apps",
+        ),
+        declared=declared,
+    )
+
+    spec = container.specs[-1]
+    assert (spec.network, spec.publish_ports) == ("squadops-sandbox-apps", ())
+    assert (spec.name, 18407, "/healthz") in seen
+    assert (spec.name, 18410, "/v1/counters/apples") in seen
+    assert [r.result for r in result.runs] == ["passed"]
