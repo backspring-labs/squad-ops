@@ -139,7 +139,7 @@ question", ruled 2026-10-03). It is the same seam: what the proposer is shown.
 
 ---
 
-## 2. The MacBook lane's feature: Project Lifecycle Management (proposed, PR #2401)
+## 2. The MacBook lane's feature: Project Lifecycle Management (SIP-0112, accepted 2026-10-17)
 
 **Added 2026-10-17.** The owner made Project Lifecycle Management 2.4's feature on the MacBook lane. The ruling is Q35,
 from the SIP's design review in PR #2401. The release carries one feature per lane: Project Lifecycle Management on the
@@ -169,15 +169,16 @@ These are the SIP's delivery slices (its E.4 and its delivery ledger):
 
 | slice | what | in 2.4 |
 |---|---|---|
-| E.4.1 | registering an existing product: the writable registry cutover, its tested rollback, the proof that existing projects are unchanged (IR-1), and the minimum enrollment | yes |
-| E.4.2 | discovering the repository's own instructions and capturing its inherited baseline, with the start declaration (contract 7) | yes |
-| E.4.3 | the first scoped feature through the shared cycle path (IR-2) | yes |
-| E.4.4 | the second feature, after an outside contribution | yes |
+| E.4.1 (#2408) | registering an existing product: the writable registry cutover, its tested rollback, the proof that existing projects are unchanged (IR-1), and the minimum enrollment | yes |
+| E.4.2 (#2409) | discovering the repository's own instructions and capturing its inherited baseline, with the start declaration (contract 7) | yes |
+| E.4.3 (#2410) | the first scoped feature through the shared cycle path (IR-2) | yes |
+| E.4.4 (#2411) | the second feature, after an outside contribution | yes |
 | E.4.5 | lifecycle completeness: update history, archive and restore, concurrency and conflict recovery | **no:** required before the SIP closes, not in 2.4 (the owner, 2026-10-17) |
-| E.4.6 | creating a greenfield Project at an owner-approved destination | **yes, shipped by the cut** (G6, the owner's ruling) |
+| E.4.6 (#2412) | creating a greenfield Project at an owner-approved destination | **yes, shipped by the cut** (G6, the owner's ruling) |
 | E.4.7 | writing in place in an existing checkout | optional |
 
 **The order:**
+- the shared fixture (#2407) first, before either lane's first shared-contract PR;
 - E.4.1, then E.4.2, then E.4.3, then E.4.4;
 - E.4.6 follows E.4.3.
 
@@ -394,7 +395,7 @@ cut.
 
 | checkpoint | MacBook lane | Spark lane | together | it starts when |
 |---|---|---|---|---|
-| **M0, ready to build** | the owner accepts Project Lifecycle Management (PR #2401) | Outcome Evaluation's design review (D2), and #316's | this plan's decisions are ruled; the shared fixture merges, freezing contracts 1, 3, 5 and 7 (§2.3) | 2.3.1 has cut: done, 2026-10-17 |
+| **M0, ready to build** | the owner accepts Project Lifecycle Management (PR #2401): **done 2026-10-17, SIP-0112** | Outcome Evaluation's design review (D2), and #316's | this plan's decisions are ruled; the shared fixture merges, freezing contracts 1, 3, 5 and 7 (§2.3) | 2.3.1 has cut: done, 2026-10-17 |
 | **M1, building alone** | E.4.1, then E.4.2 (after X-1), then E.4.3 | phase 1: the scenario store and runner, the baselines, the ledger; X-1 first, X-3 with the runner, X-2 before the brownfield demonstration; #316's rename; #1756; the entry points' first rows. The early reads (#2306, #2253) need no box time | each lane's contract tests run against the fixture; every contract change goes through G4 | M0, for that lane |
 | **M2, measuring** | the registry cutover deploys before the freeze or after the window (§2.6) | the window: suite and deploy frozen (G7), four campaigns, recorded as §1.3 says | neither lane deploys inside the window | phase 1 is built and its suite approved |
 | **M3, each lane's acceptance** | the brownfield demonstration (E.4.3, then E.4.4), then greenfield (E.4.6) | the window's record read; the phase-2 decision (D4), then phase 2's build and reading, or the record that moves it; after the window, the output-quality changes (#2378, #2153, #2306's fix if any) and #1966's A/B | on the Spark, the demonstrations run outside the window | M1 for the MacBook lane; M2 for the Spark lane |

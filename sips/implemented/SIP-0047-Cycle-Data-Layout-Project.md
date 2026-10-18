@@ -441,7 +441,7 @@ layout is restored.
 
 **Kept, as principles:** a durable project identity that outlives any one cycle; traceability from project to
 cycle, run and evidence; evidence kept apart from product source and from scratch space. Project Lifecycle
-Management (proposed, `sips/proposed/SIP-Project-Lifecycle-Management.md`) carries them forward on the
+Management (SIP-0112, `sips/accepted/SIP-0112-Project-Lifecycle-Management.md`) carries them forward on the
 current stores.
 
 **Not restored:** the `CycleDataStore` contract (§6), the `cycle_data` layout (§5) and the `projects` table as

@@ -1,19 +1,19 @@
 ---
 sip_uid: '17922606138197288'
-sip_number: null
-title: "Project Lifecycle Management"
-status: "proposed"
-author: "Framework Committee"
-approver: null
-created_at: "2026-10-16T00:00:00Z"
-updated_at: "2026-10-16T00:00:00Z"
-original_filename: "SIP-Project-Lifecycle-Management.md"
+sip_number: 112
+title: Project Lifecycle Management
+status: accepted
+author: Framework Committee
+approver: jladd
+created_at: '2026-10-16T00:00:00Z'
+updated_at: '2026-10-17T22:57:20.587980Z'
+original_filename: SIP-Project-Lifecycle-Management.md
 ---
-# SIP-XXX — Project Lifecycle Management
+# SIP-0112 — Project Lifecycle Management
 ## External Product Development, Managed Clones, and Governed Continuity
 
-**Status:** Proposed  
-**Target Version:** 2.4, the MacBook lane's feature (the owner's direction, 2026-10-17), beside Outcome Evaluation on the Spark lane (§8); each part is placed at acceptance  
+**Status:** Accepted (the owner, 2026-10-17, PR #2401)  
+**Target Version:** 2.4, the MacBook lane's feature (the owner's direction, 2026-10-17), beside Outcome Evaluation on the Spark lane (§8); the shared fixture and E.4.1–E.4.4 and E.4.6 placed in 2.4.0 at acceptance (the ledger)  
 **Author:** Framework Committee  
 **Roles Impacted:** External Product Owner/Maintainer; Lead, Strategy, Dev, QA, Data  
 **Date:** 2026-10-16  
@@ -21,7 +21,7 @@ original_filename: "SIP-Project-Lifecycle-Management.md"
 **Document Revision:** 8 — aligned with Outcome Evaluation's revision 2 (PR #2406: its terms and its §4.8) and the adopted 2.4 plan (`docs/plans/2-4-0-plan.md`). Revision 7: the tightening review: the contracts' details (§8.2.1), the sandbox boundary (§8.2.2), the shared fixture (§8.2.3), status vocabularies (§8.3.1), evidence tiers (§8.5), FR-02's two levels, E.4's dependencies and F.4's classes. Revision 6: the Spark lane's compatibility review of §8 applied (§8.6). Revision 5: the owner's design review of 2026-10-17 (PR #2401) reconciled: SIP-0047 retired as a runtime contract (Q30), instruction records owned by SIP-0110 (Q31), *Project Record* and a development configuration record in place of *Project Manifest* (Q32), that record named the *Project Development Configuration* (Q36), the Pulse IDEAs non-normative and SIP-0070's Pulse kept (Q33), greenfield creation required (Q34), and the 2.4 ownership and integration contract (Q35, §8)  
 **Source Baseline:** `backspring-labs/squad-ops`, `main`, commit `7aecfa0b3ff6576f115eba10c2ee3465774e997d` (freshly pulled and inspected 2026-10-17); revisions 6 and 7's added claims read at `9fa8b5e8`; revision 5's added claims read at `c294ec79`, one docs-only commit later  
 **Related SIPs:** SIP-0047 (Cycle Data Layout, Project Registry and `CycleDataStore`: implemented, retired as a runtime contract, Q30); SIP-0064 (Project Cycle Request API); SIP-0065 (CLI for Cycle Execution); SIP-0070 (Pulse Checks: the Cycle and Pulse this SIP keeps); SIP-0072 (its *development profile*, kept to one meaning by Q36); SIP-0074 (Console Cycle Operations UX); SIP-0102 (sandbox workspaces); SIP-0103 (Squad-Authored Manifest: owns the word *manifest*); SIP-0105 (stack blueprints); SIP-0108 (benchmark registry); SIP-0109 (Campaign Orchestration); SIP-0110 (Cross-Cycle Memory: project instructions); Outcome Evaluation (proposed, PR #1963: the Spark lane's 2.4 feature); Game Development Platform (proposed, PR #2405: the Godot/Roblox SIP, filed separately; builds on FR-17)  
-**SIP Number:** Provisional—allocate the next available identifier only after checking the current registry.
+**SIP Number:** 0112, assigned at acceptance (2026-10-17). The owner titled it *Project Lifecycle Management* at acceptance; revision 4's draft was titled *Independent Project Lifecycle Management*.
 
 ## Intake check
 
@@ -111,22 +111,23 @@ and the issue it closed), *placed* (the release and the open issue tracking it, 
 numbered), *unplaced* (said deliberately), *dropped* (by the numbered amendment that dropped it), or
 *deferred to N.x (ruled <date>)*. Updated in the PR that ships or re-places a part
 (`tests/unit/architecture/test_sip_ledgers.py` holds it). The owner's direction of 2026-10-17 is a 2.4
-feature on the MacBook lane, beside Outcome Evaluation's feature half on the Spark; each row is placed at
-acceptance, when it has its issue. Greenfield (E.4.6) ships in 2.4: the cut requires it (G6, the owner's
+feature on the MacBook lane, beside Outcome Evaluation's feature half on the Spark; the rows were placed at
+acceptance (2026-10-17), each with its issue labelled `sip:0112`. Greenfield (E.4.6) ships in 2.4: the cut requires it (G6, the owner's
 ruling of 2026-10-17). 2.4 carries E.4.1–E.4.4 and E.4.6, the two demonstrations; E.4.5 is required
 before the SIP closes and need not ship in 2.4 (the owner, the same day). Dependencies are in E.4. Game-specific adapters have no row here: they are their own SIPs' (Q34).
 
 | part | status | where |
 |---|---|---|
-| E.4.1 existing-product registration and authority: the writable registry cutover, its validated rollback and minimum enrollment | **unplaced** | — |
-| E.4.2 repository-native discovery and the inherited baseline, with the start declaration (§8.2 contract 7) | **unplaced** | — |
-| E.4.3 the first scoped feature through the shared cycle path | **unplaced** | — |
-| E.4.4 the second feature after an outside contribution | **unplaced** | — |
-| E.4.5 lifecycle completeness: update history, archive/restore, concurrency and conflict recovery (before close; not required in 2.4) | **unplaced** | — |
-| E.4.6 greenfield Project creation at an owner-approved external destination (required, Q34) | **unplaced** | — |
-| E.4.7 direct attachment: writing in place in an existing checkout (optional, FR-02) | **unplaced** | — |
+| §8.2.3 the shared fixture product and contract tests, landing before either lane's first shared-contract PR (the MacBook lane writes it; the Spark lane adds its recorded reference, the 2.4 plan's D12) | **placed** | 2.4.0, #2407 |
+| E.4.1 existing-product registration and authority: the writable registry cutover, its validated rollback and minimum enrollment | **placed** | 2.4.0, #2408 |
+| E.4.2 repository-native discovery and the inherited baseline, with the start declaration (§8.2 contract 7) | **placed** | 2.4.0, #2409 |
+| E.4.3 the first scoped feature through the shared cycle path | **placed** | 2.4.0, #2410 |
+| E.4.4 the second feature after an outside contribution | **placed** | 2.4.0, #2411 |
+| E.4.5 lifecycle completeness: update history, archive/restore, concurrency and conflict recovery (before close; not required in 2.4) | **unplaced**, deliberately: placed by a later plan, before the SIP closes | — |
+| E.4.6 greenfield Project creation at an owner-approved external destination (required, Q34; shipped by the 2.4 cut, G6) | **placed** | 2.4.0, #2412 |
+| E.4.7 direct attachment: writing in place in an existing checkout (optional, FR-02) | **unplaced**, deliberately: optional | — |
 
-**What closes this SIP:** E.4.1–E.4.6 shipped, and E.4.7 shipped or dropped. Greenfield creation (E.4.6)
+**What closes this SIP:** the shared fixture and E.4.1–E.4.6 shipped, and E.4.7 shipped or dropped. Greenfield creation (E.4.6)
 is in the completion scope by the owner's ruling of 2026-10-17 (Q34), and leaves it only by a numbered
 amendment the owner rules. The 2.4 cut requires it shipped (G6, ruled the same day).
 
@@ -1603,3 +1604,4 @@ All paths below are relative to `backspring-labs/squad-ops` at commit `7aecfa0b3
 | 6 | 2026-10-17 | Applies the Spark lane's compatibility review of §8 (§8.6, PR #2401's comment `issuecomment-6242996612`, read at `b4bbeb56`): outcome results kept out of squad roles' inputs before Outcome Evaluation's phase 2 (contract 5, FR-04, FR-09); no scenario against a live tree (contract 3); squad task inputs and containers in the independence list and IR-4; each lane done on its own evidence (G5, G6) and the window's frozen deploy (G7); contracts 1, 2 and 3 and IR-7 corrected; contract 7 added, how a product is started for evaluation, approved by the owner as written, 2026-10-17. The owner ruled the same day that the 2.4 cut requires greenfield (E.4.6) shipped (G6), approved G4–G7 as written, and kept the author as Framework Committee. |
 | 7 | 2026-10-17 | The tightening review: each contract's availability, absent or stale behavior, versioning and minimum test, with schemas for contracts 1, 5 and 7 (§8.2.1); the sandbox boundary and the cross-lane tasks X-1 to X-3 (§8.1, §8.2.2); the shared fixture (§8.2.3); status vocabularies (§8.3.1); evidence tiers and the *not run* record (§8.5, the owner's clarification); the 2.4 plan cross-reference; FR-02's required and optional levels; E.4's dependencies, rollback moved into E.4.1, and E.4.5 required before close but not in 2.4 (the owner's ruling); F.4 classified. Then the Spark lane's review of revision 7: X-3 runs in a disposable copy, `campaign_id` nullable, and Q40 opened for the owner (how secrets reach an evaluation). |
 | 8 | 2026-10-17 | Aligned with Outcome Evaluation's revision 2 (PR #2406) and the adopted 2.4 plan: its renamed terms (*scenario evidence*, *scenario result*, *contribution*, the *scenario measure*); contract 2's phase-1 and phase-2 fields as its §4.7 states them; contract 5 renamed *evaluation references*; Q40 named as its A4; the plan's D12 rulings on X-1 to X-3 and the shared fixture. No boundary changes. Q40 ruled the same day: evaluation-scoped, owner-approved test credentials only (§8.2.1). |
+| — | 2026-10-17 | **Accepted by the owner as SIP-0112** (PR #2401), titled *Project Lifecycle Management*. The shared fixture (#2407) and E.4.1–E.4.4 and E.4.6 (#2408–#2412) placed in 2.4.0, labelled `sip:0112`; E.4.5 and E.4.7 unplaced, deliberately. |

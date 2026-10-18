@@ -1620,7 +1620,7 @@ later work:
 
 ## 5k. The boundary with Project Lifecycle Management (2026-10-17, Q31)
 
-**Ruled by the owner, 2026-10-17,** in the design review of Project Lifecycle Management (PR #2401, proposed;
+**Ruled by the owner, 2026-10-17,** in the design review of Project Lifecycle Management (SIP-0112, accepted 2026-10-17; PR #2401;
 `sips/PORTFOLIO.md` §4, Q31). This SIP owns project-instruction records, their versioning, their applicability and
 their snapshot binding. Project Lifecycle Management owns the external product's authority, the discovery of
 instructions in its repository, the project's development configuration and the detection of drift. There is one
