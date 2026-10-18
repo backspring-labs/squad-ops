@@ -8,7 +8,7 @@ an unconfigured sandbox must be indistinguishable from an absent one.
 
 from __future__ import annotations
 
-from collections.abc import Mapping
+from collections.abc import Collection, Mapping
 
 from squadops.ports.sandbox import ExecutionSandboxPort
 from squadops.sandbox.models import (
@@ -42,6 +42,25 @@ class NoOpExecutionSandbox(ExecutionSandboxPort):
             "ran": False,
             "unavailable_reason": _REASON,
         }
+
+    async def seed_workspace(
+        self,
+        cycle_id: str,
+        files: Mapping[str, FileContent],
+        *,
+        origin: str = RevisionOrigin.SCAFFOLD_SEED,
+        executable: Collection[str] = (),
+        created_at: str | None = None,
+    ) -> WorkspaceRevision:
+        # Nothing is stored: the revision is the content's own address, as a patch here returns
+        # its untouched base, and every operation on it is not-run.
+        return WorkspaceRevision.cut(
+            cycle_id=cycle_id,
+            origin=origin,
+            files=files,
+            executable=executable,
+            created_at=created_at,
+        )
 
     async def install_dependencies(self, *, revision: WorkspaceRevision) -> InstallResult:
         return InstallResult(

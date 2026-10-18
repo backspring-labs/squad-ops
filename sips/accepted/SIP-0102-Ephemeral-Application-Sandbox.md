@@ -686,3 +686,20 @@ runtime API's sandbox selector is split from the service's own, and its cycle-cr
 unchanged. 3. The opt-in sandbox service runs on the deploys where E.4.2 or the window runs: the MacBook
 and the Spark." The section's scope to the runtime API is the implementer's, for the MacBook lane's
 review (G4).
+
+### 11g. Seeding joins the port (2026-10-18, §4.4, §4.6; §11f; contract 3; implementer's record, for the owner)
+
+**What changed.** `seed_workspace` is an operation of `ExecutionSandboxPort`, with X-2's signature: the
+files as text or bytes, the origin, the executable bit and the creation time. Before, it was a
+service-level method of `SandboxService` and `HttpExecutionSandbox`, outside the port. §11f's
+`create_sandbox_client` returns the port, so a caller typed against it couldn't seed: SIP-0112's E.4.2
+seeds a product's checkout through that client.
+- `SandboxService.seed_workspace` is now async, like every port operation, and the service's seed
+  route awaits it.
+- The noop cuts the content's own revision and stores nothing, as its patch returns the untouched base.
+  It never raises, and every operation on that revision is not-run.
+- All three implementations cut the same revision for the same checkout, binary file and executable bit
+  included (`tests/unit/sandbox/test_seed_on_the_port.py`).
+
+**Who ruled it.** The MacBook lane asked for it in its G4 review of #2456, as contract 3's consumer. It is
+the implementer's change, for that lane's review and the owner's.
