@@ -113,6 +113,11 @@ extend-exclude = [
     # squad-ops's isort/lint config does not apply. The contract gate materializes and
     # runs them; that is their gate, not ruff (SIP-0098 phase 98.2).
     "tests/fixtures/reference_fills",
+    # The shared fixture's product (SIP-0112 §8.2.3, #2407) is an unfamiliar product with its
+    # own conventions, and the recorded outputs name its commits by hash: a fix or a reformat
+    # here would change the trees both lanes build against.
+    "tests/fixtures/shared_contract/product",
+    "tests/fixtures/shared_contract/first_commit",
 ]
 
 [tool.ruff.lint]
