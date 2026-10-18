@@ -159,7 +159,7 @@ _OPERATIONS = {
 async def _handle_seed(service: SandboxService, cycle_id: str, body: SeedRequest) -> dict:
     try:
         binary = _decode_binary(body.binary_files, alongside=body.files)
-        revision = service.seed_workspace(
+        revision = await service.seed_workspace(
             cycle_id,
             {**body.files, **binary},
             origin=body.origin,

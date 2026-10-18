@@ -66,9 +66,9 @@ class SandboxService(ExecutionSandboxPort):
             return None
         return await self._environment_report()
 
-    # -- workspace lifecycle (service-level, not port operations) ------------
+    # -- workspace lifecycle -------------------------------------------------
 
-    def seed_workspace(
+    async def seed_workspace(
         self,
         cycle_id: str,
         files: Mapping[str, FileContent],

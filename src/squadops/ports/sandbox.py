@@ -14,7 +14,7 @@ operation reports ``ran=False`` and callers keep today's in-process behavior.
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
-from collections.abc import Mapping
+from collections.abc import Collection, Mapping
 
 from squadops.sandbox.models import (
     BuildResult,
@@ -34,6 +34,23 @@ from squadops.sandbox.models import (
 
 class ExecutionSandboxPort(ABC):
     """Port for typed execution operations against a cycle workspace."""
+
+    @abstractmethod
+    async def seed_workspace(
+        self,
+        cycle_id: str,
+        files: Mapping[str, FileContent],
+        *,
+        origin: str = RevisionOrigin.SCAFFOLD_SEED,
+        executable: Collection[str] = (),
+        created_at: str | None = None,
+    ) -> WorkspaceRevision:
+        """Provision the cycle's workspace and seed it, cutting revision one: text or bytes per
+        file, and the executable bit in a ``git_checkout`` lineage (X-2, #2420). The same content
+        again returns the same revision; other content into a seeded cycle is refused. On the
+        port since #2451, so the runtime API's one client (``create_sandbox_client``) seeds a
+        product's checkout through it (SIP-0112's E.4.2)."""
+        ...
 
     @abstractmethod
     async def install_dependencies(self, *, revision: WorkspaceRevision) -> InstallResult:
