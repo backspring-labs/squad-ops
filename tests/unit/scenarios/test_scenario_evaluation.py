@@ -10,12 +10,12 @@ from adapters.scenarios.memory_scenario_store import MemoryScenarioStore
 from squadops.scenarios.evaluation import (
     Applicability,
     BlockedReason,
-    EvaluationInvalid,
     ScenarioOutcome,
     ScenarioResult,
     evaluation_record,
 )
 from squadops.scenarios.models import parse_suite
+from squadops.scenarios.reference import EvaluationInvalid
 from squadops.scenarios.suites import draft_suite
 from tests.unit.scenarios.suite_fixtures import SUITE
 

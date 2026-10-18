@@ -5,14 +5,12 @@ can be evaluated more than once (a re-run after ``blocked_unverified``, a #1959 
 suite). It names trees only by SIP-0109's ``FileTree.identity``, never by sandbox revision or Git
 commit; a commit is reached through SIP-0112's mapping (contract 4).
 
-``OutcomeEvaluationRef`` is what SIP-0112's Project history stores (SIP-0112 §8.2.1). Its reader
-refuses an unknown schema major version with a typed error and reads none of it, and refuses a
-reference with a field absent, a nullable one included.
+Each record yields an ``OutcomeEvaluationRef``, the reference SIP-0112's Project history stores.
+The reference and its reader live in ``squadops.scenarios.reference``, apart from the outcomes here.
 """
 
 from __future__ import annotations
 
-import re
 import uuid
 from collections.abc import Mapping
 from dataclasses import dataclass
@@ -21,18 +19,11 @@ from enum import StrEnum
 from typing import Any
 
 from squadops.scenarios.models import ScenarioSuite
-
-REF_SCHEMA = "outcome-evaluation-ref/v1"
-_REF_FAMILY = "outcome-evaluation-ref/"
-_IDENTITY = re.compile(r"[0-9a-f]{64}")
-
-
-class EvaluationInvalid(ValueError):
-    """A record or a reference whose content can't be held as given."""
-
-
-class UnknownSchemaMajor(EvaluationInvalid):
-    """A reference under a schema major version this reader doesn't know (SIP-0112 §8.2.1)."""
+from squadops.scenarios.reference import (
+    EvaluationInvalid,
+    OutcomeEvaluationRef,
+    parse_reference,
+)
 
 
 class Applicability(StrEnum):
@@ -120,61 +111,6 @@ class ScenarioOutcome:
             elapsed_seconds=d.get("elapsed_seconds"),
             retries=d.get("retries", 0),
         )
-
-
-@dataclass(frozen=True)
-class OutcomeEvaluationRef:
-    """The reference SIP-0112's Project history stores (contract 5). ``evaluation_id`` is opaque
-    to every reader. ``campaign_id`` is null only outside a campaign, never absent."""
-
-    evaluation_id: str
-    suite_digest: str
-    project_id: str
-    campaign_id: str | None
-    cycle_id: str
-    evaluated_tree_identity: str
-    previous_accepted_tree_identity: str | None
-
-    def to_dict(self) -> dict[str, Any]:
-        return {
-            "schema": REF_SCHEMA,
-            "evaluation_id": self.evaluation_id,
-            "suite_digest": self.suite_digest,
-            "project_id": self.project_id,
-            "campaign_id": self.campaign_id,
-            "cycle_id": self.cycle_id,
-            "evaluated_tree_identity": self.evaluated_tree_identity,
-            "previous_accepted_tree_identity": self.previous_accepted_tree_identity,
-        }
-
-
-_REQUIRED_TEXT = ("evaluation_id", "project_id", "cycle_id")
-_IDENTITIES = ("suite_digest", "evaluated_tree_identity")
-_NULLABLE = ("campaign_id", "previous_accepted_tree_identity")
-
-
-def parse_reference(doc: Mapping[str, Any]) -> OutcomeEvaluationRef:
-    """Read a stored reference, or refuse it with a typed error, reading none of it."""
-    schema = doc.get("schema")
-    if not isinstance(schema, str) or not schema.startswith(_REF_FAMILY):
-        raise EvaluationInvalid(f"not an outcome evaluation reference: schema {schema!r}")
-    if schema != REF_SCHEMA:
-        raise UnknownSchemaMajor(f"{schema!r} is not a major version this reader knows")
-    absent = [k for k in (*_REQUIRED_TEXT, *_IDENTITIES, *_NULLABLE) if k not in doc]
-    if absent:
-        raise EvaluationInvalid(f"the reference has no {absent}: every field is present")
-    for key in _REQUIRED_TEXT:
-        if not isinstance(doc[key], str) or not doc[key].strip():
-            raise EvaluationInvalid(f"{key} must be non-empty text, got {doc[key]!r}")
-    for key in (*_IDENTITIES, "previous_accepted_tree_identity"):
-        value = doc[key]
-        if value is None and key == "previous_accepted_tree_identity":
-            continue
-        if not isinstance(value, str) or not _IDENTITY.fullmatch(value):
-            raise EvaluationInvalid(f"{key} must be 64 lowercase hex characters, got {value!r}")
-    if doc["campaign_id"] is not None and not str(doc["campaign_id"]).strip():
-        raise EvaluationInvalid("campaign_id is null outside a campaign, never empty")
-    return OutcomeEvaluationRef(**{k: doc[k] for k in (*_REQUIRED_TEXT, *_IDENTITIES, *_NULLABLE)})
 
 
 @dataclass(frozen=True)

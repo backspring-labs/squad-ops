@@ -602,14 +602,25 @@ within them, for the owner's review.
   - a blocked result names its reason from §4.1's list, and nothing else names one;
   - a failed result names its first failing step.
 - **Trees are named by `FileTree.identity` only.** The table refuses anything but 64 hex characters, so a
-  40-character Git commit can't stand in for a tree.
-- **`OutcomeEvaluationRef`'s reader** (`parse_reference`) does two things:
+  40-character Git commit can't stand in for a tree. **A sandbox revision ID is also 64 hex, so shape
+  can't refuse one.** That guarantee is the producer's: the evaluation service (#2414) names the
+  evaluated tree by the increment's `FileTree.identity`, never by the revision it ran.
+- **The reference lives apart from the results,** in `squadops.scenarios.reference`:
+  `OutcomeEvaluationRef`, `parse_reference`, `EvaluationInvalid` and `UnknownSchemaMajor`.
+  - It imports only the standard library, and a test holds that.
+  - Project history imports that module alone, so no outcome can reach the handoff through it
+    (contract 5's phase-1 rule).
+  - E.4.3 adds `squadops.projects` and `squadops.cycles` to the held-out guard's squad side, allowing
+    that one module.
+- **`OutcomeEvaluationRef`'s reader** (`parse_reference`) does three things:
   - it refuses an unknown major version with `UnknownSchemaMajor`, reading none of the reference;
   - it refuses a reference with any field absent, `campaign_id` included, which may be null but never
-    absent.
+    absent;
+  - it refuses a `campaign_id` that isn't text, so `5` isn't read as `"5"`.
 
-  It holds the shared fixture's four forms (`test_contract5_evaluation_reference.py`). The record yields
-  exactly the fixture's valid reference.
+  It holds the shared fixture's four forms (`test_contract5_evaluation_reference.py`), and reads a
+  reference with both nullable fields null as nulls. The record yields exactly the fixture's valid
+  reference.
 
 ### 10d. The intervention ledger as built (2026-10-18, §4.3, §7 prediction 5; #2417; implementer's record, for the owner)
 

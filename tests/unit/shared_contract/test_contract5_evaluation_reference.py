@@ -7,16 +7,16 @@ read it back) lands with the slice that first writes Project history.
 
 from __future__ import annotations
 
+import ast
+import sys
 from datetime import UTC, datetime
+from pathlib import Path
 
 import pytest
 
-from squadops.scenarios.evaluation import (
-    EvaluationInvalid,
-    EvaluationRecord,
-    UnknownSchemaMajor,
-    parse_reference,
-)
+from squadops.scenarios import reference
+from squadops.scenarios.evaluation import EvaluationRecord
+from squadops.scenarios.reference import EvaluationInvalid, UnknownSchemaMajor, parse_reference
 from tests.fixtures.shared_contract.repository import recorded
 
 
@@ -70,13 +70,46 @@ def test_a_stale_reference_reads_as_what_it_names():
             {"evaluated_tree_identity": "15c7a12b8ed45f63ae47e90e3e854f6b3a2775f1"},
             "64 lowercase hex",
         ),
-        ({"campaign_id": ""}, "never empty"),
+        ({"campaign_id": ""}, "campaign_id is text"),
+        ({"campaign_id": 5}, "campaign_id is text"),
         ({"schema": "something-else/v1"}, "not an outcome evaluation reference"),
     ],
-    ids=["a-commit-as-a-tree", "an-empty-campaign", "another-schema"],
+    ids=["a-commit-as-a-tree", "an-empty-campaign", "a-number-as-a-campaign", "another-schema"],
 )
 def test_a_reference_that_names_the_wrong_kind_of_thing_is_refused(change, message):
     """SIP-0112 §8.2.1: identifiers never substitute for one another. Bug caught: a Git commit
-    stored where a tree identity belongs, or a document of another kind read as a reference."""
+    stored where a tree identity belongs, a number coerced to a campaign ID (``5`` read as
+    ``"5"``), or a document of another kind read as a reference."""
     with pytest.raises(EvaluationInvalid, match=message):
         parse_reference({**recorded("outcome_evaluation_ref", "valid"), **change})
+
+
+def test_a_reference_outside_a_campaign_with_no_previous_tree_reads_its_nulls_as_nulls():
+    """The reference scenario's and a replay's shape: no campaign, no accepted tree before it. Bug
+    caught: a reader that takes a null for an absent field and refuses it, or one that drops the
+    keys, so Project history stores a reference the next reader refuses."""
+    doc = {
+        **recorded("outcome_evaluation_ref", "valid"),
+        "campaign_id": None,
+        "previous_accepted_tree_identity": None,
+    }
+
+    ref = parse_reference(doc)
+
+    assert (ref.campaign_id, ref.previous_accepted_tree_identity) == (None, None)
+    assert ref.to_dict() == doc
+
+
+def test_the_reference_module_imports_nothing_an_evaluation_found():
+    """Contract 5's phase-1 rule: no result reaches the handoff. Project history imports this
+    module alone. Bug caught: the reference importing an outcome or a result type, so the module
+    Project history reads can carry one (the MacBook lane's review of #2449)."""
+    tree = ast.parse(Path(reference.__file__).read_text(encoding="utf-8"))
+    imported = {
+        (node.module if isinstance(node, ast.ImportFrom) else alias.name).split(".")[0]
+        for node in ast.walk(tree)
+        if isinstance(node, ast.Import | ast.ImportFrom)
+        for alias in node.names
+    }
+
+    assert imported - {"__future__"} <= set(sys.stdlib_module_names)
