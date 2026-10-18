@@ -104,7 +104,7 @@ sandbox, which the Spark lane owns, are named as cross-lane tasks (§8.2.2).
   review, was approved by the owner as written, 2026-10-17 (§8.2 contract 7). This PR stays proposal-only until the
   owner approves it, and no integration branch is created yet.
 
-## Delivery ledger (current as of 2026-10-17)
+## Delivery ledger (current as of 2026-10-18)
 
 One row per part that ships separately, from Appendix E.4. Statuses: *shipped* (the release, the PR,
 and the issue it closed), *placed* (the release and the open issue tracking it, labelled `sip:NNNN` once
@@ -118,7 +118,7 @@ before the SIP closes and need not ship in 2.4 (the owner, the same day). Depend
 
 | part | status | where |
 |---|---|---|
-| §8.2.3 the shared fixture product and contract tests, landing before either lane's first shared-contract PR (the MacBook lane writes it; the Spark lane adds its recorded reference, the 2.4 plan's D12) | **placed** | 2.4.0, #2407 |
+| §8.2.3 the shared fixture product and contract tests, landing before either lane's first shared-contract PR (the MacBook lane writes it; the Spark lane adds its recorded reference, the 2.4 plan's D12) | **shipped**: Tally, with each lane's recorded outputs in four forms and the fixture's own checks (`tests/fixtures/shared_contract/`). Each contract test lands with the PR that builds its seam (agreed on #2407) | 2.4.0, PR #2440, issue #2407 |
 | E.4.1 existing-product registration and authority: the writable registry cutover, its validated rollback and minimum enrollment | **placed** | 2.4.0, #2408 |
 | E.4.2 repository-native discovery and the inherited baseline, with the start declaration (§8.2 contract 7) | **placed** | 2.4.0, #2409 |
 | E.4.3 the first scoped feature through the shared cycle path | **placed** | 2.4.0, #2410 |
