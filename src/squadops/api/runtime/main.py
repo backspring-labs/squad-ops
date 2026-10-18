@@ -48,6 +48,7 @@ from squadops.api.routes.cycles import (
 )
 from squadops.api.routes.cycles.cycles import CreationPorts
 from squadops.api.routes.memory import memory_router
+from squadops.api.routes.outcomes import router as outcomes_router
 from squadops.api.routes.platform_health import router as platform_health_router
 from squadops.api.runtime.startup_reaps import (
     detect_stranded_cycles,
@@ -149,6 +150,7 @@ def _include_routers(app: FastAPI) -> None:
     app.include_router(chat_router)  # SIP-0085
     app.include_router(chat_agents_router)
     app.include_router(memory_router)  # SIP-0110 §0.6 (slice 3d): lessons, approvals, revocations
+    app.include_router(outcomes_router)  # SIP-0113 §4.3 (#2417): the intervention ledger
 
 
 #: Connection and process objects live on ``app.state`` (FastAPI's per-app holder), so an
@@ -418,6 +420,13 @@ async def _init_cycle_subsystem(state, config, pool) -> None:
         config.cycles.registry_provider,
         **({"pool": pool} if config.cycles.registry_provider == "postgres" else {}),
     )
+    # SIP-0113 §4.3 (#2417): the intervention ledger, beside the campaigns it classifies.
+    from adapters.outcomes.factory import create_intervention_ledger
+
+    intervention_ledger = create_intervention_ledger(
+        config.cycles.registry_provider,
+        **({"pool": pool} if config.cycles.registry_provider == "postgres" else {}),
+    )
     squad_profile_provider = config.cycles.squad_profile_provider
     if squad_profile_provider == "postgres":
         squad_profile = create_squad_profile_port("postgres", pool=pool)
@@ -599,6 +608,7 @@ async def _init_cycle_subsystem(state, config, pool) -> None:
     state.cycle_registry = cycle_registry
     state.deploy_registry = deploy_registry
     state.campaign_registry = campaign_registry
+    state.intervention_ledger = intervention_ledger
     state.campaign_progress = campaign_progress
     state.squad_profile = squad_profile
     state.artifact_vault = artifact_vault

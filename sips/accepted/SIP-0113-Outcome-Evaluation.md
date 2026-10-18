@@ -555,3 +555,30 @@ All four are ruled as recommended: A4 through SIP-0112's Q40, and A1 to A3 at ac
     - the start declaration's secrets key is `evaluation_environment`;
     - SIP-0112 is cited by number;
     - the shared fixture is #2407.
+
+## 10. Post-acceptance amendments
+
+### 10d. The intervention ledger as built (2026-10-18, §4.3, §7 prediction 5; #2417; implementer's record, for the owner)
+
+- **A projection of SIP-0109's control log, never a second record of it** (`squadops.outcomes.ledger`).
+  An applied row is an intervention in three cases:
+  - a `rule` that returns or rejects a proposal (an approval is the gate as designed);
+  - an `escalation_closed` whose state is `resolved` (an escalated plan gate a person decided);
+  - a `pause`, `resume`, `abort`, `classify` or `escalation_answered` by anyone but the system's own
+    roles (`executor`, `sweep`, `launcher`, `completion`). A limit's pause is the campaign running,
+    not an intervention.
+
+  SIP-0110's re-binding joins when #2179 adds its row.
+- **Outcome Evaluation's record holds only the classifications** (migration 1920), keyed by the row:
+  the reason and severity from §4.3's lists, "could the squad have resolved it?" as the supervisor's
+  labelled opinion, and a note. A later classification of the same row revises it. A declared entry
+  records an action outside the interface.
+- **Prediction 5 is read in every ledger read:** `unclassified` names the intervention rows not yet
+  classified, and `orphaned` names the classifications whose row isn't one of this campaign's
+  interventions. `matches_the_control_log` is true only when both are empty.
+- **`/api/v1/intervention-ledgers/{campaign_id}`:**
+  - **reading:** `campaigns:read`;
+  - **classifying and declaring:** `campaigns:supervise`, the supervisor's seat. A classification
+    must name one of the campaign's own intervention rows.
+- **Constants, not enums.** Several of the words are other vocabularies' too (`implementation` is a
+  workload, `recovery` a prompt mode), and #380's guard reads every such literal as an enum's shadow.

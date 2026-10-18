@@ -56,6 +56,7 @@ PORT_SLOTS = (
     "cycle_registry",
     "deploy_registry",  # #1720
     "campaign_registry",  # SIP-0109 §16
+    "intervention_ledger",  # SIP-0113 §4.3 (#2417)
     "squad_profile",
     "artifact_vault",
     "flow_executor",
@@ -147,6 +148,11 @@ def get_deploy_registry(request: Request) -> DeployRegistryPort:
 def get_squad_profile_port(request: Request) -> SquadProfilePort:
     """Return the SquadProfilePort (T14: never None at call sites)."""
     return _required(request, "squad_profile", "SquadProfilePort")
+
+
+def get_intervention_ledger(request: Request):
+    """SIP-0113 §4.3 (#2417): the intervention ledger's store, beside the campaign registry."""
+    return _slot(request, "intervention_ledger")
 
 
 def get_memory_store(request: Request):
