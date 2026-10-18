@@ -1,7 +1,7 @@
 ---
 sip_uid: '17922606138197288'
 sip_number: null
-title: "Independent Project Lifecycle Management"
+title: "Project Lifecycle Management"
 status: "proposed"
 author: "Framework Committee"
 approver: null
@@ -9,7 +9,7 @@ created_at: "2026-10-16T00:00:00Z"
 updated_at: "2026-10-16T00:00:00Z"
 original_filename: "SIP-Project-Lifecycle-Management.md"
 ---
-# SIP-XXX — Independent Project Lifecycle Management
+# SIP-XXX — Project Lifecycle Management
 ## External Product Development, Managed Clones, and Governed Continuity
 
 **Status:** Proposed  

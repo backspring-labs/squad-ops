@@ -1212,7 +1212,7 @@ sips:
   updated_at: '2026-10-09T14:35:13.751261Z'
 - sip_uid: '17922606138197288'
   sip_number: null
-  title: Independent Project Lifecycle Management
+  title: Project Lifecycle Management
   path: sips/proposed/SIP-Project-Lifecycle-Management.md
   status: proposed
   author: Framework Committee
