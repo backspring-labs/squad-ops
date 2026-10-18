@@ -15,8 +15,9 @@ from __future__ import annotations
 
 from datetime import UTC, datetime
 
-from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi import APIRouter, Depends, Request
 
+from squadops.api.errors import http_error
 from squadops.api.middleware.auth import require_scopes
 from squadops.api.runtime.deps import get_scenario_store
 from squadops.api.scenario_schemas import (
@@ -36,10 +37,6 @@ router = APIRouter(prefix="/api/v1/scenario-suites", tags=["scenarios"])
 _STATUS = {"SUITE_NOT_FOUND": 404}
 
 
-def _error(status: int, code: str, message: str) -> HTTPException:
-    return HTTPException(status, {"error": {"code": code, "message": message, "details": None}})
-
-
 def _actor(identity: Identity | None) -> str:
     return identity.user_id if identity is not None else "system"
 
@@ -47,7 +44,7 @@ def _actor(identity: Identity | None) -> str:
 def _store(request: Request) -> ScenarioStorePort:
     store = get_scenario_store(request)
     if store is None:
-        raise _error(503, "SCENARIO_STORE_UNAVAILABLE", "the scenario store is not configured")
+        raise http_error(503, "SCENARIO_STORE_UNAVAILABLE", "the scenario store is not configured")
     return store
 
 
@@ -81,7 +78,7 @@ async def draft(
     try:
         suite = parse_suite(body.model_dump())
     except ScenarioInvalid as e:
-        raise _error(422, "SUITE_INVALID", str(e)) from e
+        raise http_error(422, "SUITE_INVALID", str(e)) from e
     record = await draft_suite(_store(request), suite, actor=_actor(identity), at=datetime.now(UTC))
     return _summary(record)
 
@@ -102,7 +99,7 @@ async def get_suite(
 ) -> SuiteSummaryResponse:
     record = await _store(request).get_suite(digest)
     if record is None:
-        raise _error(404, "SUITE_NOT_FOUND", f"no suite {digest}")
+        raise http_error(404, "SUITE_NOT_FOUND", f"no suite {digest}")
     return _summary(record)
 
 
@@ -115,7 +112,7 @@ async def get_suite_content(
     """The full suite, held-out steps included: the owner reads what they approve (D2)."""
     record = await _store(request).get_suite(digest)
     if record is None:
-        raise _error(404, "SUITE_NOT_FOUND", f"no suite {digest}")
+        raise http_error(404, "SUITE_NOT_FOUND", f"no suite {digest}")
     return SuiteContentResponse(
         digest=record.digest, state=record.state.value, content=record.suite.content()
     )
@@ -132,5 +129,5 @@ async def approve(
             _store(request), digest, actor=_actor(identity), at=datetime.now(UTC)
         )
     except SuiteRefused as e:
-        raise _error(_STATUS.get(e.code, 409), e.code, str(e)) from e
+        raise http_error(_STATUS.get(e.code, 409), e.code, str(e)) from e
     return _summary(record)

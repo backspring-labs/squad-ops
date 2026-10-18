@@ -71,8 +71,19 @@ async def require_pinnable(store: ScenarioStorePort, digest: str) -> SuiteRecord
 
 
 async def pin_campaign_suite(
-    store: ScenarioStorePort, campaign_id: str, digest: str, *, actor: str, at: datetime
+    store: ScenarioStorePort,
+    campaign_id: str,
+    digest: str,
+    *,
+    draft: bool,
+    actor: str,
+    at: datetime,
 ) -> CampaignSuitePin:
+    """Pin ``digest`` on the campaign, once. The same suite again returns the pin; another is
+    refused. A campaign takes a new pin only while it is a ``draft``: the creation's replay hash
+    doesn't carry the suite, so past its draft a retried creation could otherwise attach a suite
+    to a campaign created without one, in any later state (#2448's review). A retry while it is
+    still a draft recovers a pin its first creation failed to write."""
     await require_pinnable(store, digest)
     held = await store.get_pin(campaign_id)
     if held is not None:
@@ -81,6 +92,12 @@ async def pin_campaign_suite(
         raise SuiteRefused(
             "SUITE_ALREADY_PINNED",
             f"campaign {campaign_id} is pinned to suite {held.suite_digest}, not {digest}",
+        )
+    if not draft:
+        raise SuiteRefused(
+            "SUITE_PIN_PAST_DRAFT",
+            f"campaign {campaign_id} is past its draft with no suite pinned: a suite is pinned "
+            "while the campaign is a draft",
         )
     pin = CampaignSuitePin(campaign_id, digest, pinned_by=actor, pinned_at=at)
     await store.save_pin(pin)

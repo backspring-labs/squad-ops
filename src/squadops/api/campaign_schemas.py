@@ -10,7 +10,7 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Any, Literal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 from squadops.campaigns.models import PlanGate
 
@@ -57,6 +57,10 @@ class CampaignDefinitionDTO(BaseModel):
 
 class CampaignCreateRequest(BaseModel):
     """A new campaign, in ``draft``. Starting it (its calibration cycle) is a later operation."""
+
+    #: Contract 2: an unknown field is refused, so a misspelled ``scenario_suit`` is not a
+    #: campaign created with no suite pinned (#2448's review).
+    model_config = ConfigDict(extra="forbid")
 
     project_id: str
     objective: CampaignObjectiveDTO

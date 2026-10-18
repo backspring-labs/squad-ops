@@ -247,18 +247,27 @@ async def create_campaign(
             idempotency_key=body.idempotency_key,
             definition=definition,
         )
+    except SuiteRefused as e:
+        raise HTTPException(422, error_body(e.code, f"scenario_suite: {e}")) from e
     except ValueError as e:
         raise HTTPException(422, _validation(str(e))) from e
+    # Projected before the pin, so a refused pin leaves the created campaign projected: a replay
+    # projects nothing (#2448's review).
+    _project(request, result, identity)
     if scenarios is not None and body.scenario_suite is not None:
         # SIP-0113 §4.7 (§24bt): pinned after the creation, by the campaign it names, so a
         # replayed creation replays its pin and a different suite for the same one is refused.
         try:
             await pin_campaign_suite(
-                scenarios, result.campaign.campaign_id, body.scenario_suite, actor=actor, at=now
+                scenarios,
+                result.campaign.campaign_id,
+                body.scenario_suite,
+                draft=result.campaign.state is CampaignState.DRAFT,
+                actor=actor,
+                at=now,
             )
         except SuiteRefused as e:
             raise HTTPException(409, error_body(e.code, str(e))) from e
-    _project(request, result, identity)
     return _result(result)
 
 
@@ -271,10 +280,7 @@ async def _pinnable_scenario_store(request: Request, digest: str | None):
     store = get_scenario_store(request)
     if store is None:
         raise ValueError("scenario_suite: the scenario store is not configured on this deploy")
-    try:
-        await require_pinnable(store, digest)
-    except SuiteRefused as e:
-        raise ValueError(f"scenario_suite: {e}") from e
+    await require_pinnable(store, digest)
     return store
 
 

@@ -63,7 +63,7 @@ async def test_a_suite_is_drafted_approved_and_pinned_and_reads_back_whole(store
     await draft_suite(scenarios, suite, actor="supervisor", at=T0)
     approved = await approve_suite(scenarios, suite.digest, actor="owner", at=T0)
     pin = await pin_campaign_suite(
-        scenarios, "cmp_pg0000000001", suite.digest, actor="owner", at=T0
+        scenarios, "cmp_pg0000000001", suite.digest, draft=True, actor="owner", at=T0
     )
 
     assert await scenarios.get_suite(suite.digest) == approved

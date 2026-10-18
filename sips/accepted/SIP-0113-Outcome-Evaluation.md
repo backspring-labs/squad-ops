@@ -572,7 +572,12 @@ All four are ruled as recommended: A4 through SIP-0112's Q40, and A1 to A3 at ac
   the store by suite digest and hands them to the runner over the sandbox's authenticated channel (#2414).
   No route is added for the runner to read them.
 - **The boundary in code:** no module under `squadops.agents`, `capabilities`, `prompts` or `execution`
-  imports the scenarios' domain, port or store (`test_held_out_scenarios_stay_out_of_the_squads_reach.py`).
+  imports the scenarios' domain, port or store, and no file there names either table, `scenario_suites`
+  or `campaign_scenario_suites` (`test_held_out_scenarios_stay_out_of_the_squads_reach.py`).
+- **What the boundary doesn't cover: the database.** Every agent's container connects to Postgres as the
+  runtime API's own role, so a process holding it could read both tables directly. The route and code
+  guards meet "no route a squad agent's identity can read", but not SIP-0112 §8.3 item 1 or IR-4's "any
+  squad agent's container". Separation at the database is #2457, and IR-4 waits on it.
 - **Surfaces by kind:** `http_endpoint` (a method and a path) and `page` (a path). The name isn't `http`:
   that would read as the same value as unrelated `"http"` literals across the codebase (#380's guard).
 - **Steps and checks** are mappings naming an `action` and a `check`. Their vocabulary is the runner's
