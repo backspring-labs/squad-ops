@@ -60,6 +60,12 @@ class Scope:
     MEMORY_READ = "memory:read"
     MEMORY_DRAFT = "memory:draft"
     MEMORY_APPROVE = "memory:approve"
+    # SIP-0113 §4.1 (#2413): Outcome Evaluation's held-out scenario suites. Read a suite's goals and
+    # state; draft one (the supervisor, the 2.4 plan's D2); approve one and read its held-out steps,
+    # which is the owner's alone. No squad agent's role holds any of them.
+    SCENARIOS_READ = "scenarios:read"
+    SCENARIOS_DRAFT = "scenarios:draft"
+    SCENARIOS_APPROVE = "scenarios:approve"
 
 
 # Role → implied scopes (#270). Keycloak is role-centric — it issues realm roles
@@ -86,6 +92,9 @@ ROLE_SCOPES: dict[str, frozenset[str]] = {
             Scope.MEMORY_READ,
             Scope.MEMORY_DRAFT,
             Scope.MEMORY_APPROVE,
+            Scope.SCENARIOS_READ,
+            Scope.SCENARIOS_DRAFT,
+            Scope.SCENARIOS_APPROVE,
         }
     ),
     Role.OPERATOR: frozenset(
@@ -120,6 +129,8 @@ ROLE_SCOPES: dict[str, frozenset[str]] = {
             Scope.CAMPAIGNS_SUPERVISE,
             Scope.CAMPAIGNS_MANAGE,
             Scope.MEMORY_READ,
+            Scope.SCENARIOS_READ,
+            Scope.SCENARIOS_DRAFT,
         }
     ),
     Role.CAMPAIGN_TRIAGE: frozenset(
@@ -127,6 +138,7 @@ ROLE_SCOPES: dict[str, frozenset[str]] = {
             Scope.CYCLES_READ,
             Scope.CAMPAIGNS_READ,
             Scope.MEMORY_READ,
+            Scope.SCENARIOS_READ,
         }
     ),
 }

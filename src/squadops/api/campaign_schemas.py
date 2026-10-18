@@ -10,7 +10,7 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Any, Literal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 from squadops.campaigns.models import PlanGate
 
@@ -58,6 +58,10 @@ class CampaignDefinitionDTO(BaseModel):
 class CampaignCreateRequest(BaseModel):
     """A new campaign, in ``draft``. Starting it (its calibration cycle) is a later operation."""
 
+    #: Contract 2: an unknown field is refused, so a misspelled ``scenario_suit`` is not a
+    #: campaign created with no suite pinned (#2448's review).
+    model_config = ConfigDict(extra="forbid")
+
     project_id: str
     objective: CampaignObjectiveDTO
     policy: CampaignPolicyDTO
@@ -69,6 +73,10 @@ class CampaignCreateRequest(BaseModel):
     #: Optional (#1954): the definition file, recorded on the creation row. ``campaigns create
     #: --file`` always sends it; a caller with no file sends none.
     definition: CampaignDefinitionDTO | None = None
+    #: SIP-0113 §4.7, phase 1 (#2413; SIP-0109 §24bt): the digest of an approved held-out scenario
+    #: suite, pinned on the campaign in Outcome Evaluation's own record. No SIP-0109 decision reads
+    #: it. Optional: a campaign created without one is evaluated by no suite.
+    scenario_suite: str | None = None
 
 
 class ControlRequest(BaseModel):

@@ -3532,3 +3532,36 @@ finding of its own.
 **Who ruled it.** Not the owner yet. The supervisor built it under the 2.4 grant (the plan's D11), as the
 prerequisite of D3's ruled window. It's for the owner's review. It is a contract 2 field (SIP-0112 §8.2), so it
 carries the MacBook lane's review (G4).
+
+### 24bt. Campaign creation names a held-out scenario suite, kept in Outcome Evaluation's record (2026-10-18, §15, §16; SIP-0113 §4.7 phase 1, #2413; implementer's record, for the owner)
+
+**What changed.** `CampaignCreateRequest` gains an optional `scenario_suite`: the digest of a held-out
+scenario suite the owner approved (SIP-0113 §4.1, the 2.4 plan's D2).
+- **The check comes first.** It runs before the campaign is created: a suite nothing holds, or a draft,
+  is refused with 422 and its own code, `SUITE_NOT_FOUND` or `SUITE_NOT_APPROVED`, and creates no
+  campaign.
+- **The pin comes after, in SIP-0113's own record** (`campaign_scenario_suites`, migration 1900), keyed by
+  the campaign the creation returned.
+  - A replayed creation replays its pin, and a retry that names another suite is refused with 409
+    `SUITE_ALREADY_PINNED`.
+  - **A campaign takes a new pin only while it is a draft.** The suite isn't in the creation's replay hash,
+    so a retry under the same key could otherwise attach a suite to a campaign created without one, after
+    it had started. Past its draft, it is refused with 409 `SUITE_PIN_PAST_DRAFT`. A retry while it is still
+    a draft recovers a pin the first creation failed to write.
+  - **The creation is projected before the pin**, so a refused pin still leaves the created campaign
+    projected.
+- **An unknown field is refused** (contract 2): `CampaignCreateRequest` forbids extra fields, so a
+  misspelled `scenario_suit` doesn't create a campaign with no suite. Its nested `objective` and `policy`
+  still ignore unknown keys: five historical shakeout definitions carry two retired policy keys.
+- **This SIP's state is unchanged.** It is not on `CampaignPolicy`, it doesn't enter the creation's replay
+  hash, and no decision, row or launch of this SIP reads it.
+- **Phase 2's `scenario_suite`, `scenario_target` and `quality_baseline` on `CampaignObjective`** (SIP-0113
+  §4.7) remain that phase's, with their own amendment if it is built.
+
+**The evidence.** SIP-0113 §4.7 places the phase-1 pin at Campaign creation, and SIP-0112 §8.2's contract
+2 has each lane add its own typed fields there and repurpose none. #2413 builds it, with its wiring test at
+`POST /api/v1/campaigns` (`tests/unit/api/test_campaign_scenario_suite.py`).
+
+**Who ruled it.** The owner accepted SIP-0113 with this placement (2026-10-17). The supervisor built it
+under the 2.4 grant (D11). It is a contract 2 field, so it carries the MacBook lane's review (G4). The
+draft rule, the projection order, the kept codes and the forbidden extras answer that review.
