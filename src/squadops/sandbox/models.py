@@ -42,6 +42,11 @@ class RevisionOrigin:
     ALL = frozenset(
         {SCAFFOLD_SEED, AGENT_PATCH, PROMOTED_OUTPUTS, ACCEPTANCE_ASSEMBLY, GIT_CHECKOUT}
     )
+    #: Origins whose files are a repository's own tracked set (X-2, #2420): each one is
+    #: content, whatever its name. A product that commits its package-lock.json or a built
+    #: dist/ file names them, so the derived-state exclusion keeps out only what no
+    #: revision names.
+    TRACKED_TREE = frozenset({GIT_CHECKOUT})
 
 
 class OperationStatus:

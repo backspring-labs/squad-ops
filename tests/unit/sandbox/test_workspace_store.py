@@ -2,7 +2,7 @@
 
 import pytest
 
-from squadops.sandbox.models import RevisionOrigin, content_bytes
+from squadops.sandbox.models import RevisionOrigin, compute_revision_id, content_bytes
 from squadops.sandbox.workspace import (
     AlreadySeededError,
     StaleBaseRevisionError,
@@ -224,6 +224,67 @@ class TestDerivedStateExclusion:
                 files={"frontend/node_modules/evil.js": "x"},
                 origin=RevisionOrigin.AGENT_PATCH,
             )
+
+
+class TestTrackedDerivedNames:
+    def test_a_checkout_that_tracks_derived_names_holds_its_pin_through_an_install(
+        self, store, tmp_path
+    ):
+        """Bug caught (X-2, #2420): a Git checkout that tracks package-lock.json or a built
+        dist/ file refused at seeding as derived state, or skipped by the live tree's read so it
+        failed its own pin. Almost every Node repository commits its lockfile. Untracked state
+        an install or a build writes still stays out of the pin."""
+        files = {
+            **FILES,
+            "frontend/package-lock.json": '{"lockfileVersion": 3}\n',
+            "dist/app.js": "built\n",
+        }
+        rev = store.seed("cyc_1", files, origin=RevisionOrigin.GIT_CHECKOUT)
+        ws = store.workspace_dir("cyc_1")
+        (ws / "frontend/node_modules/react").mkdir(parents=True)
+        (ws / "frontend/node_modules/react/index.js").write_text("js", encoding="utf-8")
+        (ws / "dist/chunk.js").write_text("untracked build output", encoding="utf-8")
+
+        assert rev.revision_id == compute_revision_id(files)
+        assert WorkspaceStore(tmp_path / "cycles").verify_pinned("cyc_1", rev.revision_id)
+
+    def test_a_patch_may_change_a_tracked_derived_file_but_never_add_one(self, store):
+        """Bug caught: an agent's dependency change refused because the lockfile it must edit
+        is named like derived state, or a patch able to add derived state no revision names."""
+        files = {**FILES, "frontend/package-lock.json": "{}\n"}
+        seed = store.seed("cyc_1", files, origin=RevisionOrigin.GIT_CHECKOUT)
+        rev, _ = store.apply_patch(
+            "cyc_1",
+            base_revision_id=seed.revision_id,
+            files={"frontend/package-lock.json": '{"v": 2}\n'},
+            origin=RevisionOrigin.AGENT_PATCH,
+        )
+        assert store.verify_pinned("cyc_1", rev.revision_id)
+
+        with pytest.raises(WorkspaceEscapeError, match="derived-state"):
+            store.apply_patch(
+                "cyc_1",
+                base_revision_id=rev.revision_id,
+                files={"dist/new.js": "x"},
+                origin=RevisionOrigin.AGENT_PATCH,
+            )
+
+    @pytest.mark.parametrize(
+        ("origin", "path", "why"),
+        [
+            (RevisionOrigin.SCAFFOLD_SEED, "frontend/package-lock.json", "derived-state"),
+            (RevisionOrigin.GIT_CHECKOUT, ".git/config", "never revision content"),
+        ],
+        ids=["a-scaffold-seeds-lockfile", "a-checkout-seeds-its-git"],
+    )
+    def test_derived_names_stay_refused_outside_a_checkout_and_git_always(
+        self, store, origin, path, why
+    ):
+        """Bug caught: the checkout's exemption leaking to a scaffold seed, whose lockfile
+        npm install rewrites, or a repository's .git seeded as content."""
+        with pytest.raises(WorkspaceEscapeError, match=why):
+            store.seed("cyc_1", {**FILES, path: "x"}, origin=origin)
+        assert store.current_files("cyc_1") == {}
 
 
 class TestPinningAndRecovery:

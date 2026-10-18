@@ -24,11 +24,12 @@ import hashlib
 import json
 import re
 import shutil
-from collections.abc import Mapping
+from collections.abc import Collection, Mapping
 from pathlib import Path
 
 from squadops.sandbox.models import (
     FileContent,
+    RevisionOrigin,
     WorkspaceRevision,
     compute_revision_id,
     content_bytes,
@@ -81,21 +82,30 @@ class AlreadySeededError(WorkspaceStoreError):
     """Seed attempted on a workspace that already has different content."""
 
 
-def _safe_relpath(path: str) -> str:
+def _safe_relpath(path: str, *, tracked: Collection[str] | None = ()) -> str:
     """Normalize a workspace-relative path; reject anything that could escape
-    the cycle workspace (§7 item 8: agents cannot supply host paths)."""
+    the cycle workspace (§7 item 8: agents cannot supply host paths).
+
+    A derived-state name is refused unless ``tracked`` names the path as
+    content (X-2, #2420): a checkout's tracked ``package-lock.json``, or one a
+    patch's base revision holds. ``None`` means every path given is tracked, a
+    Git checkout's own set. A repository's ``.git`` is never content: the
+    sandbox never runs Git."""
     norm = str(path).strip().replace("\\", "/")
     if not norm or norm.startswith("/") or norm.startswith("~"):
         raise WorkspaceEscapeError(f"not a workspace-relative path: {path!r}")
     parts = [p for p in norm.split("/") if p not in ("", ".")]
     if not parts or ".." in parts or any(":" in p for p in parts):
         raise WorkspaceEscapeError(f"not a workspace-relative path: {path!r}")
-    if _EXCLUDED_SEGMENTS.intersection(parts):
+    rel = "/".join(parts)
+    if ".git" in parts:
+        raise WorkspaceEscapeError(f"a repository's .git is never revision content: {path!r}")
+    if _EXCLUDED_SEGMENTS.intersection(parts) and tracked is not None and rel not in tracked:
         raise WorkspaceEscapeError(
             f"derived-state path is not revision content: {path!r} "
             "(installs/build outputs live in the sandbox but are never seeded or patched)"
         )
-    return "/".join(parts)
+    return rel
 
 
 class WorkspaceStore:
@@ -134,9 +144,12 @@ class WorkspaceStore:
         self._revisions_dir(cycle_id).mkdir(parents=True, exist_ok=True)
         return ws
 
-    def current_files(self, cycle_id: str) -> dict[str, FileContent]:
+    def current_files(
+        self, cycle_id: str, *, tracked: Collection[str] = ()
+    ) -> dict[str, FileContent]:
         """The live tree as a path → content mapping, excluding derived state
         (``_EXCLUDED_SEGMENTS``) — revision content is source, not installs.
+        A derived-state name that ``tracked`` holds is content (X-2, #2420).
 
         Each file is read as the bytes on disk (X-2, #2420): text when they are
         UTF-8, otherwise the bytes themselves. Never in universal-newline mode,
@@ -149,14 +162,15 @@ class WorkspaceStore:
             if not p.is_file():
                 continue
             rel = p.relative_to(ws)
-            if _EXCLUDED_SEGMENTS.intersection(rel.parts):
+            key = str(rel).replace("\\", "/")
+            if _EXCLUDED_SEGMENTS.intersection(rel.parts) and key not in tracked:
                 continue
             data = p.read_bytes()
             try:
                 content: FileContent = data.decode("utf-8")
             except UnicodeDecodeError:
                 content = data
-            files[str(rel).replace("\\", "/")] = content
+            files[key] = content
         return files
 
     # -- revisions ----------------------------------------------------------
@@ -181,6 +195,13 @@ class WorkspaceStore:
             return None
         return self.get_revision(cycle_id, head.read_text(encoding="utf-8").strip())
 
+    def _revision_paths(self, cycle_id: str, revision_id: str) -> frozenset[str]:
+        """Every path a persisted revision holds as content (its manifest's files)."""
+        path = self._revisions_dir(cycle_id) / f"{revision_id}.json"
+        if not path.is_file():
+            return frozenset()
+        return frozenset(json.loads(path.read_text(encoding="utf-8"))["files"])
+
     def get_revision(self, cycle_id: str, revision_id: str) -> WorkspaceRevision | None:
         path = self._revisions_dir(cycle_id) / f"{revision_id}.json"
         if not path.is_file():
@@ -201,14 +222,13 @@ class WorkspaceStore:
         Idempotent for retries: re-seeding identical content returns the
         existing revision; re-seeding different content over a seeded
         workspace is an error, never a silent overwrite."""
+        tracked = None if origin in RevisionOrigin.TRACKED_TREE else ()
+        safe = {_safe_relpath(p, tracked=tracked): c for p, c in files.items()}
         head = self.latest_revision(cycle_id)
         if head is not None:
-            if compute_revision_id({_safe_relpath(p): c for p, c in files.items()}) == (
-                head.revision_id
-            ):
+            if compute_revision_id(safe) == head.revision_id:
                 return head
             raise AlreadySeededError(f"cycle {cycle_id} is already seeded with other content")
-        safe = {_safe_relpath(p): c for p, c in files.items()}
         # Cut before writing: a seed the revision refuses (an unknown origin) must leave no
         # file behind, or the next seed's tree holds files its revision doesn't name.
         revision = WorkspaceRevision.cut(
@@ -238,7 +258,8 @@ class WorkspaceStore:
         base = self.get_revision(cycle_id, base_revision_id)
         if base is None:
             raise WorkspaceStoreError(f"unknown base revision: {base_revision_id}")
-        current = self.current_files(cycle_id)
+        base_paths = self._revision_paths(cycle_id, base_revision_id)
+        current = self.current_files(cycle_id, tracked=base_paths)
         if not base.matches(current):
             raise StaleBaseRevisionError(
                 f"live tree no longer matches base revision {base_revision_id}"
@@ -246,7 +267,7 @@ class WorkspaceStore:
         changed: list[str] = []
         merged = dict(current)
         for path, content in files.items():
-            rel = _safe_relpath(path)
+            rel = _safe_relpath(path, tracked=base_paths)
             changed.append(rel)
             if content is None:
                 merged.pop(rel, None)
@@ -274,7 +295,8 @@ class WorkspaceStore:
         revision = self.get_revision(cycle_id, revision_id)
         if revision is None:
             return False
-        return revision.matches(self.current_files(cycle_id))
+        tracked = self._revision_paths(cycle_id, revision_id)
+        return revision.matches(self.current_files(cycle_id, tracked=tracked))
 
     # -- leases and cleanup -------------------------------------------------
 
