@@ -92,3 +92,74 @@ class TestGetProject:
         body = resp.json()
         assert body["detail"]["error"]["code"] == "PROJECT_NOT_FOUND"
         assert body["detail"]["error"]["details"] is None
+
+
+class TestTheProjectRecordAddsFieldsOnly:
+    """SIP-0112 D.6, IR-1 (#2408): ``projects list/show`` change only by added fields. Bugs
+    caught: a sample application's existing fields changed by the record's arrival; a registered
+    Project's source or owner dropped between the registry and the response."""
+
+    def test_a_sample_applications_six_fields_are_unchanged_and_the_record_reads_ready(
+        self, client
+    ):
+        body = client.get("/api/v1/projects/hello_squad").json()
+
+        assert {k: body[k] for k in ("project_id", "name", "description", "tags", "has_prd")} == {
+            "project_id": "hello_squad",
+            "name": "Hello Squad",
+            "description": "Test",
+            "tags": ["example"],
+            "has_prd": False,
+        }
+        assert body["created_at"].startswith("2026-01-15T12:00:00")
+        assert {k: body[k] for k in body if k not in _LEGACY_FIELDS} == {
+            "lifecycle_status": "READY",
+            "record_version": 1,
+            "source": None,
+            "ownership": None,
+            "development_configuration_revision": None,
+        }
+
+    def test_a_registered_projects_source_and_owner_reach_the_response(
+        self, client, mock_project_registry
+    ):
+        from squadops.projects.models import (
+            ProjectLifecycleStatus,
+            ProjectOwnership,
+            ProjectSource,
+        )
+
+        mock_project_registry.get_project.return_value = Project(
+            project_id="prj-tally",
+            name="Tally",
+            description="an external product",
+            created_at=NOW,
+            lifecycle_status=ProjectLifecycleStatus.REGISTERING,
+            record_version=2,
+            source=ProjectSource(
+                repo_uri="https://code.example.invalid/tally/tally.git",
+                base_ref="refs/heads/main",
+                contribution_mode="review_request",
+            ),
+            ownership=ProjectOwnership(
+                owner="Tally Maintainer", delegated_actions=("contribution",)
+            ),
+        )
+
+        body = client.get("/api/v1/projects/prj-tally").json()
+
+        assert (body["lifecycle_status"], body["record_version"]) == ("REGISTERING", 2)
+        assert body["source"] == {
+            "repo_uri": "https://code.example.invalid/tally/tally.git",
+            "base_ref": "refs/heads/main",
+            "contribution_mode": "review_request",
+            "repository_root": ".",
+        }
+        assert body["ownership"] == {
+            "owner": "Tally Maintainer",
+            "delegated_actions": ["contribution"],
+            "acceptance_policy_ref": None,
+        }
+
+
+_LEGACY_FIELDS = {"project_id", "name", "description", "created_at", "tags", "has_prd"}

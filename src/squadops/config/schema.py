@@ -575,6 +575,12 @@ class CyclesConfig(BaseModel):
     squad_profile_provider: Literal["config", "postgres"] = Field(
         description="Squad profile provider (SIP-0075; required, #1568)",
     )
+    #: SIP-0112 FR-03 (#2408): ``config`` reads config/projects.yaml, the only authority before
+    #: the cutover; ``postgres`` is the writable registry, the only one after it. Required, so a
+    #: deploy names which is authoritative rather than inheriting it.
+    project_registry_provider: Literal["config", "postgres"] = Field(
+        description="Project registry provider (SIP-0112 FR-03; required, #1568)",
+    )
     inert_cycle_threshold: int = Field(
         default=3,
         ge=1,

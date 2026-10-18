@@ -131,6 +131,13 @@ Coordination between agents and handlers: `AgentOrchestrator`, the handler regis
 The port interfaces, the contracts between the domain and external systems: secrets, queue, cycle
 registry, auth, audit, LLM observability, sandbox and the rest.
 
+### `squadops.projects`
+Project Lifecycle Management (SIP-0112): the Project Record's parts (its lifecycle status, source
+binding and ownership) and the registry cutover's refusals. The read model stays
+`squadops.cycles.models.Project`, which carries these parts; this package imports nothing from
+the cycle domain. The writable registry behind `ProjectRegistryPort` is
+`adapters.cycles.postgres_project_registry`.
+
 ### `squadops.prompts`
 Deterministic, versioned prompt assembly: fragments and request templates through `PromptService`
 and the request renderer. Prompt content lives here as managed assets, never as handler literals

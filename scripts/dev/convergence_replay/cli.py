@@ -162,7 +162,10 @@ async def build_bundles(dsn: str, vault_dir: Path, corpus: Path, out: Path) -> d
     from adapters.cycles.factory import create_project_registry
 
     executor = DispatchedFlowExecutor(
-        # The PRD file resolver reads the project registry the runtime reads (config).
+        # The PRD file resolver reads only `prd_path`, which only config/projects.yaml's sample
+        # applications carry, seeded unchanged into the writable registry at SIP-0112's cutover
+        # (#2408). A registered Project's PRD is an artifact (`prd_ref`), read from the vault
+        # above. So the config file answers as either registry would.
         project_registry=create_project_registry("config"),
         cycle_registry=registry,
         artifact_vault=vault,

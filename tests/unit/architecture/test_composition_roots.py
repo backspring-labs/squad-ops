@@ -153,6 +153,9 @@ _CONSTRUCTION_EXCEPTIONS: dict[str, str] = {
     "ChatRepository": _SUBSTRATE,
     "ChatSessionCache": _SUBSTRATE + " (Redis)",
     "ConfigSquadProfile": _READER,
+    # SIP-0112 FR-03 (#2408): the cutover seeds the writable registry from config/projects.yaml.
+    "ConfigProjectRegistry": "bootstrap/config reader: reads config/projects.yaml to seed the "
+    "writable registry; no vendor behind it",
     "ChatAgentExecutor": _COMPOSER + " (the A2A executor over the agent, SIP-0085)",
     "AgentCardConfig": "a config dataclass, not an adapter — the CamelCase technique over-matches it",
     "LoggingRuntimeEventPublisher": _NOOP + " (logging sink)",
@@ -272,6 +275,7 @@ _SELECTORS = (
     ("AuthConfig", "provider", "SQUADOPS__AUTH__PROVIDER"),
     ("CyclesConfig", "registry_provider", "SQUADOPS__CYCLES__REGISTRY_PROVIDER"),
     ("CyclesConfig", "squad_profile_provider", "SQUADOPS__CYCLES__SQUAD_PROFILE_PROVIDER"),
+    ("CyclesConfig", "project_registry_provider", "SQUADOPS__CYCLES__PROJECT_REGISTRY_PROVIDER"),
     ("PromptsConfig", "asset_source_provider", "SQUADOPS__PROMPTS__ASSET_SOURCE_PROVIDER"),
     ("TelemetryConfig", "backend", "SQUADOPS__TELEMETRY__BACKEND"),
     ("SandboxConfig", "provider", "SQUADOPS__SANDBOX__PROVIDER"),
