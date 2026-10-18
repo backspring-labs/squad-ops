@@ -18,8 +18,8 @@ original_filename: "SIP-Project-Lifecycle-Management.md"
 **Roles Impacted:** External Product Owner/Maintainer; Lead, Strategy, Dev, QA, Data  
 **Date:** 2026-10-16  
 **Revised:** 2026-10-17  
-**Document Revision:** 6 — the Spark lane's compatibility review of §8 applied (§8.6). Revision 5: the owner's design review of 2026-10-17 (PR #2401) reconciled: SIP-0047 retired as a runtime contract (Q30), instruction records owned by SIP-0110 (Q31), *Project Record* and a development configuration record in place of *Project Manifest* (Q32), that record named the *Project Development Configuration* (Q36), the Pulse IDEAs non-normative and SIP-0070's Pulse kept (Q33), greenfield creation required (Q34), and the 2.4 ownership and integration contract (Q35, §8)  
-**Source Baseline:** `backspring-labs/squad-ops`, `main`, commit `7aecfa0b3ff6576f115eba10c2ee3465774e997d` (freshly pulled and inspected 2026-10-17); revision 6's added claims read at `9fa8b5e8`; revision 5's added claims read at `c294ec79`, one docs-only commit later  
+**Document Revision:** 7 — the tightening review: the contracts' details (§8.2.1), the sandbox boundary (§8.2.2), the shared fixture (§8.2.3), status vocabularies (§8.3.1), evidence tiers (§8.5), FR-02's two levels, E.4's dependencies and F.4's classes. Revision 6: the Spark lane's compatibility review of §8 applied (§8.6). Revision 5: the owner's design review of 2026-10-17 (PR #2401) reconciled: SIP-0047 retired as a runtime contract (Q30), instruction records owned by SIP-0110 (Q31), *Project Record* and a development configuration record in place of *Project Manifest* (Q32), that record named the *Project Development Configuration* (Q36), the Pulse IDEAs non-normative and SIP-0070's Pulse kept (Q33), greenfield creation required (Q34), and the 2.4 ownership and integration contract (Q35, §8)  
+**Source Baseline:** `backspring-labs/squad-ops`, `main`, commit `7aecfa0b3ff6576f115eba10c2ee3465774e997d` (freshly pulled and inspected 2026-10-17); revisions 6 and 7's added claims read at `9fa8b5e8`; revision 5's added claims read at `c294ec79`, one docs-only commit later  
 **Related SIPs:** SIP-0047 (Cycle Data Layout, Project Registry and `CycleDataStore`: implemented, retired as a runtime contract, Q30); SIP-0064 (Project Cycle Request API); SIP-0065 (CLI for Cycle Execution); SIP-0070 (Pulse Checks: the Cycle and Pulse this SIP keeps); SIP-0072 (its *development profile*, kept to one meaning by Q36); SIP-0074 (Console Cycle Operations UX); SIP-0102 (sandbox workspaces); SIP-0103 (Squad-Authored Manifest: owns the word *manifest*); SIP-0105 (stack blueprints); SIP-0108 (benchmark registry); SIP-0109 (Campaign Orchestration); SIP-0110 (Cross-Cycle Memory: project instructions); Outcome Evaluation (proposed, PR #1963: the Spark lane's 2.4 feature); Game Development Platform (proposed, PR #2405: the Godot/Roblox SIP, filed separately; builds on FR-17)  
 **SIP Number:** Provisional—allocate the next available identifier only after checking the current registry.
 
@@ -31,7 +31,9 @@ System"). Revision 4 was filed as the owner wrote it, and its findings were Q30�
 ruling (Q34) and the 2.4 parallel development agreement (Q35). Revision 5 reconciles the body with the
 rulings. Revision 5's own intake found one more overlap (Q36), and the owner ruled it the same day.
 Revision 6 applies the Spark lane's compatibility review of §8 (§8.6) and finds no new overlap. Its
-gates read the 2.4 plan draft (#2387: D2, D3, D4), which places both lanes' features.
+gates read the 2.4 plan draft (#2387: D2, D3, D4), which places both lanes' features. Revision 7
+tightens §8 for parallel implementation and finds no new overlap: three changes inside SIP-0102's
+sandbox, which the Spark lane owns, are named as cross-lane tasks (§8.2.2).
 
 - **Overlaps, and the boundary each gets:**
   - **SIP-0047** (Cycle Data Layout, Project Registry and `CycleDataStore`, implemented 2025-11-29) is
@@ -111,17 +113,18 @@ numbered), *unplaced* (said deliberately), *dropped* (by the numbered amendment 
 (`tests/unit/architecture/test_sip_ledgers.py` holds it). The owner's direction of 2026-10-17 is a 2.4
 feature on the MacBook lane, beside Outcome Evaluation's feature half on the Spark; each row is placed at
 acceptance, when it has its issue. Greenfield (E.4.6) ships in 2.4: the cut requires it (G6, the owner's
-ruling of 2026-10-17). Game-specific adapters have no row here: they are their own SIPs' (Q34).
+ruling of 2026-10-17). 2.4 carries E.4.1–E.4.4 and E.4.6, the two demonstrations; E.4.5 is required
+before the SIP closes and need not ship in 2.4 (the owner, the same day). Dependencies are in E.4. Game-specific adapters have no row here: they are their own SIPs' (Q34).
 
 | part | status | where |
 |---|---|---|
-| E.4.1 existing-product registration and authority: the writable registry cutover and minimum enrollment | **unplaced** | — |
+| E.4.1 existing-product registration and authority: the writable registry cutover, its validated rollback and minimum enrollment | **unplaced** | — |
 | E.4.2 repository-native discovery and the inherited baseline, with the start declaration (§8.2 contract 7) | **unplaced** | — |
 | E.4.3 the first scoped feature through the shared cycle path | **unplaced** | — |
 | E.4.4 the second feature after an outside contribution | **unplaced** | — |
-| E.4.5 the complete lifecycle and rollout | **unplaced** | — |
+| E.4.5 lifecycle completeness: update history, archive/restore, concurrency and conflict recovery (before close; not required in 2.4) | **unplaced** | — |
 | E.4.6 greenfield Project creation at an owner-approved external destination (required, Q34) | **unplaced** | — |
-| E.4.7 direct attachment to an existing checkout | **unplaced** | — |
+| E.4.7 direct attachment: writing in place in an existing checkout (optional, FR-02) | **unplaced** | — |
 
 **What closes this SIP:** E.4.1–E.4.6 shipped, and E.4.7 shipped or dropped. Greenfield creation (E.4.6)
 is in the completion scope by the owner's ruling of 2026-10-17 (Q34), and leaves it only by a numbered
@@ -136,6 +139,8 @@ amendment the owner rules. The 2.4 cut requires it shipped (G6, ruled the same d
 **Revision 5:** Reconciles the owner's design review of 2026-10-17. SIP-0047 is retired as a runtime contract. Instruction records belong to SIP-0110, and this SIP discovers repository instructions, holds development configuration and detects drift. The *Project Manifest* becomes the Project Record and the Project Development Configuration (Q32, named by Q36). SIP-0070's Cycle and Pulse are kept. Greenfield creation is required. §8 records the 2.4 ownership and integration contract with Outcome Evaluation: shared contracts, integration regression scenarios and gates.
 
 **Revision 6:** Applies the Spark lane's compatibility review of §8 (§8.6). No outcome result reaches a squad role through the Project Context or the handoff before Outcome Evaluation's phase 2, and after it only the proposal run. A scenario never runs against a live tree. The independence list covers squad task inputs and squad containers. Each lane's feature is done on its own evidence. Contract 7, how a product is started for evaluation, is added, and contracts 1, 2, 3 and 5 and IR-7 are corrected.
+
+**Revision 7:** Tightens §8 for parallel implementation without changing its boundaries. Each contract states when its data is available, what a consumer does when it is absent or stale, how it is versioned and its minimum test; contracts 1, 5 and 7 get illustrative schemas. The sandbox boundary names three Spark-owned changes as cross-lane tasks. A shared fixture lets each lane test against the other's recorded outputs. FR-02 separates registration with managed clones (required) from writing in place in an existing checkout (optional, E.4.7). The owner ruled two refinements: *not run* never covers a lane's own demonstration, and E.4.5's lifecycle extras ship before the SIP closes, not necessarily in 2.4.
 
 # 1. Direction and intended outcome
 
@@ -230,7 +235,7 @@ Greenfield creation is the second required demonstration, after this one (Q34). 
 | builds | the Project Record and the registry cutover; the Project Development Configuration; managed clones; inherited verification baselines; Git revisions and their mappings; repository instruction discovery and drift detection; the project CLI and API writes | the held-out scenario store and runner; quality baselines; the intervention ledger's classifications; outcome contribution and the derived metrics; the campaign objective's outcome measure (its §4.7, a SIP-0109 amendment) |
 | never builds | an outcome evaluation subsystem: scenarios, a scenario runner, quality baselines or outcome readings | a project model of its own, or behavior that assumes a Project is a predefined sample application |
 
-A change to a file the other lane owns goes through that lane's review (CLAUDE.md, "Versioning & Release Cadence": features are pinned by file ownership). The sandbox (`src/squadops/sandbox/`, SIP-0102) is the Spark lane's.
+A change to a file the other lane owns goes through that lane's review (CLAUDE.md, "Versioning & Release Cadence": features are pinned by file ownership). The sandbox (`src/squadops/sandbox/`, SIP-0102) is the Spark lane's. The MacBook lane owns external repository management, managed clones, Git mappings and Project source promotion. Both lanes integrate through the sandbox's existing seams, `WorkspaceStore` and `ExecutionSandboxPort`, and neither creates a second workspace authority or live tree. A change inside the sandbox is a cross-lane task (§8.2.2), never a side effect of either feature.
 
 ## 8.2 Shared contracts
 
@@ -246,6 +251,104 @@ A change to a file the other lane owns goes through that lane's review (CLAUDE.m
 
 **Every change to a shared contract** names the contract in its PR body, carries the other lane's review, adds a wiring test that enters at the caller the live cycle uses (`docs/TEST_QUALITY_STANDARD.md`, anti-pattern 6a), and is additive: no field is repurposed or removed.
 
+### 8.2.1 What each contract guarantees
+
+The table above gives each contract's owner, producer and consumer. This one gives what an
+implementation needs to build against it alone. Fields live with the contract's owner: contracts 3, 4
+and 6 use SIP-0102's, SIP-0109's and SIP-0110's as those SIPs define them, and only the three contracts
+whose data this SIP or Outcome Evaluation creates get a schema here.
+
+| contract | available | absent, stale or unavailable | versioning | minimum contract test |
+|---|---|---|---|---|
+| 1 | when the Project is `READY`; pinned into a Cycle's source context before dispatch (FR-09) | a Project not `READY` is refused at `prepare_cycle()` with a typed error; an explicit stale precondition is rejected (FR-09); a tree whose Git revision has no mapping yet is recorded by identity alone, marked unresolved, never guessed | `ProjectSourceContext` carries a schema version; fields are only added | `prepare_cycle()` with the fixture's Project: `READY`, not `READY`, and a stale pinned commit |
+| 2 | at `prepare_cycle()` for a standalone Cycle; at Campaign creation for a Campaign | an unknown field is refused (`extra="forbid"`); each lane's fields are optional to the other lane | additive typed fields, each owned by one lane | the standalone and Campaign preparation tests, on every change to this seam |
+| 3 | when a Git checkout is seeded into the live tree (§8.2.2) | a product the seam cannot carry yet is refused with a named capability gap, never seeded in part | `WorkspaceRevision` as SIP-0102 defines it; the sandbox revision to Git commit mapping is this SIP's record | seed the fixture at a pinned commit; capture a change back to a commit; the mapping resolves both ways |
+| 4 | when SIP-0109 records a promotion | an accepted tree with no Git mapping yet is reported as unmapped | SIP-0109's identity, unchanged; the mapping is this SIP's record | IR-5 |
+| 5 | when Outcome Evaluation writes an evaluation record | Project history shows *not evaluated*, never an inferred result; a reference whose record cannot be read is kept and marked unresolved | `OutcomeEvaluationRef` carries a schema version; its names follow Outcome Evaluation's rename (Q3) | write the fixture's recorded reference into Project history; read it back; refuse an unknown major version |
+| 6 | when SIP-0110 pins the unit's snapshot | as SIP-0110 rules: a binding instruction that cannot be resolved holds dispatch | SIP-0110's | IR-3 |
+| 7 | when a Development Configuration revision is confirmed (E.4.2) | no declaration: every scenario is `blocked_unverified`, reason "no start declaration"; a start or readiness failure: `blocked_unverified`, reason "start failed"; a newer revision never applies to a unit already pinned | part of the Development Configuration's schema version | start the fixture from its declaration; a missing declaration; a readiness timeout |
+
+**Identifiers never substitute for one another.** A Project ID, a Git commit (40 hexadecimal
+characters), a sandbox revision ID (`compute_revision_id`), a Campaign tree identity
+(`FileTree.identity`) and an evaluation ID each name one kind of thing. A record that needs another kind
+resolves it through a mapping, and a consumer that receives an unknown schema major version refuses it
+with a typed error rather than reading part of it.
+
+Illustrative schemas (names may change in the PRs that build them; the meanings may not):
+
+```yaml
+# Contract 1: produced by this SIP, read by Cycle preparation, the Campaign launcher and Outcome Evaluation
+ProjectSourceContext:
+  schema: project-source-context/v1
+  project_id: str                          # the registry's ID, immutable
+  record_version: int                      # the Project Record's version
+  development_configuration_revision: int
+  repo_uri: str                            # the authoritative external locator
+  development_baseline_commit: str         # Git commit, 40 hex characters
+  integrated_upstream_commit: str | null   # last confirmed integrated revision
+
+# Contract 5: produced by Outcome Evaluation, stored by this SIP in Project history
+OutcomeEvaluationRef:
+  schema: outcome-evaluation-ref/v1
+  evaluation_id: str                       # Outcome Evaluation's record ID, opaque here
+  suite_digest: str                        # the suite's content digest
+  project_id: str
+  campaign_id: str
+  cycle_id: str
+  evaluated_tree_identity: str             # SIP-0109 FileTree.identity
+  previous_accepted_tree_identity: str | null
+
+# Contract 7: in the Development Configuration, under technical.commands_ref; read by Outcome Evaluation's runner
+start:
+  working_directory: .                     # repository-relative
+  install: [[argv...]]                     # optional
+  build: [[argv...]]                       # optional
+  start: [argv...]                         # required for evaluation
+  readiness: {kind: http | tcp | command, target: str, timeout_seconds: int}
+  entry_points:                            # at least one
+    - {kind: http_base | ui_base | other, url: str}
+  environment: {NAME: secret://ref}        # references only, never values
+```
+
+### 8.2.2 How a Git checkout becomes the live tree
+
+- **Seeding:** the MacBook lane checks out the pinned commit in its managed clone and seeds the Cycle's
+  live tree through `WorkspaceStore.seed(cycle_id, files, origin=…)`
+  (`src/squadops/sandbox/workspace.py:180`). The sandbox cuts the first revision, and this SIP records
+  the sandbox revision ID beside the commit.
+- **Capture:** a verified change is read back through the sandbox's revisions (`current_files()`,
+  `get_revision()`), written into the managed clone and committed there. This SIP records the commit
+  beside the sandbox revision it came from. The sandbox never runs Git.
+- **Three changes inside the sandbox, each a cross-lane task:** the Spark lane owns the files and reviews
+  them, and the 2.4 plan names who builds them.
+  - **X-1, a revision origin for a Git checkout.** `RevisionOrigin` is a closed set: `scaffold_seed`,
+    `agent_patch`, `promoted_outputs`, `acceptance_assembly` (`src/squadops/sandbox/models.py:23`).
+  - **X-2, binary files.** `seed()`, `current_files()` and revision persistence read and write UTF-8 text
+    only. Until X-2 ships, a product with binary files is refused at seeding with that capability gap,
+    and none of its files are dropped.
+  - **X-3, a product's declared commands.** `ExecutionSandboxPort` runs a stack's install, build, tests
+    and start (`src/squadops/ports/sandbox.py:33`). Contract 7 needs it, or the evaluation runner, to run
+    a product's own declaration.
+- **Neither feature waits on the other's internals:** E.4.2 works for text-only products before X-2, and
+  the fixture (§8.2.3) stands in for each lane's outputs until they ship.
+
+### 8.2.3 The shared fixture and contract tests
+
+- **One fixture product,** small and unfamiliar: its own layout (no SquadOps scaffold), native build, test
+  and start commands, one check that fails before any change (IR-9's inherited failure) and one binary
+  asset (X-2). It is kept as files and made into a Git repository by the test that uses it, so either
+  machine runs it alone.
+- **Each lane's outputs, recorded beside it:** a `ProjectSourceContext`, a Development Configuration with
+  its start declaration, a workspace-to-commit mapping and an inherited baseline (the MacBook lane's), and
+  an `OutcomeEvaluationRef` (the Spark lane's). Each comes valid, with a required field missing, with an
+  unknown schema major version and with a stale commit.
+- **Contract tests enter at the production seams:** `prepare_cycle()` and the Campaign launcher
+  (contracts 1 and 2), `WorkspaceStore.seed()` (contract 3), the Project history write (contract 5) and
+  the evaluation runner's start (contract 7). Contracts 4 and 6 keep SIP-0109's and SIP-0110's tests,
+  with IR-5 and IR-3.
+- **It lands first,** as one PR both lanes review, before either lane's first contract PR. A change to it
+  is a shared-contract change (G4).
+
 ## 8.3 What each lane may rely on
 
 - **This SIP evaluates no outcomes.** Its checks are the product's own build and test checks, run through the existing verification path (FR-10, FR-20) and reported as check results (PASS, FAIL, UNVERIFIED) with regression attribution. They are verification records. Independent held-out scenarios, quality baselines (Lighthouse, axe, lint), the intervention ledger and outcome contribution are Outcome Evaluation's, and this SIP stores references to them.
@@ -256,6 +359,21 @@ A change to a file the other lane owns goes through that lane's review (CLAUDE.m
   3. Repository instruction discovery reads the product repository only. A scenario store is never an instruction source.
   4. This SIP's records hold the evaluation record's reference (contract 5). No outcome result reaches a squad role through the Project Context or the handoff until Outcome Evaluation's phase 2 is ruled; after it, only the proposal run sees each scenario's goal and result (its §4.5).
   5. IR-4 (§8.4) tests 1–4.
+
+### 8.3.1 Status vocabularies
+
+Four vocabularies, each recorded where it is produced, and none standing in for another. They map onto
+SIP-0096's evidence families rather than adding a scheme.
+
+| vocabulary | values | recorded by | SIP-0096 | rules |
+|---|---|---|---|---|
+| native check result | `PASS`, `FAIL`, `UNVERIFIED`, each with an attribution: `inherited`, `introduced/regressed`, `resolved`, `unverified attribution` (FR-10, FR-20) | this SIP, per check | executed-and-passed, executed-and-failed, not-executed | an inherited `FAIL` is never an introduced regression; `UNVERIFIED` never credits |
+| evaluation result | passed, failed, `blocked_unverified` (Outcome Evaluation's names, after its rename, Q3) | Outcome Evaluation's record | the same three families | a missing runner, a missing start declaration or a failed start is `blocked_unverified`, never passed; an evaluation never rewrites the inherited baseline |
+| scenario applicability | applicable, not applicable | Outcome Evaluation, per scenario | none: *not applicable* is not evidence | counted in no rate; never reported as `blocked_unverified` or as passed |
+| integration execution | run, *not run* | the integration record (§8.4) | none | a *not run* record carries §8.5's four fields |
+
+The phase-1 boundary holds across all four: no evaluation result reaches a squad role before Outcome
+Evaluation's phase 2, and after it only the proposal run (§8.2 contract 5).
 
 ## 8.4 Integration regression scenarios
 
@@ -285,6 +403,22 @@ Each enters at the seam the live cycle uses and asserts what reaches the other l
 | G5 | on the integration branch, when the owner opens it | IR-1 to IR-10 are the integration's evidence, run on a deploy carrying both lanes. Each lane's 2.4 feature is done on its own evidence; an IR scenario whose other-lane prerequisite has not shipped reports *not run*, with its reason, in the cut record | ruled 2026-10-17 (approved as written, as the Spark lane's review revised it) |
 | G6 | the 2.4 cut | IR-1 to IR-10 pass on the cut deploy, or report *not run* with the missing prerequisite named (G5). IR-4 to IR-9 need Outcome Evaluation's phase 1 only; its phase 2 is conditional (the 2.4 plan's D4) and not required; the brownfield demonstration (§7) is pre-registered and read; greenfield (E.4.6) is shipped; the cut record states what each lane's evidence does not cover (CLAUDE.md, "Release cut") | ruled 2026-10-17 (approved as written, with the Spark lane's phase 2 clause; its greenfield clause ruled the same day: shipped) |
 | G7 | the 2.4 measurement window (the 2.4 plan's D3) | both lanes agree on the window's frozen deploy, and neither lane deploys a change inside the window | ruled 2026-10-17 (approved as written; proposed by the Spark lane's review) |
+
+**Evidence tiers and *not run*** (the owner's clarification of G5 and G6, 2026-10-17):
+- *development integration evidence:* the integration scenarios, run on a deploy carrying both lanes (G5);
+- *feature completion evidence:* each feature's own acceptance criteria. For this SIP, those are E.7,
+  the brownfield demonstration (§7) and the greenfield proof;
+- *release acceptance evidence:* the cut record (G6).
+
+*Not run* applies only to an integration scenario whose prerequisite from the other lane has not shipped.
+It never covers a lane's own acceptance demonstration: the brownfield demonstration and the greenfield
+proof are run and read. A *not run* record names the missing prerequisite, the shared contract affected,
+the capability whose evidence is absent, and whether the release claim is affected. Outcome Evaluation's
+phase 2 stays conditional on its measurement and is not required for this SIP's completion.
+
+**The 2.4 plan** (#2387) schedules what this section states: the lanes (§8.1), the seven contracts and
+the fixture (§8.2), IR-1 to IR-10, G4 to G7, both demonstrations, phase 2's condition and the frozen
+window deploy. This SIP states them; the plan sequences them.
 
 ## 8.6 The Spark lane's compatibility review
 
@@ -491,7 +625,7 @@ Managed product clones and Git-backed workspaces are a **new capability**. Their
 
 The repository/workspace adapter must state how a checked-out source revision is exposed to the existing sandbox, and how verified changes are captured back into Git. Reuse sandbox path checks, revision preconditions and lease semantics; do not create a second conflicting live tree or reinterpret a sandbox content hash as a Git commit SHA.
 
-The authoritative product source may reside on any approved external Git host or filesystem root. A managed clone is the normal development option for existing products; attachment to an approved existing checkout is also supported within explicit permissions and isolation policy. Never presume the framework repository or sample tree is the product destination.
+The authoritative product source may reside on any approved external Git host or filesystem root. A managed clone is the normal development option for existing products; writing in place in an approved existing checkout is the optional direct attachment (FR-02, E.4.7), within explicit permissions and isolation policy. Never presume the framework repository or sample tree is the product destination.
 
 ## B.4 Single project representation; optional benchmark profile
 
@@ -685,8 +819,10 @@ No hidden reference-app lookup or prescribed source layout is permitted as a pre
 
 Support an existing project by:
 
-- **Import:** register the external authoritative repository and clone/fetch it into a SquadOps-managed development cache/workspace, retaining upstream, history and provenance. Here import means development onboarding; it does not relocate source ownership or replace the authoritative repository. A snapshot/export is a separate explicitly selected mode and must not masquerade as an upstream-linked clone.
-- **Attach:** register an approved external repository/location and prepare development against it without moving its authoritative source. Prefer isolated worktrees/managed copies for writes; modifying an existing checkout requires its explicit configured permissions and branch/isolation controls.
+Two levels, one required and one optional:
+
+- **Register and develop through managed clones (required; E.4.1, E.4.2):** register the external authoritative repository, or an approved existing location of it, and clone/fetch it into a SquadOps-managed development cache/workspace, retaining upstream, history and provenance. This is development onboarding; it does not relocate source ownership or replace the authoritative repository. A snapshot/export is a separate explicitly selected mode and must not masquerade as an upstream-linked clone.
+- **Write in place in an existing checkout (optional; E.4.7, *direct attachment*):** develop in an approved existing checkout without a managed copy, under its explicit configured write permissions and branch/isolation controls. Until E.4.7 ships, a registration that names an existing checkout develops through a managed clone of it.
 
 Operations MUST validate Git status (where applicable), path safety, permissions, reachability and repository-native tooling. Before feature-source changes, perform read-only discovery and capture the inherited verification baseline at the pinned unmodified source revision; builds may write their normal disposable workspace outputs, but must not alter the baseline source to manufacture a passing result. Discover the existing layout and commands without changing them; record development configuration outside product source by default. Changes to attached/external source MUST respect explicit write permission, contribution policy and branch controls.
 
@@ -1179,13 +1315,17 @@ New Godot or Roblox game intent
 
 These are implementation slices, not fixed Campaign stages or Cycle counts.
 
-1. **Existing-product registration and authority:** add the writable registry cutover and the minimum existing-CLI enrollment flow; record external repository/ref, owner delegation and out-of-repository metadata while preserving list/show and historical IDs.
+1. **Existing-product registration and authority:** add the writable registry cutover, its validated provider rollback and the existing-reference regression proof (IR-1), and the minimum existing-CLI enrollment flow; record external repository/ref, owner delegation and out-of-repository metadata while preserving list/show and historical IDs.
 2. **Repository-native discovery and inherited baseline:** managed clone/pinned checkout, existing workspace/lease integration, native instruction and Development Configuration resolution, the declaration of how the product is started for evaluation (§8.2 contract 7), agreed baseline build/tests and honest readiness/defect reporting.
-3. **First scoped feature through the shared Cycle path:** typed Project context and source preconditions, implementation/verification against inherited evidence, approved candidate and the product's normal contribution/integration process.
+3. **First scoped feature through the shared Cycle path:** typed Project context and source preconditions, the standalone and Campaign launch regression proof (IR-2), implementation/verification against inherited evidence, approved candidate and the product's normal contribution/integration process.
 4. **Second feature after an outside contribution:** detect source and instruction drift, reconcile with policy, refresh affected baseline checks, and continue through the same Project/Cycle or existing Campaign authority. Demonstrate durable handoff and independent product usability.
-5. **Complete lifecycle and rollout:** richer update/history/archive/restore, concurrency/conflict recovery, validated provider rollback and existing-reference/Campaign regression proof. Any mutation enabled earlier must already meet its authorization/idempotency requirements.
+5. **Lifecycle completeness (required before the SIP closes; not required in 2.4, the owner's ruling of 2026-10-17):** update history, archive/restore, and concurrency/conflict recovery. Any mutation enabled earlier must already meet its authorization/idempotency requirements.
 6. **Greenfield Project creation (required, Q34):** a new product's external repository created at an owner-approved destination with a product-appropriate structure, then developed through the same lifecycle as an existing product. It builds on the proven external-product path, follows the first proof, and is part of what closes this SIP.
-7. **Direct checkout attachment:** development against an approved existing checkout under explicit permissions and isolation (FR-02).
+7. **Direct checkout attachment (optional):** writing in place in an approved existing checkout under explicit permissions and isolation (FR-02).
+
+**Dependencies:** E.4.1 → E.4.2 → E.4.3 → E.4.4. E.4.6 follows E.4.3, and E.4.5 follows E.4.3. E.4.7 follows E.4.2. Across the lanes: a product with binary files waits on X-2 (§8.2.2); Outcome Evaluation's reading of an external Project waits on E.4.2's start declaration (contract 7) and on X-3. The shared fixture (§8.2.3) comes before all of them.
+
+**2.4 carries E.4.1–E.4.4 and E.4.6:** the brownfield demonstration, with its outside contribution between the two features, and greenfield, shipped (G6). Campaigns keep no predetermined Cycle counts.
 
 Game-specific adapters and other technical targets belong to their own SIPs and build on FR-17. Readiness must explicitly report any operation or target not yet supported.
 
@@ -1236,7 +1376,7 @@ No role is granted authority to bypass the orchestrator's Cycle/Pulse invariants
 ### Workspaces and source
 
 - [ ] `create` establishes a product-approved external authoritative source destination and a separately managed development copy; it does not mandate the product tree structure.
-- [ ] `import` and `attach` preserve repository provenance and safety policies.
+- [ ] Registration of an existing repository with managed clones preserves repository provenance and safety policies (FR-02). Direct attachment (E.4.7), if shipped, meets the same policies.
 - [ ] Separate concurrent Project workspaces cannot modify each other's source.
 - [ ] Project source is separate from the artifact vault; existing vault/sandbox paths and historical readers remain compatible.
 - [ ] Workspace path-escape, permission and conflicting-write tests pass.
@@ -1297,6 +1437,7 @@ No role is granted authority to bypass the orchestrator's Cycle/Pulse invariants
 - [ ] Every PR that changed a shared contract named it, carried the other lane's review and added its wiring test (G4).
 - [ ] IR-1 to IR-10 pass on a deploy carrying both lanes, or report *not run* with the missing prerequisite named (G5, G6).
 - [ ] Starting an external product for evaluation goes through the Development Configuration's commands (§8.2 contract 7).
+- [ ] The shared fixture's contract tests pass on both lanes' seams (§8.2.3), and X-1 to X-3 are shipped or their capability gaps reported (§8.2.2).
 
 **Primary end-to-end success demonstration:** A product maintainer supplies an unfamiliar existing external repository and a scoped feature request. SquadOps registers it without source-tree changes, resolves the owner's delegation and repository-native instructions, pins an unmodified build/test baseline, and delivers a verified feature through the product's normal contribution process. Another developer then advances the source or development instructions. A later Cycle detects/reconciles that drift, refreshes affected Development Configuration and baseline evidence and delivers a second feature through the same SquadOps Project. Candidate acceptance, inherited defects, regression findings and confirmed upstream integration remain distinct. Product source/builds remain independently usable and `group_run` compatibility is preserved. Greenfield product creation is the second required proof, after this one.
 
@@ -1378,23 +1519,32 @@ Project ID: prj-space-adventure
 
 ## F.4 Remaining design decisions and validation
 
-- Define the new transactional Project schema/write-service contract, provider configuration and YAML seed/cutover/rollback procedure. Current registry authority and lookup operations are already established in Appendix A.1.
-- Define exactly how Project-owned Git checkout and verified source capture integrate with the existing sandbox live tree, revisions, leases and binary/asset handling; do not duplicate an independent workspace authority.
-- Specify typed Cycle source-context/precondition fields, their persistence and config-hash scope, and their use by both `cycle_request_body()` and Campaign launch requests. The public API currently forbids unknown top-level fields.
-- Define source-baseline read/propose/promote DTOs/subcommands and map Git commits to existing artifact baselines, Campaign accepted trees and sandbox revision identities.
-- Define how Campaign promotion, Project source promotion and overlapping Campaigns reconcile without changing accepted state by implication or bypassing existing approval/control logs.
-- Choose safe default permissions for external repository attachment and define server/remote-worker path resolution; a client-local directory is not automatically an authorized runtime path.
-- Specify registration reservation, brief upload, finalization and recovery as an idempotent operation, including queryable pending/failure results.
-- Define archive handling for active Campaigns/Cycles, required source, Project Record and Development Configuration evidence for restoration, and project-level quality history as acceptance expectations evolve.
-- Define inherited-baseline evidence and candidate-comparison records, preserving check status independently of attribution, environment gaps and owner-authorized continuation policy.
-- Define relevant-drift detection and affected-operation conflict handling through the existing governance/event paths; do not create a parallel approval or orchestration system.
-- Define the repository reference with SIP-0110 (§8.2 contract 6): its resolver at the unit's pinned commit and its recorded digest. It lands as a numbered amendment to SIP-0110, in the PR that builds it, after #2179.
-- Define the confirmation path for repository-derived project instructions under the owner's recorded delegation while SIP-0110 has no project membership model (its Q27: admins hold `memory:instruct`).
-- Define the Project Record's owner-decision entries: their shape, versioning and reference form.
-- Define how a unit's own in-scope change to build or test definitions reaches the Development Configuration for its later Cycles, within the admission rule of B.5.1.
-- Confirm new target-specific tooling and asset requirements independently; current source inspection does not prove game-engine support or running-deployment readiness.
+Classes: **A** resolved before parallel development (its minimum decision stated here); **B** the
+MacBook lane's implementation; **C** the Spark lane's; **D** settled at joint integration; **E** deferred.
 
-**Scope note:** SIP-0047 (originally `SIP_CYCLE_DATA_STORE.md`, 2025-11-26) was implemented in the v0 tree and is retired as a runtime contract (Q30). Revision 2 reconciled the draft with freshly pulled source; Revision 3 clarified external product ownership. Revision 4 retains that evidence and adds owner authority, inherited quality baselines, instruction precedence/drift and an existing-product-first acceptance path. Revision 5 reconciles the owner's design review of 2026-10-17 (Q30–Q36). Proposed lifecycle writes and new development contracts are not claimed as implemented. The pinned source inspection is not a fresh deployment verification.
+| item | class | where it is settled |
+|---|---|---|
+| The transactional Project schema, write service, provider configuration and YAML seed/cutover/rollback; read consistency after cutover | B | E.4.1. Fixed now: before cutover YAML is the only authority, after it the writable registry is, and every reader sees a newly registered Project at once (contract 1, IR-8) |
+| How a Git checkout and verified source capture meet the sandbox live tree, revisions, leases and binary files | **A** | §8.2.2: seeding and capture through `WorkspaceStore`; X-1, X-2 and X-3 named as cross-lane tasks |
+| Starting a product for evaluation | **A** | §8.2 contract 7 and its schema (§8.2.1) |
+| Typed source-context and precondition fields, their persistence and config-hash scope, in `cycle_request_body()` and Campaign launch requests | B | E.4.3, under contract 2's rule: each lane adds its own typed fields, and Outcome Evaluation adds none at `prepare_cycle()` (§8.6) |
+| Development Configuration revision binding | B | E.4.2–E.4.3. Fixed now: the revision is pinned in the unit's source context before dispatch, and a newer revision never applies to a unit already pinned (B.5.1, contract 7) |
+| Source-baseline read/propose/promote DTOs and subcommands; the Git mappings to artifact baselines, accepted trees and sandbox revisions | B | E.4.3, with contracts 3 and 4's no-substitution rule (§8.2.1) |
+| Campaign promotion against Project source promotion, and overlapping Campaigns | B | E.4.4, reviewed against SIP-0109. Fixed now (FR-06): Campaign promotion never publishes Git changes by itself, Git promotion never rewrites a Campaign's control log or bypasses its acceptance gate, and concurrent Campaigns promote with expected-base checks |
+| Safe default permissions and runtime path resolution for a registration locator | B | E.4.1; for writing in place, with E.4.7 |
+| Registration reservation, brief upload, finalization and recovery | B | E.4.1 |
+| Archive handling, restoration evidence and project-level quality history | B | E.4.5, before the SIP closes |
+| Inherited-baseline and candidate-comparison records | B | E.4.2, in §8.3.1's vocabulary |
+| Relevant-drift detection and affected-operation conflict handling | B | E.4.4, through the existing governance and event paths |
+| The repository reference with SIP-0110 (contract 6) | D | after #2179, as a numbered amendment to SIP-0110 in the PR that builds it |
+| Confirming repository-derived project instructions under the owner's delegation | E | until SIP-0110 has a project membership model, admins confirm them (its Q27) |
+| The Project Record's owner-decision entries | B | E.4.1 |
+| A unit's in-scope change to build or test definitions reaching later Cycles | B | E.4.4, within B.5.1's admission rule |
+| Binary files and a product's declared commands inside the sandbox | C | X-2 and X-3 (§8.2.2), with the MacBook lane's review |
+| Outcome Evaluation's record, store and runner placement | C | its own design review (the 2.4 plan's D2); this SIP fixes only the reference (contract 5) |
+| New target-specific tooling and asset requirements | E | the target SIPs (FR-17; the game SIP, #2405) |
+
+**Scope note:** SIP-0047 (originally `SIP_CYCLE_DATA_STORE.md`, 2025-11-26) was implemented in the v0 tree and is retired as a runtime contract (Q30). Revision 2 reconciled the draft with freshly pulled source; Revision 3 clarified external product ownership. Revision 4 retains that evidence and adds owner authority, inherited quality baselines, instruction precedence/drift and an existing-product-first acceptance path. Revision 5 reconciles the owner's design review of 2026-10-17 (Q30–Q36); revision 6 the Spark lane's review; revision 7 the tightening review. Proposed lifecycle writes and new development contracts are not claimed as implemented. The pinned source inspection is not a fresh deployment verification.
 
 ## F.5 Pinned implementation evidence
 
@@ -1438,3 +1588,4 @@ All paths below are relative to `backspring-labs/squad-ops` at commit `7aecfa0b3
 | 4 | 2026-10-17 | Keeps external owner authority explicit; adds inherited build/test baselines and separate regression attribution; defines instruction precedence/profile drift; makes enhancement of an existing external product across outside contributions the primary proof; separates the directional core from detailed implementation appendices. |
 | 5 | 2026-10-17 | Reconciles the owner's design review (PR #2401). Q30: SIP-0047 retired as a runtime contract, its principles kept (A.1, E.2). Q31: instruction records, versioning, applicability and snapshot binding are SIP-0110's; this SIP discovers repository instructions, holds development configuration and detects drift, and an admitted snapshot changes only by re-binding (B.5.1, FR-21). Q32: the Project Record and Project Development Configuration replace the Project Manifest (B.5). Q33: the Pulse IDEAs non-normative, SIP-0070's Pulse kept (A.2), FR-17 restated as capabilities for future adapters. Q34: greenfield creation required (E.4.6). Q35: the 2.4 parallel development agreement (§8). Adds the boundaries with SIP-0105 and SIP-0108 (B.4.1) and with Outcome Evaluation (§8.3); renames *check outcome* to *check result*. Q36, ruled the same day: the second record named the *Project Development Configuration*, and its keys renamed to match (B.5). The Pulse IDEAs committed under `docs/ideas/` with non-normative headers; the game SIP filed (PR #2405). |
 | 6 | 2026-10-17 | Applies the Spark lane's compatibility review of §8 (§8.6, PR #2401's comment `issuecomment-6242996612`, read at `b4bbeb56`): outcome results kept out of squad roles' inputs before Outcome Evaluation's phase 2 (contract 5, FR-04, FR-09); no scenario against a live tree (contract 3); squad task inputs and containers in the independence list and IR-4; each lane done on its own evidence (G5, G6) and the window's frozen deploy (G7); contracts 1, 2 and 3 and IR-7 corrected; contract 7 added, how a product is started for evaluation, approved by the owner as written, 2026-10-17. The owner ruled the same day that the 2.4 cut requires greenfield (E.4.6) shipped (G6), approved G4–G7 as written, and kept the author as Framework Committee. |
+| 7 | 2026-10-17 | The tightening review: each contract's availability, absent or stale behavior, versioning and minimum test, with schemas for contracts 1, 5 and 7 (§8.2.1); the sandbox boundary and the cross-lane tasks X-1 to X-3 (§8.1, §8.2.2); the shared fixture (§8.2.3); status vocabularies (§8.3.1); evidence tiers and the *not run* record (§8.5, the owner's clarification); the 2.4 plan cross-reference; FR-02's required and optional levels; E.4's dependencies, rollback moved into E.4.1, and E.4.5 required before close but not in 2.4 (the owner's ruling); F.4 classified. |
