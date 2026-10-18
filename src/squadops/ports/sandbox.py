@@ -24,6 +24,7 @@ from squadops.sandbox.models import (
     InstallResult,
     PatchResult,
     ProbeResult,
+    RevisionContent,
     RevisionOrigin,
     StartResult,
     StopResult,
@@ -50,6 +51,13 @@ class ExecutionSandboxPort(ABC):
         again returns the same revision; other content into a seeded cycle is refused. On the
         port since #2451, so the runtime API's one client (``create_sandbox_client``) seeds a
         product's checkout through it (SIP-0112's E.4.2)."""
+        ...
+
+    @abstractmethod
+    async def read_workspace_revision(self, revision: WorkspaceRevision) -> RevisionContent:
+        """A pinned revision's files and executable bits, read from the live tree only while it
+        matches the pin, as a disposable copy is taken (contract 3). SIP-0112's E.4.3 captures a
+        change back from it. A tree that no longer matches is refused: nothing is returned."""
         ...
 
     @abstractmethod

@@ -21,12 +21,14 @@ from squadops.sandbox.models import (
     OperationStatus,
     PatchResult,
     ProbeResult,
+    RevisionContent,
     RevisionOrigin,
     StartResult,
     StopResult,
     TestRunResult,
     WorkspaceRevision,
 )
+from squadops.sandbox.workspace import StaleBaseRevisionError
 
 _REASON = "execution sandbox not configured"
 
@@ -61,6 +63,11 @@ class NoOpExecutionSandbox(ExecutionSandboxPort):
             executable=executable,
             created_at=created_at,
         )
+
+    async def read_workspace_revision(self, revision: WorkspaceRevision) -> RevisionContent:
+        # A workspace read isn't a typed operation with a not-run result. The noop's seed stored
+        # nothing, so there is nothing to read: it refuses, as a drifted tree is refused.
+        raise StaleBaseRevisionError(f"{_REASON}: no revision {revision.revision_id} is held")
 
     async def install_dependencies(self, *, revision: WorkspaceRevision) -> InstallResult:
         return InstallResult(

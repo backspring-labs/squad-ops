@@ -82,6 +82,7 @@ Kept by the rule in CLAUDE.md ("SIP System"): one row per part, updated in the P
 | X-3a: a product's declared command, run against a pinned revision in a disposable copy (§11d) | **shipped** | 2.4.0, PR #2447 |
 | X-3b: starting a product from its declaration, with readiness and the evaluation secrets, built with SIP-0113's scenario runner (§11d; SIP-0112 Q40) | **placed** | 2.4.0, #2421 |
 | the runtime API as the service's caller: its own client selector, the service's URL and token, the service's provider split from the preflight's (§11f; #2451 parts 1–3) | **shipped** | 2.4.0, PR #2456 |
+| a pinned revision's content, read through the port from the live tree only while it matches its pin (§11i; SIP-0112's E.4.3 capture) | **shipped** | 2.4.0, PR #2461 |
 
 **What closes this SIP:** Steps 3, 5, 6, 7 shipped or dropped. Until a clean-room requirement returns, they are unplaced by ruling (§11c, 2026-10-04).
 
@@ -703,3 +704,31 @@ seeds a product's checkout through that client.
 
 **Who ruled it.** The MacBook lane asked for it in its G4 review of #2456, as contract 3's consumer. It is
 the implementer's change, for that lane's review and the owner's.
+
+### 11i. A pinned revision's content is read through the port (2026-10-18, §4.6, §7 item 3; §11g; contract 3; SIP-0112 E.4.3; implementer's record, for the owner)
+
+**Why.** SIP-0112's E.4.3 captures a change back from the sandbox into a product's repository. It needs
+the content of the revision a cycle accepted: its files, binary ones included, and their executable
+bits. Nothing exposed it. The store keeps hashes, not contents, so the live tree is the only copy.
+
+**What changed.**
+- **`read_workspace_revision(revision)` on `ExecutionSandboxPort`,** beside §11g's seed. It returns a
+  `RevisionContent`: the revision, its files as text or bytes, and its executable bits.
+- **It reads the way a disposable copy does** (`WorkspaceStore.read_pinned`, which X-3a's
+  `disposable_copy` now uses too). It reads only while the live tree matches the pin, and holds what
+  was read to the revision's ID, so a patch landing mid-read returns nothing rather than a mix of two
+  revisions. A tree that moved is refused.
+- **The service answers at `GET /api/v1/workspaces/{cycle_id}/revisions/{revision_id}`,** in the
+  seed's wire form: text under `files`, base64 under `binary_files`, and `executable`. A revision the
+  cycle never held is 404, and a tree that moved is 409. The two directions of the wire's encoding are
+  one pair in `squadops.sandbox.models` (`wire_files`, `decode_binary`), used by the client and the
+  service alike.
+- **The noop refuses:** its seed stored nothing, so it has nothing to read.
+
+**Evidence.** `tests/unit/sandbox/test_read_revision.py` seeds one checkout, with a `\r\n` file, a
+binary file and an executable bit, and reads it back exactly, over HTTP and in process. It refuses a
+tree edited or patched after its pin. Three mutations are each caught: the client dropping binaries,
+the pin check removed, and the executable bits dropped.
+
+**Who ruled it.** The MacBook lane asked for it in its review of #2456, as contract 3's consumer, for
+E.4.3 (#2410). It is the implementer's change, for that lane's review and the owner's.
