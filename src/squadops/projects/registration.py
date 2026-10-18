@@ -14,12 +14,18 @@ before anything is written, and stored in one transaction keyed by its idempoten
 - a locator that carries credentials is refused: a secret never travels in a locator, and the
   managed clone resolves one by reference (E.4.2);
 - a host outside the deploy's allow-list is refused when the list names any host;
-- anything beginning with ``-`` is refused, a locator or ref a Git command would read as an option.
+- the deploy's own hosts are refused unless the allow-list names them: loopback, link-local
+  (the cloud metadata address among them), the unspecified address, ``localhost`` and any
+  single-label name, as a compose service is (the owner's ruling on #2459). Private ranges stay
+  allowed, since a company's own Git server usually lives in one;
+- a locator, or any user, host or path segment in it, beginning with ``-`` is refused, as is a
+  ref: a Git command would read it as an option, whatever its version guards itself.
 """
 
 from __future__ import annotations
 
 import hashlib
+import ipaddress
 import json
 import re
 from collections.abc import Iterable
@@ -80,6 +86,9 @@ def check_locator(locator: str, policy: LocatorPolicy) -> None:
         return
     scp = _SCP.match(locator)
     if scp:
+        _no_option(scp["user"], "user")
+        _no_option(scp["host"], "host")
+        _no_option_in_path(scp["path"])
         _check_host(scp["host"], policy)
         return
     _check_local(locator, policy)
@@ -106,12 +115,53 @@ def _check_url(locator: str, policy: LocatorPolicy) -> None:
         )
     if not host or url.path in ("", "/"):
         raise LocatorRefused("a locator names a host and a repository path", reason="malformed")
+    if url.username is not None:
+        _no_option(url.username, "user")
+    _no_option(host, "host")
+    _no_option_in_path(url.path)
     _check_host(host, policy)
 
 
 def _check_host(host: str, policy: LocatorPolicy) -> None:
-    if policy.allowed_hosts and host.lower() not in policy.allowed_hosts:
+    name = host.lower().strip("[]")
+    if name in policy.allowed_hosts:
+        return
+    if policy.allowed_hosts:
         raise LocatorRefused(f"{host} is not an allowed host", reason="host_not_allowed")
+    if is_internal_host(name):
+        raise LocatorRefused(
+            f"{host} is one of the deploy's own hosts: name it in the allow-list to use it",
+            reason="internal_host",
+        )
+
+
+def is_internal_host(name: str) -> bool:
+    """A name or address that reaches the deploy itself (#2459): loopback, link-local, the
+    unspecified address, ``localhost``, or a single-label name such as a compose service."""
+    try:
+        return is_internal_address(ipaddress.ip_address(name))
+    except ValueError:
+        return name == "localhost" or name.endswith(".localhost") or "." not in name
+
+
+def is_internal_address(address: ipaddress.IPv4Address | ipaddress.IPv6Address) -> bool:
+    """An address that reaches the deploy itself rather than another machine (#2459)."""
+    mapped = getattr(address, "ipv4_mapped", None)
+    if mapped is not None:
+        address = mapped
+    return address.is_loopback or address.is_link_local or address.is_unspecified
+
+
+def _no_option(component: str, what: str) -> None:
+    if component.startswith("-"):
+        raise LocatorRefused(
+            f"a locator's {what} may not begin with '-': {component!r}", reason="option_like"
+        )
+
+
+def _no_option_in_path(path: str) -> None:
+    for segment in path.split("/"):
+        _no_option(segment, "path")
 
 
 def _check_local(path: str, policy: LocatorPolicy) -> None:

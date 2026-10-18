@@ -24,6 +24,8 @@ ANY_HOST = LocatorPolicy()
         "ssh://git@code.example.org/products/tally.git",
         "ssh://code.example.org:2222/products/tally.git",
         "git@github.com:owner/tally.git",
+        "https://10.1.2.3/products/tally.git",
+        "https://git.corp.example/products/tally.git",
     ],
 )
 def test_a_remote_locator_is_accepted(locator):
@@ -45,6 +47,19 @@ def test_a_remote_locator_is_accepted(locator):
         ("../tally", "local_path"),
         ("C:\\repos\\tally", "local_path"),
         ("--upload-pack=/tmp/payload", "option_like"),
+        ("ssh://-oProxyCommand=touch%20x@github.com/o/r.git", "option_like"),
+        ("ssh://user@-oProxyCommand=x/o/r.git", "option_like"),
+        ("git@-evil.example:o/r.git", "option_like"),
+        ("git@github.com:-upload-pack=x", "option_like"),
+        ("ssh://github.com/-x", "option_like"),
+        ("https://localhost/o/r.git", "internal_host"),
+        ("https://127.0.0.1:8001/o/r.git", "internal_host"),
+        ("https://[::1]/o/r.git", "internal_host"),
+        ("https://169.254.169.254/latest/meta-data", "internal_host"),
+        ("ssh://postgres:5432/o/r.git", "internal_host"),
+        ("git@runtime-api:o/r.git", "internal_host"),
+        ("https://0.0.0.0/o/r.git", "internal_host"),
+        ("https://[::ffff:127.0.0.1]/o/r.git", "internal_host"),
         (" https://github.com/owner/tally.git", "malformed"),
         ("", "malformed"),
     ],
@@ -143,3 +158,14 @@ def test_the_request_hash_covers_every_field_but_the_key():
 )
 def test_a_derived_id_is_prj_and_the_names_words(name, expected):
     assert derive_project_id(name) == expected
+
+
+def test_an_internal_host_the_allow_list_names_is_accepted():
+    """#2459: the deploy's own hosts are refused by default, never forbidden outright."""
+    policy = LocatorPolicy.of(["gitea", "127.0.0.1"], [])
+
+    check_locator("ssh://gitea/products/tally.git", policy)
+    check_locator("https://127.0.0.1:3000/products/tally.git", policy)
+    with pytest.raises(LocatorRefused) as refused:
+        check_locator("https://localhost/products/tally.git", policy)
+    assert refused.value.details == {"reason": "host_not_allowed"}

@@ -114,7 +114,8 @@ class PostgresProjectRegistry(ProjectRegistryPort):
         key, digest = registration.idempotency_key, registration.request_hash()
         source, ownership = registration.source, registration.ownership
         async with self._pool.acquire() as conn, conn.transaction():
-            await conn.execute("SELECT pg_advisory_xact_lock(hashtext($1))", key)
+            # Two-key form, class 112 (SIP-0112): apart from the migrations' single-key lock.
+            await conn.execute("SELECT pg_advisory_xact_lock(112, hashtext($1))", key)
             prior = await conn.fetchrow(
                 "SELECT project_id, request_hash FROM project_record_events "
                 "WHERE idempotency_key = $1",
