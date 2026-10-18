@@ -195,17 +195,18 @@ class WorkspaceStore:
         self,
         revision: WorkspaceRevision,
         files: Mapping[str, FileContent],
-        executable: Collection[str] = (),
+        executable: Collection[str] | None = None,
     ) -> None:
         rev_dir = self._revisions_dir(revision.cycle_id)
         rev_dir.mkdir(parents=True, exist_ok=True)
-        manifest = {
+        manifest: dict = {
             "revision": revision.to_dict(),
             "files": {
                 p: hashlib.sha256(content_bytes(c)).hexdigest() for p, c in sorted(files.items())
             },
-            "executable": sorted(executable),
         }
+        if executable is not None:
+            manifest["executable"] = sorted(executable)
         (rev_dir / f"{revision.revision_id}.json").write_text(
             json.dumps(manifest, indent=2), encoding="utf-8"
         )
@@ -221,10 +222,22 @@ class WorkspaceStore:
         """Every path a persisted revision holds as content (its manifest's files)."""
         return frozenset(self._manifest(cycle_id, revision_id).get("files", ()))
 
-    def _revision_executables(self, cycle_id: str, revision_id: str) -> frozenset[str]:
-        """The files a persisted revision holds as executable. A manifest written before
-        modes were carried names none, as none of its files had the bit."""
-        return frozenset(self._manifest(cycle_id, revision_id).get("executable", ()))
+    def _revision_executables(self, cycle_id: str, revision_id: str) -> frozenset[str] | None:
+        """The files a persisted revision holds as executable, or ``None`` when its lineage
+        carries no modes. Modes are content only in a lineage that began at a repository's
+        tracked tree (``RevisionOrigin.TRACKED_TREE``). A scaffold workspace's pin ignores
+        them, as it always has, so a filesystem that reports every file executable (a
+        Windows mount under WSL) can't break it."""
+        manifest = self._manifest(cycle_id, revision_id)
+        return frozenset(manifest["executable"]) if "executable" in manifest else None
+
+    def _live_executables(
+        self, cycle_id: str, revision_id: str, tracked: Collection[str]
+    ) -> frozenset[str]:
+        """The live executable bits a revision's pin compares: none, unless it carries modes."""
+        if self._revision_executables(cycle_id, revision_id) is None:
+            return frozenset()
+        return self.current_executables(cycle_id, tracked=tracked)
 
     def _manifest(self, cycle_id: str, revision_id: str) -> dict:
         path = self._revisions_dir(cycle_id) / f"{revision_id}.json"
@@ -253,7 +266,13 @@ class WorkspaceStore:
         Idempotent for retries: re-seeding identical content returns the
         existing revision; re-seeding different content over a seeded
         workspace is an error, never a silent overwrite."""
-        tracked = None if origin in RevisionOrigin.TRACKED_TREE else ()
+        carries_modes = origin in RevisionOrigin.TRACKED_TREE
+        if executable and not carries_modes:
+            raise ValueError(
+                "executable bits are carried only for a repository's tracked tree "
+                f"(a {RevisionOrigin.GIT_CHECKOUT} seed), not a {origin} seed"
+            )
+        tracked = None if carries_modes else ()
         safe = {_safe_relpath(p, tracked=tracked): c for p, c in files.items()}
         modes = frozenset(_safe_relpath(p, tracked=tracked) for p in executable)
         if not modes <= safe.keys():
@@ -277,7 +296,7 @@ class WorkspaceStore:
             target.write_bytes(content_bytes(content))
             if rel in modes:
                 target.chmod(target.stat().st_mode | 0o111)
-        self._persist(revision, safe, modes)
+        self._persist(revision, safe, modes if carries_modes else None)
         return revision
 
     def apply_patch(
@@ -298,7 +317,8 @@ class WorkspaceStore:
             raise WorkspaceStoreError(f"unknown base revision: {base_revision_id}")
         base_paths = self._revision_paths(cycle_id, base_revision_id)
         current = self.current_files(cycle_id, tracked=base_paths)
-        if not base.matches(current, self.current_executables(cycle_id, tracked=base_paths)):
+        live_modes = self._live_executables(cycle_id, base_revision_id, base_paths)
+        if not base.matches(current, live_modes):
             raise StaleBaseRevisionError(
                 f"live tree no longer matches base revision {base_revision_id}"
             )
@@ -312,15 +332,16 @@ class WorkspaceStore:
             else:
                 merged[rel] = content
         # A patched file keeps its mode (writing in place keeps it), and a deleted one drops
-        # out; a file the patch adds is not executable.
-        modes = self._revision_executables(cycle_id, base_revision_id) & merged.keys()
+        # out; a file the patch adds is not executable. A lineage without modes stays without.
+        base_modes = self._revision_executables(cycle_id, base_revision_id)
+        modes = None if base_modes is None else base_modes & merged.keys()
         # Merge and cut before touching the tree: a patch refused part-way (an escaping path,
         # an unknown origin) must leave the live tree on its base, or every later patch is stale.
         revision = WorkspaceRevision.cut(
             cycle_id=cycle_id,
             origin=origin,
             files=merged,
-            executable=modes,
+            executable=modes or (),
             parent=base,
             created_at=created_at,
         )
@@ -344,7 +365,7 @@ class WorkspaceStore:
         tracked = self._revision_paths(cycle_id, revision_id)
         return revision.matches(
             self.current_files(cycle_id, tracked=tracked),
-            self.current_executables(cycle_id, tracked=tracked),
+            self._live_executables(cycle_id, revision_id, tracked),
         )
 
     # -- leases and cleanup -------------------------------------------------

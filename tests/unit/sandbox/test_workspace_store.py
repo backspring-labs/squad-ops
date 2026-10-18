@@ -318,6 +318,31 @@ class TestExecutableBit:
 
         assert not store.verify_pinned("cyc_1", seed.revision_id)
 
+    def test_a_scaffold_workspace_ignores_modes_as_it_always_has(self, store):
+        """Bug caught: the executable bit compared in every workspace, so a scaffold tree whose
+        file gains +x fails a pin it used to pass, and on a filesystem that reports every file
+        executable (a Windows mount under WSL) every scaffold pin fails."""
+        seed = store.seed("cyc_1", FILES, origin=RevisionOrigin.SCAFFOLD_SEED)
+        (store.workspace_dir("cyc_1") / "backend/main.py").chmod(0o755)
+
+        assert store.verify_pinned("cyc_1", seed.revision_id)
+        rev, _ = store.apply_patch(
+            "cyc_1",
+            base_revision_id=seed.revision_id,
+            files={"backend/main.py": "print('b')\n"},
+            origin=RevisionOrigin.AGENT_PATCH,
+        )
+        assert store.verify_pinned("cyc_1", rev.revision_id)
+
+    def test_a_scaffold_seed_cannot_declare_an_executable_file(self, store):
+        """Bug caught: a mode accepted on a lineage that never compares modes, so the caller
+        believes a bit is pinned that nothing checks."""
+        with pytest.raises(ValueError, match="only for a repository's tracked tree"):
+            store.seed(
+                "cyc_1", self.GRADLEW, origin=RevisionOrigin.SCAFFOLD_SEED, executable={"gradlew"}
+            )
+        assert store.current_files("cyc_1") == {}
+
     def test_an_executable_path_the_seed_does_not_carry_is_refused(self, store):
         """Bug caught: a mode for a file that isn't there accepted and silently dropped."""
         with pytest.raises(ValueError, match="doesn't carry"):
