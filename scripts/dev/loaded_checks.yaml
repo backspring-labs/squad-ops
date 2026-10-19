@@ -374,8 +374,9 @@ checks:
     code: |
       from squadops.campaigns.evidence import PACKAGE_VERSION
       from squadops.cycles.run_loop_summary import RunLoopSummary
-      print(PACKAGE_VERSION, "lint_findings" in RunLoopSummary.__dataclass_fields__)
-    expect: 3 True
+      # The package has carried the lint reading since version 3; later versions still do (#2418).
+      print(PACKAGE_VERSION >= 3, "lint_findings" in RunLoopSummary.__dataclass_fields__)
+    expect: True True
   - id: "1937-eve"
     what: the qa image lints a delivered tree with ruff and the pinned ESLint, both running
     container: squadops-eve
