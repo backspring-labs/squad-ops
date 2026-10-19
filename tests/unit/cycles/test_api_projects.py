@@ -632,3 +632,24 @@ class TestContributionRoutes:
         assert resp.status_code == 201
         assert seen.await_args.kwargs["tokens"] == expected
         assert "t0ken" not in resp.text
+
+
+class TestSyncRoutes:
+    """``/api/v1/projects/{id}/syncs`` (SIP-0112 FR-21, E.4.4). Bugs caught: a sample
+    application's sync answered as a server failure; the recorded findings not what's listed."""
+
+    def test_a_sample_application_has_no_upstream_to_sync(self, client, mock_project_registry):
+        client.app.state.source_repository = AsyncMock()
+
+        resp = client.post("/api/v1/projects/hello_squad/syncs", json={"idempotency_key": "s-1"})
+
+        assert (resp.status_code, resp.json()["detail"]["error"]["code"]) == (409, "SYNC_REFUSED")
+        mock_project_registry.record_sync.assert_not_awaited()
+
+    def test_the_findings_list_as_recorded(self, client, mock_project_registry):
+        document = {"schema": "source-sync/v1", "project_id": "prj-tally", "drift": None}
+        mock_project_registry.source_syncs.return_value = [document]
+
+        resp = client.get("/api/v1/projects/prj-tally/syncs")
+
+        assert resp.json() == [{"document": document, "replayed": False}]
