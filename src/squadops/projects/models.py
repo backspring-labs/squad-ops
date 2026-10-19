@@ -82,19 +82,23 @@ class SourceUnavailable(RuntimeError):
 @dataclass(frozen=True)
 class CheckoutTree:
     """A commit's tracked tree, as the sandbox can carry it (X-1, X-2): files as bytes and the
-    executable bit. A tracked symlink or submodule has no form there, so each is listed for the
-    caller to refuse by name (§8.2.1: never seeded in part)."""
+    executable bit. A tracked symlink or submodule, or a path that isn't UTF-8, has no form
+    there, so each is listed for the caller to refuse by name (§8.2.1: never seeded in part)."""
 
     commit: str
     files: dict[str, bytes]
     executable: frozenset[str]
     symlinks: frozenset[str]
     submodules: frozenset[str]
+    #: Paths that aren't UTF-8, shown with their bytes escaped: a workspace path is text.
+    undecodable_paths: frozenset[str] = frozenset()
 
     @property
     def capability_gaps(self) -> list[str]:
         """What the sandbox cannot carry, named, in the order a reader fixes them."""
         gaps = []
+        if self.undecodable_paths:
+            gaps.append(f"paths that aren't UTF-8: {', '.join(sorted(self.undecodable_paths))}")
         if self.symlinks:
             gaps.append(f"tracked symlinks: {', '.join(sorted(self.symlinks))}")
         if self.submodules:

@@ -39,10 +39,11 @@ COPY requirements/ ./requirements/
 # BuildKit cache mount preserves pip download cache across builds
 RUN --mount=type=cache,target=/root/.cache/pip pip install -r requirements/api.lock
 
-# git: the managed clones of registered products (SIP-0112 E.4.2, FR-06). Its own layer, after the
-# toolchain and the locked dependencies, so adding it reuses theirs: the build fetches the package
-# index and git's own packages, not the toolchain again.
-RUN apt-get update && apt-get install -y --no-install-recommends git \
+# git: the managed clones of registered products (SIP-0112 E.4.2, FR-06), and ssh for the ssh and
+# scp-form locators R5 accepts (Debian's git only recommends it, and the slim image has none). Its
+# own layer, after the toolchain and the locked dependencies, so adding it reuses theirs: the build
+# fetches the package index and these packages, not the toolchain again.
+RUN apt-get update && apt-get install -y --no-install-recommends git openssh-client \
     && rm -rf /var/lib/apt/lists/*
 
 # Cache-bust: when SOURCE_HASH changes, Docker invalidates this layer and below

@@ -115,6 +115,32 @@ def test_a_start_declaration_a_runner_would_misread_is_refused_naming_its_field(
     assert refused.value.field == field
 
 
+def test_the_checks_own_install_and_build_round_trip_and_are_argvs():
+    """#2468's review. Bugs caught: the checks' setup dropped on its way to the record, so every
+    check of a product that needs its dependencies records FAIL inherited; a shell string run as
+    one-letter commands; the start declaration's steps standing in for the checks'."""
+    doc = copy.deepcopy(recorded("development_configuration", "valid"))
+    commands = doc["configuration"]["technical"]["commands"]
+    commands["install"] = [["pip", "install", "-e", "."]]
+    commands["build"] = [["python3", "tools/build.py"]]
+
+    configuration = parse_configuration(doc)
+
+    assert configuration.to_document() == doc
+    assert configuration.commands.check_setup == (
+        ("pip", "install", "-e", "."),
+        ("python3", "tools/build.py"),
+    )
+    assert (
+        parse_configuration(recorded("development_configuration", "valid")).commands.check_setup
+        == ()
+    )
+    commands["install"] = ["pip install -e ."]
+    with pytest.raises(ConfigurationInvalid) as refused:
+        parse_configuration(doc)
+    assert refused.value.field == "technical.commands.install[0]"
+
+
 def test_checks_are_unique_and_their_environment_is_named():
     technical = _technical()
     technical["commands"]["checks"].append({"id": "parse", "argv": ["true"]})

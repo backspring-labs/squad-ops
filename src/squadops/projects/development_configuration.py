@@ -2,7 +2,9 @@
 declaration (contract 7, §8.2.1).
 
 A versioned record of how the product is worked on, kept outside its repository:
-- its native checks, each an argv run from the repository's root;
+- its native checks, each an argv run from the repository's root, after the install and build
+  steps the checks need (``commands.install``, ``commands.build``; the start declaration's own
+  steps are its own, never borrowed);
 - how it is started for evaluation;
 - the repository's own instruction sources, found at the commit the record was validated
   against.
@@ -104,6 +106,13 @@ class Commands:
     working_directory: str
     checks: tuple[Check, ...]
     start: StartDeclaration | None
+    #: Run before each check, in that check's disposable copy, with the install network (X-3a).
+    install: tuple[tuple[str, ...], ...] = ()
+    build: tuple[tuple[str, ...], ...] = ()
+
+    @property
+    def check_setup(self) -> tuple[tuple[str, ...], ...]:
+        return self.install + self.build
 
 
 @dataclass(frozen=True)
@@ -184,6 +193,8 @@ def _commands(doc: Mapping[str, Any], at: str) -> Commands:
         ),
         checks=checks,
         start=_start(start, f"{at}.start") if start is not None else None,
+        install=_argvs(doc.get("install", []), f"{at}.install"),
+        build=_argvs(doc.get("build", []), f"{at}.build"),
     )
 
 
@@ -378,6 +389,8 @@ def submission_digest(payload: Mapping[str, Any]) -> str:
 def _commands_document(commands: Commands) -> dict[str, Any]:
     doc: dict[str, Any] = {
         "working_directory": commands.working_directory,
+        **({"install": [list(a) for a in commands.install]} if commands.install else {}),
+        **({"build": [list(a) for a in commands.build]} if commands.build else {}),
         "checks": [
             {
                 "id": c.id,

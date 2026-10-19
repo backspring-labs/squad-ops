@@ -81,7 +81,9 @@ async def test_a_second_sync_fetches_what_upstream_moved_to(product, clones):
     assert "NOTES.md" in (await clones.tree_at("prj-tally", moved)).files
 
 
-async def test_modes_symlinks_and_submodules_are_read_as_git_records_them(tmp_path, clones):
+async def test_modes_symlinks_submodules_and_odd_paths_are_read_as_git_records_them(
+    tmp_path, clones
+):
     repo = tmp_path / "sources" / "odd"
     repo.mkdir(parents=True)
     _git(repo, "init", "-q", "-b", "main")
@@ -91,6 +93,19 @@ async def test_modes_symlinks_and_submodules_are_read_as_git_records_them(tmp_pa
     os.symlink("README.md", repo / "README-link.md")
     _git(repo, "add", "-A")
     _git(repo, "update-index", "--add", "--cacheinfo", f"160000,{'a' * 40},vendor/lib")
+    # A Latin-1 name, written through the index: macOS refuses it as a file name.
+    blob = _git(repo, "hash-object", "-w", "README.md")
+    subprocess.run(
+        [
+            b"git",
+            b"update-index",
+            b"--add",
+            b"--cacheinfo",
+            f"100644,{blob},".encode() + b"caf\xe9.txt",
+        ],
+        cwd=repo,
+        check=True,
+    )
     _git(repo, "commit", "-q", "-m", "odd")
 
     commit = await clones.sync("prj-odd", str(repo), "refs/heads/main")
@@ -99,6 +114,7 @@ async def test_modes_symlinks_and_submodules_are_read_as_git_records_them(tmp_pa
     assert tree.executable == frozenset({"gradlew"})
     assert set(tree.files) == {"gradlew", "README.md"}
     assert tree.capability_gaps == [
+        "paths that aren't UTF-8: caf\\xe9.txt",
         "tracked symlinks: README-link.md",
         "submodules: vendor/lib",
     ]

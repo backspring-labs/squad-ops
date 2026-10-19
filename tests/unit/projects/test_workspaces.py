@@ -33,7 +33,8 @@ from tests.fixtures.shared_contract.repository import build_repository, recorded
 
 
 class _LocalSandbox:
-    """Seeds through the real store; runs a declared check as a local process in X-3a's copy."""
+    """Seeds through the real store; runs a declared check, after its setup, as local processes
+    in X-3a's copy."""
 
     def __init__(self, root: Path) -> None:
         self.store = WorkspaceStore(root)
@@ -48,6 +49,8 @@ class _LocalSandbox:
         self.ran.append(tuple(command))
         with self.store.disposable_copy(revision.cycle_id, revision.revision_id) as copy:
             started = time.monotonic()
+            for step in setup:
+                await asyncio.to_thread(subprocess.run, list(step), cwd=copy, check=True)
             done = await asyncio.to_thread(
                 subprocess.run,
                 list(command),
@@ -155,6 +158,32 @@ async def test_the_fixtures_own_checks_reproduce_its_recorded_inherited_baseline
     assert (
         parse.evidence["exit_code"] == 1 and "FAILED (failures=1)" in parse.evidence["stderr_tail"]
     )
+
+
+async def test_each_check_runs_after_the_install_its_configuration_declares(world):
+    """#2468's review. Bug caught: the checks run with no setup, so a product whose checks need
+    their dependencies installed records every check FAIL inherited, a missing step recorded as
+    the product's state."""
+    repo, registry, clones, sandbox = world
+    doc = recorded("development_configuration", "valid")
+    commands = doc["configuration"]["technical"]["commands"]
+    commands["install"] = [["python3", "-c", "open('installed.flag', 'w').close()"]]
+    commands["checks"] = [
+        {
+            "id": "installed",
+            "argv": [
+                "python3",
+                "-c",
+                "import os, sys; sys.exit(not os.path.exists('installed.flag'))",
+            ],
+        }
+    ]
+    registry.configuration = parse_configuration(doc)
+
+    baseline, _ = await _capture(registry, clones, sandbox)
+
+    [check] = baseline.checks
+    assert (check.id, check.result) == ("installed", "PASS")
 
 
 async def test_the_seed_is_mapped_by_all_three_of_its_identifiers(world):

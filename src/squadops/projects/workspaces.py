@@ -6,7 +6,8 @@ with SIP-0109's tree identity beside them. The three identifiers never stand in 
 The sandbox never runs Git; this is the only place a commit and a revision meet.
 
 The inherited baseline (FR-20) runs the product's declared checks against that seeded revision,
-each in a disposable copy (X-3a), and records what happened.
+each in a disposable copy (X-3a) after the install and build steps the checks declare, and
+records what happened.
 """
 
 from __future__ import annotations
@@ -137,7 +138,10 @@ async def capture_inherited_baseline(
             results.append(gap)
             continue
         run: Any = await sandbox.run_declared_command(  # type: ignore[union-attr]
-            revision=revision, command=check.argv, working_dir=commands.working_directory
+            revision=revision,
+            command=check.argv,
+            working_dir=commands.working_directory,
+            setup=commands.check_setup,
         )
         environment = environment or {
             "image": run.image_identity or "unknown",

@@ -130,13 +130,17 @@ class GitSourceRepository(SourceRepositoryPort):
             raise SourceUnavailable("the managed clone does not exist yet", reason="not_cloned")
         listing = self._git(clone, "ls-tree", "-r", "-z", "--full-tree", commit, step="read")
         blobs: dict[str, str] = {}
-        executable, symlinks, submodules = set(), set(), set()
+        executable, symlinks, submodules, undecodable = set(), set(), set(), set()
         for entry in listing.split(b"\0"):
             if not entry:
                 continue
             meta, path_bytes = entry.split(b"\t", 1)
             mode, _kind, sha = meta.decode().split(" ")
-            path = path_bytes.decode("utf-8")
+            try:
+                path = path_bytes.decode("utf-8")
+            except UnicodeDecodeError:
+                undecodable.add(path_bytes.decode("utf-8", errors="backslashreplace"))
+                continue
             if mode == "120000":
                 symlinks.add(path)
             elif mode == "160000":
@@ -151,6 +155,7 @@ class GitSourceRepository(SourceRepositoryPort):
             executable=frozenset(executable),
             symlinks=frozenset(symlinks),
             submodules=frozenset(submodules),
+            undecodable_paths=frozenset(undecodable),
         )
 
     def _read_blobs(self, clone: Path, blobs: dict[str, str]) -> dict[str, bytes]:
