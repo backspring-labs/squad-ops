@@ -842,10 +842,24 @@ within them, for the owner's review.
   `src/` and `adapters/` names a cycle or a run, or is one of three project-level readers, each named with
   why no squad role reads it (the agent role holds only `agents:write`). A section that can't be read is
   recorded in the package with why, and the package is still written.
+- **The work class, as built** (2026-10-18, #2418). **Ruled by the owner, 2026-10-18:** the shape proposed
+  on #2418, approved as proposed.
+  - **`CampaignObjective.work_class`** has two fields: `prd_tier` (`core`, `tier-1`, `tier-2` or `tier-3`)
+    and `attendance` (`attended` or `unattended`). It's declared, never inferred.
+  - **The increment count is the objective's `target_accepted_increments`,** one declaration, not two.
+  - **Required of every new campaign,** as the target is. The create route refuses a campaign without one,
+    and the API refuses a word outside the vocabulary. It's `None` only on a campaign stored before it, whose
+    creation still replays, since an undeclared class stays out of the creation's hash, as an undeclared
+    stack does.
+  - **Where it's declared:** in the campaign definition file's `objective`, which `squadops campaigns create`
+    sends as it sends the rest. #2418's proposal named CLI flags, but they would be a second source beside the
+    file the CLI reads everything else from. The file is the one place, and its path and sha256 are already
+    on the creation row (#1954).
+  - **The digest's header names it.** Nothing that decides a campaign reads it.
 - **Not built yet, on #2418:**
-  - AOR and AWE, which need the objective's declared work class, a contract 2 field with the MacBook lane's
-    review;
-  - "every quality baseline held", which waits for prediction 4's tolerance (§10f).
+  - AOR and the AWE themselves, grouped by the class;
+  - "every quality baseline held", which waits for prediction 4's tolerance (§10f);
+  - "every safety guarantee intact", which has no record yet saying what the guarantees are.
 
 **Who ruled it.** The owner accepted §4.4 (2026-10-17). The precedence and the blocked-now reading are the
 implementer's, for the owner's review.

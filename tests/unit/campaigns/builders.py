@@ -12,6 +12,7 @@ from squadops.campaigns.models import (
     CampaignTransition,
     ControlOperation,
     PlanGate,
+    WorkClass,
 )
 
 T0 = datetime(2026, 10, 2, 3, 0, tzinfo=UTC)
@@ -50,6 +51,7 @@ def campaign(campaign_id: str = "cmp_aaaaaaaaaaaa", **overrides) -> Campaign:
             allowed_scope=("backend", "frontend"),
             measurement="two accepted increments",
             target_accepted_increments=2,
+            work_class=WorkClass(prd_tier="tier-1", attendance="unattended"),
         ),
         policy=policy(),
         state=CampaignState.DRAFT,
