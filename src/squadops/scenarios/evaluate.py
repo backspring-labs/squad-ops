@@ -35,11 +35,18 @@ from squadops.scenarios.evaluation import (
 )
 from squadops.scenarios.fields import resolve
 from squadops.scenarios.models import Scenario, SurfaceKind
+from squadops.scenarios.quality import (
+    NotMeasured,
+    QualityReading,
+    QualityStatus,
+    measurable_pages,
+)
 from squadops.scenarios.runner import (
     DeclaredStart,
     ReadinessUnsupported,
     RunnerUnavailable,
     StartUndeclared,
+    TreeEvaluation,
 )
 from squadops.scenarios.steps import ScenarioRun
 from squadops.scenarios.suites import require_pinnable
@@ -132,6 +139,42 @@ def delivered_endpoints(manifest: InterfaceManifest | None, prefix: str) -> froz
     return frozenset(_endpoint(e.method, e.path, prefix) for e in manifest.api.endpoints)
 
 
+def declared_pages(
+    manifest: InterfaceManifest | None, declared: DeclaredStart | None
+) -> tuple[str, ...]:
+    """The pages Lighthouse and axe measure (§4.2, #2416): a blueprint delivery's own declared
+    routes that load as they are, or a declared Project's ``ui_base``. Never a sample app's."""
+    if declared is not None:
+        return (declared.ui_path or "/",) if declared.ui_port is not None else ()
+    if manifest is None:
+        return ()
+    return measurable_pages([route.path for route in manifest.frontend.routes])
+
+
+#: Why the pages weren't measured, when the whole evaluation was blocked before they could be.
+_NOT_MEASURED_BY_BLOCK = {
+    BlockedReason.NO_RUNNER: NotMeasured.NO_RUNNER,
+    BlockedReason.START_FAILED: NotMeasured.START_FAILED,
+    BlockedReason.NO_START_DECLARATION: NotMeasured.NO_START_DECLARATION,
+}
+
+
+def quality_of(
+    pages: tuple[str, ...], blocked: BlockedReason | None, evaluated: TreeEvaluation | None
+) -> QualityReading:
+    """A Project that serves pages: the runner's reading, or why there is none. An evaluation
+    that couldn't run says so first: a Project that couldn't be started has pages nobody read."""
+    if blocked is not None:
+        return QualityReading.not_measured(_NOT_MEASURED_BY_BLOCK[blocked])
+    if not pages:
+        return QualityReading.not_measured(NotMeasured.NO_DECLARED_PAGE)
+    if evaluated is not None and evaluated.quality is not None:
+        return evaluated.quality
+    return QualityReading.not_measured(
+        NotMeasured.EVALUATOR_FAILED, "the runner started the app and returned no reading"
+    )
+
+
 def _outcome(
     scenario: Scenario,
     served: frozenset[SurfaceKind],
@@ -195,7 +238,10 @@ async def evaluate_cycle(
     # serve is surface_absent, never failed), and its concept fields resolved against it.
     absent: dict[str, BlockedReason] = {}
     contents: list[dict[str, Any]] = []
-    manifest = await delivered_manifest(vault, cycle) if applicable and declared is None else None
+    # Only a blueprint delivery has a manifest of its own. A declared Project, or one whose
+    # declaration couldn't be read, never reads one (SIP-0112 §8.3).
+    blueprint = declared is None and unstartable is None
+    manifest = await delivered_manifest(vault, cycle) if blueprint else None
     fields = delivered_fields(manifest)
     stack = cycle.resolved_config().get("build_profile")
     prefix = _api_prefix(stack) if manifest is not None and stack else ""
@@ -214,20 +260,24 @@ async def evaluate_cycle(
         content = resolve(scenario.content(), dict(scenario.fields), fields)
         content.pop("fields", None)
         contents.append(content)
-    if contents and unstartable is not None:
+    # §4.2 (#2416): Lighthouse and axe on the declared pages, of a Project that serves pages.
+    pages = declared_pages(manifest, declared) if SurfaceKind.PAGE in kinds else ()
+    evaluated: TreeEvaluation | None = None
+    if (contents or pages) and unstartable is not None:
         blocked = unstartable.reason
-    elif contents and runner is None:
+    elif (contents or pages) and runner is None:
         blocked = BlockedReason.NO_RUNNER
-    elif contents and runner is not None:
+    elif (contents or pages) and runner is not None:
         try:
             evaluated = await runner.evaluate_tree(
                 tree=tree,
                 tree_identity=identity,
                 executable=(),
-                stack=cycle.resolved_config().get("build_profile"),
+                stack=stack,
                 declared=declared,
                 scenarios=contents,
                 environment=environment or {},
+                pages=pages,
             )
         except RunnerUnavailable:
             blocked = BlockedReason.NO_RUNNER
@@ -248,6 +298,11 @@ async def evaluate_cycle(
         evaluated_tree_identity=identity,
         previous_accepted_tree_identity=previous_accepted_tree_identity,
         evaluated_at=evaluated_at,
+        quality=(
+            quality_of(pages, blocked, evaluated)
+            if SurfaceKind.PAGE in kinds
+            else QualityReading(QualityStatus.NOT_APPLICABLE)
+        ),
     )
     await store.save_evaluation(record)
     return record

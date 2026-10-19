@@ -41,6 +41,9 @@ class ContainerSpec:
     # addressed by it. None = a generated name; every detached container is named, so one whose
     # `docker run -d` timed out can still be found and removed.
     name: str | None = None
+    # What a run-to-completion container reads on its standard input (SIP-0113 A3, #2416): the
+    # evaluator's request, never on a mounted path. None = no input (`docker run` without `-i`).
+    stdin: bytes | None = None
 
 
 # NOTE: Container volume host paths are NOT validated against PathSecurityPolicy in 0.8.7.

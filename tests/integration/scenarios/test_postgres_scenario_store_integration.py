@@ -17,6 +17,7 @@ import pytest_asyncio
 from adapters.persistence.pool import create_pool
 from adapters.scenarios.postgres_scenario_store import PostgresScenarioStore
 from squadops.scenarios.models import CampaignSuitePin, SuiteState, parse_suite
+from squadops.scenarios.quality import NotMeasured, PageMeasure, QualityReading, QualityStatus
 from squadops.scenarios.suites import approve_suite, draft_suite, pin_campaign_suite
 from tests.integration.conftest import integration_postgres_dsn
 from tests.unit.scenarios.suite_fixtures import SUITE
@@ -139,6 +140,22 @@ async def test_an_evaluation_reads_back_whole_and_the_table_refuses_a_commit_for
             blocked_reason=BlockedReason.START_FAILED,
         ),
     )
+    # #2416: a measured reading and a not-measured one, each through the JSONB column and back.
+    readings = {
+        22: QualityReading(
+            QualityStatus.MEASURED,
+            pages=(
+                PageMeasure(
+                    "/",
+                    {"performance": 0.93, "accessibility": 0.96, "best_practices": 0.78},
+                    {"critical": 0, "serious": 0, "moderate": 2, "minor": 0},
+                ),
+                PageMeasure("/runs", error="lighthouse: NO_FCP"),
+            ),
+            evaluator="squadops-evaluator:test",
+        ),
+        21: QualityReading.not_measured(NotMeasured.START_FAILED),
+    }
     records = [
         evaluation_record(
             suite,
@@ -149,6 +166,7 @@ async def test_an_evaluation_reads_back_whole_and_the_table_refuses_a_commit_for
             evaluated_tree_identity="a" * 64,
             previous_accepted_tree_identity=None,
             evaluated_at=T0.replace(hour=h),
+            quality=readings[h],
         )
         for h in (22, 21)
     ]

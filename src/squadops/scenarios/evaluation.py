@@ -19,6 +19,7 @@ from enum import StrEnum
 from typing import Any
 
 from squadops.scenarios.models import ScenarioSuite
+from squadops.scenarios.quality import QualityReading
 from squadops.scenarios.reference import (
     EvaluationInvalid,
     OutcomeEvaluationRef,
@@ -126,6 +127,9 @@ class EvaluationRecord:
     suite_digest: str
     outcomes: tuple[ScenarioOutcome, ...]
     evaluated_at: datetime
+    #: Lighthouse and axe on the evaluated instance (§4.2, #2416). ``None`` on a record written
+    #: before the baselines existed: never read as measured, nor as not measured.
+    quality: QualityReading | None = None
 
     def reference(self) -> OutcomeEvaluationRef:
         return OutcomeEvaluationRef(
@@ -153,6 +157,7 @@ def evaluation_record(
     evaluated_tree_identity: str,
     previous_accepted_tree_identity: str | None,
     evaluated_at: datetime,
+    quality: QualityReading,
     evaluation_id: str | None = None,
 ) -> EvaluationRecord:
     """A record that names its suite's scenarios exactly: one outcome for each, at the version and
@@ -173,6 +178,7 @@ def evaluation_record(
         suite_digest=suite.digest,
         outcomes=outcomes,
         evaluated_at=evaluated_at,
+        quality=quality,
     )
     parse_reference(record.reference().to_dict())  # the reference it yields must be readable
     return record

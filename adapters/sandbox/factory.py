@@ -17,7 +17,7 @@ from squadops.config.schema import SandboxClientConfig, SandboxConfig
 from squadops.core.secrets import SecretManager
 from squadops.ports.sandbox import ExecutionSandboxPort
 from squadops.ports.scenarios import ScenarioRunnerPort
-from squadops.sandbox.environment import get_environment_contract
+from squadops.sandbox.environment import EVALUATOR_IMAGE, get_environment_contract
 from squadops.sandbox.evidence import OperationEvidenceJournal
 from squadops.sandbox.noop import NoOpExecutionSandbox
 from squadops.sandbox.service import SandboxService
@@ -61,6 +61,7 @@ def create_sandbox_service(config: SandboxConfig) -> SandboxService:
             image=config.image or contract.image,
             install_network=contract.install_network,
             app_network=config.app_network,
+            evaluator_image=EVALUATOR_IMAGE,
         )
         return SandboxService(
             store=store,

@@ -62,8 +62,10 @@ class ScenarioRunnerPort(ABC):
         declared: DeclaredStart | None,
         scenarios: Sequence[Mapping[str, Any]],
         environment: Mapping[str, str],
+        pages: Sequence[str],
     ) -> TreeEvaluation:
         """Stand the tree up in a disposable copy and run the scenarios against it.
         ``declared`` is a non-blueprint Project's start (contract 7). Without one, the
         ``stack``'s environment contract starts it. ``environment`` is the owner-approved
-        evaluation secrets, resolved (Q40), and is never written anywhere."""
+        evaluation secrets, resolved (Q40), and is never written anywhere. ``pages`` are the
+        declared pages Lighthouse and axe measure before any scenario runs (§4.2, #2416)."""

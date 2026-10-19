@@ -2,8 +2,11 @@
 //   in:  {"base_url": "http://app:8000", "pages": ["/", "/runs/new"]}
 //   out: {"pages": [{"path": "/", "lighthouse": {"performance": 0.98, ...}, "axe": {"critical": 0, ...}}]}
 // A page that can't be measured carries its error, and is never scored.
+// The app is addressed by its IP: Vite's preview server refuses a Host it doesn't know (read live on
+// the Spark, 2026-10-18), and the app's name on the sandbox's app network is one.
 // Chromium runs --no-sandbox: its own sandbox can't start with every capability dropped and
 // no new privileges, so the container is the boundary.
+import { lookup } from "node:dns/promises";
 import lighthouse from "lighthouse";
 import puppeteer from "puppeteer-core";
 import { AxePuppeteer } from "@axe-core/puppeteer";
@@ -35,8 +38,14 @@ async function measure(browser, base, path) {
       extends: "lighthouse:default",
       settings: { onlyCategories: CATEGORIES, formFactor: "desktop", screenEmulation: { disabled: true } },
     });
+    const failed = run?.lhr?.runtimeError;
+    if (!run?.lhr || failed) {
+      // A page that painted nothing (NO_FCP), or a run that failed, is never scored: axe's numbers
+      // would be an empty document's.
+      return { path, lighthouse: null, axe: null, error: `lighthouse: ${failed?.code ?? "no result"}` };
+    }
     const scores = Object.fromEntries(
-      CATEGORIES.map((c) => [c, run?.lhr?.categories?.[c]?.score ?? null]),
+      CATEGORIES.map((c) => [c, run.lhr.categories?.[c]?.score ?? null]),
     );
     return { path, lighthouse: scores, axe: byImpact, error: null };
   } catch (err) {
@@ -47,13 +56,15 @@ async function measure(browser, base, path) {
 }
 
 const request = await readStdin();
+const base = new URL(request.base_url);
+base.hostname = (await lookup(base.hostname, { family: 4 })).address;
 const browser = await puppeteer.launch({
   executablePath: process.env.PUPPETEER_EXECUTABLE_PATH,
   args: ["--no-sandbox", "--disable-dev-shm-usage", "--remote-debugging-port=0"],
 });
 try {
   const pages = [];
-  for (const path of request.pages ?? []) pages.push(await measure(browser, request.base_url, path));
+  for (const path of request.pages ?? []) pages.push(await measure(browser, base.toString(), path));
   process.stdout.write(JSON.stringify({ pages }) + "\n");
 } finally {
   await browser.close();
