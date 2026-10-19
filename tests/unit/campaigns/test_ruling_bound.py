@@ -105,6 +105,7 @@ async def test_the_sweep_records_each_bound_once_and_a_ruling_still_resolves_the
         vault=AsyncMock(),
         assess=AsyncMock(),
         launch=AsyncMock(),
+        evaluate_outcome=None,
         clock=lambda: now[0],
     )
 

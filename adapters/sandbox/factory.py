@@ -16,6 +16,7 @@ from adapters.tools.docker import DockerAdapter
 from squadops.config.schema import SandboxClientConfig, SandboxConfig
 from squadops.core.secrets import SecretManager
 from squadops.ports.sandbox import ExecutionSandboxPort
+from squadops.ports.scenarios import ScenarioRunnerPort
 from squadops.sandbox.environment import get_environment_contract
 from squadops.sandbox.evidence import OperationEvidenceJournal
 from squadops.sandbox.noop import NoOpExecutionSandbox
@@ -96,6 +97,18 @@ def create_sandbox_client(config: SandboxClientConfig | None) -> ExecutionSandbo
     from adapters.sandbox.http_client import HttpExecutionSandbox
 
     return HttpExecutionSandbox(base_url=config.service_url, service_token=config.service_token)
+
+
+def create_scenario_runner(config: SandboxClientConfig | None) -> ScenarioRunnerPort | None:
+    """SIP-0113's runner in the runtime API (#2414), on the binding ``create_sandbox_client``
+    reads: ``none`` is no runner, so each evaluation records ``no_runner``, and an absent section
+    is refused the same way. Its own client only for the timeout an evaluation needs."""
+    # ``config is None`` never reaches the second test: the first refuses it. It narrows the type.
+    if create_sandbox_client(config) is None or config is None:
+        return None
+    from adapters.sandbox.http_client import HttpScenarioRunner
+
+    return HttpScenarioRunner(base_url=config.service_url, service_token=config.service_token)
 
 
 def resolve_service_token(config: SandboxConfig, secret_manager: SecretManager | None) -> str:

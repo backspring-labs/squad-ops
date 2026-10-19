@@ -15,10 +15,13 @@ row, gate or prompt reads what this writes, and no scenario goal or result reach
 
 from __future__ import annotations
 
+import logging
 import re
 from collections.abc import Collection, Mapping
 from datetime import datetime
 from typing import TYPE_CHECKING, Any
+
+import yaml
 
 from squadops.campaigns.evaluator_trees import FileTree
 from squadops.campaigns.increment_tree import accepted_cycle_of, evaluated_tree_refs
@@ -45,6 +48,8 @@ from squadops.stacks.scaffold import InterfaceManifest
 if TYPE_CHECKING:  # the ports name this package's models; the service only takes them
     from squadops.ports.scenarios import ScenarioRunnerPort, ScenarioStorePort
 
+logger = logging.getLogger(__name__)
+
 #: A blueprint Project serves its API and its pages (SIP-0109's stacks).
 BLUEPRINT_SURFACES = frozenset({SurfaceKind.HTTP_ENDPOINT, SurfaceKind.PAGE})
 #: A start declaration's entry points, by the surface kind each serves (contract 7).
@@ -65,7 +70,9 @@ MANIFEST_FILENAME = "interface_manifest.yaml"
 
 async def delivered_manifest(vault: Any, cycle: Any) -> InterfaceManifest | None:
     """The evaluated delivery's own interface manifest (#2464): the cycle's latest, or else the
-    one of the accepted cycle it built on. ``None`` when neither stored one."""
+    one of the accepted cycle it built on. ``None`` when neither stored one, or the one stored
+    can't be read: the record is still written, its concepts under their first names and its
+    endpoints unchecked, rather than lost to the delivery's own malformed file."""
     for cycle_id in (cycle.cycle_id, accepted_cycle_of(cycle)):
         if cycle_id is None:
             continue
@@ -73,7 +80,18 @@ async def delivered_manifest(vault: Any, cycle: Any) -> InterfaceManifest | None
         stored = next((r for r in refs if r.filename == MANIFEST_FILENAME), None)
         if stored is not None:
             _ref, content = await vault.retrieve(stored.artifact_id)
-            return InterfaceManifest.from_yaml(content.decode("utf-8"))
+            try:
+                return InterfaceManifest.from_yaml(content.decode("utf-8"))
+            except (ValueError, TypeError, KeyError, UnicodeDecodeError, yaml.YAMLError) as e:
+                logger.warning(
+                    "evaluated_manifest_unreadable",
+                    extra={
+                        "cycle_id": cycle_id,
+                        "artifact_id": stored.artifact_id,
+                        "error": str(e),
+                    },
+                )
+                return None
     return None
 
 

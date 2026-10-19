@@ -119,12 +119,14 @@ class _Vault:
 
 
 class _World:
-    def __init__(self, verdict: RunVerdict | None) -> None:
+    def __init__(self, verdict: RunVerdict | None, evaluator=None) -> None:
         from squadops.execution.dispatched_flow_executor import DispatchedFlowExecutor
 
         self.campaigns = MemoryCampaignRegistry()
         self.cycles = MemoryCycleRegistry()
         self.launches = AsyncMock()
+        # SIP-0113 (#2414): the outcome evaluator, built on this world's registries when given.
+        self.evaluations = evaluator(self).cycle_ended if evaluator else AsyncMock()
         self.verdict = verdict
         self.now = NOW + timedelta(hours=1)
         self.progress = CampaignProgress(
@@ -133,6 +135,7 @@ class _World:
             vault=_Vault(),
             assess=self._assess,
             launch=self.launches,
+            evaluate_outcome=self.evaluations,
             clock=lambda: self.now,
         )
         self.executor = DispatchedFlowExecutor(
@@ -194,8 +197,8 @@ class _World:
 
 @pytest.fixture
 async def calibrating() -> _World:
-    async def make(verdict, objective=None, **policy_overrides):
-        w = _World(verdict)
+    async def make(verdict, objective=None, evaluator=None, overrides=None, **policy_overrides):
+        w = _World(verdict, evaluator)
         draft = campaign(
             CID,
             policy=policy(
@@ -213,7 +216,9 @@ async def calibrating() -> _World:
                 draft, actor="owner", actor_role="admin", reason="go", idempotency_key="start"
             ),
         )
-        return w, await w.launched_cycle("calibration", "cyc_cal", "implementation", "completed")
+        return w, await w.launched_cycle(
+            "calibration", "cyc_cal", "implementation", "completed", overrides
+        )
 
     return make
 
@@ -2150,3 +2155,97 @@ def test_a_rejection_is_already_met_only_when_nothing_else_stands_in_it(evaluati
     from squadops.campaigns.progress import rejected_only_as_already_met
 
     assert rejected_only_as_already_met(evaluation) is only
+
+
+# --------------------------------------------------------------------------------------------
+# SIP-0113 §4.1 (#2414): each ending that reached its build evaluated against the pinned suite
+# --------------------------------------------------------------------------------------------
+
+
+class _ScenarioRunner:
+    """Runs every scenario to ``passed``, noting the tree and which cycles were decided then."""
+
+    def __init__(self, world_of):
+        self._world_of = world_of
+        self.calls: list[tuple[str, list]] = []
+
+    async def evaluate_tree(self, **kw):
+        from squadops.scenarios.runner import TreeEvaluation
+        from squadops.scenarios.steps import ScenarioRun
+
+        log = await self._world_of().campaigns.control_log(CID)
+        decided = [e.target for e in log if e.operation is ControlOperation.DECIDE]
+        self.calls.append((kw["tree_identity"], decided))
+        runs = tuple(
+            ScenarioRun(s["scenario_id"], "passed", steps_taken=1) for s in kw["scenarios"]
+        )
+        return TreeEvaluation(kw["tree_identity"], started=True, runs=runs)
+
+
+async def _pinned_store():
+    from adapters.scenarios.memory_scenario_store import MemoryScenarioStore
+    from squadops.scenarios.models import CampaignSuitePin, parse_suite
+    from squadops.scenarios.suites import approve_suite, draft_suite
+
+    suite = parse_suite(
+        {
+            "name": "group_run",
+            "scenarios": [
+                {
+                    "scenario_id": "runs-list",
+                    "goal": "The runs are listed.",
+                    "surfaces": [{"kind": "http_endpoint", "method": "GET", "path": "/runs"}],
+                    "steps": [{"action": "http", "method": "GET", "path": "/runs"}],
+                    "checks": [{"check": "status", "step": 1, "equals": 200}],
+                }
+            ],
+        }
+    )
+    store = MemoryScenarioStore()
+    await draft_suite(store, suite, actor="supervisor", at=NOW)
+    await approve_suite(store, suite.digest, actor="owner", at=NOW)
+    await store.save_pin(CampaignSuitePin(CID, suite.digest, pinned_by="owner", pinned_at=NOW))
+    return store
+
+
+async def test_each_built_ending_is_evaluated_before_its_decision_against_the_tree_it_built_on(
+    calibrating, stored
+):
+    """#2414's wiring, entered at the completion hook with the real evaluator and a pinned suite.
+    Bugs caught: no evaluation at a cycle's end, so the window has no records; one run after the
+    decision, beside the next cycle on the box; an increment's record naming no previous tree, so
+    its contribution can't be read; or a re-heard cycle evaluated twice."""
+    from squadops.scenarios.campaign_cycles import CampaignCycleEvaluator
+
+    store, worlds = await _pinned_store(), []
+    runner = _ScenarioRunner(lambda: worlds[0])
+
+    def evaluator(world):
+        worlds.append(world)
+        return CampaignCycleEvaluator(
+            store=store, runner=runner, vault=_Vault(), campaigns=world.campaigns, clock=lambda: NOW
+        )
+
+    stack = {"build_profile": "fullstack_fastapi_react"}
+    w, run = await calibrating(RunVerdict.ACCEPTED, evaluator=evaluator, overrides=stack)
+    await w.end("cyc_cal", run, CycleStopReason.SEQUENCE_COMPLETED)
+    increment_run = await w.launched_cycle(
+        "increment",
+        "cyc_inc",
+        "implementation",
+        "completed",
+        {**stack, "campaign_proposal": {"accepted_cycle_id": "cyc_cal"}},
+    )
+    await w.end("cyc_inc", increment_run, CycleStopReason.SEQUENCE_COMPLETED)
+    await _resume(w, ["cyc_cal", "cyc_inc"])
+
+    log = await w.campaigns.control_log(CID)
+    promoted = {
+        e.target: e.binding["identity"] for e in log if e.operation is ControlOperation.PROMOTE
+    }
+    [cal] = await store.evaluations_for_cycle("cyc_cal")
+    [inc] = await store.evaluations_for_cycle("cyc_inc")
+    assert (cal.campaign_id, cal.previous_accepted_tree_identity) == (CID, None)
+    assert cal.evaluated_tree_identity == promoted["cyc_cal"]
+    assert inc.previous_accepted_tree_identity == promoted["cyc_cal"]
+    assert [decided for _, decided in runner.calls] == [[], ["cyc_cal"]]

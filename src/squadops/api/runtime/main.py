@@ -75,6 +75,7 @@ from squadops.projects.cutover import (
     unknown_project_ids,
 )
 from squadops.projects.registration import LocatorPolicy
+from squadops.scenarios.campaign_cycles import CampaignCycleEvaluator
 
 from .deps import PORT_SLOTS
 from .logging_setup import configure_logging, quiet_routine_successes
@@ -436,9 +437,11 @@ async def _init_cycle_subsystem(state, config, pool) -> None:
     )
     # #2451 (the owner's ruling of 2026-10-18): the one client of the sandbox service, for every
     # caller here. Refused at startup without its selector.
-    from adapters.sandbox.factory import create_sandbox_client
+    from adapters.sandbox.factory import create_sandbox_client, create_scenario_runner
 
     sandbox_client = create_sandbox_client(config.sandbox_client)
+    # SIP-0113 §4.1 (#2414): the runner over the same binding, for each campaign cycle's end.
+    scenario_runner = create_scenario_runner(config.sandbox_client)
     # SIP-0113 §4.1 (#2413): the held-out scenario store, beside the campaigns that pin its suites.
     from adapters.scenarios.factory import create_scenario_store
 
@@ -582,6 +585,17 @@ async def _init_cycle_subsystem(state, config, pool) -> None:
     projected_campaigns = ProjectingCampaignRegistry(
         campaign_registry, audit=getattr(state, "audit_port", None), events=event_bus
     )
+    # SIP-0113 §4.1 (#2414): each campaign cycle that reached its build is evaluated against its
+    # campaign's pinned suite before it is decided. Reporting-only: nothing below reads the record.
+    from datetime import UTC, datetime
+
+    cycle_evaluator = CampaignCycleEvaluator(
+        store=scenario_store,
+        runner=scenario_runner,
+        vault=artifact_vault,
+        campaigns=campaign_registry,
+        clock=lambda: datetime.now(UTC),
+    )
     campaign_progress = CampaignProgress(
         campaigns=projected_campaigns,
         cycles=cycle_registry,
@@ -595,6 +609,7 @@ async def _init_cycle_subsystem(state, config, pool) -> None:
             ),
         ),
         launch=lambda: state.campaign_launch.drain(),
+        evaluate_outcome=cycle_evaluator.cycle_ended,
     )
 
     flow_executor = create_flow_executor(

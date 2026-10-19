@@ -494,6 +494,7 @@ class CampaignProgress:
         vault,
         assess: Assess,
         launch: Callable[[], Awaitable[object]],
+        evaluate_outcome: Callable[[Cycle], Awaitable[object]] | None,
         clock: Callable[[], datetime] = lambda: datetime.now(UTC),
     ) -> None:
         self._campaigns = campaigns
@@ -501,6 +502,9 @@ class CampaignProgress:
         self._vault = vault
         self._assess = assess
         self._launch = launch
+        # SIP-0113 §4.1 (#2414): each ending that reached its build is evaluated against the
+        # campaign's pinned suite, reporting-only. ``None`` where no evaluator is wired.
+        self._evaluate_outcome = evaluate_outcome
         self._clock = clock
         # #1972: the cycles being heard now. The completion hook and the sweep's re-hearing share
         # this instance, so a cycle the hook is still deciding is not decided a second time
@@ -533,6 +537,8 @@ class CampaignProgress:
 
         latest = await self._assess(cycle.cycle_id)
         ending = cycle_ending(stopped_because, last_run, parked=parked_run(log, last_run.run_id))
+        if ending is CycleEnding.ASSESSED:
+            await self._outcome_evaluated(cycle)
         kind = CycleKind(cycle.kind)
         evaluation = None
         if kind in _INCREMENT_KINDS and ending is CycleEnding.ASSESSED:
@@ -593,6 +599,22 @@ class CampaignProgress:
         if decision.terminal:
             await self.materialize_package(campaign.campaign_id)
         return decision
+
+    async def _outcome_evaluated(self, cycle: Cycle) -> None:
+        """SIP-0113 §4.1 (#2414): the cycle evaluated against its campaign's pinned suite, before
+        its decision, so the evaluation has the box between cycles rather than beside the next one.
+        Reporting-only: nothing here reads the record, and a failure is logged and never stops the
+        decision. Only an ending that reached its build: one rejected at its gate built nothing,
+        and would re-read the tree it was built on."""
+        if self._evaluate_outcome is None:
+            return
+        try:
+            await self._evaluate_outcome(cycle)
+        except Exception:
+            logger.exception(
+                "outcome_evaluation_failed",
+                extra={"cycle_id": cycle.cycle_id, "campaign_id": cycle.campaign_id},
+            )
 
     async def _promote(
         self, campaign: Campaign, cycle: Cycle, last_run: Run, evaluation: dict | None = None
