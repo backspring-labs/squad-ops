@@ -22,6 +22,7 @@ if TYPE_CHECKING:
     from squadops.ports.cycles.workflow_tracker import WorkflowTrackerPort
     from squadops.ports.events.cycle_event_bus import CycleEventBusPort
     from squadops.ports.memory.recall import FailurePatternRecallPort
+    from squadops.ports.projects.source_repository import SourceRepositoryPort
     from squadops.ports.runtime.activity import RuntimeActivityPort
     from squadops.ports.runtime.assignments import AssignmentPort
     from squadops.ports.runtime.focus_lease import FocusLeasePort
@@ -150,6 +151,7 @@ def create_flow_executor(
     activity_port: RuntimeActivityPort | None = None,
     coordinator: RuntimeCoordinator | None = None,
     focus_lease_port: FocusLeasePort | None = None,
+    source_repository: SourceRepositoryPort | None = None,
 ) -> FlowExecutionPort:
     """Create a FlowExecutionPort adapter.
 
@@ -199,4 +201,5 @@ def create_flow_executor(
         activity_port=activity_port,
         coordinator=coordinator,
         focus_lease_port=focus_lease_port,
+        source_repository=source_repository,
     )

@@ -32,6 +32,7 @@ from squadops.capabilities.handlers.cross_cycle_lessons import cross_cycle_lesso
 from squadops.capabilities.handlers.increment_test_scope import increment_test_scope_section
 from squadops.capabilities.handlers.prior_cycle import prior_cycle_section
 from squadops.capabilities.handlers.prompt_guard import _guard_prompt_size
+from squadops.capabilities.handlers.source_repository import source_repository_section
 from squadops.capabilities.handlers.task_instructions import (
     project_instructions_section,
     task_instructions_section,
@@ -1936,6 +1937,12 @@ class QATestHandler(_CycleTaskHandler):
             )
             if prior_section:
                 user_prompt = f"{user_prompt}\n{prior_section}"
+            # SIP-0112 E.4.3: a source-backed run's test author is shown the product it changes.
+            repository_section = await source_repository_section(
+                getattr(context.ports, "request_renderer", None), inputs
+            )
+            if repository_section:
+                user_prompt = f"{user_prompt}\n{repository_section}"
             # SIP-0110 Appendix A §3.6 (#2178): this task's instructions, before the lessons.
             instructions_section = await task_instructions_section(
                 getattr(context.ports, "request_renderer", None), inputs

@@ -73,6 +73,7 @@ class RunProvisioning:
         "_load_interface_manifest_for_run",
         "_load_plan_for_run",
         "_prepare_cycle_for_run",
+        "_seed_checkout_artifacts",
         "_seed_skeleton_artifacts",
         "_seed_verification_scaffold_artifacts",
         "_seeded_manifest_for_authoring",
@@ -264,4 +265,8 @@ class RunProvisioning:
                         self._artifact_vault, cycle, frozen_paths(interface_manifest)
                     )
                 )
+        # SIP-0112 E.4.3: a source-backed run starts from its product's tree at the pinned
+        # commit, as an increment starts from its accepted tree. Seed-time only (#881).
+        if cycle is not None and cycle.source_context is not None and existing_checkpoint is None:
+            seed_artifact_refs.extend(await self._seed_checkout_artifacts(cycle, run_id))
         return seed_artifact_refs, interface_manifest

@@ -658,6 +658,8 @@ async def _init_cycle_subsystem(state, config, pool) -> None:
         failure_recall=create_failure_recall(
             "snapshot", store=state.memory_store, records=state.memory_records
         ),
+        # SIP-0112 E.4.3: the managed clones a source-backed run starts from.
+        source_repository=state.source_repository,
     )
 
     state.project_registry = project_registry

@@ -18,6 +18,7 @@ from squadops.capabilities.handlers.base import (
 )
 from squadops.capabilities.handlers.cross_cycle_lessons import cross_cycle_lessons_section
 from squadops.capabilities.handlers.prior_cycle import prior_cycle_section
+from squadops.capabilities.handlers.source_repository import source_repository_section
 from squadops.capabilities.handlers.task_instructions import (
     project_instructions_section,
     task_instructions_section,
@@ -294,6 +295,10 @@ class _ProposeBaseHandler(_PlanningTaskHandler):
         prior = await prior_cycle_section(renderer, inputs)
         if prior:
             variables["prior_cycle_section"] = prior
+        # SIP-0112 E.4.3: a source-backed run is shown the product it changes.
+        repository = await source_repository_section(renderer, inputs)
+        if repository:
+            variables["source_repository_section"] = repository
         # SIP-0110 Appendix A §3.6 (#2178): this task's instructions, before the lessons.
         instructions = await task_instructions_section(renderer, inputs)
         if instructions:
