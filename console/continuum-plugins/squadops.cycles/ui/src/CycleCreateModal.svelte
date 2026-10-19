@@ -4,13 +4,14 @@
   Sections:
   1. Project & Squad — project dropdown, squad profile dropdown, agent summary
   2. PRD — mode toggle (write / use project PRD), monospace textarea, size constraints
-  3. Profile params — dynamic fields from selected cycle request profile
+  3. Profile params — dynamic fields from selected cycle request profile, and its stack choice
   4. Request preview — the cycle-create body the server resolves from the profile's name
-  5. Submit — ingest PRD artifact, resolve the request, then create cycle via command bus
+  5. Submit — resolve the request, ingest PRD artifact, resolve it with the PRD, then create cycle
+     via command bus
 
   The body is never built here (#2520): the runtime API resolves it with the one builder the CLI and
   a campaign's launches share, so a profile run on a stack gets that stack's request defaults here
-  too, and the preview is what is sent.
+  too. The preview is that resolution; the submit resolves it once more with the PRD and notes.
 
   PRD size constraints:
   - Warn at 50 KB (yellow)
@@ -62,6 +63,8 @@
   let prdLoading = $state(false);
   let prdError = $state(null);
   let userOverrides = $state({});
+  // #2520: the stack an operator profile runs on, the CLI's `--set build_profile`. Empty is none.
+  let selectedStack = $state('');
   let notes = $state('');
   let showDefaults = $state(false);
 
@@ -93,6 +96,12 @@
   let resolved = $state(null);
   let resolveError = $state(null);
 
+  // The caller's values: the profile's prompts, and the stack when one is chosen.
+  function requestValues() {
+    const values = $state.snapshot(userOverrides);
+    return selectedStack ? { ...values, build_profile: selectedStack } : values;
+  }
+
   async function resolveRequest(profileName, squadProfileId, values, extra = {}) {
     const resp = await apiFetch(
       `${apiBase}/api/v1/cycle-request-profiles/${encodeURIComponent(profileName)}/resolve`,
@@ -104,7 +113,13 @@
     );
     if (!resp.ok) {
       const text = await resp.text();
-      throw new Error(text || `Resolving the request failed: ${resp.status}`);
+      let message = text;
+      try {
+        message = JSON.parse(text)?.detail?.error?.message || JSON.parse(text)?.error?.message || text;
+      } catch {
+        // not the error envelope: show it as it came
+      }
+      throw new Error(message || `Resolving the request failed: ${resp.status}`);
     }
     return resp.json();
   }
@@ -113,9 +128,12 @@
   $effect(() => {
     const profileName = selectedRequestProfile?.name;
     const squadProfileId = selectedSquadProfileId;
-    const values = $state.snapshot(userOverrides);
+    const values = requestValues();
+    // Nothing is submittable until this resolution answers: a refused change never submits the
+    // body resolved before it.
+    resolved = null;
+    resolveError = null;
     if (!profileName || !squadProfileId) {
-      resolved = null;
       return;
     }
     let current = true;
@@ -135,6 +153,13 @@
     return () => {
       current = false;
     };
+  });
+
+  let offeredStacks = $derived(selectedRequestProfile?.stacks || []);
+  $effect(() => {
+    if (selectedStack && !offeredStacks.includes(selectedStack)) {
+      selectedStack = '';
+    }
   });
 
   // Check for required fields with unknown type (blocks submit)
@@ -252,6 +277,10 @@
     submitError = null;
 
     try {
+      // Step 0: the request must resolve before anything is stored
+      const values = requestValues();
+      await resolveRequest(selectedRequestProfile.name, selectedSquadProfileId, values);
+
       // Step 1: Ingest PRD text as artifact
       const ingestResult = await executeCommand('squadops.ingest_artifact', {
         project_id: selectedProjectId,
@@ -271,7 +300,7 @@
       const body = await resolveRequest(
         selectedRequestProfile.name,
         selectedSquadProfileId,
-        $state.snapshot(userOverrides),
+        values,
         { prd_ref: prdRef, ...(notes.trim() ? { notes: notes.trim() } : {}) },
       );
 
@@ -432,6 +461,18 @@
               />
             </div>
           {/if}
+          {#if offeredStacks.length > 0}
+            <div class="field-group">
+              <label class="field-label" for="cycle-stack">Stack</label>
+              <select id="cycle-stack" class="field-select" bind:value={selectedStack}>
+                <option value="">none</option>
+                {#each offeredStacks as stack}
+                  <option value={stack}>{stack}</option>
+                {/each}
+              </select>
+              <span class="field-help">A squad with a builder needs one. Its request defaults sit beneath the profile's.</span>
+            </div>
+          {/if}
         </div>
 
         <!-- Section 4: Notes -->
@@ -589,6 +630,11 @@
     font-size: var(--continuum-font-size-sm, 0.875rem);
     font-weight: 600;
     color: var(--continuum-text-primary, #e2e8f0);
+  }
+
+  .field-help {
+    font-size: var(--continuum-font-size-xs, 0.75rem);
+    color: var(--continuum-text-muted, #94a3b8);
   }
 
   .field-select,

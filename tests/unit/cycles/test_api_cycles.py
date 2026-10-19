@@ -1224,3 +1224,37 @@ class TestCreateCycleTaskInstructions:
         assert resp.status_code == 422, resp.text
         mock_cycle_registry.create_cycle.assert_not_called()
         assert await records.list_project("hello_squad") == []
+
+
+class TestTheConsolesResolvedRequestCreatesTheCLIsCycle:
+    """#2520, entered as the console creates a cycle: the request-profile route resolves the body,
+    and the create route takes it as it came."""
+
+    def test_a_resolved_request_creates_the_cycle_the_cli_would(self, client, mock_cycle_registry):
+        """Bug caught: the console's cycle differing from the CLI's for the same request: a stack's
+        request defaults missing, the profile's provenance (``request_profile``) dropped, or a config
+        hash that never matches the CLI's because the client's body carried keys the CLI's doesn't
+        (the old modal put ``project_id`` and ``squad_profile_id`` into ``applied_defaults``)."""
+        from squadops.api.routes.cycles.cycle_request_profiles import router as profiles_router
+        from squadops.contracts.cycle_request_profiles import cycle_request_body
+        from squadops.cycles.lifecycle import compute_config_hash
+
+        client.app.include_router(profiles_router)
+        values = {"build_profile": "nextjs_ts"}
+        resolved = client.post(
+            "/api/v1/cycle-request-profiles/validate/resolve",
+            json={"squad_profile_id": "full", "values": values, "prd_ref": "art_prd"},
+        ).json()
+
+        created = client.post("/api/v1/projects/hello_squad/cycles", json=resolved)
+
+        cli = cycle_request_body(
+            "validate", squad_profile_id="full", user_values=values, prd_ref="art_prd"
+        )
+        assert created.status_code == 201, created.text
+        (cycle,) = mock_cycle_registry.create_cycle.call_args[0]
+        assert (cycle.request_profile, cycle.prd_ref) == ("validate", "art_prd")
+        assert compute_config_hash(
+            cycle.applied_defaults, cycle.execution_overrides
+        ) == compute_config_hash(cli["applied_defaults"], cli["execution_overrides"])
+        assert cycle.resolved_config()["build_profile"] == "nextjs_ts"

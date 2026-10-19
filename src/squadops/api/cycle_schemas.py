@@ -613,6 +613,10 @@ class CycleRequestProfileResponse(BaseModel):
     description: str = ""
     defaults: dict = Field(default_factory=dict)
     prompts: dict[str, PromptMetaResponse] = Field(default_factory=dict)
+    #: The stacks an operator profile runs on, each adding its request defaults beneath the
+    #: profile's (#316, R2.3), so a client offers the choice the CLI's ``--set build_profile``
+    #: makes (#2520). Empty for every other profile: it pins its stack or takes none.
+    stacks: list[str] = Field(default_factory=list)
 
 
 class ModelSpecResponse(BaseModel):

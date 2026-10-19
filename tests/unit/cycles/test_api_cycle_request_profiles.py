@@ -91,6 +91,23 @@ class TestGetCycleRequestProfile:
                 assert "required" in meta
 
 
+class TestTheStacksAProfileOffers:
+    def test_an_operator_profile_offers_the_stacks_and_every_other_profile_none(self, client):
+        """#2520. Bug caught: the console unable to put an operator profile on a stack, so a
+        squad with a builder fails at its plan with no build_profile; or a campaign or frozen
+        profile, which pins its own stack or takes none, offered one that would change it."""
+        from squadops.stacks.request_defaults import STACK_REQUEST_DEFAULTS
+
+        listed = {
+            p["name"]: p["stacks"] for p in client.get("/api/v1/cycle-request-profiles").json()
+        }
+        pinned = client.get("/api/v1/cycle-request-profiles/validated-fullstack").json()
+
+        assert listed["validate"] == ["fullstack_fastapi_react", "nextjs_ts"]
+        assert all(stacks == sorted(STACK_REQUEST_DEFAULTS) for stacks in listed.values())
+        assert pinned["stacks"] == []
+
+
 class TestResolveCycleRequest:
     """#2520: the console resolves a profile's name into the cycle-create body here, with the
     builder the CLI and a campaign's launches use."""

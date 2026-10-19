@@ -388,25 +388,43 @@ Pick a direction (A / B / C / hybrid) and confirm the deprecation approach, so a
 ## 11b. The console resolves on the server (2026-10-19, #2520; the supervisor, under the owner's grant of 2026-10-19)
 
 **What was wrong:** §11a's one builder had a copy. The console's cycle-create modal built its own body: the listed
-profile's `defaults` as `applied_defaults`, and its own `computeOverrides`. So an operator profile created from the
-console on a stack got none of the stack's request defaults, which the CLI's request gets beneath the profile's keys
-(R2.3). The console's `validate` checked less than the CLI's, and its preview showed defaults the CLI wouldn't send.
-The second read of PR #2500 found it.
+profile's `defaults` as `applied_defaults`, and its own `computeOverrides`.
+- **It sent no `request_profile`,** so a console cycle lost its profile provenance (SIP-0096).
+- **It put `project_id` and `squad_profile_id` into `applied_defaults`,** so a console cycle's config hash never
+  matched the CLI's for the same request.
+- **It couldn't take a stack.** Since §11a no operator profile pins one, and the modal had no field for
+  `build_profile`. So a console cycle got no stack's request defaults (R2.3), and one whose squad has a builder fails
+  at its plan with no `build_profile`.
+
+The second read of PR #2500 found the copy, and the second read of PR #2529 found the missing stack.
 
 **What changed:**
 - **`POST /api/v1/cycle-request-profiles/{name}/resolve`.** It takes the squad, the caller's values, and the notes and
-  PRD the body carries, and answers with the cycle-create body that `cycle_request_body` builds from them. Nothing is
-  created.
+  PRD the body carries. It answers with the cycle-create body that `cycle_request_body` builds from them, and creates
+  nothing.
   - An unknown profile is 404.
   - A body the create route would refuse is 422, as the create would answer, and so is a caller setting the resolved
     fields itself.
-- **The modal asks it.** It resolves the request again whenever the profile, the squad or a value changes, shows the
-  answer as its preview, and creates the cycle from the answer resolved with the PRD and notes. A request that can't
-  be resolved can't be submitted, and says why. The modal no longer builds a body.
+- **Each profile's listing names the stacks it can run on** (`stacks`): every stack with request defaults for an
+  operator profile, and none for any other, which pins its stack or takes none.
+- **The modal asks the route:**
+  - It offers that stack choice as the CLI's `--set build_profile`, with none by default, as the CLI has.
+  - It resolves the request again whenever the profile, the stack, the squad or a value changes, and shows the answer
+    as its preview. Nothing is submittable until the latest change has resolved.
+  - On submit, it resolves before storing the PRD, then creates the cycle from the request resolved with the PRD and
+    notes.
+  - It no longer builds a body.
+- **Not changed here:** create still accepts a cycle with a builder and no stack, which then fails at its plan. That
+  is the CLI's behaviour too, and the refusal belongs at create for every caller (#2530).
 
 **Evidence:**
-- `test_api_cycle_request_profiles.py`: `validate` on each stack resolves to exactly the body the CLI builds for the
-  same values, the stack's required checks, time budget and manifest attempts among its applied defaults.
-- The refusals are 404 for an unknown profile, and 422 for a body the create refuses, a resolved field the caller set,
-  and no squad.
-- The plugin builds (`npm run build` in the plugins layout) with no warning from the modal.
+- **The wiring test** enters as the console does: it resolves `validate` on `nextjs_ts` through the route, then posts
+  the answer to the create route. The cycle created has `request_profile: validate`, the PRD, and the CLI's config
+  hash for the same request.
+- **The route:** `validate` on each stack resolves to exactly the CLI's body, with the stack's request defaults among
+  its applied defaults. The refusals are 404 and 422.
+- **The listing** offers the two stacks to every operator profile, and none to `validated-fullstack`.
+- **Mutants:** offering no stacks fails the listing test, and a resolve that drops `request_profile` fails three tests.
+- **The second reader** resolved all 25 profiles, with three value sets each, through the route. Every one gave the
+  CLI's request and config hash.
+- **The plugin builds** with no warning from the modal.

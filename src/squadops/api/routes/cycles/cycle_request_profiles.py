@@ -31,7 +31,11 @@ _CACHE_HEADERS = {"Cache-Control": "public, max-age=300"}
 
 
 def _profile_to_response(profile) -> CycleRequestProfileResponse:
-    """Convert a CycleRequestProfile to its response."""
+    """Convert a CycleRequestProfile to its response, with the stacks it can run on."""
+    # deferred (pair): api and contracts would import each other at load
+    from squadops.contracts.cycle_request_profiles import OPERATOR_PROFILES
+    from squadops.stacks.request_defaults import STACK_REQUEST_DEFAULTS
+
     prompts = {}
     for key, meta in profile.prompts.items():
         prompts[key] = PromptMetaResponse(
@@ -46,6 +50,7 @@ def _profile_to_response(profile) -> CycleRequestProfileResponse:
         description=profile.description,
         defaults=profile.defaults,
         prompts=prompts,
+        stacks=sorted(STACK_REQUEST_DEFAULTS) if profile.name in OPERATOR_PROFILES else [],
     )
 
 
