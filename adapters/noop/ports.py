@@ -116,6 +116,10 @@ class NoOpFailurePatternRecall(FailurePatternRecallPort):
     async def disclose(self, exposure: Exposure) -> None:
         return None
 
+    async def task_instructions(self, project_id: str, cycle_id: str) -> list:
+        """A composition with no memory store has no records, so no task instructions."""
+        return []
+
 
 class NoOpPromptService(PromptService):
     """Hard-fail prompt stub. Cycle task handlers never assemble prompts."""

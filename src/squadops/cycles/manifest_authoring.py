@@ -70,6 +70,10 @@ AUTHORING_INPUT_CONTRACT: frozenset[str] = frozenset(
         # each revision's id). `squadops.memory.recall.LESSONS_INPUT`, spelled here because the
         # cycle domain does not import memory; present only when a lesson is supplied.
         "cross_cycle_lessons",
+        # SIP-0110 Appendix A §3.6 (#2178): the person running the cycle's instructions for this
+        # task, binding. `squadops.memory.task_instructions.TASK_INSTRUCTIONS_INPUT`, spelled here
+        # for the same reason; present only when one applies.
+        "task_instructions",
     }
 )
 

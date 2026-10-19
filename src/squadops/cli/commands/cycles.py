@@ -107,6 +107,16 @@ def create_cycle(
     squad_profile_id: str = typer.Option(..., "--squad-profile", help="Squad profile ID"),
     set_flags: list[str] | None = typer.Option(None, "--set", help="Override: key=value"),
     notes: str | None = typer.Option(None, "--notes", help="Experiment notes"),
+    instructions: list[str] | None = typer.Option(
+        None,
+        "--instruction",
+        help="A task instruction for this cycle (#2178): binding, for the task types --for names",
+    ),
+    instructed: list[str] | None = typer.Option(
+        None,
+        "--for",
+        help="The task types (comma-separated) the --instruction in the same position is for",
+    ),
 ):
     """Create a new experiment cycle and start its run.
 
@@ -138,6 +148,16 @@ def create_cycle(
         notes=notes,
         prd_ref=prd_ref,
     )
+
+    # #2178: each --instruction pairs with the --for in its position, the tasks it binds.
+    if len(instructions or []) != len(instructed or []):
+        print_error("each --instruction needs its --for (the task types it is for), in order")
+        raise typer.Exit(code=exit_codes.GENERAL_ERROR)
+    if instructions:
+        body["task_instructions"] = [
+            {"text": text, "task_types": [t.strip() for t in types.split(",") if t.strip()]}
+            for text, types in zip(instructions, instructed or [], strict=True)
+        ]
 
     # 5. Compute local hash for verification
     local_hash = compute_config_hash(crp.defaults, body["execution_overrides"])

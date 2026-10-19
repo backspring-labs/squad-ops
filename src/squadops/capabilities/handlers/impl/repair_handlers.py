@@ -44,6 +44,7 @@ from squadops.capabilities.handlers.cycle.fill_mode_brief import (
 from squadops.capabilities.handlers.cycle_tasks import _classify_file, _CycleTaskHandler
 from squadops.capabilities.handlers.fenced_parser import extract_fenced_files
 from squadops.capabilities.handlers.increment_test_scope import increment_test_scope_section
+from squadops.capabilities.handlers.task_instructions import task_instructions_section
 from squadops.capabilities.verification_scaffold_fill import (
     apply_followup_fills,
     merge_fills,
@@ -368,6 +369,7 @@ class _RepairPromptMixin:
             # SIP-0096 §17a: how to dispute a check, rendered in handle() from its one asset.
             "disputed_checks_section": str(inputs.get("disputed_checks_section") or ""),
             # SIP-0110 §0.9: rendered in handle(); "" when no lesson was supplied.
+            "task_instructions_section": str(inputs.get("task_instructions_section") or ""),
             "cross_cycle_lessons_section": str(inputs.get("cross_cycle_lessons_section") or ""),
             # SIP-0107 step 4: the anchored edit form, for the named files that already exist
             # in the workspace, and — on the one retry — why the previous edits were refused.
@@ -445,6 +447,10 @@ class _RepairPromptMixin:
         inputs = {
             **inputs,
             "disputed_checks_section": await self._render_disputed_checks_section(context, inputs),
+            # SIP-0110 Appendix A §3.6 (#2178): this repair's task instructions, before the lessons.
+            "task_instructions_section": await task_instructions_section(
+                getattr(context.ports, "request_renderer", None), inputs
+            ),
             # SIP-0110 §0.9: the lessons approved for this repair, in a slot of their own, apart
             # from the failure evidence it is handed; "" when none was supplied.
             "cross_cycle_lessons_section": await cross_cycle_lessons_section(

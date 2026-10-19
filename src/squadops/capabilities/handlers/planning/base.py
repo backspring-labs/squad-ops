@@ -22,6 +22,7 @@ from squadops.capabilities.handlers.base import (
 from squadops.capabilities.handlers.cross_cycle_lessons import cross_cycle_lessons_section
 from squadops.capabilities.handlers.cycle import _CycleTaskHandler
 from squadops.capabilities.handlers.prior_cycle import prior_cycle_section
+from squadops.capabilities.handlers.task_instructions import task_instructions_section
 from squadops.llm.exceptions import LLMError
 from squadops.llm.models import ChatMessage
 from squadops.stacks.scaffold import scaffold_stack_for
@@ -262,6 +263,10 @@ class _PlanningTaskHandler(_CycleTaskHandler):
             prior = await prior_cycle_section(renderer, inputs)
             if prior:
                 variables["prior_cycle_section"] = prior
+            # SIP-0110 Appendix A §3.6 (#2178): this task's instructions, before the lessons.
+            instructions = await task_instructions_section(renderer, inputs)
+            if instructions:
+                variables["task_instructions_section"] = instructions
             # SIP-0110 §0.9: the lessons approved for this task, in a slot of their own.
             lessons = await cross_cycle_lessons_section(renderer, inputs)
             if lessons:

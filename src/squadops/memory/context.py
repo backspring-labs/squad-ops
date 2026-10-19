@@ -11,8 +11,10 @@ section yet, so every bundle is complete; 2.4 adds the binding sections (#2179) 
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from dataclasses import dataclass
 from enum import StrEnum
+from typing import Any
 
 from squadops.memory.lessons import Recalled
 from squadops.memory.recall import UnitKind
@@ -149,6 +151,9 @@ class ContextBundle:
     #: The section rendered is exactly the set recall returned (§3.6), so it is carried, never rebuilt.
     #: None for a consumer recall does not answer.
     recalled: Recalled | None = None
+    #: What the task is handed on ``TASK_INSTRUCTIONS_INPUT`` (#2178), carried as recall's answer is:
+    #: ``None`` when no task instruction applies.
+    task_instructions: Mapping[str, Any] | None = None
 
     def section(self, kind: SectionKind) -> Section | None:
         return next((s for s in self.sections if s.kind == kind), None)

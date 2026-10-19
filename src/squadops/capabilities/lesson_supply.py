@@ -26,7 +26,7 @@ from __future__ import annotations
 import dataclasses
 import json
 import logging
-from collections.abc import Sequence
+from collections.abc import Collection, Sequence
 from datetime import datetime
 from typing import TYPE_CHECKING
 
@@ -50,6 +50,14 @@ from squadops.memory.context import (
 from squadops.memory.exposures import Exposure
 from squadops.memory.lessons import RecallDisposition, Recalled, RecallPolicy, _tokens
 from squadops.memory.recall import LESSONS_INPUT, RecallQuery, UnitKind
+from squadops.memory.task_instructions import (
+    TASK_INSTRUCTIONS_INPUT,
+    TaskInstructionsUnavailable,
+    applicable,
+    handed,
+    section_of,
+    unresolved_reason,
+)
 from squadops.ports.memory.context_assembly import ContextAssemblyPort
 
 if TYPE_CHECKING:
@@ -68,6 +76,16 @@ _SECTION_DISPOSITION = {
     RecallDisposition.INCOMPATIBLE: Disposition.INCOMPATIBLE,
     RecallDisposition.FAILED: Disposition.FAILED,
 }
+
+
+def reaches(selector: Collection[str], task_type: str) -> bool:
+    """Whether a task instruction selecting ``selector``'s task types reaches a dispatch of
+    ``task_type`` (§3.7): a selected type itself, or a repair that revises a selected type's own
+    output (``task_plan.repairs_revising``)."""
+    # deferred (cycle): cycles.task_plan loads the context-assembly contracts this module reads
+    from squadops.cycles.task_plan import repairs_revising
+
+    return any(task_type == s or task_type in repairs_revising(s) for s in selector)
 
 
 def unit_of(cycle: Cycle) -> tuple[UnitKind, str]:
@@ -187,14 +205,17 @@ async def supply_lessons(
         if seam is None:
             supplied.append(envelope)
             continue
-        handed = await _ask_and_disclose(
+        lessons, instructions = await _ask_and_disclose(
             envelope, recall=recall, unit=unit, stack=stack, run_id=run_id, now=now
         )
-        if handed is None:
-            supplied.append(envelope)
-        else:
-            inputs = {**envelope.inputs, LESSONS_INPUT: handed}
-            supplied.append(dataclasses.replace(envelope, inputs=inputs))
+        inputs = dict(envelope.inputs)
+        if lessons is not None:
+            inputs[LESSONS_INPUT] = lessons
+        if instructions is not None:
+            inputs[TASK_INSTRUCTIONS_INPUT] = instructions
+        supplied.append(
+            envelope if inputs == envelope.inputs else dataclasses.replace(envelope, inputs=inputs)
+        )
     return supplied
 
 
@@ -221,7 +242,7 @@ async def supply_the_redispatch(
         return
     if authoring_seam_of(str(held[0].task_type)) is None:
         return
-    handed = await _ask_and_disclose(
+    lessons, instructions = await _ask_and_disclose(
         held[0],
         recall=recall,
         unit=unit_of(cycle),
@@ -229,11 +250,14 @@ async def supply_the_redispatch(
         run_id=run_id,
         now=now,
     )
+    # #2178: each dispatch reads its task instructions again, so one withdrawn since the attempt
+    # before is gone from this one, and nothing is copied from that attempt.
     for envelope in held:
-        if handed is None:
-            envelope.inputs.pop(LESSONS_INPUT, None)
-        else:
-            envelope.inputs[LESSONS_INPUT] = handed
+        for key, value in ((LESSONS_INPUT, lessons), (TASK_INSTRUCTIONS_INPUT, instructions)):
+            if value is None:
+                envelope.inputs.pop(key, None)
+            else:
+                envelope.inputs[key] = value
 
 
 async def _ask_and_disclose(
@@ -244,13 +268,20 @@ async def _ask_and_disclose(
     stack: str,
     run_id: str,
     now: datetime,
-) -> dict | None:
+) -> tuple[dict | None, dict | None]:
     """One invocation's context, through the port: assembled with the task's trusted scope, disclosed
-    under its attempt, and what it is handed (``None`` when nothing is supplied)."""
+    under its attempt, and what it is handed: its lessons and its task instructions, each ``None``
+    when nothing is supplied. A binding section that is incomplete is disclosed, then refused with
+    why: the task is not dispatched (§3.6)."""
     assembly = LessonContextAssembly(recall, now=now)
     bundle = await assembly.assemble(request_for(envelope, unit=unit, stack=stack, run_id=run_id))
     await assembly.disclose(bundle)
-    return lessons_input(bundle.recalled)
+    if not bundle.complete:
+        section = bundle.section(SectionKind.TASK_INSTRUCTIONS)
+        why = unresolved_reason(section) if section is not None else "a binding section"
+        raise TaskInstructionsUnavailable(f"task {envelope.task_id} is held: {why}")
+    instructions = bundle.task_instructions
+    return lessons_input(bundle.recalled), dict(instructions) if instructions else None
 
 
 class LessonContextAssembly(ContextAssemblyPort):
@@ -286,7 +317,49 @@ class LessonContextAssembly(ContextAssemblyPort):
             omitted=tuple((RecordRef.of_revision_id(r), why) for r, why in recalled.omitted),
             effective_budget=RecallPolicy().token_budget,
         )
-        return ContextBundle(request, (lessons,), complete=True, recalled=recalled)
+        instructions, bound = await self._task_instructions(request)
+        return ContextBundle(
+            request,
+            (instructions, lessons),
+            complete=instructions.disposition is not Disposition.INCOMPLETE,
+            recalled=recalled,
+            task_instructions=handed(bound),
+        )
+
+    async def _task_instructions(self, request: ContextRequest):
+        """The task instructions' binding section (#2178), and what applies. A store that can't be
+        read leaves the section incomplete: it never reads as none (§3.6)."""
+        task = request.consumer
+        if not isinstance(task, TaskInvocation) or not isinstance(request.binding, ProjectBound):
+            kind, need = SectionKind.TASK_INSTRUCTIONS, Need.BINDING
+            return Section(kind, need, Disposition.NOT_APPLICABLE), []
+        try:
+            records = await self._recall.task_instructions(
+                request.binding.project_id, task.target_cycle_id
+            )
+        except Exception:
+            logger.warning(
+                "task_instructions_unreadable cycle=%s task=%s",
+                task.target_cycle_id,
+                task.task_id,
+                exc_info=True,
+            )
+            unread = RecordRef(f"task_instructions:{task.target_cycle_id}", "")
+            return (
+                Section(
+                    SectionKind.TASK_INSTRUCTIONS,
+                    Need.BINDING,
+                    Disposition.INCOMPLETE,
+                    unresolved=((unread, "the memory records could not be read"),),
+                ),
+                [],
+            )
+        bound = applicable(
+            records,
+            cycle_id=task.target_cycle_id,
+            reaches=lambda selector: reaches(selector, task.task_type),
+        )
+        return section_of(bound, budget=task.prompt_budget), bound
 
     async def disclose(self, bundle: ContextBundle) -> None:
         task = bundle.request.consumer
@@ -306,5 +379,22 @@ class LessonContextAssembly(ContextAssemblyPort):
                 recalled=bundle.recalled,
                 recorded_at=self._now,
                 attempt=task.attempt,
+                task_instructions=_section_record(bundle.section(SectionKind.TASK_INSTRUCTIONS)),
             )
         )
+
+
+def _section_record(section: Section | None) -> dict | None:
+    """A binding section as its exposure keeps it: the disposition, each revision supplied, and
+    each that couldn't be with why. ``None`` for no section, so an exposure with no instructions
+    read is what it was before #2178."""
+    if section is None or section.disposition is Disposition.NONE_ELIGIBLE:
+        return None
+    return {
+        "disposition": section.disposition.value,
+        "supplied": [{"record_id": r.record_id, "revision": r.revision} for r in section.supplied],
+        "unresolved": [
+            {"record_id": r.record_id, "revision": r.revision, "why": why}
+            for r, why in section.unresolved
+        ],
+    }

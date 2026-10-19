@@ -22,6 +22,7 @@ from squadops.api.cycle_schemas import (
     ProposalRatingRequest,
     ProposalRatingResponse,
 )
+from squadops.api.errors import http_error
 from squadops.api.middleware.auth import require_scopes
 from squadops.api.paging import Page, page
 from squadops.api.routes.cycles.mapping import assessment_to_response, cycle_to_response
@@ -35,6 +36,7 @@ from squadops.api.runtime.deps import (
     get_deploy_registry,
     get_flow_executor,
     get_llm_port,
+    get_memory_records,
     get_memory_store,
     get_project_registry,
     get_squad_profile_port,
@@ -47,6 +49,7 @@ from squadops.campaigns.proposal_rating import (
     rating_document,
     rating_from_request,
 )
+from squadops.capabilities.context_assembly import authoring_seam_of
 from squadops.capabilities.handlers.planning.proposal import CHANGE_REQUEST_ARTIFACT_TYPE
 from squadops.cycles.check_tooling import resolve_provisioned_tooling
 from squadops.cycles.contract_derivation import (
@@ -87,6 +90,8 @@ from squadops.cycles.preflight import (
 from squadops.cycles.replay import check_replay_compatibility, parse_replay_declaration
 from squadops.events.types import EventType
 from squadops.memory.pinning import pin_standalone_cycle
+from squadops.memory.records import RecordRefused, Source, SourceKind
+from squadops.memory.task_instructions import admitted
 from squadops.ports.llm.provider import LLMCapability
 from squadops.sandbox.environment import get_environment_contract
 from squadops.sandbox.main import sandbox_config_from_env
@@ -522,11 +527,16 @@ async def create_cycle(
     cycle, run, preflight_warnings = prepared.cycle, prepared.run, prepared.warnings
     snapshot_hash = cycle.squad_profile_snapshot_ref
     config_hash = run.resolved_config_hash
+    # #2178: the cycle's task instructions, checked before anything is stored.
+    instructions = _admitted_instructions(request, identity, cycle, body)
 
     # Persist atomically (T17)
     await ports.cycle_registry.create_cycle(cycle)
     await ports.cycle_registry.create_run(run)
     await _pin_memory(request, cycle)
+    # Before the run is enqueued, so its provisioning reads them.
+    for record in instructions:
+        await get_memory_records(request).create(record)
 
     # SIP-0077: cycle.created
 
@@ -565,6 +575,28 @@ async def create_cycle(
         resolved_config_hash=config_hash,
         warnings=[PreflightWarningDTO(code=w.code, message=w.message) for w in preflight_warnings],
     )
+
+
+def _admitted_instructions(request: Request, identity: Identity | None, cycle, body) -> list:
+    """The task instructions a cycle is created with (SIP-0110 Appendix A §3.5; #2178), as
+    records, or the refusal: 422 for one the rules refuse, 503 when there is no store to hold
+    them. ``cycles:write``, which the route requires, is what a standalone cycle's need (§3.3)."""
+    if not body.task_instructions:
+        return []
+    if get_memory_records(request) is None:
+        raise http_error(503, "MEMORY_RECORDS_UNAVAILABLE", "no store holds task instructions")
+    try:
+        return admitted(
+            [i.model_dump() for i in body.task_instructions],
+            project_id=cycle.project_id,
+            cycle_id=cycle.cycle_id,
+            actor=identity.user_id if identity is not None else cycle.created_by,
+            now=datetime.now(UTC),
+            instructable=lambda t: authoring_seam_of(t) is not None,
+            source=Source(SourceKind.CYCLE_REQUEST, {"cycle_id": cycle.cycle_id}),
+        )
+    except RecordRefused as e:
+        raise http_error(422, "VALIDATION_ERROR", str(e)) from e
 
 
 async def _pin_memory(request: Request, cycle) -> None:

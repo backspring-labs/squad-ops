@@ -30,6 +30,7 @@ from squadops.cycles.models import Cycle, RunStatus, WorkloadType
 from squadops.cycles.task_plan import generate_task_plan
 from squadops.events.types import EventType
 from squadops.execution.execution_errors import _ExecutionError
+from squadops.memory.task_instructions import TaskInstructionsUnavailable
 from squadops.stacks.scaffold import frozen_paths
 
 
@@ -184,9 +185,18 @@ class RunProvisioning:
         # SIP-0110 §0.9: each plan-writing and build-authoring task asks its unit's pinned snapshot
         # for the lessons approved for it, and every answer is disclosed. A task handed none keeps
         # the inputs it had before memory existed, so its prompt is unchanged.
-        plan = await supply_for_cycle(
-            plan, recall=self._failure_recall, cycle=cycle, run_id=run.run_id, now=datetime.now(UTC)
-        )
+        # #2178: the same answer carries each task's instructions, binding. One that can't be read
+        # or fitted holds its task (§3.6): the run doesn't start, and its error says which and why.
+        try:
+            plan = await supply_for_cycle(
+                plan,
+                recall=self._failure_recall,
+                cycle=cycle,
+                run_id=run.run_id,
+                now=datetime.now(UTC),
+            )
+        except TaskInstructionsUnavailable as e:
+            raise _ExecutionError(str(e)) from e
         state.plan = plan
         participating_agent_ids = {e.agent_id for e in plan}
         return ProvisionedRun(

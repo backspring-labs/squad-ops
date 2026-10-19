@@ -359,6 +359,17 @@ _REPAIR_STEPS_BY_FAILED_TASK_TYPE_OWN_ARTIFACT: dict[str, list[tuple[str, str]]]
 }
 
 
+def repairs_revising(task_type: str) -> tuple[str, ...]:
+    """The repair task types that revise ``task_type``'s own output (SIP-0110 Appendix A §3.7;
+    #2178), read from the two tables above: its own-artifact repair, else its declared repair.
+    None for a type with neither: the default chain repairs the application, not that type's
+    output, so a task instruction for the type never reaches it."""
+    steps = _REPAIR_STEPS_BY_FAILED_TASK_TYPE_OWN_ARTIFACT.get(
+        task_type
+    ) or _REPAIR_STEPS_BY_FAILED_TASK_TYPE.get(task_type, [])
+    return tuple(step for step, _ in steps)
+
+
 def own_artifact_role(failed_task_type: str) -> str | None:
     """The role that owns *failed_task_type*'s own artifacts, when declared (#884).
 
