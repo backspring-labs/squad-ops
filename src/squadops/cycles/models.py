@@ -182,6 +182,25 @@ class ProjectRegistryReadOnlyError(CycleError):
     FR-03, R3): the config file, or the writable registry with its write gate closed."""
 
 
+class ProjectStateConflictError(CycleError):
+    """Raised when a lifecycle operation meets a Project in a state it doesn't apply to: a
+    sample application has no external source to validate, and a READY one is not validated
+    again here (re-validation against drift is E.4.4's)."""
+
+
+class DevelopmentConfigurationNotFoundError(CycleError):
+    """Raised when a Project has no Development Configuration, or not the revision asked for."""
+
+
+class InheritedBaselineNotFoundError(CycleError):
+    """Raised when a Project has no inherited baseline captured yet (SIP-0112 FR-20)."""
+
+
+class StaleConfigurationRevisionError(CycleError):
+    """Raised when a Development Configuration is recorded against a revision that is no longer
+    the current one: another revision was recorded first (§D.2's version precondition)."""
+
+
 class ProjectIdTakenError(CycleError):
     """Raised when a registration names a Project ID the registry already holds."""
 
@@ -329,6 +348,11 @@ class Project:
     source: ProjectSource | None = None
     ownership: ProjectOwnership | None = None
     development_configuration_revision: int | None = None
+    #: SIP-0112 E.4.2: what the base ref named when the source was last reached (contract 1),
+    #: and why a validation failed, while the Project is FAILED_REGISTRATION.
+    development_baseline_commit: str | None = None
+    integrated_upstream_commit: str | None = None
+    validation_diagnostic: str | None = None
 
 
 @dataclass(frozen=True)

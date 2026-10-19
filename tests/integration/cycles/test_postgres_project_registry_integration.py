@@ -275,3 +275,147 @@ async def test_a_taken_id_and_a_closed_gate_write_nothing(pool):
             )
             == 0
         )
+
+
+async def test_a_validation_moves_a_registration_ready_or_failed_and_a_retry_recovers(pool):
+    """E.4.2, §B.6. Bugs caught: READY written without the commit contract 1 pins; a failure's
+    diagnostic surviving the retry that fixed it; a validation applied twice under one key; a
+    READY Project validated again here, where re-validation is E.4.4's drift."""
+    from squadops.cycles.models import ProjectStateConflictError
+
+    registry = PostgresProjectRegistry(pool)
+    await registry.register_project(_registration(), actor="owner")
+    commit = "c" * 40
+
+    failed, _ = await registry.record_validation(
+        "prj-tally", commit=None, diagnostic="clone: denied", actor="owner", idempotency_key="v-1"
+    )
+    ready, replayed = await registry.record_validation(
+        "prj-tally", commit=commit, diagnostic=None, actor="owner", idempotency_key="v-2"
+    )
+    again, again_replayed = await registry.record_validation(
+        "prj-tally", commit=commit, diagnostic=None, actor="owner", idempotency_key="v-2"
+    )
+    with pytest.raises(ProjectStateConflictError, match="READY"):
+        await registry.record_validation(
+            "prj-tally", commit=commit, diagnostic=None, actor="owner", idempotency_key="v-3"
+        )
+
+    assert (failed.lifecycle_status, failed.validation_diagnostic, failed.record_version) == (
+        ProjectLifecycleStatus.FAILED_REGISTRATION,
+        "clone: denied",
+        2,
+    )
+    assert (ready.lifecycle_status, ready.record_version, replayed) == (
+        ProjectLifecycleStatus.READY,
+        3,
+        False,
+    )
+    assert (ready.development_baseline_commit, ready.integrated_upstream_commit) == (commit, commit)
+    assert ready.validation_diagnostic is None
+    assert (again, again_replayed) == (ready, True)
+    async with pool.acquire() as conn:
+        events = await conn.fetch(
+            "SELECT operation, record_version, detail FROM project_record_events "
+            "WHERE project_id = 'prj-tally' ORDER BY record_version"
+        )
+    assert [(e["operation"], e["record_version"]) for e in events] == [
+        ("register", 1),
+        ("validate", 2),
+        ("validate", 3),
+    ]
+    assert events[2]["detail"] == {"from": "FAILED_REGISTRATION", "commit": commit}
+
+
+async def test_configuration_revisions_follow_one_another_and_read_back_as_recorded(pool):
+    """E.4.2, §B.5. Bugs caught: a revision overwritten instead of added; a recording against a
+    stale revision accepted, losing the other; a document that doesn't read back as written."""
+    import dataclasses
+
+    from squadops.cycles.models import (
+        DevelopmentConfigurationNotFoundError,
+        StaleConfigurationRevisionError,
+    )
+    from squadops.projects.development_configuration import parse_configuration
+
+    registry = PostgresProjectRegistry(pool)
+    await registry.register_project(_registration(), actor="owner")
+    with pytest.raises(DevelopmentConfigurationNotFoundError):
+        await registry.get_development_configuration("prj-tally")
+    first = dataclasses.replace(
+        parse_configuration(recorded_configuration()), project_id="prj-tally", revision=1
+    )
+
+    _, replayed = await registry.record_development_configuration(
+        first, actor="owner", idempotency_key="c-1", request_hash="h1"
+    )
+    again, again_replayed = await registry.record_development_configuration(
+        first, actor="owner", idempotency_key="c-1", request_hash="h1"
+    )
+    with pytest.raises(StaleConfigurationRevisionError, match="revision 1"):
+        await registry.record_development_configuration(
+            first, actor="owner", idempotency_key="c-2", request_hash="h2"
+        )
+    second = dataclasses.replace(first, revision=2, target="python3")
+    await registry.record_development_configuration(
+        second, actor="owner", idempotency_key="c-3", request_hash="h3"
+    )
+
+    assert (replayed, again_replayed, again) == (False, True, first)
+    assert await registry.get_development_configuration("prj-tally") == second
+    assert await registry.get_development_configuration("prj-tally", 1) == first
+    project = await registry.get_project("prj-tally")
+    assert (project.development_configuration_revision, project.record_version) == (2, 3)
+
+
+def recorded_configuration():
+    from tests.fixtures.shared_contract.repository import recorded
+
+    return recorded("development_configuration", "valid")
+
+
+async def test_mappings_resolve_both_ways_and_baselines_read_back(pool):
+    """Contract 3's mapping, and FR-20's record. Bugs caught: a seed recorded twice making two
+    rows; a mapping that can't be read back by commit, revision or tree; a baseline replay that
+    captures again; the evidence lost or mixed into the document."""
+    from squadops.cycles.models import InheritedBaselineNotFoundError
+    from squadops.projects.baseline import parse_baseline
+    from squadops.projects.workspaces import SourceMapping
+    from tests.fixtures.shared_contract.repository import recorded
+
+    registry = PostgresProjectRegistry(pool)
+    await registry.register_project(_registration(), actor="owner")
+    entry = recorded("workspace_commit_mapping", "valid")["entries"][1]
+    mapping = SourceMapping(
+        project_id="prj-tally",
+        workspace_id="baseline-prj-tally-962858eb0e32",
+        direction="seeded",
+        commit=entry["commit"],
+        sandbox_revision_id=entry["sandbox_revision_id"],
+        tree_identity=entry["tree_identity"],
+    )
+
+    await registry.record_source_mapping(mapping)
+    await registry.record_source_mapping(mapping)
+    mappings = await registry.source_mappings("prj-tally")
+
+    assert mappings == [mapping]
+    by = {m.commit: m for m in mappings}, {m.sandbox_revision_id: m for m in mappings}
+    assert by[0][entry["commit"]].sandbox_revision_id == entry["sandbox_revision_id"]
+    assert by[1][entry["sandbox_revision_id"]].commit == entry["commit"]
+
+    with pytest.raises(InheritedBaselineNotFoundError):
+        await registry.get_inherited_baseline("prj-tally")
+    baseline = parse_baseline(recorded("inherited_baseline", "valid"))
+    baseline = dataclasses.replace(baseline, project_id="prj-tally")
+    _, replayed = await registry.record_inherited_baseline(
+        baseline, actor="owner", idempotency_key="b-1", request_hash="h"
+    )
+    again, again_replayed = await registry.record_inherited_baseline(
+        baseline, actor="owner", idempotency_key="b-1", request_hash="h"
+    )
+
+    assert (replayed, again_replayed, again) == (False, True, baseline)
+    assert await registry.get_inherited_baseline("prj-tally") == baseline
+    async with pool.acquire() as conn:
+        assert await conn.fetchval("SELECT count(*) FROM project_inherited_baselines") == 1

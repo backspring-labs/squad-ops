@@ -8,16 +8,34 @@ from fastapi import APIRouter, Depends, Request
 from fastapi.responses import PlainTextResponse
 
 from squadops.api.cycle_schemas import (
+    DevelopmentConfigurationRecordedResponse,
+    DevelopmentConfigurationRequest,
+    DevelopmentConfigurationResponse,
+    InheritedBaselineRequest,
+    InheritedBaselineResponse,
     ProjectRegistrationRequest,
     ProjectRegistrationResponse,
     ProjectResponse,
+    ProjectValidationRequest,
 )
 from squadops.api.errors import http_error
 from squadops.api.middleware.auth import require_scopes
 from squadops.api.routes.cycles.mapping import project_to_response
-from squadops.api.runtime.deps import get_project_locator_policy, get_project_registry
+from squadops.api.runtime.deps import (
+    get_project_locator_policy,
+    get_project_registry,
+    get_sandbox_client,
+    get_source_repository,
+)
 from squadops.auth.models import Identity, Scope
+from squadops.projects.configuration import configure_project
+from squadops.projects.development_configuration import (
+    ConfigurationInvalid,
+    DevelopmentConfiguration,
+)
 from squadops.projects.registration import RegistrationRefused, prepare_registration
+from squadops.projects.validation import validate_project
+from squadops.projects.workspaces import SandboxUnavailable, capture_inherited_baseline
 
 router = APIRouter(prefix="/api/v1/projects", tags=["projects"])
 
@@ -66,6 +84,126 @@ async def register_project(
         idempotency_key=registration.idempotency_key,
         replayed=replayed,
     )
+
+
+@router.post("/{project_id}/validate")
+async def validate_registered_project(
+    request: Request,
+    project_id: str,
+    body: ProjectValidationRequest,
+    identity: Identity | None = Depends(require_scopes(Scope.ADMIN_WRITE)),
+) -> ProjectRegistrationResponse:
+    """Reach a registered Project's source through the managed clone (SIP-0112 E.4.2): READY
+    at the base ref's commit, or FAILED_REGISTRATION with the reason. A failure is an answer,
+    not an error: the Project records it, and a retry validates again."""
+    project, replayed = await validate_project(
+        project_id,
+        registry=get_project_registry(request),
+        repository=get_source_repository(request),
+        actor=identity.user_id if identity is not None else "anonymous",
+        idempotency_key=body.idempotency_key,
+    )
+    return ProjectRegistrationResponse(
+        project=project_to_response(project),
+        idempotency_key=body.idempotency_key,
+        replayed=replayed,
+    )
+
+
+def _configuration(configuration: DevelopmentConfiguration) -> DevelopmentConfigurationResponse:
+    return DevelopmentConfigurationResponse(
+        project_id=configuration.project_id,
+        revision=configuration.revision,
+        document=configuration.to_document(),
+    )
+
+
+@router.post("/{project_id}/development-configurations", status_code=201)
+async def record_development_configuration(
+    request: Request,
+    project_id: str,
+    body: DevelopmentConfigurationRequest,
+    identity: Identity | None = Depends(require_scopes(Scope.ADMIN_WRITE)),
+) -> DevelopmentConfigurationRecordedResponse:
+    """Record the next revision of a READY Project's Development Configuration (SIP-0112 E.4.2):
+    its checks and start declaration, validated, with the repository's instruction sources at
+    the baseline commit."""
+    try:
+        configuration, replayed = await configure_project(
+            project_id,
+            body.model_dump(include={"technical", "quality"}, exclude_none=True),
+            expected_revision=body.expected_revision,
+            registry=get_project_registry(request),
+            repository=get_source_repository(request),
+            actor=identity.user_id if identity is not None else "anonymous",
+            idempotency_key=body.idempotency_key,
+        )
+    except ConfigurationInvalid as e:
+        raise http_error(422, "CONFIGURATION_INVALID", str(e), {"field": e.field}) from e
+    return DevelopmentConfigurationRecordedResponse(
+        configuration=_configuration(configuration),
+        idempotency_key=body.idempotency_key,
+        replayed=replayed,
+    )
+
+
+@router.get(
+    "/{project_id}/development-configuration",
+    dependencies=[Depends(require_scopes(Scope.CYCLES_READ))],
+)
+async def get_current_development_configuration(
+    request: Request, project_id: str
+) -> DevelopmentConfigurationResponse:
+    """The Project's current Development Configuration revision."""
+    return _configuration(
+        await get_project_registry(request).get_development_configuration(project_id)
+    )
+
+
+@router.get(
+    "/{project_id}/development-configurations/{revision}",
+    dependencies=[Depends(require_scopes(Scope.CYCLES_READ))],
+)
+async def get_development_configuration_revision(
+    request: Request, project_id: str, revision: int
+) -> DevelopmentConfigurationResponse:
+    """One revision, as a unit pinned it: revisions are never edited."""
+    return _configuration(
+        await get_project_registry(request).get_development_configuration(project_id, revision)
+    )
+
+
+@router.post("/{project_id}/baselines", status_code=201)
+async def capture_baseline(
+    request: Request,
+    project_id: str,
+    body: InheritedBaselineRequest,
+    identity: Identity | None = Depends(require_scopes(Scope.ADMIN_WRITE)),
+) -> InheritedBaselineResponse:
+    """Run the product's own checks on its pinned, unmodified baseline in the sandbox, and record
+    what happened (SIP-0112 FR-20, E.4.2): PASS and FAIL attributed inherited, UNVERIFIED with
+    the reason a check couldn't run."""
+    try:
+        baseline, replayed = await capture_inherited_baseline(
+            project_id,
+            registry=get_project_registry(request),
+            repository=get_source_repository(request),
+            sandbox=get_sandbox_client(request),
+            actor=identity.user_id if identity is not None else "anonymous",
+            idempotency_key=body.idempotency_key,
+        )
+    except SandboxUnavailable as e:
+        raise http_error(503, "SANDBOX_UNAVAILABLE", str(e)) from e
+    return InheritedBaselineResponse(
+        project_id=project_id, document=baseline.to_document(), replayed=replayed
+    )
+
+
+@router.get("/{project_id}/baseline", dependencies=[Depends(require_scopes(Scope.CYCLES_READ))])
+async def get_baseline(request: Request, project_id: str) -> InheritedBaselineResponse:
+    """The Project's latest inherited baseline."""
+    baseline = await get_project_registry(request).get_inherited_baseline(project_id)
+    return InheritedBaselineResponse(project_id=project_id, document=baseline.to_document())
 
 
 @router.get("/{project_id}", dependencies=[Depends(require_scopes(Scope.CYCLES_READ))])

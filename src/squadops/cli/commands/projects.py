@@ -5,12 +5,15 @@ Project commands (SIP-0065 §6.3).
 from __future__ import annotations
 
 import uuid
+from pathlib import Path
 
 import typer
+import yaml
 
 from squadops.cli.client import CLIError
 from squadops.cli.client import get_client as _get_client
 from squadops.cli.output import print_detail, print_error, print_json, print_success, print_table
+from squadops.projects.models import ProjectLifecycleStatus
 
 app = typer.Typer(name="projects", help="Manage projects")
 
@@ -136,4 +139,153 @@ def import_project(
     print_success(
         f"{verb}: {project['project_id']} {project['lifecycle_status']} "
         f"(record version {project['record_version']}, key {data['idempotency_key']})"
+    )
+
+
+@app.command("validate")
+def validate_project(
+    ctx: typer.Context,
+    project_id: str = typer.Argument(...),
+    idempotency_key: str | None = typer.Option(None, "--idempotency-key"),
+):
+    """Reach a registered product's source (SIP-0112 E.4.2): READY at its base ref's commit, or
+    FAILED_REGISTRATION with the reason. Run it again to retry a failed registration."""
+    fmt = ctx.obj.get("format", "table") if ctx.obj else "table"
+    key = idempotency_key or f"cli-{uuid.uuid4().hex}"
+    try:
+        client = _get_client(ctx)
+        data = client.post(f"/api/v1/projects/{project_id}/validate", json={"idempotency_key": key})
+        client.close()
+    except CLIError as e:
+        print_error(f"{e} (idempotency key {key})")
+        raise typer.Exit(code=e.exit_code) from e
+
+    if fmt == "json":
+        print_json(data)
+        return
+    project = data["project"]
+    status = project["lifecycle_status"]
+    found = (
+        project["development_baseline_commit"]
+        if status == ProjectLifecycleStatus.READY
+        else project["validation_diagnostic"]
+    )
+    print_success(f"{project['project_id']} {status}: {found} (key {data['idempotency_key']})")
+    if status != ProjectLifecycleStatus.READY:
+        raise typer.Exit(code=1)
+
+
+@app.command("configure")
+def configure_project(
+    ctx: typer.Context,
+    project_id: str = typer.Argument(...),
+    file: Path = typer.Option(
+        ..., "--file", "-f", help="YAML or JSON with `technical` (commands, start) and `quality`"
+    ),
+    expected_revision: int | None = typer.Option(
+        None, "--expected-revision", help="Default: the Project's current revision"
+    ),
+    idempotency_key: str | None = typer.Option(None, "--idempotency-key"),
+):
+    """Record a Project's next Development Configuration revision (SIP-0112 E.4.2): its native
+    checks and its start declaration, validated, with the repository's instruction sources."""
+    fmt = ctx.obj.get("format", "table") if ctx.obj else "table"
+    try:
+        spec = yaml.safe_load(file.read_text())
+    except (OSError, yaml.YAMLError) as e:
+        print_error(f"cannot read {file}: {e}")
+        raise typer.Exit(code=2) from e
+    key = idempotency_key or f"cli-{uuid.uuid4().hex}"
+    try:
+        client = _get_client(ctx)
+        if expected_revision is None:
+            current = client.get(f"/api/v1/projects/{project_id}")
+            expected_revision = current.get("development_configuration_revision") or 0
+        data = client.post(
+            f"/api/v1/projects/{project_id}/development-configurations",
+            json={
+                "idempotency_key": key,
+                "expected_revision": expected_revision,
+                **{k: spec[k] for k in ("technical", "quality") if k in (spec or {})},
+            },
+        )
+        client.close()
+    except CLIError as e:
+        print_error(f"{e} (idempotency key {key})")
+        raise typer.Exit(code=e.exit_code) from e
+
+    if fmt == "json":
+        print_json(data)
+        return
+    configuration = data["configuration"]
+    sources = configuration["document"]["configuration"]["instruction_sources"]
+    verb = "replayed" if data["replayed"] else "recorded"
+    print_success(
+        f"{verb}: {project_id} Development Configuration revision {configuration['revision']} "
+        f"({len(sources)} instruction source(s) found; key {data['idempotency_key']})"
+    )
+
+
+@app.command("configuration")
+def show_configuration(
+    ctx: typer.Context,
+    project_id: str = typer.Argument(...),
+    revision: int | None = typer.Option(None, "--revision", help="Default: the current one"),
+):
+    """Show a Project's Development Configuration, as stored."""
+    path = (
+        f"/api/v1/projects/{project_id}/development-configurations/{revision}"
+        if revision is not None
+        else f"/api/v1/projects/{project_id}/development-configuration"
+    )
+    try:
+        client = _get_client(ctx)
+        data = client.get(path)
+        client.close()
+    except CLIError as e:
+        print_error(str(e))
+        raise typer.Exit(code=e.exit_code) from e
+    fmt = ctx.obj.get("format", "table") if ctx.obj else "table"
+    if fmt == "json":
+        print_json(data)
+    else:
+        typer.echo(yaml.safe_dump(data["document"], sort_keys=False))
+
+
+@app.command("baseline")
+def baseline(
+    ctx: typer.Context,
+    project_id: str = typer.Argument(...),
+    capture: bool = typer.Option(
+        False, "--capture", help="Run the product's checks now, rather than show the latest"
+    ),
+    idempotency_key: str | None = typer.Option(None, "--idempotency-key"),
+):
+    """A Project's inherited baseline (SIP-0112 FR-20): each of its own checks on the pinned,
+    unmodified source, PASS, FAIL or UNVERIFIED with the reason."""
+    fmt = ctx.obj.get("format", "table") if ctx.obj else "table"
+    key = idempotency_key or f"cli-{uuid.uuid4().hex}"
+    try:
+        client = _get_client(ctx)
+        data = (
+            client.post(f"/api/v1/projects/{project_id}/baselines", json={"idempotency_key": key})
+            if capture
+            else client.get(f"/api/v1/projects/{project_id}/baseline")
+        )
+        client.close()
+    except CLIError as e:
+        print_error(f"{e} (idempotency key {key})" if capture else str(e))
+        raise typer.Exit(code=e.exit_code) from e
+    if fmt == "json":
+        print_json(data)
+        return
+    document = data["document"]
+    rows = [
+        [c["id"], c["result"], c.get("attribution", ""), c.get("reason", "")]
+        for c in document["checks"]
+    ]
+    print_table(["Check", "Result", "Attribution", "Reason"], rows, quiet=False)
+    print_success(
+        f"{project_id} at {document['commit'][:12]}, configuration revision "
+        f"{document['development_configuration_revision']}"
     )

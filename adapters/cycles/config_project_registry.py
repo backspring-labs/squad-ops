@@ -12,7 +12,13 @@ from pathlib import Path
 
 import yaml
 
-from squadops.cycles.models import Project, ProjectNotFoundError, ProjectRegistryReadOnlyError
+from squadops.cycles.models import (
+    DevelopmentConfigurationNotFoundError,
+    InheritedBaselineNotFoundError,
+    Project,
+    ProjectNotFoundError,
+    ProjectRegistryReadOnlyError,
+)
 from squadops.ports.cycles.project_registry import ProjectRegistryPort
 
 logger = logging.getLogger(__name__)
@@ -68,4 +74,37 @@ class ConfigProjectRegistry(ProjectRegistryPort):
         raise ProjectRegistryReadOnlyError(
             "the config provider is read-only: config/projects.yaml is edited, never written. "
             "Registration needs cycles.project_registry_provider: postgres (SIP-0112 FR-03)"
+        )
+
+    async def record_validation(self, project_id, *, commit, diagnostic, actor, idempotency_key):
+        raise ProjectRegistryReadOnlyError(
+            "the config provider is read-only: its sample applications have no external source "
+            "to validate (SIP-0112 FR-03)"
+        )
+
+    async def record_development_configuration(
+        self, configuration, *, actor, idempotency_key, request_hash
+    ):
+        raise ProjectRegistryReadOnlyError(
+            "the config provider is read-only: a Development Configuration needs the writable "
+            "registry (SIP-0112 FR-03)"
+        )
+
+    async def get_development_configuration(self, project_id, revision=None):
+        raise DevelopmentConfigurationNotFoundError(
+            f"Project {project_id} is a sample application: it has no Development Configuration"
+        )
+
+    async def record_source_mapping(self, mapping):
+        raise ProjectRegistryReadOnlyError("the config provider records no source mappings")
+
+    async def source_mappings(self, project_id, *, workspace_id=None):
+        return []
+
+    async def record_inherited_baseline(self, baseline, *, actor, idempotency_key, request_hash):
+        raise ProjectRegistryReadOnlyError("the config provider records no baselines")
+
+    async def get_inherited_baseline(self, project_id):
+        raise InheritedBaselineNotFoundError(
+            f"Project {project_id} is a sample application: it has no inherited baseline"
         )

@@ -36,6 +36,7 @@ from squadops.ports.cycles.workflow_tracker import WorkflowTrackerPort
 from squadops.ports.events.cycle_event_bus import CycleEventBusPort
 from squadops.ports.events.noop import NoOpCycleEventBus
 from squadops.ports.llm.provider import LLMPort
+from squadops.ports.projects.source_repository import SourceRepositoryPort
 from squadops.ports.runtime.assignments import AssignmentPort
 from squadops.projects.registration import LocatorPolicy
 
@@ -121,6 +122,11 @@ def get_project_registry(request: Request) -> ProjectRegistryPort:
 def get_project_locator_policy(request: Request) -> LocatorPolicy:
     """The deploy's registration locator rules (SIP-0112 R5), built from config at start."""
     return _required(request, "project_locator_policy", "LocatorPolicy")
+
+
+def get_source_repository(request: Request) -> SourceRepositoryPort:
+    """The managed clones of registered products (SIP-0112 E.4.2)."""
+    return _required(request, "source_repository", "SourceRepositoryPort")
 
 
 def get_cycle_registry(request: Request) -> CycleRegistryPort:

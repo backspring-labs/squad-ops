@@ -118,6 +118,9 @@ class TestTheProjectRecordAddsFieldsOnly:
             "source": None,
             "ownership": None,
             "development_configuration_revision": None,
+            "development_baseline_commit": None,
+            "integrated_upstream_commit": None,
+            "validation_diagnostic": None,
         }
 
     def test_a_registered_projects_source_and_owner_reach_the_response(
@@ -316,3 +319,218 @@ class TestRegisterProject:
         assert registry.register_project.await_count == (1 if expected == 201 else 0)
         if expected == 201:
             assert registry.register_project.await_args.kwargs == {"actor": "someone"}
+
+
+class TestValidateProject:
+    """``POST /api/v1/projects/{id}/validate`` (SIP-0112 E.4.2), at the route the CLI calls.
+    Bugs caught: the route reading a different registry or clone than the runtime wires; a
+    failed validation answered as an error rather than recorded and returned."""
+
+    @pytest.fixture
+    def wired(self, client, mock_project_registry):
+        from squadops.projects.models import (
+            CheckoutTree,
+            ProjectLifecycleStatus,
+            ProjectSource,
+        )
+
+        source = ProjectSource(
+            repo_uri="https://code.example.invalid/tally.git",
+            base_ref="refs/heads/main",
+            contribution_mode="review_request",
+        )
+        project = Project(
+            project_id="prj-tally", name="Tally", description="", created_at=NOW, source=source
+        )
+        mock_project_registry.get_project.return_value = project
+
+        async def record(project_id, *, commit, diagnostic, actor, idempotency_key):
+            status = (
+                ProjectLifecycleStatus.READY
+                if commit
+                else ProjectLifecycleStatus.FAILED_REGISTRATION
+            )
+            return (
+                Project(
+                    project_id=project_id,
+                    name="Tally",
+                    description="",
+                    created_at=NOW,
+                    source=source,
+                    lifecycle_status=status,
+                    development_baseline_commit=commit,
+                    integrated_upstream_commit=commit,
+                    validation_diagnostic=diagnostic,
+                ),
+                False,
+            )
+
+        mock_project_registry.record_validation.side_effect = record
+        clone = AsyncMock()
+        clone.sync.return_value = "c" * 40
+        clone.tree_at.return_value = CheckoutTree(
+            "c" * 40, {}, frozenset(), frozenset(), frozenset()
+        )
+        client.app.state.source_repository = clone
+        return clone
+
+    def test_a_reached_source_answers_ready_at_its_commit(self, client, wired):
+        resp = client.post("/api/v1/projects/prj-tally/validate", json={"idempotency_key": "v-1"})
+
+        project = resp.json()["project"]
+        assert resp.status_code == 200
+        assert (project["lifecycle_status"], project["development_baseline_commit"]) == (
+            "READY",
+            "c" * 40,
+        )
+        wired.sync.assert_awaited_once_with(
+            "prj-tally", "https://code.example.invalid/tally.git", "refs/heads/main"
+        )
+
+    def test_an_unreachable_source_is_recorded_and_answered_not_raised(self, client, wired):
+        from squadops.projects.models import SourceUnavailable
+
+        wired.sync.side_effect = SourceUnavailable("git clone failed: denied", reason="clone")
+
+        resp = client.post("/api/v1/projects/prj-tally/validate", json={"idempotency_key": "v-2"})
+
+        project = resp.json()["project"]
+        assert resp.status_code == 200
+        assert project["lifecycle_status"] == "FAILED_REGISTRATION"
+        assert project["validation_diagnostic"] == "clone: git clone failed: denied"
+
+
+class TestDevelopmentConfigurationRoutes:
+    """``/api/v1/projects/{id}/development-configuration(s)`` (SIP-0112 E.4.2), at the routes
+    the CLI calls. Bugs caught: a malformed declaration answered 500 instead of naming its
+    field; the stored document altered between the registry and the response."""
+
+    @pytest.fixture
+    def configured(self, client, mock_project_registry, tmp_path):
+        import copy
+
+        from squadops.projects.models import CheckoutTree, ProjectSource
+        from tests.fixtures.shared_contract.repository import (
+            build_repository,
+            recorded,
+            tracked_files,
+        )
+
+        repo = build_repository(tmp_path / "tally")
+        mock_project_registry.get_project.return_value = Project(
+            project_id="prj-tally",
+            name="Tally",
+            description="",
+            created_at=NOW,
+            source=ProjectSource(
+                repo_uri="https://code.example.invalid/tally.git",
+                base_ref="refs/heads/main",
+                contribution_mode="review_request",
+            ),
+            development_baseline_commit=repo.second_commit,
+        )
+
+        async def record(configuration, **kwargs):
+            return configuration, False
+
+        mock_project_registry.record_development_configuration.side_effect = record
+        clone = AsyncMock()
+        clone.tree_at.return_value = CheckoutTree(
+            repo.second_commit,
+            tracked_files(repo.path, repo.second_commit),
+            frozenset(),
+            frozenset(),
+            frozenset(),
+        )
+        client.app.state.source_repository = clone
+        valid = recorded("development_configuration", "valid")
+        return copy.deepcopy(valid["configuration"]["technical"]), valid
+
+    def test_a_recording_answers_the_stored_document(self, client, configured):
+        technical, valid = configured
+
+        resp = client.post(
+            "/api/v1/projects/prj-tally/development-configurations",
+            json={"idempotency_key": "c-1", "expected_revision": 0, "technical": technical},
+        )
+
+        assert resp.status_code == 201
+        assert resp.json()["configuration"]["document"] == valid
+        assert resp.json()["replayed"] is False
+
+    def test_a_malformed_declaration_is_refused_naming_its_field(
+        self, client, configured, mock_project_registry
+    ):
+        technical, _ = configured
+        technical["commands"]["start"]["start"] = "python3 -m tally serve"
+
+        resp = client.post(
+            "/api/v1/projects/prj-tally/development-configurations",
+            json={"idempotency_key": "c-1", "expected_revision": 0, "technical": technical},
+        )
+
+        error = resp.json()["detail"]["error"]
+        assert (resp.status_code, error["code"]) == (422, "CONFIGURATION_INVALID")
+        assert error["details"] == {"field": "technical.commands.start.start"}
+        mock_project_registry.record_development_configuration.assert_not_awaited()
+
+    def test_the_current_revision_reads_back(self, client, configured, mock_project_registry):
+        from squadops.projects.development_configuration import parse_configuration
+
+        _, valid = configured
+        mock_project_registry.get_development_configuration.return_value = parse_configuration(
+            valid
+        )
+
+        resp = client.get("/api/v1/projects/prj-tally/development-configuration")
+
+        assert resp.json() == {"project_id": "prj-tally", "revision": 1, "document": valid}
+
+
+class TestBaselineRoutes:
+    """``/api/v1/projects/{id}/baseline(s)`` (SIP-0112 FR-20). Bugs caught: a capture with no
+    sandbox recording an empty baseline as if the checks had run; no baseline answered 500."""
+
+    def test_a_capture_without_a_sandbox_client_is_refused_and_records_nothing(
+        self, client, mock_project_registry
+    ):
+        from squadops.projects.development_configuration import parse_configuration
+        from squadops.projects.models import ProjectSource
+        from tests.fixtures.shared_contract.repository import recorded
+
+        configuration = parse_configuration(recorded("development_configuration", "valid"))
+        mock_project_registry.get_project.return_value = Project(
+            project_id="prj-tally",
+            name="Tally",
+            description="",
+            created_at=NOW,
+            source=ProjectSource(
+                "https://code.example.invalid/t.git", "refs/heads/main", "review_request"
+            ),
+            development_baseline_commit=configuration.validated_at_commit,
+        )
+        mock_project_registry.get_development_configuration.return_value = configuration
+        client.app.state.source_repository = AsyncMock()
+        client.app.state.sandbox_client = None
+
+        resp = client.post("/api/v1/projects/prj-tally/baselines", json={"idempotency_key": "b-1"})
+
+        assert (resp.status_code, resp.json()["detail"]["error"]["code"]) == (
+            503,
+            "SANDBOX_UNAVAILABLE",
+        )
+        mock_project_registry.record_inherited_baseline.assert_not_awaited()
+
+    def test_no_baseline_yet_is_not_found(self, client, mock_project_registry):
+        from squadops.cycles.models import InheritedBaselineNotFoundError
+
+        mock_project_registry.get_inherited_baseline.side_effect = InheritedBaselineNotFoundError(
+            "none"
+        )
+
+        resp = client.get("/api/v1/projects/prj-tally/baseline")
+
+        assert (resp.status_code, resp.json()["detail"]["error"]["code"]) == (
+            404,
+            "INHERITED_BASELINE_NOT_FOUND",
+        )

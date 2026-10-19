@@ -410,6 +410,13 @@ async def _init_cycle_subsystem(state, config, pool) -> None:
     state.project_locator_policy = LocatorPolicy.of(
         config.projects.locator_allowed_hosts, config.projects.locator_local_roots
     )
+    from adapters.tools.factory import create_source_repository
+
+    state.source_repository = create_source_repository(
+        cache_root=config.projects.clone_cache_root,
+        policy=state.project_locator_policy,
+        timeout_seconds=config.projects.git_timeout_seconds,
+    )
     # #1976: a transient database failure is retried inside the registry, never by its callers.
     cycle_registry = create_cycle_registry(
         config.cycles.registry_provider,

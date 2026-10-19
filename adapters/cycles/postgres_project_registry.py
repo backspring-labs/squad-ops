@@ -7,6 +7,7 @@ API, and a cache would only add the invalidation that lets a newly registered Pr
 
 from __future__ import annotations
 
+import hashlib
 import uuid
 from collections.abc import Sequence
 from datetime import UTC, datetime
@@ -14,13 +15,22 @@ from datetime import UTC, datetime
 import asyncpg
 
 from squadops.cycles.models import (
+    DevelopmentConfigurationNotFoundError,
+    InheritedBaselineNotFoundError,
     Project,
     ProjectIdTakenError,
     ProjectNotFoundError,
     ProjectRegistryReadOnlyError,
+    ProjectStateConflictError,
     RegistrationKeyConflictError,
+    StaleConfigurationRevisionError,
 )
 from squadops.ports.cycles.project_registry import ProjectRegistryPort
+from squadops.projects.baseline import InheritedBaseline, parse_baseline
+from squadops.projects.development_configuration import (
+    DevelopmentConfiguration,
+    parse_configuration,
+)
 from squadops.projects.models import (
     ProjectLifecycleStatus,
     ProjectOwnership,
@@ -32,7 +42,8 @@ from squadops.projects.registration import ProjectRegistration
 _COLUMNS = (
     "project_id, name, description, tags, prd_path, lifecycle_status, record_version, "
     "repo_uri, base_ref, contribution_mode, repository_root, ownership, "
-    "development_configuration_revision, created_at"
+    "development_configuration_revision, created_at, development_baseline_commit, "
+    "integrated_upstream_commit, validation_diagnostic"
 )
 
 
@@ -67,6 +78,9 @@ def _row_to_project(row: asyncpg.Record) -> Project:
             else None
         ),
         development_configuration_revision=row["development_configuration_revision"],
+        development_baseline_commit=row["development_baseline_commit"],
+        integrated_upstream_commit=row["integrated_upstream_commit"],
+        validation_diagnostic=row["validation_diagnostic"],
     )
 
 
@@ -177,6 +191,338 @@ class PostgresProjectRegistry(ProjectRegistryPort):
                 registration.project_id,
             )
         return _row_to_project(row), False
+
+    # --- validation (E.4.2, §B.6) ---
+
+    async def record_validation(
+        self,
+        project_id: str,
+        *,
+        commit: str | None,
+        diagnostic: str | None,
+        actor: str,
+        idempotency_key: str,
+    ) -> tuple[Project, bool]:
+        """One transaction, under the Project's row lock: the status, the commits or the
+        diagnostic, the next record version, and the event. A key that recorded this Project's
+        validation before replays it, whatever this attempt found."""
+        if (commit is None) == (diagnostic is None):
+            raise ValueError("a validation records a commit or a diagnostic, never both")
+        if not self._writable:
+            raise ProjectRegistryReadOnlyError(
+                "the project registry's writes are gated off (postgres_read_only)"
+            )
+        detail = {"commit": commit} if commit else {"diagnostic": diagnostic}
+        digest = hashlib.sha256(f"validate:{project_id}".encode()).hexdigest()
+        async with self._pool.acquire() as conn, conn.transaction():
+            row = await conn.fetchrow(
+                "SELECT lifecycle_status, record_version FROM project_records "
+                "WHERE project_id = $1 FOR UPDATE",
+                project_id,
+            )
+            if row is None:
+                raise ProjectNotFoundError(f"Project not found: {project_id}")
+            prior = await conn.fetchrow(
+                "SELECT project_id, request_hash FROM project_record_events "
+                "WHERE idempotency_key = $1",
+                idempotency_key,
+            )
+            if prior is not None:
+                if prior["request_hash"] != digest:
+                    raise RegistrationKeyConflictError(
+                        f"idempotency key {idempotency_key!r} recorded another operation"
+                    )
+                return await self._read(conn, project_id), True
+            status = ProjectLifecycleStatus(row["lifecycle_status"])
+            if status not in (
+                ProjectLifecycleStatus.REGISTERING,
+                ProjectLifecycleStatus.FAILED_REGISTRATION,
+            ):
+                raise ProjectStateConflictError(
+                    f"Project {project_id} is {status.value}: only a registering or failed "
+                    "registration is validated (re-validation against drift is E.4.4's)"
+                )
+            version = row["record_version"] + 1
+            now = datetime.now(UTC)
+            await conn.execute(
+                "UPDATE project_records SET lifecycle_status = $2, record_version = $3, "
+                "development_baseline_commit = COALESCE($4, development_baseline_commit), "
+                "integrated_upstream_commit = COALESCE($4, integrated_upstream_commit), "
+                "validation_diagnostic = $5, updated_at = $6 WHERE project_id = $1",
+                project_id,
+                (
+                    ProjectLifecycleStatus.READY
+                    if commit
+                    else ProjectLifecycleStatus.FAILED_REGISTRATION
+                ).value,
+                version,
+                commit,
+                diagnostic,
+                now,
+            )
+            await conn.execute(
+                "INSERT INTO project_record_events (event_id, project_id, operation, "
+                "record_version, actor, idempotency_key, request_hash, detail, recorded_at) "
+                "VALUES ($1, $2, 'validate', $3, $4, $5, $6, $7, $8)",
+                _event_id(),
+                project_id,
+                version,
+                actor,
+                idempotency_key,
+                digest,
+                {"from": status.value, **detail},
+                now,
+            )
+            return await self._read(conn, project_id), False
+
+    # --- the Development Configuration (§B.5, E.4.2) ---
+
+    async def record_development_configuration(
+        self,
+        configuration: DevelopmentConfiguration,
+        *,
+        actor: str,
+        idempotency_key: str,
+        request_hash: str,
+    ) -> tuple[DevelopmentConfiguration, bool]:
+        """One transaction, under the Project's row lock: the revision's row, the Project's
+        current revision and record version, and the event."""
+        if not self._writable:
+            raise ProjectRegistryReadOnlyError(
+                "the project registry's writes are gated off (postgres_read_only)"
+            )
+        project_id = configuration.project_id
+        async with self._pool.acquire() as conn, conn.transaction():
+            row = await conn.fetchrow(
+                "SELECT record_version, development_configuration_revision FROM project_records "
+                "WHERE project_id = $1 FOR UPDATE",
+                project_id,
+            )
+            if row is None:
+                raise ProjectNotFoundError(f"Project not found: {project_id}")
+            prior = await conn.fetchrow(
+                "SELECT project_id, request_hash, detail FROM project_record_events "
+                "WHERE idempotency_key = $1",
+                idempotency_key,
+            )
+            if prior is not None:
+                if prior["request_hash"] != request_hash or prior["project_id"] != project_id:
+                    raise RegistrationKeyConflictError(
+                        f"idempotency key {idempotency_key!r} recorded different content"
+                    )
+                return await self._configuration(
+                    conn, project_id, prior["detail"]["revision"]
+                ), True
+            current = row["development_configuration_revision"] or 0
+            if configuration.revision != current + 1:
+                raise StaleConfigurationRevisionError(
+                    f"Project {project_id} is at Development Configuration revision {current}; "
+                    f"revision {configuration.revision} doesn't follow it"
+                )
+            now = datetime.now(UTC)
+            version = row["record_version"] + 1
+            await conn.execute(
+                "INSERT INTO project_development_configurations (project_id, revision, document, "
+                "validated_at_commit, recorded_by, recorded_at) VALUES ($1, $2, $3, $4, $5, $6)",
+                project_id,
+                configuration.revision,
+                configuration.to_document(),
+                configuration.validated_at_commit,
+                actor,
+                now,
+            )
+            await conn.execute(
+                "UPDATE project_records SET development_configuration_revision = $2, "
+                "record_version = $3, updated_at = $4 WHERE project_id = $1",
+                project_id,
+                configuration.revision,
+                version,
+                now,
+            )
+            await conn.execute(
+                "INSERT INTO project_record_events (event_id, project_id, operation, "
+                "record_version, actor, idempotency_key, request_hash, detail, recorded_at) "
+                "VALUES ($1, $2, 'configure', $3, $4, $5, $6, $7, $8)",
+                _event_id(),
+                project_id,
+                version,
+                actor,
+                idempotency_key,
+                request_hash,
+                {
+                    "revision": configuration.revision,
+                    "at_commit": configuration.validated_at_commit,
+                },
+                now,
+            )
+        return configuration, False
+
+    async def get_development_configuration(
+        self, project_id: str, revision: int | None = None
+    ) -> DevelopmentConfiguration:
+        async with self._pool.acquire() as conn:
+            if revision is None:
+                revision = await conn.fetchval(
+                    "SELECT development_configuration_revision FROM project_records "
+                    "WHERE project_id = $1",
+                    project_id,
+                )
+                if revision is None:
+                    raise DevelopmentConfigurationNotFoundError(
+                        f"Project {project_id} has no Development Configuration"
+                    )
+            return await self._configuration(conn, project_id, revision)
+
+    async def _configuration(
+        self, conn, project_id: str, revision: int
+    ) -> DevelopmentConfiguration:
+        document = await conn.fetchval(
+            "SELECT document FROM project_development_configurations "
+            "WHERE project_id = $1 AND revision = $2",
+            project_id,
+            revision,
+        )
+        if document is None:
+            raise DevelopmentConfigurationNotFoundError(
+                f"Project {project_id} has no Development Configuration revision {revision}"
+            )
+        return parse_configuration(document)
+
+    # --- source mappings and the inherited baseline (contract 3, FR-20; E.4.2) ---
+
+    async def record_source_mapping(self, mapping) -> None:
+        if not self._writable:
+            raise ProjectRegistryReadOnlyError(
+                "the project registry's writes are gated off (postgres_read_only)"
+            )
+        async with self._pool.acquire() as conn:
+            await conn.execute(
+                "INSERT INTO project_source_mappings (project_id, workspace_id, direction, commit, "
+                "sandbox_revision_id, tree_identity, cycle_id, campaign_id, recorded_at) "
+                "VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) ON CONFLICT DO NOTHING",
+                mapping.project_id,
+                mapping.workspace_id,
+                mapping.direction,
+                mapping.commit,
+                mapping.sandbox_revision_id,
+                mapping.tree_identity,
+                mapping.cycle_id,
+                mapping.campaign_id,
+                datetime.now(UTC),
+            )
+
+    async def source_mappings(self, project_id: str, *, workspace_id: str | None = None):
+        # deferred (cycle): workspaces imports this module's port at load
+        from squadops.projects.workspaces import SourceMapping
+
+        async with self._pool.acquire() as conn:
+            rows = await conn.fetch(
+                "SELECT project_id, workspace_id, direction, commit, sandbox_revision_id, "
+                "tree_identity, cycle_id, campaign_id FROM project_source_mappings "
+                "WHERE project_id = $1 AND ($2::text IS NULL OR workspace_id = $2) "
+                "ORDER BY recorded_at, direction DESC",
+                project_id,
+                workspace_id,
+            )
+        return [SourceMapping(**dict(row)) for row in rows]
+
+    async def record_inherited_baseline(
+        self,
+        baseline: InheritedBaseline,
+        *,
+        actor: str,
+        idempotency_key: str,
+        request_hash: str,
+    ) -> tuple[InheritedBaseline, bool]:
+        if not self._writable:
+            raise ProjectRegistryReadOnlyError(
+                "the project registry's writes are gated off (postgres_read_only)"
+            )
+        project_id = baseline.project_id
+        async with self._pool.acquire() as conn, conn.transaction():
+            row = await conn.fetchrow(
+                "SELECT record_version FROM project_records WHERE project_id = $1 FOR UPDATE",
+                project_id,
+            )
+            if row is None:
+                raise ProjectNotFoundError(f"Project not found: {project_id}")
+            prior = await conn.fetchrow(
+                "SELECT project_id, request_hash, detail FROM project_record_events "
+                "WHERE idempotency_key = $1",
+                idempotency_key,
+            )
+            if prior is not None:
+                if prior["request_hash"] != request_hash or prior["project_id"] != project_id:
+                    raise RegistrationKeyConflictError(
+                        f"idempotency key {idempotency_key!r} recorded different content"
+                    )
+                document = await conn.fetchval(
+                    "SELECT document FROM project_inherited_baselines "
+                    "WHERE project_id = $1 AND captured_seq = $2",
+                    project_id,
+                    prior["detail"]["captured_seq"],
+                )
+                return parse_baseline(document), True
+            seq = 1 + (
+                await conn.fetchval(
+                    "SELECT COALESCE(MAX(captured_seq), 0) FROM project_inherited_baselines "
+                    "WHERE project_id = $1",
+                    project_id,
+                )
+            )
+            now = datetime.now(UTC)
+            version = row["record_version"] + 1
+            await conn.execute(
+                "INSERT INTO project_inherited_baselines (project_id, captured_seq, commit, "
+                "development_configuration_revision, document, evidence, captured_by, "
+                "captured_at) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)",
+                project_id,
+                seq,
+                baseline.commit,
+                baseline.development_configuration_revision,
+                baseline.to_document(),
+                baseline.evidence(),
+                actor,
+                now,
+            )
+            await conn.execute(
+                "UPDATE project_records SET record_version = $2, updated_at = $3 "
+                "WHERE project_id = $1",
+                project_id,
+                version,
+                now,
+            )
+            await conn.execute(
+                "INSERT INTO project_record_events (event_id, project_id, operation, "
+                "record_version, actor, idempotency_key, request_hash, detail, recorded_at) "
+                "VALUES ($1, $2, 'baseline', $3, $4, $5, $6, $7, $8)",
+                _event_id(),
+                project_id,
+                version,
+                actor,
+                idempotency_key,
+                request_hash,
+                {"captured_seq": seq, "commit": baseline.commit, "failing": baseline.failing()},
+                now,
+            )
+        return baseline, False
+
+    async def get_inherited_baseline(self, project_id: str) -> InheritedBaseline:
+        async with self._pool.acquire() as conn:
+            document = await conn.fetchval(
+                "SELECT document FROM project_inherited_baselines WHERE project_id = $1 "
+                "ORDER BY captured_seq DESC LIMIT 1",
+                project_id,
+            )
+        if document is None:
+            raise InheritedBaselineNotFoundError(f"Project {project_id} has no inherited baseline")
+        return parse_baseline(document)
+
+    async def _read(self, conn, project_id: str) -> Project:
+        row = await conn.fetchrow(
+            f"SELECT {_COLUMNS} FROM project_records WHERE project_id = $1", project_id
+        )
+        return _row_to_project(row)
 
     # --- the cutover (FR-03) ---
 
