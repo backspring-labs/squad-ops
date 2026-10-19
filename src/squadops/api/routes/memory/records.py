@@ -55,6 +55,7 @@ from squadops.auth.models import Identity, scopes_for_roles
 from squadops.capabilities.context_assembly import authoring_seam_of
 from squadops.comms.models import SessionNotFoundError
 from squadops.memory.build_report import exposure_builds
+from squadops.memory.indicators import BuildRow
 from squadops.memory.record_uses import NO_EFFECT_MEASURED, chat_uses, task_uses
 from squadops.memory.records import (
     InstructionApplicability,
@@ -333,6 +334,21 @@ async def get_memory_record(
     return _response(record, actor, await _deleted_sessions(request, [record]))
 
 
+def _build(row: BuildRow) -> MemoryRecordBuild:
+    """One build the record's dispatches fed, with its indicators, or none when its evidence is
+    missing (§0.10: never a failure)."""
+    i = row.indicators
+    return MemoryRecordBuild(
+        run_id=row.run_id,
+        exposures=list(row.exposures),
+        verdict=i.verdict if i else None,
+        failed_rounds=i.failed_rounds if i else None,
+        refunded_rounds=i.refunded_rounds if i else None,
+        rounds_to_green=i.rounds_to_green if i else None,
+        accepted=i.accepted if i else None,
+    )
+
+
 @router.get("/{record_id}/uses")
 async def memory_record_uses(
     request: Request,
@@ -367,24 +383,7 @@ async def memory_record_uses(
             for c in chats
         ],
         others_chat_turns=others,
-        builds=[
-            MemoryRecordBuild(
-                run_id=row.run_id,
-                exposures=list(row.exposures),
-                **(
-                    {
-                        "verdict": row.indicators.verdict,
-                        "failed_rounds": row.indicators.failed_rounds,
-                        "refunded_rounds": row.indicators.refunded_rounds,
-                        "rounds_to_green": row.indicators.rounds_to_green,
-                        "accepted": row.indicators.accepted,
-                    }
-                    if row.indicators is not None
-                    else {}
-                ),
-            )
-            for row in report.builds
-        ],
+        builds=[_build(row) for row in report.builds],
         unbuilt={state.value: list(ids) for state, ids in report.unbuilt.items()},
         effect=NO_EFFECT_MEASURED,
     )

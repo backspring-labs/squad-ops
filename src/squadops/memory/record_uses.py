@@ -90,7 +90,7 @@ def task_uses(record_id: str, exposures: Iterable[Exposure]) -> list[TaskUse]:
                     section=section,
                     revision=str(entry.get("revision", "")),
                     disposition=str(held.get("disposition", "")),
-                    held=None if supplied else str(unresolved.get("why", "")),
+                    held=None if supplied is not None else str((unresolved or {}).get("why", "")),
                 )
             )
     return uses
