@@ -1965,6 +1965,7 @@ class QATestHandler(_CycleTaskHandler):
                 val_plan,
                 sources,
                 capability_name,
+                inputs,
             )
         return _QAPrompt(
             user_prompt=user_prompt,
@@ -2440,6 +2441,7 @@ class QATestHandler(_CycleTaskHandler):
         val_plan: str | None,
         sources: dict[str, str],
         capability_name: str,
+        inputs: dict[str, Any] | None = None,
     ) -> tuple[Any, str]:
         """Build the QA prompt via renderer or fallback. Returns (rendered, user_prompt)."""
         rendered = None
@@ -2458,6 +2460,11 @@ class QATestHandler(_CycleTaskHandler):
                     source_parts.append(f"\n### {path}\n```{lang}\n{code}\n```\n")
                 variables["source_files"] = "\n".join(source_parts)
             variables["prior_outputs"] = self._format_prior_outputs(prior_outputs)
+            # SIP-0110 §0.9 (#2509): the lessons approved for this task, in a slot of their own, as
+            # the other build-authoring seams show them. None supplied renders the prompt unchanged.
+            lessons = await cross_cycle_lessons_section(renderer, inputs or {})
+            if lessons:
+                variables["cross_cycle_lessons_section"] = lessons
             rendered = await renderer.render(
                 "request.qa_test.test_validate",
                 variables,
