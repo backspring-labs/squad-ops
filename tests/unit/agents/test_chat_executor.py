@@ -383,3 +383,24 @@ class TestTheTurnsMemory:
         await ChatAgentExecutor(ports=ports, role_id="comms").execute(ctx, _make_event_queue())
 
         assert captured[0].content == "You are a test agent."
+
+    async def test_a_context_the_agent_couldnt_render_is_said_in_the_reply(self):
+        """The second read of PR #2517. Bug caught: a render failure answered silently, while the
+        runtime's exposure says the records were supplied."""
+        from adapters.comms.chat_executor import ChatAgentExecutor
+        from squadops.memory.chat import RENDER_FAILURE_NOTICE
+
+        class Broken:
+            async def render(self, template_id, variables):
+                raise RuntimeError("asset missing")
+
+        ports = _make_ports_bundle(stream_chunks=["the answer"])
+        ports.request_renderer = Broken()
+        ctx = _make_context()
+        ctx.message.metadata = {"memory_context": {"project_id": None, "sections": []}}
+        queue = _make_event_queue()
+
+        await ChatAgentExecutor(ports=ports, role_id="comms").execute(ctx, queue)
+
+        final = queue.events[-1].status.message.parts[0].root.text
+        assert final == RENDER_FAILURE_NOTICE + "the answer"

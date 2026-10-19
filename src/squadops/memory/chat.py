@@ -355,6 +355,26 @@ def proposed_capture(reply: str) -> tuple[ProposedCapture | None, str]:
 _CAPTURE_SCOPES = frozenset({RecordScope.USER, RecordScope.PROJECT})
 
 
+#: The reply's first line when the agent couldn't render the context it was handed (the second read of PR
+#: #2517): the runtime's exposure records what it handed, and the reply says the agent didn't show it.
+RENDER_FAILURE_NOTICE = (
+    "_Memory: your records couldn't be shown to the agent for this reply, so it was answered "
+    "without them._\n\n"
+)
+
+
+def used_line(handed: Mapping[str, Any]) -> str:
+    """The reply's closing line naming the records its context supplied, by id and revision
+    (§A.3.11: "a short line naming the records it used"), or ``""`` when it supplied none."""
+    used = [
+        f"{entry['record_id']}@{entry['revision']}"
+        for section in handed.get("sections") or ()
+        for entry in section.get("entries") or ()
+        if "record_id" in entry
+    ]
+    return f"\n\n_Memory used: {', '.join(used)}._" if used else ""
+
+
 def failure_notice(unavailable: Iterable[str]) -> str:
     """The reply's first line when a section of its context couldn't be read (§3.5: disclosed in the
     reply, never swallowed)."""

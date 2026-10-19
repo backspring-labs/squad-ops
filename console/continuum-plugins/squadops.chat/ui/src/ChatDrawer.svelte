@@ -88,7 +88,8 @@
       if (resp.ok) {
         messages = await resp.json();
         sessionId = sid;
-        sessionProject = sessions.find((s) => s.session_id === sid)?.project_id ?? sessionProject;
+        const listed = sessions.find((s) => s.session_id === sid);
+        if (listed) sessionProject = listed.project_id ?? null;
         scrollToBottom();
       }
     } catch (e) {
@@ -128,9 +129,13 @@
     return `${c.kind}:${c.scope}`;
   }
 
+  // The proposal's own kind and scope when this session offers them; else the same kind, said so;
+  // else nothing chosen, so the person picks: a proposal is never quietly made something else.
   function openCard({ text, sourceMessageId, choices, kind, scope }) {
-    const proposed = choices.find((c) => c.kind === kind && c.scope === scope) || choices[0];
-    card = { text, sourceMessageId, choices, choice: proposed ? choiceKey(proposed) : null };
+    const exact = choices.find((c) => c.kind === kind && c.scope === scope);
+    const sameKind = exact || choices.find((c) => c.kind === kind);
+    const changed = exact ? null : `Proposed as a ${scope} ${kind}, which this conversation doesn't offer you.`;
+    card = { text, sourceMessageId, choices, choice: sameKind ? choiceKey(sameKind) : null, changed };
   }
 
   // A console action: keep a message, through the same card and the same confirmation.
@@ -172,6 +177,7 @@
   }
 
   async function selectSession(sid) {
+    card = null; // a card belongs to the conversation its turn came from
     if (sid === '') {
       startNewSession();
     } else {
@@ -235,6 +241,7 @@
       }
 
       // Parse SSE stream via ReadableStream (P4-RC2)
+      let streamFailed = false;
       const reader = resp.body.getReader();
       const decoder = new TextDecoder();
       let buffer = '';
@@ -255,6 +262,7 @@
             const evt = JSON.parse(jsonStr);
             if (evt.error) {
               error = evt.error;
+              streamFailed = true;
             } else if (evt.capture) {
               openCard({ text: evt.capture.text, sourceMessageId: evt.capture.source_message_id,
                          choices: evt.capture.choices, kind: evt.capture.kind,
@@ -278,8 +286,12 @@
       // Refresh session list if this was a new session, and re-read the turn as stored, so each
       // message carries its id (a capture names the turn it came from)
       await loadSessions();
-      streamingText = '';
-      if (sessionId) await loadSessionMessages(sessionId);
+      // A reply that failed partway isn't stored: keep what streamed (its notice included) on
+      // screen, where the finally below puts it, rather than re-reading a transcript without it.
+      if (!streamFailed && sessionId) {
+        streamingText = '';
+        await loadSessionMessages(sessionId);
+      }
     } catch (e) {
       if (e.name === 'AbortError') {
         // User cancelled — not an error
@@ -423,6 +435,7 @@
   {#if card}
     <div class="capture-card">
       <div class="capture-title">Keep this?</div>
+      {#if card.changed}<div class="hint">{card.changed}</div>{/if}
       <textarea bind:value={card.text} rows="2"></textarea>
       {#each card.choices as c}
         <label class="capture-choice">

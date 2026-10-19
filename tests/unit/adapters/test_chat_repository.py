@@ -187,6 +187,16 @@ class TestChatRepositoryMessages:
         assert "INSERT INTO chat_messages" in sql
         assert result.message_id == msg.message_id
 
+    async def test_a_message_for_a_deleted_session_is_refused(self):
+        """Q29 (#2180). Bug caught: a reply that finishes streaming after its session was deleted
+        stored beside the messages the delete removed."""
+        pool, conn = _make_pool()
+        conn.execute.return_value = "INSERT 0 0"
+
+        with pytest.raises(SessionNotFoundError):
+            await ChatRepository(pool=pool).store_message(_make_message())
+        assert "deleted_at IS NULL" in conn.execute.call_args[0][0]
+
     async def test_get_session_messages_returns_ordered(self):
         """get_session_messages() returns messages in creation order."""
         pool, conn = _make_pool()

@@ -1827,6 +1827,23 @@ and §A.8 Q29's deletion.
 - **A failed save's reply is stored best-effort:** the store that failed the save may fail the reply too, and the error
   answer still says it.
 
+- **The reply names the records it used** (§A.3.11): a closing line, `Memory used: <id>@<revision>, …`, when the turn's
+  context supplied any.
+
+**What the second read changed (2026-10-19, a fresh reader on PR #2517, ruled by the supervisor under the owner's grant
+of 2026-10-19).** The reader found no authorization hole on any path: the turn's context, the stream, the capture
+routes, the records routes, the provenance link and the deleted-session marks.
+- **A failed save answers with the request id, never the exception's text** (#1976), and its stored reply says only what
+  failed. It had carried the store's error, which can name a connection string, into the 503 and the transcript.
+- **A deleted session takes no message.** A reply that finished streaming after its session was deleted was stored
+  beside the messages the delete removed. The insert is now conditional on the session not being deleted.
+- **A context the agent couldn't render is said in the reply.** The runtime's exposure records what it handed. When
+  the agent can't show it, its reply opens by saying so.
+- **One unreadable record fails the context, not the turn.** Its sections are `failed` and the reply says so, where it
+  had been a 500 after the person's message was stored.
+- **The console** keeps a reply that failed partway on screen with its notice. It shows the selected session's own
+  binding, drops a card when the conversation changes, and never quietly turns a proposal into another kind or scope.
+
 **Stage B (#2180, still open):** a task instruction (naming an existing cycle) and a project instruction (with
 `memory:instruct`) captured from chat, delivered through #2178's and #2179's paths (T1 and T3 through chat).
 

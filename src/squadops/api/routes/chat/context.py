@@ -76,17 +76,21 @@ class ChatContextAssembly(ContextAssemblyPort):
             ),
             session=turn.session_id,
         )
-        sections, handed = chat_context(
-            turn=turn,
-            project_id=project_id,
-            reads={
-                SectionKind.PROJECT_INSTRUCTIONS: project,
-                SectionKind.TASK_INSTRUCTIONS: project,
-                SectionKind.PREFERENCES: owned,
-                SectionKind.NOTES: notes,
-            },
-            limits=self._limits,
-        )
+        try:
+            sections, handed = chat_context(
+                turn=turn,
+                project_id=project_id,
+                reads={
+                    SectionKind.PROJECT_INSTRUCTIONS: project,
+                    SectionKind.TASK_INSTRUCTIONS: project,
+                    SectionKind.PREFERENCES: owned,
+                    SectionKind.NOTES: notes,
+                },
+                limits=self._limits,
+            )
+        except Exception:  # noqa: BLE001 — a record the rules can't read fails the context, not the turn
+            logger.warning("chat_context_unassembled session=%s", turn.session_id, exc_info=True)
+            return _all_failed(request, project_id)
         return ContextBundle(request, sections, complete=True, chat=handed)
 
     @staticmethod
@@ -110,3 +114,14 @@ class ChatContextAssembly(ContextAssemblyPort):
                 exposure.message_id,
                 exc_info=True,
             )
+
+
+def _all_failed(request: ContextRequest, project_id: str | None) -> ContextBundle:
+    """A context that couldn't be assembled: every section ``failed``, and the reply says so."""
+    kinds = (*CHAT_SECTIONS,)
+    sections = (
+        *(Section(kind, Need.OPTIONAL, Disposition.FAILED) for kind in kinds),
+        Section(SectionKind.LESSONS, Need.OPTIONAL, Disposition.NOT_APPLICABLE),
+    )
+    handed = {"project_id": project_id, "sections": [], "unavailable": [k.value for k in kinds]}
+    return ContextBundle(request, sections, complete=True, chat=handed)

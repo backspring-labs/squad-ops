@@ -133,17 +133,24 @@ class ChatRepository:
         """Persist a chat message.
 
         Postgres write is required (P3-RC2). Failure here is a real error
-        that must be surfaced.
+        that must be surfaced. A session its owner deleted takes no message (Q29): a reply that
+        finishes after the delete is refused, not stored beside the removed ones (#2180).
 
         Returns:
             The persisted message.
+
+        Raises:
+            SessionNotFoundError: If the session does not exist or was deleted.
         """
         async with self._pool.acquire() as conn:
-            await conn.execute(
+            result = await conn.execute(
                 """
                 INSERT INTO chat_messages
                     (message_id, session_id, role, content, created_at, metadata)
-                VALUES ($1, $2, $3, $4, $5, $6)
+                SELECT $1, $2, $3, $4, $5, $6
+                WHERE EXISTS (
+                    SELECT 1 FROM chat_sessions WHERE session_id = $2 AND deleted_at IS NULL
+                )
                 """,
                 message.message_id,
                 message.session_id,
@@ -152,6 +159,8 @@ class ChatRepository:
                 message.created_at,
                 message.metadata,
             )
+        if result == "INSERT 0 0":
+            raise SessionNotFoundError(f"Session not found: {message.session_id}")
         return message
 
     async def get_session_messages(

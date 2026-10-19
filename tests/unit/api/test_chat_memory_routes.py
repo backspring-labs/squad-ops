@@ -69,6 +69,9 @@ class _Chats:
         self.messages = [m for m in self.messages if m.session_id != session_id]
 
     async def store_message(self, message):
+        session = self.sessions.get(message.session_id)
+        if session is None or session.deleted_at is not None:
+            raise SessionNotFoundError(message.session_id)
         self.messages.append(message)
         return message
 
@@ -210,6 +213,9 @@ def test_one_project_note_reaches_two_agents_chats_as_one_revision_and_no_task(w
     assert {next(x for x in e.sections if x.kind is SectionKind.NOTES).supplied[0].record_id
             for e in exposures} == {note["record_id"]}  # fmt: skip
     assert not _task_receives(world.records, "join returns 409 when full")
+    # §A.3.11: each reply names the records its context supplied
+    replies = [m.content for m in world.chats.messages if m.role == "assistant"]
+    assert replies == [f"Noted.\n\n_Memory used: {note['record_id']}@1._"] * 2
 
 
 @pytest.mark.parametrize(
@@ -275,7 +281,7 @@ def test_a_save_that_fails_is_said_in_the_reply_answered_as_an_error_and_logged(
     turn = world.chats.messages[0]
 
     async def down(record):
-        raise ConnectionError("records down")
+        raise ConnectionError("postgresql://svc:hunter2@db/squadops")
 
     world.records.create = down
     with caplog.at_level(logging.WARNING):
@@ -288,6 +294,8 @@ def test_a_save_that_fails_is_said_in_the_reply_answered_as_an_error_and_logged(
     assert failed.json()["detail"]["error"]["code"] == "MEMORY_SAVE_FAILED"
     assert world.chats.messages[-1].content.startswith("Not saved: the note could not be stored")
     assert "chat_capture_failed" in caplog.text
+    # #1976 (the second read of PR #2517): the answer and the transcript never carry the error's text
+    assert "hunter2" not in failed.text and "hunter2" not in world.chats.messages[-1].content
 
 
 def test_a_retrieval_that_fails_is_failed_in_the_exposure_and_said_in_the_reply(world, caplog):
@@ -434,3 +442,18 @@ def test_a_capture_the_card_didnt_offer_is_refused_whoever_asks(world, role, bou
         f"this session offers you no {scope} {kind}"
     )
     assert world.records._records == {}
+
+
+def test_a_record_the_rules_cant_read_fails_the_context_and_the_turn_still_answers(world, caplog):
+    """The second read of PR #2517. Bug caught: one malformed stored record turning every turn of
+    its owner into a 500 after their message was already stored."""
+    from squadops.memory.records import MemoryRecord
+
+    world.records._records["mrec_bad"] = MemoryRecord("mrec_bad", "preference", "user", None, "ada", ())
+
+    with caplog.at_level(logging.WARNING):
+        opened, events = world.say("hello")
+
+    assert opened.status_code == 200
+    assert events[0]["text"].startswith("_Memory: your project instructions, task instructions,")
+    assert "chat_context_unassembled" in caplog.text

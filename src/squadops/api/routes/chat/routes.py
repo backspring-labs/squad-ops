@@ -20,7 +20,7 @@ from datetime import UTC, datetime
 from fastapi import APIRouter, Request, Response
 from fastapi.responses import StreamingResponse
 
-from squadops.api.errors import http_error
+from squadops.api.errors import http_error, server_error
 from squadops.api.routes.chat.context import ChatContextAssembly
 from squadops.api.routes.chat.dtos import (
     CaptureChoiceDTO,
@@ -55,6 +55,7 @@ from squadops.memory.chat import (
     capture_choices,
     failure_notice,
     proposed_capture,
+    used_line,
 )
 from squadops.memory.context import ChatTurn, ContextRequest, ProjectBound, Unbound
 from squadops.memory.records import (
@@ -230,6 +231,11 @@ async def send_chat_message(
                 collected_chunks.append(chunk)
                 # SSE format: data line + blank line
                 yield f"data: {json.dumps({'text': chunk, 'session_id': session_id})}\n\n"
+            used = used_line(memory) if memory is not None else ""
+            if used:
+                # §A.3.11: the reply names the records its context supplied.
+                collected_chunks.append(used)
+                yield f"data: {json.dumps({'text': used, 'session_id': session_id})}\n\n"
 
             # Stream complete — persist agent response (P3-RC2: Postgres required). A capture the
             # agent proposed is kept off the stored text and offered to the person; nothing is
@@ -411,15 +417,23 @@ async def confirm_capture(
     except RecordRefused as e:
         raise http_error(422, "VALIDATION_ERROR", str(e)) from e
     except Exception as e:
-        logger.warning(
-            "chat_capture_failed",
-            extra={"session_id": session_id, "kind": choice.kind},
-            exc_info=True,
-        )
+        # #1976: a server failure answers with the request id, never the exception's text, and the
+        # transcript keeps only what failed.
+        logger.warning("chat_capture_failed", extra={"session_id": session_id, "kind": choice.kind})
+        request_id = getattr(request.state, "request_id", None)
         await _reply(
-            request, session_id, f"Not saved: the {choice.kind} could not be stored ({e})."
+            request,
+            session_id,
+            f"Not saved: the {choice.kind} could not be stored (request {request_id}).",
         )
-        raise http_error(503, "MEMORY_SAVE_FAILED", f"the {choice.kind} was not saved: {e}") from e
+        raise server_error(
+            request,
+            f"the {choice.kind} was not saved",
+            e,
+            logger,
+            status=503,
+            code="MEMORY_SAVE_FAILED",
+        ) from e
     where = f"project {choice.project_id}" if choice.project_id else "yours only"
     reply = await _reply(
         request,

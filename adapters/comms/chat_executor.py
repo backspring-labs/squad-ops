@@ -37,7 +37,7 @@ from squadops.comms.chat_history import (
     MEMORY_CONTEXT_KEY,
 )
 from squadops.llm.models import ChatMessage
-from squadops.memory.chat import memory_lines
+from squadops.memory.chat import RENDER_FAILURE_NOTICE, memory_lines
 
 if TYPE_CHECKING:
     from squadops.agents.base import PortsBundle
@@ -83,7 +83,7 @@ class ChatAgentExecutor(AgentExecutor):
         try:
             # 1. Assemble system prompt from role identity, then the turn's memory (#2180)
             system_content = self._get_system_prompt()
-            memory = await self._memory_section(context)
+            memory, unshown = await self._memory_section(context)
             if memory:
                 system_content = f"{system_content}\n\n{memory}"
 
@@ -97,6 +97,8 @@ class ChatAgentExecutor(AgentExecutor):
                 task_id,
                 context_id,
                 event_queue,
+                # A context it was handed and couldn't show is said in the reply (#2180).
+                prefix=RENDER_FAILURE_NOTICE if unshown else "",
             )
             latency_ms = (time.monotonic() - t0) * 1000
 
@@ -171,26 +173,27 @@ class ChatAgentExecutor(AgentExecutor):
         assembled = self._ports.prompt_service.get_system_prompt(self._role_id)
         return assembled.content
 
-    async def _memory_section(self, context: RequestContext) -> str:
-        """The turn's memory context, rendered through ``request.chat_memory_context``, or ``""``
-        when the turn carried none (no records store on the runtime). A render that fails is logged
-        at WARNING and the turn is answered without it."""
+    async def _memory_section(self, context: RequestContext) -> tuple[str, bool]:
+        """The turn's memory context, rendered through ``request.chat_memory_context``, and whether
+        a context was handed and couldn't be shown. ``("", False)`` when the turn carried none (no
+        records store on the runtime). A render that fails is logged at WARNING, and the reply says
+        it was answered without the records."""
         metadata = getattr(context.message, "metadata", None)
         handed = metadata.get(MEMORY_CONTEXT_KEY) if isinstance(metadata, dict) else None
         if not isinstance(handed, dict):
-            return ""
+            return "", False
         renderer = self._ports.request_renderer
         if renderer is None:
             logger.warning("chat_memory_not_rendered: no request renderer")
-            return ""
+            return "", True
         try:
             rendered = await renderer.render(
                 "request.chat_memory_context", {"memory_lines": memory_lines(handed)}
             )
         except Exception:
             logger.warning("chat_memory_not_rendered", exc_info=True)
-            return ""
-        return rendered.content.strip("\n")
+            return "", True
+        return rendered.content.strip("\n"), False
 
     def _history(self, context: RequestContext) -> list[ChatMessage]:
         """The earlier turns the proxy sent with this one (#2175), oldest first. A turn sent
@@ -232,11 +235,19 @@ class ChatAgentExecutor(AgentExecutor):
         task_id: str,
         context_id: str,
         event_queue: EventQueue,
+        prefix: str = "",
     ) -> str:
-        """Stream LLM response and enqueue A2A events. Returns full text."""
+        """Stream LLM response and enqueue A2A events, after ``prefix`` when one is given (a
+        disclosure the reply opens with). Returns full text."""
         collected: list[str] = []
 
-        async for chunk in self._ports.llm.chat_stream(messages):
+        async def chunks():
+            if prefix:
+                yield prefix
+            async for chunk in self._ports.llm.chat_stream(messages):
+                yield chunk
+
+        async for chunk in chunks():
             collected.append(chunk)
             # Emit working status with current chunk
             await event_queue.enqueue_event(
