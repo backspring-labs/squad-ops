@@ -36,6 +36,7 @@ from squadops.cli.commands.profiles import app as profiles_app
 from squadops.cli.commands.projects import app as projects_app
 from squadops.cli.commands.request_profiles import app as request_profiles_app
 from squadops.cli.commands.runs import app as runs_app
+from squadops.cli.commands.scenarios import app as scenarios_app
 
 app = typer.Typer(
     name="squadops",
@@ -106,3 +107,4 @@ app.add_typer(models_app, name="models")  # SIP-0074
 app.add_typer(agent_app, name="agent")  # SIP-0089
 app.add_typer(assignment_app, name="assignment")  # SIP-0089 §2.7
 app.add_typer(lessons_app, name="lessons")  # SIP-0110 §0.6: Cross-Cycle Memory's lessons
+app.add_typer(scenarios_app, name="scenarios")  # SIP-0113 §4.1: held-out scenario suites
