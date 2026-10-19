@@ -246,3 +246,35 @@ async def test_a_contribution_stands_as_the_product_took_it(world, merge, forge_
 
     [standing] = document["contributions"]
     assert (standing["state"], standing["integrated_commit"]) == (expected, merged)
+
+
+async def test_a_reference_reads_the_pinned_commit_never_the_branch_head(world):
+    """Contract 6's resolver. Bugs caught: an instruction read at the branch's head, so a
+    unit's instructions and the commands it pinned come from different commits; a digest that
+    isn't the one discovery recorded for that commit; a missing source passed over silently."""
+    from squadops.projects.references import ReferenceUnresolved, resolve_repository_reference
+    from squadops.projects.source_context import parse_source_context
+
+    repo, clones, _registry = world
+    await clones.sync("prj-tally", str(repo.path), "refs/heads/main")
+    _commit(repo.path, {"CONTRIBUTING.md": "changed upstream\n"}, "outside")
+    await clones.sync("prj-tally", str(repo.path), "refs/heads/main")
+    context = parse_source_context(recorded("project_source_context", "valid"))
+    recorded_source = recorded("development_configuration", "valid")["configuration"][
+        "instruction_sources"
+    ][0]
+
+    reference = await resolve_repository_reference(
+        context.__class__(**{**context.__dict__, "project_id": "prj-tally"}),
+        "CONTRIBUTING.md",
+        repository=clones,
+    )
+
+    assert reference.commit == repo.second_commit
+    assert reference.digest == recorded_source["digest"]
+    with pytest.raises(ReferenceUnresolved, match="AGENTS.md"):
+        await resolve_repository_reference(
+            context.__class__(**{**context.__dict__, "project_id": "prj-tally"}),
+            "AGENTS.md",
+            repository=clones,
+        )

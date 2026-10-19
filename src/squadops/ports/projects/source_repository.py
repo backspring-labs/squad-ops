@@ -89,3 +89,12 @@ class SourceRepositoryPort(ABC):
         Raises:
             SourceUnavailable: The clone doesn't hold one of them.
         """
+
+    @abstractmethod
+    async def file_at(self, project_id: str, commit: str, path: str) -> bytes:
+        """One tracked file's bytes at ``commit`` in the managed clone (contract 6's resolver).
+
+        Raises:
+            SourceUnavailable: The clone doesn't hold ``commit``, the path isn't a tracked file
+                there, or the path isn't a repository-relative one.
+        """
