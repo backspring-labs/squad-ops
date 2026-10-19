@@ -76,7 +76,7 @@ def _cycle(cycle, kind, *, built=True):
     return {"cycle_id": cycle, "kind": kind, "assessment": {}, "revision_forms": runs}
 
 
-def _doc(rows, *, cycles=None, launches=None, state="completed", outcomes=None):
+def _doc(rows, *, cycles=None, launches=None, state="completed", outcomes=None, interventions=None):
     return {
         "campaign": {"state": state},
         "control_log": rows,

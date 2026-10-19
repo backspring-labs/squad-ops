@@ -496,6 +496,7 @@ class CampaignProgress:
         launch: Callable[[], Awaitable[object]],
         evaluate_outcome: Callable[[Cycle], Awaitable[object]] | None,
         outcome_section: Callable[[str, list[str]], Awaitable[dict | None]] | None,
+        intervention_section: Callable[[str, list[ControlLogEntry]], Awaitable[dict]] | None,
         clock: Callable[[], datetime] = lambda: datetime.now(UTC),
     ) -> None:
         self._campaigns = campaigns
@@ -509,6 +510,8 @@ class CampaignProgress:
         # SIP-0113 §4.4 (#2418): what the evidence package carries of the campaign's outcome
         # evaluations. ``None`` where nothing is wired: the package then has no such section.
         self._outcome_section = outcome_section
+        # SIP-0113 §4.3, §4.6 (#2418): the package's intervention ledger, which AOR reads.
+        self._intervention_section = intervention_section
         self._clock = clock
         # #1972: the cycles being heard now. The completion hook and the sweep's re-hearing share
         # this instance, so a cycle the hook is still deciding is not decided a second time
@@ -914,6 +917,7 @@ class CampaignProgress:
             launches,
             records,
             outcomes=await self._outcomes(campaign_id, [r.cycle_id for r in records]),
+            interventions=await self._interventions(campaign_id, log),
         )
         for ref in await self._vault.list_artifacts(
             project_id=campaign.project_id, artifact_type=EVIDENCE_ARTIFACT_TYPE
@@ -954,6 +958,18 @@ class CampaignProgress:
             return await self._outcome_section(campaign_id, cycle_ids)
         except Exception as e:  # noqa: BLE001 — the package says what it could not read
             logger.exception("campaign_outcomes_unreadable", extra={"campaign_id": campaign_id})
+            return {"unreadable": f"{type(e).__name__}: {e}"}
+
+    async def _interventions(self, campaign_id: str, log: list) -> dict | None:
+        """SIP-0113 §4.3 (#2418): the package's intervention section, as ``_outcomes`` is read."""
+        if self._intervention_section is None:
+            return None
+        try:
+            return await self._intervention_section(campaign_id, log)
+        except Exception as e:  # noqa: BLE001 — the package says what it could not read
+            logger.exception(
+                "campaign_interventions_unreadable", extra={"campaign_id": campaign_id}
+            )
             return {"unreadable": f"{type(e).__name__}: {e}"}
 
     async def _store_evidence(

@@ -79,6 +79,7 @@ def package(
     cycles: list[CycleRecords],
     *,
     outcomes: dict | None,
+    interventions: dict | None,
 ) -> dict:
     """The package document, with its identity. ``outcomes`` is SIP-0113's section (version 4,
     #2418): each cycle's scenario results by id, contribution and quality, or ``None`` for a
@@ -106,6 +107,7 @@ def package(
             for c in cycles
         ],
         "outcomes": outcomes,
+        "interventions": interventions,
     }
     return {**body, "identity": package_identity(body)}
 
@@ -167,6 +169,7 @@ def digest(doc: dict) -> str:
         )
     lines += ["", "## Outcomes", ""] + _outcome_lines(doc.get("outcomes"))
     lines += ["", "## Safety guarantees", ""] + _guarantee_lines(doc)
+    lines += ["", "## Autonomy", ""] + _autonomy_lines(doc)
     lines += ["", "## Escalations", ""] + (
         _escalation_lines(c, rows) or ["- the plan-review tier escalated nothing"]
     )
@@ -253,6 +256,22 @@ def _guarantee_lines(doc: dict) -> list[str]:
         lines.append(
             f"- {mark}: {r.guarantee}" + (f" ({'; '.join(r.evidence)})" if r.evidence else "")
         )
+    return lines
+
+
+def _autonomy_lines(doc: dict) -> list[str]:
+    """AOR's four inputs for this campaign (SIP-0113 §4.6, #2418), each with what it was read
+    from. The rate is a reading across campaigns of one work class, never one campaign's."""
+    # deferred (pair): squadops.outcomes imports squadops.campaigns at load
+    from squadops.outcomes.aor import aor_inputs
+
+    read = aor_inputs(doc)
+    counted = {True: "counts as reliable", False: "doesn't count", None: "not yet read"}[
+        read.reliable
+    ]
+    lines = [f"Toward its work class's AOR: {counted}.", ""]
+    marks = {True: "yes", False: "**no**", None: "not read"}
+    lines += [f"- {name}: {marks[value]} ({why})" for name, value, why in read.inputs]
     return lines
 
 

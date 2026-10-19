@@ -78,6 +78,7 @@ async def closed():
         launch=AsyncMock(),
         evaluate_outcome=None,
         outcome_section=None,
+        intervention_section=None,
         clock=lambda: NOW + timedelta(hours=1),
     )
     draft = campaign(CID, policy=policy(calibration_profile="framing"))
@@ -233,6 +234,7 @@ def test_the_identity_is_the_records_and_moves_with_them():
         [],
         [CycleRecords("cyc_1", "calibration", {"verdict": "accepted"}, ())],
         outcomes=None,
+        interventions=None,
     )
     same = package(
         c,
@@ -240,6 +242,7 @@ def test_the_identity_is_the_records_and_moves_with_them():
         [],
         [CycleRecords("cyc_1", "calibration", {"verdict": "accepted"}, ())],
         outcomes=None,
+        interventions=None,
     )
     other = package(
         c,
@@ -247,6 +250,7 @@ def test_the_identity_is_the_records_and_moves_with_them():
         [],
         [CycleRecords("cyc_1", "calibration", {"verdict": "rejected"}, ())],
         outcomes=None,
+        interventions=None,
     )
 
     assert one["identity"] == same["identity"] != other["identity"]
@@ -272,7 +276,12 @@ async def test_an_escalated_campaign_tells_the_owner_what_to_rule():
 
     text = digest(
         package(
-            await registry.get_campaign(CID), await registry.control_log(CID), [], [], outcomes=None
+            await registry.get_campaign(CID),
+            await registry.control_log(CID),
+            [],
+            [],
+            outcomes=None,
+            interventions=None,
         )
     )
 
@@ -404,6 +413,7 @@ async def test_the_package_and_digest_carry_the_campaigns_outcome_readings(close
         launch=AsyncMock(),
         evaluate_outcome=None,
         outcome_section=partial(campaign_outcomes, store),
+        intervention_section=None,
         clock=lambda: NOW + timedelta(hours=2),
     )
 
@@ -416,3 +426,37 @@ async def test_the_package_and_digest_carry_the_campaigns_outcome_readings(close
     assert "- `cyc_cal`: **contributed**; 1 passed" in text
     assert "  - newly passing: capacity" in text
     assert GOAL not in vault.stored[package_id][1].decode() and GOAL not in text
+
+
+async def test_the_package_carries_its_interventions_and_the_digest_aors_four_inputs(closed):
+    """SIP-0113 §4.6 (#2418), entered at ``materialize_package`` with the real intervention
+    section over a memory ledger. Bug caught: the ledger never reaching the package, so AOR's
+    *no intervention above advisory* reads nothing; or a campaign that failed counted toward
+    its class as reliable."""
+    from functools import partial
+
+    from adapters.outcomes.memory_ledger import MemoryInterventionLedger
+    from squadops.outcomes.campaign_package import campaign_interventions
+
+    _, campaigns, vault = closed
+    progress = CampaignProgress(
+        campaigns=campaigns,
+        cycles=MemoryCycleRegistry(),
+        vault=vault,
+        assess=AsyncMock(side_effect=_assessment),
+        launch=AsyncMock(),
+        evaluate_outcome=None,
+        outcome_section=None,
+        intervention_section=partial(campaign_interventions, MemoryInterventionLedger()),
+        clock=lambda: NOW + timedelta(hours=2),
+    )
+
+    _identity, package_id, digest_id = await progress.materialize_package(CID)
+
+    doc = json.loads(vault.stored[package_id][1])
+    text = vault.stored[digest_id][1].decode()
+    assert doc["interventions"] == {"entries": [], "unclassified": [], "orphaned": []}
+    assert "## Autonomy\n\nToward its work class's AOR: doesn't count." in text
+    assert "- reached its objective: **no** (ended failure)" in text
+    assert "- no intervention above advisory: yes (0 intervention(s), all advisory)" in text
+    assert "- every quality baseline held: not read (waits for prediction 4's tolerance" in text

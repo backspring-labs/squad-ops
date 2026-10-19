@@ -152,6 +152,7 @@ async def _world():
         launch=AsyncMock(),
         evaluate_outcome=None,
         outcome_section=None,
+        intervention_section=None,
         clock=lambda: now[0],
     )
     return campaigns, cycles, progress, now, cycle.cycle_id
@@ -362,6 +363,7 @@ async def test_the_digest_asks_while_pending_then_for_a_late_answer_then_shows_i
                 [],
                 [],
                 outcomes=None,
+                interventions=None,
             )
         )
 
@@ -442,6 +444,7 @@ async def test_a_late_answer_follows_its_question_with_one_sentence_end(question
             [],
             [],
             outcomes=None,
+            interventions=None,
         )
     )
 

@@ -137,6 +137,7 @@ class _World:
             launch=self.launches,
             evaluate_outcome=self.evaluations,
             outcome_section=None,
+            intervention_section=None,
             clock=lambda: self.now,
         )
         self.executor = DispatchedFlowExecutor(

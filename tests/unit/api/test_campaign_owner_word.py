@@ -111,6 +111,7 @@ class _World:
             launch=AsyncMock(),
             evaluate_outcome=None,
             outcome_section=None,
+            intervention_section=None,
         )
         app.state.campaign_launch = self.launch
         app.state.authz_port = KeycloakAuthzAdapter()
