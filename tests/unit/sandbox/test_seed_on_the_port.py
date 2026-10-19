@@ -4,6 +4,7 @@ against the port seeds through any of its three implementations and gets the sam
 from __future__ import annotations
 
 import httpx
+import pytest
 
 from adapters.sandbox.http_client import HttpExecutionSandbox
 from squadops.ports.sandbox import ExecutionSandboxPort
@@ -60,3 +61,43 @@ async def test_the_noop_stores_nothing_and_runs_nothing_on_what_it_seeded():
     result = await sandbox.run_declared_command(revision=revision, command=("sh", "run.sh"))
 
     assert (result.ran, result.unavailable_reason) == (False, "execution sandbox not configured")
+
+
+async def test_a_released_workspace_is_gone_through_every_implementation_and_its_journal_is_kept(
+    tmp_path,
+):
+    """#2473. Bug caught: a workspace the runtime API seeded (an inherited baseline, a source-backed
+    run's tree) kept on the sandbox root for ever, or released only through the service and not the
+    HTTP client a deploy calls; a second release failing the consumer's teardown; or the release
+    taking the operation journal with it, which shares the cycle's directory."""
+    root = tmp_path / "cycles"
+    for n, sandbox in enumerate((_service(tmp_path), _client(tmp_path)), start=1):
+        revision = await _seed(sandbox)
+        await sandbox.run_declared_command(revision=revision, command=("sh", "run.sh"))
+
+        await sandbox.release_workspace("cyc_1")
+        await sandbox.release_workspace("cyc_1")
+
+        assert sorted(p.name for p in (root / "cyc_1").iterdir()) == ["evidence"]
+        assert WorkspaceStore(root).latest_revision("cyc_1") is None
+        assert [e["operation"] for e in OperationEvidenceJournal(root).read("cyc_1")] == [
+            "run_declared_command"
+        ] * n
+    await NoOpExecutionSandbox().release_workspace("cyc_1")
+
+
+@pytest.mark.parametrize(("cycle_id", "status"), [("..", 404), ("cyc.1", 400), ("cyc 1", 400)])
+async def test_releasing_a_workspace_by_an_id_outside_the_pattern_is_refused(
+    tmp_path, cycle_id, status
+):
+    """Bug caught: a crafted id deleting outside its workspace: ``..`` normalized away before the
+    route, or an id the store's pattern refuses answered 500, never deleting anything."""
+    from adapters.sandbox.http_client import SandboxServiceError
+
+    service = _service(tmp_path)
+    await _seed(service)
+    with pytest.raises(SandboxServiceError) as refused:
+        await _client(tmp_path).release_workspace(cycle_id)
+
+    assert refused.value.status_code == status
+    assert (tmp_path / "cycles" / "cyc_1").exists()

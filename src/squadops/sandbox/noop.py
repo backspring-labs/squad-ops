@@ -64,6 +64,10 @@ class NoOpExecutionSandbox(ExecutionSandboxPort):
             created_at=created_at,
         )
 
+    async def release_workspace(self, cycle_id: str) -> None:
+        # Nothing was stored, so nothing is held.
+        return None
+
     async def read_workspace_revision(self, revision: WorkspaceRevision) -> RevisionContent:
         # A workspace read isn't a typed operation with a not-run result. The noop's seed stored
         # nothing, so there is nothing to read: it refuses, as a drifted tree is refused.

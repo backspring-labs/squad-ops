@@ -446,3 +446,32 @@ class TestLeasesAndCleanup:
         assert removed == ("cyc_2",)
         assert store.latest_revision("cyc_1") is not None
         assert store.latest_revision("cyc_3") is not None
+
+    @pytest.mark.parametrize("journalled", [False, True])
+    def test_a_sweep_removes_the_stores_entries_and_keeps_the_journal(
+        self, store, tmp_path, journalled
+    ):
+        """#2473. Bug caught: a cleanup or a lease sweep removing the cycle's whole directory, the
+        operation journal's ``evidence/`` with it; or leaving an empty directory behind for every
+        swept cycle, when nothing else was there."""
+        from squadops.sandbox.evidence import OperationEvidenceJournal
+
+        journal = OperationEvidenceJournal(tmp_path / "cycles")
+        for cycle_id in ("cyc_1", "cyc_2"):
+            store.seed(cycle_id, FILES, origin=RevisionOrigin.SCAFFOLD_SEED)
+            if journalled:
+                (tmp_path / "cycles" / cycle_id / "evidence").mkdir()
+                (tmp_path / "cycles" / cycle_id / "evidence" / "operations.jsonl").write_text(
+                    '{"operation": "run_declared_command"}\n'
+                )
+        store.touch_lease("cyc_2", ttl_seconds=10.0, now=1000.0)
+
+        store.cleanup("cyc_1")
+        assert store.cleanup_expired(now=1050.0) == ("cyc_2",)
+        assert store.cleanup_expired(now=1050.0) == ()
+
+        for cycle_id in ("cyc_1", "cyc_2"):
+            assert store.latest_revision(cycle_id) is None
+            kept = [e["operation"] for e in journal.read(cycle_id)]
+            assert kept == (["run_declared_command"] if journalled else [])
+            assert (tmp_path / "cycles" / cycle_id).exists() is journalled

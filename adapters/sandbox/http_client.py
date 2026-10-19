@@ -101,6 +101,12 @@ class HttpExecutionSandbox(ExecutionSandboxPort):
             response = await client.get(f"{self._base_url}{path}", headers=self._headers)
         return self._answer(response)
 
+    async def _delete(self, path: str) -> None:
+        async with self._http_client_factory() as client:
+            response = await client.delete(f"{self._base_url}{path}", headers=self._headers)
+        if response.status_code >= 400:
+            self._answer(response)
+
     @staticmethod
     def _answer(response: httpx.Response) -> dict:
         if response.status_code >= 400:
@@ -134,6 +140,9 @@ class HttpExecutionSandbox(ExecutionSandboxPort):
             {**wire_files(files), **modes, "origin": origin, "created_at": created_at},
         )
         return WorkspaceRevision.from_dict(payload)
+
+    async def release_workspace(self, cycle_id: str) -> None:
+        await self._delete(f"/api/v1/workspaces/{cycle_id}")
 
     # -- typed operations -----------------------------------------------------
 

@@ -92,6 +92,10 @@ class SandboxService(ExecutionSandboxPort):
             cycle_id, files, origin=origin, executable=executable, created_at=created_at
         )
 
+    async def release_workspace(self, cycle_id: str) -> None:
+        """Remove the cycle's workspace and its revisions (#2473); its journal stays."""
+        self._store.cleanup(cycle_id)
+
     def verify_pinned(self, cycle_id: str, revision_id: str) -> bool:
         return self._store.verify_pinned(cycle_id, revision_id)
 
