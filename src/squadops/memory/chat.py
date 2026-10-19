@@ -36,7 +36,8 @@ from squadops.memory.context import (
     Section,
     SectionKind,
 )
-from squadops.memory.lessons import _tokens
+from squadops.memory.exposures import Exposure
+from squadops.memory.lessons import Approval, PatternRevision, _tokens
 from squadops.memory.records import (
     MemoryRecord,
     RecordKind,
@@ -48,6 +49,9 @@ logger = logging.getLogger(__name__)
 
 #: A cycle a turn names, by its id: the cycles whose task instructions the turn sees (§3.5).
 NAMED_CYCLE = re.compile(r"\bcyc_[0-9a-f]{12}\b")
+#: A turn that asks about lessons: it says "lesson", or names one by its pattern or revision (#2181).
+NAMED_LESSON = re.compile(r"\bpat_[0-9a-f]{16}(?:@\d+)?\b")
+_ASKS_ABOUT_LESSONS = re.compile(r"\blessons?\b", re.IGNORECASE)
 
 #: The record sections a chat turn holds, in the order they're filled and shown: the instructions, which
 #: direct the squad's work, before what the person keeps for themselves.
@@ -79,8 +83,65 @@ class Loaded:
     failure: str | None = None
 
 
+@dataclass(frozen=True)
+class LessonsLoaded:
+    """A project's lessons as the lessons API reads them (``memory:read``), with the exposures that
+    supplied them, or why they couldn't be read (#2181)."""
+
+    revisions: tuple[PatternRevision, ...] = ()
+    approvals: tuple[Approval, ...] = ()
+    exposures: tuple[Exposure, ...] = ()
+    failure: str | None = None
+
+
 def named_cycles(text: str) -> frozenset[str]:
     return frozenset(NAMED_CYCLE.findall(text))
+
+
+def asks_about_lessons(text: str) -> bool:
+    return bool(_ASKS_ABOUT_LESSONS.search(text) or NAMED_LESSON.search(text))
+
+
+def _inspected(lessons: LessonsLoaded, *, text: str) -> list[dict[str, Any]]:
+    """The approved lessons in force for the project, each as its record shows it: the text, what it
+    targets and cites, what it is approved for and by whom, the replay check, and how many dispatches
+    were supplied it. A lesson the turn names comes first."""
+    revisions = {r.revision_id: r for r in lessons.revisions}
+    named = set(NAMED_LESSON.findall(text))
+    entries = []
+    for approval in lessons.approvals:
+        revision = revisions.get(approval.revision_id)
+        if revision is None or approval.revoked_at is not None:
+            continue
+        applicability = approval.applicability.to_dict()
+        applicability.pop("project_id", None)
+        entries.append(
+            {
+                "revision_id": revision.revision_id,
+                "target_behavior": revision.target_behavior,
+                "text": revision.text,
+                "applicability": applicability,
+                "cited_observations": list(revision.cited_observations),
+                "approval": {
+                    "approval_id": approval.approval_id,
+                    "approved_by": approval.approved_by,
+                    "approved_at": approval.approved_at.isoformat(),
+                    "ruling": approval.ruling,
+                    "replay_check": dict(approval.replay_check),
+                },
+                "supplied_in": sum(
+                    any(
+                        i.get("revision_id") == revision.revision_id
+                        for i in e.recalled.get("intervention") or ()
+                    )
+                    for e in lessons.exposures
+                ),  # fmt: skip
+            }
+        )
+    return sorted(
+        entries,
+        key=lambda e: not (e["revision_id"] in named or e["revision_id"].split("@")[0] in named),
+    )
 
 
 def _entry(record: MemoryRecord) -> dict[str, Any]:
@@ -139,10 +200,13 @@ def chat_context(
     project_id: str | None,
     reads: Mapping[SectionKind, Loaded],
     limits: ChatLimits,
+    lessons: LessonsLoaded | None = None,
 ) -> tuple[tuple[Section, ...], dict[str, Any]]:
     """The turn's sections and what its agent is handed. Pure: ``reads`` gives each section the records
     its read returned, or its failure. The sections fill in ``CHAT_SECTIONS``'s order from one token
-    budget, each record whole or omitted and listed; notes are also bounded by count (§3.10)."""
+    budget, each record whole or omitted and listed; notes are also bounded by count (§3.10). The
+    project's approved lessons come last, when the turn asked about them (``lessons``), to inspect:
+    the lesson section a task holds is never a chat turn's (#2181)."""
     left = limits.max_tokens
     sections: list[Section] = []
     handed: list[dict[str, Any]] = []
@@ -193,13 +257,63 @@ def chat_context(
                     "omitted": len(omitted),
                 }
             )
-    # §3.5: a lesson never reaches chat.
+    sections.append(
+        _inspected_section(lessons, turn=turn, project_id=project_id, left=left, limits=limits,
+                           handed=handed, unavailable=unavailable)
+    )  # fmt: skip
+    # §3.5: a lesson never reaches chat as guidance.
     sections.append(Section(SectionKind.LESSONS, Need.OPTIONAL, Disposition.NOT_APPLICABLE))
     return tuple(sections), {
         "project_id": project_id,
         "sections": handed,
         "unavailable": unavailable,
     }
+
+
+def _inspected_section(
+    lessons: LessonsLoaded | None,
+    *,
+    turn: ChatTurn,
+    project_id: str | None,
+    left: int,
+    limits: ChatLimits,
+    handed: list[dict[str, Any]],
+    unavailable: list[str],
+) -> Section:
+    """The inspected lessons' section, adding what the agent is handed. Not applicable to an unbound
+    turn, or one that didn't ask (no lessons were read for it)."""
+    kind = SectionKind.INSPECTED_LESSONS
+    if lessons is None or project_id is None:
+        return Section(kind, Need.OPTIONAL, Disposition.NOT_APPLICABLE)
+    if lessons.failure is not None:
+        unavailable.append(kind.value)
+        return Section(kind, Need.OPTIONAL, Disposition.FAILED)
+    supplied: list[dict[str, Any]] = []
+    omitted: list[tuple[RecordRef, str]] = []
+    for entry in _inspected(lessons, text=turn.text):
+        cost = _tokens(json.dumps(entry))
+        if cost > left:
+            omitted.append((RecordRef.of_revision_id(entry["revision_id"]), OMITTED_BY_TOKENS))
+        else:
+            supplied.append(entry)
+            left -= cost
+    if supplied or omitted:
+        handed.append({"kind": kind.value, "entries": supplied, "omitted": len(omitted)})
+    disposition = (
+        Disposition.SUPPLIED
+        if supplied
+        else Disposition.OMITTED_BY_BUDGET
+        if omitted
+        else Disposition.NONE_ELIGIBLE
+    )
+    return Section(
+        kind,
+        Need.OPTIONAL,
+        disposition,
+        supplied=tuple(RecordRef.of_revision_id(e["revision_id"]) for e in supplied),
+        omitted=tuple(omitted),
+        effective_budget=limits.max_tokens,
+    )
 
 
 #: The sections only a project-bound turn holds: an unbound session sees its owner's records only.
@@ -329,6 +443,8 @@ class ProposedCapture:
     text: str
     kind: str
     scope: str
+    #: A conversational claim, kept as a hypothesis: never a lesson's citation (§3.5, T5).
+    suggestion: bool = False
 
 
 def proposed_capture(reply: str) -> tuple[ProposedCapture | None, str]:
@@ -347,7 +463,8 @@ def proposed_capture(reply: str) -> tuple[ProposedCapture | None, str]:
         text, kind = str(doc.get("text") or "").strip(), doc.get("kind")
         scope = doc.get("scope") or RecordScope.USER
         if text and kind in (RecordKind.NOTE, RecordKind.PREFERENCE) and scope in _CAPTURE_SCOPES:
-            proposal = ProposedCapture(text, str(kind), str(scope))
+            suggestion = doc.get("suggestion") is True and kind == RecordKind.NOTE
+            proposal = ProposedCapture(text, str(kind), str(scope), suggestion)
     shown = _CAPTURE_BLOCK.sub("", reply).rstrip()
     return proposal, shown
 
@@ -365,12 +482,14 @@ RENDER_FAILURE_NOTICE = (
 
 def used_line(handed: Mapping[str, Any]) -> str:
     """The reply's closing line naming the records its context supplied, by id and revision
-    (§A.3.11: "a short line naming the records it used"), or ``""`` when it supplied none."""
+    (§A.3.11: "a short line naming the records it used"), an inspected lesson by its revision id
+    (#2181), or ``""`` when it supplied none."""
     used = [
-        f"{entry['record_id']}@{entry['revision']}"
+        entry["revision_id"]
+        if "revision_id" in entry
+        else f"{entry['record_id']}@{entry['revision']}"
         for section in handed.get("sections") or ()
         for entry in section.get("entries") or ()
-        if "record_id" in entry
     ]
     return f"\n\n_Memory used: {', '.join(used)}._" if used else ""
 
@@ -387,6 +506,10 @@ _HEADINGS = {
     SectionKind.TASK_INSTRUCTIONS.value: "Task instructions for the cycles you named",
     SectionKind.PREFERENCES.value: "Your preferences",
     SectionKind.NOTES.value: "Notes",
+    SectionKind.INSPECTED_LESSONS.value: (
+        "The project's approved lessons, to explain when asked (they guide the squad's tasks, "
+        "never this conversation)"
+    ),
 }
 
 
@@ -402,7 +525,10 @@ def memory_lines(handed: Mapping[str, Any]) -> str:
     for section in handed.get("sections") or ():
         lines.append(f"\n{_HEADINGS.get(section['kind'], section['kind'])}:")
         for n, entry in enumerate(section.get("entries") or (), start=1):
-            lines.append(f"{n}. {_label(section['kind'], entry)}{entry['text']}")
+            if section["kind"] == SectionKind.INSPECTED_LESSONS.value:
+                lines.append(f"{n}. {_lesson_line(entry)}")
+            else:
+                lines.append(f"{n}. {_label(section['kind'], entry)}{entry['text']}")
         if section.get("omitted"):
             lines.append(f"({section['omitted']} more left out for space.)")
     if len(lines) == 1:
@@ -414,6 +540,25 @@ def memory_lines(handed: Mapping[str, Any]) -> str:
             f"\nCouldn't be read for this turn: {names}. Say so if it matters to the answer."
         )
     return "\n".join(lines)
+
+
+def _lesson_line(entry: Mapping[str, Any]) -> str:
+    """One inspected lesson, its evidence and approval cited by id (#2181)."""
+    applies = "; ".join(
+        f"{name.replace('_', ' ')} {', '.join(values)}"
+        for name, values in entry["applicability"].items()
+        if isinstance(values, list)
+    )
+    approval = entry["approval"]
+    replay = approval["replay_check"]
+    return (
+        f"{entry['revision_id']}, for {entry['target_behavior']}: {entry['text']}\n"
+        f"   Applies to {applies}. Cites {', '.join(entry['cited_observations']) or 'nothing'}.\n"
+        f"   Approved by {approval['approved_by']} at {approval['approved_at']} "
+        f"({approval['approval_id']}){': ' + approval['ruling'] if approval['ruling'] else ''}. "
+        f"Replay check: {replay.get('result', replay) if replay else 'none recorded'}. "
+        f"Supplied to {entry['supplied_in']} task dispatch(es)."
+    )
 
 
 def _label(kind: str, entry: Mapping[str, Any]) -> str:

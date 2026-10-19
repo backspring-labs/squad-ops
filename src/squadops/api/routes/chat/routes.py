@@ -566,6 +566,7 @@ def _offered(
         "text": proposal.text,
         "kind": proposal.kind,
         "scope": proposal.scope,
+        "suggestion": proposal.suggestion,
         "source_message_id": source.message_id,
         "choices": [
             _choice_dto(c).model_dump()

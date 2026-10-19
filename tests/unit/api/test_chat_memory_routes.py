@@ -459,3 +459,84 @@ def test_a_record_the_rules_cant_read_fails_the_context_and_the_turn_still_answe
     assert opened.status_code == 200
     assert events[0]["text"].startswith("_Memory: your project instructions, task instructions,")
     assert "chat_context_unassembled" in caplog.text
+
+
+def test_a_bound_turn_asking_about_lessons_is_shown_the_approved_ones_with_their_evidence(world):
+    """#2181 through the route. Bug caught: the lessons API's records not reaching a turn that asks,
+    or reaching one that's unbound, or the count of dispatches supplied a lesson wrong."""
+    from tests.unit.memory.test_lessons import _approve, _revision
+
+    revision = _revision("criterion_already_satisfied")
+    _run(world.store.record_revision(revision))
+    _run(world.store.record_approval(_approve(revision, ruling="approved 10-19")))
+
+    world.say("what lessons does this project have?", project_id="group_run")
+    bound = world.handed()
+    world.say("what lessons do I have?")
+    unbound = world.handed()
+
+    [inspected] = [s for s in bound["sections"] if s["kind"] == "inspected_lessons"]
+    assert [(e["revision_id"], e["supplied_in"]) for e in inspected["entries"]] == [
+        (revision.revision_id, 0)
+    ]
+    assert all(s["kind"] != "inspected_lessons" for s in unbound["sections"])
+    bound_reply = next(m for m in world.chats.messages if m.role == "assistant")
+    assert bound_reply.content.endswith(f"_Memory used: {revision.revision_id}._")
+
+
+def test_a_conversational_claim_is_a_suggestion_note_that_can_never_become_a_lesson(world):
+    """T5. Bug caught: a claim said in chat stored as anything but a suggestion note, cited by a
+    lesson's draft, carried in a unit's snapshot, or reaching an approval through a chat route."""
+    from squadops.memory.approval import LessonRefused, draft_revision
+    from squadops.memory.lessons import UnitKind
+    from squadops.memory.pinning import pin_unit
+    from tests.unit.memory.test_lessons import WHERE
+
+    world.agent.reply = 'Noted.\n<memory-capture>{"text": "QA should always mock the clock.", "kind": "note", "suggestion": true}</memory-capture>'  # fmt: skip
+    opened, events = world.say("QA should always mock the clock", project_id="group_run")
+    [capture] = [e["capture"] for e in events if "capture" in e]
+    saved = world.client.post(
+        f"/api/v1/chat/sessions/{opened.headers['X-Session-Id']}/captures",
+        json={"message_id": capture["source_message_id"], "text": capture["text"], "kind": "note",
+              "scope": "project", "suggestion": capture["suggestion"]},
+    ).json()  # fmt: skip
+    record = world.client.get(f"/api/v1/memory-records/{saved['record_id']}").json()
+
+    assert (capture["suggestion"], record["kind"], record["current"]["suggestion"]) == (
+        True, "note", True,
+    )  # fmt: skip
+    with pytest.raises(LessonRefused, match=saved["record_id"]):
+        draft_revision(
+            target_behavior="clock", text="Mock the clock.", applicability=WHERE,
+            template_id="lesson.x", template_version="1", drafter_model="m", drafter_version="1",
+            cited_observations=[saved["record_id"]], citable_observations=[], revisions=[],
+            now=datetime(2026, 10, 19, tzinfo=UTC),
+        )  # fmt: skip
+    snapshot = _run(
+        pin_unit(world.store, unit_kind=UnitKind.CYCLE, unit_id="cyc_t5", project_id="group_run",
+                 pinned_at=datetime(2026, 10, 19, tzinfo=UTC), disabled=False)
+    )  # fmt: skip
+    assert saved["record_id"] not in json.dumps(snapshot.to_dict())
+
+
+def test_no_chat_route_drafts_approves_or_revokes_a_lesson():
+    """§3.5: chat inspects lessons and never changes them. Bug caught: a chat route added that
+    reaches the lessons' draft, approval, revocation or annotation review."""
+    from squadops.api.routes.chat.routes import agents_router
+
+    paths = {
+        (method, route.path)
+        for r in (chat_router, agents_router)
+        for route in r.routes
+        for method in route.methods
+    }
+
+    assert not [
+        p for p in paths
+        if any(word in p[1] for word in ("lesson", "approval", "revocation", "annotation", "draft"))
+    ]  # fmt: skip
+    assert {p for p in paths if p[0] != "GET"} == {
+        ("POST", "/api/v1/chat/{agent_id}"),
+        ("POST", "/api/v1/chat/sessions/{session_id}/captures"),
+        ("DELETE", "/api/v1/chat/sessions/{session_id}"),
+    }

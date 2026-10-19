@@ -53,6 +53,9 @@ class SectionKind(StrEnum):
     LESSONS = "lessons"
     NOTES = "notes"
     PREFERENCES = "preferences"
+    #: A project's approved lessons shown to a chat turn that asks about them, to explain, never as
+    #: guidance (§3.5, #2181): that is ``LESSONS``, which a chat turn never holds.
+    INSPECTED_LESSONS = "inspected_lessons"
 
 
 @dataclass(frozen=True)

@@ -131,11 +131,12 @@
 
   // The proposal's own kind and scope when this session offers them; else the same kind, said so;
   // else nothing chosen, so the person picks: a proposal is never quietly made something else.
-  function openCard({ text, sourceMessageId, choices, kind, scope }) {
+  function openCard({ text, sourceMessageId, choices, kind, scope, suggestion = false }) {
     const exact = choices.find((c) => c.kind === kind && c.scope === scope);
     const sameKind = exact || choices.find((c) => c.kind === kind);
     const changed = exact ? null : `Proposed as a ${scope} ${kind}, which this conversation doesn't offer you.`;
-    card = { text, sourceMessageId, choices, choice: sameKind ? choiceKey(sameKind) : null, changed };
+    card = { text, sourceMessageId, choices, choice: sameKind ? choiceKey(sameKind) : null,
+             suggestion, changed };
   }
 
   // A console action: keep a message, through the same card and the same confirmation.
@@ -159,7 +160,8 @@
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ message_id: card.sourceMessageId, text: card.text,
-                               kind: chosen.kind, scope: chosen.scope }),
+                               kind: chosen.kind, scope: chosen.scope,
+                               suggestion: chosen.kind === 'note' && card.suggestion }),
       });
       const body = await resp.json().catch(() => ({}));
       if (resp.status === 201) {
@@ -266,7 +268,7 @@
             } else if (evt.capture) {
               openCard({ text: evt.capture.text, sourceMessageId: evt.capture.source_message_id,
                          choices: evt.capture.choices, kind: evt.capture.kind,
-                         scope: evt.capture.scope });
+                         scope: evt.capture.scope, suggestion: evt.capture.suggestion });
             } else if (evt.done) {
               // Stream complete
             } else if (evt.text) {
@@ -444,6 +446,12 @@
           <span class="hint">takes effect {c.takes_effect}</span>
         </label>
       {/each}
+      {#if card.choice?.startsWith('note:')}
+        <label class="capture-choice" title="A claim to check, never a lesson's evidence">
+          <input type="checkbox" bind:checked={card.suggestion} />
+          <span>A suggestion: a claim about how the squad should work, kept to check</span>
+        </label>
+      {/if}
       <div class="capture-actions">
         <button class="link-btn" onclick={() => (card = null)} disabled={cardBusy}>Dismiss</button>
         <button class="send-btn wide" onclick={confirmCard} disabled={cardBusy || !card.text.trim() || !card.choice}>
