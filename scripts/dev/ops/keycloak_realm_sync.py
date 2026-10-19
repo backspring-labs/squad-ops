@@ -21,6 +21,11 @@ deploy's own secret the first time this runs, and a rotation is ``.env`` plus a 
 signs in with it. The exports commit no password for it, so a realm an export creates gets the
 deploy's own value on its first sync.
 
+#2464: before that, a realm user the registry names and the export declares, which a realm created
+before the declaration lacks, is created from it with the realm roles it declares. Additive only: an
+existing user is never changed, and a user the registry doesn't name is a dev seed, left to
+``--import-realm``.
+
 stdlib only, so any deploy pipeline can call it. Usage:
 
     keycloak_realm_sync.py [--base-url http://localhost:8180] [--admin admin]
@@ -229,6 +234,54 @@ def user_passwords(registry: list[dict], env: dict[str, str]) -> dict[str, str]:
     }
 
 
+def declared_users(export: dict, usernames: set[str]) -> dict[str, dict]:
+    """The export's declaration of each realm user the registry names, by username (#2464). A
+    service account is never one: its user belongs to its client."""
+    return {
+        u["username"]: u
+        for u in export.get("users") or ()
+        if u.get("username") in usernames and not u.get("serviceAccountClientId")
+    }
+
+
+#: What a created user carries from its declaration: never credentials, which the password step
+#: sets from ``.env``, and never roles, which Keycloak takes only as role mappings.
+_USER_FIELDS = ("username", "email", "emailVerified", "enabled", "firstName", "lastName")
+
+
+def create_missing_user(base_url: str, token: str, realm: str, declared: dict) -> str:
+    """Create a declared user that ``realm`` lacks, with the realm roles its export declares
+    (#2464). A user who exists is left exactly as they are: a person's roles change only on
+    purpose, never by a deploy."""
+    username = declared["username"]
+    query = urllib.parse.urlencode({"username": username, "exact": "true"})
+    users = f"/admin/realms/{realm}/users"
+    status, found = _request(base_url, token, "GET", f"{users}?{query}")
+    if status != 200:
+        return f"{realm}/{username}: looking the user up returned {status}"
+    if found:
+        return f"{realm}/{username}: user exists, left as it is"
+    roles = []
+    for name in declared.get("realmRoles") or ():
+        status, role = _request(base_url, token, "GET", f"/admin/realms/{realm}/roles/{name}")
+        if status != 200 or not role:
+            return f"{realm}/{username}: realm role {name!r} not found ({status}); nothing created"
+        roles.append(role)
+    body = {k: declared[k] for k in _USER_FIELDS if k in declared}
+    status, _ = _request(base_url, token, "POST", users, body)
+    if status not in (201, 204):
+        return f"{realm}/{username}: creating the user returned {status}"
+    status, found = _request(base_url, token, "GET", f"{users}?{query}")
+    if status != 200 or not found:
+        return f"{realm}/{username}: created, then not found ({status})"
+    if roles:
+        mappings = f"{users}/{found[0]['id']}/role-mappings/realm"
+        status, _ = _request(base_url, token, "POST", mappings, roles)
+        if status not in (200, 204):
+            return f"{realm}/{username}: created, and granting its roles returned {status}"
+    return f"{realm}/{username}: user created with {sorted(r['name'] for r in roles)}"
+
+
 #: The realm's public client that takes a password grant: the CLI's (``squadops login``).
 PASSWORD_GRANT_CLIENT = "squadops-cli"
 
@@ -318,6 +371,9 @@ def main(argv: list[str] | None = None) -> int:
             print(grant_service_account_roles(args.base_url, token, realm, client_id, roles))
         for client_id, secret in sorted(secrets_by_client.items()):
             print(set_client_secret(args.base_url, token, realm, client_id, secret))
+        # #2464: a user the export declares after its realm was created, before its password.
+        for _username, declared in sorted(declared_users(document, set(passwords_by_user)).items()):
+            print(create_missing_user(args.base_url, token, realm, declared))
         for username, password in sorted(passwords_by_user.items()):
             print(set_user_password(args.base_url, token, realm, username, password))
     return 0

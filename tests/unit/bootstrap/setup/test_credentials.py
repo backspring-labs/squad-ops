@@ -65,6 +65,9 @@ def test_an_existing_deploy_adopts_what_it_runs_with_and_generates_only_what_it_
     assert decided.env_updates["KEYCLOAK_ADMIN_PASSWORD"] == ("kept-admin", "adopted")
     assert decided.env_updates["LANGFUSE_SALT"] == ("mysalt", "adopted")
     assert decided.env_updates["SQUADOPS_SANDBOX_SERVICE_TOKEN"][1] == "generated"
+    # #2464: the supervisor never existed before, so a deploy that predates it adopts nothing for
+    # it: a shared or committed value would let anyone with the repository draft a suite as it.
+    assert decided.env_updates["SQUADOPS_SUPERVISOR_PASSWORD"][1] == "generated"
     # The adopted file already holds what .env now says: it is not rewritten.
     assert "secrets/keycloak_admin_password.txt" not in decided.secret_writes
 
