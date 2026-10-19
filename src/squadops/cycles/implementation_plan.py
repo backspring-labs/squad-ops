@@ -281,6 +281,10 @@ class ImplementationPlan:
                 )
 
             task_index = td["task_index"]
+            # #2488: refused here with a reason the author reads, never left to crash a set
+            # lookup below. A bool is an int to Python and never a task index.
+            if not isinstance(task_index, int) or isinstance(task_index, bool):
+                raise ValueError(f"Task {i}: task_index must be an integer, got {task_index!r}")
             if task_index in seen_indices:
                 raise ValueError(f"Duplicate task_index: {task_index}")
             seen_indices.add(task_index)
@@ -288,6 +292,11 @@ class ImplementationPlan:
             depends_on = td.get("depends_on", [])
             if not isinstance(depends_on, list):
                 raise ValueError(f"Task {task_index}: depends_on must be a list")
+            for dep in depends_on:
+                if not isinstance(dep, int) or isinstance(dep, bool):
+                    raise ValueError(
+                        f"Task {task_index}: depends_on lists task_index integers, got {dep!r}"
+                    )
 
             raw_criteria = td.get("acceptance_criteria", [])
             if not isinstance(raw_criteria, list):
