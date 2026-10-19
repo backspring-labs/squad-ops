@@ -37,6 +37,17 @@ class TaskFlowPolicyDTO(BaseModel):
 # =============================================================================
 
 
+class TaskInstructionDTO(BaseModel):
+    """A task instruction given when a cycle is created (SIP-0110 Appendix A §3.5; #2178): binding,
+    for the named task types of this cycle only."""
+
+    text: str
+    task_types: list[str]
+    references: list[dict] = Field(default_factory=list)
+
+    model_config = ConfigDict(extra="forbid")
+
+
 class CycleCreateRequest(BaseModel):
     """Create a new cycle + first run (T17: atomic)."""
 
@@ -50,6 +61,8 @@ class CycleCreateRequest(BaseModel):
     experiment_context: dict = Field(default_factory=dict)
     request_profile: str | None = None  # SIP-0096: cycle-level config provenance (CRP name)
     notes: str | None = None
+    #: #2178: directives for this cycle's selected tasks, stored as task instructions with it.
+    task_instructions: list[TaskInstructionDTO] = Field(default_factory=list)
 
     model_config = ConfigDict(extra="forbid")
 

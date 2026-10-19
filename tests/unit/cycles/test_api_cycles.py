@@ -1140,3 +1140,58 @@ class TestCreateRefusesAProjectThatIsNotReady:
         assert resp.status_code == 201
         assert resp.json()["project_id"] == project_id
         mock_cycle_registry.create_cycle.assert_called_once()
+
+
+class TestCreateCycleTaskInstructions:
+    """SIP-0110 Appendix A §3.5 (#2178): the instructions a cycle is created with are stored as its
+    task instructions before its run is enqueued, and refused, before the cycle exists, when no
+    authoring task would receive them."""
+
+    _URL = "/api/v1/projects/hello_squad/cycles"
+    _REQUEST = {"squad_profile_id": "full", "task_flow_policy": {"mode": "sequential"}}
+
+    @pytest.fixture
+    def records(self, client):
+        from adapters.memory.records import InMemoryMemoryRecords
+
+        records = InMemoryMemoryRecords()
+        client.app.state.memory_records = records
+        return records
+
+    async def test_an_instruction_is_stored_for_the_cycle_it_was_given_with(self, client, records):
+        """Bug caught: an instruction accepted with the request and stored for no cycle, or for
+        the project, so it binds tasks its creator never named."""
+        instruction = {"text": "Cover capacity 1.", "task_types": ["qa.test"]}
+
+        resp = client.post(self._URL, json={**self._REQUEST, "task_instructions": [instruction]})
+
+        assert resp.status_code == 201, resp.text
+        [record] = await records.list_project("hello_squad")
+        assert (record.kind, record.scope, record.current.body) == (
+            "instruction",
+            "task",
+            "Cover capacity 1.",
+        )
+        assert record.current.target.cycle_id == resp.json()["cycle_id"]
+        assert record.current.target.task_types == ("qa.test",)
+        assert record.current.confirmed_by == record.owner_id
+
+    @pytest.mark.parametrize(
+        "instruction",
+        [
+            {"text": "say so", "task_types": ["data.report"]},
+            {"text": "x", "task_types": ["qa.test"], "references": [{"ref": "manifest:decision:j@3", "content": "x"}]},
+            {"text": "", "task_types": ["qa.test"]},
+        ],
+        ids=["a-task-that-authors-nothing", "a-reference-carrying-a-copy", "an-empty-instruction"],
+    )  # fmt: skip
+    async def test_a_refused_instruction_leaves_no_cycle(
+        self, client, records, mock_cycle_registry, instruction
+    ):
+        """Bug caught: the cycle created and run without the instruction its creator gave, or
+        with one stored that reaches nothing."""
+        resp = client.post(self._URL, json={**self._REQUEST, "task_instructions": [instruction]})
+
+        assert resp.status_code == 422, resp.text
+        mock_cycle_registry.create_cycle.assert_not_called()
+        assert await records.list_project("hello_squad") == []

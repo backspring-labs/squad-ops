@@ -37,6 +37,7 @@ from squadops.api.memory_schemas import (
 from squadops.api.middleware.auth import require_scopes
 from squadops.api.runtime.deps import get_cycle_registry, get_memory_records
 from squadops.auth.models import Identity, scopes_for_roles
+from squadops.capabilities.context_assembly import authoring_seam_of
 from squadops.memory.records import (
     InstructionApplicability,
     MemoryRecord,
@@ -79,9 +80,17 @@ def _who(identity: Identity | None) -> tuple[str, frozenset[str]]:
 
 async def _campaign_cycle(request: Request, scope: str, project_id: str | None, target) -> bool:
     """Whether a task instruction's target is a campaign's cycle, after checking it is a cycle
-    of the record's project. ``False`` for any other record."""
+    of the record's project and that every task type it selects is an authoring task (#2178: an
+    instruction for any other would reach nothing). ``False`` for any other record."""
     if scope != RecordScope.TASK or target is None:
         return False
+    unreachable = [t for t in target.task_types if authoring_seam_of(t) is None]
+    if unreachable:
+        raise http_error(
+            422,
+            "VALIDATION_ERROR",
+            f"{', '.join(unreachable)} authors nothing an instruction reaches",
+        )
     try:
         cycle = await get_cycle_registry(request).get_cycle(target.cycle_id)
     except Exception as e:

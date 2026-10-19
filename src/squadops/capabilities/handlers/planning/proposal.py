@@ -36,6 +36,7 @@ from squadops.capabilities.handlers._plan_authoring import retry_yaml_call
 from squadops.capabilities.handlers.base import HandlerEvidence, HandlerResult
 from squadops.capabilities.handlers.cross_cycle_lessons import cross_cycle_lessons_section
 from squadops.capabilities.handlers.planning.base import _PlanningTaskHandler
+from squadops.capabilities.handlers.task_instructions import task_instructions_section
 from squadops.stacks.scaffold import frozen_conventions_for
 from squadops.tasks.task_types import TaskType
 
@@ -174,6 +175,10 @@ class StrategyProposeIncrementHandler(_PlanningTaskHandler):
         variables.update(await _context_sections(renderer, inputs, block, proposal_context))
         # SIP-0110 §0.9: the lessons approved for this task, in a slot of their own, apart from a
         # revision's note (SIP-0109 §9.2).
+        # SIP-0110 Appendix A §3.6 (#2178): this task's instructions, before the lessons.
+        instructions = await task_instructions_section(renderer, inputs)
+        if instructions:
+            variables["task_instructions_section"] = instructions
         lessons = await cross_cycle_lessons_section(renderer, inputs)
         if lessons:
             variables["cross_cycle_lessons_section"] = lessons

@@ -649,7 +649,9 @@ async def _init_cycle_subsystem(state, config, pool) -> None:
         box_verdict=lambda: state.box_reader.verdict(),
         # SIP-0110 §0.8: each consuming task's lessons, from its unit's pinned snapshot in the
         # memory store (built before this subsystem, `_startup`).
-        failure_recall=create_failure_recall("snapshot", store=state.memory_store),
+        failure_recall=create_failure_recall(
+            "snapshot", store=state.memory_store, records=state.memory_records
+        ),
     )
 
     state.project_registry = project_registry

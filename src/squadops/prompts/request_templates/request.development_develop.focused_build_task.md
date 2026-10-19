@@ -1,6 +1,6 @@
 ---
 template_id: request.development_develop.focused_build_task
-version: "4"
+version: "5"
 required_variables:
   - focus
   - expected_files
@@ -13,6 +13,7 @@ optional_variables:
   - prior_artifacts
   - disputed_checks_section
   - prior_cycle_section
+  - task_instructions_section
   - cross_cycle_lessons_section
 ---
 ## Build Task: {{focus}}
@@ -21,7 +22,7 @@ optional_variables:
 
 {{fill_only_section}}
 
-{{prior_cycle_section}}{{cross_cycle_lessons_section}}
+{{prior_cycle_section}}{{task_instructions_section}}{{cross_cycle_lessons_section}}
 
 ### Expected Output Files
 

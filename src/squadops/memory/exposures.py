@@ -47,6 +47,9 @@ class Exposure:
     #: Which dispatch of the task this was: 1 for the first, one more for each re-dispatch.
     attempt: int = 1
     exposure_id: str = field(default="")
+    #: The task instructions' binding section (#2178): its disposition, each revision supplied and
+    #: each that couldn't be. ``None`` when the dispatch's composer read no instructions.
+    task_instructions: Mapping[str, Any] | None = None
 
     def __post_init__(self) -> None:
         if not self.exposure_id:
@@ -67,6 +70,7 @@ class Exposure:
         recalled: Recalled,
         recorded_at: datetime,
         attempt: int = 1,
+        task_instructions: Mapping[str, Any] | None = None,
     ) -> Exposure:
         return cls(
             run_id,
@@ -78,6 +82,7 @@ class Exposure:
             recalled.exposure(),
             recorded_at,
             attempt,
+            task_instructions=task_instructions,
         )
 
     @property
@@ -105,6 +110,12 @@ class Exposure:
             },
             "recalled": dict(self.recalled),
             "recorded_at": self.recorded_at.isoformat(),
+            # Only when instructions were read, so an exposure from before #2178 is unchanged.
+            **(
+                {"task_instructions": dict(self.task_instructions)}
+                if self.task_instructions is not None
+                else {}
+            ),
         }
 
     @classmethod
@@ -123,4 +134,5 @@ class Exposure:
             # An exposure stored before the attempt was recorded is its task's first (#2162).
             attempt=int(data.get("attempt") or 1),
             exposure_id=str(data["exposure_id"]),
+            task_instructions=data.get("task_instructions"),
         )

@@ -12,6 +12,7 @@ from abc import ABC, abstractmethod
 from squadops.memory.exposures import Exposure
 from squadops.memory.lessons import Recalled
 from squadops.memory.recall import RecallQuery
+from squadops.memory.records import MemoryRecord
 
 
 class FailurePatternRecallPort(ABC):
@@ -24,3 +25,10 @@ class FailurePatternRecallPort(ABC):
     async def disclose(self, exposure: Exposure) -> None:
         """Record what a consuming task was supplied, or why nothing (§0.8 step 7). Never raises:
         an exposure that cannot be stored is logged, and the task runs."""
+
+    @abstractmethod
+    async def task_instructions(self, project_id: str, cycle_id: str) -> list[MemoryRecord]:
+        """The task instructions recorded for ``cycle_id`` (SIP-0110 Appendix A §3.7; #2178),
+        every status: the composer decides which apply to a dispatch. Raises when the records
+        can't be read, since a binding section that can't be read holds its task and never
+        reads as none (§3.6)."""

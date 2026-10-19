@@ -15,8 +15,10 @@ from typing import Any
 from squadops.memory.exposures import Exposure
 from squadops.memory.lessons import RecallDisposition, Recalled, recall
 from squadops.memory.recall import RecallQuery
+from squadops.memory.records import MemoryRecord, RecordScope
 from squadops.ports.memory.cross_cycle import CrossCycleMemoryStorePort, RecordIncompatible
 from squadops.ports.memory.recall import FailurePatternRecallPort
+from squadops.ports.memory.records import MemoryRecordsPort
 
 logger = logging.getLogger(__name__)
 
@@ -25,9 +27,29 @@ READ_ATTEMPTS = 2
 
 
 class SnapshotRecall(FailurePatternRecallPort):
-    def __init__(self, store: CrossCycleMemoryStorePort, *, attempts: int = READ_ATTEMPTS) -> None:
+    def __init__(
+        self,
+        store: CrossCycleMemoryStorePort,
+        *,
+        records: MemoryRecordsPort | None = None,
+        attempts: int = READ_ATTEMPTS,
+    ) -> None:
         self._store = store
+        #: The typed records (#2178): a deploy's recall is built with them
+        #: (``create_failure_recall``); a unit test of the lessons alone may hold none.
+        self._records = records
         self._attempts = attempts
+
+    async def task_instructions(self, project_id: str, cycle_id: str) -> list[MemoryRecord]:
+        if self._records is None:
+            return []
+        return [
+            r
+            for r in await self._records.list_project(project_id)
+            if r.scope == RecordScope.TASK
+            and r.current.target is not None
+            and r.current.target.cycle_id == cycle_id
+        ]
 
     async def recall(self, query: RecallQuery) -> Recalled:
         if query.unit_kind is None or not query.unit_id:
@@ -67,10 +89,11 @@ class SnapshotRecall(FailurePatternRecallPort):
 
 def create_failure_recall(kind: str, **kwargs: Any) -> FailurePatternRecallPort:
     """The recall for ``kind``. Required, never defaulted (#1568): ``snapshot`` answers from the
-    store's pinned snapshots (a deploy); ``disabled`` answers every task as memory disabled (a
+    store's pinned snapshots and the typed records' task instructions (a deploy: both ``store``
+    and ``records`` are required); ``disabled`` answers every task as memory disabled (a
     composition with no store)."""
     if kind == "snapshot":
-        return SnapshotRecall(kwargs["store"])
+        return SnapshotRecall(kwargs["store"], records=kwargs["records"])
     if kind == "disabled":
         from adapters.noop.ports import NoOpFailurePatternRecall
 
