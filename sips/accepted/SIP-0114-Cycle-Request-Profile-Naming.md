@@ -30,6 +30,7 @@ lane's review (revision 4, PR #2494), by the owner's approval of that day.
 | part | status | where |
 |---|---|---|
 | the operator's request profiles, the stack's request defaults and the campaign profiles apart from them, with every old name still resolving for pinned definitions (revision 4's decisions; Q13) | **shipped** | 2.4.0, PR #2500, issue #316 (§11a) |
+| the console's cycle create resolved by the server, with the same builder (§11b) | **shipped** | 2.4.0, PR #2529, issue #2520 |
 
 **What closes this SIP:** #316 shipped, with every pinned definition still resolving the profile it names.
 
@@ -383,3 +384,29 @@ Pick a direction (A / B / C / hybrid) and confirm the deprecation approach, so a
 - **Evidence:** `test_request_profile_taxonomy.py`; the wiring test `test_a_campaigns_launches_on_a_stack_resolve_as_their_profiles_do`
   enters at a Next.js campaign's `calibration_launch` and `bound_launch`, the path the 2.4 window's campaigns take.
 
+
+## 11b. The console resolves on the server (2026-10-19, #2520; the supervisor, under the owner's grant of 2026-10-19)
+
+**What was wrong:** §11a's one builder had a copy. The console's cycle-create modal built its own body: the listed
+profile's `defaults` as `applied_defaults`, and its own `computeOverrides`. So an operator profile created from the
+console on a stack got none of the stack's request defaults, which the CLI's request gets beneath the profile's keys
+(R2.3). The console's `validate` checked less than the CLI's, and its preview showed defaults the CLI wouldn't send.
+The second read of PR #2500 found it.
+
+**What changed:**
+- **`POST /api/v1/cycle-request-profiles/{name}/resolve`.** It takes the squad, the caller's values, and the notes and
+  PRD the body carries, and answers with the cycle-create body that `cycle_request_body` builds from them. Nothing is
+  created.
+  - An unknown profile is 404.
+  - A body the create route would refuse is 422, as the create would answer, and so is a caller setting the resolved
+    fields itself.
+- **The modal asks it.** It resolves the request again whenever the profile, the squad or a value changes, shows the
+  answer as its preview, and creates the cycle from the answer resolved with the PRD and notes. A request that can't
+  be resolved can't be submitted, and says why. The modal no longer builds a body.
+
+**Evidence:**
+- `test_api_cycle_request_profiles.py`: `validate` on each stack resolves to exactly the body the CLI builds for the
+  same values, the stack's required checks, time budget and manifest attempts among its applied defaults.
+- The refusals are 404 for an unknown profile, and 422 for a body the create refuses, a resolved field the caller set,
+  and no squad.
+- The plugin builds (`npm run build` in the plugins layout) with no warning from the modal.
