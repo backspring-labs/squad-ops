@@ -174,3 +174,46 @@ def test_the_list_answers_by_status_and_a_retrieval_stays_active(world, status, 
     assert [r["current"]["body"] for r in found] == listed
     assert [r["current"]["body"] for r in world.client.get(URL).json()] == ["kept"]
     assert world.client.get(URL, params={"status": "lost"}).status_code == 422
+
+
+async def test_a_record_supplied_beside_an_incomplete_section_is_a_held_use_and_feeds_no_build(
+    world,
+):
+    """The second read of PR #2524. Bug caught: a project instruction supplied in an exposure whose
+    task instructions couldn't be fitted, read as a use that fed a build, though the bundle was
+    incomplete and the task was held (§3.6)."""
+    record_id = world.client.post(
+        URL,
+        json={"kind": "instruction", "scope": "project", "project_id": "group_run",
+              "body": "x", "applicability": ANYWHERE},
+    ).json()["record_id"]  # fmt: skip
+    await _built_cycle(world.cycles)
+    exposure = replace(
+        _exposure("run_i", "t_dev"),
+        project_instructions={"disposition": "supplied", "supplied": [{"record_id": record_id, "revision": "1"}]},
+        task_instructions={"disposition": "incomplete", "supplied": [], "unresolved": [{"record_id": "mrec_other", "revision": "1", "why": "too long"}]},
+    )  # fmt: skip
+    await world.store.record_exposure(exposure)
+
+    uses = world.client.get(f"{URL}/{record_id}/uses").json()
+
+    assert [(t["disposition"], t["held"]) for t in uses["tasks"]] == [
+        ("supplied", "the task was held: its task instructions were incomplete")
+    ]
+    assert uses["builds"] == []
+
+
+def test_a_private_record_naming_a_project_is_listed_once(world):
+    """The second read of PR #2524 (it predates the view). Bug caught: a user-scope record created
+    with a project id listed twice in a project-bound list, once as its owner's and once as the
+    project's, out of oldest-first order."""
+    world.client.post(
+        URL, json={"kind": "note", "scope": "user", "body": "first", "project_id": "group_run"}
+    )
+    world.client.post(
+        URL, json={"kind": "note", "scope": "project", "body": "second", "project_id": "group_run"}
+    )
+
+    listed = world.client.get(URL, params={"project_id": "group_run"}).json()
+
+    assert [r["current"]["body"] for r in listed] == ["first", "second"]

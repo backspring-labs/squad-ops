@@ -21,6 +21,7 @@ from datetime import datetime
 from typing import Any
 
 from squadops.memory.chat import ChatExposure
+from squadops.memory.context import Disposition
 from squadops.memory.exposures import Exposure
 
 #: The exposure fields a record is handed through (#2178, #2179): a task's binding sections.
@@ -67,11 +68,18 @@ def _named(entries: Iterable[Mapping[str, Any]] | None, record_id: str) -> Mappi
 
 
 def task_uses(record_id: str, exposures: Iterable[Exposure]) -> list[TaskUse]:
-    """The dispatches that supplied ``record_id``, or that it held, in the store's order."""
+    """The dispatches that supplied ``record_id``, or that it held, in the store's order. A task is
+    held when either binding section is incomplete (§3.6: the bundle is), so a record supplied beside
+    an instruction that couldn't be fitted is a use of a task that never ran, and reads as held."""
     uses = []
     for exposure in exposures:
-        for section in INSTRUCTION_SECTIONS:
-            held = getattr(exposure, section, None)
+        sections = {name: getattr(exposure, name, None) for name in INSTRUCTION_SECTIONS}
+        incomplete = [
+            name
+            for name, held in sections.items()
+            if held and held.get("disposition") == Disposition.INCOMPLETE.value
+        ]
+        for section, held in sections.items():
             if not held:
                 continue
             supplied = _named(held.get("supplied"), record_id)
@@ -79,6 +87,10 @@ def task_uses(record_id: str, exposures: Iterable[Exposure]) -> list[TaskUse]:
             entry = supplied or unresolved
             if entry is None:
                 continue
+            reason = None if supplied is not None else str((unresolved or {}).get("why", ""))
+            other = next((name for name in incomplete if name != section), None)
+            if reason is None and other is not None:
+                reason = f"the task was held: its {other.replace('_', ' ')} were incomplete"
             uses.append(
                 TaskUse(
                     exposure_id=exposure.exposure_id,
@@ -90,7 +102,7 @@ def task_uses(record_id: str, exposures: Iterable[Exposure]) -> list[TaskUse]:
                     section=section,
                     revision=str(entry.get("revision", "")),
                     disposition=str(held.get("disposition", "")),
-                    held=None if supplied is not None else str((unresolved or {}).get("why", "")),
+                    held=reason,
                 )
             )
     return uses

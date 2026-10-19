@@ -259,3 +259,28 @@ class TestChatProxy:
         )  # fmt: skip
         assert turn.headers["content-type"].startswith("text/event-stream")
         assert turn.text == 'data: {"text": "hi"}\n\n'
+
+
+def test_every_plugins_nav_opens_a_perspective_the_shell_knows():
+    """The second read of PR #2524. Bug caught: a plugin's nav entry opening a perspective neither
+    Continuum ships nor this console registers at boot, so the entry opens nothing (the Memory
+    perspective, first)."""
+    import tomllib
+
+    import main as console_main
+
+    known = set(console_main.BUILTIN_PERSPECTIVES) | {
+        p[0] for p in console_main.CUSTOM_PERSPECTIVES
+    }
+    plugins = Path(__file__).parents[3] / "console" / "continuum-plugins"
+    targets = {
+        manifest.parent.name: nav["target"]["panel_id"]
+        for manifest in plugins.glob("*/plugin.toml")
+        for nav in tomllib.loads(manifest.read_text(encoding="utf-8"))
+        .get("contributions", {})
+        .get("nav", [])
+        if nav.get("target", {}).get("type") == "panel"
+    }
+
+    assert targets, "no plugin declares a nav entry: the scan no longer reads them"
+    assert {p: t for p, t in targets.items() if t not in known} == {}

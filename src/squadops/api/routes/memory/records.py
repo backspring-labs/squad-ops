@@ -310,9 +310,14 @@ async def list_memory_records(
     held = await store.list_owned(actor)
     if project_id is not None:
         held += await store.list_project(project_id)
+    # A private record that names a project is in both lists: answered once, oldest first.
+    unique = sorted(
+        {r.record_id: r for r in held}.values(),
+        key=lambda r: (r.revisions[0].created_at, r.record_id),
+    )
     found = [
         r
-        for r in held
+        for r in unique
         if visible(r, viewer_id=actor, viewer_scopes=scopes, project_id=project_id)
         and (status == "all" or r.status == status)
         and (kind is None or r.kind == kind)

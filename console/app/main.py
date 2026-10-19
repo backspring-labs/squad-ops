@@ -301,6 +301,24 @@ COMMAND_HANDLERS = {
 _runtime: ContinuumRuntime | None = None
 
 
+#: The perspectives the shell ships (Continuum v1.0.2): a plugin's panel or nav target names one of
+#: these, or one this console adds below.
+BUILTIN_PERSPECTIVES = ("signal", "research", "time", "discovery", "systems")
+
+#: The perspectives this console adds to the shell's, registered at boot: ``(id, label, route
+#: prefix, description)``. A plugin's nav entry opening a perspective listed nowhere opens nothing.
+CUSTOM_PERSPECTIVES = (
+    ("cycles", "Cycles", "/cycles", "Cycle lifecycle management and run monitoring"),
+    ("squad", "Squad", "/squad", "Squad configuration, agent health, and model management"),
+    (
+        "memory",
+        "Memory",
+        "/memory",
+        "Memory records: their sources, revisions, uses and, apart, their effect (SIP-0110 §A.3.11)",
+    ),
+)
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     global _runtime, _api_client
@@ -356,23 +374,12 @@ async def lifespan(app: FastAPI):
     # Register custom perspectives not built into the Continuum shell
     from continuum.domain.perspectives import PerspectiveSpec
 
-    _runtime._registry.perspectives.append(
-        PerspectiveSpec(
-            id="cycles",
-            label="Cycles",
-            route_prefix="/cycles",
-            description="Cycle lifecycle management and run monitoring",
+    for perspective_id, label, route_prefix, description in CUSTOM_PERSPECTIVES:
+        _runtime._registry.perspectives.append(
+            PerspectiveSpec(
+                id=perspective_id, label=label, route_prefix=route_prefix, description=description
+            )
         )
-    )
-
-    _runtime._registry.perspectives.append(
-        PerspectiveSpec(
-            id="squad",
-            label="Squad",
-            route_prefix="/squad",
-            description="Squad configuration, agent health, and model management",
-        )
-    )
 
     # Attach runtime to app state so Continuum API routes can access it
     app.state.runtime = _runtime
