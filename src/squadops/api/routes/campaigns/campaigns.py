@@ -43,6 +43,7 @@ from squadops.api.campaign_schemas import (
     PackageDigestResponse,
     PackageMaterializedResponse,
     ResumeRequest,
+    WorkClassDTO,
 )
 from squadops.api.errors import error_body
 from squadops.api.middleware.auth import holds_scopes, require_scopes
@@ -87,6 +88,7 @@ from squadops.campaigns.models import (
     ProposalClassification,
     ResumeReservedToOwner,
     TransitionResult,
+    WorkClass,
 )
 from squadops.campaigns.progress import (
     EVIDENCE_ARTIFACT_TYPE,
@@ -221,6 +223,12 @@ async def create_campaign(
                 "objective.target_accepted_increments is required: the accepted increments "
                 "that meet the objective (§10 row 3)"
             )
+        if body.objective.work_class is None:
+            # SIP-0113 §4.6: a campaign created without its class can never be grouped for AOR.
+            raise ValueError(
+                "objective.work_class is required: its prd_tier and its attendance, declared "
+                "(SIP-0113 §4.6)"
+            )
         campaign = Campaign(
             campaign_id=body.campaign_id or lifecycle.new_campaign_id(),
             project_id=body.project_id,
@@ -229,6 +237,7 @@ async def create_campaign(
                 allowed_scope=tuple(body.objective.allowed_scope),
                 measurement=body.objective.measurement,
                 target_accepted_increments=body.objective.target_accepted_increments,
+                work_class=WorkClass(**body.objective.work_class.model_dump()),
             ),
             policy=CampaignPolicy(**body.policy.model_dump()),
             state=CampaignState.DRAFT,
@@ -950,6 +959,16 @@ def _campaign(c: Campaign) -> CampaignResponse:
             allowed_scope=list(c.objective.allowed_scope),
             measurement=c.objective.measurement,
             target_accepted_increments=c.objective.target_accepted_increments,
+            work_class=(
+                WorkClassDTO.model_validate(
+                    {
+                        "prd_tier": c.objective.work_class.prd_tier,
+                        "attendance": c.objective.work_class.attendance,
+                    }
+                )
+                if c.objective.work_class
+                else None
+            ),
         ),
         policy=CampaignPolicyDTO(
             **{f: getattr(c.policy, f) for f in CampaignPolicyDTO.model_fields}

@@ -141,6 +141,7 @@ def digest(doc: dict) -> str:
             if c["objective"].get("target_accepted_increments")
             else ""
         ),
+        _work_class_line(c["objective"]),
         f"**Package:** `{doc['identity'][:16]}` (version {doc['package_version']})",
         f"**Size:** {_kb(len(serialized(doc)))} of its {_kb(size_bound(c['policy']))} bound "
         f"({c['policy']['max_cycles']} cycles at most)",
@@ -233,6 +234,17 @@ def _escalation_asks(campaign: dict, rows: list[dict]) -> list[str]:
                 f'--answer "<decision id>=…" --reason "…"`; a later tier campaign carries it. Asked: {asked}'
             )
     return asks
+
+
+def _work_class_line(objective: dict) -> str:
+    """SIP-0113 §4.6 (#2418): the class AOR groups this campaign by, as declared."""
+    declared = objective.get("work_class")
+    if not declared:
+        return "**Work class:** none declared (created before SIP-0113 §4.6)"
+    target = objective.get("target_accepted_increments")
+    return f"**Work class:** {declared['prd_tier']}, {declared['attendance']}" + (
+        f", {target} increments" if target else ""
+    )
 
 
 def _outcome_lines(outcomes: dict | None) -> list[str]:

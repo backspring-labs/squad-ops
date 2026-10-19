@@ -9,6 +9,7 @@ refusal not recorded, a resume to the wrong state, an abort that leaves a launch
 from __future__ import annotations
 
 import dataclasses
+import json
 from datetime import UTC, datetime
 
 import pytest
@@ -115,6 +116,7 @@ def _create(world: _World, key: str = "create-1", **overrides):
             "allowed_scope": ["backend", "frontend"],
             "measurement": "two accepted increments",
             "target_accepted_increments": 2,
+            "work_class": {"prd_tier": "tier-1", "attendance": "unattended"},
         },
         "policy": _POLICY,
         "reason": "the 2.0 shakeout",
@@ -789,3 +791,41 @@ async def test_a_late_answer_with_nothing_to_answer_is_a_422_and_records_nothing
     assert message in resp.json()["detail"]["error"]["message"]
     [listed] = world.client.get("/api/v1/campaigns/cmp_api000000001/escalations").json()
     assert listed["answers"] == {}
+
+
+@pytest.mark.parametrize(
+    ("work_class", "said"),
+    [
+        (None, "objective.work_class is required"),
+        ({"prd_tier": "tier-4", "attendance": "unattended"}, "prd_tier"),
+        ({"prd_tier": "tier-1", "attendance": "sometimes"}, "attendance"),
+        ({"prd_tier": "tier-1", "attendance": "attended", "stack": "x"}, "stack"),
+    ],
+    ids=["undeclared", "an-unknown-tier", "an-unknown-attendance", "an-extra-key"],
+)
+def test_a_campaign_without_its_declared_work_class_is_refused(world, work_class, said):
+    """SIP-0113 §4.6 (the owner's ruling of 2026-10-18). Bug caught: a campaign created with no
+    class, or one outside the ruled vocabulary, that AOR can never group with its like."""
+    objective = {
+        "statement": "evolve group_run",
+        "allowed_scope": ["backend"],
+        "measurement": "two accepted increments",
+        "target_accepted_increments": 2,
+        "work_class": work_class,
+    }
+
+    response = _create(world, objective=objective)
+
+    assert response.status_code == 422
+    assert said in json.dumps(response.json())
+    assert world.client.get("/api/v1/campaigns/cmp_api000000001").status_code == 404
+
+
+def test_a_campaigns_declared_work_class_reads_back(world):
+    """Bug caught: the class accepted at creation and dropped on the way to the store or the
+    response, so the digest's AOR has nothing to group by."""
+    assert _create(world).status_code == 201
+
+    read = world.client.get("/api/v1/campaigns/cmp_api000000001").json()
+
+    assert read["objective"]["work_class"] == {"prd_tier": "tier-1", "attendance": "unattended"}

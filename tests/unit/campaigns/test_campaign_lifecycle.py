@@ -174,6 +174,25 @@ def test_a_policy_limit_outside_its_floor_is_refused(override, message):
         policy(**override)
 
 
+@pytest.mark.parametrize(
+    ("prd_tier", "attendance", "said"),
+    [
+        ("tier-4", "attended", "prd_tier"),
+        ("core", "half", "attendance"),
+        ("Core", "attended", "prd_tier"),
+    ],
+    ids=["an-unknown-tier", "an-unknown-attendance", "a-tier-in-another-case"],
+)
+def test_a_work_class_outside_the_ruled_vocabulary_is_refused(prd_tier, attendance, said):
+    """SIP-0113 §4.6, D2: the classes are declared from a fixed vocabulary, so two campaigns
+    compare only when they declared the same. Bug caught: ``Core`` and ``core`` read as two
+    classes, splitting one class's AOR in two."""
+    from squadops.campaigns.models import WorkClass
+
+    with pytest.raises(ValueError, match=said):
+        WorkClass(prd_tier=prd_tier, attendance=attendance)
+
+
 def test_a_policy_may_allow_no_repair_cycles():
     assert policy(max_repair_cycles_per_increment=0).max_repair_cycles_per_increment == 0
 
@@ -229,10 +248,14 @@ def test_a_creation_without_a_definition_keeps_the_hash_it_was_stored_with():
     hash of every definition-less creation changing, so a retried create of a campaign stored
     before #1954 reads as a different creation and is refused. The literal is the hash main
     computed for this creation before the change."""
+    from dataclasses import replace
+
     from squadops.campaigns.lifecycle import creation_request_hash
     from squadops.campaigns.models import CampaignDefinition
 
+    # Stored before SIP-0113's work class (#2418), so with none.
     created = campaign("cmp_hash0000001")
+    created = replace(created, objective=replace(created.objective, work_class=None))
     before = creation_request_hash(created, actor="owner", actor_role="admin", reason="r")
     with_file = creation_request_hash(
         created,
@@ -246,12 +269,18 @@ def test_a_creation_without_a_definition_keeps_the_hash_it_was_stored_with():
     assert with_file != before
     # §24bj: the supervised plan gate is how the creation above was stored, so it enters the hash
     # as that absence; the tier is a different creation.
-    tiered = campaign("cmp_hash0000001", policy=policy(plan_gate="tier"))
+    tiered = replace(created, policy=policy(plan_gate="tier"))
     assert creation_request_hash(tiered, actor="owner", actor_role="admin", reason="r") != before
     # §24bs: a stack left undeclared is how the creation above was stored; a declared one is a
     # different creation.
-    stacked = campaign("cmp_hash0000001", policy=policy(stack="nextjs_ts"))
+    stacked = replace(created, policy=policy(stack="nextjs_ts"))
     assert creation_request_hash(stacked, actor="owner", actor_role="admin", reason="r") != before
+    # SIP-0113 §4.6 (#2418): the same for the objective's work class.
+    classified = campaign("cmp_hash0000001")
+    assert classified.objective.work_class is not None
+    assert (
+        creation_request_hash(classified, actor="owner", actor_role="admin", reason="r") != before
+    )
 
 
 @pytest.mark.parametrize("stack", ["python_cli_builder", "", "nextjs"])

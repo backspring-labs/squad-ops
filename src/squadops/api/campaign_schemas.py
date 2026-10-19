@@ -15,6 +15,16 @@ from pydantic import BaseModel, ConfigDict, Field
 from squadops.campaigns.models import PlanGate
 
 
+class WorkClassDTO(BaseModel):
+    """SIP-0113 §4.6 (the owner's ruling of 2026-10-18): the class the campaign's work belongs
+    to, declared, never inferred. With the target (the increment count), what AOR groups by."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    prd_tier: Literal["core", "tier-1", "tier-2", "tier-3"]
+    attendance: Literal["attended", "unattended"]
+
+
 class CampaignObjectiveDTO(BaseModel):
     statement: str
     allowed_scope: list[str] = Field(default_factory=list)
@@ -22,6 +32,9 @@ class CampaignObjectiveDTO(BaseModel):
     #: §24ah: the accepted increments that meet the objective, read by §10 row 3. Required of a
     #: new campaign; ``None`` reads back only for one stored before the field existed.
     target_accepted_increments: int | None
+    #: SIP-0113 §4.6: required of a new campaign, as the target is; ``None`` reads back only for
+    #: one stored before the field existed.
+    work_class: WorkClassDTO | None = None
 
 
 class CampaignPolicyDTO(BaseModel):

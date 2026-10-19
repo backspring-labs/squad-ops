@@ -270,6 +270,52 @@ class CampaignDefinition:
         return cls(**recorded) if recorded else None
 
 
+class PrdTier:
+    """The PRD tier an objective reaches for (SIP-0113 §4.6, the owner's ruling of 2026-10-18):
+    the PRD's core, or one of its expansion tiers. Constants, not an enum: ``core`` and the tiers
+    are words other vocabularies use too (#380)."""
+
+    CORE = "core"
+    TIER_1 = "tier-1"
+    TIER_2 = "tier-2"
+    TIER_3 = "tier-3"
+    ALL = frozenset({CORE, TIER_1, TIER_2, TIER_3})
+
+
+class Attendance:
+    """Whether the campaign runs with a person attending its gates, as declared."""
+
+    ATTENDED = "attended"
+    UNATTENDED = "unattended"
+    ALL = frozenset({ATTENDED, UNATTENDED})
+
+
+@dataclass(frozen=True)
+class WorkClass:
+    """The class a campaign's work belongs to (SIP-0113 §4.6; D2; ruled 2026-10-18), declared in
+    its objective and never inferred, so two campaigns compare only when they declared the same.
+    With the objective's ``target_accepted_increments`` (the increment count), it is what AOR and
+    the AWE group campaigns by. Nothing that decides a campaign reads it."""
+
+    prd_tier: str
+    attendance: str
+
+    def __post_init__(self) -> None:
+        if self.prd_tier not in PrdTier.ALL:
+            raise ValueError(
+                f"WorkClass.prd_tier must be one of {sorted(PrdTier.ALL)}, got {self.prd_tier!r}"
+            )
+        if self.attendance not in Attendance.ALL:
+            raise ValueError(
+                f"WorkClass.attendance must be one of {sorted(Attendance.ALL)}, "
+                f"got {self.attendance!r}"
+            )
+
+    @classmethod
+    def from_stored(cls, stored: Mapping[str, Any] | None) -> WorkClass | None:
+        return cls(**stored) if stored else None
+
+
 @dataclass(frozen=True)
 class CampaignObjective:
     """What the campaign is for (§15): the statement, the scope it may touch, how success reads.
@@ -284,6 +330,9 @@ class CampaignObjective:
     allowed_scope: tuple[str, ...]
     measurement: str
     target_accepted_increments: int | None
+    #: SIP-0113 §4.6: required of every new campaign, as the target is; ``None`` only on a
+    #: campaign stored before it existed, which AOR then groups with no class.
+    work_class: WorkClass | None
 
     def __post_init__(self) -> None:
         _require_text("CampaignObjective", statement=self.statement, measurement=self.measurement)

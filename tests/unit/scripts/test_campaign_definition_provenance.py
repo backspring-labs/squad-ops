@@ -141,3 +141,17 @@ def test_a_recorded_definition_is_the_lookup_and_the_reconciliation_its_check(re
     assert len(campaign["definitions"]) == 2
     assert campaign["recorded_definition"] == recorded
     assert campaign["recorded_reconciles"] is reconciles
+
+
+def test_a_definitions_work_class_reconciles_and_a_changed_one_is_named():
+    """SIP-0113 §4.6 (#2418). Bug caught: a campaign whose stored class differs from its file's
+    read as reconciling, so AOR groups it under a class its definition never declared; or a
+    campaign stored before the class read as differing from a file that has none either."""
+    declared = {**_OBJECTIVE, "work_class": {"prd_tier": "tier-1", "attendance": "unattended"}}
+    other = {**_OBJECTIVE, "work_class": {"prd_tier": "tier-2", "attendance": "unattended"}}
+
+    assert prov.differences({**_spec(), "objective": declared}, _stored(objective=declared)) == []
+    assert prov.differences({**_spec(), "objective": declared}, _stored(objective=other)) == [
+        "objective.work_class"
+    ]
+    assert prov.differences(_spec(), _stored()) == []

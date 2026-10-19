@@ -1730,6 +1730,7 @@ async def test_an_accepted_increment_that_meets_the_target_ends_the_campaign_in_
         allowed_scope=("backend", "frontend"),
         measurement=f"{target} accepted increment(s)",
         target_accepted_increments=target,
+        work_class=None,
     )
     w, run = await calibrating(RunVerdict.ACCEPTED, objective=objective)
     await w.end("cyc_cal", run, CycleStopReason.SEQUENCE_COMPLETED)

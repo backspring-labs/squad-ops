@@ -38,6 +38,7 @@ from squadops.campaigns.models import (
     RefusalReason,
     SubmittedProposal,
     TransitionResult,
+    WorkClass,
 )
 from squadops.ports.cycles.campaign_registry import CampaignRegistryPort
 
@@ -510,6 +511,8 @@ def _row_to_campaign(row: asyncpg.Record) -> Campaign:
             measurement=objective["measurement"],
             # §24ah: absent on a campaign stored before the field existed.
             target_accepted_increments=objective.get("target_accepted_increments"),
+            # SIP-0113 §4.6: absent on a campaign stored before the field existed.
+            work_class=WorkClass.from_stored(objective.get("work_class")),
         ),
         policy=CampaignPolicy.from_stored(row["policy"]),
         state=CampaignState(row["state"]),

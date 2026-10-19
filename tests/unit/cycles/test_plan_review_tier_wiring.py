@@ -249,6 +249,7 @@ async def _reach_the_gate(
         allowed_scope=("backend/**", "frontend/**"),
         measurement="two accepted increments",
         target_accepted_increments=2,
+        work_class=None,
     )
     await campaigns.create_campaign(
         campaign(CID, objective=objective, policy=policy(plan_gate=plan_gate)),
