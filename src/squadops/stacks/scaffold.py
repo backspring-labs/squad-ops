@@ -1952,7 +1952,7 @@ _STACKS: dict[str, ScaffoldStack] = {
         name=_NEXTJS_TS_NAME,
         expand=_expand_nextjs_ts,
         fill_slots=_fill_slots_nextjs_ts,
-        test_config_files=("vitest.config.ts",),
+        test_config_files=("vitest.config.ts", "vitest.setup.ts"),
         # Co-located `__tests__/` beside source, not a directory prefix at the tree root —
         # one of the three FastAPI-shaped assumptions S2 selected this stack to break. The
         # bare name is the declaration of that convention; `within_namespace` reads it as a
@@ -1978,12 +1978,12 @@ _STACKS: dict[str, ScaffoldStack] = {
         # SIP-0104: the first (and so far only) stack with a deterministic test scaffold.
         # Stack #1 deliberately does not declare one — opt-in is explicit, never inherited.
         verification_scaffold=_NEXTJS_TS_NAME,
-        # #2511: both files are ones this stack's runner collects (``VITEST_SUITE_GLOBS``, #1534):
-        # a page criterion's file named ``.test.tsx`` was never collected, so the plan check
-        # refused every increment with a page criterion.
+        # #2511: both files are ones this stack's runner collects (``VITEST_SUITE_GLOBS``, #1534).
+        # A page criterion's is ``.test.tsx`` again, now that the runner collects it (#2531) and
+        # runs it in a DOM (#2534): its test renders the page, which loads its data in the browser.
         criterion_test_files=(
             ("endpoint", "__tests__/criteria/{criterion}.test.ts"),
-            ("client_route", "__tests__/criteria/{criterion}.test.ts"),
+            ("client_route", "__tests__/criteria/{criterion}.test.tsx"),
         ),
         # #1950: the frozen types write an optional field ``field?: type`` and the frozen store
         # adds no default, so what a create without it returns is each build's handler's choice.

@@ -148,3 +148,42 @@ def test_fastapis_footprint_for_the_same_delta_is_unchanged_by_the_route_contrac
     )
 
     assert "backend/routes.py" in footprint
+
+
+def _expanded_nextjs():
+    from squadops.stacks.scaffold import expand
+    from tests.unit.capabilities._stack_fixtures import manifest_for_stack
+
+    return {f["name"]: f["content"] for f in expand(manifest_for_stack("nextjs_ts"))}
+
+
+def test_every_page_suite_the_runner_collects_runs_in_a_dom_with_testing_library():
+    """#2534, the 2.4 shakeout's round 3 (``run_a5756a5606ef``). Bug caught: a page suite
+    collected but run in node with no DOM, so a page that loads its data in the browser shows only
+    its loading state and its criterion can never pass; or the DOM named in the config with its
+    packages, its setup file or its proof missing from the tree, so every page suite fails to load."""
+    import json
+    import re
+
+    from squadops.stacks.development_profiles import (
+        matches_test_file_patterns,
+        test_file_patterns_from_glob,
+    )
+
+    tree = _expanded_nextjs()
+    config = tree["vitest.config.ts"]
+    (jsdom_glob,) = re.findall(r"environmentMatchGlobs: \[\['([^']+)', 'jsdom'\]\]", config)
+    (setup,) = re.findall(r"setupFiles: \['([^']+)'\]", config)
+    dom = test_file_patterns_from_glob(jsdom_glob)
+    dev = json.loads(tree["package.json"])["devDependencies"]
+
+    assert matches_test_file_patterns(criterion_test_path("nextjs_ts", "T3", "client_route"), dom)
+    assert matches_test_file_patterns("__tests__/run-detail.test.tsx", dom)
+    assert not matches_test_file_patterns("__tests__/runs-api.test.ts", dom)
+    assert {p: dev.get(p) for p in ("jsdom", "@testing-library/react", "@testing-library/dom",
+                                    "@testing-library/jest-dom")} == {
+        "jsdom": "25.0.1", "@testing-library/react": "16.0.1", "@testing-library/dom": "10.4.0",
+        "@testing-library/jest-dom": "6.5.0",
+    }  # fmt: skip
+    assert setup in tree and "jest-dom" in tree[setup]
+    assert "findByTestId" in tree["__tests__/harness-dom.test.tsx"]
