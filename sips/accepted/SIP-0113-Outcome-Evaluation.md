@@ -666,9 +666,22 @@ within them, for the owner's review.
   `passed` (the MacBook lane's review).
 - **An evaluated tree's keys are checked before the copy is written:** absolute, climbing or
   non-normal keys are refused, and nothing runs (contract 3: never the live tree).
-- **Not built yet, on #2421:** the declared entry points, so scenarios reach the readiness port's root;
-  and resolving only the owner-approved `secret://` references, with `secret not available` for the rest.
-  SIP-0102 §11e says where each lands.
+- **Scenarios reach the API at its base** (#2421's entry points; #2464):
+  - a declared Project at its `http_base` entry point's port and path. On the app network (SIP-0102 §11h)
+    that is `http://<the app's name>:<port><path>`, with nothing published; on a host run, with no app
+    network, both ports publish to loopback;
+  - a blueprint at its stack's `api_prefix` on its app port: `""` for the canonical stack, whose backend
+    serves the PRD's paths at the root, and `/api` for Next.js, which serves them as App Router routes.
+
+  So one suite names the PRD's paths (`/runs`, `/runs/{run_id}/join`) on either stack. Read live on
+  `cyc_bbedc850e6ff`'s Next.js tree: `GET /runs` reached `/api/runs` and answered 200.
+- **Not built yet, on #2421:** resolving only the owner-approved `secret://` references, with `secret not
+  available` for the rest. SIP-0102 §11e says where it lands.
+- **Found while reading the window's suite live (#2464): the request bodies are not stack-neutral.** The
+  PRD leaves the data model to each delivery's interface manifest (its §8). That Next.js tree names the
+  run's fields `dateTime` and `meetingLocation`, where the canonical stack's names are `datetime` and
+  `location`. A create step with fixed field names therefore fails at step 1 on one of them. How the suite
+  names its fields is #2464's.
 - **The vocabulary** is in `squadops.scenarios.steps`.
   - **Steps:** `http` actions, with saved values threaded into later paths and bodies, and an optional
     `expect_status`.

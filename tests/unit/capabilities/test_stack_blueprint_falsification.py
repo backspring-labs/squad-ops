@@ -110,6 +110,11 @@ _RUNTIME_WITNESS = {
         "acceptance_evaluation.resolve_check_stack -> the typed-check evaluators; "
         "test_check_stack_is_falsified_at_the_acceptance_layer"
     ),
+    # #2421: where a blueprint's running app serves its API, read by the scenario runner.
+    ("EnvironmentContract", "api_prefix"): (
+        "adapters.sandbox.scenario_runner -> every scenario step's URL; "
+        "test_a_nextjs_blueprint_reaches_the_prds_paths_under_its_api_prefix"
+    ),
 }
 
 #: Fields unset on a stack for a recorded reason. Each MUST be populated by another stack —
@@ -129,6 +134,10 @@ _DECLARED_OPTIONAL = {
     ("ScaffoldStack", "check_stack"): (
         "the typed-check evaluators are Python AST implementations never verified against "
         "TypeScript, so on nextjs_ts they skip rather than read a guess (#503, #822 bend 6)"
+    ),
+    ("EnvironmentContract", "api_prefix"): (
+        "the canonical stack's backend serves the PRD's paths at the root (the Vite proxy adds "
+        "/api); nextjs_ts serves them under /api as App Router routes (#2421)"
     ),
 }
 

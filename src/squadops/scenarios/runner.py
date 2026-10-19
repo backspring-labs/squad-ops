@@ -71,6 +71,11 @@ class DeclaredStart:
     setup: tuple[tuple[str, ...], ...] = ()
     working_dir: str = "."
     configuration_revision: int | None = None
+    #: The declared ``http_base`` entry point (#2421): the port and path scenarios reach the API
+    #: at. ``None`` when the Project declares no ``http_base``; then no ``http_endpoint`` scenario
+    #: applies (``evaluate.declared_surfaces``).
+    api_port: int | None = None
+    api_path: str = ""
 
     def __post_init__(self) -> None:
         if self.ready_kind not in ReadinessKind.CHECKED:
@@ -86,6 +91,8 @@ class DeclaredStart:
             "setup": [list(s) for s in self.setup],
             "working_dir": self.working_dir,
             "configuration_revision": self.configuration_revision,
+            "api_port": self.api_port,
+            "api_path": self.api_path,
         }
 
     @classmethod
@@ -99,6 +106,8 @@ class DeclaredStart:
             setup=tuple(tuple(s) for s in d.get("setup", ())),
             working_dir=str(d.get("working_dir", ".")),
             configuration_revision=d.get("configuration_revision"),
+            api_port=d.get("api_port"),
+            api_path=str(d.get("api_path", "")),
         )
 
 
@@ -115,6 +124,34 @@ def _working_directory(value: Any) -> str:
     if path.is_absolute() or ".." in path.parts:
         raise StartUndeclared(f"working_directory {value!r} is a path inside the repository")
     return str(path)
+
+
+def _http_base(entry_points: Any) -> tuple[int | None, str]:
+    """The declared ``http_base`` entry point's port and path, ``(None, "")`` when there is none.
+    Contract 7 declares at least one entry point."""
+    if not isinstance(entry_points, list | tuple) or not entry_points:
+        raise StartUndeclared(
+            "the declaration names no entry_points: contract 7 declares at least one"
+        )
+    for entry in entry_points:
+        if not isinstance(entry, Mapping) or entry.get("kind") not in _ENTRY_KINDS:
+            raise StartUndeclared(
+                f"an entry point is a kind of {sorted(_ENTRY_KINDS)} and a url: {entry!r}"
+            )
+    bases = [e for e in entry_points if e["kind"] == "http_base"]
+    if not bases:
+        return None, ""
+    url = urlsplit(str(bases[0].get("url", "")))
+    try:
+        port = url.port
+    except ValueError as e:
+        raise StartUndeclared(f"http_base {bases[0].get('url')!r}: {e}") from e
+    if port is None:
+        raise StartUndeclared(f"http_base {bases[0].get('url')!r} names no port")
+    return port, url.path.rstrip("/")
+
+
+_ENTRY_KINDS = frozenset({"http_base", "ui_base", "other"})
 
 
 def declared_start(
@@ -158,6 +195,7 @@ def declared_start(
         raise StartUndeclared(f"readiness target {raw!r}: {e}") from e
     if port is None:
         raise StartUndeclared(f"readiness target {raw!r} names no port")
+    api_port, api_path = _http_base(declaration.get("entry_points"))
     return DeclaredStart(
         start=start,
         port=port,
@@ -167,6 +205,8 @@ def declared_start(
         setup=tuple(setup),
         working_dir=_working_directory(declaration.get("working_directory", ".")),
         configuration_revision=configuration_revision,
+        api_port=api_port,
+        api_path=api_path,
     )
 
 
