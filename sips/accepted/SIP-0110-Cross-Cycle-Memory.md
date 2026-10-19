@@ -84,7 +84,7 @@ re-places it.
 | entry points: the typed records (notes, preferences, project and task instructions), permissions by kind, provenance (§A.3.2–§A.3.4) | **shipped** (§5l) | 2.4.0, PR #2508, issue #2177 |
 | entry points: task instructions, with the work target, retries, references bound with the cycle, binding holds and emergency withdrawal (§A.3.5–§A.3.8) | **placed** | 2.4.0, #2178: stage 1 (the records reach the tasks they name, binding, the task held when incomplete) shipped in PR #2513 (§5m); stage 2 remains |
 | entry points: project instructions in the snapshot with references bound, re-binding, the effective lesson budget, the comparison arms and disclosure (§A.3.6, §A.3.7) | **placed** | 2.4.0, #2179: stage 1 (pinned at admission, binding on the tasks they apply to, the lesson budget after them) ships in the PR that wrote this row (§5n); stage 2 remains |
-| entry points: chat on the substrate, with capture confirmed, chat exposures, server-side project binding and provenance authorized (§A.3.5) | **placed** | 2.4.0, #2180: stage A (the binding, each turn's context and exposure, confirmed capture of notes and preferences, authorized provenance, Q29's deletion) ships in the PR that wrote this row (§5o); stage B, instruction capture, remains |
+| entry points: chat on the substrate, with capture confirmed, chat exposures, server-side project binding and provenance authorized (§A.3.5) | **placed** | 2.4.0, #2180: stage A (the binding, each turn's context and exposure, confirmed capture of notes and preferences, authorized provenance, Q29's deletion) shipped in PR #2517, and stage B's project-instruction capture in the PR that wrote this row (§5o); a task instruction's capture from chat remains, with #2178's second stage |
 | entry points: lesson inspection from chat; a conversational claim never becomes a lesson (§A.3.5) | **shipped** | 2.4.0, PR #2518, issue #2181 (§5p) |
 | entry points: the console's memory record view (§A.3.11) | **placed** | 2.4.0, #2182: the view and its uses route shipped in the PR that wrote this row (§5q); the page's capture test remains, live with #2183 |
 | entry points: the acceptance matrix, T1–T17, live on a deploy (§A.5) | **placed** | 2.4.0, #2183 |
@@ -1844,8 +1844,21 @@ routes, the records routes, the provenance link and the deleted-session marks.
 - **The console** keeps a reply that failed partway on screen with its notice. It shows the selected session's own
   binding, drops a card when the conversation changes, and never quietly turns a proposal into another kind or scope.
 
-**Stage B (#2180, still open):** a task instruction (naming an existing cycle) and a project instruction (with
-`memory:instruct`) captured from chat, delivered through #2178's and #2179's paths (T1 and T3 through chat).
+**Stage B, its project-instruction half, as built (2026-10-19, #2180; the supervisor, under the owner's grant of
+2026-10-19).**
+- **The card offers a project instruction** on a bound session to a person who holds `memory:instruct`.
+- **The agent proposes one** (`"kind": "instruction"`, with an `applicability`). Any field it leaves out reads `*`, which
+  the card shows as "any" and the person narrows.
+- **The capture requires the applicability:** every field explicit, checked against what dispatches carry. It's the
+  records API's own check, moved to one helper (`squadops.api.routes.memory.applicability`) so the two can't drift.
+- **The record:** an instruction, confirmed by its writer, with the chat turn as its source. It binds through #2179's
+  path: pinned by the units admitted after it, on the tasks its applicability covers. The reply says so.
+- **Evidence:** T1 through chat. An instruction proposed and confirmed on the card reaches the next admitted cycle's
+  design plan, and no other of its tasks.
+
+**Stage B's other half (#2180, still open):** a task instruction captured from chat. It names an already-admitted
+cycle, so it is an intervention after admission (§3.5), which #2178's second stage builds. Until then the card doesn't
+offer one, and a proposal scoped to a task proposes nothing; it is never widened into a project instruction.
 
 ## 5p. Chat inspects lessons, as built (2026-10-19, #2181; the supervisor, under the owner's grant of 2026-10-19)
 

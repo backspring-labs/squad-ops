@@ -162,12 +162,15 @@ def test_a_read_that_failed_is_failed_and_says_so_never_none():
          ("mock the clock", "note", "user"), "Sure."),
         ('<memory-capture>{"text": "brief", "kind": "preference", "scope": "user"}</memory-capture>',
          ("brief", "preference", "user"), ""),
-        ('Ok <memory-capture>{"text": "x", "kind": "instruction"}</memory-capture>', None, "Ok"),
+        ('Ok <memory-capture>{"text": "x", "kind": "instruction"}</memory-capture>',
+         ("x", "instruction", "project"), "Ok"),
+        ('Ok <memory-capture>{"text": "x", "kind": "instruction", "scope": "task"}</memory-capture>', None, "Ok"),
         ("Ok <memory-capture>not json</memory-capture>", None, "Ok"),
         ('<memory-capture>{"text": "", "kind": "note"}</memory-capture>Done', None, "Done"),
         ("No capture here.", None, "No capture here."),
     ],
-    ids=["a-note", "a-preference", "an-instruction-is-stage-b", "malformed", "empty", "none"],
+    ids=["a-note", "a-preference", "a-project-instruction", "a-task-instruction-waits-for-2178",
+         "malformed", "empty", "none"],
 )  # fmt: skip
 def test_a_reply_proposes_at_most_one_well_formed_capture_and_never_shows_the_block(
     reply, proposed, shown

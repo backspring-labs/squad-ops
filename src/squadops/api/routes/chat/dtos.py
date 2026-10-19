@@ -42,6 +42,13 @@ class CaptureRequest(BaseModel):
     suggestion: bool = Field(
         default=False, description="A note marked as a claim, never a lesson's citation (§3.5)"
     )
+    applicability: dict[str, list[str]] | None = Field(
+        default=None,
+        description=(
+            "A project instruction's task_types, roles and stacks, each explicit ('*' for any). "
+            "Required for an instruction, refused for anything else."
+        ),
+    )
 
     model_config = ConfigDict(extra="forbid")
 

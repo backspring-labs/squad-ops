@@ -131,12 +131,24 @@
 
   // The proposal's own kind and scope when this session offers them; else the same kind, said so;
   // else nothing chosen, so the person picks: a proposal is never quietly made something else.
-  function openCard({ text, sourceMessageId, choices, kind, scope, suggestion = false }) {
+  // A project instruction's applicability, as comma-separated names the person can narrow; '*' is any.
+  const APPLICABILITY_FIELDS = ['task_types', 'roles', 'stacks'];
+
+  function openCard({ text, sourceMessageId, choices, kind, scope, suggestion = false, applicability = null }) {
     const exact = choices.find((c) => c.kind === kind && c.scope === scope);
     const sameKind = exact || choices.find((c) => c.kind === kind);
     const changed = exact ? null : `Proposed as a ${scope} ${kind}, which this conversation doesn't offer you.`;
+    const applies = Object.fromEntries(
+      APPLICABILITY_FIELDS.map((f) => [f, (applicability?.[f] || ['*']).join(', ')])
+    );
     card = { text, sourceMessageId, choices, choice: sameKind ? choiceKey(sameKind) : null,
-             suggestion, changed };
+             suggestion, changed, applies };
+  }
+
+  function applicabilityOf(applies) {
+    return Object.fromEntries(
+      APPLICABILITY_FIELDS.map((f) => [f, applies[f].split(',').map((v) => v.trim()).filter(Boolean)])
+    );
   }
 
   // A console action: keep a message, through the same card and the same confirmation.
@@ -161,7 +173,9 @@
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ message_id: card.sourceMessageId, text: card.text,
                                kind: chosen.kind, scope: chosen.scope,
-                               suggestion: chosen.kind === 'note' && card.suggestion }),
+                               suggestion: chosen.kind === 'note' && card.suggestion,
+                               ...(chosen.kind === 'instruction'
+                                 ? { applicability: applicabilityOf(card.applies) } : {}) }),
       });
       const body = await resp.json().catch(() => ({}));
       if (resp.status === 201) {
@@ -268,7 +282,8 @@
             } else if (evt.capture) {
               openCard({ text: evt.capture.text, sourceMessageId: evt.capture.source_message_id,
                          choices: evt.capture.choices, kind: evt.capture.kind,
-                         scope: evt.capture.scope, suggestion: evt.capture.suggestion });
+                         scope: evt.capture.scope, suggestion: evt.capture.suggestion,
+                         applicability: evt.capture.applicability });
             } else if (evt.done) {
               // Stream complete
             } else if (evt.text) {
@@ -442,10 +457,19 @@
       {#each card.choices as c}
         <label class="capture-choice">
           <input type="radio" name="capture-choice" value={choiceKey(c)} bind:group={card.choice} />
-          <span>{c.scope === 'project' ? `Project note (${c.project_id})` : c.kind === 'preference' ? 'Your preference' : 'Your note'}</span>
+          <span>{c.kind === 'instruction' ? `Project instruction (${c.project_id})` : c.scope === 'project' ? `Project note (${c.project_id})` : c.kind === 'preference' ? 'Your preference' : 'Your note'}</span>
           <span class="hint">takes effect {c.takes_effect}</span>
         </label>
       {/each}
+      {#if card.choice?.startsWith('instruction:')}
+        <div class="hint">It binds the squad's work in units admitted after you confirm it, on the tasks named here ('*' for any).</div>
+        {#each APPLICABILITY_FIELDS as f}
+          <label class="capture-choice">
+            <span>{f.replace('_', ' ')}</span>
+            <input class="applies" bind:value={card.applies[f]} />
+          </label>
+        {/each}
+      {/if}
       {#if card.choice?.startsWith('note:')}
         <label class="capture-choice" title="A claim to check, never a lesson's evidence">
           <input type="checkbox" bind:checked={card.suggestion} />
@@ -765,6 +789,14 @@
     gap: 6px;
     font-size: var(--continuum-font-size-xs, 11px);
     color: var(--continuum-text-secondary, #a0a0b8);
+  }
+  .capture-choice .applies {
+    flex: 1;
+    background: var(--continuum-bg-primary, #1a1a2e);
+    color: var(--continuum-text-primary, #e0e0e8);
+    border: 1px solid var(--continuum-border, #2d2d44);
+    border-radius: 4px;
+    padding: 2px 6px;
   }
   .capture-actions {
     display: flex;
