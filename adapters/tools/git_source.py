@@ -29,6 +29,8 @@ import shutil
 import socket
 import subprocess
 import tempfile
+import time
+from collections.abc import Collection, Mapping
 from pathlib import Path
 from urllib.parse import urlsplit
 
@@ -44,15 +46,34 @@ from squadops.projects.registration import (
 _COMMIT = re.compile(r"^[0-9a-f]{40}$")
 _PROJECT_ID = re.compile(r"^[a-z][a-z0-9_-]{1,62}$")
 _SCP_HOST = re.compile(r"^[A-Za-z0-9._-]+@(?P<host>[A-Za-z0-9.-]+):")
+#: Where a captured candidate is kept in the clone: a namespace the product's remote never has,
+#: so no fetch writes or prunes it.
+_CAPTURE_REF = re.compile(r"^refs/squadops/[A-Za-z0-9_-]+(/[A-Za-z0-9_-]+)*$")
+_IDENTITY = re.compile(r"^[^<>\n]+$")
+
+
+def _quoted(path: str) -> str:
+    """fast-import's C-style quoted path, so no path can end its line or start a command."""
+    escaped = path.replace("\\", "\\\\").replace('"', '\\"').replace("\n", "\\n")
+    return f'"{escaped}"'
 
 
 class GitSourceRepository(SourceRepositoryPort):
     def __init__(
-        self, cache_root: Path, policy: LocatorPolicy, *, timeout_seconds: float = 300.0
+        self,
+        cache_root: Path,
+        policy: LocatorPolicy,
+        *,
+        timeout_seconds: float = 300.0,
+        committer_name: str,
+        committer_email: str,
     ) -> None:
+        if not (_IDENTITY.match(committer_name) and _IDENTITY.match(committer_email)):
+            raise ValueError("a committer's name and email carry no angle brackets or newlines")
         self._cache_root = Path(cache_root)
         self._policy = policy
         self._timeout = timeout_seconds
+        self._committer = f"{committer_name} <{committer_email}>"
 
     async def sync(self, project_id: str, locator: str, ref: str) -> str:
         try:
@@ -91,7 +112,69 @@ class GitSourceRepository(SourceRepositoryPort):
             raise SourceUnavailable(f"{commit!r} is not a commit", reason="not_a_commit")
         return await asyncio.to_thread(self._tree_at, self._clone_dir(project_id), commit)
 
+    async def commit_tree(
+        self,
+        project_id: str,
+        *,
+        parent: str,
+        files: Mapping[str, bytes],
+        executable: Collection[str],
+        ref: str,
+        message: str,
+    ) -> str:
+        if not _COMMIT.match(parent):
+            raise SourceUnavailable(f"{parent!r} is not a commit", reason="not_a_commit")
+        if not _CAPTURE_REF.match(ref):
+            raise SourceUnavailable(f"{ref!r} is not a capture ref", reason="ref_refused")
+        return await asyncio.to_thread(
+            self._commit_tree, self._clone_dir(project_id), parent, files, executable, ref, message
+        )
+
+    async def export_patch(self, project_id: str, commit: str) -> bytes:
+        if not _COMMIT.match(commit):
+            raise SourceUnavailable(f"{commit!r} is not a commit", reason="not_a_commit")
+        clone = self._clone_dir(project_id)
+        return await asyncio.to_thread(
+            self._git, clone, "format-patch", "--stdout", "--binary", "--full-index",
+            "--no-signature", "-1", commit, step="export",
+        )  # fmt: skip
+
     # --- the blocking half, run off the event loop ---
+
+    def _commit_tree(
+        self,
+        clone: Path,
+        parent: str,
+        files: Mapping[str, bytes],
+        executable: Collection[str],
+        ref: str,
+        message: str,
+    ) -> str:
+        """One fast-import stream: the whole tree replaces the parent's (``deleteall``), so the
+        commit holds exactly ``files``, with their modes, and no working tree is written."""
+        if not clone.is_dir():
+            raise SourceUnavailable("the managed clone does not exist yet", reason="not_cloned")
+        self._git(clone, "cat-file", "-e", f"{parent}^{{commit}}", step="read")
+        executable = set(executable)
+        body = message.encode()
+        stream = [
+            f"commit {ref}\n".encode(),
+            f"committer {self._committer} {int(time.time())} +0000\n".encode(),
+            f"data {len(body)}\n".encode() + body + b"\n",
+            f"from {parent}\n".encode(),
+            b"deleteall\n",
+        ]
+        for path in sorted(files):
+            content = files[path]
+            mode = "100755" if path in executable else "100644"
+            stream.append(f"M {mode} inline {_quoted(path)}\n".encode())
+            stream.append(f"data {len(content)}\n".encode() + content + b"\n")
+        stream.append(b"done\n")
+        self._git(
+            clone, "fast-import", "--quiet", "--force", "--done", step="capture",
+            stdin=b"".join(stream),
+        )  # fmt: skip
+        return self._git(clone, "rev-parse", "--verify", ref, step="capture").decode().strip()
 
     def _clone_dir(self, project_id: str) -> Path:
         if not _PROJECT_ID.match(project_id):
@@ -101,7 +184,12 @@ class GitSourceRepository(SourceRepositoryPort):
     def _sync(self, clone: Path, locator: str, ref: str) -> str:
         if clone.is_dir():
             self._git(clone, "remote", "set-url", "origin", "--", locator, step="fetch")
-            self._git(clone, "fetch", "--prune", "--quiet", "origin", step="fetch")
+            # Branches and tags only, named: a mirror's own refspec (+refs/*:refs/*) would prune
+            # every captured ref under refs/squadops/, which the product never has.
+            self._git(
+                clone, "fetch", "--prune", "--quiet", "origin",
+                "+refs/heads/*:refs/heads/*", "+refs/tags/*:refs/tags/*", step="fetch",
+            )  # fmt: skip
         else:
             self._cache_root.mkdir(parents=True, exist_ok=True)
             staging = Path(tempfile.mkdtemp(prefix=f".{clone.name}.", dir=self._cache_root))
@@ -175,7 +263,7 @@ class GitSourceRepository(SourceRepositoryPort):
             at = start + int(size) + 1
         return contents
 
-    def _git(self, cwd: Path, *args: str, step: str, stdin: str | None = None) -> bytes:
+    def _git(self, cwd: Path, *args: str, step: str, stdin: str | bytes | None = None) -> bytes:
         env = {k: v for k, v in os.environ.items() if not k.startswith("GIT_")}
         env.update(
             GIT_CONFIG_NOSYSTEM="1",
@@ -199,7 +287,7 @@ class GitSourceRepository(SourceRepositoryPort):
                 command,
                 cwd=cwd,
                 env=env,
-                input=stdin.encode() if stdin is not None else None,
+                input=stdin.encode() if isinstance(stdin, str) else stdin,
                 capture_output=True,
                 timeout=self._timeout,
             )

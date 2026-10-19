@@ -137,10 +137,21 @@ def create_vcs_provider(
 
 
 def create_source_repository(
-    *, cache_root: Path, policy: LocatorPolicy, timeout_seconds: float
+    *,
+    cache_root: Path,
+    policy: LocatorPolicy,
+    timeout_seconds: float,
+    committer_name: str,
+    committer_email: str,
 ) -> SourceRepositoryPort:
     """The managed clone of each registered product's repository (SIP-0112 E.4.2), Git's. The
     runtime API's alone: an agent's VCS tool never reaches a registered repository."""
     from adapters.tools.git_source import GitSourceRepository
 
-    return GitSourceRepository(cache_root, policy, timeout_seconds=timeout_seconds)
+    return GitSourceRepository(
+        cache_root,
+        policy,
+        timeout_seconds=timeout_seconds,
+        committer_name=committer_name,
+        committer_email=committer_email,
+    )

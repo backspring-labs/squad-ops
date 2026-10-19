@@ -66,6 +66,7 @@ from squadops.cycles.models import (
     Cycle,
     CycleStatus,
     Gate,
+    InheritedBaselineNotFoundError,
     PreflightRejectedError,
     Project,
     ProjectNotReadyError,
@@ -456,6 +457,28 @@ def pin_source_context(
     )
 
 
+async def require_inherited_baseline(registry: Any, context: ProjectSourceContext) -> None:
+    """FR-20, FR-09: a source-backed run is judged against the product's inherited baseline at
+    the commit and Development Configuration revision it pins, so a Cycle without that
+    baseline is refused before dispatch, not once its work is done."""
+    try:
+        baseline = await registry.get_inherited_baseline(context.project_id)
+    except InheritedBaselineNotFoundError:
+        baseline = None
+    pinned = (context.development_baseline_commit, context.development_configuration_revision)
+    if baseline is None or (baseline.commit, baseline.development_configuration_revision) != pinned:
+        held = (
+            "none"
+            if baseline is None
+            else f"{baseline.commit}, revision {baseline.development_configuration_revision}"
+        )
+        raise ProjectStateConflictError(
+            f"Project {context.project_id}'s inherited baseline is {held}; this Cycle pins "
+            f"{pinned[0]}, revision {pinned[1]}: capture the baseline there first "
+            "(squadops projects baseline)"
+        )
+
+
 async def prepare_cycle(
     ports: CreationPorts,
     project_id: str,
@@ -477,6 +500,8 @@ async def prepare_cycle(
             f"Project {project_id} is {project.lifecycle_status.value}: a Cycle needs it READY"
         )
     source_context = pin_source_context(project, body.source_precondition)
+    if source_context is not None:
+        await require_inherited_baseline(ports.project_registry, source_context)
 
     # Resolve squad profile snapshot
     profile, snapshot_hash = await ports.squad_profile.resolve_snapshot(body.squad_profile_id)

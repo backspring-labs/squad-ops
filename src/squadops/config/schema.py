@@ -686,6 +686,15 @@ class ProjectsConfig(BaseModel):
             "nothing) may take before it is a fault (#2575)"
         ),
     )
+    #: E.4.3: who a captured candidate's commit names. The .invalid address is no one's mailbox,
+    #: so a deploy that contributes under its own identity says so here.
+    committer_name: str = Field(
+        default="SquadOps", description="The name a squad's captured commit is made under"
+    )
+    committer_email: str = Field(
+        default="squadops@squadops.invalid",
+        description="The email a squad's captured commit is made under",
+    )
 
 
 class SchedulerConfig(BaseModel):

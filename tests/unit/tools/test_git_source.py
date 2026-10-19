@@ -49,7 +49,11 @@ def product(tmp_path):
 @pytest.fixture
 def clones(tmp_path):
     return GitSourceRepository(
-        tmp_path / "cache", LocatorPolicy.of([], [str(tmp_path / "sources")]), timeout_seconds=60
+        tmp_path / "cache",
+        LocatorPolicy.of([], [str(tmp_path / "sources")]),
+        timeout_seconds=60,
+        committer_name="SquadOps",
+        committer_email="squadops@squadops.invalid",
     )
 
 
@@ -118,6 +122,64 @@ async def test_modes_symlinks_submodules_and_odd_paths_are_read_as_git_records_t
         "tracked symlinks: README-link.md",
         "submodules: vendor/lib",
     ]
+
+
+async def test_a_captured_tree_is_committed_exactly_and_survives_the_next_sync(product, clones):
+    """E.4.3's capture (contract 3). Bugs caught:
+    - a mode, a byte or an awkward path lost on the way into Git;
+    - a file the candidate dropped kept from the parent;
+    - the mirror's ``fetch --prune`` deleting the captured ref, since the product never has it."""
+    commit = await clones.sync("prj-tally", str(product.path), "refs/heads/main")
+    tree = await clones.tree_at("prj-tally", commit)
+    files = {p: c for p, c in tree.files.items() if p != "tally/notify.py"}
+    files['docs/a "quoted" name\twith tab.md'] = b"odd\r\n"
+    files["tools/run.sh"] = b"#!/bin/sh\necho run\n"
+
+    captured = await clones.commit_tree(
+        "prj-tally",
+        parent=commit,
+        files=files,
+        executable={"tools/run.sh"},
+        ref="refs/squadops/cyc_1/run_1",
+        message="a change\n",
+    )
+    (product.path / "NOTES.md").write_text("an outside change\n")
+    _git(product.path, "add", "NOTES.md")
+    _git(product.path, "commit", "-q", "-m", "outside")
+    await clones.sync("prj-tally", str(product.path), "refs/heads/main")
+
+    back = await clones.tree_at("prj-tally", captured)
+    assert back.files == files
+    assert back.executable == frozenset({"tools/run.sh"})
+    clone = clones._clone_dir("prj-tally")
+    assert _git(clone, "rev-parse", "refs/squadops/cyc_1/run_1") == captured
+    assert _git(clone, "rev-parse", f"{captured}^") == commit
+    patch = await clones.export_patch("prj-tally", captured)
+    assert b"deleted file mode 100644" in patch and b"new file mode 100755" in patch
+
+
+@pytest.mark.parametrize(
+    ("ref", "parent"),
+    [("refs/heads/main", None), ("refs/squadops/../heads/main", None), (None, "f" * 40)],
+    ids=["a-product-branch", "escaping-ref", "parent-not-in-clone"],
+)
+async def test_a_capture_names_only_our_namespace_and_a_parent_the_clone_holds(
+    product, clones, ref, parent
+):
+    """Bugs caught: a capture that moves the product's own branch in the clone (the next fetch
+    would silently undo it, or a push would publish it), or one committed on a parent nothing
+    can check out."""
+    commit = await clones.sync("prj-tally", str(product.path), "refs/heads/main")
+
+    with pytest.raises(SourceUnavailable):
+        await clones.commit_tree(
+            "prj-tally",
+            parent=parent or commit,
+            files={"a.txt": b"a\n"},
+            executable=(),
+            ref=ref or "refs/squadops/cyc_1/run_1",
+            message="m\n",
+        )
 
 
 @pytest.mark.parametrize(

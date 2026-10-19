@@ -26,6 +26,7 @@ if TYPE_CHECKING:
     from squadops.ports.runtime.activity import RuntimeActivityPort
     from squadops.ports.runtime.assignments import AssignmentPort
     from squadops.ports.runtime.focus_lease import FocusLeasePort
+    from squadops.ports.sandbox import ExecutionSandboxPort
     from squadops.ports.telemetry.llm_observability import LLMObservabilityPort
     from squadops.runtime.coordinator import RuntimeCoordinator
 
@@ -152,6 +153,7 @@ def create_flow_executor(
     coordinator: RuntimeCoordinator | None = None,
     focus_lease_port: FocusLeasePort | None = None,
     source_repository: SourceRepositoryPort | None = None,
+    sandbox: ExecutionSandboxPort | None = None,
 ) -> FlowExecutionPort:
     """Create a FlowExecutionPort adapter.
 
@@ -202,4 +204,5 @@ def create_flow_executor(
         coordinator=coordinator,
         focus_lease_port=focus_lease_port,
         source_repository=source_repository,
+        sandbox=sandbox,
     )

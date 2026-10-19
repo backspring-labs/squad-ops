@@ -23,7 +23,7 @@ from squadops.projects.baseline import (
     result_of,
 )
 from squadops.projects.configuration import baseline_tree
-from squadops.projects.development_configuration import submission_digest
+from squadops.projects.development_configuration import Commands, submission_digest
 from squadops.sandbox.models import RevisionOrigin
 
 if TYPE_CHECKING:
@@ -31,6 +31,7 @@ if TYPE_CHECKING:
     from squadops.ports.cycles.project_registry import ProjectRegistryPort
     from squadops.ports.projects.source_repository import SourceRepositoryPort
     from squadops.ports.sandbox import ExecutionSandboxPort
+    from squadops.projects.models import CheckoutTree
     from squadops.sandbox.models import WorkspaceRevision
 
 
@@ -63,15 +64,18 @@ async def seed_project_tree(
     sandbox: ExecutionSandboxPort | None,
     cycle_id: str | None = None,
     campaign_id: str | None = None,
+    tree: CheckoutTree | None = None,
 ) -> WorkspaceRevision:
-    """Seed ``commit``'s tree as ``workspace_id``'s first revision, and record the mapping."""
+    """Seed ``commit``'s tree as ``workspace_id``'s first revision, and record the mapping.
+    ``tree`` is that commit's tree when the caller has already read it."""
     if sandbox is None:
         raise SandboxUnavailable("the runtime API has no sandbox client to seed through")
     if project.source is None:
         raise ValueError(f"Project {project.project_id} has no external source to seed")
-    tree = await baseline_tree(
-        repository, project.project_id, project.source.repo_uri, project.source.base_ref, commit
-    )
+    if tree is None or tree.commit != commit:
+        tree = await baseline_tree(
+            repository, project.project_id, project.source.repo_uri, project.source.base_ref, commit
+        )
     if tree.capability_gaps:
         # deferred (pair): squadops.cycles imports this package at load
         from squadops.cycles.models import ProjectStateConflictError
@@ -98,6 +102,37 @@ async def seed_project_tree(
         )
     )
     return revision
+
+
+async def run_checks(
+    sandbox: ExecutionSandboxPort | None, revision: WorkspaceRevision, commands: Commands
+) -> tuple[tuple[CheckResult, ...], dict[str, str]]:
+    """Each declared check against ``revision``, after the checks' own setup, in a disposable
+    copy (X-3a), and the environment they ran in. The inherited baseline and a source-backed
+    run's candidate are both checked here, so the two are compared like for like."""
+    if sandbox is None:
+        raise SandboxUnavailable("the runtime API has no sandbox client to run checks through")
+    results: list[CheckResult] = []
+    environment: dict[str, str] = {}
+    for check in commands.checks:
+        # The sandbox runs a declared check with no environment of its own (X-3a), so a check
+        # that declares one is a gap, decided by its declaration.
+        gap = missing_environment(check, ())
+        if gap is not None:
+            results.append(gap)
+            continue
+        run: Any = await sandbox.run_declared_command(
+            revision=revision,
+            command=check.argv,
+            working_dir=commands.working_directory,
+            setup=commands.check_setup,
+        )
+        environment = environment or {
+            "image": run.image_identity or "unknown",
+            "toolchain": run.environment_contract_id or "unknown",
+        }
+        results.append(result_of(check, run))
+    return tuple(results), environment or {"image": "unknown", "toolchain": "unknown"}
 
 
 async def capture_inherited_baseline(
@@ -127,33 +162,13 @@ async def capture_inherited_baseline(
     revision = await seed_project_tree(
         project, commit, workspace_id, registry=registry, repository=repository, sandbox=sandbox
     )
-    commands = configuration.commands
-    results: list[CheckResult] = []
-    environment: dict[str, str] = {}
-    for check in commands.checks:
-        # The sandbox runs a declared check with no environment of its own (X-3a), so a check
-        # that declares one is a gap, decided by its declaration.
-        gap = missing_environment(check, ())
-        if gap is not None:
-            results.append(gap)
-            continue
-        run: Any = await sandbox.run_declared_command(  # type: ignore[union-attr]
-            revision=revision,
-            command=check.argv,
-            working_dir=commands.working_directory,
-            setup=commands.check_setup,
-        )
-        environment = environment or {
-            "image": run.image_identity or "unknown",
-            "toolchain": run.environment_contract_id or "unknown",
-        }
-        results.append(result_of(check, run))
+    results, environment = await run_checks(sandbox, revision, configuration.commands)
     baseline = InheritedBaseline(
         project_id=project_id,
         commit=commit,
         development_configuration_revision=configuration.revision,
-        environment=environment or {"image": "unknown", "toolchain": "unknown"},
-        checks=tuple(results),
+        environment=environment,
+        checks=results,
     )
     return await registry.record_inherited_baseline(
         baseline,

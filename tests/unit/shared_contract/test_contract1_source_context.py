@@ -23,7 +23,13 @@ from adapters.cycles.memory_deploy_registry import MemoryDeployRegistry
 from squadops.api.cycle_schemas import CycleCreateRequest
 from squadops.api.error_handlers import register_domain_error_handlers
 from squadops.api.routes.cycles.cycles import CreationPorts, prepare_cycle, router
-from squadops.cycles.models import AgentProfileEntry, Project, SquadProfile
+from squadops.cycles.models import (
+    AgentProfileEntry,
+    InheritedBaselineNotFoundError,
+    Project,
+    SquadProfile,
+)
+from squadops.projects.baseline import parse_baseline
 from squadops.projects.models import ProjectLifecycleStatus, ProjectSource
 from squadops.projects.source_context import parse_source_context
 from tests.fixtures.shared_contract.repository import recorded
@@ -68,6 +74,9 @@ def _profile():
 def ports():
     registry = AsyncMock()
     registry.get_project.return_value = _project()
+    registry.get_inherited_baseline.return_value = parse_baseline(
+        recorded("inherited_baseline", "valid")
+    )
     profiles = AsyncMock()
     profiles.resolve_snapshot.return_value = (_profile(), "sha256:abc")
     return CreationPorts(
@@ -132,6 +141,41 @@ def test_a_project_not_ready_for_development_is_refused(client, ports, overrides
     resp = client.post("/api/v1/projects/prj-tally/cycles", json={"squad_profile_id": "full"})
 
     assert (resp.status_code, resp.json()["detail"]["error"]["code"]) == (409, code)
+
+
+@pytest.mark.parametrize(
+    "baseline",
+    [
+        None,
+        {
+            "commit": recorded("project_source_context", "stale_commit")[
+                "development_baseline_commit"
+            ]
+        },
+        {"development_configuration_revision": 2},
+    ],
+    ids=["never-captured", "another-commit", "another-revision"],
+)
+def test_a_cycle_without_the_baseline_of_its_pin_is_refused_before_dispatch(
+    client, ports, baseline
+):
+    """FR-20, FR-09. Bug caught: a source-backed Cycle dispatched with no baseline at its pin,
+    whose hours of work could then only end in a candidate nothing can be compared with."""
+    if baseline is None:
+        ports.project_registry.get_inherited_baseline.side_effect = InheritedBaselineNotFoundError(
+            "none"
+        )
+    else:
+        ports.project_registry.get_inherited_baseline.return_value = parse_baseline(
+            {**recorded("inherited_baseline", "valid"), **baseline}
+        )
+
+    resp = client.post("/api/v1/projects/prj-tally/cycles", json={"squad_profile_id": "full"})
+
+    error = resp.json()["detail"]["error"]
+    assert (resp.status_code, error["code"]) == (409, "PROJECT_STATE_CONFLICT")
+    assert "capture the baseline there first" in error["message"]
+    assert ports.cycle_registry._cycles == {}
 
 
 async def test_the_campaign_launch_pins_what_the_create_route_pins(ports, monkeypatch):

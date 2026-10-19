@@ -119,7 +119,11 @@ def world(tmp_path):
     )
     configuration = parse_configuration(recorded("development_configuration", "valid"))
     clones = GitSourceRepository(
-        tmp_path / "cache", LocatorPolicy.of([], [str(tmp_path / "sources")]), timeout_seconds=60
+        tmp_path / "cache",
+        LocatorPolicy.of([], [str(tmp_path / "sources")]),
+        timeout_seconds=60,
+        committer_name="SquadOps",
+        committer_email="squadops@squadops.invalid",
     )
     return repo, _Registry(project, configuration), clones, _LocalSandbox(tmp_path / "cycles")
 
