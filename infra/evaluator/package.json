@@ -1,0 +1,14 @@
+{
+  "name": "squadops-evaluator",
+  "private": true,
+  "description": "SIP-0113's evaluator image (A2, #2416): Lighthouse and axe per declared page, run by the sandbox's scenario runner.",
+  "type": "module",
+  "engines": {
+    "node": ">=20"
+  },
+  "dependencies": {
+    "@axe-core/puppeteer": "4.14.0",
+    "lighthouse": "13.5.0",
+    "puppeteer-core": "25.14.0"
+  }
+}

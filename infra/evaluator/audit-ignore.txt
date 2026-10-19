@@ -1,0 +1,9 @@
+# npm advisories the dependency audit is told to ignore in the evaluator image's lock — each with its
+# reason, and the issue that retires it. The owner's ruling on #2455 (2026-10-18, option (a)): accepted,
+# because none of this code runs in the image. It uses Debian's Chromium (PUPPETEER_SKIP_DOWNLOAD),
+# downloads no browser, makes no FTP or proxy fetch, and its only network is the sandbox's internal app
+# network (#2460). All three arrive through Puppeteer's browser-download chain, which Lighthouse pulls
+# in through puppeteer-core. Retired by #2469. Format: one advisory id per line; `#` comments.
+GHSA-7pqw-9j4j-h8q3  # extract-zip <=2.0.1, symlink archive writes: @puppeteer/browsers' download unzip, never run
+GHSA-jmr9-qjv8-65gv  # extract-zip <=2.0.1, symlink path traversal: the same unzip, never run
+GHSA-c475-qrg2-pj4r  # basic-ftp <=6.2.0, Client.list() CPU DoS: proxy-agent -> get-uri's ftp://, never fetched
