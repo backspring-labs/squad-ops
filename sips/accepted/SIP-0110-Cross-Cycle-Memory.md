@@ -82,8 +82,8 @@ re-places it.
 | entry points: chat's conversation history reaching the agent, with session ownership checked (SIP-0085 §4, §9; §A.3.3) | **shipped** | 2.3.0, PR #2247, issue #2175: resuming or reading a session checks its owner and agent first, refused as a missing session; each turn carries its bounded history, the drop counted |
 | entry points: the context-assembly port, inert, at the four seams (§A.3.6) | **shipped** | 2.3.0, #2257 (closes #2176; §5j records where it departs from §A.3.6's text) |
 | entry points: the typed records (notes, preferences, project and task instructions), permissions by kind, provenance (§A.3.2–§A.3.4) | **shipped** (§5l) | 2.4.0, PR #2508, issue #2177 |
-| entry points: task instructions, with the work target, retries, references bound with the cycle, binding holds and emergency withdrawal (§A.3.5–§A.3.8) | **placed** | 2.4.0, #2178 |
-| entry points: project instructions in the snapshot with references bound, re-binding, the effective lesson budget, the comparison arms and disclosure (§A.3.6, §A.3.7) | **placed** | 2.4.0, #2179 |
+| entry points: task instructions, with the work target, retries, references bound with the cycle, binding holds and emergency withdrawal (§A.3.5–§A.3.8) | **placed** | 2.4.0, #2178: stage 1 (the records reach the tasks they name, binding, the task held when incomplete) shipped in PR #2513 (§5m); stage 2 remains |
+| entry points: project instructions in the snapshot with references bound, re-binding, the effective lesson budget, the comparison arms and disclosure (§A.3.6, §A.3.7) | **placed** | 2.4.0, #2179: stage 1 (pinned at admission, binding on the tasks they apply to, the lesson budget after them) ships in the PR that wrote this row (§5n); stage 2 remains |
 | entry points: chat on the substrate, with capture confirmed, chat exposures, server-side project binding and provenance authorized (§A.3.5) | **placed** | 2.4.0, #2180 |
 | entry points: lesson inspection from chat; a conversational claim never becomes a lesson (§A.3.5) | **placed** | 2.4.0, #2181 |
 | entry points: the console's memory record view (§A.3.11) | **placed** | 2.4.0, #2182 |
