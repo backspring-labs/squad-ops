@@ -1355,3 +1355,11 @@ checks:
       from squadops.stacks.scaffold import Endpoint
       print(_contract_lines(Endpoint(method="GET", path="/api/runs/{run_id}", errors=("run_not_found",)), {}))
     expect: "['    // errors: run_not_found']"
+  - id: "2179-context-none"
+    what: a cycle declaring memory_context none is admitted, and recalls apart from memory disabled
+    container: squadops-runtime-api
+    code: |
+      from squadops.memory.declarations import memory_context_none
+      from squadops.memory.lessons import RecallDisposition
+      print(memory_context_none({"memory_context": "none"}), RecallDisposition.CONTEXT_NONE.value)
+    expect: True memory_context_none
