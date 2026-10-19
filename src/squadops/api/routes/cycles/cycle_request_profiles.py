@@ -21,6 +21,7 @@ from squadops.api.cycle_schemas import (
 from squadops.api.errors import http_error
 from squadops.api.middleware.auth import require_scopes
 from squadops.auth.models import Scope
+from squadops.stacks.request_defaults import STACK_REQUEST_DEFAULTS
 
 router = APIRouter(
     prefix="/api/v1/cycle-request-profiles",
@@ -34,7 +35,6 @@ def _profile_to_response(profile) -> CycleRequestProfileResponse:
     """Convert a CycleRequestProfile to its response, with the stacks it can run on."""
     # deferred (pair): api and contracts would import each other at load
     from squadops.contracts.cycle_request_profiles import OPERATOR_PROFILES
-    from squadops.stacks.request_defaults import STACK_REQUEST_DEFAULTS
 
     prompts = {}
     for key, meta in profile.prompts.items():
