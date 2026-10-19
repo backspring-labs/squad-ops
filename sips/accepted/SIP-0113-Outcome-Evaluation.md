@@ -981,3 +981,17 @@ implementer's, for the owner's review.
   - measuring before the scenarios;
   - Vite's preview as the canonical stack's page server, a production build behind the scaffold's own proxy;
   - each delivery's own routes as its pages. Deltas then compare only the pages both trees declare.
+
+### 10h. The runner's `where` check (2026-10-19, §4.1; #2464; the supervisor, under the owner's grant of 2026-10-19)
+
+**Why:** the independent review of the window's first suite found a core outcome no scenario could check: a created
+run appears in the list (the `group_run` PRD's §2 item 2, §5.1, §5.2). The list holds the suite's other runs, in
+an order the scenario can't know. `0.title` needs a known order, and `contains` compares whole elements, which
+carry fields a scenario can't know.
+
+**What was added:** a json check, `where`. Some element of the list at `path` has every field it names, each equal.
+- Its keys may be concepts, resolved per delivery like any other (#2467).
+- An element without a named field doesn't match.
+- A body that isn't a list matches nothing.
+- A `where` that names no field is a check the runner can't read: `blocked_unverified`, `no_runner`. An empty
+  condition would otherwise hold vacuously.

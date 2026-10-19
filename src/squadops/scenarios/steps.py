@@ -12,7 +12,8 @@ other than its ``expect_status``, or a ``save`` its response can't answer fails 
 that step.
 
 **A check:** ``{"check": "status", "step": 3, "equals": 409}`` (or ``"in": [400, 422]``), or ``{"check": "json", "step": 4,
-"path": "participants.0.name", "equals": "Ada"}`` (or ``"length": 1``, or ``"contains": ...``).
+"path": "participants.0.name", "equals": "Ada"}`` (or ``"length": 1``, or ``"contains": ...``, or
+``"where": {"title": "Bridge Loop"}``: some element of the list has every field named equal).
 Steps are numbered from 1.
 
 A step the runner has no vocabulary for is ``blocked_unverified``: ``no_runner``, or for a
@@ -139,7 +140,22 @@ def _check(check: Mapping[str, Any], responses: list[HttpResponse]) -> str | Non
     if "contains" in check:
         held = isinstance(value, (list, str)) and check["contains"] in value
         return None if held else f"{check.get('path')!r} doesn't contain {check['contains']!r}"
-    raise LookupError("a json check names equals, length or contains")
+    if "where" in check:
+        # #2464: "a created run appears in the list" names the run, not its place in the list,
+        # and an element carries fields beyond the ones a scenario can know.
+        wanted = check["where"]
+        if not isinstance(wanted, Mapping) or not wanted:
+            raise LookupError("a where check names the fields an element must have")
+        held = isinstance(value, list) and any(
+            isinstance(element, Mapping)
+            and all(key in element and element[key] == want for key, want in wanted.items())
+            for element in value
+        )
+        if held:
+            return None
+        size = len(value) if isinstance(value, list) else None
+        return f"{check.get('path')!r} ({size} elements) has none with {dict(wanted)!r}"
+    raise LookupError("a json check names equals, length, contains or where")
 
 
 async def run_scenario(scenario: Mapping[str, Any], send: Send) -> ScenarioRun:

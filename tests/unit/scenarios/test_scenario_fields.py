@@ -71,6 +71,23 @@ def test_a_concept_resolves_to_the_name_the_delivery_declares(declared, name):
     assert resolved["checks"][0]["path"] == name
 
 
+def test_a_concept_named_in_a_where_check_resolves_to_the_deliverys_name():
+    """#2464: "a created run appears in the list" finds the run by its title and meeting place.
+    Bug caught: the ``where`` check's concept key left unresolved, so it looks for a field named
+    ``@Run:location`` in every element and fails a delivery that lists the run."""
+    where = {
+        "check": "json",
+        "step": 2,
+        "path": "",
+        "where": {"title": "Dawn 5k", "@Run:location": "Riverside"},
+    }
+    content = parse_scenario(_scenario(checks=[where])).content()
+
+    resolved = resolve(content, LOCATION, {"Run": {"meeting_location", "title"}})
+
+    assert resolved["checks"][0]["where"] == {"title": "Dawn 5k", "meeting_location": "Riverside"}
+
+
 def test_a_concept_inside_a_dotted_json_path_resolves_as_one_segment():
     """Bug caught: a check reading ``participants.0.@Participant:name`` literally, or the
     concept's colon mistaken for part of the path."""
