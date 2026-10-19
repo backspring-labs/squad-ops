@@ -7287,3 +7287,132 @@ class TestTheLoginKeepsThePasswordOutOfTheCommand:
         assert "s3cret-pw" not in str(refused.value)
         assert "login -u squadops-admin" in str(refused.value)
         assert "invalid credentials" in str(refused.value)
+
+
+class TestACountedRollRecordsTheInstructionsItPinned:
+    """SIP-0110 Appendix A §3.7 (#2179 stage 2): the project instructions each roll pinned are in
+    its record, and a counted roll whose set differs from the previous counted roll's is flagged
+    as a change to a listed input (§0.12)."""
+
+    @pytest.mark.parametrize(
+        ("body", "pinned"),
+        [
+            (
+                {"instructions": [{"record_id": "mrec_b", "revision": 2}, {"record_id": "mrec_a", "revision": 1}]},
+                [{"record_id": "mrec_a", "revision": 1}, {"record_id": "mrec_b", "revision": 2}],
+            ),
+            ({"disabled": True}, []),
+            ({"instructions_unread": "the records could not be read"}, None),
+            (None, None),
+        ],
+        ids=["two-pinned-sorted", "none-pinned", "unread", "no-snapshot"],
+    )  # fmt: skip
+    def test_the_pinned_set_is_read_from_the_cycles_snapshot(
+        self, driver, monkeypatch, body, pinned
+    ):
+        """Bug caught: a pin that couldn't read the records, or a cycle with no snapshot, recorded
+        as having pinned none, so a moved set reads as unchanged; or a set's order following the
+        records' and flagging a reordering as a change."""
+        import json
+
+        monkeypatch.setattr(driver, "psql", lambda q: "" if body is None else json.dumps(body))
+
+        assert driver.pinned_instruction_set("cyc_1") == pinned
+
+    def _cfg(self, driver, tmp_path, monkeypatch):
+        import yaml
+
+        monkeypatch.setattr(driver, "main_checkout", lambda: tmp_path)
+        p = tmp_path / "set.yaml"
+        p.write_text(
+            yaml.safe_dump(
+                {
+                    "name": "d",
+                    "project": "group_run",
+                    "squad_profile": "full-38",
+                    "request_profile": "validated-fullstack",
+                    "gate_name": "g",
+                    "gate_notes": "g",
+                    "launch_notes": "r {roll}/{n}",
+                    "shakeout_notes": "s",
+                    "n_rolls": 1,
+                    "overrides": {},
+                }
+            )
+        )
+        cfg = driver.load_set_config(p)
+        cfg.records_path.mkdir(parents=True, exist_ok=True)
+        return cfg
+
+    def test_a_counted_roll_whose_set_moved_is_flagged_against_the_latest_counted_roll(
+        self, driver, tmp_path, monkeypatch
+    ):
+        """Wiring, entered at ``_run_cycle``, the call that drives a roll and writes its record.
+        Bug caught: the set read and never compared, so an instruction approved between two
+        counted rolls moves the yardstick unannounced; or compared with a shakeout's record, or
+        an older roll's, rather than the previous counted roll's."""
+        import json
+
+        cfg = self._cfg(driver, tmp_path, monkeypatch)
+        old = [{"record_id": "mrec_a", "revision": 1}]
+        for name, launched, pinned in (
+            ("roll-01-20261018T0000Z.json", "2026-10-18T00:00", []),
+            ("roll-02-20261019T0000Z.json", "2026-10-19T00:00", old),
+            ("shakeout-20261019T0100Z.json", "2026-10-19T01:00", []),
+        ):
+            (cfg.records_path / name).write_text(
+                json.dumps({"launched_at": launched, "pinned_instructions": pinned})
+            )
+        now = {"instructions": [{"record_id": "mrec_a", "revision": 2}]}
+        captured: dict = {}
+        monkeypatch.setattr(driver, "log_since", lambda *_a, **_k: "2026-10-20T00:00")
+        monkeypatch.setattr(driver, "launch", lambda *a, **k: ("cyc_1", "run_1", "hash"))
+        monkeypatch.setattr(driver, "drive", lambda *a, **k: None)
+        monkeypatch.setattr(
+            driver,
+            "collect",
+            lambda *a, **k: {"impl_run_id": "run_1", "squad_profile_snapshot_ref": "s"},
+        )
+        monkeypatch.setattr(driver, "psql", lambda q: json.dumps(now))
+        monkeypatch.setattr(driver, "completed_framing_run", lambda *a, **k: None)
+        for name in ("static_checks", "ledger_checks", "loop_texture", "typed_checks_by_check"):
+            monkeypatch.setattr(driver, name, lambda *a, **k: {})
+        monkeypatch.setattr(driver, "loaded_check_evidence", lambda *a, **k: {})
+        monkeypatch.setattr(driver, "boot_audit", lambda *a, **k: {"ran": False})
+        monkeypatch.setattr(driver, "cycle_log_until", lambda *a, **k: "t1")
+        monkeypatch.setattr(driver, "render", lambda *a, **k: "")
+        monkeypatch.setattr(driver, "_write_record", lambda _c, _s, rec, _md: captured.update(rec))
+
+        driver._run_cycle(
+            cfg, "nextjs_ts", "notes", title="t", stem="roll-03", assert_hash=False, identity={}
+        )
+
+        assert captured["pinned_instructions"] == [{"record_id": "mrec_a", "revision": 2}]
+        assert captured["instruction_set_change"] == {
+            "previous_record": "roll-02-20261019T0000Z.json",
+            "previous": old,
+            "now": [{"record_id": "mrec_a", "revision": 2}],
+        }
+
+    @pytest.mark.parametrize(
+        ("earlier", "pinned"),
+        [
+            ([], [{"record_id": "mrec_a", "revision": 1}]),
+            ([{"record_id": "mrec_a", "revision": 1}], [{"record_id": "mrec_a", "revision": 1}]),
+        ],
+        ids=["no-earlier-roll", "the-same-set"],
+    )
+    def test_no_change_is_flagged_without_an_earlier_roll_or_with_the_same_set(
+        self, driver, tmp_path, monkeypatch, earlier, pinned
+    ):
+        """Bug caught: a set's first counted roll flagged against nothing, or an unchanged set
+        flagged, so the flag stops meaning a moved input."""
+        import json
+
+        cfg = self._cfg(driver, tmp_path, monkeypatch)
+        if earlier:
+            (cfg.records_path / "roll-01-x.json").write_text(
+                json.dumps({"launched_at": "a", "pinned_instructions": earlier})
+            )
+
+        assert driver.instruction_set_change(cfg, pinned) is None

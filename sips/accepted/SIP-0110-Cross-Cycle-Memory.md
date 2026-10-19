@@ -83,7 +83,7 @@ re-places it.
 | entry points: the context-assembly port, inert, at the four seams (§A.3.6) | **shipped** | 2.3.0, #2257 (closes #2176; §5j records where it departs from §A.3.6's text) |
 | entry points: the typed records (notes, preferences, project and task instructions), permissions by kind, provenance (§A.3.2–§A.3.4) | **shipped** (§5l) | 2.4.0, PR #2508, issue #2177 |
 | entry points: task instructions, with the work target, retries, references bound with the cycle, binding holds and emergency withdrawal (§A.3.5–§A.3.8) | **placed** | 2.4.0, #2178: stage 1 (the records reach the tasks they name, binding, the task held when incomplete) shipped in PR #2513 (§5m); stage 2 remains |
-| entry points: project instructions in the snapshot with references bound, re-binding, the effective lesson budget, the comparison arms and disclosure (§A.3.6, §A.3.7) | **placed** | 2.4.0, #2179: stage 1 (pinned at admission, binding on the tasks they apply to, the lesson budget after them) shipped in PR #2515 (§5n), stage 2's effective lesson budget (T17) in PR #2526 (§5r), and the `memory_context: none` arm with the lesson-text diagnostic in the PR that wrote this row (§5s); the rest of stage 2 remains |
+| entry points: project instructions in the snapshot with references bound, re-binding, the effective lesson budget, the comparison arms and disclosure (§A.3.6, §A.3.7) | **placed** | 2.4.0, #2179: stage 1 (pinned at admission, binding on the tasks they apply to, the lesson budget after them) shipped in PR #2515 (§5n), stage 2's effective lesson budget (T17) in PR #2526 (§5r), the `memory_context: none` arm with the lesson-text diagnostic in PR #2528 (§5s), and a counted roll's pinned instruction set in the PR that wrote this row (§5t); the rest of stage 2 remains |
 | entry points: chat on the substrate, with capture confirmed, chat exposures, server-side project binding and provenance authorized (§A.3.5) | **placed** | 2.4.0, #2180: stage A (the binding, each turn's context and exposure, confirmed capture of notes and preferences, authorized provenance, Q29's deletion) shipped in PR #2517, and stage B's project-instruction capture in the PR that wrote this row (§5o); a task instruction's capture from chat remains, with #2178's second stage |
 | entry points: lesson inspection from chat; a conversational claim never becomes a lesson (§A.3.5) | **shipped** | 2.4.0, PR #2518, issue #2181 (§5p) |
 | entry points: the console's memory record view (§A.3.11) | **placed** | 2.4.0, #2182: the view and its uses route shipped in the PR that wrote this row (§5q); the page's capture test remains, live with #2183 |
@@ -1771,7 +1771,7 @@ of 2026-10-19):**
 - `@current` bound at admission (T16);
 - the `memory_context: none` arm, with its declaration and the lesson-text diagnostic (T9's rest): shipped, §5s;
 - a counted roll's pinned instruction set, recorded in its record and flagged when it differs from the previous roll's
-  (§A.3.7; the verification-set driver);
+  (§A.3.7; the verification-set driver): shipped, §5t;
 - re-binding a running unit;
 - emergency withdrawal of a project instruction.
 
@@ -2046,6 +2046,28 @@ raised these:
   - It reads only the runs of withholding cycles, a cycle whose recalls all failed among them. A lessons-on run,
     whose prompt holds the lesson because it was supplied, is not read.
   - Three mutants are each caught: no normalization, the approval's timing ignored, and the `none` arm not read.
+
+
+## 5t. A counted roll's pinned instruction set, as built (2026-10-19, #2179 stage 2; the supervisor, under the owner's grant of 2026-10-19)
+
+**What shipped:** §A.3.7's "the instruction set each roll pins is recorded in its record", and the flag on a set that
+moved.
+- **Recorded:** every cycle the verification-set driver runs records the project instructions its snapshot pinned, each
+  by record and revision (`pinned_instructions`). A snapshot that couldn't read the records, or a cycle with no
+  snapshot, records the set as unknown (`null`), never as empty. The record's header shows it.
+- **Flagged:** a counted roll (`roll-*`) whose set differs from the set's previous counted roll's records the change
+  (`instruction_set_change`: the previous record, its set and this one's). The driver logs it, and the record's headline
+  says the roll is not comparable with that one as is. A shakeout or a pair is never the comparison.
+- **Why a flag, not a refusal:** §A.3.7 asks for a change to a listed input to be named (§0.12), and a counted roll
+  already refuses memory on (D12) and `memory_context` (§5s). An instruction set is the project's, and the owner's to
+  change between rolls.
+
+**Evidence:** `TestACountedRollRecordsTheInstructionsItPinned`.
+- The set is read sorted. A pin that couldn't read the records, and a cycle with no snapshot, read as unknown.
+- The wiring test enters at `_run_cycle`. A counted roll whose set moved is flagged against the latest earlier counted
+  roll, not an older roll and not a later shakeout.
+- No flag is raised with no earlier roll, or with the same set.
+- Two mutants are each caught: the comparison removed, and the comparison reading every record.
 
 ## 6. Mode neutrality: cycle, duty, and ambient utilization
 
