@@ -2,8 +2,9 @@
 
 A Cycle that pins an external Project's source (contract 1) starts from that product's tree at
 the pinned commit:
-- every tracked file is seeded as the run's starting content, with a manifest of the checkout
-  beside it, as an increment is seeded with its accepted tree (SIP-0109 §7.3);
+- every tracked text file is seeded as the run's starting content, with a manifest of the
+  checkout beside it, as an increment is seeded with its accepted tree (SIP-0109 §7.3). A binary
+  file is listed in the manifest only;
 - whatever the squad produces for a path wins over the checkout's copy;
 - every file it doesn't touch is delivered as it was.
 
@@ -87,6 +88,11 @@ async def seed_checkout_artifacts(
         )
     ]
     for path, content in sorted(tree.files.items()):
+        # A binary file reaches no task: every view of the tree is text, and a context
+        # resolution would decode it with replacement and spend its 512 KB on it. The manifest
+        # lists it, and verification and capture read it from the clone.
+        if path in manifest.binary:
+            continue
         artifact_type, media_type = _classify_file(path)
         ids.append(
             await _store(vault, cycle, run_id, path, content, artifact_type, media_type, provenance)

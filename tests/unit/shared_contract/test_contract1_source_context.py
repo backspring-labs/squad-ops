@@ -178,6 +178,24 @@ def test_a_cycle_without_the_baseline_of_its_pin_is_refused_before_dispatch(
     assert ports.cycle_registry._cycles == {}
 
 
+@pytest.mark.parametrize(
+    "overrides",
+    [{"build_profile": "fullstack_fastapi_react"}, {"contract_ref": "contracts/x.yaml"}],
+    ids=["build-profile", "contract-ref"],
+)
+def test_a_cycle_of_an_external_product_naming_a_stack_is_refused(client, overrides):
+    """SIP-0112 E.4.3. Bug caught: a stack's skeleton, manifest or seeded contract set beside
+    the product's own files, so the squad fills a skeleton instead of changing the product."""
+    resp = client.post(
+        "/api/v1/projects/prj-tally/cycles",
+        json={"squad_profile_id": "full", "execution_overrides": overrides},
+    )
+
+    error = resp.json()["detail"]["error"]
+    assert (resp.status_code, error["code"]) == (422, "PREFLIGHT_REJECTED")
+    assert "develops an external product from its own tree" in error["message"]
+
+
 async def test_the_campaign_launch_pins_what_the_create_route_pins(ports, monkeypatch):
     """IR-2's preparation half: the launcher's request body, built by the campaign, reaches
     ``prepare_cycle()`` and pins the same source context as a standalone create."""

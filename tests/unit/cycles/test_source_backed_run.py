@@ -191,7 +191,10 @@ async def test_provisioning_seeds_the_products_tree_at_the_pinned_commit(world):
     refs = [vault.stored[i][0] for i in seeded]
     assert refs[0].artifact_type == CHECKOUT_MANIFEST_TYPE
     files = {r.filename: vault.stored[r.artifact_id][1] for r in refs[1:]}
-    assert len(files) == 17 and files["assets/mark.png"].startswith(b"\x89PNG")
+    # The binary asset is the manifest's alone: no task's view of the tree is anything but text.
+    manifest = json.loads(vault.stored[refs[0].artifact_id][1])
+    assert len(files) == 16 and "assets/mark.png" not in files
+    assert manifest["binary"] == ["assets/mark.png"] and "assets/mark.png" in manifest["sizes"]
     assert all(r.metadata["producing_task_type"] == SOURCE_CHECKOUT for r in refs)
     assert {r.metadata["checkout_commit"] for r in refs} == {repo.second_commit}
 

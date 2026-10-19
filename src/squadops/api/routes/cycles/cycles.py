@@ -91,6 +91,7 @@ from squadops.cycles.preflight import (
     model_registration_decision,
     required_check_tooling_decision,
     required_roles_decision,
+    source_backed_stack_decision,
     stack_development_profile_decision,
 )
 from squadops.cycles.replay import check_replay_compatibility, parse_replay_declaration
@@ -174,7 +175,12 @@ async def _sandbox_preflight_decision() -> PreflightDecision:
 
 
 async def _run_create_preflight(
-    llm_port: Any | None, profile: SquadProfile, config: dict, *, campaign_cycle: bool
+    llm_port: Any | None,
+    profile: SquadProfile,
+    config: dict,
+    *,
+    campaign_cycle: bool,
+    source_backed: bool = False,
 ) -> tuple[Finding, ...]:
     """SIP-0095 create-time preflight: fail fast BEFORE persist/dispatch.
 
@@ -201,7 +207,9 @@ async def _run_create_preflight(
         stack_development_profile_decision(config),
         # #2437: a builder squad with a build step and no build_profile fails the moment
         # implementation starts (#392), after the whole framing workload. Fail in seconds.
-        builder_build_profile_decision(profile, config),
+        builder_build_profile_decision(profile, config, source_backed=source_backed),
+        # SIP-0112 E.4.3: an external product's cycle starts from its tree, never a stack's.
+        source_backed_stack_decision(config, source_backed=source_backed),
         model_availability_decision(profile, await _pulled_model_names(llm_port)),
         # #1145: pulled is not the same as registered. A model the backend serves but
         # MODEL_SPECS does not know runs with the overflow guard disabled and a
@@ -529,7 +537,11 @@ async def prepare_cycle(
 
     # SIP-0095: create-time preflight — fail fast (422) before persist/dispatch.
     preflight_warnings = await _run_create_preflight(
-        ports.llm, profile, effective_config, campaign_cycle=campaign_id is not None
+        ports.llm,
+        profile,
+        effective_config,
+        campaign_cycle=campaign_id is not None,
+        source_backed=source_context is not None,
     )
 
     # SIP-0101 Slice 3: replay declaration validated + interim compatibility

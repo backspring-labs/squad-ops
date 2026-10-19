@@ -408,3 +408,38 @@ def test_preflight_reads_builder_assembly_as_plan_generation_does(
     refused = observed["raised"] is not None and "build_profile is required" in observed["raised"]
 
     assert builder_assembles(profile, cycle.resolved_config()) is refused
+
+
+@pytest.mark.parametrize(
+    ("defaults", "workload"),
+    [
+        ({"build_tasks": True}, None),
+        (
+            {"implementation_plan": True, "workload_sequence": [{"type": "implementation"}]},
+            WorkloadType.IMPLEMENTATION,
+        ),
+    ],
+    ids=["legacy-build", "implementation"],
+)
+def test_a_source_backed_cycle_never_assembles_with_the_builder(defaults, workload, monkeypatch):
+    """SIP-0112 E.4.3: an external product builds itself, by its own declared commands.
+    Entered at ``generate_task_plan`` on a squad serving the builder role. Bugs caught: the
+    builder dispatched on an external product, and refused there for a ``build_profile`` the
+    product can't have; preflight and the plan reading it differently."""
+    import dataclasses
+
+    from squadops.projects.source_context import parse_source_context
+    from tests.fixtures.shared_contract.repository import recorded
+
+    context = parse_source_context(recorded("project_source_context", "valid"))
+    cycle = dataclasses.replace(_cycle(defaults, {}), source_context=context)
+    case: dict[str, Any] = {"cycle": cycle, "run": _run(workload), "profile": _PROFILE}
+    if workload == WorkloadType.IMPLEMENTATION:
+        case["plan"] = _plan([])
+
+    observed = _observe(case, monkeypatch)
+
+    assert observed["raised"] is None
+    assert not [e for e in observed["envelopes"] if e["task_type"].startswith("builder.")]
+    assert builder_assembles(_PROFILE, cycle.resolved_config(), source_backed=True) is False
+    assert builder_assembles(_PROFILE, cycle.resolved_config()) is True
