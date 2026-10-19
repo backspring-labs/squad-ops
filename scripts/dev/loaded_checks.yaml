@@ -1194,3 +1194,61 @@ checks:
       body = seed.replace("(run_id: str)", "(run_id: str, payload: M)")
       print(s(d(seed), query), len(s(d(seed), body)))
     expect: "[] 1"
+  # SIP-0113 phase 1, the Outcome Evaluation line (the Spark lane, 2026-10-18).
+  - id: "2413"
+    what: the runtime API serves the held-out suites' store, and its scenario routes are registered
+    container: squadops-runtime-api
+    code: |
+      from squadops.api.routes.scenarios import router
+      print("/api/v1/scenario-suites/{digest}/approval" in {r.path for r in router.routes})
+    expect: "True"
+  - id: "2414-hook"
+    what: a campaign cycle's end is evaluated before its decision, and the runtime's runner is the sandbox service's
+    container: squadops-runtime-api
+    code: |
+      import inspect
+      from adapters.sandbox.factory import create_scenario_runner
+      from squadops.campaigns.progress import CampaignProgress
+      from squadops.config import load_config
+      required = inspect.signature(CampaignProgress).parameters["evaluate_outcome"].default is inspect.Parameter.empty
+      print(required, type(create_scenario_runner(load_config().sandbox_client)).__name__)
+    expect: True HttpScenarioRunner
+  - id: "2464"
+    what: a scenario names a field by concept, resolved to the delivery's own name
+    container: squadops-runtime-api
+    code: |
+      from squadops.scenarios.fields import resolve
+      print(resolve({"@Run:location": 1}, {"Run:location": ["meeting_location"]}, {}))
+    expect: "{'meeting_location': 1}"
+  - id: "2418"
+    what: contribution per increment reads from two evaluation records of one suite
+    container: squadops-runtime-api
+    code: |
+      from squadops.outcomes.contribution import Reading
+      print(sorted(Reading.ALL))
+    expect: "['contributed', 'neutral', 'regressed', 'unverified']"
+  - id: "2416"
+    what: the canonical stack's built pages are served beside its backend, and the evaluator's image is on the box
+    container: squadops-sandbox-service
+    code: |
+      import asyncio
+      from adapters.tools.docker import DockerAdapter
+      from squadops.sandbox.environment import EVALUATOR_IMAGE, get_environment_contract
+      c = get_environment_contract("fullstack_fastapi_react")
+      print(c.ui_port, c.ui_serve[1], asyncio.run(DockerAdapter().has_image(EVALUATOR_IMAGE)))
+    expect: 4173 preview True
+  - id: "2451-apps"
+    what: the scenario runner's apps run on the internal app network, and Next.js's API is reached under /api
+    container: squadops-sandbox-service
+    code: |
+      import os
+      from squadops.sandbox.environment import get_environment_contract
+      print(os.environ.get("SQUADOPS__SANDBOX__APP_NETWORK"), get_environment_contract("nextjs_ts").api_prefix)
+    expect: squadops-sandbox-apps /api
+  - id: "2451-port"
+    what: seeding and a pinned revision's read are on the sandbox port
+    container: squadops-sandbox-service
+    code: |
+      from squadops.ports.sandbox import ExecutionSandboxPort
+      print(sorted({"seed_workspace", "read_workspace_revision"} & ExecutionSandboxPort.__abstractmethods__))
+    expect: "['read_workspace_revision', 'seed_workspace']"
