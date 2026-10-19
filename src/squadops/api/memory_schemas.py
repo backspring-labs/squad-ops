@@ -322,6 +322,57 @@ class MemoryRecordRevisionResponse(BaseModel):
     references: list[dict[str, Any]]
 
 
+class MemoryRecordTaskUse(BaseModel):
+    """A dispatch whose binding section handed the record, or that it held (#2182)."""
+
+    exposure_id: str
+    cycle_id: str
+    run_id: str
+    task_id: str
+    attempt: int
+    seam: str
+    section: str
+    revision: str
+    disposition: str
+    held: str | None = None
+
+
+class MemoryRecordChatUse(BaseModel):
+    """One of the reader's own chat turns whose context held the record."""
+
+    session_id: str
+    message_id: str
+    revision: str
+    disposition: str
+    assembled_at: str
+
+
+class MemoryRecordBuild(BaseModel):
+    """A build the record's dispatches fed, once, with its indicators observed (SIP-0110 §0.10)."""
+
+    run_id: str
+    exposures: list[str]
+    verdict: str | None = None
+    failed_rounds: int | None = None
+    refunded_rounds: int | None = None
+    rounds_to_green: int | None = None
+    accepted: bool | None = None
+
+
+class MemoryRecordUsesResponse(BaseModel):
+    """What used the record, apart from what it did (Appendix A §3.11)."""
+
+    record_id: str
+    tasks: list[MemoryRecordTaskUse]
+    chats: list[MemoryRecordChatUse]
+    #: Other people's chat turns that held it: counted, never opened (§3.4).
+    others_chat_turns: int
+    builds: list[MemoryRecordBuild]
+    #: Dispatches with no build to report, by state: none of them a build failure (§0.10).
+    unbuilt: dict[str, list[str]]
+    effect: str
+
+
 class MemoryRecordSourceTurnResponse(BaseModel):
     """The one chat turn a record came from, opened by its session's owner only (§A.3.4, T15)."""
 

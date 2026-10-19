@@ -60,6 +60,7 @@ KIND_SCOPES: Mapping[str, frozenset[str]] = {
 class RecordStatus:
     ACTIVE = "active"
     WITHDRAWN = "withdrawn"
+    ALL = frozenset({ACTIVE, WITHDRAWN})
 
 
 class SourceKind:

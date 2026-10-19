@@ -33,18 +33,29 @@ from fastapi import APIRouter, Depends, Request
 from squadops.agents.models import DEFAULT_ROLES
 from squadops.api.errors import http_error
 from squadops.api.memory_schemas import (
+    MemoryRecordBuild,
+    MemoryRecordChatUse,
     MemoryRecordContent,
     MemoryRecordCreateRequest,
     MemoryRecordResponse,
     MemoryRecordRevisionResponse,
     MemoryRecordSourceTurnResponse,
+    MemoryRecordTaskUse,
+    MemoryRecordUsesResponse,
     MemoryRecordWithdrawalRequest,
 )
 from squadops.api.middleware.auth import require_scopes
-from squadops.api.runtime.deps import get_cycle_registry, get_memory_records
+from squadops.api.runtime.deps import (
+    get_campaign_registry,
+    get_cycle_registry,
+    get_memory_records,
+    get_memory_store,
+)
 from squadops.auth.models import Identity, scopes_for_roles
 from squadops.capabilities.context_assembly import authoring_seam_of
 from squadops.comms.models import SessionNotFoundError
+from squadops.memory.build_report import exposure_builds
+from squadops.memory.record_uses import NO_EFFECT_MEASURED, chat_uses, task_uses
 from squadops.memory.records import (
     InstructionApplicability,
     MemoryRecord,
@@ -52,6 +63,7 @@ from squadops.memory.records import (
     RecordKind,
     RecordRefused,
     RecordScope,
+    RecordStatus,
     Revision,
     Source,
     SourceKind,
@@ -59,7 +71,6 @@ from squadops.memory.records import (
     authorize_write,
     new_record,
     reference_of,
-    retrieved,
     revised,
     revision_document,
     shown_source,
@@ -282,10 +293,17 @@ async def list_memory_records(
     request: Request,
     project_id: str | None = None,
     kind: str | None = None,
+    scope: str | None = None,
+    status: str = RecordStatus.ACTIVE,
     identity: Identity | None = Depends(require_scopes()),
 ) -> list[MemoryRecordResponse]:
-    """The active records a query bound to ``project_id`` answers with (unbound: the caller's
-    own private records only, T4), oldest first."""
+    """The records a query bound to ``project_id`` answers with (unbound: the caller's own private
+    records only, T4), oldest first. Active ones by default, as a retrieval answers; ``status``
+    ``withdrawn`` or ``all`` lists the rest for the memory view (#2182), every revision kept."""
+    if status not in (*RecordStatus.ALL, "all"):
+        raise http_error(
+            422, "VALIDATION_ERROR", f"status is one of {sorted(RecordStatus.ALL)} or all"
+        )
     actor, scopes = _who(identity)
     store = _store(request)
     held = await store.list_owned(actor)
@@ -293,8 +311,11 @@ async def list_memory_records(
         held += await store.list_project(project_id)
     found = [
         r
-        for r in retrieved(held, viewer_id=actor, viewer_scopes=scopes, project_id=project_id)
-        if kind is None or r.kind == kind
+        for r in held
+        if visible(r, viewer_id=actor, viewer_scopes=scopes, project_id=project_id)
+        and (status == "all" or r.status == status)
+        and (kind is None or r.kind == kind)
+        and (scope is None or r.scope == scope)
     ]
     deleted = await _deleted_sessions(request, found)
     return [_response(r, actor, deleted) for r in found]
@@ -310,6 +331,63 @@ async def get_memory_record(
     actor, scopes = _who(identity)
     record = await _readable(request, record_id, actor, scopes)
     return _response(record, actor, await _deleted_sessions(request, [record]))
+
+
+@router.get("/{record_id}/uses")
+async def memory_record_uses(
+    request: Request,
+    record_id: str,
+    identity: Identity | None = Depends(require_scopes()),
+) -> MemoryRecordUsesResponse:
+    """What used the record (Appendix A §3.11, T11): each dispatch that was handed it or held for it,
+    with the revision and the section's disposition; the reader's own chat turns that held it, and a
+    count of other people's; each build its dispatches fed, once, with its indicators observed. Its
+    effect is kept apart, and for a note or an instruction none is measured."""
+    actor, scopes = _who(identity)
+    record = await _readable(request, record_id, actor, scopes)
+    store = get_memory_store(request)
+    if store is None:
+        raise http_error(503, "MEMORY_UNAVAILABLE", "the memory store is not configured")
+    exposures = await store.list_project_exposures(record.project_id) if record.project_id else []
+    tasks = task_uses(record_id, exposures)
+    supplied = {t.exposure_id for t in tasks if t.held is None}
+    report = await exposure_builds(
+        [e for e in exposures if e.exposure_id in supplied],
+        cycles=get_cycle_registry(request),
+        campaigns=get_campaign_registry(request),
+    )
+    chats, others = chat_uses(
+        record_id, await store.list_chat_exposures_supplying(record_id), viewer_id=actor
+    )
+    return MemoryRecordUsesResponse(
+        record_id=record_id,
+        tasks=[MemoryRecordTaskUse(**vars(t)) for t in tasks],
+        chats=[
+            MemoryRecordChatUse(**{**vars(c), "assembled_at": c.assembled_at.isoformat()})
+            for c in chats
+        ],
+        others_chat_turns=others,
+        builds=[
+            MemoryRecordBuild(
+                run_id=row.run_id,
+                exposures=list(row.exposures),
+                **(
+                    {
+                        "verdict": row.indicators.verdict,
+                        "failed_rounds": row.indicators.failed_rounds,
+                        "refunded_rounds": row.indicators.refunded_rounds,
+                        "rounds_to_green": row.indicators.rounds_to_green,
+                        "accepted": row.indicators.accepted,
+                    }
+                    if row.indicators is not None
+                    else {}
+                ),
+            )
+            for row in report.builds
+        ],
+        unbuilt={state.value: list(ids) for state, ids in report.unbuilt.items()},
+        effect=NO_EFFECT_MEASURED,
+    )
 
 
 @router.get("/{record_id}/revisions/{number}/source")
