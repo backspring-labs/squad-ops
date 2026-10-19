@@ -63,3 +63,88 @@ def test_the_scope_check_reads_brackets_literally_too():
     assert outside_allowed_scope(("app/runs/r/page.tsx",), ("app/runs/[run_id]/**",)) == [
         "app/runs/r/page.tsx"
     ]
+
+
+_NEXTJS_MANIFEST = """\
+version: 1
+kind: interface_manifest
+project_id: group_run
+source_prd: group_run
+stack: {stack}
+scope: runs
+entities:
+  - name: Run
+    fields:
+      - {{ name: id, type: string, required: true, generated: true }}
+      - {{ name: title, type: string, required: true }}
+      - {{ name: participants, type: "list[string]", required: true, default: [] }}
+api:
+  base_path: ""
+  request_shapes:
+    RunCreate:
+      required: [title]
+      optional: [{optional}]
+    JoinInput:
+      required: [name]
+  endpoints:
+    - {{ method: POST, path: /api/runs, request: RunCreate, response: Run, success_status: 201, errors: [validation_error] }}
+    - {{ method: GET, path: "/api/runs/{{run_id}}", response: Run, errors: [run_not_found] }}
+    - {{ method: POST, path: "/api/runs/{{run_id}}/join", request: JoinInput, response: Run, errors: [{join_errors}] }}
+  error_contract:
+    shape: '{{"error": {{"code": "...", "message": "..."}}}}'
+    codes:
+      validation_error: {{ http: 400 }}
+      run_not_found: {{ http: 404 }}
+{extra_codes}
+frontend:
+  framework: {framework}
+  routes:
+    - {{ path: "/runs/{{run_id}}", view: RunDetailView, purpose: detail, testids: [run-detail-view] }}
+persistence: in_memory
+"""
+
+
+def _manifest(stack: str, *, capacity: bool) -> str:
+    return _NEXTJS_MANIFEST.format(
+        stack=stack,
+        framework="nextjs_app_router" if stack == "nextjs_ts" else "react_vite",
+        optional="capacity" if capacity else "",
+        join_errors="validation_error, run_not_found, capacity_reached"
+        if capacity
+        else "validation_error, run_not_found",
+        extra_codes="      capacity_reached: { http: 409 }" if capacity else "",
+    )
+
+
+def test_a_change_to_an_endpoints_request_or_errors_puts_its_route_file_in_the_footprint():
+    """Next.js shakeout round 2 (cyc_0df8d7215ef2). Bug caught: a capacity increment, which adds a
+    field to ``RunCreate`` and ``capacity_reached`` to the join endpoint's errors, derived a
+    footprint without ``app/api/runs/route.ts`` and ``app/api/runs/[run_id]/join/route.ts``. A
+    Next.js route file is one endpoint's, and its skeleton named neither, so it was unchanged;
+    every dev and repair edit to it was then dropped as another producer's slot."""
+    from squadops.campaigns.change_request import derive_footprint, footprint_product_files
+
+    footprint = footprint_product_files(
+        derive_footprint(
+            _manifest("nextjs_ts", capacity=False), _manifest("nextjs_ts", capacity=True)
+        )
+    )
+
+    assert "app/api/runs/route.ts" in footprint
+    assert "app/api/runs/[run_id]/join/route.ts" in footprint
+    assert "app/api/runs/[run_id]/route.ts" not in footprint  # unchanged: GET, no new error
+
+
+def test_fastapis_footprint_for_the_same_delta_is_unchanged_by_the_route_contract():
+    """Bug caught: the Next.js fix reaching FastAPI's scaffold, whose one routes.py already changed
+    with any endpoint."""
+    from squadops.campaigns.change_request import derive_footprint, footprint_product_files
+
+    footprint = footprint_product_files(
+        derive_footprint(
+            _manifest("fullstack_fastapi_react", capacity=False),
+            _manifest("fullstack_fastapi_react", capacity=True),
+        )
+    )
+
+    assert "backend/routes.py" in footprint

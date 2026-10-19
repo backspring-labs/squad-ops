@@ -32,7 +32,7 @@ from __future__ import annotations
 
 import json
 import re
-from collections.abc import Collection
+from collections.abc import Collection, Mapping
 from typing import TYPE_CHECKING, Any
 
 from squadops.stacks.app_invocation import JS_MODULE_LOAD, AppInvocation
@@ -587,11 +587,19 @@ export function errorResponse(err: unknown): Response {{
 # --------------------------------------------------------------------------- #
 
 
-def _route_stub(path: str, endpoints: list[Any]) -> str:
+def _route_stub(path: str, endpoints: list[Any], shapes: Mapping[str, Any]) -> str:
     """A route file exporting one handler per declared method.
 
     Stubs throw rather than return: the bare skeleton must fail its probes, or the
     behavioral gate would measure the scaffold instead of the fill (SIP-0098 §7).
+
+    Each handler states its contract where it is written: the request shape's fields and the
+    declared errors. A route file is one endpoint's, not every endpoint's as FastAPI's
+    ``routes.py`` is, so without them a change to an endpoint's request or errors left its
+    file's skeleton unchanged. An increment's footprint is the files whose skeleton the delta
+    changes (``change_request.derive_footprint``), so the route a capacity increment must
+    implement fell outside it, and every edit to it was dropped as another producer's slot
+    (Next.js shakeout round 2, cyc_0df8d7215ef2).
     """
     head = [
         "// FILL SLOT. Implement each exported handler against the declared contract.",
@@ -611,6 +619,7 @@ def _route_stub(path: str, endpoints: list[Any]) -> str:
             f"export async function {ep.method.upper()}(request: Request) {{",
             "  try {",
             f"    // TODO: implement {ep.method} {ep.path} — respond {status}",
+            *_contract_lines(ep, shapes),
             *order,
             f"    throw new ApiError('not_implemented', '{ep.method} {ep.path}')",
             "  } catch (err) {",
@@ -620,6 +629,20 @@ def _route_stub(path: str, endpoints: list[Any]) -> str:
             "",
         ]
     return "\n".join(head + body)
+
+
+def _contract_lines(ep: Any, shapes: Mapping[str, Any]) -> list[str]:
+    """The endpoint's request fields and declared errors, as comment lines in its handler."""
+    lines = []
+    shape = shapes.get(ep.request) if ep.request else None
+    if shape is not None:
+        optional = f"; optional {', '.join(shape.optional)}" if shape.optional else ""
+        lines.append(
+            f"    // request {shape.name}: {', '.join(shape.required) or 'no required field'}{optional}"
+        )
+    if ep.errors:
+        lines.append(f"    // errors: {', '.join(ep.errors)}")
+    return lines
 
 
 def _page_stub(route: Any) -> str:
@@ -665,8 +688,9 @@ def expand_nextjs_ts(manifest: InterfaceManifest) -> list[dict[str, str]]:
         # #598: rendered from the environment contract and frozen, not builder-authored.
         *render_packaging("nextjs_ts"),
     ]
+    shapes = {s.name: s for s in getattr(manifest.api, "request_shapes", ()) or ()}
     for path, endpoints in _route_groups(manifest).items():
-        files.append({"name": path, "content": _route_stub(path, endpoints)})
+        files.append({"name": path, "content": _route_stub(path, endpoints, shapes)})
     for route in getattr(manifest.frontend, "routes", ()) or ():
         files.append({"name": _page_path(route), "content": _page_stub(route)})
     return files
