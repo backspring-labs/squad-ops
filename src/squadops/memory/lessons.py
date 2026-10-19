@@ -358,11 +358,16 @@ class Recalled:
     snapshot_id: str | None
     disposition: RecallDisposition
     supplied: tuple[SnapshotEntry, ...] = ()
-    #: Each eligible lesson left out, and why (``budget`` or ``superseded``).
+    #: Each eligible lesson left out, and why: ``budget`` (the snapshot's own budget would omit it),
+    #: ``remaining`` (only what the binding sections left did, §3.6) or ``superseded``.
     omitted: tuple[tuple[str, str], ...] = ()
+    #: The effective lesson budget and what it was the smaller of, when the binding sections bounded it
+    #: (``{"effective", "snapshot", "remaining"}``); ``None`` when the snapshot's budget stood alone.
+    lesson_budget: Mapping[str, int] | None = None
 
     def exposure(self) -> dict[str, Any]:
-        """What the authoring envelope's ``memory`` block records."""
+        """What the authoring envelope's ``memory`` block records. The lesson budget only when the
+        binding sections bounded it, so an envelope with no instruction is what it was."""
         return {
             "snapshot": self.snapshot_id,
             "disposition": self.disposition.value,
@@ -375,6 +380,11 @@ class Recalled:
                 for e in self.supplied
             ],
             "omitted": [{"revision_id": r, "reason": why} for r, why in self.omitted],
+            **(
+                {"lesson_budget": dict(self.lesson_budget)}
+                if self.lesson_budget is not None
+                else {}
+            ),
         }
 
 
@@ -409,6 +419,9 @@ def recall(snapshot: Snapshot | None, query: RecallQuery) -> Recalled:
             omitted.append((held.revision.revision_id, "superseded"))
         latest[entry.revision.pattern_id] = entry
     ordered = sorted(latest.values(), key=lambda e: (e.approval.approved_at, e.revision.pattern_id))
+    # §3.6 (T17): one selection pass under the smaller of the snapshot's budget and what the binding
+    # sections left. Each omission names the limit that omitted it, and nothing is trimmed after.
+    available = query.available_lesson_tokens
     supplied: list[SnapshotEntry] = []
     spent = 0
     for entry in ordered:
@@ -419,7 +432,19 @@ def recall(snapshot: Snapshot | None, query: RecallQuery) -> Recalled:
         ):
             omitted.append((entry.revision.revision_id, "budget"))
             continue
+        if available is not None and spent + cost > available:
+            omitted.append((entry.revision.revision_id, "remaining"))
+            continue
         supplied.append(entry)
         spent += cost
     disposition = RecallDisposition.SUPPLIED if supplied else RecallDisposition.OMITTED_BY_BUDGET
-    return Recalled(snapshot.snapshot_id, disposition, tuple(supplied), tuple(omitted))
+    budget = (
+        None
+        if available is None
+        else {
+            "effective": max(0, min(snapshot.policy.token_budget, available)),
+            "snapshot": snapshot.policy.token_budget,
+            "remaining": available,
+        }
+    )
+    return Recalled(snapshot.snapshot_id, disposition, tuple(supplied), tuple(omitted), budget)
