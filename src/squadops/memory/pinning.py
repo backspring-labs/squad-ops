@@ -43,6 +43,7 @@ async def pin_unit(
     held = await store.get_snapshot(unit_kind, unit_id)
     if held is not None:
         return held
+    withholds_lessons = disabled or context_withheld
     instructions: tuple[PinnedInstruction, ...] = ()
     unread = None
     if records is not None and not context_withheld:
@@ -58,8 +59,10 @@ async def pin_unit(
         unit_id=unit_id,
         pinned_at=pinned_at,
         disabled=disabled,
-        revisions=await store.list_revisions(project_id),
-        approvals=await store.list_approvals(project_id),
+        # A pin that withholds the lessons never reads them, so a lesson store that can't be read
+        # doesn't cost it its snapshot.
+        revisions=[] if withholds_lessons else await store.list_revisions(project_id),
+        approvals=[] if withholds_lessons else await store.list_approvals(project_id),
         policy=policy,
         instructions=instructions,
         instructions_unread=unread,

@@ -18,15 +18,14 @@ from dataclasses import dataclass
 from datetime import datetime
 from typing import TYPE_CHECKING, Any
 
-from squadops.memory.lessons import Approval, PatternRevision, RecallDisposition
+from squadops.memory.build_report import declared_arms
+from squadops.memory.declarations import ARM_LESSONS_ON
+from squadops.memory.lessons import Approval, PatternRevision
 
 if TYPE_CHECKING:
     from squadops.memory.exposures import Exposure
     from squadops.ports.cycles.cycle_registry import CycleRegistryPort
     from squadops.ports.memory.cross_cycle import CrossCycleMemoryStorePort
-
-#: The dispositions of a unit that withholds the lessons.
-WITHHOLDING = frozenset({RecallDisposition.DISABLED, RecallDisposition.CONTEXT_NONE})
 
 
 @dataclass(frozen=True)
@@ -83,9 +82,14 @@ async def withheld_lesson_signals(
     cycles: CycleRegistryPort,
     store: CrossCycleMemoryStorePort,
 ) -> tuple[LessonTextSignal, ...]:
-    """The diagnostic over every run whose unit withheld the lessons: a run is one cycle's, and a
-    cycle is one unit's, so one withholding exposure puts all its run's envelopes in scope."""
-    runs = sorted({e.run_id for e in exposures if e.disposition in WITHHOLDING})
+    """The diagnostic over every run whose cycle declared the lessons withheld (either
+    declaration): read from the cycle's own declaration, so a cycle whose recalls all failed is
+    still read. A cycle whose declaration can't be read is not."""
+    exposures = list(exposures)
+    arms = await declared_arms((e.cycle_id for e in exposures), cycles=cycles)
+    runs = sorted(
+        {e.run_id for e in exposures if arms.get(e.cycle_id, ARM_LESSONS_ON) != ARM_LESSONS_ON}
+    )
     if not runs:
         return ()
     lessons = await store.list_revisions(project_id)

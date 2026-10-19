@@ -3,18 +3,20 @@ stage 2)."""
 
 from __future__ import annotations
 
+import dataclasses
 from datetime import timedelta
 
 import pytest
 
 from adapters.memory.cross_cycle import InMemoryCrossCycleMemoryStore
-from squadops.memory.exposures import (
+from squadops.cycles.models import CycleNotFoundError
+from squadops.memory.build_report import declared_arms
+from squadops.memory.declarations import (
     ARM_CONTEXT_NONE,
     ARM_LESSONS_DISABLED,
     ARM_LESSONS_ON,
-    Exposure,
-    arm_of,
 )
+from squadops.memory.exposures import Exposure
 from squadops.memory.lesson_text import (
     LessonTextSignal,
     lesson_text_signals,
@@ -22,6 +24,7 @@ from squadops.memory.lesson_text import (
 )
 from squadops.memory.lessons import RecallDisposition, Recalled
 from squadops.memory.recall import RecallQuery
+from tests.unit.cycles.test_failure_recall import _framing_cycle
 from tests.unit.memory.test_lessons import T0, _approve, _revision
 
 pytestmark = [pytest.mark.domain_memory]
@@ -79,49 +82,78 @@ def test_a_prompt_holding_a_lesson_in_force_at_its_capture_is_flagged_whatever_i
     )
 
 
-async def test_only_the_runs_whose_unit_withheld_the_lessons_are_read():
-    """The report's entry (``withheld_lesson_signals``). Bug caught: a lessons-on run, whose prompt
-    holds the lesson because it was supplied, flagged as a leak; or a ``memory_context: none`` run
-    left out, when it withholds the lessons too."""
+class _Cycles:
+    """The registry reads the report makes: each cycle by its declaration, and every run's
+    envelopes holding the lesson's text."""
+
+    def __init__(self, declared: dict[str, dict]) -> None:
+        self.declared = declared
+
+    async def get_cycle(self, cycle_id: str):
+        if cycle_id not in self.declared:
+            raise CycleNotFoundError(cycle_id)
+        return dataclasses.replace(
+            _framing_cycle(cycle_id=cycle_id), execution_overrides=self.declared[cycle_id]
+        )
+
+    async def list_authoring_envelopes(self, run_id: str) -> list[dict]:
+        return [_envelope("task-design", "Name each route's handler after its path.")]
+
+
+async def test_only_the_runs_whose_cycle_declared_the_lessons_withheld_are_read():
+    """The report's entry (``withheld_lesson_signals``), read from each cycle's declaration. Bug
+    caught: a lessons-on run, whose prompt holds the lesson because it was supplied, flagged as a
+    leak; a ``memory_context: none`` run left out, when it withholds the lessons too; or a
+    withholding cycle whose every recall failed left out, because its exposures read
+    ``recall_failed`` rather than its declaration."""
     store = InMemoryCrossCycleMemoryStore()
     lesson = _revision("behavior_held", text="Name each route's handler after its path.")
     await store.record_revision(lesson)
     await store.record_approval(_approve(lesson, at=T0))
-
-    class Envelopes:
-        async def list_authoring_envelopes(self, run_id: str) -> list[dict]:
-            return [_envelope("task-design", "Name each route's handler after its path.")]
-
+    cycles = _Cycles(
+        {
+            "cyc_run_on": {},
+            "cyc_run_off": {"memory": "disabled"},
+            "cyc_run_none": {"memory_context": "none"},
+        }
+    )
     exposures = [
         _exposure("run_on", RecallDisposition.SUPPLIED),
-        _exposure("run_off", RecallDisposition.DISABLED),
+        _exposure("run_off", RecallDisposition.FAILED),
         _exposure("run_none", RecallDisposition.CONTEXT_NONE),
+        _exposure("run_gone", RecallDisposition.DISABLED),
     ]
 
     got = await withheld_lesson_signals(
-        exposures, project_id="group_run", cycles=Envelopes(), store=store
+        exposures, project_id="group_run", cycles=cycles, store=store
     )
 
     assert [(s.run_id, s.revision_id) for s in got] == [
         ("run_none", lesson.revision_id),
         ("run_off", lesson.revision_id),
     ]
-    assert await withheld_lesson_signals(exposures[:1], project_id="group_run",
-                                         cycles=Envelopes(), store=store) == ()  # fmt: skip
 
 
-@pytest.mark.parametrize(
-    ("dispositions", "arm"),
-    [
-        ((RecallDisposition.CONTEXT_NONE, RecallDisposition.FAILED), ARM_CONTEXT_NONE),
-        ((RecallDisposition.DISABLED, RecallDisposition.FAILED), ARM_LESSONS_DISABLED),
-        ((RecallDisposition.SUPPLIED, RecallDisposition.NONE_ELIGIBLE), ARM_LESSONS_ON),
-        ((RecallDisposition.FAILED,), ARM_LESSONS_ON),
-    ],
-)
-def test_a_builds_arm_is_its_units_declaration(dispositions, arm):
-    """Bug caught: a ``memory_context: none`` build reported as the lessons-disabled control, or
-    a build with one failed recall moved out of the arm it ran."""
-    exposures = [_exposure(f"run_{n}", d) for n, d in enumerate(dispositions)]
+async def test_each_cycles_arm_is_its_declaration_and_an_unreadable_one_has_none():
+    """Bug caught: a ``memory_context: none`` build reported as the lessons-disabled control; a
+    build whose recalls failed moved out of the arm it was created under; or a cycle the registry
+    no longer holds given a guessed arm."""
+    cycles = _Cycles(
+        {
+            "cyc_on": {},
+            "cyc_off": {"memory": "disabled"},
+            "cyc_none": {"memory_context": "none"},
+            "cyc_both": {"memory": "disabled", "memory_context": "none"},
+        }
+    )
 
-    assert arm_of(exposures) == arm
+    got = await declared_arms(
+        ["cyc_on", "cyc_off", "cyc_none", "cyc_both", "cyc_gone"], cycles=cycles
+    )
+
+    assert got == {
+        "cyc_on": ARM_LESSONS_ON,
+        "cyc_off": ARM_LESSONS_DISABLED,
+        "cyc_none": ARM_CONTEXT_NONE,
+        "cyc_both": ARM_CONTEXT_NONE,
+    }

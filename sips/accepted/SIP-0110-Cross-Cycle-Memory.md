@@ -1966,9 +1966,15 @@ every other task, and every task of a project with no instruction, is asked with
   - Create refuses any other value, and refuses `memory: enabled` beside it, since it withholds the lessons too. Read
     either way, a typo would run one experiment and record it as the other.
   - `memory: disabled` beside it is consistent, and allowed.
-- **The pin:** the cycle's snapshot pins no lesson and no project instruction, and never reads the project's records.
-  It records the declaration (`memory_context: none` in its stored form, only when declared, so every other snapshot
-  is stored as it was).
+  - **A campaign's cycle that declares either is refused at its launch** (`memory_declaration_unapplied`). It selects
+    from its campaign's snapshot, so the declaration would be recorded and never applied. That was already true of
+    `memory: disabled`.
+  - **A counted roll refuses it too:** a counted roll declares `lessons: disabled` alone (the verification-set
+    driver's D12 check).
+- **The pin:** the cycle's snapshot pins no lesson and no project instruction, and reads neither the project's
+  records nor its lessons. It records the declaration (`memory_context: none` in its stored form, only when declared,
+  so every other snapshot is stored as it was). A memory-disabled pin no longer reads the lessons either, so a lesson
+  store that can't be read doesn't cost either unit its snapshot.
 - **The dispatch:** the task keeps its own task instructions and its ordinary inputs, and is handed no lesson and no
   project instruction.
 - **The record:** recall answers `memory_context_none`, apart from `memory_disabled`, and the exposure's project
@@ -1976,9 +1982,11 @@ every other task, and every task of a project with no instruction, is asked with
 - **Reported apart:**
   - An assessment of such an exposure is refused (422). The absence rate's two series are the lesson's effect, and
     this experiment changed the task's requirements too.
-  - The exposure report names each build's arm: `memory_context: none`, `lessons: disabled` or `lessons on`.
-- **The diagnostic (T9):** in a unit that withholds the lessons (either declaration), a prompt that holds an approved
-  lesson's text, whitespace normalized, is flagged. It's a signal, reported beside the arms by the exposure report,
+  - The exposure report names each build's arm: `memory_context: none`, `lessons: disabled` or `lessons on`. It
+    reads the arm from the cycle's own declaration, never from what recall answered, so a cycle whose every recall
+    failed still reports the arm it was created under.
+- **The diagnostic (T9):** in a cycle that declared the lessons withheld (either declaration), a prompt that holds an
+  approved lesson's text, whitespace normalized, is flagged. It's a signal, reported beside the arms by the exposure report,
   and never fails anything.
   - The prompts read are the authoring envelopes' messages: the four seams memory reaches, the only prompts captured
     whole.
@@ -1989,14 +1997,31 @@ every other task, and every task of a project with no instruction, is asked with
 - **A task instruction whose provenance cites a lesson revision, refused for a lessons-disabled unit.** Nothing
   creates one yet. A record's source kinds name no lesson, and chat's capture of a task instruction ("apply lesson X
   to this task") is #2180 stage B's remaining half. The refusal lands with that capture.
-- **A campaign's declaration.** A campaign pins with memory on (`pin_campaign`), as it did before this. Its
-  memory-disabled declaration is SIP-0110's slice 4, and `memory_context: none` would join it there.
+- **A campaign's own declaration.** A campaign pins with memory on (`pin_campaign`), as it did before this. Its
+  memory-disabled declaration is SIP-0110's slice 4, and `memory_context: none` would join it there. Until then a
+  campaign's cycle can't declare either (above).
 - **The counted roll's pinned instruction set,** recorded and compared roll to roll. It's the driver's, and stays on
   §5n's stage-2 list.
 
+**What the second read changed (2026-10-19, a fresh reader on PR #2528, ruled by the supervisor under the owner's
+grant of 2026-10-19).** It found no path where a pinned `none` cycle receives a lesson or a project instruction, and
+raised these:
+- **A `none` pin still read the lessons,** only to discard them. A lesson store that couldn't be read left the cycle
+  with no snapshot, and its tasks held whenever the project held a project instruction. Neither withholding pin
+  reads the lessons now.
+- **The arm was read from the exposures' dispositions,** so a withholding cycle whose every recall failed was reported
+  as lessons on, and the diagnostic never read it. The arm is now read from the cycle's declaration.
+- **A campaign's cycle could declare either and run with full context:** it uses its campaign's snapshot. Its launch
+  now refuses the declaration.
+- **The driver counted a roll that declared `memory_context`.** It now refuses it.
+- **Smaller:**
+  - the assessment's flag is required, not defaulted;
+  - the declaration key's constant is renamed, apart from chat's metadata key of the same value;
+  - T9 enters at `supply_for_cycle`, run provisioning's call.
+
 **Evidence:**
-- **T9's three arms,** entering where a cycle is admitted (`pin_standalone_cycle`) and where its plan is supplied
-  (`supply_lessons`). There is a lesson approved, a project instruction in force, and a task instruction for each
+- **T9's three arms,** entering where a cycle is admitted (`pin_standalone_cycle`) and where a run's plan is supplied
+  (`supply_for_cycle`). There is a lesson approved, a project instruction in force, and a task instruction for each
   cycle. The design plan is handed:
   - all three, with lessons on;
   - the two instructions, with `memory: disabled`;
@@ -2009,11 +2034,17 @@ every other task, and every task of a project with no instruction, is asked with
   - The assessment route refuses a withheld exposure and stores nothing.
 - **Four mutants are each caught:** the project section left as none-eligible, the declaration not stored, the
   assessment not refused, and the cycle's pin ignoring the declaration.
+- **The second read's fixes, each with a mutant caught:**
+  - a withholding pin with an unreadable lesson store still pins;
+  - a campaign's cycle that withholds either is refused at `prepare_cycle` with the campaign named, and a standalone
+    one is admitted;
+  - a counted roll refuses `memory_context`;
+  - the arms are read from the declarations, a cycle the registry no longer holds getting none.
 - **The diagnostic:**
   - It flags a lesson reflowed across lines in the prompt.
   - It doesn't flag a lesson approved after the capture or revoked before it.
-  - It reads only the runs of withholding units: a lessons-on run, whose prompt holds the lesson because it was
-    supplied, is not read.
+  - It reads only the runs of withholding cycles, a cycle whose recalls all failed among them. A lessons-on run,
+    whose prompt holds the lesson because it was supplied, is not read.
   - Three mutants are each caught: no normalization, the approval's timing ignored, and the `none` arm not read.
 
 ## 6. Mode neutrality: cycle, duty, and ambient utilization

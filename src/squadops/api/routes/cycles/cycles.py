@@ -166,7 +166,7 @@ async def _sandbox_preflight_decision() -> PreflightDecision:
 
 
 async def _run_create_preflight(
-    llm_port: Any | None, profile: SquadProfile, config: dict
+    llm_port: Any | None, profile: SquadProfile, config: dict, *, campaign_cycle: bool
 ) -> tuple[Finding, ...]:
     """SIP-0095 create-time preflight: fail fast BEFORE persist/dispatch.
 
@@ -214,7 +214,7 @@ async def _run_create_preflight(
         # happened. A usable one warns, so the create log says the cycle is a diagnostic.
         fault_injection_decision(config),
         # SIP-0110 §0.7: a memory declaration is `disabled` or `enabled`, never guessed.
-        memory_declaration_decision(config),
+        memory_declaration_decision(config, campaign_cycle=campaign_cycle),
     )
     if decision.rejected:
         raise PreflightRejectedError(decision.summary())
@@ -439,7 +439,9 @@ async def prepare_cycle(
     effective_config = resolve_config(applied_defaults, body.execution_overrides or {})
 
     # SIP-0095: create-time preflight — fail fast (422) before persist/dispatch.
-    preflight_warnings = await _run_create_preflight(ports.llm, profile, effective_config)
+    preflight_warnings = await _run_create_preflight(
+        ports.llm, profile, effective_config, campaign_cycle=campaign_id is not None
+    )
 
     # SIP-0101 Slice 3: replay declaration validated + interim compatibility
     # gate, same fail-fast point (moves into the SIP-0095 preflight in Slice 4).

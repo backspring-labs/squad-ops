@@ -27,8 +27,7 @@ async def report(dsn: str, project: str) -> int:
     from adapters.persistence.transient import TransientRetry
     from squadops.config.schema import DBRetryConfig
     from squadops.memory.assessment import target_absence_rates
-    from squadops.memory.build_report import exposure_builds
-    from squadops.memory.exposures import arm_of
+    from squadops.memory.build_report import declared_arms, exposure_builds
     from squadops.memory.lesson_text import withheld_lesson_signals
 
     pool = await create_pool(
@@ -41,6 +40,7 @@ async def report(dsn: str, project: str) -> int:
         exposures = await store.list_project_exposures(project)
         result = await exposure_builds(exposures, cycles=registry, campaigns=campaigns)
         by_id = {e.exposure_id: e for e in exposures}
+        arms = await declared_arms((e.cycle_id for e in exposures), cycles=registry)
         print(f"== {project}: {len(exposures)} exposures, {len(result.builds)} build runs")
         for row in result.builds:
             i = row.indicators
@@ -51,7 +51,7 @@ async def report(dsn: str, project: str) -> int:
                 f"  {row.run_id}  verdict={i.verdict}  failed_rounds={i.failed_rounds}  "
                 f"refunded={i.refunded_rounds}  rounds_to_green={green}  increment={accepted}  "
                 f"exposures={len(row.exposures)}  "
-                f"arm={arm_of(by_id[x] for x in row.exposures)}"
+                f"arm={', '.join(sorted({arms.get(by_id[x].cycle_id, 'unread') for x in row.exposures}))}"
             )
         for state, ids in result.unbuilt.items():
             print(f"  {state.value}: {len(ids)} exposures (none of them a build failure)")

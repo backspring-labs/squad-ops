@@ -26,8 +26,13 @@ MEMORY_DECLARATION_KEY = "memory"
 DISABLED = "disabled"
 ENABLED = "enabled"
 #: The ``execution_overrides`` key a cycle withholds memory's whole context under (§3.7).
-MEMORY_CONTEXT_KEY = "memory_context"
+CONTEXT_DECLARATION_KEY = "memory_context"
 NONE = "none"
+
+#: The arms a cycle runs under (§3.7), read from its declaration, so a report keeps them apart.
+ARM_CONTEXT_NONE = "memory_context: none"
+ARM_LESSONS_DISABLED = "lessons: disabled"
+ARM_LESSONS_ON = "lessons on"
 
 
 def memory_disabled(config: Mapping[str, Any] | None) -> bool:
@@ -48,14 +53,24 @@ def memory_context_none(config: Mapping[str, Any] | None) -> bool:
     """Whether a cycle's effective config declares ``memory_context: none``. It withholds the
     lessons too, so ``memory: enabled`` beside it is refused, as is any value but ``none``: read
     either way, a typo would run one experiment and record it as the other."""
-    value = (config or {}).get(MEMORY_CONTEXT_KEY)
+    value = (config or {}).get(CONTEXT_DECLARATION_KEY)
     if value is None:
         return False
     if str(value).strip().lower() != NONE:
-        raise ValueError(f"{MEMORY_CONTEXT_KEY} is {NONE!r} when declared, not {value!r}")
+        raise ValueError(f"{CONTEXT_DECLARATION_KEY} is {NONE!r} when declared, not {value!r}")
     if (config or {}).get(MEMORY_DECLARATION_KEY) is not None and not memory_disabled(config):
         raise ValueError(
-            f"{MEMORY_CONTEXT_KEY}: {NONE} withholds the lessons, so "
+            f"{CONTEXT_DECLARATION_KEY}: {NONE} withholds the lessons, so "
             f"{MEMORY_DECLARATION_KEY}: {ENABLED} contradicts it"
         )
     return True
+
+
+def arm_of(config: Mapping[str, Any] | None) -> str:
+    """The experiment a cycle's effective config declares: ``memory_context: none``, its own;
+    ``lessons: disabled``, the lesson comparison's control; or lessons on. Read from the
+    declaration, never from what recall answered, so a cycle whose every recall failed still
+    reports the arm it was created under."""
+    if memory_context_none(config):
+        return ARM_CONTEXT_NONE
+    return ARM_LESSONS_DISABLED if memory_disabled(config) else ARM_LESSONS_ON

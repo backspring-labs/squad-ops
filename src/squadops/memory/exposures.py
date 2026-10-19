@@ -12,30 +12,13 @@ of the authored output against each supplied lesson's target attaches to it late
 from __future__ import annotations
 
 import hashlib
-from collections.abc import Iterable, Mapping
+from collections.abc import Mapping
 from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Any
 
-from squadops.memory.lessons import RecallDisposition, Recalled
+from squadops.memory.lessons import Recalled
 from squadops.memory.recall import RecallQuery, UnitKind
-
-#: The arms a unit's exposures belong to (Appendix A §3.7), so a report keeps them apart.
-ARM_CONTEXT_NONE = "memory_context: none"
-ARM_LESSONS_DISABLED = "lessons: disabled"
-ARM_LESSONS_ON = "lessons on"
-
-
-def arm_of(exposures: Iterable[Exposure]) -> str:
-    """The experiment one unit's exposures ran, read from their dispositions: ``memory_context:
-    none`` is its own experiment and ``lessons: disabled`` the lesson comparison's control, each
-    named whatever its other exposures say (a failed recall still ran under the declaration)."""
-    dispositions = {e.disposition for e in exposures}
-    if RecallDisposition.CONTEXT_NONE in dispositions:
-        return ARM_CONTEXT_NONE
-    if RecallDisposition.DISABLED in dispositions:
-        return ARM_LESSONS_DISABLED
-    return ARM_LESSONS_ON
 
 
 def exposure_id_for(run_id: str, task_id: str, attempt: int = 1) -> str:

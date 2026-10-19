@@ -113,7 +113,7 @@ def assess(
     evidence: str,
     assessed_by: str,
     now: datetime,
-    context_withheld: bool = False,
+    context_withheld: bool,
 ) -> Assessment:
     """A target's assessment, or :class:`AssessmentRefused`. An exposure whose unit declared
     ``memory_context: none`` is refused: the series are the lesson's effect, and that experiment

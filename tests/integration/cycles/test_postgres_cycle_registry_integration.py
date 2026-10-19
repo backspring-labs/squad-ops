@@ -587,6 +587,7 @@ class TestMemoryLessons:
                 evidence="e",
                 assessed_by="auditor",
                 now=datetime(2026, 10, 8, 1, tzinfo=UTC),
+                context_withheld=False,
             )
             second = dataclasses.replace(
                 first, state=TargetState.ABSENT, assessed_at=datetime(2026, 10, 8, 2, tzinfo=UTC)

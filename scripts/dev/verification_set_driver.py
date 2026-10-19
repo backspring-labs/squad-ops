@@ -1192,15 +1192,26 @@ MEMORY_DECLARATION = ("memory", "disabled")
 
 def memory_declaration_problems(cfg: SetConfig) -> list[str]:
     """D12: a counted roll runs with memory disabled until the owner rules otherwise on a finding
-    of supported benefit. A set config that declares anything else cannot be counted."""
+    of supported benefit. A set config that declares anything else cannot be counted, and
+    ``memory_context`` is refused outright: a counted roll declares ``lessons: disabled``, and
+    ``none`` would withhold the project's instructions too (SIP-0110 Appendix A §3.7)."""
+    from squadops.memory.declarations import CONTEXT_DECLARATION_KEY
+
     key, value = MEMORY_DECLARATION
     declared = str(cfg.overrides.get(key, value)).strip().lower()
-    if declared == value:
-        return []
-    return [
-        f"D12: a counted roll declares {key}: {value}; the set config says {key}: {declared}. "
-        "Memory on a counted roll needs the owner's ruling on a finding of supported benefit."
-    ]
+    problems = []
+    if declared != value:
+        problems.append(
+            f"D12: a counted roll declares {key}: {value}; the set config says {key}: {declared}. "
+            "Memory on a counted roll needs the owner's ruling on a finding of supported benefit."
+        )
+    if cfg.overrides.get(CONTEXT_DECLARATION_KEY) is not None:
+        problems.append(
+            f"D12: a counted roll declares {key}: {value} alone; the set config also says "
+            f"{CONTEXT_DECLARATION_KEY}: {cfg.overrides[CONTEXT_DECLARATION_KEY]}, which withholds "
+            "the project's instructions and changes the roll's requirements (SIP-0110 §A.3.7)."
+        )
+    return problems
 
 
 def preflight(cfg: SetConfig, *, counting: bool, identity: dict[str, str]) -> list[str]:
