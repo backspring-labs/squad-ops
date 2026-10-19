@@ -360,7 +360,7 @@ own evidence, #2183's acceptance matrix, live.
 
 | item | what | when in the line |
 |---|---|---|
-| #316, the request-profile taxonomy (`sips/proposed/SIP-Cycle-Request-Profile-Naming-Taxonomy.md`) | names drawn from one axis, with old names resolving as aliases (Q13) | its SIP's design review early; the rename lands before the window's deploy freezes, so the window runs on the final names |
+| #316, the request-profile taxonomy (`sips/accepted/SIP-0114-Cycle-Request-Profile-Naming.md`, accepted 2026-10-19) | names drawn from one axis, with old names resolving as aliases (Q13) | its SIP's design review early; the rename lands before the window's deploy freezes, so the window runs on the final names |
 | #1966, risk-first QA and builder instructions | an A/B on replayed increments (#1959), read on the per-increment scorecard (#1960) and the window's scenarios | **the A/B runs in 2.4; adoption is a separate ruling, not before phase 2's decision,** so the release doesn't change two squad behaviours at once and lose both readings |
 | #2378's proper fix | an endpoint declares its query parameters as a field the scaffold, QA's prompt and the probes read | after the window, each output-quality change measured on the yardstick, pre-registered as 2.3's #2202 and #2205 comparisons were |
 | #2153's build | a failing slot assertion routed by demonstrated defect ownership (SIP-0104 §13d), now that SIP-0110's window has closed | after the window, as above |
