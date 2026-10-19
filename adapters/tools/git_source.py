@@ -141,6 +141,26 @@ class GitSourceRepository(SourceRepositoryPort):
             "--no-signature", "-1", commit, step="export",
         )  # fmt: skip
 
+    async def is_ancestor(self, project_id: str, ancestor: str, descendant: str) -> bool:
+        for commit in (ancestor, descendant):
+            if not _COMMIT.match(commit):
+                raise SourceUnavailable(f"{commit!r} is not a commit", reason="not_a_commit")
+        return await asyncio.to_thread(
+            self._is_ancestor, self._clone_dir(project_id), ancestor, descendant
+        )
+
+    def _is_ancestor(self, clone: Path, ancestor: str, descendant: str) -> bool:
+        for commit in (ancestor, descendant):
+            self._git(clone, "cat-file", "-e", f"{commit}^{{commit}}", step="read")
+        try:
+            self._git(clone, "merge-base", "--is-ancestor", ancestor, descendant, step="ancestry")
+        except SourceUnavailable as e:
+            # exit 1 is git's "no", an answer rather than a failure
+            if "exit 1" in str(e):
+                return False
+            raise
+        return True
+
     async def commit_message(self, project_id: str, commit: str) -> str:
         if not _COMMIT.match(commit):
             raise SourceUnavailable(f"{commit!r} is not a commit", reason="not_a_commit")

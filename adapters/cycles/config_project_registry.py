@@ -110,6 +110,15 @@ class ConfigProjectRegistry(ProjectRegistryPort):
     async def contributions(self, project_id):
         return []
 
+    async def record_contribution_state(self, project_id, cycle_id, run_id, **kwargs):
+        raise ProjectRegistryReadOnlyError("the config provider records no contributions")
+
+    async def record_sync(self, document, *, actor, idempotency_key, request_hash):
+        raise ProjectRegistryReadOnlyError("the config provider records no syncs")
+
+    async def source_syncs(self, project_id):
+        return []
+
     async def get_inherited_baseline(self, project_id):
         raise InheritedBaselineNotFoundError(
             f"Project {project_id} is a sample application: it has no inherited baseline"

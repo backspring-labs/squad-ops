@@ -27,8 +27,8 @@ from squadops.projects.workspaces import CAPTURED, SEEDED
 
 #: The modes 2.4 contributes through. A direct push is integration, and isn't delegated in 2.4.
 CONTRIBUTION_MODES_MADE = (ContributionMode.PATCH_EXPORT, ContributionMode.REVIEW_REQUEST)
-PENDING = "pending"
-CONTRIBUTION_STATES = (PENDING, "integrated", "closed")
+PENDING, INTEGRATED, CLOSED = "pending", "integrated", "closed"
+CONTRIBUTION_STATES = (PENDING, INTEGRATED, CLOSED)
 _HEADS = "refs/heads/"
 
 
@@ -49,6 +49,8 @@ class Contribution:
     review_url: str | None
     contributed_by: str
     contributed_at: datetime
+    #: The commit through which the product took it: its own, or a squash merge's (E.4.4).
+    integrated_commit: str | None = None
 
     def to_document(self) -> dict[str, Any]:
         return {
@@ -63,6 +65,7 @@ class Contribution:
             "review_url": self.review_url,
             "contributed_by": self.contributed_by,
             "contributed_at": self.contributed_at.isoformat(),
+            "integrated_commit": self.integrated_commit,
         }
 
 

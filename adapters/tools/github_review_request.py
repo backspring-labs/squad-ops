@@ -14,9 +14,16 @@ from urllib.parse import urlsplit
 
 import httpx
 
-from squadops.ports.projects.review_request import ReviewRequestFailed, ReviewRequestPort
+from squadops.ports.projects.review_request import (
+    ReviewRequestFailed,
+    ReviewRequestPort,
+    ReviewRequestState,
+)
 
 _REPO_PATH = re.compile(r"^/(?P<owner>[A-Za-z0-9_.-]+)/(?P<repo>[A-Za-z0-9_.-]+?)(?:\.git)?/?$")
+_PULL_PATH = re.compile(
+    r"^/(?P<owner>[A-Za-z0-9_.-]+)/(?P<repo>[A-Za-z0-9_.-]+)/pull/(?P<n>\d+)/?$"
+)
 
 
 def repository_of(repo_uri: str, host: str) -> tuple[str, str]:
@@ -47,13 +54,8 @@ class GitHubReviewRequests(ReviewRequestPort):
     ) -> str:
         owner, repo = repository_of(repo_uri, self._host)
         pulls = f"{self._api_base}/repos/{owner}/{repo}/pulls"
-        headers = {
-            "Authorization": f"Bearer {token}",
-            "Accept": "application/vnd.github+json",
-            "X-GitHub-Api-Version": "2022-11-28",
-        }
         async with httpx.AsyncClient(
-            timeout=self._timeout, headers=headers, transport=self._transport
+            timeout=self._timeout, headers=_headers(token), transport=self._transport
         ) as client:
             try:
                 existing = await client.get(
@@ -69,6 +71,35 @@ class GitHubReviewRequests(ReviewRequestPort):
             except httpx.HTTPError as e:
                 raise ReviewRequestFailed(f"GitHub could not be reached: {type(e).__name__}") from e
             return str(opened.json()["html_url"])
+
+    async def review_request_state(self, *, url: str, token: str) -> ReviewRequestState:
+        parsed = urlsplit(url)
+        match = _PULL_PATH.match(parsed.path) if parsed.hostname == self._host else None
+        if match is None:
+            raise ReviewRequestFailed(f"{url} is not a pull request on {self._host}")
+        endpoint = f"{self._api_base}/repos/{match['owner']}/{match['repo']}/pulls/{match['n']}"
+        async with httpx.AsyncClient(
+            timeout=self._timeout,
+            headers=_headers(token),
+            transport=self._transport,
+        ) as client:
+            try:
+                response = await client.get(endpoint)
+            except httpx.HTTPError as e:
+                raise ReviewRequestFailed(f"GitHub could not be reached: {type(e).__name__}") from e
+        _raise_for(response, "reading the pull request")
+        pull = response.json()
+        if pull.get("merged"):
+            return ReviewRequestState("merged", pull.get("merge_commit_sha"))
+        return ReviewRequestState("open" if pull.get("state") == "open" else "closed")
+
+
+def _headers(token: str) -> dict[str, str]:
+    return {
+        "Authorization": f"Bearer {token}",
+        "Accept": "application/vnd.github+json",
+        "X-GitHub-Api-Version": "2022-11-28",
+    }
 
 
 def _raise_for(response: httpx.Response, doing: str) -> None:

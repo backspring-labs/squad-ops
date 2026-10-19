@@ -509,3 +509,53 @@ async def test_a_contribution_is_recorded_once_and_its_key_names_one_run(pool):
             )
             == 1
         )
+
+
+async def test_a_sync_is_recorded_once_and_a_contribution_moves_to_integrated(pool):
+    """FR-21's drift findings and FR-06's integration (E.4.4). Bugs caught:
+    - a retried sync recording a second finding;
+    - the integrated commit lost when a contribution's state moves;
+    - an integrated commit the table can't hold.
+    """
+    from squadops.projects.contribution import Contribution
+
+    registry = PostgresProjectRegistry(pool)
+    await registry.register_project(_registration(), actor="owner")
+    contribution = Contribution(
+        project_id="prj-tally",
+        cycle_id="cyc_1",
+        run_id="run_1",
+        commit="a" * 40,
+        parent_commit="b" * 40,
+        mode="review_request",
+        state="pending",
+        branch="squadops/cyc_1",
+        review_url="https://github.com/owner/tally/pull/7",
+        contributed_by="owner",
+        contributed_at=datetime(2026, 10, 19, tzinfo=UTC),
+    )
+    await registry.record_contribution(contribution, idempotency_key="c-1", request_hash="h")
+    document = {
+        "schema": "source-sync/v1",
+        "project_id": "prj-tally",
+        "baseline_commit": "b" * 40,
+        "upstream_commit": "c" * 40,
+        "drift": {"changed": {"instructions": ["CONTRIBUTING.md"]}, "relevant": ["instructions"]},
+        "contributions": [],
+    }
+
+    integrated = await registry.record_contribution_state(
+        "prj-tally", "cyc_1", "run_1", state="integrated", integrated_commit="c" * 40,
+        actor="owner",
+    )  # fmt: skip
+    _, replayed = await registry.record_sync(
+        document, actor="owner", idempotency_key="s-1", request_hash="h"
+    )
+    again, again_replayed = await registry.record_sync(
+        document, actor="owner", idempotency_key="s-1", request_hash="h"
+    )
+
+    assert (integrated.state, integrated.integrated_commit) == ("integrated", "c" * 40)
+    assert await registry.contributions("prj-tally") == [integrated]
+    assert (replayed, again_replayed, again) == (False, True, document)
+    assert await registry.source_syncs("prj-tally") == [document]

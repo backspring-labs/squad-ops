@@ -137,3 +137,28 @@ class ProjectRegistryPort(ABC):
     @abstractmethod
     async def contributions(self, project_id: str) -> list[Contribution]:
         """A Project's contributions, oldest first."""
+
+    @abstractmethod
+    async def record_contribution_state(
+        self,
+        project_id: str,
+        cycle_id: str,
+        run_id: str,
+        *,
+        state: str,
+        integrated_commit: str | None,
+        actor: str,
+    ) -> Contribution:
+        """Record where a contribution now stands (E.4.4): integrated, through the commit the
+        product took it by, or closed."""
+
+    @abstractmethod
+    async def record_sync(
+        self, document: dict, *, actor: str, idempotency_key: str, request_hash: str
+    ) -> tuple[dict, bool]:
+        """Record one read of upstream against the approved baseline (FR-21). Returns the
+        document and whether this replayed an earlier sync under the same key."""
+
+    @abstractmethod
+    async def source_syncs(self, project_id: str) -> list[dict]:
+        """A Project's syncs, oldest first: the drift findings a later unit resolves (FR-09)."""

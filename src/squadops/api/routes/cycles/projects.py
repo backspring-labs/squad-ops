@@ -19,6 +19,8 @@ from squadops.api.cycle_schemas import (
     ProjectRegistrationResponse,
     ProjectResponse,
     ProjectValidationRequest,
+    SourceSyncRequest,
+    SourceSyncResponse,
 )
 from squadops.api.errors import http_error
 from squadops.api.middleware.auth import require_scopes
@@ -41,6 +43,7 @@ from squadops.projects.development_configuration import (
 )
 from squadops.projects.models import SourceUnavailable
 from squadops.projects.registration import RegistrationRefused, prepare_registration
+from squadops.projects.sync import SyncRefused, sync_project
 from squadops.projects.validation import validate_project
 from squadops.projects.workspaces import SandboxUnavailable, capture_inherited_baseline
 
@@ -254,6 +257,40 @@ async def list_contributions(request: Request, project_id: str) -> list[Contribu
     """A Project's contributions, oldest first: pending until the product takes them."""
     contributions = await get_project_registry(request).contributions(project_id)
     return [ContributionResponse(contribution=c.to_document()) for c in contributions]
+
+
+@router.post("/{project_id}/syncs", status_code=201)
+async def sync_upstream(
+    request: Request,
+    project_id: str,
+    body: SourceSyncRequest,
+    identity: Identity | None = Depends(require_scopes(Scope.ADMIN_WRITE)),
+) -> SourceSyncResponse:
+    """Fetch the product's base ref and record its drift from the approved development baseline,
+    by the category of evidence it invalidates, and where each pending contribution stands
+    (SIP-0112 FR-21, E.4.4). Moves nothing else: validation advances the baseline."""
+    try:
+        document, replayed = await sync_project(
+            project_id,
+            registry=get_project_registry(request),
+            repository=get_source_repository(request),
+            forge=get_review_requests(request),
+            tokens=get_review_request_tokens(request),
+            actor=identity.user_id if identity is not None else "anonymous",
+            idempotency_key=body.idempotency_key,
+        )
+    except SyncRefused as e:
+        raise http_error(409, "SYNC_REFUSED", str(e)) from e
+    except (SourceUnavailable, ReviewRequestFailed) as e:
+        raise http_error(502, "SYNC_FAILED", str(e)) from e
+    return SourceSyncResponse(document=document, replayed=replayed)
+
+
+@router.get("/{project_id}/syncs", dependencies=[Depends(require_scopes(Scope.CYCLES_READ))])
+async def list_syncs(request: Request, project_id: str) -> list[SourceSyncResponse]:
+    """A Project's syncs, oldest first: the drift findings since each baseline (FR-09)."""
+    syncs = await get_project_registry(request).source_syncs(project_id)
+    return [SourceSyncResponse(document=d) for d in syncs]
 
 
 @router.get("/{project_id}", dependencies=[Depends(require_scopes(Scope.CYCLES_READ))])
