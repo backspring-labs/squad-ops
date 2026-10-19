@@ -30,6 +30,7 @@ lane's review (revision 4, PR #2494), by the owner's approval of that day.
 | part | status | where |
 |---|---|---|
 | the operator's request profiles, the stack's request defaults and the campaign profiles apart from them, with every old name still resolving for pinned definitions (revision 4's decisions; Q13) | **shipped** | 2.4.0, PR #2500, issue #316 (§11a) |
+| the console's cycle create resolved by the server, with the same builder (§11b) | **shipped** | 2.4.0, PR #2529, issue #2520 |
 
 **What closes this SIP:** #316 shipped, with every pinned definition still resolving the profile it names.
 
@@ -383,3 +384,45 @@ Pick a direction (A / B / C / hybrid) and confirm the deprecation approach, so a
 - **Evidence:** `test_request_profile_taxonomy.py`; the wiring test `test_a_campaigns_launches_on_a_stack_resolve_as_their_profiles_do`
   enters at a Next.js campaign's `calibration_launch` and `bound_launch`, the path the 2.4 window's campaigns take.
 
+
+## 11b. The console resolves on the server (2026-10-19, #2520; the supervisor, under the owner's grant of 2026-10-19)
+
+**What was wrong:** §11a's one builder had a copy. The console's cycle-create modal built its own body: the listed
+profile's `defaults` as `applied_defaults`, and its own `computeOverrides`.
+- **It sent no `request_profile`,** so a console cycle lost its profile provenance (SIP-0096).
+- **It put `project_id` and `squad_profile_id` into `applied_defaults`,** so a console cycle's config hash never
+  matched the CLI's for the same request.
+- **It couldn't take a stack.** Since §11a no operator profile pins one, and the modal had no field for
+  `build_profile`. So a console cycle got no stack's request defaults (R2.3), and one whose squad has a builder was
+  refused at create (`builder_without_build_profile`, #2437): the console couldn't create a building cycle at all.
+
+The second read of PR #2500 found the copy, and the second read of PR #2529 found the missing stack.
+
+**What changed:**
+- **`POST /api/v1/cycle-request-profiles/{name}/resolve`.** It takes the squad, the caller's values, and the notes and
+  PRD the body carries. It answers with the cycle-create body that `cycle_request_body` builds from them, and creates
+  nothing.
+  - An unknown profile is 404.
+  - A body the create route would refuse is 422, as the create would answer, and so is a caller setting the resolved
+    fields itself.
+- **Each profile's listing names the stacks it can run on** (`stacks`): every stack with request defaults for an
+  operator profile, and none for any other, which pins its stack or takes none.
+- **The modal asks the route:**
+  - It offers that stack choice as the CLI's `--set build_profile`, with none by default, as the CLI has.
+  - It resolves the request again whenever the profile, the stack, the squad or a value changes, and shows the answer
+    as its preview. Nothing is submittable until the latest change has resolved.
+  - On submit, it resolves before storing the PRD, then creates the cycle from the request resolved with the PRD and
+    notes.
+  - It no longer builds a body.
+
+**Evidence:**
+- **The wiring test** enters as the console does: it resolves `validate` on `nextjs_ts` through the route, then posts
+  the answer to the create route. The cycle created has `request_profile: validate`, the PRD, and the CLI's config
+  hash for the same request.
+- **The route:** `validate` on each stack resolves to exactly the CLI's body, with the stack's request defaults among
+  its applied defaults. The refusals are 404 and 422.
+- **The listing** offers the two stacks to every operator profile, and none to `validated-fullstack`.
+- **Mutants:** offering no stacks fails the listing test, and a resolve that drops `request_profile` fails three tests.
+- **The second reader** resolved all 25 profiles, with three value sets each, through the route. Every one gave the
+  CLI's request and config hash.
+- **The plugin builds** with no warning from the modal.

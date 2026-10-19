@@ -594,6 +594,18 @@ class PromptMetaResponse(BaseModel):
     required: bool = False
 
 
+class CycleRequestResolveRequest(BaseModel):
+    """A request profile's name resolved into a cycle-create body, server-side (#2520): the squad,
+    the caller's values over the profile's, and the notes and PRD the body carries."""
+
+    squad_profile_id: str
+    values: dict = Field(default_factory=dict)
+    notes: str | None = None
+    prd_ref: str | None = None
+
+    model_config = ConfigDict(extra="forbid")
+
+
 class CycleRequestProfileResponse(BaseModel):
     """Cycle request profile with defaults and prompt metadata (SIP-0074)."""
 
@@ -601,6 +613,10 @@ class CycleRequestProfileResponse(BaseModel):
     description: str = ""
     defaults: dict = Field(default_factory=dict)
     prompts: dict[str, PromptMetaResponse] = Field(default_factory=dict)
+    #: The stacks an operator profile runs on, each adding its request defaults beneath the
+    #: profile's (#316, R2.3), so a client offers the choice the CLI's ``--set build_profile``
+    #: makes (#2520). Empty for every other profile: it pins its stack or takes none.
+    stacks: list[str] = Field(default_factory=list)
 
 
 class ModelSpecResponse(BaseModel):
