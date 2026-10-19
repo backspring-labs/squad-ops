@@ -54,6 +54,14 @@ class ExecutionSandboxPort(ABC):
         ...
 
     @abstractmethod
+    async def release_workspace(self, cycle_id: str) -> None:
+        """Remove the workspace seeded for ``cycle_id``, its tree and its revisions, once its
+        consumer has recorded what it needs (#2473): the inherited baseline after
+        ``record_inherited_baseline``, a source-backed run at its teardown. Idempotent: releasing an
+        absent workspace is no error. Stop an application started from it first; the release takes
+        the tree away beneath it. The operation evidence already journalled is kept."""
+
+    @abstractmethod
     async def read_workspace_revision(self, revision: WorkspaceRevision) -> RevisionContent:
         """A pinned revision's files and executable bits, read from the live tree only while it
         matches the pin, as a disposable copy is taken (contract 3). SIP-0112's E.4.3 captures a

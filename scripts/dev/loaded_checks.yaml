@@ -1255,6 +1255,14 @@ checks:
       from squadops.ports.sandbox import ExecutionSandboxPort
       print(sorted({"seed_workspace", "read_workspace_revision"} & ExecutionSandboxPort.__abstractmethods__))
     expect: "['read_workspace_revision', 'seed_workspace']"
+  - id: "2473"
+    what: a seeded workspace is released on the sandbox port, and the release keeps the operation journal
+    container: squadops-sandbox-service
+    code: |
+      from squadops.ports.sandbox import ExecutionSandboxPort
+      from squadops.sandbox import workspace
+      print("release_workspace" in ExecutionSandboxPort.__abstractmethods__, workspace._STORE_ENTRIES)
+    expect: "True ('workspace', 'copies', 'revisions', 'lease.json')"
   - id: "2418"
     what: the campaign's evidence package (version 4) carries its outcome readings, from the runtime's scenario store
     container: squadops-runtime-api

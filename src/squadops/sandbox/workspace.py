@@ -16,6 +16,10 @@ Layout per cycle::
     <root>/<cycle_id>/revisions/<id>.json   revision metadata + file-hash manifest
     <root>/<cycle_id>/revisions/HEAD        latest revision id
     <root>/<cycle_id>/lease.json            {"expires_at": <epoch seconds>}
+    <root>/<cycle_id>/copies/<id>/          a disposable copy, while a declared command runs
+
+The operation journal shares the cycle's directory (``evidence/``, SIP-0102 §7 item 11) and is
+not the store's: removing a workspace removes the entries above and keeps it (#2473).
 """
 
 from __future__ import annotations
@@ -125,6 +129,23 @@ def working_directory(path: str) -> str:
     """A declared command's working directory, repository-relative (X-3a, #2421): ``""`` for the
     tree's root, refused when it would leave the tree."""
     return "" if str(path).strip() in ("", ".") else _safe_relpath(path, tracked=None)
+
+
+# The lease goes last, so a removal a crash interrupts is still leased and the next sweep finishes it.
+_STORE_ENTRIES = ("workspace", "copies", "revisions", "lease.json")
+
+
+def _remove_store_entries(cycle_dir: Path) -> None:
+    """Remove what the store wrote under ``cycle_dir`` and keep the rest (the operation journal's
+    ``evidence/``); the directory goes once nothing is left in it."""
+    for name in _STORE_ENTRIES:
+        entry = cycle_dir / name
+        if entry.is_dir():
+            shutil.rmtree(entry)
+        elif entry.exists():
+            entry.unlink()
+    if cycle_dir.is_dir() and not any(cycle_dir.iterdir()):
+        cycle_dir.rmdir()
 
 
 class WorkspaceStore:
@@ -441,9 +462,7 @@ class WorkspaceStore:
     def cleanup(self, cycle_id: str) -> None:
         """Remove the cycle's workspace state. Idempotent — cleaning an absent
         workspace is a no-op (§7 item 12)."""
-        cycle_dir = self._cycle_dir(cycle_id)
-        if cycle_dir.exists():
-            shutil.rmtree(cycle_dir)
+        _remove_store_entries(self._cycle_dir(cycle_id))
 
     def cleanup_expired(self, *, now: float) -> tuple[str, ...]:
         """Remove every leased workspace whose lease expired. Scans disk, so
@@ -460,6 +479,6 @@ class WorkspaceStore:
             except (ValueError, KeyError, json.JSONDecodeError):
                 continue  # malformed lease: leave the workspace alone, never guess
             if expires_at <= now:
-                shutil.rmtree(cycle_dir)
+                _remove_store_entries(cycle_dir)
                 removed.append(cycle_dir.name)
         return tuple(removed)

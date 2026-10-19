@@ -18,7 +18,7 @@ from __future__ import annotations
 
 import hmac
 
-from fastapi import Depends, FastAPI, Header, HTTPException, Request
+from fastapi import Depends, FastAPI, Header, HTTPException, Request, Response
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
 
@@ -175,6 +175,15 @@ async def _handle_seed(service: SandboxService, cycle_id: str, body: SeedRequest
     return revision.to_dict()
 
 
+async def _handle_release(service: SandboxService, cycle_id: str) -> Response:
+    """#2473: the consumer releases what it seeded once it has recorded what it needs."""
+    try:
+        await service.release_workspace(cycle_id)
+    except WorkspaceStoreError as e:
+        raise _error(400, "INVALID_WORKSPACE", str(e)) from e
+    return Response(status_code=204)
+
+
 async def _handle_evaluation(service: SandboxService, body: EvaluationRequest) -> dict:
     """SIP-0113 §4.1 (#2414): one evaluated tree, started and evaluated by the scenario runner."""
     runner = service.scenario_runner
@@ -287,6 +296,15 @@ def create_app(service: SandboxService, *, service_token: str) -> FastAPI:
     )
     async def seed(cycle_id: str, body: SeedRequest) -> dict:
         return await _handle_seed(service, cycle_id, body)
+
+    @app.delete(
+        "/api/v1/workspaces/{cycle_id}",
+        status_code=204,
+        response_class=Response,
+        dependencies=[Depends(require_identity)],
+    )
+    async def release(cycle_id: str) -> Response:
+        return await _handle_release(service, cycle_id)
 
     @app.post(
         "/api/v1/workspaces/{cycle_id}/operations",

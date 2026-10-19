@@ -60,7 +60,7 @@ deferred until a second stack exists — see the §4.2 status note),
 SIP-Edge-Deployment-Profile (remote sandbox adapter target),
 SIP-Capability-Backed-Agents (toolchain-as-capability, 2.0 arc).
 
-## Delivery ledger (current as of 2026-10-18)
+## Delivery ledger (current as of 2026-10-19)
 
 Kept by the rule in CLAUDE.md ("SIP System"): one row per part, updated in the PR that ships or re-places it, read at each release cut. Built from the read-only SIP-portfolio audit of 2026-10-04; `sips/PORTFOLIO.md` indexes it.
 
@@ -84,6 +84,7 @@ Kept by the rule in CLAUDE.md ("SIP System"): one row per part, updated in the P
 | the runtime API as the service's caller: its own client selector, the service's URL and token, the service's provider split from the preflight's (§11f; #2451 parts 1–3) | **shipped** | 2.4.0, PR #2456 |
 | the apps the service starts, on the internal `sandbox-apps` network by container name, with no host port (§11h; #2451 part 4) | **shipped** | 2.4.0, PR #2460 |
 | a pinned revision's content, read through the port from the live tree only while it matches its pin (§11i; SIP-0112's E.4.3 capture) | **shipped** | 2.4.0, PR #2461 |
+| a seeded workspace released through the port, the operation journal kept by every removal (§11j) | **shipped** | 2.4.0, PR #2527, issue #2473 |
 
 **What closes this SIP:** Steps 3, 5, 6, 7 shipped or dropped. Until a clean-room requirement returns, they are unplaced by ruling (§11c, 2026-10-04).
 
@@ -817,3 +818,42 @@ the pin check removed, and the executable bits dropped.
 
 **Who ruled it.** The MacBook lane asked for it in its review of #2456, as contract 3's consumer, for
 E.4.3 (#2410). It is the implementer's change, for that lane's review and the owner's.
+
+### 11j. A seeded workspace is released through the port, and the release keeps the operation journal (2026-10-19, §4.6, §7 items 11 and 12; §11g; #2473; implementer's record, for the owner)
+
+**Why.** Nothing released a workspace seeded through the port (§11g). SIP-0112's inherited baseline
+(E.4.2, #2468) seeds `baseline-<project>-<commit12>` for each capture, and a source-backed run (E.4.3)
+seeds one live tree per Cycle, so the sandbox root only grew. The store had leases
+(`touch_lease`, `cleanup_expired`), but nothing called them.
+
+**What changed.**
+- **`release_workspace(cycle_id)` on `ExecutionSandboxPort`,** beside §11g's seed and §11i's read. The
+  consumer calls it once it has recorded what it needs: the inherited baseline after
+  `record_inherited_baseline`, a source-backed run at its teardown. An application started from the
+  workspace is stopped first, since the release takes the tree away beneath it.
+  - The service removes the cycle's workspace.
+  - The client calls `DELETE /api/v1/workspaces/{cycle_id}`, which answers 204. An ID outside the
+    store's pattern is 400 `INVALID_WORKSPACE`. A `..` is resolved in the URL before any route
+    matches, so it answers 404 and deletes nothing.
+  - The noop stored nothing, so it releases nothing.
+  - Releasing an absent workspace is no error (§7 item 12).
+- **A release, a cleanup and a lease sweep keep the operation journal.** The journal (§7 item 11) lives
+  in the cycle's directory (`<root>/<cycle_id>/evidence/`), and the store removed that whole directory.
+  The store now removes only its own entries (`workspace/`, `copies/`, `revisions/` and the lease),
+  and removes the directory once nothing is left in it. The lease goes last, so a removal that a crash
+  interrupts is still leased and the next sweep finishes it.
+- **Not built: the lease at seeding.** #2473 offered either a lease taken at seeding with a sweep, or an
+  explicit release. The consumer knows when it has recorded what it needs, so the explicit release is
+  the one built. A consumer that dies before releasing leaves its workspace, as before. The store's
+  lease and sweep remain for a caller that wants a time bound.
+
+**Evidence.** `tests/unit/sandbox/test_seed_on_the_port.py` seeds a workspace through the service and
+through the HTTP client, runs a journalled operation on it, and releases it twice. The cycle's
+directory then holds only `evidence/`, no revision is left, and the journal reads every operation. An ID
+outside the pattern is refused with nothing deleted. `tests/unit/sandbox/test_workspace_store.py`
+sweeps a cleaned and an expired cycle, with and without a journal. On the store's previous whole-
+directory removal, the journalled cases of both tests fail.
+
+**Who ruled it.** The Spark lane raised it in its G4 review of #2468. The sandbox's port and service are
+that lane's files by ownership (CLAUDE.md's lanes; this SIP was its 1.4 headline), so the explicit
+release is the implementer's choice, for the MacBook lane's review as its caller and the owner's.
