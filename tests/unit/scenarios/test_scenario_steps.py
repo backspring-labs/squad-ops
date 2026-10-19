@@ -103,3 +103,28 @@ async def test_a_scenario_that_cannot_complete_says_which_way_it_ended(steps, ch
         assert (result.result, result.first_failing_step) == ("failed", ended[2])
     else:
         assert (result.result, result.blocked_reason) == ended[:2]
+
+
+@pytest.mark.parametrize(
+    ("status", "result"), [(400, "passed"), (422, "passed"), (500, "failed")], ids=str
+)
+async def test_a_status_check_may_accept_each_status_a_delivery_can_choose(status, result):
+    """#2464: the PRD says a request is "rejected", and each delivery's manifest picks the status,
+    422 on the canonical stack and 400 on Next.js. Bug caught: a valid rejection read as a failure
+    because the check named one delivery's choice; or a server error read as a rejection."""
+
+    async def send(request: HttpRequest) -> HttpResponse:
+        return HttpResponse(status, {"error": "title is required"})
+
+    run = await run_scenario(
+        {
+            "scenario_id": "a-run-without-a-title-is-refused",
+            "steps": [{"action": "http", "method": "POST", "path": "/runs", "json": {}}],
+            "checks": [{"check": "status", "step": 1, "in": [400, 422]}],
+        },
+        send,
+    )
+
+    assert run.result == result
+    if result == "failed":
+        assert run.detail == "step 1 answered 500, not 400 or 422"

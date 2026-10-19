@@ -15,6 +15,8 @@ from datetime import datetime
 from enum import StrEnum
 from typing import Any
 
+from squadops.scenarios.fields import CONCEPT, references
+
 
 class ScenarioInvalid(ValueError):
     """A scenario or a suite whose content can't be stored as given."""
@@ -62,15 +64,22 @@ class Scenario:
     surfaces: tuple[Surface, ...]
     steps: tuple[Mapping[str, Any], ...]
     checks: tuple[Mapping[str, Any], ...]
+    #: Each ``Entity:concept`` the steps and checks refer to, with the names a delivery may give
+    #: it (#2464; ``squadops.scenarios.fields``). In the content, so in the version: approving
+    #: a suite approves its names too.
+    fields: tuple[tuple[str, tuple[str, ...]], ...] = ()
 
     def content(self) -> dict[str, Any]:
-        return {
+        content: dict[str, Any] = {
             "scenario_id": self.scenario_id,
             "goal": self.goal,
             "surfaces": [s.as_dict() for s in self.surfaces],
             "steps": [dict(s) for s in self.steps],
             "checks": [dict(c) for c in self.checks],
         }
+        if self.fields:  # absent, a scenario's content and version are what they were
+            content["fields"] = {concept: list(names) for concept, names in self.fields}
+        return content
 
     @property
     def version(self) -> str:
@@ -162,13 +171,44 @@ def parse_scenario(doc: Mapping[str, Any]) -> Scenario:
         elif method is not None:
             raise ScenarioInvalid(f"{where}: a page surface has no method")
         surfaces.append(Surface(kind, path, method))
+    steps = _named_mappings(doc.get("steps"), "action", f"{where}: steps")
+    checks = _named_mappings(doc.get("checks"), "check", f"{where}: checks")
     return Scenario(
         scenario_id=scenario_id,
         goal=_text(doc.get("goal"), f"{where}: goal"),
         surfaces=tuple(surfaces),
-        steps=_named_mappings(doc.get("steps"), "action", f"{where}: steps"),
-        checks=_named_mappings(doc.get("checks"), "check", f"{where}: checks"),
+        steps=steps,
+        checks=checks,
+        fields=_fields(doc.get("fields"), (*steps, *checks), where),
     )
+
+
+def _fields(
+    raw: Any, content: tuple[Mapping[str, Any], ...], where: str
+) -> tuple[tuple[str, tuple[str, ...]], ...]:
+    """A scenario's concept fields (#2464): every concept its steps and checks refer to is
+    declared with the names a delivery may give it, and every declared concept is used."""
+    raw = raw or {}
+    if not isinstance(raw, Mapping):
+        raise ScenarioInvalid(f"{where}: fields is a mapping of Entity:concept to names")
+    declared = []
+    for concept, names in raw.items():
+        if not isinstance(concept, str) or not CONCEPT.match(concept):
+            raise ScenarioInvalid(f"{where}: a field is named Entity:concept, got {concept!r}")
+        if (
+            not isinstance(names, Sequence)
+            or isinstance(names, str)
+            or not names
+            or not all(isinstance(n, str) and n for n in names)
+        ):
+            raise ScenarioInvalid(f"{where}: {concept} lists the names a delivery may give it")
+        declared.append((concept, tuple(names)))
+    used = references(list(content))
+    if used - {c for c, _ in declared}:
+        raise ScenarioInvalid(f"{where}: undeclared fields {sorted(used - set(dict(declared)))}")
+    if {c for c, _ in declared} - used:
+        raise ScenarioInvalid(f"{where}: unused fields {sorted(set(dict(declared)) - used)}")
+    return tuple(sorted(declared))
 
 
 def parse_suite(doc: Mapping[str, Any]) -> ScenarioSuite:

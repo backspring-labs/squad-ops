@@ -11,7 +11,7 @@ runner's adapter owns the network and this owns what a result means.
 other than its ``expect_status``, or a ``save`` its response can't answer fails the scenario at
 that step.
 
-**A check:** ``{"check": "status", "step": 3, "equals": 409}``, or ``{"check": "json", "step": 4,
+**A check:** ``{"check": "status", "step": 3, "equals": 409}`` (or ``"in": [400, 422]``), or ``{"check": "json", "step": 4,
 "path": "participants.0.name", "equals": "Ada"}`` (or ``"length": 1``, or ``"contains": ...``).
 Steps are numbered from 1.
 
@@ -117,10 +117,13 @@ def _check(check: Mapping[str, Any], responses: list[HttpResponse]) -> str | Non
         raise LookupError(f"a check names step {step!r}, which didn't run")
     response = responses[step - 1]
     if kind == "status":
+        # ``in`` (#2464): the PRD says a request is "rejected" and each delivery's manifest picks
+        # the status, 422 on the canonical stack and 400 on Next.js, so a check may accept several.
+        allowed = check["in"] if "in" in check else [check.get("equals")]
         return (
             None
-            if response.status == check.get("equals")
-            else (f"step {step} answered {response.status}, not {check.get('equals')}")
+            if response.status in allowed
+            else (f"step {step} answered {response.status}, not {' or '.join(map(str, allowed))}")
         )
     if kind != "json":
         raise LookupError(f"no runner for check {kind!r}")

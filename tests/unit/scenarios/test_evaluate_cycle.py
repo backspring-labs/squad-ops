@@ -36,6 +36,9 @@ class _Cycle:
 
 
 class _Vault:
+    async def list_artifacts(self, *, cycle_id):
+        return []  # no stored manifest: no concept or endpoint to resolve against
+
     async def retrieve(self, artifact_id):
         return None, TREE[artifact_id]
 

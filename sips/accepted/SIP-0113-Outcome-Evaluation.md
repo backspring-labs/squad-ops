@@ -680,8 +680,43 @@ within them, for the owner's review.
 - **Found while reading the window's suite live (#2464): the request bodies are not stack-neutral.** The
   PRD leaves the data model to each delivery's interface manifest (its §8). That Next.js tree names the
   run's fields `dateTime` and `meetingLocation`, where the canonical stack's names are `datetime` and
-  `location`. A create step with fixed field names therefore fails at step 1 on one of them. How the suite
-  names its fields is #2464's.
+  `location`. A create step with fixed field names therefore fails at step 1 on one of them.
+- **So a scenario names a field by its concept** (#2464; `squadops.scenarios.fields`):
+  - `@Run:location` appears as a JSON key, as a string value, or as one segment of a dotted JSON path;
+  - the scenario's `fields` lists the names a delivery may give each concept, for example
+    `Run:location: [meeting_location, location, meetingLocation]`;
+  - the evaluation service resolves each concept against the evaluated cycle's own
+    `interface_manifest.yaml`, or else that of the accepted cycle it built on, before anything runs;
+  - a concept the delivery's manifest declares under none of the names goes under the scenario's first name, and
+    the scenario runs. **A manifest's fields are a hint, not a list of what the app holds.** Read live: the §7
+    reference increment implemented capacity and stored no manifest of its own, so the one it built on, without
+    the field, was all there was to read. Reading an undeclared field as absent hid that job. Sent under its
+    first name, a delivery without the feature fails the scenario, as the reading needs;
+  - `fields` is in each scenario's content, so in its version, so approving a suite approves its names.
+    A scenario without `fields` keeps its content and version byte for byte;
+  - **a declared Project reads no manifest** (SIP-0112 §8.3: a sample application's interface manifest is
+    never a default, and an external product has none). Its concepts go under the scenario's first name, and
+    its endpoints aren't checked, since its surfaces come from its entry points. Only a blueprint delivery's
+    own stored `interface_manifest.yaml` is read.
+- **Why per delivery, not per stack** (read from the Spark's vault, 2026-10-18, 40 recent completed
+  deliveries): the canonical stack's run is `meeting_location` in 26 and `location` in 4. Next.js's is
+  snake_case in 5, camelCase in 2 and mixed in 1. Every delivery's manifest names the entity `Run`; only the
+  hand-written reference says `RunEvent`.
+- **A scenario's `http_endpoint` surfaces are checked against the endpoints the delivery declares,**
+  after taking off its stack's API prefix and ignoring parameter names. One the delivery doesn't serve is
+  `surface_absent`. In the same 38 manifests, 32 take a join at `/runs/{run_id}/join` and 6 at
+  `/runs/{run_id}/participants`, so a `/join` scenario is unverified on those six, not failed. The prefix
+  is the stack's, not the manifest's `base_path`, which deliveries set both ways: 16 of the canonical
+  stack's say `/api` and serve at the root.
+- **A status check may accept several:** `{"check": "status", "in": [400, 422]}`. The PRD says a request is
+  "rejected", and each delivery's manifest picks the status: 422 on the canonical stack and 400 on Next.js
+  for a validation error, while 404 for an unknown run and 409 for a duplicate hold on both.
+- **Read live with one suite on both stacks** (the capacity readings after the first-name fallback):
+  - on `cyc_bbedc850e6ff` (Next.js), "a created run reads back" passed, and the capacity scenario failed at
+    step 3, since that delivery doesn't hold a run to one place;
+  - on `cyc_f6bfb0b88ebd` (the canonical stack), both passed;
+  - on `cyc_f479d21e05ac`, which joins at `/participants`, the capacity scenario's `/join` was
+    `surface_absent`.
 - **The vocabulary** is in `squadops.scenarios.steps`.
   - **Steps:** `http` actions, with saved values threaded into later paths and bodies, and an optional
     `expect_status`.

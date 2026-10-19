@@ -15,12 +15,13 @@ row, gate or prompt reads what this writes, and no scenario goal or result reach
 
 from __future__ import annotations
 
+import re
 from collections.abc import Collection, Mapping
 from datetime import datetime
 from typing import TYPE_CHECKING, Any
 
 from squadops.campaigns.evaluator_trees import FileTree
-from squadops.campaigns.increment_tree import evaluated_tree_refs
+from squadops.campaigns.increment_tree import accepted_cycle_of, evaluated_tree_refs
 from squadops.scenarios.evaluation import (
     Applicability,
     BlockedReason,
@@ -29,6 +30,7 @@ from squadops.scenarios.evaluation import (
     ScenarioResult,
     evaluation_record,
 )
+from squadops.scenarios.fields import resolve
 from squadops.scenarios.models import Scenario, SurfaceKind
 from squadops.scenarios.runner import (
     DeclaredStart,
@@ -38,6 +40,7 @@ from squadops.scenarios.runner import (
 )
 from squadops.scenarios.steps import ScenarioRun
 from squadops.scenarios.suites import require_pinnable
+from squadops.stacks.scaffold import InterfaceManifest
 
 if TYPE_CHECKING:  # the ports name this package's models; the service only takes them
     from squadops.ports.scenarios import ScenarioRunnerPort, ScenarioStorePort
@@ -54,6 +57,61 @@ def declared_surfaces(entry_points: Collection[Mapping[str, Any]]) -> frozenset[
         for e in entry_points
         if e.get("kind") in ENTRY_POINT_SURFACES
     )
+
+
+#: The interface manifest a delivery's fields are named in (#2464).
+MANIFEST_FILENAME = "interface_manifest.yaml"
+
+
+async def delivered_manifest(vault: Any, cycle: Any) -> InterfaceManifest | None:
+    """The evaluated delivery's own interface manifest (#2464): the cycle's latest, or else the
+    one of the accepted cycle it built on. ``None`` when neither stored one."""
+    for cycle_id in (cycle.cycle_id, accepted_cycle_of(cycle)):
+        if cycle_id is None:
+            continue
+        refs = await vault.list_artifacts(cycle_id=cycle_id)  # newest first
+        stored = next((r for r in refs if r.filename == MANIFEST_FILENAME), None)
+        if stored is not None:
+            _ref, content = await vault.retrieve(stored.artifact_id)
+            return InterfaceManifest.from_yaml(content.decode("utf-8"))
+    return None
+
+
+def delivered_fields(manifest: InterfaceManifest | None) -> dict[str, frozenset[str]]:
+    """Each entity's field names, as the delivery declares them. Empty without a manifest, so
+    every concept a scenario names reads as absent."""
+    if manifest is None:
+        return {}
+    return {e.name: frozenset(f.name for f in e.fields) for e in manifest.entities}
+
+
+_PARAM = re.compile(r"\{[^}]*\}")
+
+
+def _endpoint(method: str, path: str, prefix: str) -> tuple[str, str]:
+    """An endpoint as a scenario names it: the PRD's path, its parameters unnamed."""
+    if prefix and path.startswith(prefix):
+        path = path[len(prefix) :] or "/"
+    return method.upper(), _PARAM.sub("{}", path)
+
+
+def _api_prefix(stack: str) -> str:
+    """Where the stack's app serves the PRD's paths: what the runner prefixes (#2466). A manifest's
+    own ``base_path`` can't say it, since deliveries set it both ways (read 2026-10-18: 16 of the
+    canonical stack's say ``/api`` and serve at the root)."""
+    # deferred (pair): squadops.sandbox imports this package's runner models at load
+    from squadops.sandbox.environment import get_environment_contract
+
+    return get_environment_contract(stack).api_prefix
+
+
+def delivered_endpoints(manifest: InterfaceManifest | None, prefix: str) -> frozenset | None:
+    """The delivery's declared endpoints, its stack's API prefix taken off (#2464). ``None``
+    without a manifest: then a scenario's endpoints aren't checked, since there is nothing to
+    check them against (a declared Project's surfaces come from its entry points)."""
+    if manifest is None:
+        return None
+    return frozenset(_endpoint(e.method, e.path, prefix) for e in manifest.api.endpoints)
 
 
 def _outcome(
@@ -115,11 +173,34 @@ async def evaluate_cycle(
 
     blocked: BlockedReason | None = None
     runs: dict[str, ScenarioRun] = {}
-    if applicable and unstartable is not None:
+    # #2464: each scenario's endpoints checked against the delivery's own manifest (one it doesn't
+    # serve is surface_absent, never failed), and its concept fields resolved against it.
+    absent: dict[str, BlockedReason] = {}
+    contents: list[dict[str, Any]] = []
+    manifest = await delivered_manifest(vault, cycle) if applicable and declared is None else None
+    fields = delivered_fields(manifest)
+    stack = cycle.resolved_config().get("build_profile")
+    prefix = _api_prefix(stack) if manifest is not None and stack else ""
+    endpoints = delivered_endpoints(manifest, prefix)
+    for scenario in applicable:
+        needed = {
+            _endpoint(s.method or "", s.path, "")
+            for s in scenario.surfaces
+            if s.kind is SurfaceKind.HTTP_ENDPOINT
+        }
+        if endpoints is not None and not needed <= endpoints:
+            # #2464: an endpoint the delivery doesn't serve, e.g. a join it takes at
+            # /participants rather than /join. Unverified, never failed.
+            absent[scenario.scenario_id] = BlockedReason.SURFACE_ABSENT
+            continue
+        content = resolve(scenario.content(), dict(scenario.fields), fields)
+        content.pop("fields", None)
+        contents.append(content)
+    if contents and unstartable is not None:
         blocked = unstartable.reason
-    elif applicable and runner is None:
+    elif contents and runner is None:
         blocked = BlockedReason.NO_RUNNER
-    elif applicable and runner is not None:
+    elif contents and runner is not None:
         try:
             evaluated = await runner.evaluate_tree(
                 tree=tree,
@@ -127,7 +208,7 @@ async def evaluate_cycle(
                 executable=(),
                 stack=cycle.resolved_config().get("build_profile"),
                 declared=declared,
-                scenarios=[s.content() for s in applicable],
+                scenarios=contents,
                 environment=environment or {},
             )
         except RunnerUnavailable:
@@ -139,7 +220,10 @@ async def evaluate_cycle(
 
     record = evaluation_record(
         suite,
-        tuple(_outcome(s, kinds, runs.get(s.scenario_id), blocked) for s in suite.scenarios),
+        tuple(
+            _outcome(s, kinds, runs.get(s.scenario_id), absent.get(s.scenario_id) or blocked)
+            for s in suite.scenarios
+        ),
         project_id=cycle.project_id,
         campaign_id=campaign_id,
         cycle_id=cycle.cycle_id,
