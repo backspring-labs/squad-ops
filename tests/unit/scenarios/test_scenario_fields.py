@@ -19,7 +19,7 @@ from squadops.scenarios import evaluate
 from squadops.scenarios.evaluation import BlockedReason, ScenarioResult
 from squadops.scenarios.fields import resolve
 from squadops.scenarios.models import ScenarioInvalid, parse_scenario, parse_suite
-from squadops.scenarios.runner import TreeEvaluation
+from squadops.scenarios.runner import DeclaredStart, TreeEvaluation
 from squadops.scenarios.steps import ScenarioRun
 from squadops.scenarios.suites import approve_suite, draft_suite
 
@@ -276,3 +276,56 @@ async def test_an_endpoint_the_delivery_doesnt_declare_reads_absent_not_failed(
     assert result.result is outcome
     if outcome is ScenarioResult.BLOCKED_UNVERIFIED:
         assert result.blocked_reason is BlockedReason.SURFACE_ABSENT and runner.scenarios is None
+
+
+async def test_a_declared_project_resolves_by_the_suites_names_and_reads_no_manifest(monkeypatch):
+    """SIP-0112 §8.3 item 2: an external product has no interface manifest, so a declared
+    Project's concept goes under the suite's first name and its endpoints aren't checked. Bug
+    caught: a sample app's manifest, stored beside the tree, read for a declared Project, so its
+    field names (``location``) and its endpoints (none at ``/runs``) decide what an unrelated
+    product is sent and whether its scenarios run."""
+
+    async def tree_refs(vault, cycle):
+        return {"backend/main.py": "tree"}
+
+    monkeypatch.setattr(evaluate, "evaluated_tree_refs", tree_refs)
+    manifest = _REFERENCE_MANIFEST.read_bytes().replace(b"RunEvent", b"Run")
+    vault = _Vault(manifest.replace(b"path: /runs", b"path: /elsewhere"))
+    listed: list = []
+    real_list = vault.list_artifacts
+
+    async def list_artifacts(*, cycle_id):
+        listed.append(cycle_id)
+        return await real_list(cycle_id=cycle_id)
+
+    vault.list_artifacts = list_artifacts
+    suite = parse_suite({"name": "declared", "scenarios": [_scenario()]})
+    store, runner = MemoryScenarioStore(), _Runner()
+    await draft_suite(store, suite, actor="supervisor", at=T0)
+    await approve_suite(store, suite.digest, actor="owner", at=T0)
+
+    record = await evaluate.evaluate_cycle(
+        store=store,
+        runner=runner,
+        vault=vault,
+        cycle=_Cycle(),
+        suite_digest=suite.digest,
+        campaign_id=None,
+        previous_accepted_tree_identity=None,
+        evaluated_at=T0,
+        declared=DeclaredStart(
+            start=("./serve",),
+            port=8080,
+            ready_kind="tcp",
+            ready_path="",
+            ready_timeout_seconds=30,
+            api_port=8080,
+        ),
+        served=evaluate.declared_surfaces([{"kind": "http_base"}]),
+    )
+
+    [sent] = runner.scenarios
+    assert sent["steps"][0]["json"] == {"title": "Dawn 5k", "meeting_location": "Riverside"}
+    assert sent["checks"][0]["path"] == "meeting_location"
+    assert listed == []
+    assert [o.result for o in record.outcomes] == [ScenarioResult.PASSED]
