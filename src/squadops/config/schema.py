@@ -391,6 +391,14 @@ class SandboxConfig(BaseModel):
     app_port: int = Field(
         default=8000, description="Container port the application runtime listens on"
     )
+    app_network: str | None = Field(
+        default=None,
+        description=(
+            "The internal network the sandbox service starts apps on, by container name with no "
+            "host port (#2451 part 4). Required by the service's root when it runs docker; absent, "
+            "as on a host run (the audit scripts), apps publish to loopback."
+        ),
+    )
     service_url: str = Field(
         default="http://127.0.0.1:8002",
         description="Sandbox service base URL (loopback per the SIP-0102 transport decision)",

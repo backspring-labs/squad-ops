@@ -50,6 +50,7 @@ def create_sandbox_service(config: SandboxConfig) -> SandboxService:
             environment_contract_id=contract.contract_id(),
             build_mutates_source=contract.build_mutates_source,
             cache_root=Path(config.cache_root) if config.cache_root else None,
+            app_network=config.app_network,
         )
         # SIP-0113 §4.1, A3 (#2414): the scenario runner, beside the cycle's execution, on the same
         # image and posture. Each stack's environment contract starts a blueprint tree.

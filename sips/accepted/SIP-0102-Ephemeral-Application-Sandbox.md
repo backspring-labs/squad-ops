@@ -82,6 +82,7 @@ Kept by the rule in CLAUDE.md ("SIP System"): one row per part, updated in the P
 | X-3a: a product's declared command, run against a pinned revision in a disposable copy (§11d) | **shipped** | 2.4.0, PR #2447 |
 | X-3b: starting a product from its declaration, with readiness and the evaluation secrets, built with SIP-0113's scenario runner (§11d, §11e; SIP-0112 Q40) | **placed**: the start, `http` and `tcp` readiness and the secrets' redaction ship in PR #2450; the declared entry points and the approved secrets' resolution remain (§11e) | 2.4.0, #2421 |
 | the runtime API as the service's caller: its own client selector, the service's URL and token, the service's provider split from the preflight's (§11f; #2451 parts 1–3) | **shipped** | 2.4.0, PR #2456 |
+| the apps the service starts, on the internal `sandbox-apps` network by container name, with no host port (§11h; #2451 part 4) | **shipped** | 2.4.0, PR #2460 |
 | a pinned revision's content, read through the port from the live tree only while it matches its pin (§11i; SIP-0112's E.4.3 capture) | **shipped** | 2.4.0, PR #2461 |
 
 **What closes this SIP:** Steps 3, 5, 6, 7 shipped or dropped. Until a clean-room requirement returns, they are unplaced by ruling (§11c, 2026-10-04).
@@ -744,6 +745,48 @@ seeds a product's checkout through that client.
 
 **Who ruled it.** The MacBook lane asked for it in its G4 review of #2456, as contract 3's consumer. It is
 the implementer's change, for that lane's review and the owner's.
+
+### 11h. The service's apps run on an internal network, by name, with no host port (2026-10-18, §4.3, §7 items 9 and 10; §11f; #2451 part 4; the owner's ruling)
+
+**Why.** Inside a deploy the sandbox service is a container on `squadnet`. `DockerAdapter.run_detached`
+published each app on the host's loopback (`-p 127.0.0.1:0:<port>`), and the service's own `127.0.0.1`
+is its own, so readiness, `probe_http_endpoint` and every scenario step would fail to connect. The flaw
+predates SIP-0113: the service had always been `noop`, and every live run so far ran on the host.
+
+**What changed.**
+- **Compose declares `sandbox-apps`,** named `squadops-sandbox-apps` (fixed, not project-prefixed) and
+  `internal: true`: no route out. The service joins it beside `squadnet`, and no other service does.
+  The service reads its name from `SQUADOPS__SANDBOX__APP_NETWORK`.
+- **The service's root requires it when its provider is `docker`** (`squadops.sandbox.main.build_app`),
+  never defaulted (#1568). `SandboxConfig.app_network` is optional, because the runtime's preflight and
+  the doctor read the same section and start no apps.
+- **On the network, an app runs under a name of its own** (`squadops-app-<cycle>-<suffix>`), publishes
+  nothing, and is reached at `http://<name>:<port>`. `ContainerBackend` takes `app_network` as a
+  required argument. `None` keeps loopback publishing for a host run, which the audit scripts and the
+  sandbox floor smoke name explicitly.
+- **Every detached container is named,** and a `docker run -d` that times out, or exits non-zero (125 to
+  127 can leave a container created and never started), is removed by that name before the error is
+  raised. Before, it left an unnamed container nobody could find (the MacBook
+  lane's note on #2450).
+- **Setup steps keep the install network,** with egress for dependencies and no secrets. The app, which
+  holds the evaluation secrets (SIP-0112 Q40), has no route out.
+- **SIP-0113's scenario runner** (#2450) is not on `main` yet. It joins the same network when it is
+  rebased onto this.
+
+**Evidence.**
+- **Read live on the Spark's Docker** with a throwaway internal network and the sandbox image:
+  - an app answered 200 by name from a peer on the network;
+  - the app's own connection out failed, "Network is unreachable";
+  - it published no host port.
+- **The wiring test** enters at `build_app` with the env compose writes, and asserts the app's container
+  spec on the network with nothing published (`tests/unit/sandbox/test_app_network.py`).
+- **A compose guard** asserts the network is internal, its name is the one the service reads, and only
+  the service joins it.
+
+**Who ruled it.** The owner, 2026-10-18, on #2451: "An internal, no-egress `sandbox-apps` network that
+the sandbox service joins. Apps run on it by container name with no host port, and the network's name
+reaches the service through a required `SQUADOPS__SANDBOX__APP_NETWORK`. The Spark lane builds it; the
+MacBook lane reviews."
 
 ### 11i. A pinned revision's content is read through the port (2026-10-18, §4.6, §7 item 3; §11g; contract 3; SIP-0112 E.4.3; implementer's record, for the owner)
 

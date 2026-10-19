@@ -37,6 +37,10 @@ class ContainerSpec:
     # Container ports to publish to loopback-only ephemeral host ports
     # (rendered as `-p 127.0.0.1:0:<port>`). Empty = nothing published.
     publish_ports: tuple[int, ...] = ()
+    # The detached container's name (#2451 part 4): an app on the sandbox's app network is
+    # addressed by it. None = a generated name; every detached container is named, so one whose
+    # `docker run -d` timed out can still be found and removed.
+    name: str | None = None
 
 
 # NOTE: Container volume host paths are NOT validated against PathSecurityPolicy in 0.8.7.

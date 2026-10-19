@@ -162,24 +162,48 @@ class DockerAdapter(ContainerPort):
         )
 
     async def run_detached(self, spec: ContainerSpec) -> str:
-        """Start a container detached; returns its id."""
+        """Start a container detached; returns its id. It is always named (``spec.name``, or a
+        generated one), so a ``docker run -d`` that times out leaves no container nobody can find:
+        it is removed by that name before the timeout is raised (#2451 part 4)."""
         # Deliberately NOT --rm (#1214): an app that crashes on startup exits within
         # a second, Docker removes the container at that moment, and the readiness
         # poll then runs to its full timeout before asking for logs that no longer
         # exist. The failure mode was inverted — a slow app kept its evidence, a hard
         # crash destroyed it. Removal is explicit now, after the logs are read.
-        exit_code, stdout, stderr = await self._run_docker(
-            "run",
-            "-d",
-            *self._render_run_args(spec),
-            timeout=spec.timeout_seconds,
-        )
+        name = spec.name or f"squadops-app-{uuid.uuid4().hex[:12]}"
+        try:
+            exit_code, stdout, stderr = await self._run_docker(
+                "run",
+                "-d",
+                "--name",
+                name,
+                *self._render_run_args(spec),
+                timeout=spec.timeout_seconds,
+            )
+        except ToolContainerError as e:
+            if "timed out" in str(e):
+                await self._remove_quietly(name)
+            raise
         if exit_code != 0:
+            # 125 to 127 can leave a container created but never started (the MacBook lane's
+            # review of #2460): removed by its name, as after a timeout.
+            await self._remove_quietly(name)
             raise ToolContainerError(f"Failed to start container: {stderr}")
         container_id = stdout.strip().splitlines()[-1] if stdout.strip() else ""
         if not container_id:
             raise ToolContainerError("docker run -d returned no container id")
         return container_id
+
+    async def _remove_quietly(self, name: str) -> None:
+        """Remove a timed-out detached start's container by name, running or not. Best effort, as
+        ``_kill_quietly``: the timeout it follows is what the caller must hear."""
+        try:
+            exit_code, _, stderr = await self._run_docker("rm", "-f", name, timeout=_KILL_TIMEOUT_S)
+        except ToolContainerError as e:
+            logger.warning("docker rm -f %s after a timeout failed: %s", name, e)
+            return
+        if exit_code != 0 and "no such container" not in stderr.lower():
+            logger.warning("docker rm -f %s after a timeout failed: %s", name, stderr.strip())
 
     async def _kill_quietly(self, name: str) -> None:
         """Kill a timed-out run's container by name. Best effort: a container that already ended

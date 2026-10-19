@@ -310,7 +310,11 @@ async def test_a_declared_command_travels_the_client_to_the_backend_and_back(tmp
         ContainerResult("", 0, "built\n", ""), ContainerResult("", 1, "", "FAILED (failures=1)\n")
     )
     backend = ContainerBackend(
-        container=container, store=store, image="sandbox:pinned", operation_commands={}
+        app_network=None,
+        container=container,
+        store=store,
+        image="sandbox:pinned",
+        operation_commands={},
     )
     app = create_app(
         SandboxService(store=store, journal=OperationEvidenceJournal(root), backend=backend),
