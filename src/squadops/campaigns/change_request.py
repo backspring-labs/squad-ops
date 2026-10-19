@@ -431,8 +431,15 @@ def footprint_product_files(footprint: tuple[str, ...]) -> tuple[str, ...]:
     return tuple(p for p in footprint if not p.endswith("**"))
 
 
+def _path_match(path: str, pattern: str) -> bool:
+    """``fnmatch`` with ``[`` literal (#2512). A footprint or a scope uses ``*`` and ``**`` only,
+    and a Next.js dynamic route is a bracketed directory: read as a class, ``[run_id]`` matched
+    ``r`` and never itself."""
+    return fnmatch(path, pattern.replace("[", "[[]"))
+
+
 def in_footprint(path: str, footprint: tuple[str, ...]) -> bool:
-    return any(fnmatch(path, pattern) for pattern in footprint)
+    return any(_path_match(path, pattern) for pattern in footprint)
 
 
 # =============================================================================
@@ -462,7 +469,9 @@ def outside_allowed_scope(paths: Iterable[str], allowed_scope: Sequence[str]) ->
     return [
         p
         for p in paths
-        if not any(fnmatch(p, scope) or p.startswith(scope.rstrip("*")) for scope in allowed_scope)
+        if not any(
+            _path_match(p, scope) or p.startswith(scope.rstrip("*")) for scope in allowed_scope
+        )
     ]
 
 
