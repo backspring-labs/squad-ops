@@ -51,7 +51,9 @@ async def store():
     pool = await create_pool(POSTGRES_URL, min_size=1, max_size=4)
     await apply_migrations(pool, Path(__file__).parents[3] / "infra" / "migrations")
     async with pool.acquire() as conn:
-        await conn.execute("TRUNCATE TABLE campaign_scenario_suites, scenario_suites")
+        await conn.execute(
+            "TRUNCATE TABLE scenario_evaluations, campaign_scenario_suites, scenario_suites"
+        )
     yield PostgresScenarioStore(pool=pool), pool
     await pool.close()
 
@@ -100,3 +102,64 @@ async def test_the_tables_refuse_a_pin_to_nothing_and_an_approval_without_its_ap
         await scenarios.save_pin(CampaignSuitePin("cmp_pg0000000002", "f" * 64, "owner", T0))
     with pytest.raises(asyncpg.CheckViolationError):
         await scenarios.save_suite(replace(record, state=SuiteState.APPROVED))
+
+
+async def test_an_evaluation_reads_back_whole_and_the_table_refuses_a_commit_for_a_tree(store):
+    """#2415. Bug caught: outcomes lost in the JSONB round trip, a cycle's runs read out of order,
+    or a Git commit stored where a tree identity belongs (SIP-0112 §8.2.1)."""
+    from squadops.scenarios.evaluation import (
+        Applicability,
+        BlockedReason,
+        ScenarioOutcome,
+        ScenarioResult,
+        evaluation_record,
+    )
+
+    scenarios, pool = store
+    suite = parse_suite(SUITE)
+    await draft_suite(scenarios, suite, actor="supervisor", at=T0)
+    first, second = suite.scenarios
+    outcomes = (
+        ScenarioOutcome(
+            first.scenario_id,
+            first.version,
+            first.goal,
+            Applicability.APPLICABLE,
+            ScenarioResult.FAILED,
+            steps_taken=2,
+            first_failing_step=2,
+            elapsed_seconds=1.5,
+        ),
+        ScenarioOutcome(
+            second.scenario_id,
+            second.version,
+            second.goal,
+            Applicability.APPLICABLE,
+            ScenarioResult.BLOCKED_UNVERIFIED,
+            blocked_reason=BlockedReason.START_FAILED,
+        ),
+    )
+    records = [
+        evaluation_record(
+            suite,
+            outcomes,
+            project_id="group_run",
+            campaign_id=None,
+            cycle_id="cyc_pg0000000001",
+            evaluated_tree_identity="a" * 64,
+            previous_accepted_tree_identity=None,
+            evaluated_at=T0.replace(hour=h),
+        )
+        for h in (22, 21)
+    ]
+    for record in records:
+        await scenarios.save_evaluation(record)
+
+    assert await scenarios.evaluations_for_cycle("cyc_pg0000000001") == records[::-1]
+    assert await scenarios.get_evaluation(records[0].evaluation_id) == records[0]
+    with pytest.raises(asyncpg.CheckViolationError):
+        async with pool.acquire() as conn:
+            await conn.execute(
+                "UPDATE scenario_evaluations SET evaluated_tree_identity = $1",
+                "15c7a12b8ed45f63ae47e90e3e854f6b3a2775f1",
+            )

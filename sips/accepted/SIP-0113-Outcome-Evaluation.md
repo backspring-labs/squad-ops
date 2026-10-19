@@ -81,7 +81,7 @@ One row per part that ships separately. Statuses as CLAUDE.md defines them. The 
 | phase 0: reporting-only lint findings on the delivered app (#1937) | **shipped** | v2.1.0, PR #2088 |
 | phase 1: the scenario store, its suites and the campaign's suite pin (§4.1, §4.7) | **shipped** (§10a) | 2.4.0, PR #2448, issue #2413 |
 | phase 1: the runner, outside the squad's containers, on a disposable copy (§4.1; needs the sandbox's X-3, #2421) | **placed** | 2.4.0, #2414 |
-| phase 1: the evaluation record and its reference (§4.1, contract 5) | **placed** | 2.4.0, #2415 |
+| phase 1: the evaluation record and its reference (§4.1, contract 5) | **shipped** (§10b) | 2.4.0, PR #2449, issue #2415 |
 | phase 1: the quality baselines, Lighthouse, axe and lint, in the evaluator's image (§4.2) | **placed** | 2.4.0, #2416 |
 | phase 1: the intervention ledger's classifications (§4.3) | **shipped** (§10d) | 2.4.0, PR #2454, issue #2417 |
 | phase 1: contribution and the derived metrics in the digest (§4.4, §4.6) | **placed** | 2.4.0, #2418 |
@@ -590,6 +590,37 @@ All four are ruled as recommended: A4 through SIP-0112's Q40, and A1 to A3 at ac
 
 **Who ruled it.** The owner accepted §4.1 and §4.7 (2026-10-17). These are the implementer's choices
 within them, for the owner's review.
+
+### 10b. The evaluation record and its reference as built (2026-10-18, §4.1, §4.8; contract 5; #2415; implementer's record, for the owner)
+
+- **One record per evaluation run** (`squadops.scenarios.evaluation.EvaluationRecord`, migration 1910),
+  with an `evl_` ID. It is built only against the suite it ran: each scenario appears once, at the
+  suite's version and goal.
+- **Each scenario's outcome keeps applicability apart from the result:**
+  - not applicable means no result, and counts in no rate;
+  - an applicable scenario has a result, passed, failed or `blocked_unverified`;
+  - a blocked result names its reason from §4.1's list, and nothing else names one;
+  - a failed result names its first failing step.
+- **Trees are named by `FileTree.identity` only.** The table refuses anything but 64 hex characters, so a
+  40-character Git commit can't stand in for a tree. **A sandbox revision ID is also 64 hex, so shape
+  can't refuse one.** That guarantee is the producer's: the evaluation service (#2414) names the
+  evaluated tree by the increment's `FileTree.identity`, never by the revision it ran.
+- **The reference lives apart from the results,** in `squadops.scenarios.reference`:
+  `OutcomeEvaluationRef`, `parse_reference`, `EvaluationInvalid` and `UnknownSchemaMajor`.
+  - It imports only the standard library, and a test holds that.
+  - Project history imports that module alone, so no outcome can reach the handoff through it
+    (contract 5's phase-1 rule).
+  - E.4.3 adds `squadops.projects` and `squadops.cycles` to the held-out guard's squad side, allowing
+    that one module.
+- **`OutcomeEvaluationRef`'s reader** (`parse_reference`) does three things:
+  - it refuses an unknown major version with `UnknownSchemaMajor`, reading none of the reference;
+  - it refuses a reference with any field absent, `campaign_id` included, which may be null but never
+    absent;
+  - it refuses a `campaign_id` that isn't text, so `5` isn't read as `"5"`.
+
+  It holds the shared fixture's four forms (`test_contract5_evaluation_reference.py`), and reads a
+  reference with both nullable fields null as nulls. The record yields exactly the fixture's valid
+  reference.
 
 ### 10d. The intervention ledger as built (2026-10-18, §4.3, §7 prediction 5; #2417; implementer's record, for the owner)
 

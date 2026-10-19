@@ -11,6 +11,7 @@ from __future__ import annotations
 import asyncpg
 
 from squadops.ports.scenarios import ScenarioStorePort
+from squadops.scenarios.evaluation import EvaluationRecord, ScenarioOutcome
 from squadops.scenarios.models import (
     CampaignSuitePin,
     SuiteRecord,
@@ -19,6 +20,10 @@ from squadops.scenarios.models import (
 )
 
 _SUITE_COLUMNS = "digest, content, state, drafted_by, drafted_at, approved_by, approved_at"
+_EVALUATION_COLUMNS = (
+    "evaluation_id, project_id, campaign_id, cycle_id, evaluated_tree_identity, "
+    "previous_accepted_tree_identity, suite_digest, outcomes, evaluated_at"
+)
 
 
 class PostgresScenarioStore(ScenarioStorePort):
@@ -74,6 +79,39 @@ class PostgresScenarioStore(ScenarioStorePort):
             )
         return CampaignSuitePin(**dict(row)) if row else None
 
+    async def save_evaluation(self, record: EvaluationRecord) -> None:
+        async with self._pool.acquire() as conn:
+            await conn.execute(
+                f"INSERT INTO scenario_evaluations ({_EVALUATION_COLUMNS}) "
+                "VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)",
+                record.evaluation_id,
+                record.project_id,
+                record.campaign_id,
+                record.cycle_id,
+                record.evaluated_tree_identity,
+                record.previous_accepted_tree_identity,
+                record.suite_digest,
+                [o.as_dict() for o in record.outcomes],
+                record.evaluated_at,
+            )
+
+    async def get_evaluation(self, evaluation_id: str) -> EvaluationRecord | None:
+        async with self._pool.acquire() as conn:
+            row = await conn.fetchrow(
+                f"SELECT {_EVALUATION_COLUMNS} FROM scenario_evaluations WHERE evaluation_id = $1",
+                evaluation_id,
+            )
+        return _row_to_evaluation(row) if row else None
+
+    async def evaluations_for_cycle(self, cycle_id: str) -> list[EvaluationRecord]:
+        async with self._pool.acquire() as conn:
+            rows = await conn.fetch(
+                f"SELECT {_EVALUATION_COLUMNS} FROM scenario_evaluations WHERE cycle_id = $1 "
+                "ORDER BY evaluated_at",
+                cycle_id,
+            )
+        return [_row_to_evaluation(r) for r in rows]
+
 
 def _row_to_record(row: asyncpg.Record) -> SuiteRecord:
     suite = parse_suite(row["content"])
@@ -90,3 +128,9 @@ def _row_to_record(row: asyncpg.Record) -> SuiteRecord:
         approved_by=row["approved_by"],
         approved_at=row["approved_at"],
     )
+
+
+def _row_to_evaluation(row: asyncpg.Record) -> EvaluationRecord:
+    values = dict(row)
+    values["outcomes"] = tuple(ScenarioOutcome.from_dict(o) for o in row["outcomes"])
+    return EvaluationRecord(**values)

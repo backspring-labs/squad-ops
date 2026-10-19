@@ -155,7 +155,9 @@ A pure coordination layer that depends on ports only, never on adapters.
 ### `squadops.scenarios`
 Outcome Evaluation's held-out scenarios (SIP-0113 §4.1, §4.7): a scenario's goal, held-out steps,
 checks and surfaces, content-addressed, and a suite of them that the supervisor drafts and the owner
-approves before a campaign pins it. No squad-side package imports it (IR-4).
+approves before a campaign pins it. No squad-side package imports it (IR-4). An evaluation run's
+record, and apart from it in `squadops.scenarios.reference`, the reference SIP-0112's Project history
+stores (contract 5), which imports only the standard library.
 
 ### `squadops.sandbox`
 The execution sandbox domain (SIP-0102): the service that builds and runs a delivered app in
