@@ -128,3 +128,67 @@ async def test_a_status_check_may_accept_each_status_a_delivery_can_choose(statu
     assert run.result == result
     if result == "failed":
         assert run.detail == "step 1 answered 500, not 400 or 422"
+
+
+_LISTED = [
+    {"id": "r1", "title": "Tempo Tuesday", "meeting_location": "Track", "participants": []},
+    {"id": "r2", "title": "Bridge Loop", "meeting_location": "East Bridge", "participants": []},
+]
+
+
+@pytest.mark.parametrize(
+    ("body", "where", "result", "detail"),
+    [
+        (_LISTED, {"title": "Bridge Loop", "meeting_location": "East Bridge"}, "passed", None),
+        (_LISTED, {"title": "Bridge Loop", "meeting_location": "Track"}, "failed",
+         "'' (2 elements) has none with {'title': 'Bridge Loop', 'meeting_location': 'Track'}"),
+        (_LISTED, {"title": "Bridge Loop", "location": "East Bridge"}, "failed",
+         "'' (2 elements) has none with {'title': 'Bridge Loop', 'location': 'East Bridge'}"),
+        ([], {"title": "Bridge Loop"}, "failed", "'' (0 elements) has none with {'title': 'Bridge Loop'}"),
+        ({"runs": _LISTED}, {"title": "Bridge Loop"}, "failed",
+         "'' (None elements) has none with {'title': 'Bridge Loop'}"),
+        (["Bridge Loop"], {"title": "Bridge Loop"}, "failed", "'' (1 elements) has none with {'title': 'Bridge Loop'}"),
+    ],
+    ids=["an-element-has-every-field", "one-field-differs", "a-field-it-lacks", "empty-list",
+         "not-a-list", "elements-not-mappings"],
+)  # fmt: skip
+async def test_a_where_check_finds_the_element_by_its_fields_not_its_place(
+    body, where, result, detail
+):
+    """#2464: "a created run appears in the list" names the run, and the list holds the suite's
+    other runs in an order the scenario can't know. Bug caught: a check that passes when one field
+    matches and another doesn't, when the element lacks a named field, or on a body that isn't a
+    list of objects at all."""
+
+    async def send(request: HttpRequest) -> HttpResponse:
+        return HttpResponse(200, body)
+
+    run = await run_scenario(
+        {
+            "scenario_id": "a-created-run-is-listed",
+            "steps": [{"action": "http", "method": "GET", "path": "/runs"}],
+            "checks": [{"check": "json", "step": 1, "path": "", "where": where}],
+        },
+        send,
+    )
+
+    assert (run.result, run.detail) == (result, detail)
+
+
+async def test_a_where_check_that_names_no_field_is_one_the_runner_cannot_read():
+    """Bug caught: an empty ``where`` holding vacuously on any non-empty list, a pass with no
+    condition behind it. It reads as the runner's gap, blocked_unverified, never passed."""
+
+    async def send(request: HttpRequest) -> HttpResponse:
+        return HttpResponse(200, _LISTED)
+
+    run = await run_scenario(
+        {
+            "scenario_id": "s",
+            "steps": [{"action": "http", "method": "GET", "path": "/runs"}],
+            "checks": [{"check": "json", "step": 1, "path": "", "where": {}}],
+        },
+        send,
+    )
+
+    assert (run.result, run.blocked_reason) == ("blocked_unverified", "no_runner")
