@@ -156,3 +156,20 @@ def test_a_declaration_that_breaks_contract_7_is_refused_as_undeclared(declarati
         declared_start(declaration, configuration_revision=1)
 
     assert refused.value.reason is BlockedReason.NO_START_DECLARATION
+
+
+def test_a_declaration_as_e42_stores_it_starts_as_the_fixture_records_it():
+    """Contract 7 across the lanes (#2468's G4 review). The MacBook lane parses a submitted
+    configuration and stores ``to_document()``; the runner reads the start from what was stored.
+    Bug caught: E.4.2's serializer renaming or dropping a key the runner reads (a readiness
+    target, a build step, an entry point), so a declared Project stored correctly starts wrong or
+    reads as undeclared at its cycle's end."""
+    from squadops.projects.development_configuration import parse_configuration
+
+    fixture = recorded("development_configuration", "valid")
+    stored = parse_configuration(fixture).to_document()
+    start = stored["configuration"]["technical"]["commands"]["start"]
+
+    assert declared_start(start, configuration_revision=1) == declared_start(
+        _declaration(), configuration_revision=1
+    )
