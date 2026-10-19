@@ -74,6 +74,19 @@ async def compose_accepted_tree(vault: Any, built_on: str | None, own_refs: list
     return delivered_files([*inherited, *own])
 
 
+async def evaluated_tree_refs(vault: Any, cycle: Any) -> dict[str, str]:
+    """The whole app a cycle delivered, ``path -> artifact id``, as SIP-0113's runner evaluates it
+    (#2414): the accepted tree its promotion recorded, or one composed on the accepted tree it
+    built on (a reference increment, #2008), or else its own delivered files. It is SIP-0109's own
+    selection (``_delivered``, ``compose_accepted_tree``), so the tree evaluated is the tree the
+    campaign accepts."""
+    built_on = accepted_cycle_of(cycle)
+    refs = await vault.list_artifacts(cycle_id=cycle.cycle_id)
+    if built_on is None or any(r.artifact_type == ACCEPTED_TREE_ARTIFACT_TYPE for r in refs):
+        return await _delivered(vault, cycle.cycle_id)
+    return await compose_accepted_tree(vault, built_on, refs)
+
+
 async def accepted_tree_refs(
     vault: Any, cycle: Any, frozen: frozenset[str] = frozenset()
 ) -> list[str]:

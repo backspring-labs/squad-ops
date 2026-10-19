@@ -698,9 +698,27 @@ within them, for the owner's review.
 - **An authoring rule the run settled:** a scenario's HTTP surfaces name the backend's own paths
   (`/runs`). A manifest's `api.base_path` (`/api`) is the frontend's dev-proxy prefix, and the backend
   answers it 404.
+- **The evaluation service** (`squadops.scenarios.evaluate.evaluate_cycle`).
+  - **What it does:** it takes the cycle's whole app by SIP-0109's own selection
+    (`increment_tree.evaluated_tree_refs`), names it by `FileTree.identity`, and runs the pinned,
+    approved suite's applicable scenarios in the runner. It then writes the `EvaluationRecord`.
+  - **Applicability:** a scenario whose surface kinds the Project doesn't serve is not applicable and
+    never runs.
+  - **When nothing can run:** no runner, a failed start, or an undeclared start make every applicable
+    scenario `blocked_unverified` with that reason.
+  - **Read live on the Spark**, on both reference cycles, with a real vault, a real runner and a suite
+    of two scenarios:
+    - **the capacity scenario** failed on the baseline at step 3 and passed on the increment;
+    - **the page scenario** was `blocked_unverified`, `browser_unavailable`, on both;
+    - **prediction 6:** each tree's identity was the same after its evaluation;
+    - **prediction 2:** the steps' unique marker was in no file of the vault, no line of the
+      deployment database's 337 MB dump, no agent container and not the runtime API's. The run's suite
+      was in memory, so the deployed store's side of prediction 2 is read again in the window.
+  - **The selection is the release capture's:** `evaluated_tree_refs` gave the capture's identity for
+    both trees.
 - **Still to build for #2414:**
-  - the evaluation service (the vault's tree, the record, the increment's hook, reporting-only);
-  - §7's predictions 1, 2 and 6, read live on the reference scenario.
+  - the runtime API's runner client, and the reporting-only hook at an increment's end. Both wait on
+    #2451, the compose ruling that lets the runtime API call the sandbox service.
 
 ### 10d. The intervention ledger as built (2026-10-18, §4.3, §7 prediction 5; #2417; implementer's record, for the owner)
 
