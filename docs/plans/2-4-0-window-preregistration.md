@@ -37,7 +37,8 @@ with memory observing and no lesson approved, so memory supplies nothing (the 2.
 4. **The shakeout loop's exit rule holds:** one shakeout campaign per stack on the final deploy, with no new seam
    finding (2.0's rule).
    - **Next.js first:** no Next.js campaign has ever run (`2-4-0-nextjs-shakeout-1.yaml`, carrying the suite).
-   - **Then FastAPI + React,** since the cycle-end evaluation (#2472) has never run inside a campaign on either stack.
+   - **Then FastAPI + React,** since the cycle-end evaluation (#2472) has never run inside a campaign on either stack
+     (`2-4-0-fastapi-shakeout-1.yaml`, carrying the suite).
    - **On a finding:** it is fixed, the deploy rebuilt, and the loop re-run. The record reports how many rounds it took.
 5. **The pins are read** (§6), and nothing in the window has launched.
 
