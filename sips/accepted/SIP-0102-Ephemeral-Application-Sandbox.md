@@ -770,8 +770,10 @@ predates SIP-0113: the service had always been `noop`, and every live run so far
   lane's note on #2450).
 - **Setup steps keep the install network,** with egress for dependencies and no secrets. The app, which
   holds the evaluation secrets (SIP-0112 Q40), has no route out.
-- **SIP-0113's scenario runner** (#2450) is not on `main` yet. It joins the same network when it is
-  rebased onto this.
+- **SIP-0113's scenario runner joins the same network** (the PR after #2450 and this one, at the MacBook
+  lane's review of this PR). The app it starts holds the evaluation secrets, so on the network it has no route
+  out and no host port, and its setup steps keep the install network with no secrets. The factory hands it
+  `app_network`, and the runner and the backend share one placement (`adapters/sandbox/placement.py`).
 
 **Evidence.**
 - **Read live on the Spark's Docker** with a throwaway internal network and the sandbox image:

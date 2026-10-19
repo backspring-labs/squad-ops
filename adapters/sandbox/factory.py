@@ -59,6 +59,7 @@ def create_sandbox_service(config: SandboxConfig) -> SandboxService:
             root=root,
             image=config.image or contract.image,
             install_network=contract.install_network,
+            app_network=config.app_network,
         )
         return SandboxService(
             store=store,

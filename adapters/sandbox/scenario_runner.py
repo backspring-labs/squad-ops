@@ -28,6 +28,7 @@ from typing import Any
 
 import httpx
 
+from adapters.sandbox.placement import address, placement
 from squadops.campaigns.evaluator_trees import FileTree
 from squadops.ports.scenarios import ScenarioRunnerPort
 from squadops.ports.tools.container import ContainerPort
@@ -93,7 +94,12 @@ class ContainerScenarioRunner(ScenarioRunnerPort):
         blueprint_ready_timeout_seconds: float = 60.0,
         poll_interval_seconds: float = 0.5,
         http_client_factory: Callable[[], httpx.AsyncClient] | None = None,
+        app_network: str | None,
     ) -> None:
+        # #2451 part 4 (the MacBook lane's review of #2460): the app, which holds the evaluation
+        # secrets, runs on the app network by name with no host port and no route out. ``None``, as
+        # on a host run, publishes to loopback.
+        self._app_network = app_network
         self._container = container
         self._root = Path(root)
         self._image = image
@@ -216,14 +222,18 @@ class ContainerScenarioRunner(ScenarioRunnerPort):
             env = (("HOME", "/tmp"), *sorted(environment.items()))
             try:
                 container_id = await self._container.run_detached(
-                    self._spec(
-                        copy, start.start, start.working_dir, env=env, publish_ports=(start.port,)
+                    spec := self._spec(
+                        copy,
+                        start.start,
+                        start.working_dir,
+                        env=env,
+                        **placement(self._app_network, "eval", (start.port,)),
                     )
                 )
             except ToolContainerError as e:
                 raise _StartFailed(f"the start could not run: {e}") from e
             try:
-                runs = await self._serve(container_id, start, scenarios)
+                runs = await self._serve(container_id, spec, start, scenarios)
             finally:
                 await self._teardown(container_id)
         except _StartFailed as failed:
@@ -256,14 +266,18 @@ class ContainerScenarioRunner(ScenarioRunnerPort):
                 raise _StartFailed(f"setup step {number} exited {run.exit_code}", tail)
 
     async def _serve(
-        self, container_id: str, start: _Start, scenarios: Sequence[Mapping[str, Any]]
+        self,
+        container_id: str,
+        spec: ContainerSpec,
+        start: _Start,
+        scenarios: Sequence[Mapping[str, Any]],
     ) -> tuple[ScenarioRun, ...]:
         try:
-            host_port = await self._container.resolve_host_port(container_id, start.port)
+            host, port = await address(self._container, container_id, spec, start.port)
         except ToolContainerError as e:
             raise _StartFailed(f"the app published no port {start.port}: {e}") from e
-        base = f"http://127.0.0.1:{host_port}"
-        if not await self._ready(base, host_port, start):
+        base = f"http://{host}:{port}"
+        if not await self._ready(base, host, port, start):
             try:
                 logs = await self._container.logs(container_id)
             except ToolContainerError:
@@ -300,19 +314,21 @@ class ContainerScenarioRunner(ScenarioRunnerPort):
             except ToolContainerError:
                 pass  # teardown converges: the container may already be gone
 
-    async def _ready(self, base: str, host_port: int, start: _Start) -> bool:
+    async def _ready(self, base: str, host: str, port: int, start: _Start) -> bool:
         deadline = time.monotonic() + start.ready_timeout
         async with self._http() as client:
             while True:
-                if await self._answers(client, base, host_port, start):
+                if await self._answers(client, base, host, port, start):
                     return True
                 if time.monotonic() >= deadline:
                     return False
                 await asyncio.sleep(self._poll)
 
-    async def _answers(self, client: httpx.AsyncClient, base: str, host_port: int, start) -> bool:
+    async def _answers(
+        self, client: httpx.AsyncClient, base: str, host: str, port: int, start: _Start
+    ) -> bool:
         if start.ready_kind == ReadinessKind.TCP:
-            return await _tcp_answers(host_port, connect_timeout=self._poll + 1.0)
+            return await _tcp_answers(host, port, connect_timeout=self._poll + 1.0)
         try:
             response = await client.get(base + start.ready_path)
         except (httpx.HTTPError, OSError):
@@ -320,14 +336,14 @@ class ContainerScenarioRunner(ScenarioRunnerPort):
         return not start.require_2xx or 200 <= response.status_code < 300
 
 
-async def _tcp_answers(port: int, *, connect_timeout: float) -> bool:
+async def _tcp_answers(host: str, port: int, *, connect_timeout: float) -> bool:
     """A connection the app holds. Docker's port proxy accepts on the published port as soon as the
     container starts, and closes at once, sending nothing, while nothing listens behind it (read
     live on the Spark, 2026-10-18). So a connection counts only if it stays open, or the app speaks
     first."""
     try:
         reader, writer = await asyncio.wait_for(
-            asyncio.open_connection("127.0.0.1", port), timeout=connect_timeout
+            asyncio.open_connection(host, port), timeout=connect_timeout
         )
     except (OSError, TimeoutError):
         return False  # nothing listens yet while the app boots
