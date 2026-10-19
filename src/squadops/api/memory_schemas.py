@@ -253,3 +253,82 @@ class AbsenceRateResponse(BaseModel):
     not_applicable: int
     unassessed: int
     rate: float | None
+
+
+# --- the typed memory records (SIP-0110 Appendix A; #2177) ---
+
+
+class InstructionApplicabilityDTO(BaseModel):
+    """Where a project instruction applies: each field explicit, ``*`` for any."""
+
+    model_config = ConfigDict(extra="forbid")
+    task_types: list[str]
+    roles: list[str]
+    stacks: list[str]
+
+
+class TaskTargetDTO(BaseModel):
+    """A task instruction's target: one cycle, and its tasks by type (§A.3.7)."""
+
+    model_config = ConfigDict(extra="forbid")
+    cycle_id: str
+    task_types: list[str]
+
+
+class RecordSourceDTO(BaseModel):
+    """Where the record came from (§A.3.4). An API call, unless the caller says otherwise."""
+
+    model_config = ConfigDict(extra="forbid")
+    kind: str = "api_call"
+    ids: dict[str, str] = Field(default_factory=dict)
+
+
+class MemoryRecordContent(BaseModel):
+    """A revision's content. References are ``{"ref": "<family>:<kind>:<id>@<revision>",
+    "required": bool}``; one that carries the target's content is refused, naming where that
+    fact is changed (§A.3.2)."""
+
+    model_config = ConfigDict(extra="forbid")
+    body: str
+    suggestion: bool = False
+    applicability: InstructionApplicabilityDTO | None = None
+    target: TaskTargetDTO | None = None
+    references: list[dict[str, Any]] = Field(default_factory=list)
+    source: RecordSourceDTO = Field(default_factory=RecordSourceDTO)
+
+
+class MemoryRecordCreateRequest(MemoryRecordContent):
+    kind: str
+    scope: str
+    project_id: str | None = None
+
+
+class MemoryRecordWithdrawalRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    why: str
+
+
+class MemoryRecordRevisionResponse(BaseModel):
+    number: int
+    body: str
+    author: str
+    created_at: str
+    source: dict[str, Any]
+    confirmed_by: str | None
+    supersedes: int | None
+    suggestion: bool
+    applicability: dict[str, Any] | None
+    target: dict[str, Any] | None
+    references: list[dict[str, Any]]
+
+
+class MemoryRecordResponse(BaseModel):
+    record_id: str
+    kind: str
+    scope: str
+    project_id: str | None
+    owner_id: str
+    status: str
+    current: MemoryRecordRevisionResponse
+    revisions: list[MemoryRecordRevisionResponse]
+    status_changes: list[dict[str, Any]]

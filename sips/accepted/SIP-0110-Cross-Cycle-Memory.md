@@ -81,7 +81,7 @@ re-places it.
 | entry points: the legacy agent store made dormant, its failures visible (Appendix A, §A.4.3) | **shipped** | 2.3.0, PR #2246, issue #2174: the agents hold a dormant port that refuses at WARNING, chat neither recalls nor stores, and no embedder is built on a default; the eight stores re-inventoried empty (posted on #2174) |
 | entry points: chat's conversation history reaching the agent, with session ownership checked (SIP-0085 §4, §9; §A.3.3) | **shipped** | 2.3.0, PR #2247, issue #2175: resuming or reading a session checks its owner and agent first, refused as a missing session; each turn carries its bounded history, the drop counted |
 | entry points: the context-assembly port, inert, at the four seams (§A.3.6) | **shipped** | 2.3.0, #2257 (closes #2176; §5j records where it departs from §A.3.6's text) |
-| entry points: the typed records (notes, preferences, project and task instructions), permissions by kind, provenance (§A.3.2–§A.3.4) | **placed** | 2.4.0, #2177 |
+| entry points: the typed records (notes, preferences, project and task instructions), permissions by kind, provenance (§A.3.2–§A.3.4) | **shipped** (§5l) | 2.4.0, PR #2508, issue #2177 |
 | entry points: task instructions, with the work target, retries, references bound with the cycle, binding holds and emergency withdrawal (§A.3.5–§A.3.8) | **placed** | 2.4.0, #2178 |
 | entry points: project instructions in the snapshot with references bound, re-binding, the effective lesson budget, the comparison arms and disclosure (§A.3.6, §A.3.7) | **placed** | 2.4.0, #2179 |
 | entry points: chat on the substrate, with capture confirmed, chat exposures, server-side project binding and provenance authorized (§A.3.5) | **placed** | 2.4.0, #2180 |
@@ -1642,6 +1642,39 @@ reference target. It lands as a numbered amendment here, in the PR that builds i
 **The evidence.** The overlap was found at Project Lifecycle Management's intake check (revision 4's §B.5.1 and
 FR-21 pinned development instructions per cycle, with their own precedence and drift rules) and recorded as Q31.
 Project Lifecycle Management's revision 5 (§B.5.1) applies the ruling.
+
+## 5l. The typed records, as built (2026-10-19, #2177; the supervisor, under the owner's grant of 2026-10-19)
+
+**What shipped:** §A.3.2–§A.3.4 and §A.3.8's records.
+- **The domain:** `squadops.memory.records`, pure: the kinds and the scopes each takes; the permission table; the
+  T4 visibility rule; provenance display; revisions and withdrawal; references.
+- **The store:** `MemoryRecordsPort`, with in-memory and Postgres adapters, selected as the cycle registry is
+  (`adapters/memory/records.py`, migration `1780_memory_records.sql`). It also gives `chat_sessions` its
+  `project_id`.
+- **The routes:** `/api/v1/memory-records`, to create, list (bound or unbound), read by id, revise and withdraw.
+- **Two new scopes:** `memory:note` and `memory:instruct`, held by `admin` until Q27's membership model.
+
+**Where the build departs from §A.3.2's text, and why:**
+- **One table, not three.** §A.3.2 named `memory_notes`, `memory_preferences` and `memory_instructions`. They share
+  identity, revisions, provenance and withdrawal, and differ only in a revision's fields. Three tables would carry
+  three copies of the revision and status machinery. So there is one `memory_records`, with `kind` and `scope`
+  columns, and one revisions table, which keeps each revision's whole document.
+- **"Restates an authoritative fact is stored as a reference; one that would change it is refused."**
+  - §A.3.2 says contradiction can't be detected in general, so the rule is enforced on the record's shape. A
+    reference is `<family>:<kind>:<id>@<revision>`, kept with whether it's required.
+  - A reference that carries the target's content (`content`, `value`) is refused, naming where that fact is
+    changed: the manifest's operator edit (SIP-0103 §5c.5), or a decision record (#950).
+  - The confirming person's review of the applicable authoritative records is chat's capture card (#2180).
+- **An instruction written through the API is confirmed by its writer,** who holds the scope its kind needs.
+  Chat's capture-then-confirm is #2180's.
+- **A record a caller may not read answers 404 by id,** as a session does (§A.3.3): it never says whether the
+  record exists.
+
+**Not built here:**
+- task instructions reaching dispatch (#2178);
+- project instructions in the snapshot (#2179);
+- chat's capture and its turns' binding (#2180);
+- the console view (#2182).
 
 ## 6. Mode neutrality: cycle, duty, and ambient utilization
 

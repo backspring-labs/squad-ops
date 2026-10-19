@@ -184,6 +184,11 @@ def get_memory_store(request: Request):
     return _slot(request, "memory_store")
 
 
+def get_memory_records(request: Request):
+    """SIP-0110 Appendix A (#2177): the typed memory records' store (``main._init_memory``)."""
+    return _slot(request, "memory_records")
+
+
 def get_artifact_vault(request: Request) -> ArtifactVaultPort:
     """Return the ArtifactVaultPort (T14: never None at call sites)."""
     return _required(request, "artifact_vault", "ArtifactVaultPort")

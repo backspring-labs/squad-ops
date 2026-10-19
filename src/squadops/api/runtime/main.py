@@ -47,7 +47,7 @@ from squadops.api.routes.cycles import (
     runs_router,
 )
 from squadops.api.routes.cycles.cycles import CreationPorts
-from squadops.api.routes.memory import memory_router
+from squadops.api.routes.memory import memory_records_router, memory_router
 from squadops.api.routes.outcomes import router as outcomes_router
 from squadops.api.routes.platform_health import router as platform_health_router
 from squadops.api.routes.scenarios import router as scenarios_router
@@ -154,6 +154,7 @@ def _include_routers(app: FastAPI) -> None:
     app.include_router(chat_router)  # SIP-0085
     app.include_router(chat_agents_router)
     app.include_router(memory_router)  # SIP-0110 §0.6 (slice 3d): lessons, approvals, revocations
+    app.include_router(memory_records_router)  # SIP-0110 Appendix A (#2177): the typed records
     app.include_router(outcomes_router)  # SIP-0113 §4.3 (#2417): the intervention ledger
     app.include_router(scenarios_router)  # SIP-0113 §4.1 (#2413): held-out scenario suites
 
@@ -174,6 +175,7 @@ _STATE_SLOTS = (
     "campaign_launch_task",  # SIP-0109 §12b: the startup drain of pending launch intents
     "campaign_sweep_task",  # SIP-0109 §9.2 (§24ae): the ruling-bound sweep; cancelled on shutdown
     "memory_store",  # SIP-0110 (D13): Cross-Cycle Memory's store, beside the cycle registry
+    "memory_records",  # SIP-0110 Appendix A (#2177): notes, preferences and instructions
     "memory_reconcile_task",  # SIP-0110 §0.3: the observation passes; cancelled on shutdown
 )
 
@@ -838,9 +840,13 @@ def _init_memory(state, config, pool) -> None:
     """SIP-0110 (the 2.2 plan's D13): Cross-Cycle Memory's store, beside the cycle registry and
     selected by its required provider."""
     from adapters.memory.cross_cycle import create_cross_cycle_store
+    from adapters.memory.records import create_memory_records
 
     provider = config.cycles.registry_provider
     state.memory_store = create_cross_cycle_store(
+        provider, **({"pool": pool} if provider == "postgres" else {})
+    )
+    state.memory_records = create_memory_records(
         provider, **({"pool": pool} if provider == "postgres" else {})
     )
 
