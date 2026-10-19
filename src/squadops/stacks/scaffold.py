@@ -1978,9 +1978,12 @@ _STACKS: dict[str, ScaffoldStack] = {
         # SIP-0104: the first (and so far only) stack with a deterministic test scaffold.
         # Stack #1 deliberately does not declare one — opt-in is explicit, never inherited.
         verification_scaffold=_NEXTJS_TS_NAME,
+        # #2511: both files are ones this stack's runner collects (``VITEST_SUITE_GLOB``, #1534):
+        # a page criterion's file named ``.test.tsx`` was never collected, so the plan check
+        # refused every increment with a page criterion.
         criterion_test_files=(
             ("endpoint", "__tests__/criteria/{criterion}.test.ts"),
-            ("client_route", "__tests__/criteria/{criterion}.test.tsx"),
+            ("client_route", "__tests__/criteria/{criterion}.test.ts"),
         ),
         # #1950: the frozen types write an optional field ``field?: type`` and the frozen store
         # adds no default, so what a create without it returns is each build's handler's choice.
