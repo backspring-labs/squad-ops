@@ -608,7 +608,9 @@ async def _pin_memory(request: Request, cycle) -> None:
     if store is None:
         return
     try:
-        await pin_standalone_cycle(store, cycle, now=datetime.now(UTC))
+        await pin_standalone_cycle(
+            store, cycle, now=datetime.now(UTC), records=get_memory_records(request)
+        )
     except Exception:
         logger.warning("memory_snapshot_not_pinned cycle=%s", cycle.cycle_id, exc_info=True)
 

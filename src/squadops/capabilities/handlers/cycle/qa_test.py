@@ -32,7 +32,10 @@ from squadops.capabilities.handlers.cross_cycle_lessons import cross_cycle_lesso
 from squadops.capabilities.handlers.increment_test_scope import increment_test_scope_section
 from squadops.capabilities.handlers.prior_cycle import prior_cycle_section
 from squadops.capabilities.handlers.prompt_guard import _guard_prompt_size
-from squadops.capabilities.handlers.task_instructions import task_instructions_section
+from squadops.capabilities.handlers.task_instructions import (
+    project_instructions_section,
+    task_instructions_section,
+)
 from squadops.cycles.check_registry import (
     CHECK_FRONTEND_BUILD,
     CHECK_NO_SELF_MOCKING_TESTS,
@@ -1939,6 +1942,11 @@ class QATestHandler(_CycleTaskHandler):
             )
             if instructions_section:
                 user_prompt = f"{user_prompt}{instructions_section}"
+            project_section = await project_instructions_section(
+                getattr(context.ports, "request_renderer", None), inputs
+            )
+            if project_section:
+                user_prompt = f"{user_prompt}{project_section}"
             # SIP-0110 §0.9: the lessons approved for this task, in a slot of their own. The
             # section opens with its own paragraph break.
             lessons_section = await cross_cycle_lessons_section(

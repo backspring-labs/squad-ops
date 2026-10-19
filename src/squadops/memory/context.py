@@ -154,6 +154,8 @@ class ContextBundle:
     #: What the task is handed on ``TASK_INSTRUCTIONS_INPUT`` (#2178), carried as recall's answer is:
     #: ``None`` when no task instruction applies.
     task_instructions: Mapping[str, Any] | None = None
+    #: What the task is handed on ``PROJECT_INSTRUCTIONS_INPUT`` (#2179): ``None`` when none applies.
+    project_instructions: Mapping[str, Any] | None = None
 
     def section(self, kind: SectionKind) -> Section | None:
         return next((s for s in self.sections if s.kind == kind), None)

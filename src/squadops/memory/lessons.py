@@ -28,6 +28,7 @@ from enum import StrEnum
 from typing import Any
 
 from squadops.memory.recall import RecallQuery, UnitKind
+from squadops.memory.records import PinnedInstruction
 
 #: A stack-independent lesson says so explicitly (§0.8 step 3): unknown never means everywhere.
 ANY_STACK = "*"
@@ -245,6 +246,10 @@ class Snapshot:
     disabled: bool
     entries: tuple[SnapshotEntry, ...] = ()
     policy: RecallPolicy = field(default_factory=RecallPolicy)
+    #: The project instructions in force at admission (Appendix A §3.7; #2179), apart from the
+    #: lessons. A unit that declares memory disabled pins no lesson and still pins these: they are
+    #: requirements, not memory's guidance, so its arms differ only in the lessons.
+    instructions: tuple[PinnedInstruction, ...] = ()
 
     def to_dict(self) -> dict[str, Any]:
         """The whole pin, self-contained: a stored snapshot never depends on rows read later."""
@@ -263,6 +268,12 @@ class Snapshot:
                 "max_lessons": self.policy.max_lessons,
                 "token_budget": self.policy.token_budget,
             },
+            # Only when one is pinned, so a snapshot from before #2179 is stored as it was.
+            **(
+                {"instructions": [i.to_dict() for i in self.instructions]}
+                if self.instructions
+                else {}
+            ),
         }
 
     @classmethod
@@ -280,6 +291,9 @@ class Snapshot:
                 for e in data.get("entries") or ()
             ),
             policy=RecallPolicy(**dict(data.get("policy") or {})),
+            instructions=tuple(
+                PinnedInstruction.from_dict(i) for i in data.get("instructions") or ()
+            ),
         )
 
 
@@ -292,10 +306,12 @@ def pin(
     revisions: Sequence[PatternRevision],
     approvals: Sequence[Approval],
     policy: RecallPolicy | None = None,
+    instructions: Sequence[PinnedInstruction] = (),
 ) -> Snapshot:
     """The snapshot a unit pins: each approval in force at ``pinned_at`` (given before it, and not
-    revoked by then) with the revision it binds. A unit that declares memory disabled pins
-    nothing (§0.7)."""
+    revoked by then) with the revision it binds, and the project instructions in force then. A
+    unit that declares memory disabled pins no lesson (§0.7), and still pins the instructions
+    (Appendix A §3.7, #2179)."""
     policy = policy or RecallPolicy()
     snapshot_id = (
         "snp_"
@@ -304,7 +320,9 @@ def pin(
         ).hexdigest()[:16]
     )
     if disabled:
-        return Snapshot(snapshot_id, unit_kind, unit_id, pinned_at, True, (), policy)
+        return Snapshot(
+            snapshot_id, unit_kind, unit_id, pinned_at, True, (), policy, tuple(instructions)
+        )
     by_id = {r.revision_id: r for r in revisions}
     entries = []
     for approval in approvals:
@@ -316,7 +334,10 @@ def pin(
         if not approval.applicability.within(revision.applicability):
             continue  # an approval never widens what its revision states
         entries.append(SnapshotEntry(revision, approval))
-    return Snapshot(snapshot_id, unit_kind, unit_id, pinned_at, False, tuple(entries), policy)
+    return Snapshot(
+        snapshot_id, unit_kind, unit_id, pinned_at, False, tuple(entries), policy,
+        tuple(instructions),
+    )  # fmt: skip
 
 
 @dataclass(frozen=True)

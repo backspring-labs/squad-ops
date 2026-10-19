@@ -6,6 +6,7 @@ from __future__ import annotations
 
 from typing import Any
 
+from squadops.memory.project_instructions import PROJECT_INSTRUCTIONS_INPUT
 from squadops.memory.task_instructions import TASK_INSTRUCTIONS_INPUT
 
 
@@ -20,5 +21,19 @@ async def task_instructions_section(renderer: Any, inputs: dict[str, Any]) -> st
     lines = "\n".join(f"{n}. {i['text']}" for n, i in enumerate(instructions, start=1))
     rendered = await renderer.render(
         "request.task_instructions_section", {"instruction_lines": lines}
+    )
+    return "\n\n" + rendered.content.strip("\n") + "\n"
+
+
+async def project_instructions_section(renderer: Any, inputs: dict[str, Any]) -> str:
+    """The project instructions the task's unit pinned that apply to it (#2179), as a section after
+    the task's own and before the lessons, or ``""`` when none applies."""
+    handed = inputs.get(PROJECT_INSTRUCTIONS_INPUT)
+    instructions = handed.get("instructions") if isinstance(handed, dict) else None
+    if renderer is None or not instructions:
+        return ""
+    lines = "\n".join(f"{n}. {i['text']}" for n, i in enumerate(instructions, start=1))
+    rendered = await renderer.render(
+        "request.project_instructions_section", {"instruction_lines": lines}
     )
     return "\n\n" + rendered.content.strip("\n") + "\n"

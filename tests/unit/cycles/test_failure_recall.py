@@ -37,6 +37,8 @@ from squadops.memory.lessons import (
     Applicability,
     Approval,
     PatternRevision,
+    RecallDisposition,
+    Recalled,
     UnitKind,
     pattern_id_for,
 )
@@ -333,12 +335,18 @@ async def test_a_redispatch_answered_with_nothing_carries_no_earlier_lesson():
     supplied = await _supplied(SnapshotRecall(store))
     [design] = [e for e in supplied if str(e.task_type) == "development.design_plan"]
     assert LESSONS_INPUT in design.inputs
-    store.get_snapshot = AsyncMock(side_effect=OSError("store unreachable"))  # type: ignore[method-assign]
     held = _redispatched(design)
+
+    class _LessonsUnread(SnapshotRecall):
+        """The lessons' read fails; the snapshot's pinned instructions, which bind, still read
+        (#2179: an unreadable snapshot holds the task instead)."""
+
+        async def recall(self, query):
+            return Recalled(None, RecallDisposition.FAILED)
 
     await supply_the_redispatch(
         held,
-        recall=SnapshotRecall(store),
+        recall=_LessonsUnread(store),
         cycle=_framing_cycle(),
         run_id="run_recall0001",
         now=_NOW,

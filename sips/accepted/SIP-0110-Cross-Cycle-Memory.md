@@ -1712,6 +1712,44 @@ context-assembly port.
 - `carries_into: continuations`;
 - the gate's structured `instructions` field.
 
+## 5n. Project instructions, stage 1, as built (2026-10-19, #2179; the supervisor, under the owner's grant of 2026-10-19)
+
+**What shipped:** §A.3.7's pin of project instructions, and §A.3.6's binding section for them.
+- **Confirmed through the records' route.** A project instruction is created with `memory:instruct` (§5l), confirmed by
+  its writer.
+- **Pinned at admission:** a unit's snapshot pins the project instructions in force when it's admitted, beside the
+  lessons, as self-contained revisions: text, applicability and references (`Snapshot.instructions`). A standalone cycle
+  pins at creation, a campaign at admission.
+  - A unit keeps the revision it pinned, however the record changes after it.
+  - A unit admitted later gets the record's current revision.
+  - A withdrawn or unconfirmed instruction is never pinned.
+- **The memory-disabled unit:** a unit that declares memory disabled pins no lesson, and still pins the instructions.
+  §A.3.7 makes today's "memory disabled" the `lessons: disabled` arm, so its arms differ only in the lessons. No
+  instruction existed before this, so no stored or counted unit changes.
+- **Supply:** the composer hands each dispatch the pinned instructions whose applicability covers it, on
+  `PROJECT_INSTRUCTIONS_INPUT`.
+  - The section is binding, after the task instructions, and takes the prompt budget they leave.
+  - An unreadable snapshot holds the task, after the reads lessons get. An unreadable snapshot can't say none were
+    pinned.
+  - The exposure records the revisions handed.
+- **Rendering:** every authoring seam shows the section from its managed fragment, between the task instructions and
+  the lessons.
+- **Storage:** a snapshot that pins none is stored as it was.
+
+**Where stage 1 narrows the design, as #2178's stage 1 does (§5m):**
+- **A hold fails the run's provisioning,** rather than waiting.
+- **A reference names a concrete revision.**
+- **The lesson budget is unchanged (stage 2, T17).** The lessons keep the snapshot's own budget. §A.3.6 has them take
+  what the binding sections leave, which changes recall's input, so that waits for the hold that makes an overrun
+  recoverable.
+
+**Stage 2 (#2179, still open):**
+- the effective lesson budget (T17);
+- `@current` bound at admission (T16);
+- the `memory_context: none` arm, with its declaration and the lesson-text diagnostic (T9's rest);
+- re-binding a running unit;
+- emergency withdrawal of a project instruction.
+
 ## 6. Mode neutrality: cycle, duty, and ambient utilization
 
 Phase 1 implements the cycle-mode loop, but the substrate is designed so duty- and

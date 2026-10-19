@@ -13,7 +13,10 @@ from typing import TYPE_CHECKING, Any
 
 from squadops.capabilities.handlers.cross_cycle_lessons import cross_cycle_lessons_section
 from squadops.capabilities.handlers.cycle_tasks import _CycleTaskHandler
-from squadops.capabilities.handlers.task_instructions import task_instructions_section
+from squadops.capabilities.handlers.task_instructions import (
+    project_instructions_section,
+    task_instructions_section,
+)
 from squadops.tasks.task_types import TaskType
 
 if TYPE_CHECKING:
@@ -46,6 +49,7 @@ class _RepairTaskHandler(_CycleTaskHandler):
             "prior_outputs": self._format_prior_outputs(upstream or None),
             # SIP-0110 §0.9: rendered in handle(); "" when no lesson was supplied.
             "task_instructions_section": str(inputs.get("task_instructions_section") or ""),
+            "project_instructions_section": str(inputs.get("project_instructions_section") or ""),
             "cross_cycle_lessons_section": str(inputs.get("cross_cycle_lessons_section") or ""),
         }
 
@@ -57,6 +61,9 @@ class _RepairTaskHandler(_CycleTaskHandler):
         instructions = await task_instructions_section(renderer, inputs)
         if instructions:
             inputs = {**inputs, "task_instructions_section": instructions}
+        project = await project_instructions_section(renderer, inputs)
+        if project:
+            inputs = {**inputs, "project_instructions_section": project}
         lessons = await cross_cycle_lessons_section(renderer, inputs)
         if lessons:
             inputs = {**inputs, "cross_cycle_lessons_section": lessons}

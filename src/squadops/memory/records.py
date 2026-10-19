@@ -408,3 +408,67 @@ def revision_from_document(doc: Mapping[str, Any]) -> Revision:
             Reference(r["ref"], bool(r["required"])) for r in doc.get("references", [])
         ),
     )
+
+
+@dataclass(frozen=True)
+class PinnedInstruction:
+    """A project instruction's revision as a unit pinned it at admission (Appendix A §3.7; #2179).
+    Self-contained, as the rest of a snapshot is: the pin never depends on rows read later, so a
+    unit keeps the revision it pinned however the record changes after."""
+
+    record_id: str
+    revision: int
+    text: str
+    applicability: InstructionApplicability
+    references: tuple[Reference, ...] = ()
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "record_id": self.record_id,
+            "revision": self.revision,
+            "text": self.text,
+            "applicability": {
+                "task_types": list(self.applicability.task_types),
+                "roles": list(self.applicability.roles),
+                "stacks": list(self.applicability.stacks),
+            },
+            "references": [{"ref": r.ref, "required": r.required} for r in self.references],
+        }
+
+    @classmethod
+    def from_dict(cls, data: Mapping[str, Any]) -> PinnedInstruction:
+        a = data["applicability"]
+        return cls(
+            record_id=str(data["record_id"]),
+            revision=int(data["revision"]),
+            text=str(data["text"]),
+            applicability=InstructionApplicability(
+                tuple(a["task_types"]), tuple(a["roles"]), tuple(a["stacks"])
+            ),
+            references=tuple(
+                Reference(r["ref"], bool(r["required"])) for r in data.get("references", [])
+            ),
+        )
+
+
+def in_force(records: Collection[MemoryRecord]) -> tuple[PinnedInstruction, ...]:
+    """The project instructions in force now, as a unit admitted now pins them: active, confirmed,
+    each at its current revision, in the order they were recorded."""
+    pinned = []
+    for record in records:
+        if (
+            record.kind != RecordKind.INSTRUCTION
+            or record.scope != RecordScope.PROJECT
+            or record.status != RecordStatus.ACTIVE
+        ):
+            continue
+        current = record.current
+        if current.applicability is None or current.confirmed_by is None:
+            continue
+        pinned.append(
+            PinnedInstruction(
+                record.record_id, current.number, current.body, current.applicability,
+                current.references,
+            )
+        )  # fmt: skip
+    return tuple(pinned)

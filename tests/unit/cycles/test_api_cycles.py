@@ -1082,6 +1082,35 @@ class TestCreatePinsTheMemorySnapshot:
         mock_cycle_registry.create_run.assert_called_once()
         assert "memory_snapshot_not_pinned" in caplog.text
 
+    async def test_the_pin_carries_the_project_instructions_in_force_at_create(self, client, store):
+        """Wiring, entered at the create route (#2179). Bug caught: the route pinning the unit's
+        lessons and not the records' store, so a confirmed project instruction reaches no cycle."""
+        from datetime import UTC, datetime
+
+        from adapters.memory.records import InMemoryMemoryRecords
+        from squadops.memory.lessons import UnitKind
+        from squadops.memory.records import InstructionApplicability, Revision, Source, new_record
+
+        records = InMemoryMemoryRecords()
+        client.app.state.memory_records = records
+        await records.create(
+            new_record(
+                record_id="mrec_p", kind="instruction", scope="project", project_id="hello_squad",
+                owner_id="ada",
+                revision=Revision(
+                    number=1, body="Name each run by its route.", author="ada",
+                    created_at=datetime(2026, 10, 19, tzinfo=UTC), source=Source("api_call"),
+                    confirmed_by="ada",
+                    applicability=InstructionApplicability(("qa.test",), ("*",), ("*",)),
+                ),
+            )
+        )  # fmt: skip
+
+        resp = client.post(self._URL, json=self._REQUEST)
+
+        snapshot = await store.get_snapshot(UnitKind.CYCLE, resp.json()["cycle_id"])
+        assert [(i.record_id, i.revision) for i in snapshot.instructions] == [("mrec_p", 1)]
+
 
 class TestCreateRefusesAProjectThatIsNotReady:
     """SIP-0112 contract 1 (#2408): ``prepare_cycle()`` with the shared fixture's Project, entered

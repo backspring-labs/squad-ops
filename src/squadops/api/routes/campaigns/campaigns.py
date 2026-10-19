@@ -59,6 +59,7 @@ from squadops.api.runtime.deps import (
     get_campaign_registry,
     get_cycle_event_bus,
     get_cycle_registry,
+    get_memory_records,
     get_memory_store,
     get_scenario_store,
 )
@@ -365,7 +366,9 @@ async def _pin_memory(request: Request, campaign) -> None:
     if store is None:
         return
     try:
-        await pin_campaign(store, campaign, now=datetime.now(UTC))
+        await pin_campaign(
+            store, campaign, now=datetime.now(UTC), records=get_memory_records(request)
+        )
     except Exception:
         logger.warning(
             "memory_snapshot_not_pinned campaign=%s", campaign.campaign_id, exc_info=True

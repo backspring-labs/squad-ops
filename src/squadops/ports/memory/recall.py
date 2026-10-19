@@ -11,8 +11,8 @@ from abc import ABC, abstractmethod
 
 from squadops.memory.exposures import Exposure
 from squadops.memory.lessons import Recalled
-from squadops.memory.recall import RecallQuery
-from squadops.memory.records import MemoryRecord
+from squadops.memory.recall import RecallQuery, UnitKind
+from squadops.memory.records import MemoryRecord, PinnedInstruction
 
 
 class FailurePatternRecallPort(ABC):
@@ -32,3 +32,11 @@ class FailurePatternRecallPort(ABC):
         every status: the composer decides which apply to a dispatch. Raises when the records
         can't be read, since a binding section that can't be read holds its task and never
         reads as none (§3.6)."""
+
+    @abstractmethod
+    async def pinned_instructions(
+        self, unit_kind: UnitKind, unit_id: str
+    ) -> tuple[PinnedInstruction, ...]:
+        """The project instructions the unit's snapshot pinned at admission (Appendix A §3.7;
+        #2179): none when it pinned none or has no pin. Raises when the snapshot can't be read,
+        since they bind."""

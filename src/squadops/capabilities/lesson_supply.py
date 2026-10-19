@@ -49,6 +49,10 @@ from squadops.memory.context import (
 )
 from squadops.memory.exposures import Exposure
 from squadops.memory.lessons import RecallDisposition, Recalled, RecallPolicy, _tokens
+from squadops.memory.project_instructions import PROJECT_INSTRUCTIONS_INPUT
+from squadops.memory.project_instructions import applicable as project_applicable
+from squadops.memory.project_instructions import handed as project_handed
+from squadops.memory.project_instructions import section_of as project_section_of
 from squadops.memory.recall import LESSONS_INPUT, RecallQuery, UnitKind
 from squadops.memory.task_instructions import (
     TASK_INSTRUCTIONS_INPUT,
@@ -56,6 +60,7 @@ from squadops.memory.task_instructions import (
     applicable,
     handed,
     section_of,
+    tokens_of,
     unresolved_reason,
 )
 from squadops.ports.memory.context_assembly import ContextAssemblyPort
@@ -205,14 +210,17 @@ async def supply_lessons(
         if seam is None:
             supplied.append(envelope)
             continue
-        lessons, instructions = await _ask_and_disclose(
+        lessons, instructions, project = await _ask_and_disclose(
             envelope, recall=recall, unit=unit, stack=stack, run_id=run_id, now=now
         )
         inputs = dict(envelope.inputs)
-        if lessons is not None:
-            inputs[LESSONS_INPUT] = lessons
-        if instructions is not None:
-            inputs[TASK_INSTRUCTIONS_INPUT] = instructions
+        for key, value in (
+            (LESSONS_INPUT, lessons),
+            (TASK_INSTRUCTIONS_INPUT, instructions),
+            (PROJECT_INSTRUCTIONS_INPUT, project),
+        ):
+            if value is not None:
+                inputs[key] = value
         supplied.append(
             envelope if inputs == envelope.inputs else dataclasses.replace(envelope, inputs=inputs)
         )
@@ -242,7 +250,7 @@ async def supply_the_redispatch(
         return
     if authoring_seam_of(str(held[0].task_type)) is None:
         return
-    lessons, instructions = await _ask_and_disclose(
+    lessons, instructions, project = await _ask_and_disclose(
         held[0],
         recall=recall,
         unit=unit_of(cycle),
@@ -253,7 +261,11 @@ async def supply_the_redispatch(
     # #2178: each dispatch reads its task instructions again, so one withdrawn since the attempt
     # before is gone from this one, and nothing is copied from that attempt.
     for envelope in held:
-        for key, value in ((LESSONS_INPUT, lessons), (TASK_INSTRUCTIONS_INPUT, instructions)):
+        for key, value in (
+            (LESSONS_INPUT, lessons),
+            (TASK_INSTRUCTIONS_INPUT, instructions),
+            (PROJECT_INSTRUCTIONS_INPUT, project),
+        ):
             if value is None:
                 envelope.inputs.pop(key, None)
             else:
@@ -268,7 +280,7 @@ async def _ask_and_disclose(
     stack: str,
     run_id: str,
     now: datetime,
-) -> tuple[dict | None, dict | None]:
+) -> tuple[dict | None, dict | None, dict | None]:
     """One invocation's context, through the port: assembled with the task's trusted scope, disclosed
     under its attempt, and what it is handed: its lessons and its task instructions, each ``None``
     when nothing is supplied. A binding section that is incomplete is disclosed, then refused with
@@ -277,11 +289,18 @@ async def _ask_and_disclose(
     bundle = await assembly.assemble(request_for(envelope, unit=unit, stack=stack, run_id=run_id))
     await assembly.disclose(bundle)
     if not bundle.complete:
-        section = bundle.section(SectionKind.TASK_INSTRUCTIONS)
-        why = unresolved_reason(section) if section is not None else "a binding section"
+        why = "; ".join(
+            unresolved_reason(s)
+            for s in bundle.sections
+            if s.need is Need.BINDING and s.disposition is Disposition.INCOMPLETE
+        )
         raise TaskInstructionsUnavailable(f"task {envelope.task_id} is held: {why}")
-    instructions = bundle.task_instructions
-    return lessons_input(bundle.recalled), dict(instructions) if instructions else None
+    task, project = bundle.task_instructions, bundle.project_instructions
+    return (
+        lessons_input(bundle.recalled),
+        dict(task) if task else None,
+        dict(project) if project else None,
+    )
 
 
 class LessonContextAssembly(ContextAssemblyPort):
@@ -318,13 +337,44 @@ class LessonContextAssembly(ContextAssemblyPort):
             effective_budget=RecallPolicy().token_budget,
         )
         instructions, bound = await self._task_instructions(request)
+        # #2179: the project instructions take what the task instructions leave (§3.6).
+        left = request.consumer.prompt_budget - tokens_of(bound)
+        project, pinned = await self._project_instructions(request, budget=left)
         return ContextBundle(
             request,
-            (instructions, lessons),
-            complete=instructions.disposition is not Disposition.INCOMPLETE,
+            (instructions, project, lessons),
+            complete=Disposition.INCOMPLETE not in (instructions.disposition, project.disposition),
             recalled=recalled,
             task_instructions=handed(bound),
+            project_instructions=project_handed(pinned),
         )
+
+    async def _project_instructions(self, request: ContextRequest, *, budget: int):
+        """The project instructions' binding section (#2179): the snapshot owner's pinned
+        revisions that apply to this dispatch. A snapshot that can't be read leaves it
+        incomplete: it binds, so it never reads as none (§3.6)."""
+        task = request.consumer
+        kind = SectionKind.PROJECT_INSTRUCTIONS
+        if not isinstance(task, TaskInvocation):
+            return Section(kind, Need.BINDING, Disposition.NOT_APPLICABLE), []
+        owner = task.snapshot_owner
+        try:
+            pinned = await self._recall.pinned_instructions(owner.kind, owner.unit_id)
+        except Exception:
+            logger.warning(
+                "project_instructions_unreadable unit=%s:%s task=%s",
+                owner.kind,
+                owner.unit_id,
+                task.task_id,
+                exc_info=True,
+            )
+            unread = RecordRef(f"snapshot:{owner.kind}:{owner.unit_id}", "")
+            unresolved = ((unread, "the unit's snapshot could not be read"),)
+            return Section(kind, Need.BINDING, Disposition.INCOMPLETE, unresolved=unresolved), []
+        chosen = project_applicable(
+            pinned, task_type=task.task_type, role=task.role, stack=task.stack
+        )
+        return project_section_of(chosen, budget=budget), chosen
 
     async def _task_instructions(self, request: ContextRequest):
         """The task instructions' binding section (#2178), and what applies. A store that can't be
@@ -380,6 +430,9 @@ class LessonContextAssembly(ContextAssemblyPort):
                 recorded_at=self._now,
                 attempt=task.attempt,
                 task_instructions=_section_record(bundle.section(SectionKind.TASK_INSTRUCTIONS)),
+                project_instructions=_section_record(
+                    bundle.section(SectionKind.PROJECT_INSTRUCTIONS)
+                ),
             )
         )
 

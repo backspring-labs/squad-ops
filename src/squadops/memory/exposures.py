@@ -50,6 +50,8 @@ class Exposure:
     #: The task instructions' binding section (#2178): its disposition, each revision supplied and
     #: each that couldn't be. ``None`` when the dispatch's composer read no instructions.
     task_instructions: Mapping[str, Any] | None = None
+    #: The project instructions' binding section (#2179), kept as the task instructions' is.
+    project_instructions: Mapping[str, Any] | None = None
 
     def __post_init__(self) -> None:
         if not self.exposure_id:
@@ -71,6 +73,7 @@ class Exposure:
         recorded_at: datetime,
         attempt: int = 1,
         task_instructions: Mapping[str, Any] | None = None,
+        project_instructions: Mapping[str, Any] | None = None,
     ) -> Exposure:
         return cls(
             run_id,
@@ -83,6 +86,7 @@ class Exposure:
             recorded_at,
             attempt,
             task_instructions=task_instructions,
+            project_instructions=project_instructions,
         )
 
     @property
@@ -116,6 +120,11 @@ class Exposure:
                 if self.task_instructions is not None
                 else {}
             ),
+            **(
+                {"project_instructions": dict(self.project_instructions)}
+                if self.project_instructions is not None
+                else {}
+            ),
         }
 
     @classmethod
@@ -135,4 +144,5 @@ class Exposure:
             attempt=int(data.get("attempt") or 1),
             exposure_id=str(data["exposure_id"]),
             task_instructions=data.get("task_instructions"),
+            project_instructions=data.get("project_instructions"),
         )

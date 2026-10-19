@@ -14,8 +14,8 @@ from typing import Any
 
 from squadops.memory.exposures import Exposure
 from squadops.memory.lessons import RecallDisposition, Recalled, recall
-from squadops.memory.recall import RecallQuery
-from squadops.memory.records import MemoryRecord, RecordScope
+from squadops.memory.recall import RecallQuery, UnitKind
+from squadops.memory.records import MemoryRecord, PinnedInstruction, RecordScope
 from squadops.ports.memory.cross_cycle import CrossCycleMemoryStorePort, RecordIncompatible
 from squadops.ports.memory.recall import FailurePatternRecallPort
 from squadops.ports.memory.records import MemoryRecordsPort
@@ -39,6 +39,29 @@ class SnapshotRecall(FailurePatternRecallPort):
         #: (``create_failure_recall``); a unit test of the lessons alone may hold none.
         self._records = records
         self._attempts = attempts
+
+    async def pinned_instructions(
+        self, unit_kind: UnitKind, unit_id: str
+    ) -> tuple[PinnedInstruction, ...]:
+        # Read as the lessons are, with their attempts: a read that fails them all raises, since
+        # these bind and an unreadable snapshot can't say none were pinned (#2179).
+        for attempt in range(1, self._attempts + 1):
+            try:
+                snapshot = await self._store.get_snapshot(unit_kind, unit_id)
+            except Exception:
+                if attempt == self._attempts:
+                    raise
+                logger.warning(
+                    "memory_instructions_read_failed unit=%s:%s attempt=%d/%d",
+                    unit_kind,
+                    unit_id,
+                    attempt,
+                    self._attempts,
+                    exc_info=True,
+                )
+                continue
+            return snapshot.instructions if snapshot is not None else ()
+        return ()
 
     async def task_instructions(self, project_id: str, cycle_id: str) -> list[MemoryRecord]:
         if self._records is None:
