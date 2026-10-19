@@ -121,6 +121,7 @@ async def _world():
         launch=AsyncMock(),
         evaluate_outcome=None,
         outcome_section=None,
+        intervention_section=None,
         clock=lambda: now[0],
     )
     return campaigns, cycles, progress, now
@@ -174,6 +175,7 @@ async def test_the_digest_asks_for_the_answer_until_the_campaign_moves_on():
                 [],
                 [],
                 outcomes=None,
+                interventions=None,
             )
         )
 

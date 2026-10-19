@@ -67,7 +67,7 @@ from squadops.cycles.cycle_assessment import AssessorIdentity
 from squadops.execution.cycle_evidence import assess_cycle
 from squadops.execution.reply_router import ReplyRouter
 from squadops.memory.reconcile import reconcile_recent
-from squadops.outcomes.campaign_package import campaign_outcomes
+from squadops.outcomes.campaign_package import campaign_interventions, campaign_outcomes
 from squadops.projects.cutover import (
     CutoverProblem,
     RegistryCutoverRefused,
@@ -613,6 +613,8 @@ async def _init_cycle_subsystem(state, config, pool) -> None:
         evaluate_outcome=cycle_evaluator.cycle_ended,
         # SIP-0113 §4.4 (#2418): the package's outcome section, read from the same store.
         outcome_section=partial(campaign_outcomes, scenario_store),
+        # SIP-0113 §4.3, §4.6 (#2418): the ledger's entries, which AOR reads, in the package too.
+        intervention_section=partial(campaign_interventions, intervention_ledger),
     )
 
     flow_executor = create_flow_executor(

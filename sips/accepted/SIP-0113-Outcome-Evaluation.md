@@ -881,10 +881,28 @@ within them, for the owner's review.
     - three campaigns from 2026-10-02 and -03 promoted before #1887 recorded a tree's reference. They read
       *not read*, not violated;
     - a campaign aborted while a version awaited its ruling had read as a lost ruling. An abort ends it.
-- **Not built yet, on #2418:**
-  - AOR and the AWE themselves, grouped by the class, which also need the intervention ledger's severities
-    in the package;
-  - "every quality baseline held", which waits for prediction 4's tolerance (§10f).
+- **AOR and the AWE, as built** (2026-10-19, #2418; `squadops.outcomes.aor`).
+  - **The package carries the intervention ledger** (`interventions`, from `campaign_interventions`): each
+    intervention row with its classification's severity, each action declared outside the interface, and
+    the rows not yet classified.
+  - **Each campaign's four inputs** read `True`, `False`, or `None` when they can't be read:
+    - reached its objective: the campaign ended in `success`;
+    - no intervention above `advisory`. An unclassified intervention can't be read;
+    - every quality baseline held: `None` in phase 1, until prediction 4's tolerance (§10f);
+    - every safety guarantee intact: the seven above.
+
+    A campaign with any input unread is never counted reliable.
+  - **The digest** shows them under **Autonomy**, with the campaign's standing toward its class's AOR.
+  - **The AWE** (`work_envelope`, and `scripts/dev/aor_reading.py` over the deploy's stored packages):
+    - AOR per declared work class, never pooled;
+    - a class has a rate only once every campaign in it is read;
+    - each unread campaign is named with the inputs that kept it from being read;
+    - no composite across classes.
+  - **Read live over the Spark's 51 stored packages:** every campaign is *none declared* (all predate the
+    class), 25 didn't reach their objective, and 26 are unread on the ledger (no earlier package carries it)
+    and on baselines. So there's no rate, which is what phase 1 can honestly say before the window.
+- **Still to read on #2418,** both in the window: prediction 3 (some accepted increments read `neutral`),
+  and "every quality baseline held", once prediction 4's tolerance is read (§10f).
 
 **Who ruled it.** The owner accepted §4.4 (2026-10-17). The precedence and the blocked-now reading are the
 implementer's, for the owner's review.

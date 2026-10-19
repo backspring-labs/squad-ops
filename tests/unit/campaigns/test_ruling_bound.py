@@ -107,6 +107,7 @@ async def test_the_sweep_records_each_bound_once_and_a_ruling_still_resolves_the
         launch=AsyncMock(),
         evaluate_outcome=None,
         outcome_section=None,
+        intervention_section=None,
         clock=lambda: now[0],
     )
 
@@ -228,7 +229,9 @@ async def test_the_digest_asks_for_the_ruling_and_says_which_bounds_it_has_passe
     [row] = ruling_overdue_transitions(
         await at_the_gate.get_campaign(CID), log, gate_opened_at(log) + timedelta(seconds=BOUND)
     )
-    before = digest(package(await at_the_gate.get_campaign(CID), log, [], [], outcomes=None))
+    before = digest(
+        package(await at_the_gate.get_campaign(CID), log, [], [], outcomes=None, interventions=None)
+    )
     await at_the_gate.transition(CID, row)
 
     after = digest(
@@ -238,6 +241,7 @@ async def test_the_digest_asks_for_the_ruling_and_says_which_bounds_it_has_passe
             [],
             [],
             outcomes=None,
+            interventions=None,
         )
     )
 

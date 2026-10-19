@@ -75,6 +75,7 @@ async def world():
         launch=AsyncMock(),
         evaluate_outcome=None,
         outcome_section=None,
+        intervention_section=None,
     )
     app.state.authz_port = KeycloakAuthzAdapter()
     await campaigns.create_campaign(

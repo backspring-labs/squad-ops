@@ -10,17 +10,25 @@ cycle's latest record against the campaign's pinned suite, with
 Never a scenario's goal, steps or checks: the store keeps those, held out. The package is a
 project-level artifact that no squad task's inputs list (``test_held_out_packages.py``).
 Reporting-only: nothing that decides the campaign reads this section.
+
+``campaign_interventions`` is the package's intervention section (§4.3): the ledger's entries, each
+with its classification's severity, the interventions declared outside the interface, and the two
+gaps §7 prediction 5 reads. AOR reads *no intervention above advisory* from it (§4.6).
 """
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from typing import TYPE_CHECKING
 
+from squadops.campaigns.models import ControlLogEntry
 from squadops.outcomes.contribution import NotComparable, contribution
+from squadops.outcomes.ledger import LedgerEntry, ledger
 from squadops.outcomes.quality_deltas import Against, QualityDeltas, quality_deltas
 from squadops.scenarios.evaluation import EvaluationRecord
 
 if TYPE_CHECKING:
+    from squadops.ports.outcomes import InterventionLedgerPort
     from squadops.ports.scenarios import ScenarioStorePort
 
 
@@ -114,3 +122,36 @@ def _cycle_section(
         except NotComparable as e:
             section["vs_baseline"] = {"unread_because": str(e)}
     return section
+
+
+async def campaign_interventions(
+    store: InterventionLedgerPort, campaign_id: str, control_log: Sequence[ControlLogEntry]
+) -> dict:
+    """The campaign's interventions for its package (§4.3): each row a person or the supervisor
+    acted with, and each declared action outside the interface, with its severity once
+    classified; and the rows not yet classified, and classifications naming no row of it."""
+    read = ledger(
+        campaign_id,
+        control_log,
+        await store.classifications(campaign_id),
+        await store.declared(campaign_id),
+    )
+    return {
+        "entries": [_entry(e) for e in read.entries],
+        "unclassified": list(read.unclassified),
+        "orphaned": list(read.orphaned),
+    }
+
+
+def _entry(entry: LedgerEntry) -> dict:
+    """One intervention as the package keeps it: its severity and reason once classified, or as
+    declared; ``None`` for both while it awaits its classification."""
+    kind = entry.classification or entry.declared
+    return {
+        "entry_id": entry.entry_id,
+        "operation": entry.operation,
+        "actor": entry.actor,
+        "at": entry.at.isoformat(),
+        "severity": kind.severity if kind else None,
+        "reason": kind.reason if kind else None,
+    }
