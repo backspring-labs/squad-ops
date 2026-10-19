@@ -15,6 +15,7 @@ COMMIT = "962858eb0e321ed084463637c9faf661c179a41e"
 REPOSITORY = {
     "commit": COMMIT,
     "map": "- `tally/__main__.py` (700 bytes)\n- `CONTRIBUTING.md` (500 bytes)",
+    "checks": [{"id": "parse", "argv": ["python3", "-m", "unittest", "discover", "-s", "checks"]}],
     "instructions": {"CONTRIBUTING.md": "Build first: `python3 tools/build.py`."},
     "existing_files": {"tally/__main__.py": "import argparse\n"},
 }
@@ -56,6 +57,8 @@ async def test_the_developer_is_shown_the_product_its_instructions_and_the_file_
     assert "- `tally/__main__.py` (700 bytes)" in prompt
     assert "Build first: `python3 tools/build.py`." in prompt
     assert "**tally/__main__.py:**\n```\nimport argparse\n" in prompt
+    # the live run's framing authored a command criterion twice for want of this (#2410)
+    assert "- `parse`: `python3 -m unittest discover -s checks`" in prompt
     assert "{{" not in prompt
 
 

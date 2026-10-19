@@ -81,12 +81,21 @@ def test_the_focus_is_the_named_text_files_in_order_within_the_budget():
     assert focus_paths(manifest, ["a.py", "big.py", "c.py"]) == ["a.py"]
 
 
-def test_the_input_carries_the_map_the_instructions_and_the_named_files():
-    manifest = _manifest({"a.py": b"old", "CONTRIBUTING.md": b"rules"}, (), ["CONTRIBUTING.md"])
+def test_the_input_carries_the_map_the_checks_the_instructions_and_the_named_files():
+    manifest = manifest_of(
+        COMMIT,
+        {"a.py": b"old", "CONTRIBUTING.md": b"rules"},
+        (),
+        ["CONTRIBUTING.md"],
+        classify=_classify,
+        checks=[("tests", ("python3", "-m", "pytest", "tests"))],
+    )
+    assert CheckoutManifest.from_json(manifest.to_json()) == manifest
 
     view = source_repository_input(manifest, {"a.py": "new", "CONTRIBUTING.md": "rules"}, ["a.py"])
 
     assert view["commit"] == COMMIT
+    assert view["checks"] == [{"id": "tests", "argv": ["python3", "-m", "pytest", "tests"]}]
     assert view["instructions"] == {"CONTRIBUTING.md": "rules"}
     assert view["existing_files"] == {"a.py": "new"}
     assert "`a.py`" in view["map"]

@@ -71,6 +71,7 @@ async def seed_checkout_artifacts(
         tree.executable,
         [s.path for s in configuration.instruction_sources],
         classify=lambda path: _classify_file(path)[0],
+        checks=[(c.id, c.argv) for c in configuration.commands.checks],
     )
     provenance = {
         "producing_task_type": SOURCE_CHECKOUT,

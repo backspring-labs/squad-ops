@@ -5,8 +5,9 @@ commit, as a campaign increment starts from its accepted tree (SIP-0109 §7.3). 
 file is seeded as the run's own starting content, so whatever the squad produces for a path wins
 over it, and every other file is delivered as it was.
 
-What a task sees of it is bounded. The squad gets three things, never a silently truncated tree:
+What a task sees of it is bounded. The squad gets four things, never a silently truncated tree:
 - a map of every path;
+- the product's own checks, which verify the change;
 - the product's own instruction files;
 - the current content of the files that task names.
 """
@@ -70,6 +71,9 @@ class CheckoutManifest:
     executable: frozenset[str] = field(default_factory=frozenset)
     instruction_paths: tuple[str, ...] = ()
     generated: frozenset[str] = field(default_factory=frozenset)
+    #: The product's own checks at the pinned configuration revision, (id, argv): what verifies
+    #: the run's change, shown to every task so a plan writes tests those checks find.
+    checks: tuple[tuple[str, tuple[str, ...]], ...] = ()
 
     @property
     def held_back(self) -> frozenset[str]:
@@ -85,6 +89,7 @@ class CheckoutManifest:
                 "executable": sorted(self.executable),
                 "instruction_paths": list(self.instruction_paths),
                 "generated": sorted(self.generated),
+                "checks": [{"id": i, "argv": list(a)} for i, a in self.checks],
             },
             indent=1,
         ).encode()
@@ -99,6 +104,7 @@ class CheckoutManifest:
             executable=frozenset(doc["executable"]),
             instruction_paths=tuple(doc["instruction_paths"]),
             generated=frozenset(doc["generated"]),
+            checks=tuple((c["id"], tuple(c["argv"])) for c in doc["checks"]),
         )
 
 
@@ -109,6 +115,7 @@ def manifest_of(
     instruction_paths: Iterable[str],
     *,
     classify: Callable[[str], str],
+    checks: Iterable[tuple[str, tuple[str, ...]]] = (),
 ) -> CheckoutManifest:
     """The checkout's manifest, refused past 2.4's limits. ``classify`` names a path's artifact
     type, as the run's storage will."""
@@ -138,6 +145,7 @@ def manifest_of(
         executable=frozenset(executable),
         instruction_paths=tuple(p for p in instruction_paths if p in files),
         generated=frozenset(generated),
+        checks=tuple(checks),
     )
 
 
@@ -188,6 +196,7 @@ def source_repository_input(
     return {
         "commit": manifest.commit,
         "map": repository_map(manifest),
+        "checks": [{"id": i, "argv": list(a)} for i, a in manifest.checks],
         "instructions": {p: current[p] for p in manifest.instruction_paths if p in current},
         "existing_files": {p: current[p] for p in focus if p in current},
     }

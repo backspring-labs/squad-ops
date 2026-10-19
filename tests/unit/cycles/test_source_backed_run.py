@@ -241,6 +241,10 @@ async def test_the_developer_sees_the_files_its_task_names_as_they_are_now(world
     assert set(repository["existing_files"]) == {"tally/__main__.py"}
     assert "argparse" in repository["existing_files"]["tally/__main__.py"]
     assert set(repository["instructions"]) == {"CONTRIBUTING.md"}
+    # the product's own checks, from the pinned configuration revision: what verifies the change
+    assert [c["id"] for c in repository["checks"]] == [
+        "build", "parse", "ledger", "server", "report", "notify"
+    ]  # fmt: skip
     assert "`tally/report.py`" in repository["map"]
     # the checkout reaches the prompt only through this bounded view
     assert "tally/ledger.py" not in before.inputs.get("artifact_contents", {})

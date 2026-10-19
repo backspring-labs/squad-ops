@@ -1,10 +1,11 @@
 ---
 template_id: request.source_repository_appendix
-version: "1"
+version: "2"
 required_variables:
   - commit
   - repository_map
 optional_variables:
+  - checks
   - instructions
   - existing_files
 ---
@@ -17,6 +18,8 @@ new app. Its layout, its tools and its conventions are the product's, and they s
 Every file it holds at that commit:
 
 {{repository_map}}
+
+{{checks}}
 
 {{instructions}}
 
