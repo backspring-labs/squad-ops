@@ -5703,6 +5703,18 @@ def cmd_rerender(cfg: SetConfig, record: Path, out: Path) -> int:
     return 0
 
 
+def _pinned_words(rec: dict) -> str:
+    """The roll's pinned project instructions (SIP-0110 §A.3.7), as the record's header says them."""
+    if "pinned_instructions" not in rec:
+        return "not recorded (a record from before SIP-0110 §5t)"
+    pinned = rec["pinned_instructions"]
+    if pinned is None:
+        return "**unknown**: the cycle pinned no snapshot, or its pin could not read the records"
+    if not pinned:
+        return "none"
+    return ", ".join(f"`{i['record_id']}@{i['revision']}`" for i in pinned)
+
+
 def render(cfg: SetConfig, title: str, rec: dict) -> str:
     audit = rec.get("boot_audit", {})
     functional = rec.get("verdict") == "accepted" and audit.get("passed") is True
@@ -5721,8 +5733,19 @@ def render(cfg: SetConfig, title: str, rec: dict) -> str:
         f"{_show_at(rec, 'lineage.framework_git_sha', lambda v: f'`{v}`')} · request profile "
         f"{_show_at(rec, 'lineage.request_profile', lambda v: f'`{v}`')}",
         "",
+        f"**Project instructions pinned** {_pinned_words(rec)}",
+        "",
         "## Headline",
         "",
+        *(
+            [
+                "- **The pinned project-instruction set changed since "
+                f"`{rec['instruction_set_change']['previous_record']}`**: a listed input moved "
+                "(SIP-0110 §0.12), so this roll's result is not comparable with that one's as is."
+            ]
+            if rec.get("instruction_set_change")
+            else []
+        ),
         *(
             [
                 "- **DIAGNOSTIC — injected fault(s): "
@@ -5913,6 +5936,51 @@ def identity_mismatch(expected_prefix: str, actual: str) -> bool:
     return bool(expected_prefix) and not (actual or "").startswith(expected_prefix)
 
 
+def pinned_instruction_set(cycle_id: str) -> list[dict] | None:
+    """SIP-0110 Appendix A §3.7: the project instructions the cycle's snapshot pinned, each by
+    its record and revision, sorted. ``None`` when the cycle pinned no snapshot, or its pin could
+    not read the project's records: an unknown set, never read as an empty one."""
+    body = psql(
+        "select coalesce(snapshot_body::text,'') from memory_snapshots "
+        f"where unit_kind='cycle' and unit_id='{cycle_id}';"
+    )
+    if not body:
+        return None
+    snapshot = json.loads(body)
+    if snapshot.get("instructions_unread"):
+        return None
+    return sorted(
+        (
+            {"record_id": i["record_id"], "revision": i["revision"]}
+            for i in snapshot.get("instructions") or ()
+        ),
+        key=lambda i: (i["record_id"], i["revision"]),
+    )
+
+
+def instruction_set_change(cfg: SetConfig, pinned: list[dict] | None) -> dict | None:
+    """§3.7: a counted roll whose pinned instruction set differs from the set's previous counted
+    roll's has changed a listed input (SIP-0110 §0.12), so it is flagged and the yardstick never
+    moves unannounced. The previous roll is the latest ``roll-*`` record that read its set.
+    ``None`` when this one agrees with it, or no counted roll came before."""
+    earlier = []
+    for path in cfg.records_path.glob("roll-*.json"):
+        try:
+            rec = json.loads(path.read_text())
+        except (OSError, ValueError):
+            continue
+        if "pinned_instructions" in rec:
+            earlier.append(
+                (str(rec.get("launched_at") or ""), path.name, rec["pinned_instructions"])
+            )
+    if not earlier:
+        return None
+    _, name, previous = max(earlier)
+    if previous == pinned:
+        return None
+    return {"previous_record": name, "previous": previous, "now": pinned}
+
+
 def _write_record(cfg: SetConfig, stem: str, rec: dict, md: str) -> None:
     cfg.records_path.mkdir(parents=True, exist_ok=True)
     stamp = datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ")
@@ -5953,6 +6021,17 @@ def _run_cycle(
     rec["stack"] = stack
     rec["config_hash"] = chash
     rec["launched_at"] = launched_at
+    # SIP-0110 Appendix A §3.7: the project instructions the roll pinned, and, for a counted
+    # roll, a set that moved since the previous one's.
+    rec["pinned_instructions"] = pinned_instruction_set(cyc)
+    if stem.startswith("roll-"):
+        change = instruction_set_change(cfg, rec["pinned_instructions"])
+        if change is not None:
+            log(
+                f"!! the pinned project-instruction set changed since {change['previous_record']}: "
+                "a listed input moved (SIP-0110 §0.12)"
+            )
+            rec["instruction_set_change"] = change
     if identity_mismatch(cfg.expected_squad_snapshot_prefix, rec["squad_profile_snapshot_ref"]):
         log(
             f"!! squad-profile snapshot {rec['squad_profile_snapshot_ref'][:16]} != the set's "
