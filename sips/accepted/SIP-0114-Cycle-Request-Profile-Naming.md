@@ -368,9 +368,16 @@ Pick a direction (A / B / C / hybrid) and confirm the deprecation approach, so a
   its own stack and sets none of the three keys, so its launches would gain required checks, a time budget and
   manifest attempts. `fullstack-fastapi-react` is the same. That contradicts decision 4 and Q13, which freeze the
   campaign profiles.
-- **So the defaults apply beneath the seven operator profiles only.** An old or a campaign profile resolves exactly as
-  it did, whatever stack the caller passes. That holds by construction. A test runs every old and campaign profile on
-  every stack, and a mutant without the rule fails 26 cases.
+- **So the defaults apply beneath the seven operator profiles only.** Every other profile, released or the campaigns',
+  resolves exactly as it did, whatever stack the caller passes. That holds by construction. A test runs every one of
+  them on every stack, and a mutant without the rule fails 26 cases.
+- **Three released names change, as (a) intends:** `build`, `wrapup` and `benchmark` are operator profiles too, so a
+  stack set at create time adds the keys they don't set. No pinned config names any of them.
+- **The window's launches are frozen by hash** (the second read of PR #2500). The 2.4 window's and its shakeouts'
+  calibration and repair launches resolve to the config hashes main recorded before #316. Those hashes were read on
+  main and on this branch, found identical, and pinned in a test. A second reader also rebuilt all 309 pinned
+  requests on both trees: 153 verification sets, and every campaign definition's calibration, increment, retry and
+  repair launches. Every body and hash was identical.
 - **(a)'s own example holds:** `build` is an operator profile, so `build --set build_profile=fullstack_fastapi_react`
   gains the stack's required checks, as (a) says.
 - **Evidence:** `test_request_profile_taxonomy.py`; the wiring test `test_a_campaigns_launches_on_a_stack_resolve_as_their_profiles_do`

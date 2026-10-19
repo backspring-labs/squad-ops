@@ -204,3 +204,54 @@ def test_a_campaigns_launches_on_a_stack_resolve_as_their_profiles_do():
     for profile, body in launched.items():
         assert body["applied_defaults"] == load_profile(profile).defaults, profile
         assert body["execution_overrides"]["build_profile"] == "nextjs_ts", profile
+
+
+#: The 2.4 window's launches as main resolved them before #316 (read on c6e10001, and again on this
+#: branch, by the second read's method): a calibration and a repair cycle per stack, by config
+#: hash. Frozen, so any change on the path a window launch takes (a profile, the stack's defaults,
+#: the overrides, the hash) fails here, not only one that changes a profile's own defaults.
+_WINDOW_LAUNCH_HASHES = {
+    "fullstack_fastapi_react": (
+        "a79f58658cd8b37e1a65db41ec343a83a0528d45dd6ccd30964bc611425ece91",
+        "00127ca7131c4f38448b7b517cd63ab8e3925e3af31fbfca86ecd8eb84a2ad11",
+    ),
+    "nextjs_ts": (
+        "8e730c8ea1690bdeed5c5eb41277df2cdc0ae402b75ba2c375f331810c9b2c65",
+        "6001f3f91be715933c9376bb70fe029cc0080e4608cd953ec6591b1cd38f9189",
+    ),
+}
+_WINDOW_DEFINITIONS = sorted(ROOT.glob("examples/03_group_run/campaigns/2-4-0-*.yaml"))
+
+
+@pytest.mark.parametrize("path", _WINDOW_DEFINITIONS, ids=lambda p: p.name)
+def test_the_windows_launches_resolve_to_the_hashes_main_recorded(path):
+    """The second read of PR #2500. Bug caught: anything on a window campaign's launch path moving
+    the config its cycles record (an override computed differently, a profile file edited, the hash
+    changed), which comparing a profile's defaults against themselves misses. The window's two
+    profiles already set the stack's three keys, so a stack's defaults leaking past the operator
+    rule doesn't move these hashes: ``test_an_old_or_campaign_profile_gets_nothing_from_a_stack``
+    catches that."""
+    from squadops.campaigns.launch_requests import bound_launch, calibration_launch
+    from squadops.campaigns.models import AcceptedTree, CycleKind
+    from tests.unit.campaigns.builders import campaign, policy
+
+    raw = yaml.safe_load(path.read_text())
+    c = campaign(policy=policy(**raw["policy"]), accepted=AcceptedTree("sha-1", "cyc_cal"))
+    launches = (
+        calibration_launch(c).cycle_request["body"],
+        bound_launch(c, CycleKind.REPAIR, {"proposal_id": "p"}, ["art_1"], None).cycle_request[
+            "body"
+        ],
+    )
+
+    assert (
+        tuple(
+            compute_config_hash(b["applied_defaults"], b["execution_overrides"]) for b in launches
+        )
+        == _WINDOW_LAUNCH_HASHES[raw["policy"]["stack"]]
+    )
+
+
+def test_the_window_definitions_are_read():
+    """Bug caught: the frozen-hash test above passing on no definition (a moved directory)."""
+    assert len(_WINDOW_DEFINITIONS) == 6

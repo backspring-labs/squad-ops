@@ -51,7 +51,8 @@
   // ── Form state ──────────────────────────────────────────────────────
   let selectedProjectId = $state('');
   let selectedSquadProfileId = $state('');
-  let selectedRequestProfileName = $state('default');
+  // #316: the operator's profiles, as the CLI's default; the listing no longer carries `default`.
+  let selectedRequestProfileName = $state('smoke');
   let prdMode = $state('write');
   let prdText = $state('');
   let prdLoading = $state(false);
@@ -135,6 +136,10 @@
       projects = await projResp.json();
       squadProfiles = await squadResp.json();
       requestProfiles = await profileResp.json();
+      // A choice the listing doesn't carry would send a cycle with no profile's defaults at all.
+      if (requestProfiles.length > 0 && !requestProfiles.some((p) => p.name === selectedRequestProfileName)) {
+        selectedRequestProfileName = requestProfiles[0].name;
+      }
 
       // Auto-select first project and active squad profile
       if (projects.length > 0) {
@@ -193,6 +198,10 @@
   async function handleSubmit() {
     if (!canSubmit) return;
 
+    if (!selectedRequestProfile) {
+      submitError = 'Choose a request profile';
+      return;
+    }
     submitting = true;
     submitError = null;
 
