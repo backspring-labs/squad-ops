@@ -1292,3 +1292,35 @@ checks:
       param = inspect.signature(CampaignProgress).parameters["intervention_section"]
       print(len(READERS), param.default is inspect.Parameter.empty, BASELINES)
     expect: 7 True every quality baseline held
+  - id: "2464-where-sandbox"
+    what: the runner's where check, in the sandbox service, where scenarios run
+    container: squadops-sandbox-service
+    code: |
+      import asyncio
+      from squadops.scenarios.steps import HttpResponse, run_scenario
+      async def send(request):
+          return HttpResponse(200, [{"title": "Other"}, {"title": "Listed", "location": "Pier"}])
+      step = {"action": "http", "method": "GET", "path": "/runs"}
+      check = {"check": "json", "step": 1, "path": "", "where": {"title": "Listed", "location": "Pier"}}
+      print(asyncio.run(run_scenario({"scenario_id": "s", "steps": [step], "checks": [check]}, send)).result)
+    expect: passed
+  - id: "2464-where-runtime"
+    what: the runner's where check, in the runtime API, which resolves each scenario's concepts
+    container: squadops-runtime-api
+    code: |
+      from squadops.scenarios.fields import resolve
+      check = {"check": "json", "step": 1, "path": "", "where": {"@Run:location": "Pier"}}
+      print(resolve(check, {"Run:location": ["meeting_location"]}, {"Run": {"meeting_location"}})["where"])
+    expect: "{'meeting_location': 'Pier'}"
+  - id: "2416-spread"
+    what: prediction 4's spread reads a rule found in one re-measure as zero in the other
+    container: squadops-runtime-api
+    code: |
+      from squadops.outcomes.quality_spread import quality_spread
+      from squadops.scenarios.quality import LintReading, QualityStatus
+      def lint(by_rule):
+          reading = {"tools": {"ruff": "x"}, "total": sum(by_rule.values()), "by_rule": by_rule, "unavailable": {}}
+          return LintReading(QualityStatus.MEASURED, reading=reading, evaluator="e")
+      spread = quality_spread([(None, lint({"E501": 2})), (None, lint({}))])
+      print([(s.measure, s.spread) for s in spread.spreads])
+    expect: "[('lint:total', 2), ('lint:E501', 2)]"
