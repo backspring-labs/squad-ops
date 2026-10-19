@@ -20,12 +20,12 @@ created_at: '2026-07-01T00:00:00Z'
 **Revision:** 4 (2026-10-19; revision 3 was 2026-10-18, revision 2 2026-10-13, revision 1 2026-07-01)
 **Tracking:** #316 (holds the deferred #279 fold)
 
-## Revision 4 (2026-10-19): the MacBook lane's review, and acceptance
+## Revision 4 (2026-10-19): the MacBook lane's review, for acceptance
 
-**Accepted 2026-10-19 by the supervisor, under the owner's grant of that day.** The owner's words: "I grant you
-autonomy to use good judgement to approve cycles, PRs, issue choices etc." The supervisor wrote this SIP, so it was
-accepted only after the MacBook lane had reviewed revision 3, as the second reader. The MacBook lane approved all five
-decisions and asked for three additions, (a) to (c) below. The fourth, (d), was found while checking (c).
+**Reviewed 2026-10-19, for acceptance under the owner's grant of that day.** The owner's words: "I grant you autonomy
+to use good judgement to approve cycles, PRs, issue choices etc." The supervisor wrote this SIP, so the MacBook lane
+reviewed revision 3 as the second reader. It approved all five decisions and asked for three additions, (a) to (c)
+below. The fourth, (d), was found while checking (c). The decisions below are what acceptance commits to.
 
 - **(a) Three names are in both sets: `build`, `wrapup` and `benchmark`.** Each is an operator name and an old name.
   - **Each keeps its released YAML byte for byte.** It is the old profile, not a new one beside it, and the
@@ -61,7 +61,7 @@ decisions and asked for three additions, (a) to (c) below. The fourth, (d), was 
     lives is SIP-0112's (E.4.3, E.4.4), and it doesn't change this SIP's decisions.
   - **When:** it needs deciding before IR-2 and the shared demonstration's Campaign step (the 2.4 plan, §2.7).
 
-**Decision 5, as accepted:** a campaign carries its stack in its policy (#2443), not in its profiles' names. The stack
+**Decision 5, for acceptance:** a campaign carries its stack in its policy (#2443), not in its profiles' names. The stack
 is optional, and a campaign on an external Project declares none.
 
 ## Revision 3 (2026-10-18): the inventory re-read, `framing` answered, and a campaign's stack
@@ -210,7 +210,7 @@ The cycle-create resolver adds the stack's defaults to `applied_defaults`, so `v
 
 | part | status | where |
 |---|---|---|
-| the design (this SIP accepted) | **shipped** | 2.4.0, PR #PRNUM (accepted 2026-10-19, revision 4) |
+| the design (this SIP accepted) | **placed:** 2.4.0, #316 (moved from 2.3.0, 2026-10-15) | revision 4, reviewed by the MacBook lane 2026-10-19 |
 | the stack-declared defaults and the resolver (R2.3) | **placed:** 2.4.0, #316 (moved from 2.3.0, 2026-10-15) | the 2.4 plan |
 | the new names, with every old profile frozen under its old name | **placed:** 2.4.0, #316 (moved from 2.3.0, 2026-10-15) | the 2.4 plan |
 | CLI sugar flags (`--stack`, `--pulse`, `--multirole`) | **unplaced**, deliberately: `--set` covers them | — |
