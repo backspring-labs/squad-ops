@@ -1,0 +1,165 @@
+"""The typed memory records' routes (SIP-0110 Appendix A; #2177), entered at the HTTP surface with
+the real authorization adapter, over the in-memory stores.
+
+What bugs would these catch? The permission table (§A.3.3) holding in the domain but not through the
+API; another user's private record or another project's answering a query, or reached by id; a
+correction or a withdrawal that loses a revision; a task instruction aimed at another project's
+cycle; a failed write reported as success.
+"""
+
+from __future__ import annotations
+
+from datetime import UTC, datetime
+
+import pytest
+from fastapi import FastAPI, Request
+from fastapi.testclient import TestClient
+from starlette.middleware.base import BaseHTTPMiddleware
+
+from adapters.auth.keycloak.authz_adapter import KeycloakAuthzAdapter
+from adapters.memory.records import InMemoryMemoryRecords
+from squadops.api.routes.memory import memory_records_router
+from squadops.auth.models import Identity, IdentityType, Role, scopes_for_roles
+from squadops.cycles.models import Cycle, CycleNotFoundError, TaskFlowPolicy
+
+pytestmark = pytest.mark.auth
+
+URL = "/api/v1/memory-records"
+T0 = datetime(2026, 10, 19, tzinfo=UTC)
+
+
+def _identity(user: str, role: str) -> Identity:
+    return Identity(
+        user_id=user,
+        display_name=user,
+        roles=(role,),
+        scopes=tuple(sorted(scopes_for_roles((role,)))),
+        identity_type=IdentityType.HUMAN,
+    )
+
+
+class _Cycles:
+    """Two cycles of ``group_run``, one a campaign's, and one of another project."""
+
+    CYCLES = {"cyc_solo": ("group_run", None), "cyc_camp": ("group_run", "cmp_1"), "cyc_other": ("play_game", None)}  # fmt: skip
+
+    async def get_cycle(self, cycle_id: str) -> Cycle:
+        if cycle_id not in self.CYCLES:
+            raise CycleNotFoundError(cycle_id)
+        project, campaign = self.CYCLES[cycle_id]
+        return Cycle(
+            cycle_id=cycle_id, project_id=project, created_at=T0, created_by="owner", prd_ref=None,
+            squad_profile_id="full", squad_profile_snapshot_ref="sha256:abc",
+            task_flow_policy=TaskFlowPolicy(mode="sequential"), build_strategy="fresh",
+            campaign_id=campaign,
+        )  # fmt: skip
+
+
+@pytest.fixture
+def world():
+    class World:
+        def __init__(self) -> None:
+            self.identity = _identity("ada", Role.ADMIN)
+            app = FastAPI()
+            outer = self
+
+            class InjectIdentity(BaseHTTPMiddleware):
+                async def dispatch(self, request: Request, call_next):
+                    request.state.identity = outer.identity
+                    return await call_next(request)
+
+            app.add_middleware(InjectIdentity)
+            app.include_router(memory_records_router)
+            app.state.memory_records = InMemoryMemoryRecords()
+            app.state.cycle_registry = _Cycles()
+            app.state.authz_port = KeycloakAuthzAdapter()
+            self.client = TestClient(app)
+
+        def as_(self, user: str, role: str):
+            self.identity = _identity(user, role)
+            return self
+
+        def create(self, **body):
+            return self.client.post(URL, json={"body": "keep the join idempotent", **body})
+
+    return World()
+
+
+ANYWHERE = {"task_types": ["*"], "roles": ["*"], "stacks": ["*"]}
+
+
+@pytest.mark.parametrize(
+    ("role", "body", "status"),
+    [
+        (Role.VIEWER, {"kind": "note", "scope": "user"}, 201),
+        (Role.VIEWER, {"kind": "note", "scope": "project", "project_id": "group_run"}, 403),
+        (Role.ADMIN, {"kind": "note", "scope": "project", "project_id": "group_run"}, 201),
+        (Role.OPERATOR, {"kind": "instruction", "scope": "project", "project_id": "group_run", "applicability": ANYWHERE}, 403),
+        (Role.ADMIN, {"kind": "instruction", "scope": "project", "project_id": "group_run", "applicability": ANYWHERE}, 201),
+        (Role.OPERATOR, {"kind": "instruction", "scope": "task", "project_id": "group_run", "target": {"cycle_id": "cyc_solo", "task_types": ["qa.test"]}}, 201),
+        (Role.OPERATOR, {"kind": "instruction", "scope": "task", "project_id": "group_run", "target": {"cycle_id": "cyc_camp", "task_types": ["qa.test"]}}, 403),
+        (Role.CAMPAIGN_SUPERVISOR, {"kind": "instruction", "scope": "task", "project_id": "group_run", "target": {"cycle_id": "cyc_camp", "task_types": ["qa.test"]}}, 201),
+        (Role.ADMIN, {"kind": "instruction", "scope": "task", "project_id": "group_run", "target": {"cycle_id": "cyc_other", "task_types": ["qa.test"]}}, 422),
+        (Role.ADMIN, {"kind": "note", "scope": "project", "project_id": "group_run", "references": [{"ref": "manifest:decision:d@3", "content": "x"}]}, 422),
+    ],
+    ids=[
+        "anyone-keeps-a-private-note", "a-viewer-cant-write-a-project-note",
+        "an-admin-writes-a-project-note", "an-operator-cant-instruct-a-project",
+        "an-admin-instructs-a-project", "an-operator-directs-a-standalone-cycle",
+        "an-operator-cant-direct-a-campaigns-cycle", "the-supervisor-directs-a-campaigns-cycle",
+        "a-task-instruction-for-another-projects-cycle", "a-reference-carrying-a-copy",
+    ],
+)  # fmt: skip
+def test_each_permission_rule_holds_through_the_api(world, role, body, status):
+    """§A.3.3's table, entered at the HTTP surface with the real role-to-scope mapping."""
+    response = world.as_("ada", role).create(**body)
+
+    assert response.status_code == status, response.text
+    if status == 403:
+        assert response.json()["detail"]["error"]["code"] == "FORBIDDEN"
+
+
+def test_a_query_answers_with_its_binding_only_and_a_hidden_record_is_not_found(world):
+    """T4 through the API. Bug caught: another user's private note listed or fetched by id, or a
+    project's records answering an unbound query."""
+    world.as_("ada", Role.ADMIN)
+    private = world.create(kind="note", scope="user").json()["record_id"]
+    project = world.create(kind="note", scope="project", project_id="group_run").json()["record_id"]
+
+    world.as_("bo", Role.VIEWER)
+    bound = [
+        r["record_id"] for r in world.client.get(URL, params={"project_id": "group_run"}).json()
+    ]
+    unbound = world.client.get(URL).json()
+
+    assert bound == [project]
+    assert unbound == []
+    assert world.client.get(f"{URL}/{private}").status_code == 404
+    assert world.client.get(f"{URL}/{project}").status_code == 200
+
+
+def test_a_correction_and_a_withdrawal_keep_every_revision(world):
+    """§A.3.8 through the API. Bug caught: a correction replacing the record, a withdrawn record
+    still listed, or one whose history is gone."""
+    world.as_("ada", Role.ADMIN)
+    rid = world.create(kind="note", scope="project", project_id="group_run").json()["record_id"]
+
+    revised = world.client.post(f"{URL}/{rid}/revisions", json={"body": "and say why"})
+    gone = world.client.post(f"{URL}/{rid}/withdrawal", json={"why": "now an instruction"})
+    listed = world.client.get(URL, params={"project_id": "group_run"}).json()
+    history = world.client.get(f"{URL}/{rid}").json()
+
+    assert revised.status_code == 201 and revised.json()["current"]["supersedes"] == 1
+    assert gone.status_code == 201 and gone.json()["status"] == "withdrawn"
+    assert listed == []
+    assert [r["body"] for r in history["revisions"]] == ["keep the join idempotent", "and say why"]
+    assert world.client.post(f"{URL}/{rid}/revisions", json={"body": "again"}).status_code == 422
+
+
+def test_only_the_owner_corrects_a_private_record(world):
+    """Bug caught: an admin rewriting someone's private note because they hold every scope."""
+    world.as_("ada", Role.VIEWER)
+    rid = world.create(kind="preference", scope="user").json()["record_id"]
+
+    world.as_("bo", Role.ADMIN)
+    assert world.client.post(f"{URL}/{rid}/revisions", json={"body": "x"}).status_code == 404
