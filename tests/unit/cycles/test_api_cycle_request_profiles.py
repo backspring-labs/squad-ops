@@ -89,3 +89,61 @@ class TestGetCycleRequestProfile:
                 assert "choices" in meta
                 assert "type" in meta
                 assert "required" in meta
+
+
+class TestResolveCycleRequest:
+    """#2520: the console resolves a profile's name into the cycle-create body here, with the
+    builder the CLI and a campaign's launches use."""
+
+    @pytest.mark.parametrize("stack", ["fullstack_fastapi_react", "nextjs_ts"])
+    def test_an_operator_profile_on_a_stack_resolves_to_exactly_the_clis_body(self, client, stack):
+        """Bug caught: the console creating a different cycle from the CLI's for the same request:
+        an operator profile on a stack without the stack's required checks, time budget and
+        manifest attempts beneath it (#316, R2.3), as the console's own body builder did."""
+        from squadops.contracts.cycle_request_profiles import cycle_request_body
+        from squadops.stacks.request_defaults import request_defaults_for
+
+        values = {"build_profile": stack, "max_correction_attempts": 2}
+        resp = client.post(
+            "/api/v1/cycle-request-profiles/validate/resolve",
+            json={"squad_profile_id": "full", "values": values, "prd_ref": "art_prd", "notes": "n"},
+        )
+        cli = cycle_request_body(
+            "validate", squad_profile_id="full", user_values=values, notes="n", prd_ref="art_prd"
+        )
+
+        assert resp.status_code == 200
+        body = resp.json()
+        assert {k: body[k] for k in cli} == cli
+        stack_keys = set(request_defaults_for(stack))
+        assert stack_keys and stack_keys <= set(body["applied_defaults"])
+        assert body["execution_overrides"]["max_correction_attempts"] == 2
+
+    @pytest.mark.parametrize(
+        ("path", "payload", "status"),
+        [
+            ("no-such-profile", {"squad_profile_id": "full"}, 404),
+            (
+                "validate",
+                {"squad_profile_id": "full", "values": {"build_strategy": "sideways"}},
+                422,
+            ),
+            ("validate", {"squad_profile_id": "full", "applied_defaults": {}}, 422),
+            ("validate", {}, 422),
+        ],
+        ids=[
+            "unknown-profile",
+            "a-body-create-refuses",
+            "a-field-the-caller-may-not-set",
+            "no-squad",
+        ],
+    )
+    def test_a_request_that_cant_resolve_is_refused_before_anything_is_created(
+        self, client, path, payload, status
+    ):
+        """Bug caught: a value the create route refuses resolved anyway, so the console's preview
+        shows a cycle it then fails to create; or the caller setting the resolved fields itself,
+        which is the second builder this route replaces."""
+        resp = client.post(f"/api/v1/cycle-request-profiles/{path}/resolve", json=payload)
+
+        assert resp.status_code == status

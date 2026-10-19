@@ -594,6 +594,18 @@ class PromptMetaResponse(BaseModel):
     required: bool = False
 
 
+class CycleRequestResolveRequest(BaseModel):
+    """A request profile's name resolved into a cycle-create body, server-side (#2520): the squad,
+    the caller's values over the profile's, and the notes and PRD the body carries."""
+
+    squad_profile_id: str
+    values: dict = Field(default_factory=dict)
+    notes: str | None = None
+    prd_ref: str | None = None
+
+    model_config = ConfigDict(extra="forbid")
+
+
 class CycleRequestProfileResponse(BaseModel):
     """Cycle request profile with defaults and prompt metadata (SIP-0074)."""
 
