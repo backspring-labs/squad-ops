@@ -856,14 +856,35 @@ within them, for the owner's review.
     file the CLI reads everything else from. The file is the one place, and its path and sha256 are already
     on the creation row (#1954).
   - **The digest's header names it.** Nothing that decides a campaign reads it.
+- **The safety guarantees, as built** (2026-10-19, #2418; `squadops.campaigns.safety_guarantees`). **Ruled by
+  the owner, 2026-10-19:** AOR's *every safety guarantee intact* means the 2.0 set's seven
+  (`docs/plans/2-0-0-preregistration.md` §3), each read from the package's control log and cycle records.
+  - **Each reads held, violated (with the rows that break it), or not read (with why).** A guarantee that
+    can't be read is never counted as held, so *intact* is true only when all seven held.
+  - **What each is read from:**
+    - *no build without an approving ruling:* each non-calibration cycle with an implementation run, against
+      the applied approving rulings on the proposal its launch names, at its block's version for a retry or
+      a repair, bound to the tree the campaign had accepted when it was ruled;
+    - *no stale or conflicting ruling honoured:* each applied ruling against the latest version then
+      submitted, by content hash, and no version ruled two ways;
+    - *no ruling lost:* at close, every submitted version ruled, superseded, ended by its cycle's decision,
+      or ended by an abort;
+    - *no duplicate launch:* one cycle per launch intent;
+    - *no partial promotion:* every promotion with its tree's reference and a bundle per frozen criterion;
+    - *no launch beside a crew model:* no launch while the supervisor held the box. The box's model check
+      holds a launch back before it is marked, but a run start that waited on it shows only in the
+      runtime's log, which the package doesn't carry, and the reading says so;
+    - *the package complete at close:* every launched cycle in it, each readable, with its outcome section.
+  - **The digest** renders the seven under **Safety guarantees**.
+  - **Read live, over the Spark's 51 stored packages,** before the tests were written: 48 intact, the 2.0
+    set's two among them (as its hand reading found), and 3 not read. That read corrected two readings:
+    - three campaigns from 2026-10-02 and -03 promoted before #1887 recorded a tree's reference. They read
+      *not read*, not violated;
+    - a campaign aborted while a version awaited its ruling had read as a lost ruling. An abort ends it.
 - **Not built yet, on #2418:**
-  - AOR and the AWE themselves, grouped by the class;
-  - "every quality baseline held", which waits for prediction 4's tolerance (§10f);
-  - "every safety guarantee intact": the 2.0 set's pre-registration (`docs/plans/2-0-0-preregistration.md` §3)
-    lists seven, each read from the control log and the cycle records, and SIP-0109's v2.0.0 record reads
-    them held. This SIP doesn't say AOR means those seven, and no code reads them yet. Which ones AOR takes is
-    the owner's to rule; the recommendation is the seven, read from the package's control log. (Corrected
-    2026-10-18: this line had said no record named the guarantees.)
+  - AOR and the AWE themselves, grouped by the class, which also need the intervention ledger's severities
+    in the package;
+  - "every quality baseline held", which waits for prediction 4's tolerance (§10f).
 
 **Who ruled it.** The owner accepted §4.4 (2026-10-17). The precedence and the blocked-now reading are the
 implementer's, for the owner's review.

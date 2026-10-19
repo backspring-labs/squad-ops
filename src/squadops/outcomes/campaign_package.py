@@ -64,11 +64,11 @@ def _deltas(read: QualityDeltas) -> dict:
 
 def _contribution(record: EvaluationRecord, previous: EvaluationRecord | None) -> dict:
     if record.previous_accepted_tree_identity and previous is None:
-        return {"reading": None, "not_read": "no record of the tree it built on"}
+        return {"reading": None, "unread_because": "no record of the tree it built on"}
     try:
         read = contribution(record, previous)
     except NotComparable as e:
-        return {"reading": None, "not_read": str(e)}
+        return {"reading": None, "unread_because": str(e)}
     return {
         "reading": read.reading,
         "newly_passing": list(read.newly_passing),
@@ -112,5 +112,5 @@ def _cycle_section(
                 quality_deltas(record, baseline, against=Against.BASELINE)
             )
         except NotComparable as e:
-            section["vs_baseline"] = {"not_read": str(e)}
+            section["vs_baseline"] = {"unread_because": str(e)}
     return section

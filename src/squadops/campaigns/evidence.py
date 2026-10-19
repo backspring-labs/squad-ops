@@ -23,6 +23,7 @@ from typing import Any
 
 from squadops.campaigns.escalation import ANSWERABLE, EscalationState, escalations
 from squadops.campaigns.models import CampaignState, ControlOperation, ControlOutcome
+from squadops.campaigns.safety_guarantees import GuaranteeStatus, all_intact, safety_guarantees
 from squadops.campaigns.scorecard import scorecard_lines
 
 #: Bumped when the package's shape changes; a reader checks it before reading further.
@@ -165,6 +166,7 @@ def digest(doc: dict) -> str:
             f"{d.get('verdict') or '—'} | {decided} | {_primary(cyc['assessment'])} |"
         )
     lines += ["", "## Outcomes", ""] + _outcome_lines(doc.get("outcomes"))
+    lines += ["", "## Safety guarantees", ""] + _guarantee_lines(doc)
     lines += ["", "## Escalations", ""] + (
         _escalation_lines(c, rows) or ["- the plan-review tier escalated nothing"]
     )
@@ -236,6 +238,24 @@ def _escalation_asks(campaign: dict, rows: list[dict]) -> list[str]:
     return asks
 
 
+def _guarantee_lines(doc: dict) -> list[str]:
+    """The 2.0 set's seven, read from this package (SIP-0113 §4.6, ruled 2026-10-19; #2418)."""
+    readings = safety_guarantees(doc)
+    intact = all_intact(readings)
+    verdict = {True: "all seven held", False: "**violated**", None: "not all read"}[intact]
+    lines = [f"Every safety guarantee intact: {verdict}.", ""]
+    for r in readings:
+        mark = {
+            GuaranteeStatus.HELD: "held",
+            GuaranteeStatus.VIOLATED: "**violated**",
+            GuaranteeStatus.NOT_READ: "not read",
+        }[r.status]
+        lines.append(
+            f"- {mark}: {r.guarantee}" + (f" ({'; '.join(r.evidence)})" if r.evidence else "")
+        )
+    return lines
+
+
 def _work_class_line(objective: dict) -> str:
     """SIP-0113 §4.6 (#2418): the class AOR groups this campaign by, as declared."""
     declared = objective.get("work_class")
@@ -264,7 +284,7 @@ def _outcome_lines(outcomes: dict | None) -> list[str]:
             lines.append(f"- `{cyc['cycle_id']}`: not evaluated")
             continue
         read = cyc.get("contribution") or {}
-        reading = read.get("reading") or f"not read ({read.get('not_read', 'no reading')})"
+        reading = read.get("reading") or f"not read ({read.get('unread_because', 'no reading')})"
         results: dict[str, int] = {}
         for _id, result, reason in cyc["scenarios"]:
             key = f"{result} ({reason})" if reason else result
@@ -317,8 +337,8 @@ def _lint_line(lint: dict | None) -> str:
 
 
 def _moves_line(deltas: dict) -> str:
-    if "not_read" in deltas:
-        return f"not read ({deltas['not_read']})"
+    if "unread_because" in deltas:
+        return f"not read ({deltas['unread_because']})"
     moves = [
         f"{measure}{f' on {page}' if page else ''} {delta:+g}"
         for measure, page, _before, _after, delta in deltas["moved"]

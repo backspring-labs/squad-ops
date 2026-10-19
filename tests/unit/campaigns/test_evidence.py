@@ -214,6 +214,9 @@ async def test_the_digest_says_how_the_campaign_ended_and_what_failed(closed):
     assert f"# Campaign {CID}: completed (failure)" in text
     # SIP-0113 §4.6 (#2418): the class AOR groups the campaign by, with its increment count.
     assert "**Work class:** tier-1, unattended, 2 increments" in text
+    # The seven safety guarantees, read from this package (ruled 2026-10-19).
+    assert "## Safety guarantees\n\nEvery safety guarantee intact: all seven held." in text
+    assert "- held: no duplicate launch" in text
     assert "- nothing was accepted" in text
     assert (
         "| `cyc_cal` | calibration | assessed | rejected | row 2: failure | unattributed |" in text
