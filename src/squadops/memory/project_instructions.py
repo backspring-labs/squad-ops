@@ -46,12 +46,14 @@ def applicable(
     ]
 
 
-def section_of(pinned: list[PinnedInstruction], *, budget: int) -> Section:
-    """The project instructions' binding section, within what the task instructions left."""
+def section_of(pinned: list[PinnedInstruction], *, budget: int, framing: int = 0) -> Section:
+    """The project instructions' binding section, within what the task instructions left, measured
+    with its framing."""
     return binding_section(
         SectionKind.PROJECT_INSTRUCTIONS,
         [(RecordRef(p.record_id, str(p.revision)), p.text) for p in pinned],
         budget=budget,
+        framing=framing,
     )
 
 

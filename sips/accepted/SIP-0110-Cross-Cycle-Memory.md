@@ -83,7 +83,7 @@ re-places it.
 | entry points: the context-assembly port, inert, at the four seams (§A.3.6) | **shipped** | 2.3.0, #2257 (closes #2176; §5j records where it departs from §A.3.6's text) |
 | entry points: the typed records (notes, preferences, project and task instructions), permissions by kind, provenance (§A.3.2–§A.3.4) | **shipped** (§5l) | 2.4.0, PR #2508, issue #2177 |
 | entry points: task instructions, with the work target, retries, references bound with the cycle, binding holds and emergency withdrawal (§A.3.5–§A.3.8) | **placed** | 2.4.0, #2178: stage 1 (the records reach the tasks they name, binding, the task held when incomplete) shipped in PR #2513 (§5m); stage 2 remains |
-| entry points: project instructions in the snapshot with references bound, re-binding, the effective lesson budget, the comparison arms and disclosure (§A.3.6, §A.3.7) | **placed** | 2.4.0, #2179: stage 1 (pinned at admission, binding on the tasks they apply to, the lesson budget after them) ships in the PR that wrote this row (§5n); stage 2 remains |
+| entry points: project instructions in the snapshot with references bound, re-binding, the effective lesson budget, the comparison arms and disclosure (§A.3.6, §A.3.7) | **placed** | 2.4.0, #2179: stage 1 (pinned at admission, binding on the tasks they apply to, the lesson budget after them) shipped in PR #2515 (§5n), and stage 2's effective lesson budget (T17) in the PR that wrote this row (§5r); the rest of stage 2 remains |
 | entry points: chat on the substrate, with capture confirmed, chat exposures, server-side project binding and provenance authorized (§A.3.5) | **placed** | 2.4.0, #2180: stage A (the binding, each turn's context and exposure, confirmed capture of notes and preferences, authorized provenance, Q29's deletion) shipped in PR #2517, and stage B's project-instruction capture in the PR that wrote this row (§5o); a task instruction's capture from chat remains, with #2178's second stage |
 | entry points: lesson inspection from chat; a conversational claim never becomes a lesson (§A.3.5) | **shipped** | 2.4.0, PR #2518, issue #2181 (§5p) |
 | entry points: the console's memory record view (§A.3.11) | **placed** | 2.4.0, #2182: the view and its uses route shipped in the PR that wrote this row (§5q); the page's capture test remains, live with #2183 |
@@ -1767,7 +1767,7 @@ of 2026-10-19):**
   `development.develop` doesn't reach that output's repairs unless it names them.
 
 **Stage 2 (#2179, still open):**
-- the effective lesson budget (T17);
+- the effective lesson budget (T17): shipped, §5r;
 - `@current` bound at admission (T16);
 - the `memory_context: none` arm, with its declaration and the lesson-text diagnostic (T9's rest);
 - re-binding a running unit;
@@ -1922,6 +1922,38 @@ offer one, and a proposal scoped to a task proposes nothing; it is never widened
   Until then a revision's uses show every dispatch and turn that held it.
 - **A lesson's effect** (its assessments and the window's finding) stays the lessons API's (`/api/v1/projects/{id}/lessons`,
   `/exposures`): a lesson is not a memory record, and this view is the records'.
+
+## 5r. The effective lesson budget, as built (2026-10-19, #2179 stage 2, T17; the supervisor, under the owner's grant of 2026-10-19)
+
+**What shipped:** §A.3.6's budgets, applied once, where the lessons are chosen.
+- **Each binding section is measured with its slot's fixed framing,** its heading and precedence statement, read from
+  its managed template. Sizes are counted by recall's estimator. A section with nothing to show measures zero.
+- **The lessons' effective budget** is the smaller of the snapshot's lesson budget and what the binding sections leave
+  after the lesson slot's framing.
+  - The composer computes the second figure and hands it to recall on the query (`available_lesson_tokens`).
+  - Recall applies it in its one selection pass. A lesson that doesn't fit is omitted whole, and nothing is trimmed
+    after.
+  - Each omission names its limit against today's recall, the snapshot's budget alone: `budget` when today's
+    would omit the lesson too, `remaining` when only the binding sections' leftover did. The second read of
+    PR #2526 found the labels first decided inside the bounded pass, which blamed the instructions for a
+    lesson today's recall omits, and reported a displaced one as the snapshot's cap.
+  - When not even the framing fits, every eligible lesson is omitted `remaining`, and the task runs.
+- **Recorded:** the exposure's memory block gains `lesson_budget` (`effective`, `snapshot`, `remaining`) whenever a
+  binding section was supplied, so a reader sees what the lessons could spend beside the instructions. The lesson
+  section's `effective_budget` is the effective figure.
+- **The framing is measured from the packaged template,** not through the deploy's asset source. A deploy serving a
+  differently worded slot from a registry would be measured slightly off. Recall's estimator is an estimate either
+  way, and the sizes are a few hundred tokens.
+- **Unchanged without an instruction:** when no binding section was supplied, or the model's budget is unknown, the
+  query carries `None`. The snapshot's budget then stands, the recall is today's exactly, and the memory block is
+  byte-identical (§0.11's envelopes reconstruct as they did).
+
+**Evidence:** T17 as §A.5 states it, at recall: 300 tokens left, a 600-token snapshot budget, and lessons of 260 and
+280. The 260 is supplied and the 280 omitted `remaining`. With 600 or more left, both are supplied, as today. With less
+than the framing left, the section is omitted whole. The wiring test enters at `supply_lessons` with a pinned project
+instruction. The design plan's recall is asked with the budget less both binding sections and the lesson framing, and
+every other task, and every task of a project with no instruction, is asked with `None`. A mutant without the
+`remaining` limit fails two cases.
 
 ## 6. Mode neutrality: cycle, duty, and ambient utilization
 

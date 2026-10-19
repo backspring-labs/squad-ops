@@ -84,7 +84,7 @@ def applicable(
 
 
 def binding_section(
-    kind: SectionKind, entries: list[tuple[RecordRef, str]], *, budget: int
+    kind: SectionKind, entries: list[tuple[RecordRef, str]], *, budget: int, framing: int = 0
 ) -> Section:
     """A binding section for ``entries`` (each record's revision and its text). Over the prompt
     budget left to it, or with no known budget (``budget < 0``: an unknown never means room), it is
@@ -92,7 +92,8 @@ def binding_section(
     budget, the task's first."""
     if not entries:
         return Section(kind, Need.BINDING, Disposition.NONE_ELIGIBLE)
-    tokens = sum(_tokens(text) for _, text in entries)
+    # §3.6: a binding section is measured with its slot's fixed framing (its heading and precedence).
+    tokens = framing + sum(_tokens(text) for _, text in entries)
     if budget < 0 or tokens > budget:
         why = (
             f"the {kind.value.replace('_', ' ')} take {tokens} tokens and the prompt has {budget}"
@@ -108,10 +109,13 @@ def binding_section(
     return Section(kind, Need.BINDING, Disposition.SUPPLIED, supplied=tuple(r for r, _ in entries))
 
 
-def section_of(bound: list[Bound], *, budget: int) -> Section:
-    """The task instructions' binding section for what applies."""
+def section_of(bound: list[Bound], *, budget: int, framing: int = 0) -> Section:
+    """The task instructions' binding section for what applies, measured with its framing."""
     return binding_section(
-        SectionKind.TASK_INSTRUCTIONS, [(b.ref, b.text) for b in bound], budget=budget
+        SectionKind.TASK_INSTRUCTIONS,
+        [(b.ref, b.text) for b in bound],
+        budget=budget,
+        framing=framing,
     )
 
 

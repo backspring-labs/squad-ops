@@ -24,10 +24,13 @@ owner, disclosed as today's exposure, so prompts and exposures are what they wer
 from __future__ import annotations
 
 import dataclasses
+import functools
 import json
 import logging
+import re
 from collections.abc import Collection, Sequence
 from datetime import datetime
+from importlib import resources
 from typing import TYPE_CHECKING
 
 from squadops.capabilities.context_assembly import authoring_seam_of
@@ -60,7 +63,6 @@ from squadops.memory.task_instructions import (
     applicable,
     handed,
     section_of,
-    tokens_of,
     unresolved_reason,
 )
 from squadops.ports.memory.context_assembly import ContextAssemblyPort
@@ -71,6 +73,38 @@ if TYPE_CHECKING:
     from squadops.tasks.models import TaskEnvelope
 
 logger = logging.getLogger(__name__)
+
+#: The slots' managed templates, whose fixed framing (heading and precedence) a section is measured with.
+_TASK_SLOT = "request.task_instructions_section"
+_PROJECT_SLOT = "request.project_instructions_section"
+_LESSON_SLOT = "request.cross_cycle_lessons_section"
+
+
+@functools.cache
+def _framing(template_id: str) -> int:
+    """A slot's fixed framing in tokens (§3.6: a section's size includes it), measured as recall
+    measures lessons: the template's body with its variable taken out."""
+    text = (
+        resources.files("squadops.prompts") / "request_templates" / f"{template_id}.md"
+    ).read_text(encoding="utf-8")
+    body = text.split("---", 2)[2]
+    return _tokens(re.sub(r"\{\{\w+\}\}", "", body).strip())
+
+
+def _binding_size(template_id: str, texts: list[str]) -> int:
+    """A binding section's size, framing included; 0 for a section with nothing to show."""
+    return _framing(template_id) + sum(_tokens(t) for t in texts) if texts else 0
+
+
+def _available_for_lessons(prompt_budget: int, binding: int) -> int | None:
+    """§3.6's effective lesson budget's second figure: the lesson text the binding sections leave after
+    the lesson slot's framing, below zero when not even the framing fits. ``None`` when no binding
+    section was supplied, or the budget is unknown, so the snapshot's own budget stands and the
+    lessons are today's recall exactly."""
+    if binding == 0 or prompt_budget < 0:
+        return None
+    return prompt_budget - binding - _framing(_LESSON_SLOT)
+
 
 #: What memory supplies a dispatch, which is never the task's own input (``prompt_budget_of``).
 _SUPPLIED_INPUTS = frozenset({LESSONS_INPUT, TASK_INSTRUCTIONS_INPUT, PROJECT_INSTRUCTIONS_INPUT})
@@ -326,8 +360,19 @@ class LessonContextAssembly(ContextAssemblyPort):
         if isinstance(request.consumer, ChatTurn):
             lessons = Section(SectionKind.LESSONS, Need.OPTIONAL, Disposition.NOT_APPLICABLE)
             return ContextBundle(request, (lessons,), complete=True)
+        instructions, bound = await self._task_instructions(request)
+        # #2179: the project instructions take what the task instructions leave (§3.6), each
+        # binding section measured with its slot's framing.
+        budget = request.consumer.prompt_budget
+        task_size = _binding_size(_TASK_SLOT, [b.text for b in bound])
+        left = max(0, budget - task_size) if budget >= 0 else -1
+        project, pinned = await self._project_instructions(request, budget=left)
+        project_size = _binding_size(_PROJECT_SLOT, [p.text for p in pinned])
+        available = _available_for_lessons(budget, task_size + project_size)
         try:
-            recalled = await self._recall.recall(query_of(request))
+            recalled = await self._recall.recall(
+                dataclasses.replace(query_of(request), available_lesson_tokens=available)
+            )
         except Exception:  # the port never raises: a recall that raised is a failed one, never none
             logger.exception("recall raised for task %s", request.consumer.task_id)
             recalled = Recalled(snapshot_id=None, disposition=RecallDisposition.FAILED)
@@ -340,13 +385,12 @@ class LessonContextAssembly(ContextAssemblyPort):
                 for e in recalled.supplied
             ),
             omitted=tuple((RecordRef.of_revision_id(r), why) for r, why in recalled.omitted),
-            effective_budget=RecallPolicy().token_budget,
+            effective_budget=(
+                recalled.lesson_budget["effective"]
+                if recalled.lesson_budget is not None
+                else RecallPolicy().token_budget
+            ),
         )
-        instructions, bound = await self._task_instructions(request)
-        # #2179: the project instructions take what the task instructions leave (§3.6).
-        budget = request.consumer.prompt_budget
-        left = max(0, budget - tokens_of(bound)) if budget >= 0 else -1
-        project, pinned = await self._project_instructions(request, budget=left)
         return ContextBundle(
             request,
             (instructions, project, lessons),
@@ -388,7 +432,7 @@ class LessonContextAssembly(ContextAssemblyPort):
         chosen = project_applicable(
             pinned, task_type=task.task_type, role=task.role, stack=task.stack
         )
-        return project_section_of(chosen, budget=budget), chosen
+        return project_section_of(chosen, budget=budget, framing=_framing(_PROJECT_SLOT)), chosen
 
     async def _task_instructions(self, request: ContextRequest):
         """The task instructions' binding section (#2178), and what applies. A store that can't be
@@ -423,7 +467,7 @@ class LessonContextAssembly(ContextAssemblyPort):
             cycle_id=task.target_cycle_id,
             reaches=lambda selector: reaches(selector, task.task_type),
         )
-        return section_of(bound, budget=task.prompt_budget), bound
+        return section_of(bound, budget=task.prompt_budget, framing=_framing(_TASK_SLOT)), bound
 
     async def disclose(self, bundle: ContextBundle) -> None:
         task = bundle.request.consumer
