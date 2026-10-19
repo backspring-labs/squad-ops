@@ -37,8 +37,14 @@ from squadops.cycles.models import ArtifactRef, Cycle
 from squadops.cycles.task_plan import REPAIR_TASK_TYPES
 from squadops.projects.checkout import SOURCE_CHECKOUT
 from squadops.projects.configuration import baseline_tree
+from squadops.projects.contribution import capture_ref
 from squadops.projects.verification import ACCEPTED, SourceVerification, attributed
-from squadops.projects.workspaces import SourceMapping, run_checks, seed_project_tree
+from squadops.projects.workspaces import (
+    CAPTURED,
+    SourceMapping,
+    run_checks,
+    seed_project_tree,
+)
 from squadops.sandbox.models import RevisionOrigin, WorkspaceRevision, content_bytes
 from squadops.tasks.task_types import authors_qa_suite, authors_source
 
@@ -213,7 +219,7 @@ async def deliver_source_change(
         SourceMapping(
             project_id=cycle.project_id,
             workspace_id=workspace_id,
-            direction="captured",
+            direction=CAPTURED,
             commit=new_commit,
             sandbox_revision_id=candidate.revision_id,
             tree_identity=tree_identity,
@@ -237,10 +243,6 @@ async def deliver_source_change(
     return SourceDelivery(verification, tuple(ids), captured_commit=new_commit)
 
 
-def _capture_ref(cycle: Cycle, run_id: str) -> str:
-    return f"refs/squadops/{cycle.cycle_id}/{run_id}"
-
-
 async def _capture(
     cycle: Cycle,
     run_id: str,
@@ -259,7 +261,7 @@ async def _capture(
         parent=parent,
         files=files,
         executable=content.executable,
-        ref=_capture_ref(cycle, run_id),
+        ref=capture_ref(cycle.cycle_id, run_id),
         message=_message(cycle, run_id, parent, verification),
     )
     committed = await repository.tree_at(cycle.project_id, commit)

@@ -289,3 +289,36 @@ def baseline(
         f"{project_id} at {document['commit'][:12]}, configuration revision "
         f"{document['development_configuration_revision']}"
     )
+
+
+@app.command("contribute")
+def contribute(
+    ctx: typer.Context,
+    project_id: str = typer.Argument(...),
+    cycle_id: str = typer.Option(..., "--cycle", help="The cycle whose run is contributed"),
+    run_id: str = typer.Option(..., "--run", help="The run whose verified change is contributed"),
+    idempotency_key: str | None = typer.Option(None, "--idempotency-key"),
+):
+    """Contribute a run's verified change through the Project's own process (SIP-0112 FR-06):
+    for review_request, push its branch and open the pull request; for patch_export, record
+    the run's patch as the contribution. Recorded pending until the product takes it."""
+    fmt = ctx.obj.get("format", "table") if ctx.obj else "table"
+    key = idempotency_key or f"cli-{uuid.uuid4().hex}"
+    try:
+        client = _get_client(ctx)
+        data = client.post(
+            f"/api/v1/projects/{project_id}/contributions",
+            json={"cycle_id": cycle_id, "run_id": run_id, "idempotency_key": key},
+        )
+        client.close()
+    except CLIError as e:
+        print_error(f"{e} (idempotency key {key})")
+        raise typer.Exit(code=e.exit_code) from e
+    if fmt == "json":
+        print_json(data)
+        return
+    contribution = data["contribution"]
+    print_detail(contribution)
+    where = contribution["review_url"] or "the run's source_change.patch"
+    again = " (already contributed)" if data.get("replayed") else ""
+    print_success(f"{contribution['mode']} {contribution['commit'][:12]}: {where}{again}")

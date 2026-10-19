@@ -14,6 +14,7 @@ from squadops.projects.development_configuration import DevelopmentConfiguration
 from squadops.projects.registration import ProjectRegistration
 
 if TYPE_CHECKING:
+    from squadops.projects.contribution import Contribution
     from squadops.projects.workspaces import SourceMapping
 
 
@@ -125,3 +126,14 @@ class ProjectRegistryPort(ABC):
         Raises:
             InheritedBaselineNotFoundError: none is captured.
         """
+
+    @abstractmethod
+    async def record_contribution(
+        self, contribution: Contribution, *, idempotency_key: str, request_hash: str
+    ) -> tuple[Contribution, bool]:
+        """Record a run's contribution, pending (FR-06, E.4.3). Returns it and whether this
+        replayed an earlier one: the same key, or the same run contributed already."""
+
+    @abstractmethod
+    async def contributions(self, project_id: str) -> list[Contribution]:
+        """A Project's contributions, oldest first."""

@@ -28,6 +28,7 @@ from squadops.tools.security import PathSecurityPolicy
 if TYPE_CHECKING:
     from squadops.core.secret_manager import SecretManager
 
+    from squadops.ports.projects.review_request import ReviewRequestPort
     from squadops.ports.projects.source_repository import SourceRepositoryPort
     from squadops.projects.registration import LocatorPolicy
 
@@ -155,3 +156,11 @@ def create_source_repository(
         committer_name=committer_name,
         committer_email=committer_email,
     )
+
+
+def create_review_requests() -> ReviewRequestPort:
+    """Where a review_request contribution's pull request is opened (SIP-0112 E.4.3): GitHub's,
+    which refuses by name a repository on another forge."""
+    from adapters.tools.github_review_request import GitHubReviewRequests
+
+    return GitHubReviewRequests()

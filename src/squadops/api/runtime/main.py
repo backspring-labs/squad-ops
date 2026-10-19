@@ -427,6 +427,11 @@ async def _init_cycle_subsystem(state, config, pool) -> None:
         committer_name=config.projects.committer_name,
         committer_email=config.projects.committer_email,
     )
+    # E.4.3: a review_request contribution's forge, and each Project's token for it.
+    from adapters.tools.factory import create_review_requests
+
+    state.review_requests = create_review_requests()
+    state.review_request_tokens = dict(config.projects.review_request_tokens)
     # #1976: a transient database failure is retried inside the registry, never by its callers.
     cycle_registry = create_cycle_registry(
         config.cycles.registry_provider,

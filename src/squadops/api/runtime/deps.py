@@ -130,6 +130,16 @@ def get_source_repository(request: Request) -> SourceRepositoryPort:
     return _required(request, "source_repository", "SourceRepositoryPort")
 
 
+def get_review_requests(request: Request):
+    """Where a review_request contribution's pull request is opened (SIP-0112 E.4.3)."""
+    return _slot(request, "review_requests")
+
+
+def get_review_request_tokens(request: Request) -> dict[str, str]:
+    """Each Project's review-request token, resolved from its secret:// reference."""
+    return _slot(request, "review_request_tokens") or {}
+
+
 def get_cycle_registry(request: Request) -> CycleRegistryPort:
     """Return the CycleRegistryPort (T14: never None at call sites)."""
     return _required(request, "cycle_registry", "CycleRegistryPort")

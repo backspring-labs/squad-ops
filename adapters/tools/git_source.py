@@ -22,6 +22,7 @@ Every Git call runs isolated:
 from __future__ import annotations
 
 import asyncio
+import base64
 import ipaddress
 import os
 import re
@@ -50,6 +51,7 @@ _SCP_HOST = re.compile(r"^[A-Za-z0-9._-]+@(?P<host>[A-Za-z0-9.-]+):")
 #: so no fetch writes or prunes it.
 _CAPTURE_REF = re.compile(r"^refs/squadops/[A-Za-z0-9_-]+(/[A-Za-z0-9_-]+)*$")
 _IDENTITY = re.compile(r"^[^<>\n]+$")
+_REVIEW_BRANCH = re.compile(r"^squadops/[A-Za-z0-9_-]+$")
 
 
 def _quoted(path: str) -> str:
@@ -137,6 +139,44 @@ class GitSourceRepository(SourceRepositoryPort):
         return await asyncio.to_thread(
             self._git, clone, "format-patch", "--stdout", "--binary", "--full-index",
             "--no-signature", "-1", commit, step="export",
+        )  # fmt: skip
+
+    async def commit_message(self, project_id: str, commit: str) -> str:
+        if not _COMMIT.match(commit):
+            raise SourceUnavailable(f"{commit!r} is not a commit", reason="not_a_commit")
+        out = await asyncio.to_thread(
+            self._git, self._clone_dir(project_id), "log", "-1", "--format=%B", commit,
+            step="read",
+        )  # fmt: skip
+        return out.decode("utf-8", errors="replace")
+
+    async def push_capture(
+        self, project_id: str, locator: str, *, ref: str, branch: str, token: str
+    ) -> None:
+        if not _CAPTURE_REF.match(ref):
+            raise SourceUnavailable(f"{ref!r} is not a capture ref", reason="ref_refused")
+        if not _REVIEW_BRANCH.match(branch):
+            raise SourceUnavailable(f"{branch!r} is not a review branch", reason="ref_refused")
+        try:
+            check_locator(locator, self._policy)
+        except LocatorRefused as e:
+            raise SourceUnavailable(str(e), reason="locator_refused") from e
+        https = urlsplit(locator).scheme == "https"
+        if not https and ("://" in locator or _SCP_HOST.match(locator)):
+            raise SourceUnavailable(
+                "a review request's branch is pushed over https with the Project's token, and "
+                f"{locator} is ssh, which needs a deploy key 2.4 doesn't hold",
+                reason="locator_refused",
+            )
+        await asyncio.to_thread(self._refuse_internal_resolution, locator)
+        # Over https the token travels as a config value in the environment, never in an
+        # argument a process listing shows, and only for this push. A local repository under a
+        # configured root takes none.
+        basic = base64.b64encode(f"x-access-token:{token}".encode()).decode()
+        await asyncio.to_thread(
+            self._git, self._clone_dir(project_id), "push", "--quiet", "--end-of-options",
+            locator, f"{ref}:refs/heads/{branch}", step="push",
+            config={"http.extraHeader": f"Authorization: Basic {basic}"} if https else None,
         )  # fmt: skip
 
     # --- the blocking half, run off the event loop ---
@@ -263,7 +303,14 @@ class GitSourceRepository(SourceRepositoryPort):
             at = start + int(size) + 1
         return contents
 
-    def _git(self, cwd: Path, *args: str, step: str, stdin: str | bytes | None = None) -> bytes:
+    def _git(
+        self,
+        cwd: Path,
+        *args: str,
+        step: str,
+        stdin: str | bytes | None = None,
+        config: Mapping[str, str] | None = None,
+    ) -> bytes:
         env = {k: v for k, v in os.environ.items() if not k.startswith("GIT_")}
         env.update(
             GIT_CONFIG_NOSYSTEM="1",
@@ -272,6 +319,10 @@ class GitSourceRepository(SourceRepositoryPort):
             GIT_ASKPASS="/bin/false",
             GIT_SSH_COMMAND="ssh -o BatchMode=yes -o StrictHostKeyChecking=accept-new",
         )
+        for i, (key, value) in enumerate((config or {}).items()):
+            env[f"GIT_CONFIG_KEY_{i}"], env[f"GIT_CONFIG_VALUE_{i}"] = key, value
+        if config:
+            env["GIT_CONFIG_COUNT"] = str(len(config))
         file_transport = "always" if self._policy.local_roots else "never"
         command = [
             "git",

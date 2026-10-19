@@ -58,3 +58,25 @@ class SourceRepositoryPort(ABC):
         Raises:
             SourceUnavailable: The clone does not hold ``commit``.
         """
+
+    @abstractmethod
+    async def commit_message(self, project_id: str, commit: str) -> str:
+        """``commit``'s message, as committed.
+
+        Raises:
+            SourceUnavailable: The clone does not hold ``commit``.
+        """
+
+    @abstractmethod
+    async def push_capture(
+        self, project_id: str, locator: str, *, ref: str, branch: str, token: str
+    ) -> None:
+        """Push a captured ref (``refs/squadops/...``) to the product's repository as
+        ``refs/heads/<branch>`` (``squadops/...``), authenticated by ``token`` over https, or to
+        a local repository under a configured root. Never forced: a branch the product already
+        holds with other history is refused (FR-06's review_request).
+
+        Raises:
+            SourceUnavailable: The locator is refused or ssh, the branch or ref isn't one of
+                ours, or the product refused the push.
+        """

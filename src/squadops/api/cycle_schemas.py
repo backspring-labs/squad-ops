@@ -337,6 +337,23 @@ class InheritedBaselineResponse(BaseModel):
     replayed: bool = False
 
 
+class ContributionRequest(BaseModel):
+    """Contribute a run's verified change through the Project's own process (SIP-0112 FR-06)."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    cycle_id: str = Field(min_length=1, max_length=200)
+    run_id: str = Field(min_length=1, max_length=200)
+    idempotency_key: str = Field(min_length=1, max_length=200)
+
+
+class ContributionResponse(BaseModel):
+    """A contribution, pending until the product takes it, and whether this replayed one."""
+
+    contribution: dict[str, Any]
+    replayed: bool = False
+
+
 class ProjectRegistrationResponse(BaseModel):
     """A registration, applied or replayed: the Project, and the key a retry resends (D.6)."""
 

@@ -695,6 +695,13 @@ class ProjectsConfig(BaseModel):
         default="squadops@squadops.invalid",
         description="The email a squad's captured commit is made under",
     )
+    #: E.4.3's review_request contributions: each Project's token, scoped by its owner to that
+    #: one repository (contents and pull requests). Written as secret:// references, which the
+    #: loader resolves; a Project with none contributes nothing by review request.
+    review_request_tokens: dict[str, str] = Field(
+        default_factory=dict,
+        description="Project ID to its review-request token, each a secret:// reference",
+    )
 
 
 class SchedulerConfig(BaseModel):

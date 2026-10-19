@@ -40,13 +40,18 @@ class SandboxUnavailable(RuntimeError):
     be seeded or run, so nothing is recorded as if it had been."""
 
 
+#: A mapping's direction: a commit checked out into a workspace, or a verified revision
+#: committed back (E.4.3).
+SEEDED, CAPTURED = "seeded", "captured"
+
+
 @dataclass(frozen=True)
 class SourceMapping:
     """One tree, named by all three of its identifiers (contracts 3 and 4)."""
 
     project_id: str
     workspace_id: str
-    direction: str  # "seeded" or "captured"
+    direction: str  # SEEDED or CAPTURED
     commit: str
     sandbox_revision_id: str
     tree_identity: str
@@ -93,7 +98,7 @@ async def seed_project_tree(
         SourceMapping(
             project_id=project.project_id,
             workspace_id=workspace_id,
-            direction="seeded",
+            direction=SEEDED,
             commit=commit,
             sandbox_revision_id=revision.revision_id,
             tree_identity=FileTree.of(tree.files).identity,

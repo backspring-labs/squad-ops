@@ -456,3 +456,56 @@ async def test_a_cycles_pinned_source_context_round_trips_and_a_sample_apps_stay
 
     assert (await cycles.get_cycle(external.cycle_id)).source_context == context
     assert (await cycles.get_cycle(sample.cycle_id)).source_context is None
+
+
+async def test_a_contribution_is_recorded_once_and_its_key_names_one_run(pool):
+    """FR-06's record (E.4.3). Bugs caught:
+    - a retried contribution making a second row, or bumping the record version again;
+    - a key reused for another run accepted;
+    - a review request recorded without its branch and URL, which the table refuses."""
+    from squadops.cycles.models import RegistrationKeyConflictError
+    from squadops.projects.contribution import Contribution
+
+    registry = PostgresProjectRegistry(pool)
+    await registry.register_project(_registration(), actor="owner")
+    contribution = Contribution(
+        project_id="prj-tally",
+        cycle_id="cyc_1",
+        run_id="run_1",
+        commit="a" * 40,
+        parent_commit="b" * 40,
+        mode="review_request",
+        state="pending",
+        branch="squadops/cyc_1",
+        review_url="https://github.com/owner/tally/pull/7",
+        contributed_by="owner",
+        contributed_at=datetime(2026, 10, 18, tzinfo=UTC),
+    )
+
+    _, replayed = await registry.record_contribution(
+        contribution, idempotency_key="c-1", request_hash="h"
+    )
+    again, again_replayed = await registry.record_contribution(
+        contribution, idempotency_key="c-2", request_hash="h2"
+    )
+    with pytest.raises(RegistrationKeyConflictError):
+        await registry.record_contribution(
+            dataclasses.replace(contribution, run_id="run_2"), idempotency_key="c-1",
+            request_hash="other",
+        )  # fmt: skip
+    with pytest.raises(asyncpg.CheckViolationError):
+        await registry.record_contribution(
+            dataclasses.replace(contribution, run_id="run_3", review_url=None),
+            idempotency_key="c-3",
+            request_hash="h3",
+        )
+
+    assert (replayed, again_replayed, again) == (False, True, contribution)
+    assert await registry.contributions("prj-tally") == [contribution]
+    async with pool.acquire() as conn:
+        assert (
+            await conn.fetchval(
+                "SELECT count(*) FROM project_record_events WHERE operation = 'contribute'"
+            )
+            == 1
+        )

@@ -6,6 +6,7 @@ must resolve to the recorded commit, and its tree must read back with the record
 
 from __future__ import annotations
 
+import base64
 import os
 import subprocess
 from pathlib import Path
@@ -249,3 +250,47 @@ async def test_a_public_name_that_resolves_to_the_deploy_itself_is_refused(clone
     with pytest.raises(SourceUnavailable) as refused:
         await clones.sync("prj-tally", "git@git.example.org:o/r.git", "refs/heads/main")
     assert refused.value.reason == "internal_host"
+
+
+async def test_a_push_carries_its_token_in_the_environment_never_an_argument(
+    product, clones, monkeypatch
+):
+    """E.4.3's review_request. Bugs caught: the token in an argument, which any process listing
+    shows; an ssh locator pushed with no key to push it; a push to the product's own branch."""
+    commit = await clones.sync("prj-tally", str(product.path), "refs/heads/main")
+    tree = await clones.tree_at("prj-tally", commit)
+    await clones.commit_tree(
+        "prj-tally", parent=commit, files=tree.files, executable=tree.executable,
+        ref="refs/squadops/cyc_1/run_1", message="m\n",
+    )  # fmt: skip
+    monkeypatch.setattr("socket.getaddrinfo", lambda *a, **k: [(2, 1, 6, "", ("140.82.112.3", 0))])
+    calls = []
+
+    def run(command, **kwargs):
+        calls.append((command, kwargs["env"]))
+        return subprocess.CompletedProcess(command, 0, b"", b"")
+
+    monkeypatch.setattr("adapters.tools.git_source.subprocess.run", run)
+    await clones.push_capture(
+        "prj-tally", "https://github.com/owner/tally.git", ref="refs/squadops/cyc_1/run_1",
+        branch="squadops/cyc_1", token="github_pat_s3cr3t",
+    )  # fmt: skip
+
+    [(command, env)] = calls
+    assert not any("s3cr3t" in arg for arg in command)
+    assert command[-2:] == ["https://github.com/owner/tally.git",
+                            "refs/squadops/cyc_1/run_1:refs/heads/squadops/cyc_1"]  # fmt: skip
+    header = base64.b64decode(env["GIT_CONFIG_VALUE_0"].removeprefix("Authorization: Basic "))
+    assert (env["GIT_CONFIG_KEY_0"], header) == (
+        "http.extraHeader",
+        b"x-access-token:github_pat_s3cr3t",
+    )
+    for locator, branch in (
+        ("git@github.com:owner/tally.git", "squadops/cyc_1"),
+        ("https://github.com/owner/tally.git", "main"),
+    ):
+        with pytest.raises(SourceUnavailable):
+            await clones.push_capture(
+                "prj-tally", locator, ref="refs/squadops/cyc_1/run_1", branch=branch, token="t"
+            )
+    assert len(calls) == 1
