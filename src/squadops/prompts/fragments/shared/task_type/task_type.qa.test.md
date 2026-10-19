@@ -45,7 +45,7 @@ When the workspace is a single TypeScript application (no Python manifests —
 e.g. a Next.js project rooted at the workspace), there is no pytest suite:
 the whole suite is the declared JS runner's (`vitest run`), and its discovery
 convention is the one the workspace's config declares (scaffolded Next.js
-workspaces collect `__tests__/**/*.test.ts`).
+workspaces collect `__tests__/**/*.test.ts` and `__tests__/**/*.test.tsx`).
 
 ## Dependency Constraint (hard rule)
 
