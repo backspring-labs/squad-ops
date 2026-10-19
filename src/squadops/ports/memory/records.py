@@ -43,3 +43,12 @@ class MemoryRecordsPort(ABC):
     @abstractmethod
     async def list_owned(self, owner_id: str) -> list[MemoryRecord]:
         """The user-private records ``owner_id`` holds, every status, oldest first."""
+
+    @abstractmethod
+    async def search_notes(
+        self, *, owner_id: str, project_id: str | None, text: str
+    ) -> list[MemoryRecord]:
+        """The active notes a chat turn may draw on, best first (§A.3.10; #2180): ``owner_id``'s private
+        notes, and ``project_id``'s notes when it is given. Filtered by scope and status before they are
+        ranked, by how well their current text matches ``text`` and then by recency, so a filter never
+        follows a cut (#571). Every matching note is returned; the caller bounds them."""

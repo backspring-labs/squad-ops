@@ -322,6 +322,16 @@ class MemoryRecordRevisionResponse(BaseModel):
     references: list[dict[str, Any]]
 
 
+class MemoryRecordSourceTurnResponse(BaseModel):
+    """The one chat turn a record came from, opened by its session's owner only (§A.3.4, T15)."""
+
+    session_id: str
+    message_id: str
+    role: str
+    content: str
+    created_at: str
+
+
 class MemoryRecordResponse(BaseModel):
     record_id: str
     kind: str

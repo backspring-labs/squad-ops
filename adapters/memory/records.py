@@ -7,12 +7,15 @@ codecs carry JSONB as Python values (``adapters.persistence.pool``).
 
 from __future__ import annotations
 
+import re
 from dataclasses import replace
 from typing import Any
 
 from squadops.memory.records import (
     MemoryRecord,
+    RecordKind,
     RecordScope,
+    RecordStatus,
     Revision,
     StatusChange,
     revision_document,
@@ -54,6 +57,37 @@ class InMemoryMemoryRecords(MemoryRecordsPort):
             for r in self._records.values()
             if r.owner_id == owner_id and r.scope == RecordScope.USER
         ]
+
+    async def search_notes(
+        self, *, owner_id: str, project_id: str | None, text: str
+    ) -> list[MemoryRecord]:
+        # Postgres's full-text rank, approximated: the words a note shares with the turn.
+        words = set(_WORD.findall(text.lower()))
+        notes = [
+            r
+            for r in self._records.values()
+            if r.kind == RecordKind.NOTE
+            and r.status == RecordStatus.ACTIVE
+            and (
+                (r.scope == RecordScope.USER and r.owner_id == owner_id)
+                or (
+                    project_id is not None
+                    and r.scope == RecordScope.PROJECT
+                    and r.project_id == project_id
+                )
+            )
+        ]
+        return sorted(
+            notes,
+            key=lambda r: (
+                -len(words & set(_WORD.findall(r.current.body.lower()))),
+                -r.current.created_at.timestamp(),
+                r.record_id,
+            ),
+        )
+
+
+_WORD = re.compile(r"[a-z0-9]+")
 
 
 class PostgresMemoryRecords(MemoryRecordsPort):
@@ -189,6 +223,36 @@ class PostgresMemoryRecords(MemoryRecordsPort):
                 RecordScope.USER,
             )
             return await self._read(conn, list(rows))
+
+    async def search_notes(
+        self, *, owner_id: str, project_id: str | None, text: str
+    ) -> list[MemoryRecord]:
+        async with self._pool.acquire() as conn:
+            rows = await conn.fetch(_SEARCH_NOTES, owner_id, project_id, text)
+            return await self._read(conn, list(rows))
+
+
+#: §A.3.10: the notes in scope with their current revision and status, filtered in Postgres before the
+#: rank orders them. ``plainto_tsquery`` takes the turn as words, never as query syntax.
+_SEARCH_NOTES = f"""
+WITH latest_revision AS (
+    SELECT DISTINCT ON (record_id) record_id, document, created_at
+    FROM memory_record_revisions ORDER BY record_id, number DESC
+), latest_status AS (
+    SELECT DISTINCT ON (record_id) record_id, status
+    FROM memory_record_status_changes ORDER BY record_id, seq DESC
+)
+SELECT r.record_id, r.kind, r.scope, r.project_id, r.owner_id
+FROM memory_records r
+JOIN latest_revision c ON c.record_id = r.record_id
+LEFT JOIN latest_status s ON s.record_id = r.record_id
+WHERE r.kind = '{RecordKind.NOTE}'
+  AND COALESCE(s.status, '{RecordStatus.ACTIVE}') = '{RecordStatus.ACTIVE}'
+  AND ((r.scope = '{RecordScope.USER}' AND r.owner_id = $1)
+       OR ($2::text IS NOT NULL AND r.scope = '{RecordScope.PROJECT}' AND r.project_id = $2))
+ORDER BY ts_rank(to_tsvector('english', c.document->>'body'), plainto_tsquery('english', $3)) DESC,
+         c.created_at DESC, r.record_id
+"""
 
 
 def create_memory_records(provider: str, **kwargs: Any) -> MemoryRecordsPort:

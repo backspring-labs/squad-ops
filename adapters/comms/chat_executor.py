@@ -7,8 +7,9 @@ comes entirely from role_id → prompt_service.get_system_prompt(role_id).
 Key design decisions (from plan runtime contracts):
 - P2-RC1: Zero role-specific code. role_id drives identity via prompt_service.
 - P2-RC4, superseded: chat neither recalls nor stores. The legacy agent store is dormant
-  (SIP-0110 §A.4.3, #2174); chat carries no memory section until the context-assembly port
-  (#2176) supplies one.
+  (SIP-0110 §A.4.3, #2174). The runtime API assembles each turn's memory context from the records
+  and sends it in the message's metadata (#2180); this executor renders it through a managed
+  template and owns no memory. A capture is only ever proposed here: the person confirms it.
 - P2-RC5: History comes from the proxy (Phase 3), not A2A context: the runtime API sends a
   session's earlier turns, bounded, in the message's metadata (#2175).
 """
@@ -33,8 +34,10 @@ from squadops.comms.chat_history import (
     HISTORY_KEY,
     HISTORY_ROLES,
     HISTORY_UNAVAILABLE_KEY,
+    MEMORY_CONTEXT_KEY,
 )
 from squadops.llm.models import ChatMessage
+from squadops.memory.chat import memory_lines
 
 if TYPE_CHECKING:
     from squadops.agents.base import PortsBundle
@@ -78,8 +81,11 @@ class ChatAgentExecutor(AgentExecutor):
         )
 
         try:
-            # 1. Assemble system prompt from role identity
+            # 1. Assemble system prompt from role identity, then the turn's memory (#2180)
             system_content = self._get_system_prompt()
+            memory = await self._memory_section(context)
+            if memory:
+                system_content = f"{system_content}\n\n{memory}"
 
             # 2. Build message list for LLM: the session's earlier turns, then this one
             messages = self._build_messages(system_content, self._history(context), user_text)
@@ -164,6 +170,27 @@ class ChatAgentExecutor(AgentExecutor):
         """
         assembled = self._ports.prompt_service.get_system_prompt(self._role_id)
         return assembled.content
+
+    async def _memory_section(self, context: RequestContext) -> str:
+        """The turn's memory context, rendered through ``request.chat_memory_context``, or ``""``
+        when the turn carried none (no records store on the runtime). A render that fails is logged
+        at WARNING and the turn is answered without it."""
+        metadata = getattr(context.message, "metadata", None)
+        handed = metadata.get(MEMORY_CONTEXT_KEY) if isinstance(metadata, dict) else None
+        if not isinstance(handed, dict):
+            return ""
+        renderer = self._ports.request_renderer
+        if renderer is None:
+            logger.warning("chat_memory_not_rendered: no request renderer")
+            return ""
+        try:
+            rendered = await renderer.render(
+                "request.chat_memory_context", {"memory_lines": memory_lines(handed)}
+            )
+        except Exception:
+            logger.warning("chat_memory_not_rendered", exc_info=True)
+            return ""
+        return rendered.content.strip("\n")
 
     def _history(self, context: RequestContext) -> list[ChatMessage]:
         """The earlier turns the proxy sent with this one (#2175), oldest first. A turn sent

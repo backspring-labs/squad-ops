@@ -63,6 +63,8 @@ def _make_session_row(session_id: str = "s1") -> dict:
         "started_at": _now(),
         "ended_at": None,
         "metadata": "{}",
+        "project_id": None,
+        "deleted_at": None,
     }
 
 
@@ -115,8 +117,8 @@ class TestChatRepositoryCreateSession:
         # Last positional arg to execute is the metadata dict — the pool's codec
         # encodes it (#577)
         call_args = conn.execute.call_args[0]
-        metadata_arg = call_args[-1]  # last param
-        assert metadata_arg == {"source": "console"}
+        assert call_args[5] == {"source": "console"}  # metadata, before the project binding
+        assert call_args[6] is None  # an unbound session (#2180)
 
 
 class TestChatRepositoryGetSession:
@@ -248,6 +250,8 @@ class TestChatRepositoryMetadataDecoding:
             "started_at": _now(),
             "ended_at": None,
             "metadata": metadata,
+            "project_id": None,
+            "deleted_at": None,
         }
 
     @staticmethod

@@ -19,6 +19,29 @@ class ChatMessageRequest(BaseModel):
         default=None,
         description="Existing session ID. Omit to start a new session.",
     )
+    project_id: str | None = Field(
+        default=None,
+        description=(
+            "The project a new session is bound to (SIP-0110 Appendix A §3.3): it must exist, and "
+            "binding it needs memory:read. Omit for an unbound session. Ignored on an existing "
+            "session, whose stored binding every turn reads."
+        ),
+    )
+
+    model_config = ConfigDict(extra="forbid")
+
+
+class CaptureRequest(BaseModel):
+    """A confirmed capture (§3.5): what the card showed, as the person chose it. Nothing is stored
+    without one, and only the choices the session offers are accepted."""
+
+    message_id: str = Field(..., description="The turn the record comes from, in this session")
+    text: str = Field(..., min_length=1, max_length=4000)
+    kind: str = Field(..., description="note or preference (stage A)")
+    scope: str = Field(..., description="user, or project for a bound session's note")
+    suggestion: bool = Field(
+        default=False, description="A note marked as a claim, never a lesson's citation (§3.5)"
+    )
 
     model_config = ConfigDict(extra="forbid")
 
@@ -36,6 +59,7 @@ class ChatSessionDTO(BaseModel):
     user_id: str
     started_at: datetime
     ended_at: datetime | None = None
+    project_id: str | None = None
 
 
 class ChatMessageDTO(BaseModel):
@@ -46,6 +70,26 @@ class ChatMessageDTO(BaseModel):
     role: str
     content: str
     created_at: datetime
+
+
+class CaptureChoiceDTO(BaseModel):
+    """A kind and scope a confirmation card may offer this person in this session (§3.3)."""
+
+    kind: str
+    scope: str
+    project_id: str | None = None
+    takes_effect: str
+
+
+class CaptureResponse(BaseModel):
+    """What was saved, its id, its scope and when it takes effect, with the reply that says so."""
+
+    record_id: str
+    kind: str
+    scope: str
+    project_id: str | None = None
+    takes_effect: str
+    reply: ChatMessageDTO
 
 
 class MessagingAgentDTO(BaseModel):

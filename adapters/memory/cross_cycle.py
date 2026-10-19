@@ -9,6 +9,7 @@ from typing import Any
 from squadops.memory.annotation import Annotation
 from squadops.memory.approval import units_holding
 from squadops.memory.assessment import Assessment
+from squadops.memory.chat import ChatExposure
 from squadops.memory.exposures import Exposure
 from squadops.memory.lessons import Approval, PatternRevision, Snapshot, UnitKind
 from squadops.memory.observations import Observation, ObservationSource
@@ -30,6 +31,7 @@ class InMemoryCrossCycleMemoryStore(CrossCycleMemoryStorePort):
         self._approvals: dict[str, Approval] = {}
         self._snapshots: dict[tuple[str, str], Snapshot] = {}
         self._exposures: dict[str, Exposure] = {}
+        self._chat_exposures: dict[tuple[str, str], ChatExposure] = {}
         self._assessments: dict[str, Assessment] = {}
         self._annotations: dict[str, Annotation] = {}
 
@@ -127,6 +129,19 @@ class InMemoryCrossCycleMemoryStore(CrossCycleMemoryStorePort):
 
     async def get_exposure(self, exposure_id: str) -> Exposure | None:
         return self._exposures.get(exposure_id)
+
+    async def record_chat_exposure(self, exposure: ChatExposure) -> bool:
+        key = (exposure.session_id, exposure.message_id)
+        if key in self._chat_exposures:
+            return False
+        self._chat_exposures[key] = exposure
+        return True
+
+    async def list_chat_exposures(self, session_id: str) -> list[ChatExposure]:
+        return sorted(
+            (e for e in self._chat_exposures.values() if e.session_id == session_id),
+            key=lambda e: (e.assembled_at, e.message_id),
+        )
 
     async def list_project_exposures(self, project_id: str) -> list[Exposure]:
         return sorted(
@@ -389,6 +404,32 @@ class PostgresCrossCycleMemoryStore(CrossCycleMemoryStorePort):
                 project_id,
             )
         return [Exposure.from_dict(r["exposure_body"]) for r in rows]
+
+    async def record_chat_exposure(self, exposure: ChatExposure) -> bool:
+        async with self._pool.acquire() as conn:
+            status = await conn.execute(
+                "INSERT INTO chat_exposures (session_id, message_id, user_id, agent_id, project_id, "
+                "assembled_at, sections) VALUES ($1, $2, $3, $4, $5, $6, $7) "
+                "ON CONFLICT (session_id, message_id) DO NOTHING",
+                exposure.session_id,
+                exposure.message_id,
+                exposure.user_id,
+                exposure.agent_id,
+                exposure.project_id,
+                exposure.assembled_at,
+                exposure.sections_document(),
+            )
+        return status.endswith(" 1")
+
+    async def list_chat_exposures(self, session_id: str) -> list[ChatExposure]:
+        async with self._pool.acquire() as conn:
+            rows = await conn.fetch(
+                "SELECT session_id, message_id, user_id, agent_id, project_id, assembled_at, "
+                "sections FROM chat_exposures WHERE session_id = $1 "
+                "ORDER BY assembled_at, message_id",
+                session_id,
+            )
+        return [ChatExposure.from_document(r) for r in rows]
 
     async def record_assessment(self, assessment: Assessment) -> bool:
         async with self._pool.acquire() as conn:

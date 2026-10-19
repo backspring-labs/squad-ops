@@ -311,3 +311,75 @@ class TestTheTurnsHistory:
             ("assistant", "second"),
             ("user", "third"),
         ]
+
+
+class TestTheTurnsMemory:
+    """#2180: the runtime API sends each turn's memory context in the message's metadata, and the
+    agent renders it through ``request.chat_memory_context``, owning no memory itself."""
+
+    async def test_the_memory_context_is_rendered_after_the_identity_through_the_shipped_template(
+        self,
+    ):
+        """Entered at ``execute`` with the filesystem renderer and the shipped asset. Bugs caught:
+        the context sent and never shown, a failed section shown as none, or the capture protocol
+        missing, so a "remember this" is answered as saved when nothing was."""
+        from adapters.comms.chat_executor import ChatAgentExecutor
+        from adapters.prompts.factory import create_prompt_asset_source
+        from squadops.prompts.renderer import RequestTemplateRenderer
+
+        captured: list = []
+
+        async def capturing_stream(messages, **kwargs):
+            captured.extend(messages)
+            yield "ok"
+
+        ports = _make_ports_bundle()
+        ports.llm.chat_stream = capturing_stream
+        ports.request_renderer = RequestTemplateRenderer(
+            create_prompt_asset_source(provider="filesystem")
+        )
+        ctx = _make_context(user_text="what do we know?")
+        ctx.message.metadata = {
+            "history": [],
+            "memory_context": {
+                "project_id": "group_run",
+                "sections": [
+                    {
+                        "kind": "notes",
+                        "entries": [{"record_id": "m", "revision": 1, "scope": "project",
+                                     "text": "the join returns 409 when full"}],
+                        "omitted": 1,
+                    }
+                ],
+                "unavailable": ["preferences"],
+            },
+        }  # fmt: skip
+
+        await ChatAgentExecutor(ports=ports, role_id="comms").execute(ctx, _make_event_queue())
+
+        system = captured[0].content
+        assert system.startswith("You are a test agent.\n\n## WHAT THIS CONVERSATION REMEMBERS")
+        assert "1. (project) the join returns 409 when full" in system
+        assert "(1 more left out for space.)" in system
+        assert "Couldn't be read for this turn: preferences" in system
+        assert "<memory-capture>" in system
+
+    async def test_a_turn_without_a_memory_context_keeps_the_identity_alone(self):
+        """Bug caught: a runtime with no records store still getting the capture protocol, so the
+        agent proposes captures that can't be saved."""
+        from adapters.comms.chat_executor import ChatAgentExecutor
+
+        captured: list = []
+
+        async def capturing_stream(messages, **kwargs):
+            captured.extend(messages)
+            yield "ok"
+
+        ports = _make_ports_bundle()
+        ports.llm.chat_stream = capturing_stream
+        ctx = _make_context()
+        ctx.message.metadata = {"history": []}
+
+        await ChatAgentExecutor(ports=ports, role_id="comms").execute(ctx, _make_event_queue())
+
+        assert captured[0].content == "You are a test agent."
