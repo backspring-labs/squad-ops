@@ -94,7 +94,7 @@ def _runner(tmp_path, container, app=None, **kw) -> ContainerScenarioRunner:
         image="sandbox:pinned",
         http_client_factory=app or _app(),
         poll_interval_seconds=0.01,
-        **kw,
+        **{"app_network": None, **kw},
     )
 
 
@@ -311,3 +311,38 @@ async def test_a_short_secret_is_scrubbed_from_free_text_only(tmp_path):
     assert (run.scenario_id, run.result) == ("passes-through", "failed")
     assert "pass" not in (run.detail or "").replace("[redacted]", "")
     assert result.tree_identity == FileTree.of(TREE).identity
+
+
+class _OnTheNetwork(_Container):
+    async def resolve_host_port(self, container_id: str, container_port: int) -> int:
+        raise AssertionError("an app on the app network publishes no host port")
+
+
+async def test_the_app_holding_the_secrets_runs_on_the_app_network_by_name(tmp_path):
+    """The MacBook lane's review of #2460, binding #2450: inside a deploy the service can't reach
+    an app on the host's loopback, and an app holding the evaluation secrets must have no route
+    out. Bug caught: the runner still publishing to loopback on the default bridge, so every
+    evaluation in a deploy fails to connect while its secrets sit on a network with egress."""
+    container, seen = _OnTheNetwork(), []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        seen.append((request.url.host, request.url.port))
+        if request.url.path == "/healthz":
+            return httpx.Response(200, text="ok")
+        return httpx.Response(200, json={"name": "apples", "count": 1})
+
+    result = await _evaluate(
+        _runner(
+            tmp_path,
+            container,
+            app=lambda: httpx.AsyncClient(transport=httpx.MockTransport(handler)),
+            app_network="squadops-sandbox-apps",
+        )
+    )
+
+    setup_spec, start_spec = container.specs
+    assert setup_spec.network == "bridge"  # dependencies install with egress, and no secrets
+    assert (start_spec.network, start_spec.publish_ports) == ("squadops-sandbox-apps", ())
+    assert ("TALLY_ADMIN_TOKEN", "evaluation-token") in start_spec.env
+    assert seen and set(seen) == {(start_spec.name, 18407)}
+    assert [r.result for r in result.runs] == ["passed"]

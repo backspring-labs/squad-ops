@@ -24,15 +24,14 @@ from __future__ import annotations
 
 import asyncio
 import posixpath
-import re
 import time
-import uuid
 from collections.abc import Callable, Mapping
 from pathlib import Path
 from typing import Any
 
 import httpx
 
+from adapters.sandbox.placement import address, placement
 from squadops.ports.tools.container import ContainerPort
 from squadops.sandbox.models import (
     BuildResult,
@@ -426,14 +425,6 @@ class ContainerBackend(NoOpExecutionSandbox):
                 return False
             await asyncio.sleep(self._poll_interval)
 
-    def _placement(self, cycle_id: str) -> dict:
-        """Where the runtime unit runs: on the app network under a name of its own, or published to
-        loopback (#2451 part 4)."""
-        if self._app_network is None:
-            return {"publish_ports": (self._app_port,)}
-        safe = re.sub(r"[^a-zA-Z0-9_.-]", "-", cycle_id)[:40]
-        return {"network": self._app_network, "name": f"squadops-app-{safe}-{uuid.uuid4().hex[:8]}"}
-
     async def start_application(self, *, revision: WorkspaceRevision) -> StartResult:
         self._require_pinned(OperationName.START_APPLICATION, revision)
         base = {
@@ -470,16 +461,13 @@ class ContainerBackend(NoOpExecutionSandbox):
             cap_drop_all=True,
             no_new_privileges=True,
             user=self._workspace_user(revision.cycle_id),
-            **self._placement(revision.cycle_id),
+            **placement(self._app_network, revision.cycle_id, (self._app_port,)),
         )
         started = time.monotonic()
         try:
             container_id = await self._container.run_detached(spec)
-            if spec.network is not None:
-                base_url = f"http://{spec.name}:{self._app_port}"
-            else:
-                host_port = await self._container.resolve_host_port(container_id, self._app_port)
-                base_url = f"http://127.0.0.1:{host_port}"
+            host, port = await address(self._container, container_id, spec, self._app_port)
+            base_url = f"http://{host}:{port}"
         except ToolContainerError as e:
             return StartResult(
                 **base, status=OperationStatus.NOT_RUN, ran=False, unavailable_reason=str(e)

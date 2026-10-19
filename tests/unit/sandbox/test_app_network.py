@@ -76,3 +76,40 @@ def test_compose_puts_the_service_on_an_internal_network_named_as_it_reads_it():
     assert joined == {"sandbox-service"}
     service_env = compose["services"]["sandbox-service"]["environment"]
     assert service_env["SQUADOPS__SANDBOX__APP_NETWORK"] == network["name"]
+
+
+def test_the_env_reaches_the_scenario_runners_app_through_the_services_root(service_env):
+    """The runner's wiring (the MacBook lane's review of #2460): entered at ``build_app`` with
+    the env compose writes, through the service's evaluation route. Bug caught: the factory
+    building the runner without the network, so the app holding the evaluation secrets still
+    publishes to loopback on a network with egress."""
+    from squadops.campaigns.evaluator_trees import FileTree
+    from squadops.scenarios.runner import DeclaredStart
+
+    service_env.setenv("SQUADOPS__SANDBOX__APP_NETWORK", "squadops-sandbox-apps")
+    container = RuntimeFakeContainer(detach_error=ToolContainerError("stop here"))
+    service_env.setattr("adapters.sandbox.factory.DockerAdapter", lambda: container)
+    client = TestClient(build_app())
+    tree = {"app.py": "print('app')\n"}
+    declared = DeclaredStart(
+        start=("python3", "app.py"),
+        port=18407,
+        ready_kind="http",
+        ready_path="/healthz",
+        ready_timeout_seconds=1.0,
+    )
+
+    client.post(
+        "/api/v1/evaluations",
+        json={
+            "tree": tree,
+            "tree_identity": FileTree.of(tree).identity,
+            "declared": declared.as_dict(),
+            "scenarios": [],
+            "environment": {"TALLY_ADMIN_TOKEN": "t"},
+        },
+        headers={"Authorization": "Bearer t"},
+    )
+
+    [spec] = container.specs
+    assert (spec.network, spec.publish_ports) == ("squadops-sandbox-apps", ())

@@ -377,7 +377,11 @@ async def test_an_evaluation_travels_the_client_to_the_runner_and_back(tmp_path)
     root = tmp_path / "cycles"
     container = _Container()
     runner = ContainerScenarioRunner(
-        container=container, root=root, image="sandbox:pinned", http_client_factory=_app()
+        container=container,
+        root=root,
+        image="sandbox:pinned",
+        http_client_factory=_app(),
+        app_network=None,
     )
     app = create_app(
         SandboxService(
