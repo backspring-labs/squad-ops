@@ -297,6 +297,11 @@ def contribute(
     project_id: str = typer.Argument(...),
     cycle_id: str = typer.Option(..., "--cycle", help="The cycle whose run is contributed"),
     run_id: str = typer.Option(..., "--run", help="The run whose verified change is contributed"),
+    token_from_gh: bool = typer.Option(
+        False,
+        "--token-from-gh",
+        help="Contribute with your own GitHub access (`gh auth token`), for this act only",
+    ),
     idempotency_key: str | None = typer.Option(None, "--idempotency-key"),
 ):
     """Contribute a run's verified change through the Project's own process (SIP-0112 FR-06):
@@ -304,12 +309,12 @@ def contribute(
     the run's patch as the contribution. Recorded pending until the product takes it."""
     fmt = ctx.obj.get("format", "table") if ctx.obj else "table"
     key = idempotency_key or f"cli-{uuid.uuid4().hex}"
+    body = {"cycle_id": cycle_id, "run_id": run_id, "idempotency_key": key}
+    if token_from_gh:
+        body["token"] = _gh_token()
     try:
         client = _get_client(ctx)
-        data = client.post(
-            f"/api/v1/projects/{project_id}/contributions",
-            json={"cycle_id": cycle_id, "run_id": run_id, "idempotency_key": key},
-        )
+        data = client.post(f"/api/v1/projects/{project_id}/contributions", json=body)
         client.close()
     except CLIError as e:
         print_error(f"{e} (idempotency key {key})")
@@ -322,3 +327,19 @@ def contribute(
     where = contribution["review_url"] or "the run's source_change.patch"
     again = " (already contributed)" if data.get("replayed") else ""
     print_success(f"{contribution['mode']} {contribution['commit'][:12]}: {where}{again}")
+
+
+def _gh_token() -> str:
+    """The caller's own GitHub token, from the GitHub CLI's login. Never printed."""
+    import subprocess
+
+    try:
+        done = subprocess.run(["gh", "auth", "token"], capture_output=True, text=True, timeout=30)
+    except (OSError, subprocess.TimeoutExpired) as e:
+        print_error(f"--token-from-gh needs the GitHub CLI logged in: {type(e).__name__}")
+        raise typer.Exit(code=2) from e
+    token = done.stdout.strip()
+    if done.returncode != 0 or not token:
+        print_error("--token-from-gh: `gh auth token` gave no token; run `gh auth login` first")
+        raise typer.Exit(code=2)
+    return token

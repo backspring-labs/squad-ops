@@ -162,8 +162,9 @@ async def _open_review_request(
     token = tokens.get(project.project_id)
     if not token:
         raise ContributionRefused(
-            f"the deploy holds no review-request token for Project {project.project_id} "
-            "(projects.review_request_tokens): its owner names one, scoped to that repository"
+            f"no review-request token for Project {project.project_id}: pass the contributor's "
+            "own with the request (`squadops projects contribute --token-from-gh`), or the "
+            "deploy names one (projects.review_request_tokens)"
         )
     if forge is None:
         raise ContributionRefused("this runtime has no forge to open a review request on")

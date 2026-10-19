@@ -597,3 +597,38 @@ class TestContributionRoutes:
 
         assert resp.status_code == 422
         mock_project_registry.record_contribution.assert_not_awaited()
+
+    @pytest.mark.parametrize(
+        ("token", "deploy_tokens", "expected"),
+        [("own-t0ken", {"prj-tally": "deploy"}, {"prj-tally": "own-t0ken"}),
+         (None, {"prj-tally": "deploy"}, {"prj-tally": "deploy"})],
+        ids=["the-contributors-own", "the-deploys"],
+    )  # fmt: skip
+    def test_the_contributors_own_token_is_used_for_this_act_and_never_answered(
+        self, client, mock_project_registry, monkeypatch, token, deploy_tokens, expected
+    ):
+        """Bugs caught: the contributor's token ignored for the deploy's, or the deploy's
+        ignored without one; the token echoed back in the response."""
+        from squadops.api.routes.cycles import projects as route
+        from squadops.projects.contribution import Contribution
+
+        recorded = Contribution(
+            project_id="prj-tally", cycle_id="cyc_1", run_id="run_1", commit="a" * 40,
+            parent_commit="b" * 40, mode="review_request", state="pending",
+            branch="squadops/cyc_1", review_url="https://github.com/o/t/pull/7",
+            contributed_by="anonymous", contributed_at=NOW,
+        )  # fmt: skip
+        seen = AsyncMock(return_value=(recorded, False))
+        monkeypatch.setattr(route, "contribute", seen)
+        client.app.state.source_repository = AsyncMock()
+        client.app.state.review_request_tokens = deploy_tokens
+        body = {"cycle_id": "cyc_1", "run_id": "run_1", "idempotency_key": "c-1"}
+
+        resp = client.post(
+            "/api/v1/projects/prj-tally/contributions",
+            json={**body, **({"token": token} if token else {})},
+        )
+
+        assert resp.status_code == 201
+        assert seen.await_args.kwargs["tokens"] == expected
+        assert "t0ken" not in resp.text

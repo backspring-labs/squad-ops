@@ -175,7 +175,7 @@ async def test_a_patch_export_records_the_run_and_nothing_leaves(world):
     ("change", "message"),
     [
         ("uncaptured", "captured no accepted change"),
-        ("no-token", "holds no review-request token"),
+        ("no-token", "no review-request token for Project prj-tally"),
         ("direct-push", "which is integration"),
         ("tag-base", "targets a branch"),
     ],

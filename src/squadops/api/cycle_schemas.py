@@ -14,7 +14,7 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Any, Literal
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, SecretStr
 
 # =============================================================================
 # Nested DTOs
@@ -345,6 +345,10 @@ class ContributionRequest(BaseModel):
     cycle_id: str = Field(min_length=1, max_length=200)
     run_id: str = Field(min_length=1, max_length=200)
     idempotency_key: str = Field(min_length=1, max_length=200)
+    #: The contributor's own forge token, for this one act: used in memory for the push and the
+    #: review request, never stored, logged or returned. Absent, the deploy's token for the
+    #: Project is used (`projects.review_request_tokens`).
+    token: SecretStr | None = Field(default=None, min_length=1, max_length=512)
 
 
 class ContributionResponse(BaseModel):
