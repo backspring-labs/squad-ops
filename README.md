@@ -162,7 +162,7 @@ Then verify and start working:
 ```bash
 squadops doctor dev-mac                       # Validate environment
 squadops login                                # Authenticate via Keycloak
-squadops cycles create play_game --squad-profile full --request-profile selftest
+squadops cycles create play_game --squad-profile full --request-profile smoke
 ```
 
 See [docs/GETTING_STARTED.md](docs/GETTING_STARTED.md) for full setup instructions, profile details, and troubleshooting

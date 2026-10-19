@@ -46,11 +46,12 @@ def _profile_to_response(profile) -> CycleRequestProfileResponse:
 
 @router.get("", dependencies=[Depends(require_scopes(Scope.CYCLES_READ))])
 async def list_cycle_request_profiles(response: Response) -> list[CycleRequestProfileResponse]:
-    """Return all registered cycle request profiles with prompts metadata."""
+    """The operator's request profiles, with prompts metadata (#316, R2.4). The campaign's and
+    every frozen old name still resolve by name, through the route below, but aren't listed."""
     # deferred (pair): api and contracts would import each other at load
-    from squadops.contracts.cycle_request_profiles import list_profiles, load_profile
+    from squadops.contracts.cycle_request_profiles import OPERATOR_PROFILES, load_profile
 
-    names = list_profiles()
+    names = list(OPERATOR_PROFILES)
     response.headers.update(_CACHE_HEADERS)
     return [_profile_to_response(load_profile(name)) for name in names]
 

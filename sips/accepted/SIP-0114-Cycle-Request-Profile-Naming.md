@@ -29,7 +29,7 @@ lane's review (revision 4, PR #2494), by the owner's approval of that day.
 
 | part | status | where |
 |---|---|---|
-| the operator's request profiles, the stack's request defaults and the campaign profiles apart from them, with every old name still resolving for pinned definitions (revision 4's decisions; Q13) | **placed** | 2.4.0, #316, built in PR #2500 |
+| the operator's request profiles, the stack's request defaults and the campaign profiles apart from them, with every old name still resolving for pinned definitions (revision 4's decisions; Q13) | **shipped** | 2.4.0, PR #2500, issue #316 (§11a) |
 
 **What closes this SIP:** #316 shipped, with every pinned definition still resolving the profile it names.
 
@@ -343,3 +343,43 @@ A workflow × a rigor tier that echoes `smoke / lite / full`.
 ## 10. Decision requested
 
 Pick a direction (A / B / C / hybrid) and confirm the deprecation approach, so a follow-up implementation SIP or PR can carry it out. Until then, `validated-fullstack` stays as-is (functional, badly named) and the #279 fold is held.
+
+## 11a. As built (2026-10-19, #316, PR #2500; the supervisor, under the owner's grant of 2026-10-19)
+
+**What shipped:** R2.3 and R2.4, under decisions 1 to 5 as revision 4 records them.
+- **The operator's seven request profiles:** `smoke`, `build`, `validate`, `implement`, `ship`, `wrapup` and `benchmark`
+  (`OPERATOR_PROFILES`).
+  - `smoke`, `validate`, `implement` and `ship` are new files, each derived from the profile it replaces.
+  - `build`, `wrapup` and `benchmark` keep their released YAML byte for byte, as (a) commits.
+  - `GET /api/v1/cycle-request-profiles` and the CLI list the seven. Every other name still resolves by name, so every
+    pinned definition keeps resolving the profile it names (Q13).
+  - The CLI's default is `smoke`.
+- **Every v2.3.1 profile is frozen:** a test pins each file's sha256.
+- **The stack's request defaults (R2.3):** `squadops.stacks.request_defaults` declares each stack's required checks,
+  time budget and manifest attempts, at the values `validated-fullstack` carried. `cycle_request_body`, the one
+  builder the CLI and a campaign's launches share, puts them beneath an operator profile's own keys, and the caller's
+  overrides above both. `validate` on either stack resolves to `validated-fullstack` apart from `notes`.
+- **(a)'s added test:** every pinned verification-set config and campaign definition resolves to the same applied
+  defaults and config hash as before (153 sets, and both profiles of every campaign definition).
+
+**Where it narrows revision 4 (a): only an operator profile takes a stack's defaults.**
+- **What (a) says:** a profile that doesn't set a key gains the stack's when it runs with a stack set at create time.
+- **Why that was too wide:** applied to every profile, the rule changes the campaign profiles. `campaign-proposal` pins
+  its own stack and sets none of the three keys, so its launches would gain required checks, a time budget and
+  manifest attempts. `fullstack-fastapi-react` is the same. That contradicts decision 4 and Q13, which freeze the
+  campaign profiles.
+- **So the defaults apply beneath the seven operator profiles only.** Every other profile, released or the campaigns',
+  resolves exactly as it did, whatever stack the caller passes. That holds by construction. A test runs every one of
+  them on every stack, and a mutant without the rule fails 26 cases.
+- **Three released names change, as (a) intends:** `build`, `wrapup` and `benchmark` are operator profiles too, so a
+  stack set at create time adds the keys they don't set. No pinned config names any of them.
+- **The window's launches are frozen by hash** (the second read of PR #2500). The 2.4 window's and its shakeouts'
+  calibration and repair launches resolve to the config hashes main recorded before #316. Those hashes were read on
+  main and on this branch, found identical, and pinned in a test. A second reader also rebuilt all 309 pinned
+  requests on both trees: 153 verification sets, and every campaign definition's calibration, increment, retry and
+  repair launches. Every body and hash was identical.
+- **(a)'s own example holds:** `build` is an operator profile, so `build --set build_profile=fullstack_fastapi_react`
+  gains the stack's required checks, as (a) says.
+- **Evidence:** `test_request_profile_taxonomy.py`; the wiring test `test_a_campaigns_launches_on_a_stack_resolve_as_their_profiles_do`
+  enters at a Next.js campaign's `calibration_launch` and `bound_launch`, the path the 2.4 window's campaigns take.
+

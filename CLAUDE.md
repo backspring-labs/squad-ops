@@ -86,7 +86,7 @@ squadops doctor dev-mac --json                     # Machine-readable output
 ### CLI (Cycle Execution)
 ```bash
 squadops login                             # Authenticate via Keycloak
-squadops cycles create <project> --squad-profile full --request-profile selftest
+squadops cycles create <project> --squad-profile full --request-profile smoke
 squadops cycles show <project> <cycle-id>  # Show cycle status + runs
 squadops cycles list <project>             # List cycles for project
 squadops runs list <project> <cycle-id>    # List runs for cycle
