@@ -60,7 +60,7 @@ deferred until a second stack exists — see the §4.2 status note),
 SIP-Edge-Deployment-Profile (remote sandbox adapter target),
 SIP-Capability-Backed-Agents (toolchain-as-capability, 2.0 arc).
 
-## Delivery ledger (current as of 2026-10-18)
+## Delivery ledger (current as of 2026-10-19)
 
 Kept by the rule in CLAUDE.md ("SIP System"): one row per part, updated in the PR that ships or re-places it, read at each release cut. Built from the read-only SIP-portfolio audit of 2026-10-04; `sips/PORTFOLIO.md` indexes it.
 
@@ -84,6 +84,7 @@ Kept by the rule in CLAUDE.md ("SIP System"): one row per part, updated in the P
 | the runtime API as the service's caller: its own client selector, the service's URL and token, the service's provider split from the preflight's (§11f; #2451 parts 1–3) | **shipped** | 2.4.0, PR #2456 |
 | the apps the service starts, on the internal `sandbox-apps` network by container name, with no host port (§11h; #2451 part 4) | **shipped** | 2.4.0, PR #2460 |
 | a pinned revision's content, read through the port from the live tree only while it matches its pin (§11i; SIP-0112's E.4.3 capture) | **shipped** | 2.4.0, PR #2461 |
+| a seeded workspace released through the port, the operation journal kept by every removal (§11j) | **shipped** | 2.4.0, PR #2527, issue #2473 |
 
 **What closes this SIP:** Steps 3, 5, 6, 7 shipped or dropped. Until a clean-room requirement returns, they are unplaced by ruling (§11c, 2026-10-04).
 
