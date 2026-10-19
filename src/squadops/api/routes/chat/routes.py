@@ -648,9 +648,9 @@ def _capture_applicability(
         )
     try:
         applicability = InstructionApplicability(
-            tuple(body.applicability.get("task_types") or ()),
-            tuple(body.applicability.get("roles") or ()),
-            tuple(body.applicability.get("stacks") or ()),
+            tuple(body.applicability.task_types),
+            tuple(body.applicability.roles),
+            tuple(body.applicability.stacks),
         )
     except RecordRefused as e:
         raise http_error(422, "VALIDATION_ERROR", str(e)) from e

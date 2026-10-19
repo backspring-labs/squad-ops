@@ -453,8 +453,9 @@ class ProposedCapture:
     scope: str
     #: A conversational claim, kept as a hypothesis: never a lesson's citation (§3.5, T5).
     suggestion: bool = False
-    #: A project instruction's applicability as the agent proposes it (task types, roles, stacks);
-    #: ``None`` for a note or a preference. The card shows it, and the person confirms or changes it.
+    #: A project instruction's applicability as the agent proposes it (task types, roles, stacks), a
+    #: field left out or malformed empty; ``None`` for a note or a preference. The card shows it, and
+    #: the person fills, confirms or changes it.
     applicability: Mapping[str, tuple[str, ...]] | None = None
 
 
@@ -473,6 +474,10 @@ def proposed_capture(reply: str) -> tuple[ProposedCapture | None, str]:
             continue
         text, kind = str(doc.get("text") or "").strip(), doc.get("kind")
         scope = doc.get("scope") or RecordScope.USER
+        if not isinstance(kind, str) or not isinstance(scope, str):
+            # An unhashable kind or scope (a list) proposes nothing, never ends the stream (the second
+            # read of PR #2525).
+            continue
         if text and kind in (RecordKind.NOTE, RecordKind.PREFERENCE) and scope in _CAPTURE_SCOPES:
             suggestion = doc.get("suggestion") is True and kind == RecordKind.NOTE
             proposal = ProposedCapture(text, str(kind), str(scope), suggestion)
@@ -496,18 +501,19 @@ _APPLICABILITY_FIELDS = ("task_types", "roles", "stacks")
 
 
 def _proposed_applicability(raw: Any) -> dict[str, tuple[str, ...]]:
-    """The applicability an agent proposed, each field as a tuple of names, ``*`` where it named none:
-    the card shows "any" for that field, and the person narrows it before confirming."""
+    """The applicability an agent proposed, each field the names it gave. A field it left out, or
+    gave malformed, is empty, never ``*``: an unknown never means everywhere (§A.3.2), so the card
+    shows it blank and the capture is refused until the person fills it ('*' for any is theirs to
+    choose)."""
     raw = raw if isinstance(raw, dict) else {}
     out = {}
     for name in _APPLICABILITY_FIELDS:
         values = raw.get(name)
-        names = (
+        out[name] = (
             tuple(str(v).strip() for v in values if str(v).strip())
             if isinstance(values, list)
             else ()
         )
-        out[name] = names or ("*",)
     return out
 
 

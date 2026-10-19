@@ -1855,6 +1855,16 @@ routes, the records routes, the provenance link and the deleted-session marks.
   path: pinned by the units admitted after it, on the tasks its applicability covers. The reply says so.
 - **Evidence:** T1 through chat. An instruction proposed and confirmed on the card reaches the next admitted cycle's
   design plan, and no other of its tasks.
+- **From the second read (a fresh reader on PR #2525):**
+  - **The capture's applicability is the records API's own model** (`InstructionApplicabilityDTO`, extras refused). It
+    had silently dropped an unknown key that the records API refuses.
+  - **A field the agent leaves out, or gives malformed, stays blank:** the person fills it, and `*` is theirs to
+    choose. It had read as `*`, so a malformed proposal became "applies to every task" (§A.3.2: an unknown never means
+    everywhere).
+  - **A proposal whose kind or scope isn't a string proposes nothing.** A list there had ended the reply's stream.
+- **Not built:** §A.3.2 has the confirming person shown the authoritative records applicable beside the instruction.
+  The card doesn't show them: chat reads no references yet (stage A's narrowing), and the reference readers that would
+  supply them are #2178's and #2179's second stages.
 
 **Stage B's other half (#2180, still open):** a task instruction captured from chat. It names an already-admitted
 cycle, so it is an intervention after admission (§3.5), which #2178's second stage builds. Until then the card doesn't

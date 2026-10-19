@@ -599,8 +599,11 @@ async def test_a_project_instruction_captured_in_chat_reaches_the_next_cycles_ta
         ("instruction", "project", None, "names its task_types, roles and stacks"),
         ("instruction", "project", {"task_types": ["*"], "roles": ["development"], "stacks": ["*"]}, "role 'development'"),
         ("note", "user", {"task_types": ["*"], "roles": ["*"], "stacks": ["*"]}, "a note has no applicability"),
+        ("instruction", "project", {"task_types": ["*"], "roles": ["*"], "stacks": ["*"], "stack": ["python_cli"]}, None),
+        ("instruction", "project", {"task_types": ["*"], "roles": ["*"], "stacks": []}, "names its stacks"),
     ],
-    ids=["an-instruction-without-one", "a-role-no-dispatch-carries", "a-note-with-one"],
+    ids=["an-instruction-without-one", "a-role-no-dispatch-carries", "a-note-with-one",
+         "a-key-the-records-api-refuses", "a-field-left-blank"],
 )  # fmt: skip
 def test_a_captured_instructions_applicability_is_required_and_checked(
     world, kind, scope, applicability, message
@@ -616,5 +619,6 @@ def test_a_captured_instructions_applicability_is_required_and_checked(
     )  # fmt: skip
 
     assert response.status_code == 422
-    assert message in response.json()["detail"]["error"]["message"]
+    if message is not None:  # a body the model refuses answers with its validation detail instead
+        assert message in response.json()["detail"]["error"]["message"]
     assert world.records._records == {}

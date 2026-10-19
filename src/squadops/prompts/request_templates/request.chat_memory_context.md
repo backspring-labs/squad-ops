@@ -40,4 +40,4 @@ capacity in every suite", propose it as a project instruction, naming the tasks 
 <memory-capture>{"text": "QA covers capacity in every suite.", "kind": "instruction", "applicability": {"task_types": ["qa.test"], "roles": ["qa"], "stacks": ["*"]}}</memory-capture>
 
 An instruction binds the squad's work in the cycles and campaigns admitted after it is confirmed, so
-name only the tasks it is for. The person confirms it on a card, and nothing is kept until they do.
+name only the tasks it is for, and give all three fields: use "*" only where it is for any. The person confirms it on a card, and nothing is kept until they do.

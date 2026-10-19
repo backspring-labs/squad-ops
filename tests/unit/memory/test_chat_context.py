@@ -165,11 +165,13 @@ def test_a_read_that_failed_is_failed_and_says_so_never_none():
         ('Ok <memory-capture>{"text": "x", "kind": "instruction"}</memory-capture>',
          ("x", "instruction", "project"), "Ok"),
         ('Ok <memory-capture>{"text": "x", "kind": "instruction", "scope": "task"}</memory-capture>', None, "Ok"),
+        ('Ok <memory-capture>{"text": "x", "kind": "note", "scope": ["user"]}</memory-capture>', None, "Ok"),
         ("Ok <memory-capture>not json</memory-capture>", None, "Ok"),
         ('<memory-capture>{"text": "", "kind": "note"}</memory-capture>Done', None, "Done"),
         ("No capture here.", None, "No capture here."),
     ],
     ids=["a-note", "a-preference", "a-project-instruction", "a-task-instruction-waits-for-2178",
+         "a-scope-that-isnt-a-string",
          "malformed", "empty", "none"],
 )  # fmt: skip
 def test_a_reply_proposes_at_most_one_well_formed_capture_and_never_shows_the_block(
@@ -285,3 +287,20 @@ def test_lessons_are_inspected_only_on_a_bound_turn_that_asked(project_id, loade
     )
 
     assert _sections(sections)[SectionKind.INSPECTED_LESSONS].disposition is disposition
+
+
+@pytest.mark.parametrize(
+    "applicability",
+    ['"qa.test"', '{"task_types": "qa.test"}', '{"task_type": ["qa.test"]}', "null"],
+    ids=["a-string", "a-field-as-a-string", "a-misspelled-field", "none"],
+)
+def test_a_malformed_or_missing_applicability_is_proposed_blank_never_as_any(applicability):
+    """The second read of PR #2525. Bug caught: an agent's malformed applicability read as ``*`` in
+    every field, so the card offered "applies to every task" (§A.3.2: an unknown never means
+    everywhere)."""
+    proposal, _ = proposed_capture(
+        f'<memory-capture>{{"text": "x", "kind": "instruction", "applicability": {applicability}}}'
+        "</memory-capture>"
+    )
+
+    assert proposal.applicability == {"task_types": (), "roles": (), "stacks": ()}

@@ -139,7 +139,8 @@
     const sameKind = exact || choices.find((c) => c.kind === kind);
     const changed = exact ? null : `Proposed as a ${scope} ${kind}, which this conversation doesn't offer you.`;
     const applies = Object.fromEntries(
-      APPLICABILITY_FIELDS.map((f) => [f, (applicability?.[f] || ['*']).join(', ')])
+      // A field the agent didn't name stays blank: '*' (any) is the person's to choose, never a default.
+      APPLICABILITY_FIELDS.map((f) => [f, (applicability?.[f] || []).join(', ')])
     );
     card = { text, sourceMessageId, choices, choice: sameKind ? choiceKey(sameKind) : null,
              suggestion, changed, applies };
