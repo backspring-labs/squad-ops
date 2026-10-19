@@ -403,3 +403,34 @@ def _task_receives(records, text: str) -> bool:
         )
     )
     return any(text in json.dumps(e.inputs, default=str) for e in envelopes)
+
+
+@pytest.mark.parametrize(
+    ("role", "bound", "kind", "scope"),
+    [
+        (Role.VIEWER, True, "note", "project"),
+        (Role.ADMIN, False, "note", "project"),
+        (Role.ADMIN, True, "instruction", "project"),
+        (Role.ADMIN, True, "preference", "project"),
+    ],
+    ids=["no-memory-note", "no-binding", "an-instruction-is-stage-b", "no-such-scope-for-the-kind"],
+)
+def test_a_capture_the_card_didnt_offer_is_refused_whoever_asks(world, role, bound, kind, scope):
+    """§3.3: the card's choices are the rule, not a hint. Bug caught: an admin's crafted request
+    storing a project note from an unbound session, or a project instruction captured from chat
+    before stage B makes it reach its tasks."""
+    opened, _ = world.as_("ada", role).say(
+        "keep it", **({"project_id": "group_run"} if bound else {})
+    )
+    turn = world.chats.messages[0]
+
+    response = world.client.post(
+        f"/api/v1/chat/sessions/{opened.headers['X-Session-Id']}/captures",
+        json={"message_id": turn.message_id, "text": "kept", "kind": kind, "scope": scope},
+    )
+
+    assert response.status_code == 403
+    assert response.json()["detail"]["error"]["message"].startswith(
+        f"this session offers you no {scope} {kind}"
+    )
+    assert world.records._records == {}
