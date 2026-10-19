@@ -370,6 +370,8 @@ class SourceSyncRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     idempotency_key: str = Field(min_length=1, max_length=200)
+    #: The caller's own forge token, to read its review requests' state for this sync only.
+    token: SecretStr | None = Field(default=None, min_length=1, max_length=512)
 
 
 class SourceSyncResponse(BaseModel):

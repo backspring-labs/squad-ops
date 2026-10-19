@@ -275,7 +275,11 @@ async def sync_upstream(
             registry=get_project_registry(request),
             repository=get_source_repository(request),
             forge=get_review_requests(request),
-            tokens=get_review_request_tokens(request),
+            tokens=(
+                {project_id: body.token.get_secret_value()}
+                if body.token is not None
+                else get_review_request_tokens(request)
+            ),
             actor=identity.user_id if identity is not None else "anonymous",
             idempotency_key=body.idempotency_key,
         )

@@ -349,6 +349,11 @@ def _gh_token() -> str:
 def sync(
     ctx: typer.Context,
     project_id: str = typer.Argument(...),
+    token_from_gh: bool = typer.Option(
+        False,
+        "--token-from-gh",
+        help="Read review requests' state with your own GitHub access (`gh auth token`)",
+    ),
     idempotency_key: str | None = typer.Option(None, "--idempotency-key"),
 ):
     """Read a Project's upstream against its approved development baseline (SIP-0112 FR-21):
@@ -358,7 +363,8 @@ def sync(
     key = idempotency_key or f"cli-{uuid.uuid4().hex}"
     try:
         client = _get_client(ctx)
-        data = client.post(f"/api/v1/projects/{project_id}/syncs", json={"idempotency_key": key})
+        body = {"idempotency_key": key, **({"token": _gh_token()} if token_from_gh else {})}
+        data = client.post(f"/api/v1/projects/{project_id}/syncs", json=body)
         client.close()
     except CLIError as e:
         print_error(f"{e} (idempotency key {key})")
