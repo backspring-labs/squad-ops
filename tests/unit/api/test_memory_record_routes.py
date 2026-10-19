@@ -163,3 +163,23 @@ def test_only_the_owner_corrects_a_private_record(world):
 
     world.as_("bo", Role.ADMIN)
     assert world.client.post(f"{URL}/{rid}/revisions", json={"body": "x"}).status_code == 404
+
+
+@pytest.mark.parametrize(
+    ("applicability", "named"),
+    [
+        ({"task_types": ["*"], "roles": ["development"], "stacks": ["*"]}, "role 'development'"),
+        ({"task_types": ["development.implement"], "roles": ["*"], "stacks": ["*"]}, "task type 'development.implement'"),
+        ({"task_types": ["*"], "roles": ["dev"], "stacks": ["nextjs"]}, "stack 'nextjs'"),
+    ],
+)  # fmt: skip
+def test_an_applicability_naming_what_no_dispatch_carries_is_refused(world, applicability, named):
+    """The second read of PR #2515. Bug caught: ``roles: [development]`` accepted, then matching
+    no dispatch (whose role is ``dev``), so the instruction binds nothing and nothing says so."""
+    body = {"kind": "instruction", "scope": "project", "project_id": "group_run"}
+    refused = world.as_("ada", Role.ADMIN).create(**body, applicability=applicability)
+    fitting = world.create(**body, applicability={"task_types": ["qa.test"], "roles": ["qa"], "stacks": ["nextjs_ts"]})  # fmt: skip
+
+    assert refused.status_code == 422
+    assert named in refused.json()["detail"]["error"]["message"]
+    assert fitting.status_code == 201, fitting.text

@@ -1743,6 +1743,29 @@ context-assembly port.
   what the binding sections leave, which changes recall's input, so that waits for the hold that makes an overrun
   recoverable.
 
+**What the second read changed (2026-10-19, a fresh reader on PR #2515, ruled by the supervisor under the owner's grant
+of 2026-10-19):**
+- **A pin that can't read the records keeps its lessons and says so.** It pinned nothing and admitted the unit with no
+  snapshot, so its tasks read "no instruction" and dispatched without the one in force, and the lessons were lost with
+  it. Now the snapshot pins the lessons and records why it has no instructions (`instructions_unread`).
+- **An unknown pin holds the task only when an instruction could have been pinned.** What a unit pinned is unknown when
+  its snapshot is unreadable or absent, or its pin couldn't read the records. The records are append-only, withdrawn
+  ones kept, so a project that holds no project instruction now held none at any admission: its tasks run, the lessons
+  failing soft as in 2.3. A project that holds one, or records that can't be read either, holds the task, naming why.
+- **`@current` is refused on a project instruction too.** The narrowing above was enforced for task instructions only,
+  and a pin would have kept `@current` unresolved, where nothing could bind it later.
+- **A hold says whether the budget was unknown or spent.** `prompt_budget_of` gives `-1` for a model the registry doesn't
+  know, apart from a known window the inputs fill (`0`). Task instructions that spent a known budget had held the project
+  section as "the model's prompt budget is unknown".
+- **A re-dispatch is no longer charged for what its attempt was handed.** The attempt before's sections counted as the
+  task's own input and again as its section, so a binding that fit attempt 1 could hold attempt 2. This was #2178's too.
+- **A held re-dispatch fails the run as the first dispatch's hold does,** naming why, rather than as an unexpected error.
+- **An applicability naming what no dispatch carries is refused at write:** a task type that authors nothing, a role no
+  squad has (`development` for `dev`), a stack no profile builds. It would never match, and nothing would say so.
+- **Left for stage 2, a design question:** a task instruction reaches the repairs that revise its targeted output
+  (`task_plan.repairs_revising`, §5m); a project instruction matches by applicability only, so one for
+  `development.develop` doesn't reach that output's repairs unless it names them.
+
 **Stage 2 (#2179, still open):**
 - the effective lesson budget (T17);
 - `@current` bound at admission (T16);

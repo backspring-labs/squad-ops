@@ -87,16 +87,16 @@ def binding_section(
     kind: SectionKind, entries: list[tuple[RecordRef, str]], *, budget: int
 ) -> Section:
     """A binding section for ``entries`` (each record's revision and its text). Over the prompt
-    budget left to it, or with no known budget (an unknown never means room), it is incomplete:
-    a binding section is never cut (§3.6). The task and project instructions share the budget,
-    the task's first."""
+    budget left to it, or with no known budget (``budget < 0``: an unknown never means room), it is
+    incomplete: a binding section is never cut (§3.6). The task and project instructions share the
+    budget, the task's first."""
     if not entries:
         return Section(kind, Need.BINDING, Disposition.NONE_ELIGIBLE)
     tokens = sum(_tokens(text) for _, text in entries)
-    if budget <= 0 or tokens > budget:
+    if budget < 0 or tokens > budget:
         why = (
             f"the {kind.value.replace('_', ' ')} take {tokens} tokens and the prompt has {budget}"
-            if budget > 0
+            if budget >= 0
             else "the model's prompt budget is unknown"
         )
         return Section(

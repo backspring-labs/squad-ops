@@ -318,13 +318,13 @@ def _check_revision(kind: str, scope: str, revision: Revision) -> None:
             raise RecordRefused("a project instruction names its applicability")
         if scope == RecordScope.TASK and revision.target is None:
             raise RecordRefused("a task instruction names its target cycle and its tasks")
-        if scope == RecordScope.TASK and any(
-            r.ref.endswith("@current") for r in revision.references
-        ):
-            # #2178: a task instruction's references are bound to a concrete revision with the
-            # cycle's inputs (§3.7). Resolving ``@current`` at admission is #2178's second stage.
+        if any(r.ref.endswith("@current") for r in revision.references):
+            # #2178, #2179: an instruction's references are bound to a concrete revision when the
+            # unit binds them (§3.7): a task instruction's with its cycle's inputs, a project
+            # instruction's in the snapshot that pins it. Resolving ``@current`` at that binding is
+            # each one's second stage; a pin that kept it unresolved could never be bound after.
             raise RecordRefused(
-                "a task instruction's reference names its revision; @current isn't bound yet"
+                f"a {scope} instruction's reference names its revision; @current isn't bound yet"
             )
         if revision.confirmed_by is None:
             raise RecordRefused("an instruction binds the work, so it is confirmed")

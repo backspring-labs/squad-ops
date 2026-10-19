@@ -14,11 +14,25 @@ from collections.abc import Iterable
 from typing import Any
 
 from squadops.memory.context import RecordRef, Section, SectionKind
-from squadops.memory.records import PinnedInstruction
+from squadops.memory.records import MemoryRecord, PinnedInstruction, RecordKind, RecordScope
 from squadops.memory.task_instructions import binding_section
 
 #: Where a dispatch is handed its project instructions, between the task instructions and lessons.
 PROJECT_INSTRUCTIONS_INPUT = "project_instructions"
+
+
+class PinUnknown(RuntimeError):
+    """What a unit pinned can't be known: its snapshot is unreadable or absent, or its pin couldn't
+    read the records, and the project holds project instructions. The message says which."""
+
+
+def none_could_be_pinned(records: Iterable[MemoryRecord]) -> bool:
+    """Whether a project's records rule out any pinned project instruction. The records are
+    append-only, withdrawn ones kept, so a project that holds no project instruction now held none
+    when any of its units was admitted."""
+    return not any(
+        r.kind == RecordKind.INSTRUCTION and r.scope == RecordScope.PROJECT for r in records
+    )
 
 
 def applicable(

@@ -131,6 +131,16 @@ async def test_a_withdrawn_or_unconfirmed_instruction_is_not_pinned():
     assert [i.record_id for i in snapshot.instructions] == ["mrec_kept"]
 
 
+class _Down(InMemoryCrossCycleMemoryStore):
+    async def get_snapshot(self, unit_kind, unit_id):
+        raise ConnectionError("store down")
+
+
+class _RecordsDown(InMemoryMemoryRecords):
+    async def list_project(self, project_id):
+        raise ConnectionError("records down")
+
+
 async def test_an_unreadable_snapshot_or_an_oversized_binding_holds_the_task():
     """§3.6, T8's project part. Bug caught: a store failure dispatching a task without the
     instruction its unit pinned, or the two binding sections cut to fit the prompt."""
@@ -140,12 +150,47 @@ async def test_an_unreadable_snapshot_or_an_oversized_binding_holds_the_task():
     with pytest.raises(TaskInstructionsUnavailable, match="project instructions take"):
         await _supplied(store, records)
 
-    class Down(InMemoryCrossCycleMemoryStore):
-        async def get_snapshot(self, unit_kind, unit_id):
-            raise ConnectionError("store down")
-
     with pytest.raises(TaskInstructionsUnavailable, match="snapshot could not be read"):
-        await _supplied(Down(), InMemoryMemoryRecords())
+        await _supplied(_Down(), records)
+
+
+async def test_a_pin_that_could_not_read_the_records_keeps_its_lessons_and_holds_the_task():
+    """The second read of PR #2515. Bug caught: records that fail at admission costing the unit
+    its lesson pin, or leaving a snapshot whose tasks read "no instruction" and dispatch without
+    the one in force, with nothing on the exposure."""
+    store, records = InMemoryCrossCycleMemoryStore(), InMemoryMemoryRecords()
+    await records.create(_instruction("mrec_any", "*"))
+
+    snapshot = await _admit(store, _RecordsDown())
+
+    assert (snapshot.instructions, snapshot.disabled) == ((), False)
+    assert "could not be read at admission" in snapshot.instructions_unread
+    assert Snapshot.from_dict(snapshot.to_dict()) == snapshot
+    with pytest.raises(TaskInstructionsUnavailable, match="can't be known"):
+        await _supplied(store, records)
+
+
+@pytest.mark.parametrize("admitted", ["unreadable", "never pinned", "pin missed the records"])
+async def test_an_unknown_pin_in_a_project_with_no_instruction_runs_as_before(admitted):
+    """Records are append-only, so a project holding no project instruction pinned none. Bug
+    caught: every task of a project that never wrote an instruction failing its run because its
+    snapshot store blinked, where 2.3 failed only the lessons and ran the task."""
+    store, records = InMemoryCrossCycleMemoryStore(), InMemoryMemoryRecords()
+    if admitted == "unreadable":
+        store = _Down()
+    elif admitted == "pin missed the records":
+        await _admit(store, _RecordsDown())
+
+    supplied = await _supplied(store, records)
+
+    assert all(PROJECT_INSTRUCTIONS_INPUT not in e.inputs for e in supplied)
+
+
+async def test_the_records_unreadable_at_supply_hold_a_task_whose_pin_is_unknown():
+    """Bug caught: an unknown pin read as empty because the records that would say otherwise
+    couldn't be read either."""
+    with pytest.raises(TaskInstructionsUnavailable, match="checked against the project's records"):
+        await _supplied(_Down(), _RecordsDown())
 
 
 async def test_a_snapshot_with_no_instruction_is_stored_as_it_was_and_one_with_reads_back():
@@ -190,3 +235,55 @@ async def test_the_author_shows_the_task_then_the_project_instructions_then_the_
     ]
     assert order == sorted(order)
     assert "1. This project: name each run by its route." in shown
+
+
+def test_a_project_instruction_naming_its_reference_at_current_is_refused():
+    """The second read of PR #2515. Bug caught: ``@current`` pinned verbatim into a snapshot,
+    where stage 2 can never bind it after the fact (§3.7: resolved once, when bound)."""
+    from squadops.memory.records import RecordRefused, Reference
+
+    with pytest.raises(RecordRefused, match="project instruction's reference names its revision"):
+        _instruction(
+            "mrec_cur", DESIGN, references=(Reference("manifest:decision:join@current", True),)
+        )
+    assert _instruction(
+        "mrec_rev", DESIGN, references=(Reference("manifest:decision:join@3", True),)
+    )
+
+
+@pytest.mark.parametrize(
+    "budget, reason",
+    [
+        (-1, "the model's prompt budget is unknown"),
+        (0, "the project instructions take 2 tokens and the prompt has 0"),
+    ],
+)
+def test_a_hold_says_whether_the_budget_was_unknown_or_spent(budget, reason):
+    """Bug caught: task instructions that spend a known budget reported as a model whose window
+    is unknown, sending whoever reads the hold to the model registry."""
+    from squadops.memory.context import RecordRef, SectionKind
+    from squadops.memory.task_instructions import binding_section
+
+    section = binding_section(
+        SectionKind.PROJECT_INSTRUCTIONS, [(RecordRef("m", "1"), "x" * 8)], budget=budget
+    )
+
+    assert [why for _, why in section.unresolved] == [reason]
+
+
+def test_a_redispatch_is_not_charged_for_what_its_attempt_was_handed():
+    """The second read of PR #2515. Bug caught: the attempt before's instructions counted as the
+    task's own input and again as its section, so a binding that fit attempt 1 holds attempt 2;
+    and an unknown model reading as a spent window."""
+    from squadops.capabilities.lesson_supply import prompt_budget_of
+    from squadops.memory.recall import LESSONS_INPUT
+
+    first = _plan(_framing_cycle())[0]
+    budget = prompt_budget_of(first)
+    for key in (TASK_INSTRUCTIONS_INPUT, PROJECT_INSTRUCTIONS_INPUT, LESSONS_INPUT):
+        first.inputs[key] = {"instructions": [{"text": "x" * 40_000}]}
+
+    assert budget > 0
+    assert prompt_budget_of(first) == budget
+    first.inputs["agent_model"] = "no-such-model"
+    assert prompt_budget_of(first) == -1

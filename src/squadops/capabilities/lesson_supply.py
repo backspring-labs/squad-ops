@@ -49,7 +49,7 @@ from squadops.memory.context import (
 )
 from squadops.memory.exposures import Exposure
 from squadops.memory.lessons import RecallDisposition, Recalled, RecallPolicy, _tokens
-from squadops.memory.project_instructions import PROJECT_INSTRUCTIONS_INPUT
+from squadops.memory.project_instructions import PROJECT_INSTRUCTIONS_INPUT, PinUnknown
 from squadops.memory.project_instructions import applicable as project_applicable
 from squadops.memory.project_instructions import handed as project_handed
 from squadops.memory.project_instructions import section_of as project_section_of
@@ -71,6 +71,9 @@ if TYPE_CHECKING:
     from squadops.tasks.models import TaskEnvelope
 
 logger = logging.getLogger(__name__)
+
+#: What memory supplies a dispatch, which is never the task's own input (``prompt_budget_of``).
+_SUPPLIED_INPUTS = frozenset({LESSONS_INPUT, TASK_INSTRUCTIONS_INPUT, PROJECT_INSTRUCTIONS_INPUT})
 
 #: Recall's outcomes, as the lesson section's dispositions (§3.6).
 _SECTION_DISPOSITION = {
@@ -102,13 +105,16 @@ def unit_of(cycle: Cycle) -> tuple[UnitKind, str]:
 
 def prompt_budget_of(envelope: TaskEnvelope) -> int:
     """§3.6's total prompt budget: the model's context window (SIP-0073's registry) less its completion
-    reserve and the task's own inputs, measured as recall measures lessons. A model the registry does not
-    know has none, since an unknown never means room. The reserve is the registry's default completion
-    budget; nothing reads this in 2.3, and the binding sections that will (#2179) refine it."""
+    reserve and the task's own inputs, measured as recall measures lessons. The reserve is the registry's
+    default completion budget. A model the registry does not know has ``-1``, since an unknown never means
+    room, apart from a known window the inputs fill (``0``), so a hold says which. What memory supplied is
+    not the task's own input: a re-dispatch carries its attempt's sections, and counting them would charge
+    the instructions twice."""
     spec = get_model_spec(str(envelope.inputs.get("agent_model") or ""))
     if spec is None:
-        return 0
-    own = _tokens(json.dumps(envelope.inputs, sort_keys=True, default=str))
+        return -1
+    own_inputs = {k: v for k, v in envelope.inputs.items() if k not in _SUPPLIED_INPUTS}
+    own = _tokens(json.dumps(own_inputs, sort_keys=True, default=str))
     return max(0, spec.context_window - spec.default_max_completion - own)
 
 
@@ -338,7 +344,8 @@ class LessonContextAssembly(ContextAssemblyPort):
         )
         instructions, bound = await self._task_instructions(request)
         # #2179: the project instructions take what the task instructions leave (§3.6).
-        left = request.consumer.prompt_budget - tokens_of(bound)
+        budget = request.consumer.prompt_budget
+        left = max(0, budget - tokens_of(bound)) if budget >= 0 else -1
         project, pinned = await self._project_instructions(request, budget=left)
         return ContextBundle(
             request,
@@ -355,12 +362,14 @@ class LessonContextAssembly(ContextAssemblyPort):
         incomplete: it binds, so it never reads as none (§3.6)."""
         task = request.consumer
         kind = SectionKind.PROJECT_INSTRUCTIONS
-        if not isinstance(task, TaskInvocation):
+        if not isinstance(task, TaskInvocation) or not isinstance(request.binding, ProjectBound):
             return Section(kind, Need.BINDING, Disposition.NOT_APPLICABLE), []
         owner = task.snapshot_owner
         try:
-            pinned = await self._recall.pinned_instructions(owner.kind, owner.unit_id)
-        except Exception:
+            pinned = await self._recall.pinned_instructions(
+                owner.kind, owner.unit_id, request.binding.project_id
+            )
+        except Exception as e:
             logger.warning(
                 "project_instructions_unreadable unit=%s:%s task=%s",
                 owner.kind,
@@ -368,8 +377,13 @@ class LessonContextAssembly(ContextAssemblyPort):
                 task.task_id,
                 exc_info=True,
             )
+            why = (
+                str(e)
+                if isinstance(e, PinUnknown)
+                else f"the unit's pin could not be checked against the project's records ({e})"
+            )
             unread = RecordRef(f"snapshot:{owner.kind}:{owner.unit_id}", "")
-            unresolved = ((unread, "the unit's snapshot could not be read"),)
+            unresolved = ((unread, why),)
             return Section(kind, Need.BINDING, Disposition.INCOMPLETE, unresolved=unresolved), []
         chosen = project_applicable(
             pinned, task_type=task.task_type, role=task.role, stack=task.stack

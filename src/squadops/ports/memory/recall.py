@@ -35,8 +35,10 @@ class FailurePatternRecallPort(ABC):
 
     @abstractmethod
     async def pinned_instructions(
-        self, unit_kind: UnitKind, unit_id: str
+        self, unit_kind: UnitKind, unit_id: str, project_id: str
     ) -> tuple[PinnedInstruction, ...]:
         """The project instructions the unit's snapshot pinned at admission (Appendix A §3.7;
-        #2179): none when it pinned none or has no pin. Raises when the snapshot can't be read,
-        since they bind."""
+        #2179): none when it pinned none. When what it pinned can't be known (its snapshot is
+        unreadable or absent, or its pin couldn't read the records), none only if
+        ``project_id`` holds no project instruction (``none_could_be_pinned``); otherwise raises
+        ``PinUnknown``, since they bind and an unknown pin is never read as an empty one."""

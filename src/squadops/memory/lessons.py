@@ -250,6 +250,9 @@ class Snapshot:
     #: lessons. A unit that declares memory disabled pins no lesson and still pins these: they are
     #: requirements, not memory's guidance, so its arms differ only in the lessons.
     instructions: tuple[PinnedInstruction, ...] = ()
+    #: Why the pin couldn't read the project's instructions, or ``None`` when it read them. The
+    #: lessons still pin; a pin that couldn't read them can't say none were in force (§3.6).
+    instructions_unread: str | None = None
 
     def to_dict(self) -> dict[str, Any]:
         """The whole pin, self-contained: a stored snapshot never depends on rows read later."""
@@ -274,6 +277,11 @@ class Snapshot:
                 if self.instructions
                 else {}
             ),
+            **(
+                {"instructions_unread": self.instructions_unread}
+                if self.instructions_unread is not None
+                else {}
+            ),
         }
 
     @classmethod
@@ -294,6 +302,7 @@ class Snapshot:
             instructions=tuple(
                 PinnedInstruction.from_dict(i) for i in data.get("instructions") or ()
             ),
+            instructions_unread=data.get("instructions_unread"),
         )
 
 
@@ -307,6 +316,7 @@ def pin(
     approvals: Sequence[Approval],
     policy: RecallPolicy | None = None,
     instructions: Sequence[PinnedInstruction] = (),
+    instructions_unread: str | None = None,
 ) -> Snapshot:
     """The snapshot a unit pins: each approval in force at ``pinned_at`` (given before it, and not
     revoked by then) with the revision it binds, and the project instructions in force then. A
@@ -321,8 +331,9 @@ def pin(
     )
     if disabled:
         return Snapshot(
-            snapshot_id, unit_kind, unit_id, pinned_at, True, (), policy, tuple(instructions)
-        )
+            snapshot_id, unit_kind, unit_id, pinned_at, True, (), policy, tuple(instructions),
+            instructions_unread,
+        )  # fmt: skip
     by_id = {r.revision_id: r for r in revisions}
     entries = []
     for approval in approvals:
@@ -336,7 +347,7 @@ def pin(
         entries.append(SnapshotEntry(revision, approval))
     return Snapshot(
         snapshot_id, unit_kind, unit_id, pinned_at, False, tuple(entries), policy,
-        tuple(instructions),
+        tuple(instructions), instructions_unread,
     )  # fmt: skip
 
 

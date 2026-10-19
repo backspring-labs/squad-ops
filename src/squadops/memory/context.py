@@ -103,7 +103,8 @@ class TaskInvocation:
     stack: str
     model_family: str
     agent_id: str
-    #: Tokens: the model's window less the completion reserve and the task's own inputs (§3.6 Budgets).
+    #: Tokens: the model's window less the completion reserve and the task's own inputs (§3.6 Budgets);
+    #: ``-1`` when the model's window is unknown, which never means room.
     prompt_budget: int
 
 
