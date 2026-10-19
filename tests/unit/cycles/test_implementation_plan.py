@@ -230,6 +230,49 @@ summary:
         with pytest.raises(ValueError, match="non-existent task_index 99"):
             ImplementationPlan.from_yaml(yaml_str)
 
+    @pytest.mark.parametrize(
+        ("index", "depends_on", "message"),
+        [
+            ("'1'", "[]", "task_index must be an integer, got '1'"),
+            ("{n: 0}", "[]", "task_index must be an integer, got {'n': 0}"),
+            (
+                "1",
+                "[{task_index: 0}]",
+                "depends_on lists task_index integers, got {'task_index': 0}",
+            ),
+            ("1", "[true]", "depends_on lists task_index integers, got True"),
+        ],
+        ids=["string-index", "mapping-index", "mapping-dependency", "bool-dependency"],
+    )
+    def test_an_index_that_is_not_an_integer_is_refused_with_its_value(
+        self, index, depends_on, message
+    ):
+        """#2488, seen live: `depends_on: [{task_index: 0}]` crashed the parser with
+        `TypeError: unhashable type: 'dict'`, so the author never learned what was wrong."""
+        yaml_str = f"""\
+version: 1
+project_id: test
+cycle_id: cyc_test
+prd_hash: abc
+tasks:
+  - task_index: 0
+    task_type: development.develop
+    role: dev
+    focus: a
+    description: a
+  - task_index: {index}
+    task_type: development.develop
+    role: dev
+    focus: b
+    description: b
+    depends_on: {depends_on}
+summary:
+  total_tasks: 2
+"""
+        with pytest.raises(ValueError) as refused:
+            ImplementationPlan.from_yaml(yaml_str)
+        assert message in str(refused.value)
+
     def test_dependency_cycle_raises(self):
         yaml_str = """\
 version: 1
