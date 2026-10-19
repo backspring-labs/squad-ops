@@ -1324,3 +1324,34 @@ checks:
       spread = quality_spread([(None, lint({"E501": 2})), (None, lint({}))])
       print([(s.measure, s.spread) for s in spread.spreads])
     expect: "[('lint:total', 2), ('lint:E501', 2)]"
+  - id: "2511-criterion-test"
+    what: a Next.js page criterion's test is a file vitest collects (*.test.ts), not one it never runs
+    container: squadops-runtime-api
+    code: |
+      from squadops.stacks.scaffold import criterion_test_path
+      print(criterion_test_path("nextjs_ts", "T2", "client_route"))
+    expect: "__tests__/criteria/T2.test.ts"
+  - id: "2512-footprint-brackets"
+    what: a footprint reads a Next.js dynamic route's brackets literally
+    container: squadops-runtime-api
+    code: |
+      from squadops.campaigns.change_request import in_footprint
+      print(in_footprint("app/runs/[run_id]/page.tsx", ("app/runs/[run_id]/page.tsx",)))
+    expect: "True"
+  - id: "2522-route-contract-runtime"
+    what: an increment changing an endpoint's request or errors has its Next.js route file in the footprint
+    container: squadops-runtime-api
+    code: |
+      from squadops.stacks.stack_nextjs_ts import _contract_lines
+      from squadops.stacks.scaffold import Endpoint, RequestShape
+      ep = Endpoint(method="POST", path="/api/runs/{run_id}/join", request="JoinInput", errors=("run_not_found", "capacity_reached"))
+      print(_contract_lines(ep, {"JoinInput": RequestShape(name="JoinInput", required=("name",))}))
+    expect: "['    // request JoinInput: name', '    // errors: run_not_found, capacity_reached']"
+  - id: "2522-route-contract-dev"
+    what: the dev's scaffold states each Next.js route handler's request fields and errors
+    container: squadops-neo
+    code: |
+      from squadops.stacks.stack_nextjs_ts import _contract_lines
+      from squadops.stacks.scaffold import Endpoint
+      print(_contract_lines(Endpoint(method="GET", path="/api/runs/{run_id}", errors=("run_not_found",)), {}))
+    expect: "['    // errors: run_not_found']"
