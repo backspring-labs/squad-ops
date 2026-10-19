@@ -109,9 +109,9 @@ class ContainerBackend(NoOpExecutionSandbox):
         # name with no host port (the service is a container, and the host's loopback is not its
         # own); None, as on a host run, publishes to loopback.
         self._app_network = app_network
-        # cycle_id → (container_id, base_url). Runtime units are short-lived;
-        # a service restart orphans nothing durable (`--rm` containers), and
-        # the labeled-container sweep is 102.2+ hardening.
+        # cycle_id → (container_id, base_url). Runtime units are short-lived, and every one is
+        # named and removed explicitly (not `--rm` since #1214, so a crashed app's logs survive to
+        # be read). A service restart can orphan one; the labeled-container sweep is 102.2+.
         self._running: dict[str, tuple[str, str]] = {}
 
     def _cache_volumes(self) -> tuple[tuple[str, str], ...]:

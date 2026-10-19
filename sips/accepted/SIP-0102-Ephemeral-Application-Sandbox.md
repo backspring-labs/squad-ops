@@ -764,8 +764,9 @@ predates SIP-0113: the service had always been `noop`, and every live run so far
   nothing, and is reached at `http://<name>:<port>`. `ContainerBackend` takes `app_network` as a
   required argument. `None` keeps loopback publishing for a host run, which the audit scripts and the
   sandbox floor smoke name explicitly.
-- **Every detached container is named,** and a `docker run -d` that times out is removed by that name
-  before the timeout is raised. Before, it left an unnamed container nobody could find (the MacBook
+- **Every detached container is named,** and a `docker run -d` that times out, or exits non-zero (125 to
+  127 can leave a container created and never started), is removed by that name before the error is
+  raised. Before, it left an unnamed container nobody could find (the MacBook
   lane's note on #2450).
 - **Setup steps keep the install network,** with egress for dependencies and no secrets. The app, which
   holds the evaluation secrets (SIP-0112 Q40), has no route out.

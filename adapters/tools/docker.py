@@ -185,6 +185,9 @@ class DockerAdapter(ContainerPort):
                 await self._remove_quietly(name)
             raise
         if exit_code != 0:
+            # 125 to 127 can leave a container created but never started (the MacBook lane's
+            # review of #2460): removed by its name, as after a timeout.
+            await self._remove_quietly(name)
             raise ToolContainerError(f"Failed to start container: {stderr}")
         container_id = stdout.strip().splitlines()[-1] if stdout.strip() else ""
         if not container_id:
