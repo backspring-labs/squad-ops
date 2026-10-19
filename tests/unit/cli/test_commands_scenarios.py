@@ -57,7 +57,7 @@ def test_a_draft_sends_its_file_and_names_the_digest(mock_get_client, tmp_path):
     assert client.post.call_args.args[0] == "/api/v1/scenario-suites"
     body = client.post.call_args.kwargs["json"]
     assert body["scenarios"][0]["steps"] == [{"action": "http", "method": "POST", "path": "/runs"}]
-    assert "d" * 64 in result.output
+    assert "d" * 64 in "".join(result.output.split())  # #2491: Rich folds a long digest too
 
 
 @patch("squadops.cli.commands.scenarios._get_client")
@@ -75,7 +75,8 @@ def test_a_suite_file_inside_a_git_working_tree_is_refused_and_nothing_is_sent(
     result = runner.invoke(app, ["scenarios", "draft", "--file", str(suite)])
 
     assert result.exit_code == 2
-    assert "inside the Git working tree" in result.output
+    # #2491: Rich wraps at the console width, which a long temporary path can put inside the phrase.
+    assert "inside the Git working tree" in " ".join(result.output.split())
     mock_get_client.assert_not_called()
 
 
@@ -102,7 +103,7 @@ def test_the_owner_reviews_the_steps_and_approves_that_digest(mock_get_client):
     assert client.get.call_args.args[0] == f"/api/v1/scenario-suites/{'d' * 64}/content"
     assert "held-out-step" in reviewed.output
     assert client.post.call_args.args[0] == f"/api/v1/scenario-suites/{'d' * 64}/approval"
-    assert "approved group_run window suite" in approved.output
+    assert "approved group_run window suite" in " ".join(approved.output.split())
 
 
 @pytest.mark.parametrize(
