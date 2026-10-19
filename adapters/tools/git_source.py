@@ -78,7 +78,7 @@ class GitSourceRepository(SourceRepositoryPort):
         except OSError as e:
             raise SourceUnavailable(f"{host} does not resolve: {e}", reason="resolve_host") from e
         for info in infos:
-            address = ipaddress.ip_address(info[4][0].split("%")[0])
+            address = ipaddress.ip_address(str(info[4][0]).split("%")[0])
             if is_internal_address(address):
                 raise SourceUnavailable(
                     f"{host} resolves to {address}, one of the deploy's own addresses: name it "

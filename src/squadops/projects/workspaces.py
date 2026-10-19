@@ -16,6 +16,7 @@ from typing import TYPE_CHECKING, Any
 
 from squadops.campaigns.evaluator_trees import FileTree
 from squadops.projects.baseline import (
+    CheckResult,
     InheritedBaseline,
     missing_environment,
     result_of,
@@ -126,7 +127,8 @@ async def capture_inherited_baseline(
         project, commit, workspace_id, registry=registry, repository=repository, sandbox=sandbox
     )
     commands = configuration.commands
-    results, environment = [], {}
+    results: list[CheckResult] = []
+    environment: dict[str, str] = {}
     for check in commands.checks:
         # The sandbox runs a declared check with no environment of its own (X-3a), so a check
         # that declares one is a gap, decided by its declaration.
