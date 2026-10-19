@@ -32,6 +32,7 @@ from squadops.api.routes.chat.dtos import (
     MessagingAgentDTO,
 )
 from squadops.api.routes.chat.errors import handle_chat_error
+from squadops.api.routes.memory.applicability import refuse_unmatched
 from squadops.api.runtime.deps import get_memory_records, get_memory_store, get_project_registry
 from squadops.auth.models import Scope, scopes_for_roles
 from squadops.comms.chat_history import (
@@ -59,7 +60,9 @@ from squadops.memory.chat import (
 )
 from squadops.memory.context import ChatTurn, ContextRequest, ProjectBound, Unbound
 from squadops.memory.records import (
+    InstructionApplicability,
     NotPermitted,
+    RecordKind,
     RecordRefused,
     Revision,
     Source,
@@ -384,6 +387,7 @@ async def confirm_capture(
             f"this session offers you no {body.scope} {body.kind}: "
             + ", ".join(f"{c.scope} {c.kind}" for c in offered),
         )
+    applicability = _capture_applicability(choice, body)
     records = get_memory_records(request)
     now = datetime.now(UTC)
     try:
@@ -409,6 +413,7 @@ async def confirm_capture(
                 ),
                 confirmed_by=user_id,
                 suggestion=body.suggestion,
+                applicability=applicability,
             ),
         )
         await records.create(record)
@@ -567,6 +572,11 @@ def _offered(
         "kind": proposal.kind,
         "scope": proposal.scope,
         "suggestion": proposal.suggestion,
+        "applicability": (
+            {name: list(values) for name, values in proposal.applicability.items()}
+            if proposal.applicability is not None
+            else None
+        ),
         "source_message_id": source.message_id,
         "choices": [
             _choice_dto(c).model_dump()
@@ -618,6 +628,34 @@ async def _turn_memory(
     bundle = await assembly.assemble(ContextRequest(binding, turn))
     await assembly.disclose(bundle)
     return dict(bundle.chat) if bundle.chat is not None else None
+
+
+def _capture_applicability(
+    choice: CaptureChoice, body: CaptureRequest
+) -> InstructionApplicability | None:
+    """A project instruction's applicability as the card confirmed it (stage B): every field
+    explicit, and only what a dispatch carries (the records API's check, one rule). Refused (422)
+    for an instruction without one, and for anything else that carries one."""
+    if choice.kind != RecordKind.INSTRUCTION:
+        if body.applicability is not None:
+            raise http_error(422, "VALIDATION_ERROR", f"a {choice.kind} has no applicability")
+        return None
+    if body.applicability is None:
+        raise http_error(
+            422,
+            "VALIDATION_ERROR",
+            "a project instruction names its task_types, roles and stacks ('*' for any)",
+        )
+    try:
+        applicability = InstructionApplicability(
+            tuple(body.applicability.task_types),
+            tuple(body.applicability.roles),
+            tuple(body.applicability.stacks),
+        )
+    except RecordRefused as e:
+        raise http_error(422, "VALIDATION_ERROR", str(e)) from e
+    refuse_unmatched(applicability)
+    return applicability
 
 
 def _choice_dto(choice: CaptureChoice) -> CaptureChoiceDTO:

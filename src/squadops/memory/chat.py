@@ -409,6 +409,11 @@ class CaptureChoice:
     @property
     def takes_effect(self) -> str:
         """When a record of this choice reaches what it reaches: §3.5's sentence for the reply."""
+        if self.kind == RecordKind.INSTRUCTION:
+            return (
+                f"for {self.project_id}'s cycles and campaigns admitted from now, on the tasks its "
+                "applicability covers; running ones keep their snapshot"
+            )
         if self.scope == RecordScope.PROJECT:
             return (
                 f"in chats bound to {self.project_id} from their next turn; no task receives a note"
@@ -419,15 +424,18 @@ class CaptureChoice:
 def capture_choices(
     *, scopes: Collection[str], project_id: str | None
 ) -> tuple[CaptureChoice, ...]:
-    """What a card offers this person in this session. Stage A captures notes and preferences: a private
-    note or a preference always; a project note when the session is bound and the person holds
-    ``memory:note``. Instructions arrive with stage B."""
+    """What a card offers this person in this session: a private note or a preference always; on a
+    bound session, a project note with ``memory:note`` and a project instruction with
+    ``memory:instruct`` (stage B, #2180). A task instruction from chat names an admitted cycle, so it is
+    an intervention (§3.5), and waits for #2178's second stage."""
     choices = [
         CaptureChoice(RecordKind.NOTE, RecordScope.USER, None),
         CaptureChoice(RecordKind.PREFERENCE, RecordScope.USER, None),
     ]
     if project_id is not None and Scope.MEMORY_NOTE in scopes:
         choices.append(CaptureChoice(RecordKind.NOTE, RecordScope.PROJECT, project_id))
+    if project_id is not None and Scope.MEMORY_INSTRUCT in scopes:
+        choices.append(CaptureChoice(RecordKind.INSTRUCTION, RecordScope.PROJECT, project_id))
     return tuple(choices)
 
 
@@ -445,6 +453,10 @@ class ProposedCapture:
     scope: str
     #: A conversational claim, kept as a hypothesis: never a lesson's citation (§3.5, T5).
     suggestion: bool = False
+    #: A project instruction's applicability as the agent proposes it (task types, roles, stacks), a
+    #: field left out or malformed empty; ``None`` for a note or a preference. The card shows it, and
+    #: the person fills, confirms or changes it.
+    applicability: Mapping[str, tuple[str, ...]] | None = None
 
 
 def proposed_capture(reply: str) -> tuple[ProposedCapture | None, str]:
@@ -462,14 +474,47 @@ def proposed_capture(reply: str) -> tuple[ProposedCapture | None, str]:
             continue
         text, kind = str(doc.get("text") or "").strip(), doc.get("kind")
         scope = doc.get("scope") or RecordScope.USER
+        if not isinstance(kind, str) or not isinstance(scope, str):
+            # An unhashable kind or scope (a list) proposes nothing, never ends the stream (the second
+            # read of PR #2525).
+            continue
         if text and kind in (RecordKind.NOTE, RecordKind.PREFERENCE) and scope in _CAPTURE_SCOPES:
             suggestion = doc.get("suggestion") is True and kind == RecordKind.NOTE
             proposal = ProposedCapture(text, str(kind), str(scope), suggestion)
+        elif (
+            text
+            and kind == RecordKind.INSTRUCTION
+            and (doc.get("scope") or RecordScope.PROJECT) == RecordScope.PROJECT
+        ):
+            # Stage B: a project instruction only. A task instruction from chat is an intervention
+            # (#2178's second stage), and is never widened into a project one.
+            proposal = ProposedCapture(
+                text, RecordKind.INSTRUCTION, RecordScope.PROJECT,
+                applicability=_proposed_applicability(doc.get("applicability")),
+            )  # fmt: skip
     shown = _CAPTURE_BLOCK.sub("", reply).rstrip()
     return proposal, shown
 
 
 _CAPTURE_SCOPES = frozenset({RecordScope.USER, RecordScope.PROJECT})
+_APPLICABILITY_FIELDS = ("task_types", "roles", "stacks")
+
+
+def _proposed_applicability(raw: Any) -> dict[str, tuple[str, ...]]:
+    """The applicability an agent proposed, each field the names it gave. A field it left out, or
+    gave malformed, is empty, never ``*``: an unknown never means everywhere (§A.3.2), so the card
+    shows it blank and the capture is refused until the person fills it ('*' for any is theirs to
+    choose)."""
+    raw = raw if isinstance(raw, dict) else {}
+    out = {}
+    for name in _APPLICABILITY_FIELDS:
+        values = raw.get(name)
+        out[name] = (
+            tuple(str(v).strip() for v in values if str(v).strip())
+            if isinstance(values, list)
+            else ()
+        )
+    return out
 
 
 #: The reply's first line when the agent couldn't render the context it was handed (the second read of PR

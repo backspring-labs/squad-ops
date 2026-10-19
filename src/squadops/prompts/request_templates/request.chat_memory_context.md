@@ -1,6 +1,6 @@
 ---
 template_id: request.chat_memory_context
-version: "2"
+version: "3"
 required_variables:
   - memory_lines
 optional_variables: []
@@ -34,4 +34,10 @@ it never becomes a lesson by being kept:
 
 <memory-capture>{"text": "QA should always mock the clock.", "kind": "note", "suggestion": true}</memory-capture>
 
-The person confirms it on a card, and nothing is kept until they do.
+When the person gives a standing directive for the project's work, such as "from now on, QA covers
+capacity in every suite", propose it as a project instruction, naming the tasks it applies to:
+
+<memory-capture>{"text": "QA covers capacity in every suite.", "kind": "instruction", "applicability": {"task_types": ["qa.test"], "roles": ["qa"], "stacks": ["*"]}}</memory-capture>
+
+An instruction binds the squad's work in the cycles and campaigns admitted after it is confirmed, so
+name only the tasks it is for, and give all three fields: use "*" only where it is for any. The person confirms it on a card, and nothing is kept until they do.

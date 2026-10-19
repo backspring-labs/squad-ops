@@ -418,10 +418,17 @@ def _task_receives(records, text: str) -> bool:
     [
         (Role.VIEWER, True, "note", "project"),
         (Role.ADMIN, False, "note", "project"),
-        (Role.ADMIN, True, "instruction", "project"),
+        (Role.ADMIN, True, "instruction", "task"),
+        (Role.VIEWER, True, "instruction", "project"),
         (Role.ADMIN, True, "preference", "project"),
     ],
-    ids=["no-memory-note", "no-binding", "an-instruction-is-stage-b", "no-such-scope-for-the-kind"],
+    ids=[
+        "no-memory-note",
+        "no-binding",
+        "a-task-instruction-waits-for-2178",
+        "no-memory-instruct",
+        "no-such-scope-for-the-kind",
+    ],
 )
 def test_a_capture_the_card_didnt_offer_is_refused_whoever_asks(world, role, bound, kind, scope):
     """§3.3: the card's choices are the rule, not a hint. Bug caught: an admin's crafted request
@@ -540,3 +547,78 @@ def test_no_chat_route_drafts_approves_or_revokes_a_lesson():
         ("POST", "/api/v1/chat/sessions/{session_id}/captures"),
         ("DELETE", "/api/v1/chat/sessions/{session_id}"),
     }
+
+
+async def test_a_project_instruction_captured_in_chat_reaches_the_next_cycles_task_it_names(world):
+    """T1 through chat (#2180 stage B). Bug caught: an instruction confirmed on a card stored without
+    its applicability, unconfirmed, or never reaching the task it names in a unit admitted after it;
+    or reaching every task."""
+    from adapters.memory.recall import SnapshotRecall
+    from squadops.capabilities.lesson_supply import supply_lessons, unit_of
+    from squadops.memory.lessons import UnitKind
+    from squadops.memory.pinning import pin_unit
+    from squadops.memory.project_instructions import PROJECT_INSTRUCTIONS_INPUT
+    from tests.unit.cycles.test_failure_recall import _framing_cycle, _plan
+
+    world.agent.reply = 'Will do.\n<memory-capture>{"text": "Name each run by its route.", "kind": "instruction", "applicability": {"task_types": ["development.design_plan"]}}</memory-capture>'  # fmt: skip
+    opened, events = world.say("from now on, name each run by its route", project_id="group_run")
+    [capture] = [e["capture"] for e in events if "capture" in e]
+    applicability = {**capture["applicability"], "roles": ["*"], "stacks": ["*"]}
+    saved = world.client.post(
+        f"/api/v1/chat/sessions/{opened.headers['X-Session-Id']}/captures",
+        json={"message_id": capture["source_message_id"], "text": capture["text"],
+              "kind": "instruction", "scope": "project", "applicability": applicability},
+    )  # fmt: skip
+    cycle = _framing_cycle()
+    await pin_unit(
+        world.store, unit_kind=UnitKind.CYCLE, unit_id=cycle.cycle_id, project_id="group_run",
+        pinned_at=datetime(2026, 10, 20, tzinfo=UTC), disabled=False, records=world.records,
+    )  # fmt: skip
+    supplied = await supply_lessons(
+        _plan(cycle), recall=SnapshotRecall(world.store, records=world.records),
+        unit=unit_of(cycle), stack="fullstack_fastapi_react", run_id="run_t1chat",
+        now=datetime(2026, 10, 20, tzinfo=UTC),
+    )  # fmt: skip
+
+    assert saved.status_code == 201, saved.text
+    assert saved.json()["takes_effect"].startswith("for group_run's cycles and campaigns admitted")
+    record = world.client.get(f"/api/v1/memory-records/{saved.json()['record_id']}").json()
+    assert (record["kind"], record["current"]["confirmed_by"]) == ("instruction", "ada")
+    reached = {
+        str(e.task_type)
+        for e in supplied
+        if PROJECT_INSTRUCTIONS_INPUT in e.inputs
+        and "Name each run by its route." in str(e.inputs[PROJECT_INSTRUCTIONS_INPUT])
+    }
+    assert reached == {"development.design_plan"}
+
+
+@pytest.mark.parametrize(
+    ("kind", "scope", "applicability", "message"),
+    [
+        ("instruction", "project", None, "names its task_types, roles and stacks"),
+        ("instruction", "project", {"task_types": ["*"], "roles": ["development"], "stacks": ["*"]}, "role 'development'"),
+        ("note", "user", {"task_types": ["*"], "roles": ["*"], "stacks": ["*"]}, "a note has no applicability"),
+        ("instruction", "project", {"task_types": ["*"], "roles": ["*"], "stacks": ["*"], "stack": ["python_cli"]}, None),
+        ("instruction", "project", {"task_types": ["*"], "roles": ["*"], "stacks": []}, "names its stacks"),
+    ],
+    ids=["an-instruction-without-one", "a-role-no-dispatch-carries", "a-note-with-one",
+         "a-key-the-records-api-refuses", "a-field-left-blank"],
+)  # fmt: skip
+def test_a_captured_instructions_applicability_is_required_and_checked(
+    world, kind, scope, applicability, message
+):
+    """Bug caught: an instruction captured with no applicability (binding nothing, or everything), or
+    one naming a role no squad has (the records API's check, skipped in chat)."""
+    opened, _ = world.say("keep it", project_id="group_run")
+    turn = world.chats.messages[0]
+
+    response = world.client.post(
+        f"/api/v1/chat/sessions/{opened.headers['X-Session-Id']}/captures",
+        json={"message_id": turn.message_id, "text": "kept", "kind": kind, "scope": scope, "applicability": applicability},
+    )  # fmt: skip
+
+    assert response.status_code == 422
+    if message is not None:  # a body the model refuses answers with its validation detail instead
+        assert message in response.json()["detail"]["error"]["message"]
+    assert world.records._records == {}

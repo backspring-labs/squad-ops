@@ -6,6 +6,8 @@ from datetime import datetime
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from squadops.api.memory_schemas import InstructionApplicabilityDTO
+
 # =============================================================================
 # Request DTOs
 # =============================================================================
@@ -41,6 +43,13 @@ class CaptureRequest(BaseModel):
     scope: str = Field(..., description="user, or project for a bound session's note")
     suggestion: bool = Field(
         default=False, description="A note marked as a claim, never a lesson's citation (§3.5)"
+    )
+    applicability: InstructionApplicabilityDTO | None = Field(
+        default=None,
+        description=(
+            "A project instruction's task_types, roles and stacks, each explicit ('*' for any). "
+            "Required for an instruction, refused for anything else."
+        ),
     )
 
     model_config = ConfigDict(extra="forbid")
