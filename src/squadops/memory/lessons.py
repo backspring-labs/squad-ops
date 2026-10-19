@@ -351,6 +351,24 @@ def pin(
     )  # fmt: skip
 
 
+def _select(
+    ordered: Sequence[SnapshotEntry], max_lessons: int, budget: int
+) -> tuple[list[SnapshotEntry], list[SnapshotEntry]]:
+    """One selection pass, in order: each lesson supplied whole while the count and the budget
+    allow, the rest left out whole."""
+    supplied: list[SnapshotEntry] = []
+    left_out: list[SnapshotEntry] = []
+    spent = 0
+    for entry in ordered:
+        cost = _tokens(entry.revision.text)
+        if len(supplied) >= max_lessons or spent + cost > budget:
+            left_out.append(entry)
+            continue
+        supplied.append(entry)
+        spent += cost
+    return supplied, left_out
+
+
 @dataclass(frozen=True)
 class Recalled:
     """One recall's outcome, recorded with the authoring it fed (the exposure, §0.2)."""
@@ -420,23 +438,21 @@ def recall(snapshot: Snapshot | None, query: RecallQuery) -> Recalled:
         latest[entry.revision.pattern_id] = entry
     ordered = sorted(latest.values(), key=lambda e: (e.approval.approved_at, e.revision.pattern_id))
     # §3.6 (T17): one selection pass under the smaller of the snapshot's budget and what the binding
-    # sections left. Each omission names the limit that omitted it, and nothing is trimmed after.
+    # sections left; nothing is trimmed after. Each omission is named against today's recall (the
+    # snapshot's budget alone): ``budget`` when today's would omit it too, ``remaining`` when only the
+    # binding sections' leftover did, so the instructions are blamed only for what they displaced.
     available = query.available_lesson_tokens
-    supplied: list[SnapshotEntry] = []
-    spent = 0
-    for entry in ordered:
-        cost = _tokens(entry.revision.text)
-        if (
-            len(supplied) >= snapshot.policy.max_lessons
-            or spent + cost > snapshot.policy.token_budget
-        ):
-            omitted.append((entry.revision.revision_id, "budget"))
-            continue
-        if available is not None and spent + cost > available:
-            omitted.append((entry.revision.revision_id, "remaining"))
-            continue
-        supplied.append(entry)
-        spent += cost
+    policy = snapshot.policy
+    supplied, left_out = _select(ordered, policy.max_lessons, policy.token_budget)
+    todays = {e.revision.revision_id for e in left_out}
+    if available is not None:
+        supplied, left_out = _select(
+            ordered, policy.max_lessons, min(policy.token_budget, available)
+        )
+    omitted += [
+        (e.revision.revision_id, "budget" if e.revision.revision_id in todays else "remaining")
+        for e in left_out
+    ]
     disposition = RecallDisposition.SUPPLIED if supplied else RecallDisposition.OMITTED_BY_BUDGET
     budget = (
         None

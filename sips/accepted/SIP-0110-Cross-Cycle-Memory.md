@@ -1933,11 +1933,17 @@ offer one, and a proposal scoped to a task proposes nothing; it is never widened
   - The composer computes the second figure and hands it to recall on the query (`available_lesson_tokens`).
   - Recall applies it in its one selection pass. A lesson that doesn't fit is omitted whole, and nothing is trimmed
     after.
-  - Each omission names its limit: `budget` when the snapshot's own budget would have omitted the lesson,
-    `remaining` when only the binding sections' leftover did.
+  - Each omission names its limit against today's recall, the snapshot's budget alone: `budget` when today's
+    would omit the lesson too, `remaining` when only the binding sections' leftover did. The second read of
+    PR #2526 found the labels first decided inside the bounded pass, which blamed the instructions for a
+    lesson today's recall omits, and reported a displaced one as the snapshot's cap.
   - When not even the framing fits, every eligible lesson is omitted `remaining`, and the task runs.
-- **Recorded:** the exposure's memory block gains `lesson_budget` (`effective`, `snapshot`, `remaining`) when the
-  binding sections bounded it. The lesson section's `effective_budget` is the effective figure.
+- **Recorded:** the exposure's memory block gains `lesson_budget` (`effective`, `snapshot`, `remaining`) whenever a
+  binding section was supplied, so a reader sees what the lessons could spend beside the instructions. The lesson
+  section's `effective_budget` is the effective figure.
+- **The framing is measured from the packaged template,** not through the deploy's asset source. A deploy serving a
+  differently worded slot from a registry would be measured slightly off. Recall's estimator is an estimate either
+  way, and the sizes are a few hundred tokens.
 - **Unchanged without an instruction:** when no binding section was supplied, or the model's budget is unknown, the
   query carries `None`. The snapshot's budget then stands, the recall is today's exactly, and the memory block is
   byte-identical (§0.11's envelopes reconstruct as they did).

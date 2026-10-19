@@ -63,6 +63,30 @@ def test_t17_less_room_than_the_framing_omits_the_section_whole_and_the_task_run
     assert got.lesson_budget["effective"] == 0
 
 
+@pytest.mark.parametrize(
+    ("sizes", "available", "labels"),
+    [
+        ((280, 290, 310), 300, ("remaining", "budget")),
+        ((164, 392, 104, 142, 26), 482, ("remaining", "remaining")),
+    ],
+    ids=["today-omits-the-310-too", "the-26-is-displaced"],
+)
+def test_each_omission_is_named_against_todays_recall(sizes, available, labels):
+    """The second read of PR #2526. Bug caught: a label decided inside the bounded pass: the 310,
+    which today's recall omits for its own budget, blamed on the instructions; or the 26, which
+    today's recall supplies and the instructions displaced, reported as the snapshot's cap."""
+    revisions = [_revision(f"behavior_{n}", text="t" * (size * 4)) for n, size in enumerate(sizes)]
+    approvals = [_approve(r, at=T0 + timedelta(minutes=n)) for n, r in enumerate(revisions)]
+    snapshot = _snapshot(revisions, approvals)
+
+    got = recall(snapshot, dataclasses.replace(ASK, available_lesson_tokens=available))
+
+    # Today's recall: (280, 290) supplied, 310 omitted by its own budget; (164, 392, 26) supplied,
+    # 104 and 142 omitted. So the second and last lessons' labels say which pass left them out.
+    named = dict(got.omitted)
+    assert (named[revisions[1].revision_id], named[revisions[-1].revision_id]) == labels
+
+
 def test_an_omission_the_snapshots_own_budget_makes_is_budget_even_when_room_is_short_too():
     """§3.6's naming rule. Bug caught: a lesson the snapshot itself could never fit reported as
     crowded out by the instructions, so the instructions are blamed for a cap they didn't set."""
