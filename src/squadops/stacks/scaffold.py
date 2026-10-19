@@ -1978,7 +1978,7 @@ _STACKS: dict[str, ScaffoldStack] = {
         # SIP-0104: the first (and so far only) stack with a deterministic test scaffold.
         # Stack #1 deliberately does not declare one — opt-in is explicit, never inherited.
         verification_scaffold=_NEXTJS_TS_NAME,
-        # #2511: both files are ones this stack's runner collects (``VITEST_SUITE_GLOB``, #1534):
+        # #2511: both files are ones this stack's runner collects (``VITEST_SUITE_GLOBS``, #1534):
         # a page criterion's file named ``.test.tsx`` was never collected, so the plan check
         # refused every increment with a page criterion.
         criterion_test_files=(

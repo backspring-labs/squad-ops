@@ -14,7 +14,7 @@ from dataclasses import dataclass
 from typing import Any
 
 from squadops.stacks.scaffold import resolve_development_profile
-from squadops.stacks.stack_nextjs_ts import VITEST_SUITE_GLOB
+from squadops.stacks.stack_nextjs_ts import VITEST_SUITE_GLOBS
 
 # ---------------------------------------------------------------------------
 # Test framework constants (D5)
@@ -75,9 +75,9 @@ class DevelopmentProfile:
     test_file_patterns: tuple[str, ...]
     #: What this stack's test runner COLLECTS — what plan validation and patch acceptance read
     #: (#1534). Distinct from ``test_file_patterns`` because the two answers differ where a
-    #: scaffold narrows the runner: Next.js's vitest config collects ``.test.ts`` only under
-    #: ``__tests__/``, while a dev repair's ``extra.test.ts`` or a ``.tsx`` suite still looks
-    #: like a test file. Required on every profile, so no stack inherits another's answer.
+    #: scaffold narrows the runner: Next.js's vitest config collects ``.test.ts`` and ``.test.tsx``
+    #: only under ``__tests__/``, while a dev repair's ``extra.test.ts`` or a ``.spec.ts`` suite
+    #: still looks like a test file. Required on every profile, so no stack inherits another's answer.
     collected_test_patterns: tuple[str, ...]
     max_completion_tokens: int = 4000
     test_timeout_seconds: int = 60
@@ -479,7 +479,9 @@ DEVELOPMENT_PROFILES: dict[str, DevelopmentProfile] = {
             "Consume the scaffold-owned store seam (`reset`, `insert`, `all` from "
             "@/lib/store) rather than reaching into the app entry.\n"
             "Place tests in __tests__/ with a .test.ts suffix, e.g. "
-            "__tests__/runs.test.ts.\n\n"
+            "__tests__/runs.test.ts, or .test.tsx for a suite that renders a page or a "
+            "component with JSX, e.g. __tests__/run-detail.test.tsx. The runner collects "
+            "nothing else.\n\n"
             "Emit each file as a fenced code block with the language and path separated by a "
             "colon:\n"
             "```typescript:__tests__/runs.test.ts\n\n"
@@ -487,9 +489,12 @@ DEVELOPMENT_PROFILES: dict[str, DevelopmentProfile] = {
         ),
         source_filter=(".ts", ".tsx"),
         test_file_patterns=("*.test.ts", "*.test.tsx", "*.spec.ts", "*.spec.tsx"),
-        # #1534: exactly what the scaffold's vitest config collects — not .tsx, not .spec, and
-        # only under __tests__/. One glob, rendered into the config and derived here.
-        collected_test_patterns=test_file_patterns_from_glob(VITEST_SUITE_GLOB),
+        # #1534: exactly what the scaffold's vitest config collects — .test.ts and .test.tsx
+        # (#2531), not .spec, and only under __tests__/. The globs are rendered into the config
+        # and derived here.
+        collected_test_patterns=tuple(
+            p for glob in VITEST_SUITE_GLOBS for p in test_file_patterns_from_glob(glob)
+        ),
         build_support_files=(
             "package.json",
             "tsconfig.json",

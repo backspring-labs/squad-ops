@@ -268,7 +268,10 @@ export default nextConfig
 #: ``.tsx`` and ``.spec`` forms and the plan-authoring rules said vitest discovers ``.tsx``.
 #: Six stored plans named a qa suite the runner never collects; on 1.8.0 deploy A's Next.js
 #: checkpoint (``cyc_79f70a0bbac1``) the qa author spent a self-eval pass writing one.
-VITEST_SUITE_GLOB = "**/__tests__/**/*.test.ts"
+#: ``.test.tsx`` is collected too (#2531): a suite that renders a page writes JSX, which a ``.ts``
+#: file can't hold, so a planner testing a page named ``.tsx`` and plan review refused the plan,
+#: in two of the 2.4 shakeout's three framings that planned one. ``esbuild.jsx`` below compiles it.
+VITEST_SUITE_GLOBS = ("**/__tests__/**/*.test.ts", "**/__tests__/**/*.test.tsx")
 
 #: ``esbuild.jsx`` (#2394): without it vite compiled each page's JSX as ``React.createElement``,
 #: and a Next.js page does not import React, so a suite that rendered one failed "React is not
@@ -294,7 +297,7 @@ export default defineConfig({
   esbuild: { jsx: 'automatic' },
   resolve: { alias: { '@': root } },
   test: { environment: 'node', include: ['"""
-    + VITEST_SUITE_GLOB
+    + "', '".join(VITEST_SUITE_GLOBS)
     + """'] },
 })
 """

@@ -1371,3 +1371,17 @@ checks:
       from squadops.memory.lessons import RecallDisposition
       print(memory_context_none({"memory_context": "none"}), RecallDisposition.CONTEXT_NONE.value)
     expect: True memory_context_none
+  - id: "2531-plan-review"
+    what: plan review takes a Next.js page suite named .test.tsx, which the runner now collects
+    container: squadops-runtime-api
+    code: |
+      from squadops.stacks.development_profiles import get_development_profile, matches_test_file_patterns
+      print(matches_test_file_patterns("__tests__/run-detail.test.tsx", get_development_profile("nextjs_ts").collected_test_patterns))
+    expect: "True"
+  - id: "2531-qa-guidance"
+    what: the qa author's Next.js guidance names .test.tsx for a suite that renders a page with JSX
+    container: squadops-eve
+    code: |
+      from squadops.stacks.development_profiles import get_development_profile
+      print(".test.tsx for a suite that renders a page" in get_development_profile("nextjs_ts").test_prompt_supplement)
+    expect: "True"
