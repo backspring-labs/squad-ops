@@ -1676,6 +1676,42 @@ Project Lifecycle Management's revision 5 (§B.5.1) applies the ruling.
 - chat's capture and its turns' binding (#2180);
 - the console view (#2182).
 
+## 5m. Task instructions, stage 1, as built (2026-10-19, #2178; the supervisor, under the owner's grant of 2026-10-19)
+
+**What shipped:** §A.3.5's task assignment at cycle creation, and §A.3.6–§A.3.7's binding section, through the
+context-assembly port.
+- **Admission:** a cycle is created with `--instruction`/`--for` (`task_instructions` on the API). Each one is stored
+  as a task instruction, a typed record (§5l) whose target is that cycle, confirmed by its creator, before the run is
+  enqueued.
+- **Supply:** at plan composition and at every re-dispatch, the snapshot recall reads the cycle's task instructions.
+  The composer hands those whose selector reaches the dispatch on `TASK_INSTRUCTIONS_INPUT`, and the exposure records
+  each revision handed.
+  - **What a selector reaches:** a selected task type, or a repair that revises its output
+    (`task_plan.repairs_revising`, read from the repair tables).
+  - **Never reached:** a selected type's behavioural repair, which revises the application, not that type's output.
+  - **Each dispatch reads the records again,** so a withdrawal stops the next one.
+- **Rendering:** every authoring seam renders the section from one managed fragment
+  (`request.task_instructions_section`), before the lessons, stating the precedence. A task with no instruction
+  renders byte-identically.
+
+**Where stage 1 narrows the design, and why:**
+- **A held task fails its run's provisioning,** with which instruction and why, rather than waiting held. §A.3.6
+  holds the task undispatched and releases it when the store answers, or when the instruction is revised. That needs
+  the executor to hold one task while the rest of the run waits, and to escalate in a campaign. It's stage 2. Until
+  then, no task is dispatched without its binding, and the failure says so.
+- **A reference names a concrete revision.** `@current` is refused for now: binding it at admission (§A.3.7, T16) needs
+  a resolver per reference family. That's stage 2.
+- **An instruction for a task type that authors nothing is refused at admission,** through the API and the memory
+  records' route. No seam supplies such a type, so it would bind nothing.
+
+**Stage 2 (#2178, still open):**
+- the hold and its release;
+- interventions after admission, recorded on the cycle (`squadops instructions add`);
+- emergency withdrawal after dispatch (§A.3.8);
+- `@current` bound at admission;
+- `carries_into: continuations`;
+- the gate's structured `instructions` field.
+
 ## 6. Mode neutrality: cycle, duty, and ambient utilization
 
 Phase 1 implements the cycle-mode loop, but the substrate is designed so duty- and

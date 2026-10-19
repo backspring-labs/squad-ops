@@ -280,7 +280,8 @@ async def _ask_and_disclose(
         section = bundle.section(SectionKind.TASK_INSTRUCTIONS)
         why = unresolved_reason(section) if section is not None else "a binding section"
         raise TaskInstructionsUnavailable(f"task {envelope.task_id} is held: {why}")
-    return lessons_input(bundle.recalled), bundle.task_instructions
+    instructions = bundle.task_instructions
+    return lessons_input(bundle.recalled), dict(instructions) if instructions else None
 
 
 class LessonContextAssembly(ContextAssemblyPort):
