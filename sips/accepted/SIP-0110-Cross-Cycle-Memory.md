@@ -85,7 +85,7 @@ re-places it.
 | entry points: task instructions, with the work target, retries, references bound with the cycle, binding holds and emergency withdrawal (§A.3.5–§A.3.8) | **placed** | 2.4.0, #2178: stage 1 (the records reach the tasks they name, binding, the task held when incomplete) shipped in PR #2513 (§5m); stage 2 remains |
 | entry points: project instructions in the snapshot with references bound, re-binding, the effective lesson budget, the comparison arms and disclosure (§A.3.6, §A.3.7) | **placed** | 2.4.0, #2179: stage 1 (pinned at admission, binding on the tasks they apply to, the lesson budget after them) ships in the PR that wrote this row (§5n); stage 2 remains |
 | entry points: chat on the substrate, with capture confirmed, chat exposures, server-side project binding and provenance authorized (§A.3.5) | **placed** | 2.4.0, #2180: stage A (the binding, each turn's context and exposure, confirmed capture of notes and preferences, authorized provenance, Q29's deletion) ships in the PR that wrote this row (§5o); stage B, instruction capture, remains |
-| entry points: lesson inspection from chat; a conversational claim never becomes a lesson (§A.3.5) | **shipped** | 2.4.0, the PR that wrote this row, issue #2181 (§5p) |
+| entry points: lesson inspection from chat; a conversational claim never becomes a lesson (§A.3.5) | **shipped** | 2.4.0, PR #2518, issue #2181 (§5p) |
 | entry points: the console's memory record view (§A.3.11) | **placed** | 2.4.0, #2182 |
 | entry points: the acceptance matrix, T1–T17, live on a deploy (§A.5) | **placed** | 2.4.0, #2183 |
 | entry points: the legacy agent store retired (§A.4.3), on the owner's OK for its compose change | **placed** | 2.5.0, #2184 |
@@ -1859,6 +1859,7 @@ routes, the records routes, the provenance link and the deleted-session marks.
     listed, and a read that fails is `failed`.
   - The template tells the agent to explain them and cite the revision, never to follow them in the conversation,
     and that only the owner approves a lesson.
+  - The reply's closing line names each lesson shown by its revision id, beside the records used.
 - **The lesson section a task holds stays `not_applicable` on every chat turn.** Inspection is its own section, so a
   chat exposure never reads as a lesson supplied.
 - **A conversational claim is a suggestion note** (T5).
