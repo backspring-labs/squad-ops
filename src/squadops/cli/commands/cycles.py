@@ -4,8 +4,10 @@ Cycle commands (SIP-0065 §6.3).
 
 from __future__ import annotations
 
+import json
 import mimetypes
 from pathlib import Path
+from typing import Any
 
 import typer
 
@@ -88,13 +90,24 @@ def _assessment_cell(indicator: dict) -> str:
 
 
 def _parse_set_flags(set_flags: list[str]) -> dict:
-    """Parse --set key=value flags into a dict."""
-    result = {}
+    """Parse --set key=value flags into a dict. A value that begins with ``[`` or ``{`` is a
+    list or a mapping, read as JSON (#2496); every other value is kept as its string."""
+    result: dict[str, Any] = {}
     for item in set_flags:
         if "=" not in item:
             raise typer.BadParameter(f"Invalid --set format: {item!r}. Expected key=value.")
         key, value = item.split("=", 1)
-        result[key.strip()] = value.strip()
+        value = value.strip()
+        if value.startswith(("[", "{")):
+            try:
+                result[key.strip()] = json.loads(value)
+            except json.JSONDecodeError as e:
+                raise typer.BadParameter(
+                    f"--set {key.strip()}: {value!r} begins like a list or mapping but isn't "
+                    f"valid JSON ({e.msg})"
+                ) from e
+            continue
+        result[key.strip()] = value
     return result
 
 
