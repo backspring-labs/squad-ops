@@ -151,18 +151,21 @@ def quality_deltas(
     _check(current, other, against)
     deltas: list[MeasureDelta] = []
     skipped: list[tuple[str, str]] = []
-    why = _why_not("lighthouse and axe", other.quality, current.quality)
-    if why:
-        skipped.append(("lighthouse and axe", why))
+    # ``_why_not`` names a reading that's missing; the ``None`` tests narrow the types for it.
+    q_before, q_after = other.quality, current.quality
+    why = _why_not("lighthouse and axe", q_before, q_after)
+    if why or q_before is None or q_after is None:
+        skipped.append(("lighthouse and axe", why or "not recorded"))
     else:
-        found, missed = _page_deltas(other.quality, current.quality)
+        found, missed = _page_deltas(q_before, q_after)
         deltas += found
         skipped += missed
-    why = _why_not("lint", other.lint, current.lint)
-    if why:
-        skipped.append(("lint", why))
+    l_before, l_after = other.lint, current.lint
+    why = _why_not("lint", l_before, l_after)
+    if why or l_before is None or l_after is None:
+        skipped.append(("lint", why or "not recorded"))
     else:
-        found, missed = _lint_deltas(other.lint, current.lint)
+        found, missed = _lint_deltas(l_before, l_after)
         deltas += found
         skipped += missed
     return QualityDeltas(
