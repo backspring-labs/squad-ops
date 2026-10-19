@@ -14,8 +14,9 @@ What a task sees of it is bounded. The squad gets three things, never a silently
 from __future__ import annotations
 
 import json
-from collections.abc import Iterable, Mapping
+from collections.abc import Callable, Iterable, Mapping
 from dataclasses import dataclass, field
+from pathlib import PurePosixPath
 from typing import Any
 
 #: The producing task of a file seeded from the product's repository: provenance only, never a
@@ -26,10 +27,31 @@ SOURCE_CHECKOUT = "source.checkout"
 CHECKOUT_MANIFEST_TYPE = "source_checkout"
 CHECKOUT_MANIFEST_FILENAME = "source_checkout.json"
 
-#: 2.4's limits on a product a source-backed run takes on. The text cap keeps every one of the
-#: run's context resolutions (512 KB each) whole, so no task works from a truncated tree.
+#: Generated dependency lockfiles. No task reads one and the product's own install writes it, so
+#: it is held back as a binary file is: listed in the manifest, read from the clone, never seeded.
+GENERATED_LOCKFILES = frozenset(
+    {
+        "package-lock.json",
+        "pnpm-lock.yaml",
+        "yarn.lock",
+        "bun.lock",
+        "uv.lock",
+        "poetry.lock",
+        "Pipfile.lock",
+        "Cargo.lock",
+        "Gemfile.lock",
+        "composer.lock",
+        "go.sum",
+    }
+)
+#: The artifact types an acceptance workspace selects, whatever produced them.
+WORKSPACE_TYPES = ("source", "config")
+
+#: 2.4's limits on a product a source-backed run takes on. The workspace cap is the seeded source
+#: and config text, which every acceptance workspace (one 512 KB resolution) carries whole, with
+#: room left for the squad's own files, so no task works from a truncated tree.
 MAX_FILES = 2000
-MAX_TEXT_BYTES = 384 * 1024
+MAX_WORKSPACE_BYTES = 384 * 1024
 #: How much current file content one task is shown in full.
 FOCUS_BUDGET_BYTES = 96 * 1024
 #: Beyond this many paths the map lists directories, with their file counts.
@@ -47,6 +69,12 @@ class CheckoutManifest:
     binary: frozenset[str] = field(default_factory=frozenset)
     executable: frozenset[str] = field(default_factory=frozenset)
     instruction_paths: tuple[str, ...] = ()
+    generated: frozenset[str] = field(default_factory=frozenset)
+
+    @property
+    def held_back(self) -> frozenset[str]:
+        """The files no task's view carries: binary files and generated lockfiles."""
+        return self.binary | self.generated
 
     def to_json(self) -> bytes:
         return json.dumps(
@@ -56,6 +84,7 @@ class CheckoutManifest:
                 "binary": sorted(self.binary),
                 "executable": sorted(self.executable),
                 "instruction_paths": list(self.instruction_paths),
+                "generated": sorted(self.generated),
             },
             indent=1,
         ).encode()
@@ -69,6 +98,7 @@ class CheckoutManifest:
             binary=frozenset(doc["binary"]),
             executable=frozenset(doc["executable"]),
             instruction_paths=tuple(doc["instruction_paths"]),
+            generated=frozenset(doc["generated"]),
         )
 
 
@@ -77,22 +107,29 @@ def manifest_of(
     files: Mapping[str, bytes],
     executable: Iterable[str],
     instruction_paths: Iterable[str],
+    *,
+    classify: Callable[[str], str],
 ) -> CheckoutManifest:
-    """The checkout's manifest, refused past 2.4's limits."""
-    binary = set()
-    text_bytes = 0
+    """The checkout's manifest, refused past 2.4's limits. ``classify`` names a path's artifact
+    type, as the run's storage will."""
+    binary, generated = set(), set()
+    workspace_bytes = 0
     for path, content in files.items():
         try:
             content.decode("utf-8")
         except UnicodeDecodeError:
             binary.add(path)
-        else:
-            text_bytes += len(content)
+            continue
+        if PurePosixPath(path).name in GENERATED_LOCKFILES:
+            generated.add(path)
+        elif classify(path) in WORKSPACE_TYPES:
+            workspace_bytes += len(content)
     if len(files) > MAX_FILES:
         raise CheckoutTooLarge(f"{len(files)} files, past the {MAX_FILES} a run takes on")
-    if text_bytes > MAX_TEXT_BYTES:
+    if workspace_bytes > MAX_WORKSPACE_BYTES:
         raise CheckoutTooLarge(
-            f"{text_bytes // 1024} KB of text, past the {MAX_TEXT_BYTES // 1024} KB a run takes on"
+            f"{workspace_bytes // 1024} KB of source and config, past the "
+            f"{MAX_WORKSPACE_BYTES // 1024} KB every task's workspace carries whole"
         )
     return CheckoutManifest(
         commit=commit,
@@ -100,6 +137,7 @@ def manifest_of(
         binary=frozenset(binary),
         executable=frozenset(executable),
         instruction_paths=tuple(p for p in instruction_paths if p in files),
+        generated=frozenset(generated),
     )
 
 
@@ -108,8 +146,7 @@ def repository_map(manifest: CheckoutManifest) -> str:
     paths = sorted(manifest.sizes)
     if len(paths) <= MAP_PATH_LIMIT:
         return "\n".join(
-            f"- `{p}` ({manifest.sizes[p]} bytes{', binary' if p in manifest.binary else ''})"
-            for p in paths
+            f"- `{p}` ({manifest.sizes[p]} bytes{_held_back_note(manifest, p)})" for p in paths
         )
     counts: dict[str, int] = {}
     for p in paths:
@@ -120,11 +157,17 @@ def repository_map(manifest: CheckoutManifest) -> str:
     )
 
 
+def _held_back_note(manifest: CheckoutManifest, path: str) -> str:
+    if path in manifest.binary:
+        return ", binary"
+    return ", generated" if path in manifest.generated else ""
+
+
 def focus_paths(manifest: CheckoutManifest, named: Iterable[str]) -> list[str]:
     """The existing text files a task names, in its order, within the focus budget."""
     chosen, used = [], 0
     for path in named:
-        if path not in manifest.sizes or path in manifest.binary or path in chosen:
+        if path not in manifest.sizes or path in manifest.held_back or path in chosen:
             continue
         if used + manifest.sizes[path] > FOCUS_BUDGET_BYTES:
             break
