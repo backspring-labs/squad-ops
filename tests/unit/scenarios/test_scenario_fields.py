@@ -275,7 +275,8 @@ async def test_an_endpoint_the_delivery_doesnt_declare_reads_absent_not_failed(
     [result] = record.outcomes
     assert result.result is outcome
     if outcome is ScenarioResult.BLOCKED_UNVERIFIED:
-        assert result.blocked_reason is BlockedReason.SURFACE_ABSENT and runner.scenarios is None
+        # #2416: the app is still started, for its pages, and the absent scenario isn't sent.
+        assert result.blocked_reason is BlockedReason.SURFACE_ABSENT and runner.scenarios == []
 
 
 async def test_a_declared_project_resolves_by_the_suites_names_and_reads_no_manifest(monkeypatch):

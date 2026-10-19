@@ -15,6 +15,7 @@ from squadops.scenarios.evaluation import (
     evaluation_record,
 )
 from squadops.scenarios.models import parse_suite
+from squadops.scenarios.quality import QualityReading, QualityStatus
 from squadops.scenarios.reference import EvaluationInvalid
 from squadops.scenarios.suites import draft_suite
 from tests.unit.scenarios.suite_fixtures import SUITE
@@ -55,6 +56,7 @@ def _record(suite, outcomes, **kwargs):
         evaluated_tree_identity=TREE,
         previous_accepted_tree_identity=PREVIOUS,
         evaluated_at=kwargs.get("at", T0),
+        quality=QualityReading(QualityStatus.NOT_APPLICABLE),
     )
 
 

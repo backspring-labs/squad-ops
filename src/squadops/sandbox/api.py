@@ -70,6 +70,9 @@ class EvaluationRequest(BaseModel):
     declared: dict | None = None
     scenarios: list[dict]
     environment: dict[str, str] = Field(default_factory=dict)
+    #: The declared pages Lighthouse and axe measure (SIP-0113 §4.2, #2416). Required: a client
+    #: that names none says so with ``[]``, never by leaving it out.
+    pages: list[str]
 
 
 class OperationRequest(BaseModel):
@@ -187,6 +190,7 @@ async def _handle_evaluation(service: SandboxService, body: EvaluationRequest) -
             declared=DeclaredStart.from_dict(body.declared) if body.declared else None,
             scenarios=body.scenarios,
             environment=body.environment,
+            pages=body.pages,
         )
     except (KeyError, TypeError, ValueError) as e:
         raise _error(400, "INVALID_EVALUATION", str(e)) from e

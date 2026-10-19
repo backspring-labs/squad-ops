@@ -76,6 +76,16 @@ async def test_a_command_that_finishes_returns_its_code_and_output(tmp_path):
     assert (run.returncode, run.stdout, run.stderr, run.timed_out) == (3, b"out\n", b"err\n", False)
 
 
+async def test_an_input_reaches_the_command_on_its_stdin_and_is_closed_after(tmp_path):
+    """SIP-0113 A3 (#2416): the evaluator's request arrives on its input. Bug caught: the input
+    dropped, or the pipe left open, so a command reading to the end waits out its timeout."""
+    run = await run_bounded(
+        ["sh", "-c", "cat; echo done"], cwd=tmp_path, timeout=10, stdin=b"req\n"
+    )
+
+    assert (run.returncode, run.stdout, run.timed_out) == (0, b"req\ndone\n", False)
+
+
 async def test_a_missing_binary_raises_for_the_caller_to_name(tmp_path):
     """Each caller says what a missing tool means for its own check, so spawning still raises."""
     with pytest.raises(FileNotFoundError):

@@ -126,6 +126,7 @@ async def test_the_runtimes_runner_reaches_the_services_runner_on_the_same_bindi
         declared=None,
         scenarios=[],
         environment={},
+        pages=(),
     )
 
     assert asked == ["squadops-sandbox-service:8002"]

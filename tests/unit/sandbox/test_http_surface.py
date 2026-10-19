@@ -372,6 +372,7 @@ async def test_an_evaluation_travels_the_client_to_the_runner_and_back(tmp_path)
     from adapters.sandbox.http_client import HttpScenarioRunner
     from adapters.sandbox.scenario_runner import ContainerScenarioRunner
     from squadops.campaigns.evaluator_trees import FileTree
+    from squadops.scenarios.quality import NotMeasured, QualityReading
     from tests.unit.sandbox.test_scenario_runner import DECLARED, SCENARIO, TREE, _app, _Container
 
     root = tmp_path / "cycles"
@@ -382,6 +383,7 @@ async def test_an_evaluation_travels_the_client_to_the_runner_and_back(tmp_path)
         image="sandbox:pinned",
         http_client_factory=_app(),
         app_network=None,
+        evaluator_image="evaluator:pinned",
     )
     app = create_app(
         SandboxService(
@@ -407,11 +409,14 @@ async def test_an_evaluation_travels_the_client_to_the_runner_and_back(tmp_path)
         declared=DECLARED,
         scenarios=[SCENARIO],
         environment={},
+        pages=(),
     )
 
     assert container.held[0]["assets/logo.png"] == TREE["assets/logo.png"]
     assert container.specs[1].command == list(DECLARED.start)
     assert [(r.scenario_id, r.result) for r in result.runs] == [("counts", "passed")]
+    # #2416: the quality reading crosses the wire too, its reason intact.
+    assert result.quality == QualityReading.not_measured(NotMeasured.NO_DECLARED_PAGE)
 
 
 async def test_a_sandbox_without_a_runner_answers_503(stack):
@@ -421,7 +426,7 @@ async def test_a_sandbox_without_a_runner_answers_503(stack):
     async with client_factory() as client:
         response = await client.post(
             "/api/v1/evaluations",
-            json={"tree": {}, "tree_identity": "0" * 64, "scenarios": []},
+            json={"tree": {}, "tree_identity": "0" * 64, "scenarios": [], "pages": []},
             headers={"Authorization": f"Bearer {TOKEN}"},
         )
     assert (response.status_code, response.json()["error"]["code"]) == (503, "RUNNER_UNAVAILABLE")

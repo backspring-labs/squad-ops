@@ -4,8 +4,10 @@ One evaluation is one call:
 1. the evaluated tree's files are checked against their ``FileTree.identity``;
 2. they are written to a disposable copy under the sandbox root, executable bits included;
 3. the copy is started, by the product's own declaration or by its stack's environment contract;
-4. each scenario's steps run from the service, over loopback, outside the app's process;
-5. the app stops and the copy is removed, whatever happened.
+4. once it is ready, and before any scenario writes to it, the evaluator's image measures its
+   declared pages with Lighthouse and axe, on the app network (§4.2, #2416);
+5. each scenario's steps run from the service, outside the app's process;
+6. the app stops and the copy is removed, whatever happened.
 
 Nothing a scenario caused reaches a workspace, a revision or a commit (contract 3). The steps
 are held in memory for the call, never written, and never in a result.
@@ -19,6 +21,8 @@ from __future__ import annotations
 
 import asyncio
 import dataclasses
+import json
+import shlex
 import shutil
 import time
 import uuid
@@ -35,6 +39,12 @@ from squadops.ports.tools.container import ContainerPort
 from squadops.sandbox.environment import get_environment_contract
 from squadops.sandbox.models import OperationName, content_bytes, declared_argv
 from squadops.sandbox.workspace import WorkspaceEscapeError, tree_path, working_directory
+from squadops.scenarios.quality import (
+    NotMeasured,
+    QualityReading,
+    QualityStatus,
+    evaluator_pages,
+)
 from squadops.scenarios.runner import DeclaredStart, ReadinessKind, TreeEvaluation
 from squadops.scenarios.steps import HttpRequest, HttpResponse, ScenarioRun, run_scenario
 from squadops.tools.exceptions import ToolContainerError
@@ -69,6 +79,8 @@ class _Start:
         configuration_revision: int | None,
         api_port: int,
         api_path: str,
+        ui_port: int | None,
+        ui_serve: tuple[str, ...],
     ) -> None:
         self.setup, self.start, self.port = setup, start, port
         self.ready_kind, self.ready_path, self.require_2xx, self.ready_timeout = (
@@ -82,10 +94,20 @@ class _Start:
         # Where scenarios reach the API (#2421): the declared http_base, or the stack's own
         # prefix on its app port. Readiness stays on ``port``.
         self.api_port, self.api_path = api_port, api_path
+        # Where its pages are served (#2416), and what serves them beside the app when it doesn't.
+        self.ui_port, self.ui_serve = ui_port, ui_serve
 
     @property
     def ports(self) -> tuple[int, ...]:
-        return tuple(dict.fromkeys((self.port, self.api_port)))
+        ui = () if self.ui_port is None else (self.ui_port,)
+        return tuple(dict.fromkeys((self.port, self.api_port, *ui)))
+
+    @property
+    def argv(self) -> tuple[str, ...]:
+        """The start, and beside it what serves the built pages when the app doesn't."""
+        if not self.ui_serve:
+            return self.start
+        return ("sh", "-c", f"{shlex.join(self.start)} & exec {shlex.join(self.ui_serve)}")
 
 
 class ContainerScenarioRunner(ScenarioRunnerPort):
@@ -104,6 +126,8 @@ class ContainerScenarioRunner(ScenarioRunnerPort):
         poll_interval_seconds: float = 0.5,
         http_client_factory: Callable[[], httpx.AsyncClient] | None = None,
         app_network: str | None,
+        evaluator_image: str,
+        evaluator_timeout_seconds: float = 300.0,
     ) -> None:
         # #2451 part 4 (the MacBook lane's review of #2460): the app, which holds the evaluation
         # secrets, runs on the app network by name with no host port and no route out. ``None``, as
@@ -118,6 +142,10 @@ class ContainerScenarioRunner(ScenarioRunnerPort):
         self._blueprint_ready_timeout = blueprint_ready_timeout_seconds
         self._poll = poll_interval_seconds
         self._http = http_client_factory or (lambda: httpx.AsyncClient(timeout=10.0))
+        # SIP-0113 A2 (#2416): Lighthouse and axe run in a container of this image, on the app
+        # network beside the app, with nothing of the app's environment.
+        self._evaluator_image = evaluator_image
+        self._evaluator_timeout = evaluator_timeout_seconds
 
     async def evaluate_tree(
         self,
@@ -129,6 +157,7 @@ class ContainerScenarioRunner(ScenarioRunnerPort):
         declared: DeclaredStart | None,
         scenarios: Sequence[Mapping[str, Any]],
         environment: Mapping[str, str],
+        pages: Sequence[str],
     ) -> TreeEvaluation:
         built = FileTree.of(tree).identity
         if built != tree_identity:
@@ -147,7 +176,7 @@ class ContainerScenarioRunner(ScenarioRunnerPort):
         try:
             self._write_copy(copy, tree, executable)
             evaluation = await self._evaluate(
-                copy, tree_identity, start, scenarios, environment, started
+                copy, tree_identity, start, scenarios, environment, pages, started
             )
         finally:
             shutil.rmtree(copy, ignore_errors=True)
@@ -175,6 +204,8 @@ class ContainerScenarioRunner(ScenarioRunnerPort):
                 declared.configuration_revision,
                 declared.api_port if declared.api_port is not None else declared.port,
                 declared.api_path,
+                declared.ui_port,
+                (),  # a product serves its own pages, at its ui_base
             )
         if not stack:
             raise ValueError("a tree with no start declaration names its stack")
@@ -197,6 +228,8 @@ class ContainerScenarioRunner(ScenarioRunnerPort):
             None,
             contract.app_port,
             contract.api_prefix,
+            contract.ui_port,
+            contract.ui_serve,
         )
 
     @staticmethod
@@ -229,7 +262,7 @@ class ContainerScenarioRunner(ScenarioRunnerPort):
             **kw,
         )
 
-    async def _evaluate(self, copy, identity, start, scenarios, environment, started):
+    async def _evaluate(self, copy, identity, start, scenarios, environment, pages, started):
         try:
             await self._setup(copy, start)
             env = (("HOME", "/tmp"), *sorted(environment.items()))
@@ -237,7 +270,7 @@ class ContainerScenarioRunner(ScenarioRunnerPort):
                 container_id = await self._container.run_detached(
                     spec := self._spec(
                         copy,
-                        start.start,
+                        start.argv,
                         start.working_dir,
                         env=env,
                         **placement(self._app_network, "eval", start.ports),
@@ -246,7 +279,7 @@ class ContainerScenarioRunner(ScenarioRunnerPort):
             except ToolContainerError as e:
                 raise _StartFailed(f"the start could not run: {e}") from e
             try:
-                runs = await self._serve(container_id, spec, start, scenarios)
+                runs, quality = await self._serve(container_id, spec, start, scenarios, pages)
             finally:
                 await self._teardown(container_id)
         except _StartFailed as failed:
@@ -264,6 +297,7 @@ class ContainerScenarioRunner(ScenarioRunnerPort):
             runs=runs,
             duration_seconds=round(time.monotonic() - started, 3),
             configuration_revision=start.configuration_revision,
+            quality=quality,
         )
 
     async def _setup(self, copy: Path, start: _Start) -> None:
@@ -284,7 +318,8 @@ class ContainerScenarioRunner(ScenarioRunnerPort):
         spec: ContainerSpec,
         start: _Start,
         scenarios: Sequence[Mapping[str, Any]],
-    ) -> tuple[ScenarioRun, ...]:
+        pages: Sequence[str],
+    ) -> tuple[tuple[ScenarioRun, ...], QualityReading]:
         try:
             host, port = await address(self._container, container_id, spec, start.port)
             api_host, api_port = await address(self._container, container_id, spec, start.api_port)
@@ -302,6 +337,9 @@ class ContainerScenarioRunner(ScenarioRunnerPort):
                 f"within {start.ready_timeout:g}s",
                 tuple(logs.splitlines()[-_TAIL_LINES:]),
             )
+        # §4.2: measured before any scenario writes to the instance, so every tree is measured
+        # in the same state.
+        quality = await self._quality(spec, start, pages)
         async with self._http() as client:
 
             async def send(request: HttpRequest) -> HttpResponse:
@@ -320,7 +358,69 @@ class ContainerScenarioRunner(ScenarioRunnerPort):
                     body = response.text
                 return HttpResponse(response.status_code, body)
 
-            return tuple([await run_scenario(scenario, send) for scenario in scenarios])
+            return tuple([await run_scenario(scenario, send) for scenario in scenarios]), quality
+
+    async def _quality(
+        self, spec: ContainerSpec, start: _Start, pages: Sequence[str]
+    ) -> QualityReading:
+        """Lighthouse and axe on the declared ``pages`` (§4.2, #2416), by the evaluator's image on
+        the app network. Anything that keeps it from running is ``not_measured``, with why."""
+        if not pages or start.ui_port is None:
+            return QualityReading.not_measured(NotMeasured.NO_DECLARED_PAGE)
+        if spec.network is None or not spec.name:
+            return QualityReading.not_measured(NotMeasured.NO_APP_NETWORK)
+        if not await self._container.has_image(self._evaluator_image):
+            return QualityReading.not_measured(NotMeasured.EVALUATOR_ABSENT, self._evaluator_image)
+        base = f"http://{spec.name}:{start.ui_port}"
+        if not await self._ui_answers(base, start.ready_timeout):
+            return QualityReading.not_measured(
+                NotMeasured.UI_NOT_READY,
+                f"nothing answered at {base} within {start.ready_timeout:g}s",
+            )
+        request = {"base_url": base, "pages": list(pages)}
+        try:
+            run = await self._container.run(
+                ContainerSpec(
+                    image=self._evaluator_image,
+                    network=spec.network,
+                    timeout_seconds=self._evaluator_timeout,
+                    memory_limit=self._limits[0],
+                    cpu_limit=self._limits[1],
+                    pids_limit=self._limits[2],
+                    cap_drop_all=True,
+                    no_new_privileges=True,
+                    stdin=json.dumps(request).encode("utf-8"),
+                )
+            )
+        except ToolContainerError as e:
+            return QualityReading.not_measured(NotMeasured.EVALUATOR_FAILED, str(e))
+        if run.exit_code != 0:
+            tail = "\n".join((run.stdout + run.stderr).splitlines()[-_TAIL_LINES:])
+            return QualityReading.not_measured(
+                NotMeasured.EVALUATOR_FAILED, f"exited {run.exit_code}: {tail}"
+            )
+        try:
+            measured = evaluator_pages(json.loads(run.stdout.strip().splitlines()[-1]), pages)
+        except (ValueError, IndexError, KeyError, TypeError, AttributeError) as e:
+            return QualityReading.not_measured(NotMeasured.EVALUATOR_FAILED, str(e))
+        return QualityReading(
+            QualityStatus.MEASURED, pages=measured, evaluator=self._evaluator_image
+        )
+
+    async def _ui_answers(self, base: str, timeout: float) -> bool:
+        """Whether anything answers at the UI's base: any HTTP answer, since the preview server
+        refuses a name it doesn't know (the evaluator itself reaches it by IP)."""
+        deadline = time.monotonic() + timeout
+        async with self._http() as client:
+            while True:
+                try:
+                    await client.get(base + "/")
+                    return True
+                except (httpx.HTTPError, OSError):
+                    pass
+                if time.monotonic() >= deadline:
+                    return False
+                await asyncio.sleep(self._poll)
 
     async def _teardown(self, container_id: str) -> None:
         for step in (self._container.stop, self._container.remove):

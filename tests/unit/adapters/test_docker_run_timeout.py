@@ -27,12 +27,14 @@ class _Docker:
 
     def __init__(self, *, run_times_out: bool, kill_stderr: bytes = b"", run_exit: int = 0) -> None:
         self.commands: list[list[str]] = []
+        self.inputs: list[bytes | None] = []
         self._run_times_out = run_times_out
         self._kill_stderr = kill_stderr
         self._run_exit = run_exit
 
-    async def __call__(self, argv, *, cwd, timeout, env=None):
+    async def __call__(self, argv, *, cwd, timeout, env=None, stdin=None):
         self.commands.append(list(argv))
+        self.inputs.append(stdin)
         if argv[1] == "run":
             if self._run_times_out:
                 return BoundedRun(None, b"", b"")
@@ -93,6 +95,23 @@ async def test_a_run_that_finishes_kills_nothing(docker):
 
     assert result.exit_code == 0
     assert fake.killed() == []
+
+
+@pytest.mark.parametrize("given", [b'{"pages": ["/"]}', None], ids=["an-input", "none"])
+async def test_a_runs_input_reaches_the_container_on_its_stdin_and_only_then(docker, given):
+    """SIP-0113 A3 (#2416): the evaluator receives its request on its input, never on a mounted
+    path. Bug caught: the input dropped, so the evaluator reads nothing and fails every page; or
+    ``-i`` passed to every run, so a run that reads stdin waits on a pipe nobody closes."""
+    fake = docker(run_times_out=False)
+
+    await DockerAdapter().run(ContainerSpec(image="i", timeout_seconds=5, stdin=given))
+
+    [run] = [c for c in fake.commands if c[1] == "run"]
+    assert fake.inputs == [given]
+    if given is None:
+        assert "-i" not in run
+    else:
+        assert run.index("-i") < run.index("i")  # a docker option, so before the image
 
 
 async def test_a_container_already_gone_still_reports_the_timeout(docker):

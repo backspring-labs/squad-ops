@@ -1,0 +1,155 @@
+"""Quality baselines: Lighthouse and axe per declared page (SIP-0113 §4.2, phase 1; #2416).
+
+They're measured by the evaluator's image (A2), on the instance the scenarios read, after it is
+ready and before any scenario has written to it. So every tree is measured in the same state.
+Reporting-only: no row, gate or prompt reads a reading.
+
+A reading is one of three:
+- **measured:** each declared page carries its scores, or the error that kept it from being scored.
+  A page that answered an error, or painted nothing, is never scored.
+- **not applicable:** the Project serves no pages.
+- **not measured:** something kept the measure from running. The reason says what.
+
+Neither of the last two is evidence. Neither counts in any rate, and neither ever reads as a
+baseline held (§4.2).
+"""
+
+from __future__ import annotations
+
+from collections.abc import Mapping, Sequence
+from dataclasses import dataclass, field
+from enum import StrEnum
+from typing import Any
+
+#: Lighthouse's categories, by the key the reading keeps for each.
+LIGHTHOUSE_CATEGORIES = ("performance", "accessibility", "best_practices")
+#: axe's violation impacts, most severe first.
+AXE_IMPACTS = ("critical", "serious", "moderate", "minor")
+
+
+class QualityStatus(StrEnum):
+    MEASURED = "measured"
+    NOT_APPLICABLE = "not_applicable"
+    NOT_MEASURED = "not_measured"
+
+
+class NotMeasured(StrEnum):
+    """Why a measure that applies didn't run."""
+
+    #: No runner: the sandbox service wasn't reached, or isn't wired.
+    NO_RUNNER = "no_runner"
+    #: The app didn't start, so there was no instance to measure.
+    START_FAILED = "start_failed"
+    #: The Project couldn't be started: no start declaration, or none the runner reads.
+    NO_START_DECLARATION = "no_start_declaration"
+    #: The delivery declares no page without a parameter, so none can be loaded as is.
+    NO_DECLARED_PAGE = "no_declared_page"
+    #: Not on the sandbox's app network (a host run), where the evaluator can't reach the app.
+    NO_APP_NETWORK = "no_app_network"
+    #: The app's UI never answered.
+    UI_NOT_READY = "ui_not_ready"
+    #: The evaluator's image isn't on the box.
+    EVALUATOR_ABSENT = "evaluator_absent"
+    #: The evaluator ran and failed, or answered something it shouldn't.
+    EVALUATOR_FAILED = "evaluator_failed"
+
+
+@dataclass(frozen=True)
+class PageMeasure:
+    """One page's scores: Lighthouse's three categories (0 to 1) and axe's violations by impact.
+    A page that couldn't be scored has neither, and says why in ``error``."""
+
+    path: str
+    lighthouse: Mapping[str, float | None] | None = None
+    axe: Mapping[str, int] | None = None
+    error: str | None = None
+
+    def as_dict(self) -> dict[str, Any]:
+        return {
+            "path": self.path,
+            "lighthouse": dict(self.lighthouse) if self.lighthouse is not None else None,
+            "axe": dict(self.axe) if self.axe is not None else None,
+            "error": self.error,
+        }
+
+    @classmethod
+    def from_dict(cls, d: Mapping[str, Any]) -> PageMeasure:
+        return cls(
+            path=d["path"], lighthouse=d.get("lighthouse"), axe=d.get("axe"), error=d.get("error")
+        )
+
+
+@dataclass(frozen=True)
+class QualityReading:
+    """One tree's Lighthouse and axe reading. ``evaluator`` names the image that measured it,
+    which is each measure's version (§1.3 of the 2.4 plan: the window records it)."""
+
+    status: QualityStatus
+    reason: NotMeasured | None = None
+    pages: tuple[PageMeasure, ...] = field(default_factory=tuple)
+    evaluator: str | None = None
+    detail: str | None = None
+
+    def __post_init__(self) -> None:
+        if (self.status is QualityStatus.NOT_MEASURED) != (self.reason is not None):
+            raise ValueError("a reading that isn't measured says why, and only then")
+        if self.pages and self.status is not QualityStatus.MEASURED:
+            raise ValueError("only a measured reading carries pages")
+
+    @classmethod
+    def not_measured(cls, reason: NotMeasured, detail: str | None = None) -> QualityReading:
+        return cls(QualityStatus.NOT_MEASURED, reason=reason, detail=detail)
+
+    def as_dict(self) -> dict[str, Any]:
+        return {
+            "status": self.status.value,
+            "reason": self.reason.value if self.reason else None,
+            "pages": [p.as_dict() for p in self.pages],
+            "evaluator": self.evaluator,
+            "detail": self.detail,
+        }
+
+    @classmethod
+    def from_dict(cls, d: Mapping[str, Any]) -> QualityReading:
+        return cls(
+            status=QualityStatus(d["status"]),
+            reason=NotMeasured(d["reason"]) if d.get("reason") else None,
+            pages=tuple(PageMeasure.from_dict(p) for p in d.get("pages", ())),
+            evaluator=d.get("evaluator"),
+            detail=d.get("detail"),
+        )
+
+
+def evaluator_pages(answer: Mapping[str, Any], asked: Sequence[str]) -> tuple[PageMeasure, ...]:
+    """The evaluator's answer, one measure per page asked for, in that order. Refused unless it
+    names exactly those pages, each with its scores or its error, never both."""
+    pages = answer.get("pages")
+    if not isinstance(pages, list) or [p.get("path") for p in pages] != list(asked):
+        raise ValueError(f"the evaluator answered for other pages than {list(asked)}")
+    measured = []
+    for page in pages:
+        error = page.get("error")
+        lighthouse, axe = page.get("lighthouse"), page.get("axe")
+        if error is not None and (lighthouse is not None or axe is not None):
+            raise ValueError(f"page {page['path']}: scored and in error at once")
+        if error is None and (lighthouse is None or axe is None):
+            raise ValueError(f"page {page['path']}: neither scored nor in error")
+        if lighthouse is not None:
+            lighthouse = {k: lighthouse.get(k.replace("_", "-")) for k in LIGHTHOUSE_CATEGORIES}
+        if axe is not None:
+            axe = {k: int(axe.get(k, 0)) for k in AXE_IMPACTS}
+        measured.append(PageMeasure(page["path"], lighthouse, axe, error))
+    return tuple(measured)
+
+
+_PARAMETER_MARKS = (":", "{", "*", "[")
+
+
+def measurable_pages(routes: Sequence[str]) -> tuple[str, ...]:
+    """The declared routes a page can be loaded at as is: those with no parameter (``/runs/:id``,
+    ``/runs/{id}``, ``/runs/[id]``) or wildcard. In the order declared, each once."""
+    return tuple(
+        dict.fromkeys(
+            r for r in routes if r.startswith("/") and not any(m in r for m in _PARAMETER_MARKS)
+        )
+    )

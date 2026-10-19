@@ -837,3 +837,53 @@ within them, for the owner's review.
 
 **Who ruled it.** The owner accepted §4.4 (2026-10-17). The precedence and the blocked-now reading are the
 implementer's, for the owner's review.
+
+### 10f. Lighthouse and axe, as built (2026-10-18, §4.2, A2, A3; #2416; implementer's record, for the owner)
+
+- **Where they run.** The scenario runner launches the evaluator's image (`infra/evaluator`) on the sandbox's
+  app network, beside the started app.
+  - It has caps dropped and no new privileges. It gets none of the app's environment and no mounted path.
+  - Its request (a base URL and the pages) arrives on its standard input, as A3 rules.
+  - It reaches the app by IP, resolved from the app's name. Read live on the Spark: Vite's preview server
+    answers a name it doesn't know with 403.
+  - Off the app network, on a host run, the reading is *not measured* (`no_app_network`).
+- **When.** After the app is ready, and before any scenario runs, so every tree is measured in the same state.
+  A reading that can't be taken never stops the scenarios.
+- **What serves the pages** (the environment contract's `ui_port` and `ui_serve`):
+  - **Next.js:** `next start` serves the pages itself, on the app port.
+  - **The canonical stack:** its backend serves only its API. So the build its setup already makes is served
+    beside uvicorn by Vite's preview (`vite preview frontend`), whose proxy reaches the same backend as the
+    dev server's does. The instance the scenarios read is the one measured.
+- **Which pages:**
+  - **A blueprint delivery:** its own manifest's routes that load as they are; a route with a parameter
+    (`/runs/:id`) needs data no measure creates.
+  - **A declared Project:** its `ui_base` entry point.
+  - **None at all:** a Project with no `ui_base` is *not applicable*. A blueprint with no readable manifest
+    is *not measured* (`no_declared_page`).
+- **The reading** (`squadops.scenarios.quality`) is in each evaluation's record (`quality`, migration 1930):
+  - *measured*, with each page's three Lighthouse scores and axe's violations by impact, or the error that
+    kept the page from being scored. A page that answered an error, or painted nothing (Lighthouse's
+    `NO_FCP`), is never scored;
+  - *not applicable*;
+  - or *not measured*, with why: `no_runner`, `start_failed`, `no_start_declaration`, `no_declared_page`,
+    `no_app_network`, `ui_not_ready`, `evaluator_absent` or `evaluator_failed`.
+
+  A record written before this has none. That is never read as measured, nor as not measured.
+- **Each measure's version** is the evaluator's tag (`EVALUATOR_IMAGE`), which a guard pins to its sources'
+  digest. A changed driver or package needs a new tag, so the window never compares two measures as one.
+- **Read live on the Spark** (2026-10-18), on the reference increment's delivered tree `cyc_20246018f2b8`,
+  on an internal network:
+  - **`/` and `/runs/new`:**
+    - Lighthouse: performance 0.93 and 0.94, accessibility 0.96, best practices 0.78;
+    - axe: 2 moderate violations each;
+    - three re-measures were identical, a first read of §7 prediction 4 on a quiet box;
+  - **`/runs` and `/create`, which this delivery doesn't declare,** painted nothing, and read as errors.
+- **Not built yet, on #2416:**
+  - **lint** on the evaluated tree, by #1937's rule sets;
+  - **each measure's delta** from the previous accepted tree, and the calibration's reading as the
+    campaign's baseline;
+  - **prediction 4's spread,** recorded across the window.
+- **Choices for the owner's review:**
+  - measuring before the scenarios;
+  - Vite's preview as the canonical stack's page server, a production build behind the scaffold's own proxy;
+  - each delivery's own routes as its pages. Deltas then compare only the pages both trees declare.

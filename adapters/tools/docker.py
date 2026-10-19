@@ -50,12 +50,14 @@ class DockerAdapter(ContainerPort):
         self,
         *args: str,
         timeout: float | None = None,
+        stdin: bytes | None = None,
     ) -> tuple[int, str, str]:
         """Run docker command.
 
         Args:
             *args: Docker command arguments
             timeout: Optional timeout in seconds
+            stdin: Optional input for the command
 
         Returns:
             Tuple of (exit_code, stdout, stderr)
@@ -68,7 +70,7 @@ class DockerAdapter(ContainerPort):
         try:
             # #2045: the client runs in a group of its own, ended whole on a timeout, so a
             # timed-out command never leaves its docker client running.
-            run = await run_bounded(cmd, cwd=None, timeout=timeout)
+            run = await run_bounded(cmd, cwd=None, timeout=timeout, stdin=stdin)
         except Exception as e:
             raise ToolContainerError(f"Docker command failed: {e}") from e
         if run.timed_out:
@@ -146,8 +148,11 @@ class DockerAdapter(ContainerPort):
                 "--rm",
                 "--name",
                 name,
+                # SIP-0113 A3 (#2416): an input is read on stdin, so the container keeps it open.
+                *(["-i"] if spec.stdin is not None else []),
                 *self._render_run_args(spec),
                 timeout=spec.timeout_seconds,
+                stdin=spec.stdin,
             )
         except ToolContainerError as e:
             if "timed out" in str(e):

@@ -115,6 +115,15 @@ _RUNTIME_WITNESS = {
         "adapters.sandbox.scenario_runner -> every scenario step's URL; "
         "test_a_nextjs_blueprint_reaches_the_prds_paths_under_its_api_prefix"
     ),
+    # #2416: where a blueprint's pages are served, and what serves them beside the app.
+    ("EnvironmentContract", "ui_port"): (
+        "adapters.sandbox.scenario_runner -> the evaluator's base URL; "
+        "test_the_pages_are_measured_on_the_app_network_before_any_scenario_writes"
+    ),
+    ("EnvironmentContract", "ui_serve"): (
+        "adapters.sandbox.scenario_runner -> the start beside the app; "
+        "test_a_blueprint_tree_starts_by_its_stacks_environment_contract"
+    ),
 }
 
 #: Fields unset on a stack for a recorded reason. Each MUST be populated by another stack —
@@ -138,6 +147,10 @@ _DECLARED_OPTIONAL = {
     ("EnvironmentContract", "api_prefix"): (
         "the canonical stack's backend serves the PRD's paths at the root (the Vite proxy adds "
         "/api); nextjs_ts serves them under /api as App Router routes (#2421)"
+    ),
+    ("EnvironmentContract", "ui_serve"): (
+        "`next start` serves nextjs_ts's pages itself, on its app port; the canonical stack's "
+        "backend serves only its API, so its built pages need Vite's preview beside it (#2416)"
     ),
 }
 

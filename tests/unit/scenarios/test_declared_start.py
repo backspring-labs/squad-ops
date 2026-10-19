@@ -45,19 +45,44 @@ def test_the_fixtures_declaration_reads_as_its_own_start_from_its_revision():
 
 
 @pytest.mark.parametrize(
-    ("entry_points", "api"),
+    ("entry_points", "api", "ui"),
     [
-        ([{"kind": "http_base", "url": "http://127.0.0.1:18410/v1/"}], (18410, "/v1")),
-        ([{"kind": "ui_base", "url": "http://127.0.0.1:18407/"}], (None, "")),
+        (
+            [{"kind": "http_base", "url": "http://127.0.0.1:18410/v1/"}],
+            (18410, "/v1"),
+            (None, ""),
+        ),
+        ([{"kind": "ui_base", "url": "http://127.0.0.1:18407/"}], (None, ""), (18407, "")),
+        (
+            [
+                {"kind": "http_base", "url": "http://127.0.0.1:18410/v1"},
+                {"kind": "ui_base", "url": "http://127.0.0.1:18411/app/"},
+            ],
+            (18410, "/v1"),
+            (18411, "/app"),
+        ),
     ],
-    ids=["an-api-on-another-port-and-path", "a-ui-only-product"],
+    ids=["an-api-on-another-port-and-path", "a-ui-only-product", "both-on-ports-of-their-own"],
 )
-def test_the_http_base_entry_point_is_where_scenarios_reach_the_api(entry_points, api):
-    """#2421's entry points. Bug caught: scenarios sent to the readiness port's root, so an API
-    on a second port or under a path prefix is lost; or a product with no API given one."""
+def test_the_entry_points_are_where_scenarios_and_the_quality_measures_reach(entry_points, api, ui):
+    """#2421's entry points, and #2416's ``ui_base``. Bug caught: scenarios sent to the
+    readiness port's root, so an API on a second port or under a path prefix is lost; a product
+    with no API given one; or its pages measured at its API, or never."""
     start = declared_start(_declaration(entry_points=entry_points), configuration_revision=1)
 
     assert (start.api_port, start.api_path) == api
+    assert (start.ui_port, start.ui_path) == ui
+    assert DeclaredStart.from_dict(start.as_dict()) == start
+
+
+def test_a_ui_base_with_no_port_is_refused_as_undeclared():
+    """Bug caught: a ``ui_base`` the product can't be measured at read as no pages, so its
+    Lighthouse and axe read not applicable instead of the declaration being wrong."""
+    with pytest.raises(StartUndeclared, match="ui_base"):
+        declared_start(
+            _declaration(entry_points=[{"kind": "ui_base", "url": "http://localhost/"}]),
+            configuration_revision=1,
+        )
 
 
 @pytest.mark.parametrize("target", ["127.0.0.1:18407", "tcp://127.0.0.1:18407"])

@@ -11,10 +11,12 @@ import pytest
 
 from adapters.sandbox.scenario_runner import ContainerScenarioRunner
 from squadops.campaigns.evaluator_trees import FileTree
+from squadops.scenarios.quality import NotMeasured, PageMeasure, QualityReading, QualityStatus
 from squadops.scenarios.runner import DeclaredStart
 from squadops.tools.models import ContainerResult, ContainerSpec
 from tests.unit.sandbox.test_container_backend import FakeContainer
 
+EVALUATOR = "evaluator:pinned"
 TREE = {"app.py": "print('app')\n", "assets/logo.png": b"\x89PNG\x00", "run.sh": "#!/bin/sh\n"}
 DECLARED = DeclaredStart(
     start=("python3", "app.py"),
@@ -43,12 +45,16 @@ class _Container(FakeContainer):
         )
         self.held: list[dict[str, bytes]] = []
         self.torn_down: list[str] = []
+        self.evaluator_answer = ContainerResult("", 0, "", "")
         self._logs, self._host_port = logs, host_port
 
     async def resolve_host_port(self, container_id: str, container_port: int) -> int:
         return self._host_port
 
     async def run(self, spec: ContainerSpec) -> ContainerResult:
+        if spec.image == EVALUATOR:
+            self.specs.append(spec)
+            return self.evaluator_answer
         self._hold(spec)
         return await super().run(spec)
 
@@ -94,7 +100,7 @@ def _runner(tmp_path, container, app=None, **kw) -> ContainerScenarioRunner:
         image="sandbox:pinned",
         http_client_factory=app or _app(),
         poll_interval_seconds=0.01,
-        **{"app_network": None, **kw},
+        **{"app_network": None, "evaluator_image": EVALUATOR, **kw},
     )
 
 
@@ -107,6 +113,7 @@ async def _evaluate(runner, **kw):
         declared=DECLARED,
         scenarios=[SCENARIO],
         environment={"TALLY_ADMIN_TOKEN": "evaluation-token"},
+        pages=(),
     )
     args.update(kw)
     return await runner.evaluate_tree(**args)
@@ -137,7 +144,8 @@ async def test_a_declared_start_runs_its_scenarios_in_a_copy_that_is_gone_after(
 async def test_a_blueprint_tree_starts_by_its_stacks_environment_contract(tmp_path):
     """A blueprint Project starts "by its stack's probe and render profiles, as today" (§4.1).
     Bug caught: a blueprint started by a guessed command, or held to a 2xx a scaffolded app
-    never promised (#520/#622: any response is ready)."""
+    never promised (#520/#622: any response is ready); or, since #2416, the canonical stack's
+    built pages not served beside its backend, so Lighthouse and axe have nothing to load."""
     container = _Container()
 
     result = await _evaluate(
@@ -149,7 +157,9 @@ async def test_a_blueprint_tree_starts_by_its_stacks_environment_contract(tmp_pa
     install, build, start = (s.command for s in container.specs)
     assert install[:2] == ["sh", "-c"] and "pip install" in install[2]
     assert build == ["npm", "--prefix", "frontend", "run", "build"]
-    assert "uvicorn" in start and container.specs[2].publish_ports == (8000,)
+    assert start[:2] == ["sh", "-c"] and "uvicorn backend.main:app" in start[2]
+    assert "& exec frontend/node_modules/.bin/vite preview frontend" in start[2]
+    assert container.specs[2].publish_ports == (8000, 4173)
     assert result.started
 
 
@@ -426,3 +436,173 @@ async def test_on_the_app_network_a_declared_api_is_reached_by_name_on_its_own_p
     assert (spec.name, 18407, "/healthz") in seen
     assert (spec.name, 18410, "/v1/counters/apples") in seen
     assert [r.result for r in result.runs] == ["passed"]
+
+
+# --------------------------------------------------------------------------------------------
+# SIP-0113 §4.2 (#2416): Lighthouse and axe on the declared pages, before any scenario
+# --------------------------------------------------------------------------------------------
+
+_ANSWER = {
+    "pages": [
+        {
+            "path": "/",
+            "lighthouse": {"performance": 0.93, "accessibility": 0.96, "best-practices": 0.78},
+            "axe": {"critical": 0, "serious": 0, "moderate": 2, "minor": 0},
+            "error": None,
+        }
+    ]
+}
+_MEASURED = QualityReading(
+    QualityStatus.MEASURED,
+    pages=(
+        PageMeasure(
+            "/",
+            {"performance": 0.93, "accessibility": 0.96, "best_practices": 0.78},
+            {"critical": 0, "serious": 0, "moderate": 2, "minor": 0},
+        ),
+    ),
+    evaluator=EVALUATOR,
+)
+
+
+def _ui_app(events: list, *, ui_answers: bool = True):
+    """The app by name on the app network: its UI on 4173 (Vite's preview refuses the name with
+    a 403, which is still an answer), its backend on the app port."""
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.port in (4173, 18409):
+            if not ui_answers:
+                raise httpx.ConnectError("refused")
+            return httpx.Response(403, text="Blocked request. This host is not allowed.")
+        if request.url.path in ("/", "/healthz"):
+            return httpx.Response(200, text="ok")
+        events.append("scenario")
+        return httpx.Response(200, json={"name": "apples", "count": 1})
+
+    return lambda: httpx.AsyncClient(transport=httpx.MockTransport(handler))
+
+
+class _Measured(_OnTheNetwork):
+    """On the app network, with the evaluator answering as scripted."""
+
+    def __init__(self, events: list, answer: ContainerResult) -> None:
+        super().__init__()
+        self.events, self.evaluator_answer = events, answer
+
+    async def run(self, spec: ContainerSpec) -> ContainerResult:
+        if spec.image == EVALUATOR:
+            self.events.append("evaluator")
+        return await super().run(spec)
+
+
+async def test_the_pages_are_measured_on_the_app_network_before_any_scenario_writes(tmp_path):
+    """§4.2 and A2/A3. Bug caught: the pages measured after the scenarios, so each tree's
+    reading depends on what its scenarios wrote; the evaluator given the app's secrets, a mounted
+    path or a route out; or its request lost, so it measures nothing."""
+    events: list = []
+    container = _Measured(events, ContainerResult("", 0, json.dumps(_ANSWER) + "\n", ""))
+
+    result = await _evaluate(
+        _runner(tmp_path, container, app=_ui_app(events), app_network="squadops-sandbox-apps"),
+        stack="fullstack_fastapi_react",
+        declared=None,
+        pages=("/",),
+    )
+
+    start = container.specs[2]
+    [evaluator] = [s for s in container.specs if s.image == EVALUATOR]
+    assert json.loads(evaluator.stdin) == {"base_url": f"http://{start.name}:4173", "pages": ["/"]}
+    assert (evaluator.network, evaluator.volumes, evaluator.env) == (
+        "squadops-sandbox-apps",
+        (),
+        (),
+    )
+    assert evaluator.cap_drop_all and evaluator.no_new_privileges
+    assert result.quality == _MEASURED
+    assert events == ["evaluator", "scenario"]
+    assert [r.result for r in result.runs] == ["passed"]
+
+
+_NO_ANSWER = ContainerResult("", 0, "", "")
+
+
+@pytest.mark.parametrize(
+    ("network", "image_present", "answer", "ui_answers", "pages", "reason", "detail"),
+    [
+        (None, True, _NO_ANSWER, True, ("/",), NotMeasured.NO_APP_NETWORK, None),
+        ("apps", False, _NO_ANSWER, True, ("/",), NotMeasured.EVALUATOR_ABSENT, EVALUATOR),
+        (
+            "apps",
+            True,
+            ContainerResult("", 1, "", "Error: chromium crashed\n"),
+            True,
+            ("/",),
+            NotMeasured.EVALUATOR_FAILED,
+            "chromium crashed",
+        ),
+        (
+            "apps",
+            True,
+            ContainerResult("", 0, '{"pages": []}\n', ""),
+            True,
+            ("/",),
+            NotMeasured.EVALUATOR_FAILED,
+            "other pages",
+        ),
+        ("apps", True, _NO_ANSWER, False, ("/",), NotMeasured.UI_NOT_READY, "nothing answered"),
+        ("apps", True, _NO_ANSWER, True, (), NotMeasured.NO_DECLARED_PAGE, None),
+    ],
+    ids=[
+        "a-host-run",
+        "no-evaluator-image",
+        "the-evaluator-fails",
+        "it-answers-for-other-pages",
+        "the-ui-never-answers",
+        "no-declared-page",
+    ],
+)
+async def test_a_measure_that_cant_run_says_why_and_the_scenarios_still_run(
+    tmp_path, network, image_present, answer, ui_answers, pages, reason, detail
+):
+    """§4.2: not measured is a record that the measure didn't run, never evidence. Bug caught:
+    a failed measure read as a clean page, or one that keeps the scenarios from running."""
+    events: list = []
+    container = _Measured(events, answer) if network else _Container()
+    container._image_present = image_present
+
+    result = await _evaluate(
+        _runner(
+            tmp_path,
+            container,
+            app=_ui_app(events, ui_answers=ui_answers),
+            app_network=network,
+            blueprint_ready_timeout_seconds=0.05,
+        ),
+        stack="fullstack_fastapi_react",
+        declared=None,
+        pages=pages,
+    )
+
+    assert (result.quality.status, result.quality.reason) == (QualityStatus.NOT_MEASURED, reason)
+    assert detail is None or detail in result.quality.detail
+    assert [r.result for r in result.runs] == ["passed"]
+
+
+async def test_a_declared_project_is_measured_at_its_ui_base_and_serves_its_own_pages(tmp_path):
+    """Contract 7's ``ui_base``. Bug caught: a product's own start wrapped in the canonical
+    stack's preview server, or its pages measured at the readiness port."""
+    events: list = []
+    container = _Measured(events, ContainerResult("", 0, json.dumps(_ANSWER) + "\n", ""))
+    declared = DeclaredStart(**{**DECLARED.__dict__, "ui_port": 18409, "ui_path": "/app"})
+
+    result = await _evaluate(
+        _runner(tmp_path, container, app=_ui_app(events), app_network="squadops-sandbox-apps"),
+        declared=declared,
+        pages=("/",),
+    )
+
+    start = container.specs[1]
+    [evaluator] = [s for s in container.specs if s.image == EVALUATOR]
+    assert start.command == list(DECLARED.start)
+    assert json.loads(evaluator.stdin)["base_url"] == f"http://{start.name}:18409"
+    assert result.quality.status is QualityStatus.MEASURED

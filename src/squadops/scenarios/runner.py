@@ -21,6 +21,7 @@ from typing import Any
 from urllib.parse import urlsplit
 
 from squadops.scenarios.evaluation import BlockedReason
+from squadops.scenarios.quality import QualityReading
 from squadops.scenarios.steps import ScenarioRun
 
 
@@ -76,6 +77,10 @@ class DeclaredStart:
     #: applies (``evaluate.declared_surfaces``).
     api_port: int | None = None
     api_path: str = ""
+    #: The declared ``ui_base`` entry point (#2416): where its pages are served, measured by
+    #: Lighthouse and axe. ``None`` when the Project declares no ``ui_base``: it has no pages.
+    ui_port: int | None = None
+    ui_path: str = ""
 
     def __post_init__(self) -> None:
         if self.ready_kind not in ReadinessKind.CHECKED:
@@ -93,6 +98,8 @@ class DeclaredStart:
             "configuration_revision": self.configuration_revision,
             "api_port": self.api_port,
             "api_path": self.api_path,
+            "ui_port": self.ui_port,
+            "ui_path": self.ui_path,
         }
 
     @classmethod
@@ -108,6 +115,8 @@ class DeclaredStart:
             configuration_revision=d.get("configuration_revision"),
             api_port=d.get("api_port"),
             api_path=str(d.get("api_path", "")),
+            ui_port=d.get("ui_port"),
+            ui_path=str(d.get("ui_path", "")),
         )
 
 
@@ -126,9 +135,8 @@ def _working_directory(value: Any) -> str:
     return str(path)
 
 
-def _http_base(entry_points: Any) -> tuple[int | None, str]:
-    """The declared ``http_base`` entry point's port and path, ``(None, "")`` when there is none.
-    Contract 7 declares at least one entry point."""
+def _entry_points(entry_points: Any) -> tuple[Mapping[str, Any], ...]:
+    """Contract 7's entry points, each a known kind with a url. It declares at least one."""
     if not isinstance(entry_points, list | tuple) or not entry_points:
         raise StartUndeclared(
             "the declaration names no entry_points: contract 7 declares at least one"
@@ -138,16 +146,21 @@ def _http_base(entry_points: Any) -> tuple[int | None, str]:
             raise StartUndeclared(
                 f"an entry point is a kind of {sorted(_ENTRY_KINDS)} and a url: {entry!r}"
             )
-    bases = [e for e in entry_points if e["kind"] == "http_base"]
+    return tuple(entry_points)
+
+
+def _base(entry_points: tuple[Mapping[str, Any], ...], kind: str) -> tuple[int | None, str]:
+    """The first ``kind`` entry point's port and path, ``(None, "")`` when there is none."""
+    bases = [e for e in entry_points if e["kind"] == kind]
     if not bases:
         return None, ""
     url = urlsplit(str(bases[0].get("url", "")))
     try:
         port = url.port
     except ValueError as e:
-        raise StartUndeclared(f"http_base {bases[0].get('url')!r}: {e}") from e
+        raise StartUndeclared(f"{kind} {bases[0].get('url')!r}: {e}") from e
     if port is None:
-        raise StartUndeclared(f"http_base {bases[0].get('url')!r} names no port")
+        raise StartUndeclared(f"{kind} {bases[0].get('url')!r} names no port")
     return port, url.path.rstrip("/")
 
 
@@ -195,7 +208,9 @@ def declared_start(
         raise StartUndeclared(f"readiness target {raw!r}: {e}") from e
     if port is None:
         raise StartUndeclared(f"readiness target {raw!r} names no port")
-    api_port, api_path = _http_base(declaration.get("entry_points"))
+    entry_points = _entry_points(declaration.get("entry_points"))
+    api_port, api_path = _base(entry_points, "http_base")
+    ui_port, ui_path = _base(entry_points, "ui_base")
     return DeclaredStart(
         start=start,
         port=port,
@@ -207,6 +222,8 @@ def declared_start(
         configuration_revision=configuration_revision,
         api_port=api_port,
         api_path=api_path,
+        ui_port=ui_port,
+        ui_path=ui_path,
     )
 
 
@@ -223,6 +240,8 @@ class TreeEvaluation:
     runs: tuple[ScenarioRun, ...] = field(default_factory=tuple)
     duration_seconds: float = 0.0
     configuration_revision: int | None = None
+    #: Lighthouse and axe on the started instance (#2416). ``None`` when nothing was started.
+    quality: QualityReading | None = None
 
     def as_dict(self) -> dict[str, Any]:
         return {
@@ -233,6 +252,7 @@ class TreeEvaluation:
             "runs": [r.as_dict() for r in self.runs],
             "duration_seconds": self.duration_seconds,
             "configuration_revision": self.configuration_revision,
+            "quality": self.quality.as_dict() if self.quality is not None else None,
         }
 
     @classmethod
@@ -245,4 +265,5 @@ class TreeEvaluation:
             runs=tuple(ScenarioRun(**r) for r in d.get("runs", ())),
             duration_seconds=d.get("duration_seconds", 0.0),
             configuration_revision=d.get("configuration_revision"),
+            quality=QualityReading.from_dict(d["quality"]) if d.get("quality") else None,
         )

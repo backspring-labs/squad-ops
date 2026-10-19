@@ -107,6 +107,7 @@ def test_the_env_reaches_the_scenario_runners_app_through_the_services_root(serv
             "declared": declared.as_dict(),
             "scenarios": [],
             "environment": {"TALLY_ADMIN_TOKEN": "t"},
+            "pages": [],
         },
         headers={"Authorization": "Bearer t"},
     )
