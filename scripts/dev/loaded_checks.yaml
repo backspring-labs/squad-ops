@@ -1445,12 +1445,13 @@ checks:
       print(a.invokes("import CreateRunView from '@/app/runs/new/page'\n"), a.invokes("import { api } from '@/lib/api'\n"), a.mocks_subject("vi.mock('@/app/runs/new/page')"))
     expect: "True False True"
   - id: "2457"
-    what: an agent's container holds no database credential, and its config loads without one
+    what: an agent's container holds no database or identity-provider credential, and its config loads without one (#2457, #2498)
     container: squadops-max
     code: |
       import os
       from squadops.bootstrap.secrets import secret_provider_for
       from squadops.config.loader import load_config
       config = load_config(secret_provider_factory=secret_provider_for)
-      print(os.path.exists("/run/secrets/db_password"), "SQUADOPS__DB__URL" in os.environ, config.db)
-    expect: False False None
+      held = [s for s in ("db_password", "keycloak_admin_password", "keycloak_db_dsn") if os.path.exists(f"/run/secrets/{s}")]
+      print(held, "SQUADOPS__DB__URL" in os.environ, config.db)
+    expect: "[] False None"

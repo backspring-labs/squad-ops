@@ -501,7 +501,9 @@ class KeycloakAdminConfig(BaseModel):
     """Keycloak admin account configuration (SIP-0063)."""
 
     username: str = "admin"
-    password: str  # Supports secret:// references
+    #: #2498: the identity provider's own, which its container reads from .env. No service reads it,
+    #: so a profile carries none, and no service mounts it.
+    password: str | None = None
     allowed_networks: list[str] = Field(default_factory=list)
 
     @model_validator(mode="after")

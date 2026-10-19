@@ -674,3 +674,29 @@ If later switching IdP (Cognito/Entra/GCP), ensure:
 - **SIP-0051** — Config Profiles and Validation
 - **SIP-0052** — Secrets Management (`secret://` scheme)
 - **SIP-0062** — OIDC Authentication & Authorization Boundary (ports, adapters, middleware)
+
+---
+
+# 16. Post-implementation amendments
+
+## 16a. The identity provider's credentials leave the runtime configuration (2026-10-19, #2498; decided by the supervisor under the owner's grant of 2026-10-19)
+
+**What changed:**
+- **The deploy profiles no longer carry `auth.keycloak.admin.password`.** `KeycloakAdminConfig.password` is optional.
+- **`auth.keycloak.db_dsn` keeps no password.** It names where the realm's data lives:
+  `postgresql://keycloak@postgres:5432/keycloak`. The deployed-realm rule that requires it (§8, "db_dsn required for
+  staging/prod") stands, and still holds.
+
+**The evidence:**
+- **Nothing read either value.** No module in `src/`, `adapters/` or `scripts/` reads `auth.keycloak.admin` or
+  `auth.keycloak.db_dsn`. The schema's own validator was their only consumer.
+- **Keycloak's container takes both from `.env`:** `KEYCLOAK_ADMIN_PASSWORD`, and `KC_DB_URL`/`KC_DB_USERNAME`/
+  `KC_DB_PASSWORD`. The realm sync reads `secrets/keycloak_admin_password.txt` on the host.
+- **The cost of the old arrangement:** the loader resolves every `secret://` reference when config loads. So every
+  service that loaded a profile had to mount `keycloak_admin_password` and `keycloak_db_dsn`: the runtime API and all
+  eight agents. Agent containers run the builds and tests the squad generates.
+
+**What guards it:** `tests/unit/architecture/test_services_mount_only_the_secrets_they_read.py`. Every service that
+resolves `secret://` references must mount exactly the secrets its environment and the profiles name.
+
+**Not changed:** the realm's hardening (§8), MFA, token and session policy, and the exposure controls (§8.5).
