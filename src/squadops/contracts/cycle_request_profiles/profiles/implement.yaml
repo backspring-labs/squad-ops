@@ -1,0 +1,38 @@
+# #316 (the request-profile taxonomy, R2.4): an operator profile, implementation alone. Pulse checks and a
+# prior cycle's plan are set at create time, and the time budget is the stack's. `implementation` and
+# `build-only` stay, frozen, under their own.
+name: implement
+description: Implementation alone, with the correction protocol. Pulse checks and a prior cycle's plan are set at create time.
+defaults:
+  # SIP-0108 §10i item 3: the correction protocol this profile runs. The squad
+  # analyzes the failure, decides the path, then repairs.
+  correction_steps: [analyze, decide, repair]
+  build_strategy: fresh
+  task_flow_policy:
+    mode: sequential
+    gates:
+      - name: progress_implement
+        description: "Review implementation artifacts before promotion"
+        after_task_types:
+          - qa.test
+  expected_artifact_types:
+    - document
+    - source
+    - test
+    - config
+  workload_sequence:
+    - type: implementation
+      gate: progress_implement
+  build_tasks: true
+  max_task_retries: 2
+  max_correction_attempts: 2
+  cadence_policy:
+    max_pulse_seconds: 600
+    max_tasks_per_pulse: 3
+  implementation_plan: true
+  output_validation: true
+  # SIP-0086 §12a change 1: the compile loop's depth for a one-hour build profile.
+  max_self_eval_passes: 3
+  max_build_subtasks: 15
+  experiment_context: {}
+  notes: "#316 implement: implementation alone"

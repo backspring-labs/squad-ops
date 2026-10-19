@@ -1,0 +1,23 @@
+# #316 (the request-profile taxonomy, R2.4): an operator profile, the minimal plumbing check. It is
+# selftest's defaults under the operator's name; `selftest` and `default` stay, frozen, under their own.
+name: smoke
+description: Minimal plumbing check (replaces selftest and default).
+defaults:
+  # SIP-0086 §12a change 1: declared, never defaulted. This profile runs no output
+  # validation, so no self-evaluation pass can open; 0 says so.
+  max_self_eval_passes: 0
+  # SIP-0108 §10i item 3: the correction protocol this profile runs. The squad
+  # analyzes the failure, decides the path, then repairs.
+  correction_steps: [analyze, decide, repair]
+  build_strategy: fresh
+  task_flow_policy:
+    mode: sequential
+    gates: []
+  expected_artifact_types:
+    - test_report
+  implementation_plan: false
+  output_validation: false
+  execution_overrides: {}
+  experiment_context:
+    selftest: true
+prompts: {}

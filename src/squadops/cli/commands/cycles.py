@@ -115,7 +115,7 @@ def _parse_set_flags(set_flags: list[str]) -> dict:
 def create_cycle(
     ctx: typer.Context,
     project_id: str = typer.Argument(...),
-    profile: str = typer.Option("default", "--request-profile", help="Cycle request profile name"),
+    profile: str = typer.Option("smoke", "--request-profile", help="Cycle request profile name"),
     prd: str | None = typer.Option(None, "--prd", help="PRD file path or artifact ID"),
     squad_profile_id: str = typer.Option(..., "--squad-profile", help="Squad profile ID"),
     set_flags: list[str] | None = typer.Option(None, "--set", help="Override: key=value"),
@@ -139,9 +139,9 @@ def create_cycle(
     """
     fmt = ctx.obj.get("format", "table") if ctx.obj else "table"
 
-    # 1. Load CRP profile
+    # 1. The profile exists (any name that resolves: the operator's, or a frozen old one)
     try:
-        crp = load_profile(profile)
+        load_profile(profile)
     except FileNotFoundError as e:
         print_error(str(e))
         raise typer.Exit(code=exit_codes.GENERAL_ERROR) from e
@@ -173,7 +173,7 @@ def create_cycle(
         ]
 
     # 5. Compute local hash for verification
-    local_hash = compute_config_hash(crp.defaults, body["execution_overrides"])
+    local_hash = compute_config_hash(body["applied_defaults"], body["execution_overrides"])
 
     # 7. POST to API
     try:

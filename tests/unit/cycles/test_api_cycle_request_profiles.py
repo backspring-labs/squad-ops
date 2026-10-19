@@ -33,11 +33,16 @@ class TestListCycleRequestProfiles:
             assert "name" in profile
             assert isinstance(profile["name"], str)
 
-    def test_default_profile_present(self, client):
-        resp = client.get("/api/v1/cycle-request-profiles")
-        data = resp.json()
-        names = [p["name"] for p in data]
-        assert "default" in names
+    def test_a_frozen_name_is_not_listed_but_still_resolves(self, client):
+        """#316 (R2.4): the listing is the operator's, and every old name still resolves by name.
+        Bug caught: dropping a frozen profile from the route along with the listing, so a pinned
+        config that names it 404s."""
+        names = [p["name"] for p in client.get("/api/v1/cycle-request-profiles").json()]
+        resp = client.get("/api/v1/cycle-request-profiles/default")
+
+        assert "default" not in names
+        assert resp.status_code == 200
+        assert resp.json()["name"] == "default"
 
     def test_profiles_have_defaults_dict(self, client):
         resp = client.get("/api/v1/cycle-request-profiles")
