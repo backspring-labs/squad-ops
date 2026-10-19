@@ -120,6 +120,7 @@ async def _world():
         assess=AsyncMock(),
         launch=AsyncMock(),
         evaluate_outcome=None,
+        outcome_section=None,
         clock=lambda: now[0],
     )
     return campaigns, cycles, progress, now
@@ -167,7 +168,13 @@ async def test_the_digest_asks_for_the_answer_until_the_campaign_moves_on():
 
     async def read():
         return digest(
-            package(await campaigns.get_campaign(CID), await campaigns.control_log(CID), [], [])
+            package(
+                await campaigns.get_campaign(CID),
+                await campaigns.control_log(CID),
+                [],
+                [],
+                outcomes=None,
+            )
         )
 
     waiting = await read()

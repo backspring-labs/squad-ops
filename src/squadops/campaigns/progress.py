@@ -495,6 +495,7 @@ class CampaignProgress:
         assess: Assess,
         launch: Callable[[], Awaitable[object]],
         evaluate_outcome: Callable[[Cycle], Awaitable[object]] | None,
+        outcome_section: Callable[[str, list[str]], Awaitable[dict | None]] | None,
         clock: Callable[[], datetime] = lambda: datetime.now(UTC),
     ) -> None:
         self._campaigns = campaigns
@@ -505,6 +506,9 @@ class CampaignProgress:
         # SIP-0113 §4.1 (#2414): each ending that reached its build is evaluated against the
         # campaign's pinned suite, reporting-only. ``None`` where no evaluator is wired.
         self._evaluate_outcome = evaluate_outcome
+        # SIP-0113 §4.4 (#2418): what the evidence package carries of the campaign's outcome
+        # evaluations. ``None`` where nothing is wired: the package then has no such section.
+        self._outcome_section = outcome_section
         self._clock = clock
         # #1972: the cycles being heard now. The completion hook and the sweep's re-hearing share
         # this instance, so a cycle the hook is still deciding is not decided a second time
@@ -904,7 +908,13 @@ class CampaignProgress:
                     lint_findings=lint_findings,
                 )
             )
-        doc = package(campaign, log, launches, records)
+        doc = package(
+            campaign,
+            log,
+            launches,
+            records,
+            outcomes=await self._outcomes(campaign_id, [r.cycle_id for r in records]),
+        )
         for ref in await self._vault.list_artifacts(
             project_id=campaign.project_id, artifact_type=EVIDENCE_ARTIFACT_TYPE
         ):
@@ -934,6 +944,17 @@ class CampaignProgress:
             {"digest_artifact_id": digest_ref.artifact_id},
         )
         return doc["identity"], package_ref.artifact_id, digest_ref.artifact_id
+
+    async def _outcomes(self, campaign_id: str, cycle_ids: list[str]) -> dict | None:
+        """SIP-0113 §4.4 (#2418): the package's outcome section. A failure to read it is in the
+        package with the reason, never a package that isn't written."""
+        if self._outcome_section is None:
+            return None
+        try:
+            return await self._outcome_section(campaign_id, cycle_ids)
+        except Exception as e:  # noqa: BLE001 — the package says what it could not read
+            logger.exception("campaign_outcomes_unreadable", extra={"campaign_id": campaign_id})
+            return {"unreadable": f"{type(e).__name__}: {e}"}
 
     async def _store_evidence(
         self,

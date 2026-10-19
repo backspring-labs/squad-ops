@@ -28,7 +28,7 @@ from squadops.campaigns.scorecard import scorecard_lines
 #: Bumped when the package's shape changes; a reader checks it before reading further.
 #: 2: each cycle carries its runs' revision forms (#1710).
 #: 3: and its runs' lint readings, evidence only (#1937).
-PACKAGE_VERSION = 3
+PACKAGE_VERSION = 4
 
 #: The size bound (#1710: "bounded, so a frontier triage of one night fits a metered model
 #: budget"). A package holds records only, never logs or prompts, so it grows only with the cycles
@@ -71,8 +71,17 @@ class CycleRecords:
     lint_findings: tuple = ()
 
 
-def package(campaign: Any, log: list, launches: list, cycles: list[CycleRecords]) -> dict:
-    """The package document, with its identity."""
+def package(
+    campaign: Any,
+    log: list,
+    launches: list,
+    cycles: list[CycleRecords],
+    *,
+    outcomes: dict | None,
+) -> dict:
+    """The package document, with its identity. ``outcomes`` is SIP-0113's section (version 4,
+    #2418): each cycle's scenario results by id, contribution and quality, or ``None`` for a
+    campaign with no suite pinned."""
     decisions = {
         e.target: e.binding
         for e in log
@@ -95,6 +104,7 @@ def package(campaign: Any, log: list, launches: list, cycles: list[CycleRecords]
             }
             for c in cycles
         ],
+        "outcomes": outcomes,
     }
     return {**body, "identity": package_identity(body)}
 
@@ -153,6 +163,7 @@ def digest(doc: dict) -> str:
             f"| `{cyc['cycle_id']}` | {cyc['kind']} | {d.get('ending', '—')} | "
             f"{d.get('verdict') or '—'} | {decided} | {_primary(cyc['assessment'])} |"
         )
+    lines += ["", "## Outcomes", ""] + _outcome_lines(doc.get("outcomes"))
     lines += ["", "## Escalations", ""] + (
         _escalation_lines(c, rows) or ["- the plan-review tier escalated nothing"]
     )
@@ -222,6 +233,87 @@ def _escalation_asks(campaign: dict, rows: list[dict]) -> list[str]:
                 f'--answer "<decision id>=…" --reason "…"`; a later tier campaign carries it. Asked: {asked}'
             )
     return asks
+
+
+def _outcome_lines(outcomes: dict | None) -> list[str]:
+    """SIP-0113's readings per cycle (#2418), reporting-only: each contribution, its scenarios
+    by result, its quality, and what moved against the tree it built on and the baseline. Never
+    a scenario's goal or steps: ids and results only."""
+    if not outcomes:
+        return ["- no held-out suite is pinned on this campaign"]
+    if "unreadable" in outcomes:
+        return [f"- the outcome records could not be read: {outcomes['unreadable']}"]
+    lines = [
+        f"Held-out suite `{outcomes['suite_digest'][:16]}`; reporting-only, no decision reads it.",
+        "",
+    ]
+    for cyc in outcomes["cycles"]:
+        if not cyc.get("evaluation"):
+            lines.append(f"- `{cyc['cycle_id']}`: not evaluated")
+            continue
+        read = cyc.get("contribution") or {}
+        reading = read.get("reading") or f"not read ({read.get('not_read', 'no reading')})"
+        results: dict[str, int] = {}
+        for _id, result, reason in cyc["scenarios"]:
+            key = f"{result} ({reason})" if reason else result
+            results[key] = results.get(key, 0) + 1
+        lines.append(
+            f"- `{cyc['cycle_id']}`: **{reading}**; "
+            + ", ".join(f"{n} {key}" for key, n in sorted(results.items()))
+        )
+        for moved in ("newly_passing", "regressed", "unverified"):
+            if read.get(moved):
+                lines.append(f"  - {moved.replace('_', ' ')}: {', '.join(read[moved])}")
+        lines.append(
+            f"  - quality: {_measure_line(cyc.get('quality'))}; lint: {_lint_line(cyc.get('lint'))}"
+        )
+        for label, key in (
+            ("against the tree it built on", "vs_previous"),
+            ("against the baseline", "vs_baseline"),
+        ):
+            if cyc.get(key):
+                lines.append(f"  - {label}: {_moves_line(cyc[key])}")
+    return lines
+
+
+def _measured() -> str:
+    # deferred (pair): squadops.scenarios imports squadops.campaigns at load
+    from squadops.scenarios.quality import QualityStatus
+
+    return QualityStatus.MEASURED.value
+
+
+def _measure_line(quality: dict | None) -> str:
+    if not quality:
+        return "not recorded"
+    if quality["status"] != _measured():
+        return f"{quality['status']} ({quality.get('reason') or 'no reason'})"
+    scored = [p for p in quality["pages"] if not p.get("error")]
+    return f"measured on {len(scored)} of {len(quality['pages'])} pages"
+
+
+def _lint_line(lint: dict | None) -> str:
+    if not lint:
+        return "not recorded"
+    if lint["status"] != _measured():
+        return f"{lint['status']} ({lint.get('reason') or 'no reason'})"
+    reading = lint["reading"]
+    missing = (
+        f", {', '.join(reading['unavailable'])} unavailable" if reading.get("unavailable") else ""
+    )
+    return f"{reading['total']} findings{missing}"
+
+
+def _moves_line(deltas: dict) -> str:
+    if "not_read" in deltas:
+        return f"not read ({deltas['not_read']})"
+    moves = [
+        f"{measure}{f' on {page}' if page else ''} {delta:+g}"
+        for measure, page, _before, _after, delta in deltas["moved"]
+    ]
+    gaps = [f"{what}: {why}" for what, why in deltas["not_compared"]]
+    told = "; ".join(moves) or f"nothing moved ({deltas['unmoved']} compared)"
+    return told + (f"; not compared: {'; '.join(gaps)}" if gaps else "")
 
 
 def _kb(size: int) -> str:
