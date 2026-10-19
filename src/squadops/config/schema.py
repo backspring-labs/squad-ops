@@ -212,7 +212,8 @@ class A2AConfig(BaseModel):
 
 class ChatConfig(BaseModel):
     """Console chat's tunables (SIP-0085; #2175): how much of a session's history a turn carries
-    to its agent. The oldest turns are dropped first, and the request counts what it dropped."""
+    to its agent. The oldest turns are dropped first, and the request counts what it dropped. Then
+    its memory records, under their own caps (SIP-0110 §A.3.6's chat budget, #2180)."""
 
     history_max_turns: int = Field(
         default=20, ge=0, description="Earlier messages a chat turn carries at most"
@@ -221,6 +222,19 @@ class ChatConfig(BaseModel):
         default=8000,
         ge=0,
         description="Estimated tokens of history a chat turn carries at most (4 chars a token)",
+    )
+    memory_max_notes: int = Field(
+        default=8,
+        ge=0,
+        description="Notes a chat turn's memory context carries at most (SIP-0110 §A.3.10, #2180)",
+    )
+    memory_max_tokens: int = Field(
+        default=1500,
+        ge=0,
+        description=(
+            "Estimated tokens of memory records (instructions, preferences, notes) a chat turn "
+            "carries at most; a record that doesn't fit is left out whole and listed"
+        ),
     )
 
 

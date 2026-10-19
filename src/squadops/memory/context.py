@@ -5,8 +5,9 @@ a consuming seam or a chat turn, and so is its project binding, so a fabricated 
 represented: a chat turn has no cycle, run or task, an unbound request has no project, and a task invocation
 is always bound to a project.
 
-In 2.3 the only section is SIP-0110's lessons, optional and answered by today's recall. There is no binding
-section yet, so every bundle is complete; 2.4 adds the binding sections (#2179) and chat's own (#2180).
+In 2.3 the only section is SIP-0110's lessons, optional and answered by today's recall. 2.4 adds the binding
+sections (#2178, #2179) and chat's own (#2180, ``squadops.memory.chat``): optional, since a chat turn executes no
+work.
 """
 
 from __future__ import annotations
@@ -116,6 +117,11 @@ class ChatTurn:
     message_id: str
     user_id: str
     agent_id: str
+    #: What the person said: the notes are ranked by it, and the cycles it names select task
+    #: instructions (§3.10, #2180).
+    text: str = ""
+    #: The person's scopes, from their identity: what of a bound project they may read (§3.3).
+    viewer_scopes: frozenset[str] = frozenset()
 
 
 @dataclass(frozen=True)
@@ -157,6 +163,9 @@ class ContextBundle:
     task_instructions: Mapping[str, Any] | None = None
     #: What the task is handed on ``PROJECT_INSTRUCTIONS_INPUT`` (#2179): ``None`` when none applies.
     project_instructions: Mapping[str, Any] | None = None
+    #: What a chat turn's agent is handed (#2180): its sections' records, and the sections that failed.
+    #: ``None`` for a task, and for a chat turn with no records store.
+    chat: Mapping[str, Any] | None = None
 
     def section(self, kind: SectionKind) -> Section | None:
         return next((s for s in self.sections if s.kind == kind), None)

@@ -502,8 +502,11 @@ async def proxy_chat_stream(path: str, request: Request):
         stream=True,
     )
 
-    # Error responses are JSON, not SSE — drain and return buffered
-    if upstream.status_code >= 400:
+    # Error responses are JSON, not SSE — drain and return buffered. So is a chat POST that answers
+    # no stream, such as a capture's confirmation (#2180): only a turn's reply is SSE.
+    if upstream.status_code >= 400 or not upstream.headers.get("content-type", "").startswith(
+        "text/event-stream"
+    ):
         from fastapi.responses import Response as FastAPIResponse
 
         body_bytes = await upstream.aread()

@@ -14,6 +14,9 @@ from dataclasses import dataclass
 HISTORY_KEY = "history"
 HISTORY_DROPPED_KEY = "history_dropped"
 HISTORY_UNAVAILABLE_KEY = "history_unavailable"
+#: The turn's memory context (SIP-0110 Appendix A §3.5, #2180), assembled by the runtime API and
+#: rendered by the agent, which owns no memory: ``squadops.memory.chat.chat_context``'s second part.
+MEMORY_CONTEXT_KEY = "memory_context"
 
 #: The roles a history turn may carry. Anything else is not conversation and is not replayed.
 HISTORY_ROLES = frozenset({"user", "assistant"})

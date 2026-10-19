@@ -63,6 +63,8 @@ def _make_session_row(session_id: str = "s1") -> dict:
         "started_at": _now(),
         "ended_at": None,
         "metadata": "{}",
+        "project_id": None,
+        "deleted_at": None,
     }
 
 
@@ -115,8 +117,8 @@ class TestChatRepositoryCreateSession:
         # Last positional arg to execute is the metadata dict — the pool's codec
         # encodes it (#577)
         call_args = conn.execute.call_args[0]
-        metadata_arg = call_args[-1]  # last param
-        assert metadata_arg == {"source": "console"}
+        assert call_args[5] == {"source": "console"}  # metadata, before the project binding
+        assert call_args[6] is None  # an unbound session (#2180)
 
 
 class TestChatRepositoryGetSession:
@@ -185,6 +187,16 @@ class TestChatRepositoryMessages:
         assert "INSERT INTO chat_messages" in sql
         assert result.message_id == msg.message_id
 
+    async def test_a_message_for_a_deleted_session_is_refused(self):
+        """Q29 (#2180). Bug caught: a reply that finishes streaming after its session was deleted
+        stored beside the messages the delete removed."""
+        pool, conn = _make_pool()
+        conn.execute.return_value = "INSERT 0 0"
+
+        with pytest.raises(SessionNotFoundError):
+            await ChatRepository(pool=pool).store_message(_make_message())
+        assert "deleted_at IS NULL" in conn.execute.call_args[0][0]
+
     async def test_get_session_messages_returns_ordered(self):
         """get_session_messages() returns messages in creation order."""
         pool, conn = _make_pool()
@@ -248,6 +260,8 @@ class TestChatRepositoryMetadataDecoding:
             "started_at": _now(),
             "ended_at": None,
             "metadata": metadata,
+            "project_id": None,
+            "deleted_at": None,
         }
 
     @staticmethod

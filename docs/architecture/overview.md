@@ -120,8 +120,8 @@ The memory domain: entries, queries and scored results for SIP-042's per-agent s
 chat reads it, it holds no record on the deploy, and it is retired in 2.5, SIP-0110 §5g and #2184), and
 Cross-Cycle Memory's (SIP-0110): the observations projected from three sources and the repeat report; the lessons,
 their approvals and each unit's pinned snapshot; the recall query and its deterministic policy; the
-exposures recording what each consuming task was supplied; and the authoring replay envelope with its
-four seams.
+exposures recording what each consuming task was supplied; the authoring replay envelope with its
+four seams; and the entry points' typed records and instructions, and what a chat turn may hold and capture.
 
 ### `squadops.orchestration`
 Coordination between agents and handlers: `AgentOrchestrator`, the handler registry and the

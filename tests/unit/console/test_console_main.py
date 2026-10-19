@@ -219,3 +219,43 @@ def test_a_missing_setting_stops_the_console_naming_it(name, value, starts):
                     importlib.import_module("main")
     finally:
         sys.modules["main"] = loaded
+
+
+class TestChatProxy:
+    """``/api/v1/chat/*`` POSTs, which Caddy sends to the console rather than the runtime API."""
+
+    async def _post(self, monkeypatch, path: str):
+        import httpx
+        import main as console_main
+
+        def answer(request: httpx.Request) -> httpx.Response:
+            if request.url.path.endswith("/captures"):
+                return httpx.Response(201, json={"record_id": "mrec_1"})
+            return httpx.Response(
+                200, text='data: {"text": "hi"}\n\n', headers={"content-type": "text/event-stream"}
+            )
+
+        upstream = httpx.AsyncClient(transport=httpx.MockTransport(answer), base_url="http://api")
+
+        async def no_session(request):
+            return None
+
+        monkeypatch.setattr(console_main, "_api_client", upstream)
+        monkeypatch.setattr(console_main, "_authorization_for", no_session)
+        transport = ASGITransport(app=app)
+        async with AsyncClient(transport=transport, base_url="http://testserver") as client:
+            return await client.post(path, json={})
+
+    async def test_a_capture_is_answered_as_the_json_it_is_and_a_turn_as_a_stream(
+        self, monkeypatch
+    ):
+        """#2180. Bug caught: a capture's confirmation relayed as an event stream, so the console
+        reads a 201 JSON body labelled text/event-stream, or a turn's reply buffered whole."""
+        capture = await self._post(monkeypatch, "/api/v1/chat/sessions/s1/captures")
+        turn = await self._post(monkeypatch, "/api/v1/chat/comms-agent")
+
+        assert (capture.status_code, capture.headers["content-type"], capture.json()) == (
+            201, "application/json", {"record_id": "mrec_1"},
+        )  # fmt: skip
+        assert turn.headers["content-type"].startswith("text/event-stream")
+        assert turn.text == 'data: {"text": "hi"}\n\n'

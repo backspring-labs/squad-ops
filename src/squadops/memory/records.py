@@ -275,17 +275,22 @@ def retrieved(records: Collection[MemoryRecord], **who: Any) -> list[MemoryRecor
     return [r for r in records if r.status == RecordStatus.ACTIVE and visible(r, **who)]
 
 
-def shown_source(record: MemoryRecord, revision: Revision, *, viewer_id: str) -> dict[str, Any]:
+def shown_source(
+    record: MemoryRecord, revision: Revision, *, viewer_id: str, session_deleted: bool = False
+) -> dict[str, Any]:
     """A revision's source as ``viewer_id`` may see it (§A.3.4). A record that came from a chat
-    turn shows that turn's ids only to the turn's author; anyone else sees who and when."""
+    turn shows that turn's ids only to the turn's author; anyone else sees who and when. A record
+    confirmed from a session its owner since deleted stays, marked so (§A.8 Q29, #2180)."""
     source = revision.source
+    deleted = {"session_deleted": True} if session_deleted else {}
     if source.kind == SourceKind.CHAT_MESSAGE and viewer_id != revision.author:
         return {
             "kind": source.kind,
             "summary": f"converted from a private chat turn by {revision.author}, "
             f"{revision.created_at.isoformat()}",
+            **deleted,
         }
-    return {"kind": source.kind, "ids": dict(source.ids)}
+    return {"kind": source.kind, "ids": dict(source.ids), **deleted}
 
 
 def new_record(

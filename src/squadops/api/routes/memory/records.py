@@ -16,10 +16,14 @@ answers 404, never saying whether it exists.
 
 Nothing here reaches a task yet: task instructions are bound to dispatch in #2178, and project
 instructions to a unit's snapshot in #2179.
+
+A record captured in chat is written there (#2180), never here: its source is the chat turn, which only
+chat can vouch for. Its link opens that one turn, and only for the session's owner (T15).
 """
 
 from __future__ import annotations
 
+import logging
 import uuid
 from datetime import UTC, datetime
 from typing import Any
@@ -33,12 +37,14 @@ from squadops.api.memory_schemas import (
     MemoryRecordCreateRequest,
     MemoryRecordResponse,
     MemoryRecordRevisionResponse,
+    MemoryRecordSourceTurnResponse,
     MemoryRecordWithdrawalRequest,
 )
 from squadops.api.middleware.auth import require_scopes
 from squadops.api.runtime.deps import get_cycle_registry, get_memory_records
 from squadops.auth.models import Identity, scopes_for_roles
 from squadops.capabilities.context_assembly import authoring_seam_of
+from squadops.comms.models import SessionNotFoundError
 from squadops.memory.records import (
     InstructionApplicability,
     MemoryRecord,
@@ -48,6 +54,7 @@ from squadops.memory.records import (
     RecordScope,
     Revision,
     Source,
+    SourceKind,
     TaskTarget,
     authorize_write,
     new_record,
@@ -63,6 +70,7 @@ from squadops.ports.memory.records import RecordConflict
 from squadops.stacks.development_profiles import DEVELOPMENT_PROFILES
 
 router = APIRouter(prefix="/api/v1/memory-records", tags=["memory"])
+logger = logging.getLogger(__name__)
 
 
 def _store(request: Request):
@@ -122,6 +130,15 @@ def _unmatched(applicability) -> list[str]:
 
 
 def _revision(content: MemoryRecordContent, *, actor: str, kind: str, now: datetime) -> Revision:
+    if content.source.kind == SourceKind.CHAT_MESSAGE:
+        # #2180: a chat turn's record is captured in chat, which checks the session is the
+        # writer's and records the turn itself; a source claimed here is never trusted.
+        raise http_error(
+            422,
+            "VALIDATION_ERROR",
+            "a chat turn's record is captured in chat (POST /api/v1/chat/sessions/{session_id}/"
+            "captures), which records its source",
+        )
     if content.applicability is not None and (unmatched := _unmatched(content.applicability)):
         raise http_error(
             422,
@@ -161,10 +178,17 @@ def _revision(content: MemoryRecordContent, *, actor: str, kind: str, now: datet
         raise http_error(422, "VALIDATION_ERROR", str(e)) from e
 
 
-def _response(record: MemoryRecord, viewer: str) -> MemoryRecordResponse:
+def _response(
+    record: MemoryRecord, viewer: str, deleted: frozenset[str] = frozenset()
+) -> MemoryRecordResponse:
     def one(revision: Revision) -> MemoryRecordRevisionResponse:
         doc = revision_document(revision)
-        doc["source"] = shown_source(record, revision, viewer_id=viewer)
+        doc["source"] = shown_source(
+            record,
+            revision,
+            viewer_id=viewer,
+            session_deleted=_chat_session_of(revision) in deleted,
+        )
         return MemoryRecordRevisionResponse.model_validate(doc)
 
     return MemoryRecordResponse(
@@ -181,6 +205,33 @@ def _response(record: MemoryRecord, viewer: str) -> MemoryRecordResponse:
             for c in record.status_changes
         ],
     )
+
+
+def _chat_session_of(revision: Revision) -> str | None:
+    if revision.source.kind != SourceKind.CHAT_MESSAGE:
+        return None
+    return revision.source.ids.get("session_id")
+
+
+async def _deleted_sessions(request: Request, records: list[MemoryRecord]) -> frozenset[str]:
+    """The chat sessions these records came from that their owners have deleted (Q29), so each
+    record says it. A session that can't be read is left unmarked, and the read is logged."""
+    chat_repo = getattr(request.app.state, "chat_repo", None)
+    sessions = {s for r in records for v in r.revisions if (s := _chat_session_of(v))}
+    if chat_repo is None or not sessions:
+        return frozenset()
+    deleted = set()
+    for session_id in sessions:
+        try:
+            session = await chat_repo.get_session(session_id)
+        except SessionNotFoundError:
+            continue
+        except Exception:  # noqa: BLE001 — the record is still answered, unmarked
+            logger.warning("memory_record_source_unread session=%s", session_id, exc_info=True)
+            continue
+        if session.deleted_at is not None:
+            deleted.add(session_id)
+    return frozenset(deleted)
 
 
 async def _readable(request: Request, record_id: str, actor: str, scopes) -> MemoryRecord:
@@ -240,8 +291,13 @@ async def list_memory_records(
     held = await store.list_owned(actor)
     if project_id is not None:
         held += await store.list_project(project_id)
-    found = retrieved(held, viewer_id=actor, viewer_scopes=scopes, project_id=project_id)
-    return [_response(r, actor) for r in found if kind is None or r.kind == kind]
+    found = [
+        r
+        for r in retrieved(held, viewer_id=actor, viewer_scopes=scopes, project_id=project_id)
+        if kind is None or r.kind == kind
+    ]
+    deleted = await _deleted_sessions(request, found)
+    return [_response(r, actor, deleted) for r in found]
 
 
 @router.get("/{record_id}")
@@ -252,7 +308,53 @@ async def get_memory_record(
 ) -> MemoryRecordResponse:
     """One record with every revision and status change, withdrawn ones included."""
     actor, scopes = _who(identity)
-    return _response(await _readable(request, record_id, actor, scopes), actor)
+    record = await _readable(request, record_id, actor, scopes)
+    return _response(record, actor, await _deleted_sessions(request, [record]))
+
+
+@router.get("/{record_id}/revisions/{number}/source")
+async def follow_memory_record_source(
+    request: Request,
+    record_id: str,
+    number: int,
+    identity: Identity | None = Depends(require_scopes()),
+) -> MemoryRecordSourceTurnResponse:
+    """The chat turn a revision came from (§A.3.4, T15). Following the link is authorized like
+    reading its target: only the session's owner opens it, and it opens that one turn, never the
+    session's others. Anyone else is refused, however they read the record."""
+    actor, scopes = _who(identity)
+    record = await _readable(request, record_id, actor, scopes)
+    revision = next((r for r in record.revisions if r.number == number), None)
+    if revision is None:
+        raise http_error(404, "NOT_FOUND", f"{record_id} has no revision {number}")
+    session_id = _chat_session_of(revision)
+    if session_id is None:
+        raise http_error(
+            422, "VALIDATION_ERROR", f"its source is a {revision.source.kind}, not a chat turn"
+        )
+    chat_repo = getattr(request.app.state, "chat_repo", None)
+    if chat_repo is None:
+        raise http_error(503, "CHAT_UNAVAILABLE", "the chat store is not configured")
+    try:
+        session = await chat_repo.get_session(session_id)
+    except SessionNotFoundError:
+        session = None
+    if session is None or session.user_id != actor:
+        raise http_error(
+            403, "FORBIDDEN", "a private chat turn is opened only by its session's owner"
+        )
+    if session.deleted_at is not None:
+        raise http_error(404, "NOT_FOUND", "the turn's session was deleted by its owner")
+    message = await chat_repo.get_message(str(revision.source.ids.get("message_id") or ""))
+    if message is None or message.session_id != session_id:
+        raise http_error(404, "NOT_FOUND", "the turn is no longer in its session")
+    return MemoryRecordSourceTurnResponse(
+        session_id=message.session_id,
+        message_id=message.message_id,
+        role=message.role,
+        content=message.content,
+        created_at=message.created_at.isoformat(),
+    )
 
 
 @router.post("/{record_id}/revisions", status_code=201)
@@ -280,7 +382,7 @@ async def revise_memory_record(
         raise http_error(422, "VALIDATION_ERROR", str(e)) from e
     except RecordConflict as e:
         raise http_error(409, "CONFLICT", str(e)) from e
-    return _response(updated, actor)
+    return _response(updated, actor, await _deleted_sessions(request, [updated]))
 
 
 @router.post("/{record_id}/withdrawal", status_code=201)
@@ -306,4 +408,4 @@ async def withdraw_memory_record(
         raise http_error(403, "FORBIDDEN", str(e)) from e
     except RecordRefused as e:
         raise http_error(422, "VALIDATION_ERROR", str(e)) from e
-    return _response(updated, actor)
+    return _response(updated, actor, await _deleted_sessions(request, [updated]))

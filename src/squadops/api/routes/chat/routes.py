@@ -2,6 +2,12 @@
 
 P3-RC1: Proxy, not processor — routes forward to agent A2A endpoint.
 P3-RC4: POST returns StreamingResponse with text/event-stream.
+
+Chat on the memory substrate (SIP-0110 Appendix A §3.3–§3.6; #2180 stage A): a session is bound to a
+project when it opens, server-side, and each turn carries the context this runtime assembles from the
+records (``squadops.memory.chat``), with one exposure per turn. A capture the agent proposes is stored
+only when the person confirms it (``POST /sessions/{id}/captures``), as one of the choices their
+permissions allow. A person deletes their own sessions (Q29).
 """
 
 from __future__ import annotations
@@ -11,23 +17,55 @@ import logging
 import uuid
 from datetime import UTC, datetime
 
-from fastapi import APIRouter, Request
+from fastapi import APIRouter, Request, Response
 from fastapi.responses import StreamingResponse
 
+from squadops.api.errors import http_error, server_error
+from squadops.api.routes.chat.context import ChatContextAssembly
 from squadops.api.routes.chat.dtos import (
+    CaptureChoiceDTO,
+    CaptureRequest,
+    CaptureResponse,
     ChatMessageDTO,
     ChatMessageRequest,
     ChatSessionDTO,
     MessagingAgentDTO,
 )
 from squadops.api.routes.chat.errors import handle_chat_error
-from squadops.comms.chat_history import BoundedHistory, bound_history, turn_metadata
+from squadops.api.runtime.deps import get_memory_records, get_memory_store, get_project_registry
+from squadops.auth.models import Scope, scopes_for_roles
+from squadops.comms.chat_history import (
+    MEMORY_CONTEXT_KEY,
+    BoundedHistory,
+    bound_history,
+    turn_metadata,
+)
 from squadops.comms.models import (
     AgentNotFoundError,
     AgentNotMessagingEnabledError,
     ChatMessage,
     ChatSession,
     SessionNotFoundError,
+)
+from squadops.cycles.models import ProjectNotFoundError
+from squadops.memory.chat import (
+    CaptureChoice,
+    ChatLimits,
+    ProposedCapture,
+    capture_choices,
+    failure_notice,
+    proposed_capture,
+    used_line,
+)
+from squadops.memory.context import ChatTurn, ContextRequest, ProjectBound, Unbound
+from squadops.memory.records import (
+    NotPermitted,
+    RecordRefused,
+    Revision,
+    Source,
+    SourceKind,
+    authorize_write,
+    new_record,
 )
 
 logger = logging.getLogger(__name__)
@@ -83,6 +121,15 @@ def _get_user_id(request: Request) -> str:
     return "anonymous"
 
 
+def _viewer(request: Request) -> tuple[str, frozenset[str]]:
+    """The signed-in person and their scopes, as the records' routes read them (§3.3: the same
+    permissions through chat and through the API). Unauthenticated dev mode holds none."""
+    identity = getattr(request.state, "identity", None)
+    if identity is None or not hasattr(identity, "user_id"):
+        return _get_user_id(request), frozenset()
+    return identity.user_id, frozenset(identity.scopes) | scopes_for_roles(identity.roles)
+
+
 def _resolve_agent(request: Request, agent_id: str) -> dict:
     """Resolve agent config and validate messaging is enabled.
 
@@ -123,37 +170,17 @@ async def send_chat_message(
     """
     agent_config = _resolve_agent(request, agent_id)
 
-    user_id = _get_user_id(request)
+    user_id, scopes = _viewer(request)
     chat_repo = _get_chat_repo(request)
     a2a_client = _get_a2a_client(request)
     chat_cache = _chat_cache_of(request)
 
     # Resolve or create session
     now = datetime.now(UTC)
-    history, history_unavailable = BoundedHistory(turns=(), dropped=0), False
-    if body.session_id:
-        session_id = body.session_id
-        # #2175: the session must be this user's, with this agent, before anything of it is
-        # replayed. Catch the specific error; DB errors propagate as 500.
-        try:
-            await _owned_session(chat_repo, session_id, user_id, agent_id)
-        except SessionNotFoundError as e:
-            raise handle_chat_error(e) from e
-        # Its earlier turns, read before this turn's message is stored.
-        history, history_unavailable = await _history_for_turn(request, session_id)
-    else:
-        session_id = str(uuid.uuid4())
-        session = ChatSession(
-            session_id=session_id,
-            agent_id=agent_id,
-            user_id=user_id,
-            started_at=now,
-        )
-        await chat_repo.create_session(session)
-        logger.info(
-            "chat_session_created",
-            extra={"agent_id": agent_id, "user_id": user_id, "session_id": session_id},
-        )
+    session, history, history_unavailable = await _turn_session(
+        request, body, agent_id=agent_id, user_id=user_id, scopes=scopes, now=now
+    )
+    session_id = session.session_id
 
     # Persist user message (Postgres required — P3-RC2)
     user_msg = ChatMessage(
@@ -169,6 +196,13 @@ async def send_chat_message(
     if chat_cache is not None:
         await chat_cache.cache_message(user_msg)
 
+    # §3.5: the turn's memory context, assembled here, which owns the store; the agent renders it.
+    memory = await _turn_memory(request, session, user_msg, scopes)
+    unavailable = list((memory or {}).get("unavailable") or [])
+    metadata = turn_metadata(history, unavailable=history_unavailable)
+    if memory is not None:
+        metadata[MEMORY_CONTEXT_KEY] = memory
+
     # Build agent A2A URL — fields are required in validated instance config
     a2a_port = agent_config["a2a_port"]
     a2a_host = agent_config["a2a_host"]
@@ -179,18 +213,35 @@ async def send_chat_message(
         """Relay agent SSE chunks, then persist assembled response."""
         collected_chunks = []
         try:
+            if unavailable:
+                # §3.5: a part of the context that failed is said in the reply, and logged.
+                logger.warning(
+                    "chat_context_unavailable",
+                    extra={"session_id": session_id, "sections": unavailable},
+                )
+                notice = failure_notice(unavailable)
+                collected_chunks.append(notice)
+                yield f"data: {json.dumps({'text': notice, 'session_id': session_id})}\n\n"
             async for chunk in a2a_client.send_message_stream(
                 base_url,
                 body.message,
                 context_id=session_id,
-                metadata=turn_metadata(history, unavailable=history_unavailable),
+                metadata=metadata,
             ):
                 collected_chunks.append(chunk)
                 # SSE format: data line + blank line
                 yield f"data: {json.dumps({'text': chunk, 'session_id': session_id})}\n\n"
+            used = used_line(memory) if memory is not None else ""
+            if used:
+                # §A.3.11: the reply names the records its context supplied.
+                collected_chunks.append(used)
+                yield f"data: {json.dumps({'text': used, 'session_id': session_id})}\n\n"
 
-            # Stream complete — persist agent response (P3-RC2: Postgres required)
-            full_response = "".join(collected_chunks)
+            # Stream complete — persist agent response (P3-RC2: Postgres required). A capture the
+            # agent proposed is kept off the stored text and offered to the person; nothing is
+            # stored as a record until they confirm it (§3.5).
+            proposal, full_response = proposed_capture("".join(collected_chunks))
+            capture = _offered(proposal, source=user_msg, session=session, scopes=scopes)
             if full_response:
                 assistant_msg = ChatMessage(
                     message_id=str(uuid.uuid4()),
@@ -198,6 +249,7 @@ async def send_chat_message(
                     role="assistant",
                     content=full_response,
                     created_at=datetime.now(UTC),
+                    metadata={"capture_proposal": capture} if capture else {},
                 )
                 try:
                     await chat_repo.store_message(assistant_msg)
@@ -210,6 +262,8 @@ async def send_chat_message(
                         exc_info=True,
                     )
 
+            if capture is not None:
+                yield f"data: {json.dumps({'capture': capture, 'session_id': session_id})}\n\n"
             # Final event signals completion
             yield f"data: {json.dumps({'done': True, 'session_id': session_id})}\n\n"
 
@@ -269,9 +323,142 @@ async def list_agent_sessions(agent_id: str, request: Request) -> list[ChatSessi
             user_id=s.user_id,
             started_at=s.started_at,
             ended_at=s.ended_at,
+            project_id=s.project_id,
         )
         for s in sessions
     ]
+
+
+@router.delete("/sessions/{session_id}", status_code=204, response_class=Response)
+async def delete_chat_session(session_id: str, request: Request) -> Response:
+    """Delete one of your sessions (SIP-0110 §A.8 Q29): its messages go, and a memory record already
+    confirmed from it stays, marked as coming from a deleted session. Another person's session, or
+    one already deleted, is refused as a missing one."""
+    chat_repo = _get_chat_repo(request)
+    try:
+        await _owned_session(chat_repo, session_id, _get_user_id(request))
+        await chat_repo.delete_session(session_id, datetime.now(UTC))
+    except SessionNotFoundError as e:
+        raise handle_chat_error(e) from e
+    chat_cache = _chat_cache_of(request)
+    if chat_cache is not None:
+        await chat_cache.invalidate_session(session_id)
+    logger.info("chat_session_deleted", extra={"session_id": session_id})
+    return Response(status_code=204)
+
+
+@router.get("/sessions/{session_id}/capture-choices")
+async def list_capture_choices(session_id: str, request: Request) -> list[CaptureChoiceDTO]:
+    """What a confirmation card may offer you in this session: the kinds and scopes you may write
+    (§3.3). A card offers nothing else, and a capture of anything else is refused."""
+    user_id, scopes = _viewer(request)
+    try:
+        session = await _owned_session(_get_chat_repo(request), session_id, user_id)
+    except SessionNotFoundError as e:
+        raise handle_chat_error(e) from e
+    return [_choice_dto(c) for c in capture_choices(scopes=scopes, project_id=session.project_id)]
+
+
+@router.post("/sessions/{session_id}/captures", status_code=201)
+async def confirm_capture(
+    session_id: str, body: CaptureRequest, request: Request
+) -> CaptureResponse:
+    """Store what you confirmed on a capture card (§3.5), as a record whose source is the turn it
+    came from. Refused (403) for a kind or scope this session doesn't offer you; a save that fails
+    is said in the reply, answered as an error and logged at WARNING, never swallowed."""
+    user_id, scopes = _viewer(request)
+    chat_repo = _get_chat_repo(request)
+    try:
+        session = await _owned_session(chat_repo, session_id, user_id)
+    except SessionNotFoundError as e:
+        raise handle_chat_error(e) from e
+    turn = await chat_repo.get_message(body.message_id)
+    if turn is None or turn.session_id != session_id:
+        raise http_error(404, "NOT_FOUND", f"no message {body.message_id} in this session")
+    offered = capture_choices(scopes=scopes, project_id=session.project_id)
+    choice = next((c for c in offered if (c.kind, c.scope) == (body.kind, body.scope)), None)
+    if choice is None:
+        raise http_error(
+            403,
+            "FORBIDDEN",
+            f"this session offers you no {body.scope} {body.kind}: "
+            + ", ".join(f"{c.scope} {c.kind}" for c in offered),
+        )
+    records = get_memory_records(request)
+    now = datetime.now(UTC)
+    try:
+        if records is None:
+            raise RuntimeError("the memory records' store is not configured")
+        authorize_write(
+            choice.kind, choice.scope, actor_id=user_id, actor_scopes=scopes, owner_id=user_id
+        )
+        record = new_record(
+            record_id=f"mrec_{uuid.uuid4().hex[:16]}",
+            kind=choice.kind,
+            scope=choice.scope,
+            project_id=choice.project_id,
+            owner_id=user_id,
+            revision=Revision(
+                number=1,
+                body=body.text.strip(),
+                author=user_id,
+                created_at=now,
+                source=Source(
+                    SourceKind.CHAT_MESSAGE,
+                    {"session_id": session_id, "message_id": body.message_id},
+                ),
+                confirmed_by=user_id,
+                suggestion=body.suggestion,
+            ),
+        )
+        await records.create(record)
+    except NotPermitted as e:
+        raise http_error(403, "FORBIDDEN", str(e)) from e
+    except RecordRefused as e:
+        raise http_error(422, "VALIDATION_ERROR", str(e)) from e
+    except Exception as e:
+        # #1976: a server failure answers with the request id, never the exception's text, and the
+        # transcript keeps only what failed.
+        logger.warning("chat_capture_failed", extra={"session_id": session_id, "kind": choice.kind})
+        request_id = getattr(request.state, "request_id", None)
+        await _reply(
+            request,
+            session_id,
+            f"Not saved: the {choice.kind} could not be stored (request {request_id}).",
+        )
+        raise server_error(
+            request,
+            f"the {choice.kind} was not saved",
+            e,
+            logger,
+            status=503,
+            code="MEMORY_SAVE_FAILED",
+        ) from e
+    where = f"project {choice.project_id}" if choice.project_id else "yours only"
+    reply = await _reply(
+        request,
+        session_id,
+        f"Saved {choice.kind} {record.record_id} ({where}). It takes effect {choice.takes_effect}.",
+        metadata={"capture": record.record_id},
+    )
+    logger.info(
+        "chat_capture_saved",
+        extra={"session_id": session_id, "record_id": record.record_id, "scope": choice.scope},
+    )
+    return CaptureResponse(
+        record_id=record.record_id,
+        kind=choice.kind,
+        scope=choice.scope,
+        project_id=choice.project_id,
+        takes_effect=choice.takes_effect,
+        reply=ChatMessageDTO(
+            message_id=reply.message_id,
+            session_id=reply.session_id,
+            role=reply.role,
+            content=reply.content,
+            created_at=reply.created_at,
+        ),
+    )
 
 
 @agents_router.get("/messaging")
@@ -298,18 +485,170 @@ async def _owned_session(
 ) -> ChatSession:
     """The session, when ``user_id`` owns it and, given an agent, it is that agent's.
 
-    A session id is not authorization (#2175). Another user's session, or one bound to another
-    agent, is refused exactly as a session that does not exist, so the refusal does not say
-    which it was.
+    A session id is not authorization (#2175). Another user's session, one bound to another
+    agent, or one its owner deleted (Q29), is refused exactly as a session that does not exist,
+    so the refusal does not say which it was.
     """
     session = await chat_repo.get_session(session_id)
-    if session.user_id != user_id or (agent_id is not None and session.agent_id != agent_id):
+    if (
+        session.user_id != user_id
+        or (agent_id is not None and session.agent_id != agent_id)
+        or session.deleted_at is not None
+    ):
         logger.warning(
             "chat_session_refused",
             extra={"session_id": session_id, "user_id": user_id, "agent_id": agent_id},
         )
         raise SessionNotFoundError(f"Session not found: {session_id}")
     return session
+
+
+async def _turn_session(
+    request: Request,
+    body: ChatMessageRequest,
+    *,
+    agent_id: str,
+    user_id: str,
+    scopes: frozenset[str],
+    now: datetime,
+) -> tuple[ChatSession, BoundedHistory, bool]:
+    """The turn's session, with its earlier turns and whether they could be read: the person's own
+    with this agent (#2175), or a new one bound server-side to the project the request names (§3.3)."""
+    chat_repo = _get_chat_repo(request)
+    if body.session_id:
+        # #2175: the session must be this user's, with this agent, before anything of it is
+        # replayed. Catch the specific error; DB errors propagate as 500.
+        try:
+            session = await _owned_session(chat_repo, body.session_id, user_id, agent_id)
+        except SessionNotFoundError as e:
+            raise handle_chat_error(e) from e
+        if body.project_id is not None and body.project_id != session.project_id:
+            # T14: every turn reads the stored binding; a client's claim is never read.
+            logger.info(
+                "chat_project_claim_ignored",
+                extra={"session_id": session.session_id, "claimed": body.project_id},
+            )
+        # Its earlier turns, read before this turn's message is stored.
+        history, unavailable = await _history_for_turn(request, session.session_id)
+        return session, history, unavailable
+    session = ChatSession(
+        session_id=str(uuid.uuid4()),
+        agent_id=agent_id,
+        user_id=user_id,
+        started_at=now,
+        project_id=await _bindable_project(request, body.project_id, scopes),
+    )
+    await chat_repo.create_session(session)
+    logger.info(
+        "chat_session_created",
+        extra={
+            "agent_id": agent_id,
+            "user_id": user_id,
+            "session_id": session.session_id,
+            "project_id": session.project_id,
+        },
+    )
+    return session, BoundedHistory(turns=(), dropped=0), False
+
+
+def _offered(
+    proposal: ProposedCapture | None,
+    *,
+    source: ChatMessage,
+    session: ChatSession,
+    scopes: frozenset[str],
+) -> dict | None:
+    """The capture card a proposal becomes: the agent's text and suggested kind and scope, the turn it
+    came from, and the choices this person may confirm, which are theirs, never the agent's (§3.3)."""
+    if proposal is None:
+        return None
+    return {
+        "text": proposal.text,
+        "kind": proposal.kind,
+        "scope": proposal.scope,
+        "source_message_id": source.message_id,
+        "choices": [
+            _choice_dto(c).model_dump()
+            for c in capture_choices(scopes=scopes, project_id=session.project_id)
+        ],
+    }
+
+
+async def _bindable_project(
+    request: Request, project_id: str | None, scopes: frozenset[str]
+) -> str | None:
+    """The project a new session is bound to, checked server-side (§3.3): it exists, and the person
+    holds ``memory:read``. ``None`` opens an unbound session."""
+    if project_id is None:
+        return None
+    if Scope.MEMORY_READ not in scopes:
+        raise http_error(
+            403, "FORBIDDEN", f"binding a chat to {project_id} needs {Scope.MEMORY_READ}"
+        )
+    try:
+        await get_project_registry(request).get_project(project_id)
+    except ProjectNotFoundError as e:
+        raise http_error(422, "VALIDATION_ERROR", f"no project {project_id}") from e
+    return project_id
+
+
+async def _turn_memory(
+    request: Request, session: ChatSession, message: ChatMessage, scopes: frozenset[str]
+) -> dict | None:
+    """The turn's memory context, from the session's stored binding (T14), and its exposure. ``None``
+    when no records store is configured. Never raises: a section that fails is in the context's
+    ``unavailable``, and the reply says so."""
+    chat = request.app.state.config.comms.chat
+    assembly = ChatContextAssembly(
+        get_memory_records(request),
+        get_memory_store(request),
+        limits=ChatLimits(max_notes=chat.memory_max_notes, max_tokens=chat.memory_max_tokens),
+        now=datetime.now(UTC),
+    )
+    binding = ProjectBound(session.project_id) if session.project_id else Unbound()
+    turn = ChatTurn(
+        session_id=session.session_id,
+        message_id=message.message_id,
+        user_id=session.user_id,
+        agent_id=session.agent_id,
+        text=message.content,
+        viewer_scopes=scopes,
+    )
+    bundle = await assembly.assemble(ContextRequest(binding, turn))
+    await assembly.disclose(bundle)
+    return dict(bundle.chat) if bundle.chat is not None else None
+
+
+def _choice_dto(choice: CaptureChoice) -> CaptureChoiceDTO:
+    return CaptureChoiceDTO(
+        kind=choice.kind,
+        scope=choice.scope,
+        project_id=choice.project_id,
+        takes_effect=choice.takes_effect,
+    )
+
+
+async def _reply(
+    request: Request, session_id: str, text: str, *, metadata: dict | None = None
+) -> ChatMessage:
+    """A reply in the session that says what a capture did. Stored best-effort: when the store that
+    failed the save fails this too, the answer still says it."""
+    reply = ChatMessage(
+        message_id=str(uuid.uuid4()),
+        session_id=session_id,
+        role="assistant",
+        content=text,
+        created_at=datetime.now(UTC),
+        metadata=metadata or {},
+    )
+    try:
+        await _get_chat_repo(request).store_message(reply)
+        chat_cache = _chat_cache_of(request)
+        if chat_cache is not None:
+            await chat_cache.cache_message(reply)
+    except Exception:  # noqa: BLE001 — the reply is still returned; the loss is logged
+        logger.warning("chat_reply_not_stored", extra={"session_id": session_id}, exc_info=True)
+    return reply
 
 
 async def _history_for_turn(request: Request, session_id: str) -> tuple[BoundedHistory, bool]:

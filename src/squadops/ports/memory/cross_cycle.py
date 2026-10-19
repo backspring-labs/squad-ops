@@ -15,6 +15,7 @@ from collections.abc import Sequence
 
 from squadops.memory.annotation import Annotation
 from squadops.memory.assessment import Assessment
+from squadops.memory.chat import ChatExposure
 from squadops.memory.exposures import Exposure
 from squadops.memory.lessons import Approval, PatternRevision, Snapshot, UnitKind
 from squadops.memory.observations import Observation, ObservationSource
@@ -106,6 +107,15 @@ class CrossCycleMemoryStorePort(ABC):
     @abstractmethod
     async def list_project_exposures(self, project_id: str) -> list[Exposure]:
         """A project's exposures, oldest first."""
+
+    @abstractmethod
+    async def record_chat_exposure(self, exposure: ChatExposure) -> bool:
+        """Store a chat turn's exposure, once per session and message (Appendix A §3.6; #2180).
+        Returns whether it was new."""
+
+    @abstractmethod
+    async def list_chat_exposures(self, session_id: str) -> list[ChatExposure]:
+        """A chat session's exposures, oldest first."""
 
     @abstractmethod
     async def record_assessment(self, assessment: Assessment) -> bool:
