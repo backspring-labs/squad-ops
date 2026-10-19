@@ -393,8 +393,8 @@ profile's `defaults` as `applied_defaults`, and its own `computeOverrides`.
 - **It put `project_id` and `squad_profile_id` into `applied_defaults`,** so a console cycle's config hash never
   matched the CLI's for the same request.
 - **It couldn't take a stack.** Since §11a no operator profile pins one, and the modal had no field for
-  `build_profile`. So a console cycle got no stack's request defaults (R2.3), and one whose squad has a builder fails
-  at its plan with no `build_profile`.
+  `build_profile`. So a console cycle got no stack's request defaults (R2.3), and one whose squad has a builder was
+  refused at create (`builder_without_build_profile`, #2437): the console couldn't create a building cycle at all.
 
 The second read of PR #2500 found the copy, and the second read of PR #2529 found the missing stack.
 
@@ -414,8 +414,6 @@ The second read of PR #2500 found the copy, and the second read of PR #2529 foun
   - On submit, it resolves before storing the PRD, then creates the cycle from the request resolved with the PRD and
     notes.
   - It no longer builds a body.
-- **Not changed here:** create still accepts a cycle with a builder and no stack, which then fails at its plan. That
-  is the CLI's behaviour too, and the refusal belongs at create for every caller (#2530).
 
 **Evidence:**
 - **The wiring test** enters as the console does: it resolves `validate` on `nextjs_ts` through the route, then posts
