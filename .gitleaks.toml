@@ -50,6 +50,16 @@ regexTarget = "line"
 regexes = ['''^\s*"[a-z0-9_-]+":\s*"[0-9a-f]{64}",?\s*$''']
 
 [[allowlists]]
+description = "the request-profile taxonomy test's golden sha256 pins (#316): each released profile file's content hash keyed by its name, and the 2.4 window's frozen launch config hashes, not keys"
+condition = "AND"
+paths = ['''^tests/unit/contracts/test_request_profile_taxonomy\.py$''']
+regexTarget = "line"
+regexes = [
+  '''^\s*"[a-z0-9_-]+":\s*"[0-9a-f]{64}",?\s*$''',
+  '''^\s*"[0-9a-f]{64}",?\s*$''',
+]
+
+[[allowlists]]
 description = "the records scanner's own test fixture: a hand-made JWT (payload only `sub`, 20-char signature), in the parametrized refusal and again in the campaign-log refusal (#1941 item 6)"
 condition = "AND"
 paths = ['''^tests/unit/maintainer/test_attach_release_records\.py$''']
