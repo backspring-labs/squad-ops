@@ -1208,10 +1208,12 @@ checks:
     code: |
       import inspect
       from adapters.sandbox.factory import create_scenario_runner
+      from squadops.bootstrap.secrets import secret_provider_for
       from squadops.campaigns.progress import CampaignProgress
       from squadops.config import load_config
       required = inspect.signature(CampaignProgress).parameters["evaluate_outcome"].default is inspect.Parameter.empty
-      print(required, type(create_scenario_runner(load_config().sandbox_client)).__name__)
+      config = load_config(secret_provider_factory=secret_provider_for)  # the root's own, as main.py
+      print(required, type(create_scenario_runner(config.sandbox_client)).__name__)
     expect: True HttpScenarioRunner
   - id: "2464"
     what: a scenario names a field by concept, resolved to the delivery's own name
