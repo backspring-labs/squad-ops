@@ -143,6 +143,16 @@ class InMemoryCrossCycleMemoryStore(CrossCycleMemoryStorePort):
             key=lambda e: (e.assembled_at, e.message_id),
         )
 
+    async def list_chat_exposures_supplying(self, record_id: str) -> list[ChatExposure]:
+        return sorted(
+            (
+                e
+                for e in self._chat_exposures.values()
+                if any(r.record_id == record_id for s in e.sections for r in s.supplied)
+            ),
+            key=lambda e: (e.assembled_at, e.message_id),
+        )
+
     async def list_project_exposures(self, project_id: str) -> list[Exposure]:
         return sorted(
             (e for e in self._exposures.values() if e.query.project_id == project_id),
@@ -428,6 +438,19 @@ class PostgresCrossCycleMemoryStore(CrossCycleMemoryStorePort):
                 "sections FROM chat_exposures WHERE session_id = $1 "
                 "ORDER BY assembled_at, message_id",
                 session_id,
+            )
+        return [ChatExposure.from_document(r) for r in rows]
+
+    async def list_chat_exposures_supplying(self, record_id: str) -> list[ChatExposure]:
+        # JSONB containment: a section whose supplied list holds the record, any revision.
+        async with self._pool.acquire() as conn:
+            rows = await conn.fetch(
+                "SELECT session_id, message_id, user_id, agent_id, project_id, assembled_at, "
+                "sections FROM chat_exposures WHERE sections @> jsonb_build_array("
+                "jsonb_build_object('supplied', jsonb_build_array("
+                "jsonb_build_object('record_id', $1::text)))) "
+                "ORDER BY assembled_at, message_id",
+                record_id,
             )
         return [ChatExposure.from_document(r) for r in rows]
 

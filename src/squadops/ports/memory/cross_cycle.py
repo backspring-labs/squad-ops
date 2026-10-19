@@ -118,6 +118,10 @@ class CrossCycleMemoryStorePort(ABC):
         """A chat session's exposures, oldest first."""
 
     @abstractmethod
+    async def list_chat_exposures_supplying(self, record_id: str) -> list[ChatExposure]:
+        """The chat turns whose context supplied ``record_id``, any revision, oldest first (#2182)."""
+
+    @abstractmethod
     async def record_assessment(self, assessment: Assessment) -> bool:
         """Store an assessment; append-only, so a reassessment is a new record (§0.10). Returns
         whether it was new."""

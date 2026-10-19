@@ -18,40 +18,16 @@ import asyncio
 import sys
 
 
-def _pending(runs) -> bool:
-    """The cycle can still build: a run not ended, or a completed framing whose gate is undecided."""
-    from squadops.cycles.models import RunStatus, WorkloadType
-
-    ended = {RunStatus.COMPLETED, RunStatus.FAILED, RunStatus.CANCELLED}
-    if any(r.status not in ended for r in runs):
-        return True
-    latest = max(runs, key=lambda r: r.run_number, default=None)
-    return bool(
-        latest is not None
-        and latest.workload_type == WorkloadType.FRAMING
-        and latest.status == RunStatus.COMPLETED
-        and not latest.gate_decisions
-    )
-
-
 async def report(dsn: str, project: str) -> int:
     from adapters.cycles.postgres_campaign_registry import PostgresCampaignRegistry
     from adapters.cycles.postgres_cycle_registry import PostgresCycleRegistry
     from adapters.memory.cross_cycle import PostgresCrossCycleMemoryStore
     from adapters.persistence.pool import create_pool
     from adapters.persistence.transient import TransientRetry
-    from squadops.campaigns.gate import RETURNING_DECISIONS
-    from squadops.campaigns.models import ControlOperation, ControlOutcome
     from squadops.config.schema import DBRetryConfig
     from squadops.memory.assessment import target_absence_rates
-    from squadops.memory.indicators import (
-        BuildState,
-        build_run_of,
-        indicators_of,
-        once_per_build,
-    )
+    from squadops.memory.build_report import exposure_builds
 
-    returning = {d.value for d in RETURNING_DECISIONS}
     pool = await create_pool(
         dsn, min_size=1, max_size=2, server_settings={"default_transaction_read_only": "on"}
     )
@@ -60,37 +36,7 @@ async def report(dsn: str, project: str) -> int:
         registry = PostgresCycleRegistry(pool=pool, retry=TransientRetry.of(DBRetryConfig()))
         campaigns = PostgresCampaignRegistry(pool)
         exposures = await store.list_project_exposures(project)
-        by_cycle: dict[str, list] = {}
-        for e in exposures:
-            by_cycle.setdefault(e.cycle_id, []).append(e)
-        builds, indicators = [], {}
-        for cycle_id, fed in sorted(by_cycle.items()):
-            cycle = await registry.get_cycle(cycle_id)
-            runs = await registry.list_runs(cycle_id)
-            log = await campaigns.control_log(cycle.campaign_id) if cycle.campaign_id else []
-            applied = [e for e in log if e.outcome is ControlOutcome.APPLIED]
-            returned = {
-                e.target
-                for e in applied
-                if e.operation is ControlOperation.RULE and e.binding.get("decision") in returning
-            } | {r.run_id for r in runs if any(d.decision in returning for d in r.gate_decisions)}
-            promoted = any(
-                e.operation is ControlOperation.PROMOTE and e.target == cycle_id for e in applied
-            )
-            ended = cycle.cancelled or not _pending(runs)
-            for e in fed:
-                b = build_run_of(e, runs, returned=e.run_id in returned, cycle_ended=ended)
-                builds.append(b)
-                if b.state is BuildState.BUILT and b.run_id and b.run_id not in indicators:
-                    summary = await registry.get_run_loop_summary(b.run_id)
-                    verification = await registry.get_run_verification_summary(b.run_id)
-                    indicators[b.run_id] = indicators_of(
-                        b.run_id,
-                        summary,
-                        str(verification.verdict) if verification else None,
-                        promoted if cycle.campaign_id else None,
-                    )
-        result = once_per_build(builds, indicators)
+        result = await exposure_builds(exposures, cycles=registry, campaigns=campaigns)
         print(f"== {project}: {len(exposures)} exposures, {len(result.builds)} build runs")
         for row in result.builds:
             i = row.indicators
