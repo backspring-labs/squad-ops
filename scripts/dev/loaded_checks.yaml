@@ -1254,3 +1254,29 @@ checks:
       from squadops.ports.sandbox import ExecutionSandboxPort
       print(sorted({"seed_workspace", "read_workspace_revision"} & ExecutionSandboxPort.__abstractmethods__))
     expect: "['read_workspace_revision', 'seed_workspace']"
+  - id: "2418"
+    what: the campaign's evidence package (version 4) carries its outcome readings, from the runtime's scenario store
+    container: squadops-runtime-api
+    code: |
+      import inspect
+      from squadops.campaigns.evidence import PACKAGE_VERSION
+      from squadops.campaigns.progress import CampaignProgress
+      param = inspect.signature(CampaignProgress).parameters["outcome_section"]
+      print(PACKAGE_VERSION, param.default is inspect.Parameter.empty)
+    expect: 4 True
+  - id: "2416-lint"
+    what: the scenario runner lints each evaluated tree in the evaluator's image, by #1937's command
+    container: squadops-sandbox-service
+    code: |
+      from adapters.sandbox.scenario_runner import ContainerScenarioRunner
+      from squadops.capabilities.delivered_lint import RUFF_ARGS
+      print(hasattr(ContainerScenarioRunner, "_lint"), RUFF_ARGS[0])
+    expect: True check
+  - id: "2478"
+    what: "#1937's ESLint runner names its file patterns, so the qa path lints .jsx"
+    container: squadops-eve
+    code: |
+      from importlib.resources import files
+      runner = (files("squadops.capabilities") / "delivered_lint_eslint.cjs").read_text()
+      print('files: ["**/*.{js,jsx,mjs,cjs,ts,tsx}"]' in runner)
+    expect: "True"
