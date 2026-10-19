@@ -5,6 +5,7 @@ Unit tests for cycle commands (SIP-0065 §6.3).
 import json
 from unittest.mock import MagicMock, patch
 
+import pytest
 from typer.testing import CliRunner
 
 from squadops.cli import exit_codes
@@ -84,6 +85,57 @@ class TestCyclesCreate:
             "json"
         ) or mock_get_client.return_value.post.call_args[1].get("json")
         assert body["experiment_context"].get("benchmark") is True
+
+    @pytest.mark.parametrize(
+        ("value", "expected"),
+        [
+            ('["art_d4b1402e61a1"]', ["art_d4b1402e61a1"]),
+            ('{"a": 1}', {"a": 1}),
+            ("art_plain", "art_plain"),
+        ],
+        ids=["list", "mapping", "string-unchanged"],
+    )
+    @patch("squadops.cli.commands.cycles._get_client")
+    def test_a_list_or_mapping_value_reaches_the_overrides_as_data(
+        self, mock_get_client, value, expected
+    ):
+        """#2496: a list kept as its string made the plan loader iterate characters, so an
+        operator-supplied plan was never found."""
+        mock_get_client.return_value = _mock_client(
+            post_val={
+                "cycle_id": "c",
+                "run_id": "r",
+                "status": "queued",
+                "resolved_config_hash": "x",
+            }
+        )
+
+        result = runner.invoke(
+            app,
+            [
+                "cycles",
+                "create",
+                "proj1",
+                "--squad-profile",
+                "sp1",
+                "--set",
+                f"plan_artifact_refs={value}",
+            ],
+        )
+
+        assert result.exit_code == 0, result.output
+        body = mock_get_client.return_value.post.call_args.kwargs["json"]
+        assert body["execution_overrides"]["plan_artifact_refs"] == expected
+
+    def test_a_value_that_looks_structured_but_isnt_json_is_refused(self):
+        result = runner.invoke(
+            app,
+            ["cycles", "create", "proj1", "--squad-profile", "sp1", "--set", "refs=[art_1"],
+            env={"COLUMNS": "200"},  # Rich wraps the error box at the console's width (#2491)
+        )
+
+        assert result.exit_code != 0
+        assert "isn't valid JSON" in result.output
 
     @patch("squadops.cli.commands.cycles._get_client")
     def test_set_override(self, mock_get_client):
