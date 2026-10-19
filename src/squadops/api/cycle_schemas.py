@@ -22,12 +22,18 @@ from pydantic import BaseModel, ConfigDict, Field, SecretStr
 
 
 class GateDTO(BaseModel):
+    # Nested in CycleCreateRequest, which forbids extras: a misspelt key here is refused too,
+    # never dropped (SIP-0112 contract 2).
+    model_config = ConfigDict(extra="forbid")
+
     name: str
     description: str
     after_task_types: list[str] = Field(default_factory=list)
 
 
 class TaskFlowPolicyDTO(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
     mode: Literal["sequential", "fan_out_fan_in", "fan_out_soft_gates"] = "sequential"
     gates: list[GateDTO] = Field(default_factory=list)
 
