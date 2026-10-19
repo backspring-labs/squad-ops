@@ -693,7 +693,11 @@ within them, for the owner's review.
     the field, was all there was to read. Reading an undeclared field as absent hid that job. Sent under its
     first name, a delivery without the feature fails the scenario, as the reading needs;
   - `fields` is in each scenario's content, so in its version, so approving a suite approves its names.
-    A scenario without `fields` keeps its content and version byte for byte.
+    A scenario without `fields` keeps its content and version byte for byte;
+  - **a declared Project reads no manifest** (SIP-0112 §8.3: a sample application's interface manifest is
+    never a default, and an external product has none). Its concepts go under the scenario's first name, and
+    its endpoints aren't checked, since its surfaces come from its entry points. Only a blueprint delivery's
+    own stored `interface_manifest.yaml` is read.
 - **Why per delivery, not per stack** (read from the Spark's vault, 2026-10-18, 40 recent completed
   deliveries): the canonical stack's run is `meeting_location` in 26 and `location` in 4. Next.js's is
   snake_case in 5, camelCase in 2 and mixed in 1. Every delivery's manifest names the entity `Run`; only the
