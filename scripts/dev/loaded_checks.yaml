@@ -1281,3 +1281,14 @@ checks:
       runner = (files("squadops.capabilities") / "delivered_lint_eslint.cjs").read_text()
       print('files: ["**/*.{js,jsx,mjs,cjs,ts,tsx}"]' in runner)
     expect: "True"
+  - id: "2418-guarantees"
+    what: the campaign package's seven safety guarantees are read, and AOR's four inputs with them
+    container: squadops-runtime-api
+    code: |
+      import inspect
+      from squadops.campaigns.progress import CampaignProgress
+      from squadops.campaigns.safety_guarantees import READERS
+      from squadops.outcomes.aor import BASELINES
+      param = inspect.signature(CampaignProgress).parameters["intervention_section"]
+      print(len(READERS), param.default is inspect.Parameter.empty, BASELINES)
+    expect: 7 True every quality baseline held
