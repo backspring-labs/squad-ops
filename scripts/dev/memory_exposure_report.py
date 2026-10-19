@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
-"""The exposure report (SIP-0110 §0.10): each build run once, with the exposures that fed it and its
-app-build indicators, the exposures with no build to report by state, and each target's absence
-rate with the supplied and unsupplied series apart.
+"""The exposure report (SIP-0110 §0.10): each build run once, with the exposures that fed it, its
+app-build indicators and its arm, the exposures with no build to report by state, and each target's
+absence rate with the supplied and unsupplied series apart. Then the lesson-text signal in the units
+that withheld the lessons (Appendix A §3.7, T9): reviewed, never failed.
 
 Observed only: the indicators never enter an assessment or a rate, and none of "no downstream
 build", "pending" or "evidence missing" reads as a build failure. Read-only against the deploy's
@@ -26,7 +27,8 @@ async def report(dsn: str, project: str) -> int:
     from adapters.persistence.transient import TransientRetry
     from squadops.config.schema import DBRetryConfig
     from squadops.memory.assessment import target_absence_rates
-    from squadops.memory.build_report import exposure_builds
+    from squadops.memory.build_report import declared_arms, exposure_builds
+    from squadops.memory.lesson_text import withheld_lesson_signals
 
     pool = await create_pool(
         dsn, min_size=1, max_size=2, server_settings={"default_transaction_read_only": "on"}
@@ -37,6 +39,8 @@ async def report(dsn: str, project: str) -> int:
         campaigns = PostgresCampaignRegistry(pool)
         exposures = await store.list_project_exposures(project)
         result = await exposure_builds(exposures, cycles=registry, campaigns=campaigns)
+        by_id = {e.exposure_id: e for e in exposures}
+        arms = await declared_arms((e.cycle_id for e in exposures), cycles=registry)
         print(f"== {project}: {len(exposures)} exposures, {len(result.builds)} build runs")
         for row in result.builds:
             i = row.indicators
@@ -46,7 +50,8 @@ async def report(dsn: str, project: str) -> int:
             print(
                 f"  {row.run_id}  verdict={i.verdict}  failed_rounds={i.failed_rounds}  "
                 f"refunded={i.refunded_rounds}  rounds_to_green={green}  increment={accepted}  "
-                f"exposures={len(row.exposures)}"
+                f"exposures={len(row.exposures)}  "
+                f"arm={', '.join(sorted({arms.get(by_id[x].cycle_id, 'unread') for x in row.exposures}))}"
             )
         for state, ids in result.unbuilt.items():
             print(f"  {state.value}: {len(ids)} exposures (none of them a build failure)")
@@ -60,6 +65,16 @@ async def report(dsn: str, project: str) -> int:
                 f"  {r.pattern_id} {series}: {r.absent}/{r.assessed} absent "
                 f"(n/a {r.not_applicable}, unassessed {r.unassessed})"
             )
+        signals = await withheld_lesson_signals(
+            exposures, project_id=project, cycles=registry, store=store
+        )
+        print(
+            "lesson text in units that withheld the lessons (a signal to review, never a failure):"
+        )
+        if not signals:
+            print("  none")
+        for s in signals:
+            print(f"  {s.run_id} {s.task_id} ({s.seam}, {s.captured_at}): {s.revision_id}")
         return 0
     finally:
         await pool.close()

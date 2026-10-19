@@ -7191,14 +7191,22 @@ class TestACountedRollDeclaresMemoryDisabled:
         assert re.findall(r"--set (\S+)", command) == sets
 
     @pytest.mark.parametrize(
-        "declared, refused", [(None, False), ("disabled", False), ("enabled", True)]
+        "overrides, refused",
+        [
+            ({}, False),
+            ({"memory": "disabled"}, False),
+            ({"memory": "enabled"}, True),
+            ({"memory_context": "none"}, True),
+            ({"memory": "disabled", "memory_context": "none"}, True),
+        ],
     )
     def test_a_counted_roll_refuses_any_memory_but_disabled(
-        self, driver, tmp_path, monkeypatch, declared, refused
+        self, driver, tmp_path, monkeypatch, overrides, refused
     ):
-        """Bug caught: a counted roll run with memory on, its result read as the squad's own. A
-        shakeout may run with memory on; only counting refuses it."""
-        overrides = {} if declared is None else {"memory": declared}
+        """Bug caught: a counted roll run with memory on, its result read as the squad's own; or
+        one declaring ``memory_context: none``, which withholds the project's instructions and so
+        moves the yardstick's requirements (SIP-0110 §A.3.7). A shakeout may run either way; only
+        counting refuses it."""
         cfg = self._cfg(driver, tmp_path, overrides)
         monkeypatch.setattr(driver, "psql", lambda *a, **k: "0")
         monkeypatch.setattr(driver, "sh", lambda *a, **k: "")

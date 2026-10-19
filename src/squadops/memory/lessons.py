@@ -38,6 +38,9 @@ class RecallDisposition(StrEnum):
     """The outcomes recall keeps apart (§0.8)."""
 
     DISABLED = "memory_disabled"
+    #: The unit declared ``memory_context: none`` (Appendix A §3.7): no lesson and no project
+    #: instruction, its own experiment, never a lesson-effect reading.
+    CONTEXT_NONE = "memory_context_none"
     NONE_ELIGIBLE = "none_eligible"
     SUPPLIED = "supplied"
     OMITTED_BY_BUDGET = "omitted_by_budget"
@@ -253,6 +256,9 @@ class Snapshot:
     #: Why the pin couldn't read the project's instructions, or ``None`` when it read them. The
     #: lessons still pin; a pin that couldn't read them can't say none were in force (§3.6).
     instructions_unread: str | None = None
+    #: The unit declared ``memory_context: none`` (§3.7): it pins no lesson and no project
+    #: instruction, and its exposures say so apart from a memory-disabled unit's.
+    context_withheld: bool = False
 
     def to_dict(self) -> dict[str, Any]:
         """The whole pin, self-contained: a stored snapshot never depends on rows read later."""
@@ -282,6 +288,8 @@ class Snapshot:
                 if self.instructions_unread is not None
                 else {}
             ),
+            # Only when declared, so every other snapshot is stored as it was.
+            **({"memory_context": "none"} if self.context_withheld else {}),
         }
 
     @classmethod
@@ -303,6 +311,7 @@ class Snapshot:
                 PinnedInstruction.from_dict(i) for i in data.get("instructions") or ()
             ),
             instructions_unread=data.get("instructions_unread"),
+            context_withheld=data.get("memory_context") == "none",
         )
 
 
@@ -317,11 +326,12 @@ def pin(
     policy: RecallPolicy | None = None,
     instructions: Sequence[PinnedInstruction] = (),
     instructions_unread: str | None = None,
+    context_withheld: bool = False,
 ) -> Snapshot:
     """The snapshot a unit pins: each approval in force at ``pinned_at`` (given before it, and not
     revoked by then) with the revision it binds, and the project instructions in force then. A
     unit that declares memory disabled pins no lesson (§0.7), and still pins the instructions
-    (Appendix A §3.7, #2179)."""
+    (Appendix A §3.7, #2179). A unit that declares ``memory_context: none`` pins neither."""
     policy = policy or RecallPolicy()
     snapshot_id = (
         "snp_"
@@ -329,6 +339,10 @@ def pin(
             f"{unit_kind.value}|{unit_id}|{pinned_at.isoformat()}".encode()
         ).hexdigest()[:16]
     )
+    if context_withheld:
+        return Snapshot(
+            snapshot_id, unit_kind, unit_id, pinned_at, True, (), policy, context_withheld=True
+        )
     if disabled:
         return Snapshot(
             snapshot_id, unit_kind, unit_id, pinned_at, True, (), policy, tuple(instructions),
@@ -417,6 +431,8 @@ def recall(snapshot: Snapshot | None, query: RecallQuery) -> Recalled:
     which marks the measurement invalid, never memory off or nothing eligible."""
     if snapshot is None:
         return Recalled(None, RecallDisposition.FAILED)
+    if snapshot.context_withheld:
+        return Recalled(snapshot.snapshot_id, RecallDisposition.CONTEXT_NONE)
     if snapshot.disabled:
         return Recalled(snapshot.snapshot_id, RecallDisposition.DISABLED)
     eligible = [

@@ -12,7 +12,7 @@ import logging
 from datetime import datetime
 from typing import TYPE_CHECKING, Any
 
-from squadops.memory.declarations import memory_disabled
+from squadops.memory.declarations import memory_context_none, memory_disabled
 from squadops.memory.lessons import RecallPolicy, Snapshot, UnitKind, pin
 from squadops.memory.records import PinnedInstruction, in_force
 
@@ -33,17 +33,20 @@ async def pin_unit(
     disabled: bool,
     policy: RecallPolicy | None = None,
     records: MemoryRecordsPort | None = None,
+    context_withheld: bool = False,
 ) -> Snapshot:
     """The unit's snapshot: the one it already pinned, or a new pin of what is approved now, with
     the project instructions in force now from ``records`` (#2179). Records that can't be read
     don't cost the unit its lessons: the snapshot pins them and says why it has no instructions,
-    so a task never reads an unread pin as one that held none (§3.6)."""
+    so a task never reads an unread pin as one that held none (§3.6). A unit that declares
+    ``memory_context: none`` reads neither: it pins nothing, and says so (§3.7)."""
     held = await store.get_snapshot(unit_kind, unit_id)
     if held is not None:
         return held
+    withholds_lessons = disabled or context_withheld
     instructions: tuple[PinnedInstruction, ...] = ()
     unread = None
-    if records is not None:
+    if records is not None and not context_withheld:
         try:
             instructions = in_force(await records.list_project(project_id))
         except Exception as e:  # noqa: BLE001 — the lessons pin; the snapshot records the miss
@@ -56,11 +59,14 @@ async def pin_unit(
         unit_id=unit_id,
         pinned_at=pinned_at,
         disabled=disabled,
-        revisions=await store.list_revisions(project_id),
-        approvals=await store.list_approvals(project_id),
+        # A pin that withholds the lessons never reads them, so a lesson store that can't be read
+        # doesn't cost it its snapshot.
+        revisions=[] if withholds_lessons else await store.list_revisions(project_id),
+        approvals=[] if withholds_lessons else await store.list_approvals(project_id),
         policy=policy,
         instructions=instructions,
         instructions_unread=unread,
+        context_withheld=context_withheld,
     )
     return await store.record_snapshot(snapshot)
 
@@ -77,14 +83,17 @@ async def pin_standalone_cycle(
 
     if getattr(cycle, "campaign_id", None):
         return None
+    config = cycle.resolved_config()
+    withheld = memory_context_none(config)
     return await pin_unit(
         store,
         unit_kind=UnitKind.CYCLE,
         unit_id=cycle.cycle_id,
         project_id=cycle.project_id,
         pinned_at=now,
-        disabled=memory_disabled(cycle.resolved_config()),
+        disabled=withheld or memory_disabled(config),
         records=records,
+        context_withheld=withheld,
     )
 
 

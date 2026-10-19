@@ -476,22 +476,35 @@ def fault_injection_decision(config: Mapping[str, Any]) -> PreflightDecision:
     )
 
 
-def memory_declaration_decision(config: Mapping[str, Any]) -> PreflightDecision:
-    """Block a ``memory`` declaration that is neither ``disabled`` nor ``enabled`` (SIP-0110 §0.7).
+def memory_declaration_decision(
+    config: Mapping[str, Any], *, campaign_cycle: bool
+) -> PreflightDecision:
+    """Block a ``memory`` declaration that is neither ``disabled`` nor ``enabled`` (SIP-0110 §0.7),
+    and a ``memory_context`` that is not ``none`` or sits beside ``memory: enabled`` (Appendix A
+    §3.7). A campaign's cycle that withholds either is blocked too: it uses its campaign's snapshot,
+    so the declaration would be recorded and never applied.
 
     A typo is refused rather than read either way: read as enabled, it would hand a counted roll
     its lessons (D12); read as disabled, it would leave a memory arm without memory.
     """
     # deferred (pair): cycles and memory would import each other at load
-    from squadops.memory.declarations import memory_disabled
+    from squadops.memory.declarations import ARM_LESSONS_ON, arm_of
 
     try:
-        memory_disabled(config)
+        arm = arm_of(config)
     except ValueError as exc:
         return PreflightDecision(
             blocking=(
                 Finding(code="memory_declaration_unknown", severity="block", message=str(exc)),
             )
+        )
+    if campaign_cycle and arm != ARM_LESSONS_ON:
+        why = (
+            f"a campaign's cycle uses its campaign's snapshot, so declaring {arm} on it would be "
+            "recorded and never applied"
+        )
+        return PreflightDecision(
+            blocking=(Finding(code="memory_declaration_unapplied", severity="block", message=why),)
         )
     return PreflightDecision()
 

@@ -83,7 +83,7 @@ re-places it.
 | entry points: the context-assembly port, inert, at the four seams (§A.3.6) | **shipped** | 2.3.0, #2257 (closes #2176; §5j records where it departs from §A.3.6's text) |
 | entry points: the typed records (notes, preferences, project and task instructions), permissions by kind, provenance (§A.3.2–§A.3.4) | **shipped** (§5l) | 2.4.0, PR #2508, issue #2177 |
 | entry points: task instructions, with the work target, retries, references bound with the cycle, binding holds and emergency withdrawal (§A.3.5–§A.3.8) | **placed** | 2.4.0, #2178: stage 1 (the records reach the tasks they name, binding, the task held when incomplete) shipped in PR #2513 (§5m); stage 2 remains |
-| entry points: project instructions in the snapshot with references bound, re-binding, the effective lesson budget, the comparison arms and disclosure (§A.3.6, §A.3.7) | **placed** | 2.4.0, #2179: stage 1 (pinned at admission, binding on the tasks they apply to, the lesson budget after them) shipped in PR #2515 (§5n), and stage 2's effective lesson budget (T17) in the PR that wrote this row (§5r); the rest of stage 2 remains |
+| entry points: project instructions in the snapshot with references bound, re-binding, the effective lesson budget, the comparison arms and disclosure (§A.3.6, §A.3.7) | **placed** | 2.4.0, #2179: stage 1 (pinned at admission, binding on the tasks they apply to, the lesson budget after them) shipped in PR #2515 (§5n), stage 2's effective lesson budget (T17) in PR #2526 (§5r), and the `memory_context: none` arm with the lesson-text diagnostic in the PR that wrote this row (§5s); the rest of stage 2 remains |
 | entry points: chat on the substrate, with capture confirmed, chat exposures, server-side project binding and provenance authorized (§A.3.5) | **placed** | 2.4.0, #2180: stage A (the binding, each turn's context and exposure, confirmed capture of notes and preferences, authorized provenance, Q29's deletion) shipped in PR #2517, and stage B's project-instruction capture in the PR that wrote this row (§5o); a task instruction's capture from chat remains, with #2178's second stage |
 | entry points: lesson inspection from chat; a conversational claim never becomes a lesson (§A.3.5) | **shipped** | 2.4.0, PR #2518, issue #2181 (§5p) |
 | entry points: the console's memory record view (§A.3.11) | **placed** | 2.4.0, #2182: the view and its uses route shipped in the PR that wrote this row (§5q); the page's capture test remains, live with #2183 |
@@ -1769,9 +1769,12 @@ of 2026-10-19):**
 **Stage 2 (#2179, still open):**
 - the effective lesson budget (T17): shipped, §5r;
 - `@current` bound at admission (T16);
-- the `memory_context: none` arm, with its declaration and the lesson-text diagnostic (T9's rest);
+- the `memory_context: none` arm, with its declaration and the lesson-text diagnostic (T9's rest): shipped, §5s;
+- a counted roll's pinned instruction set, recorded in its record and flagged when it differs from the previous roll's
+  (§A.3.7; the verification-set driver);
 - re-binding a running unit;
 - emergency withdrawal of a project instruction.
+
 ## 5o. Chat on the substrate, stage A, as built (2026-10-19, #2180; the supervisor, under the owner's grant of 2026-10-19)
 
 **What shipped:** §A.3.5's chat entry point and §A.3.6's chat consumer, with §A.3.3's binding, §A.3.4's provenance
@@ -1954,6 +1957,95 @@ than the framing left, the section is omitted whole. The wiring test enters at `
 instruction. The design plan's recall is asked with the budget less both binding sections and the lesson framing, and
 every other task, and every task of a project with no instruction, is asked with `None`. A mutant without the
 `remaining` limit fails two cases.
+
+## 5s. The `memory_context: none` arm and the lesson-text diagnostic, as built (2026-10-19, #2179 stage 2, T9; the supervisor, under the owner's grant of 2026-10-19)
+
+**What shipped:** §A.3.7's second experiment, named apart from the lesson comparison, and T9's diagnostic.
+- **The declaration:** a cycle declares `memory_context: none` in its execution config, as it declares
+  `memory: disabled`, an override or a request profile's default.
+  - Create refuses any other value, and refuses `memory: enabled` beside it, since it withholds the lessons too. Read
+    either way, a typo would run one experiment and record it as the other.
+  - `memory: disabled` beside it is consistent, and allowed.
+  - **A campaign's cycle that declares either is refused at its launch** (`memory_declaration_unapplied`). It selects
+    from its campaign's snapshot, so the declaration would be recorded and never applied. That was already true of
+    `memory: disabled`.
+  - **A counted roll refuses it too:** a counted roll declares `lessons: disabled` alone (the verification-set
+    driver's D12 check).
+- **The pin:** the cycle's snapshot pins no lesson and no project instruction, and reads neither the project's
+  records nor its lessons. It records the declaration (`memory_context: none` in its stored form, only when declared,
+  so every other snapshot is stored as it was). A memory-disabled pin no longer reads the lessons either, so a lesson
+  store that can't be read doesn't cost either unit its snapshot.
+- **The dispatch:** the task keeps its own task instructions and its ordinary inputs, and is handed no lesson and no
+  project instruction.
+- **The record:** recall answers `memory_context_none`, apart from `memory_disabled`, and the exposure's project
+  section says the same. So a stored exposure says which experiment ran.
+- **Reported apart:**
+  - An assessment of such an exposure is refused (422). The absence rate's two series are the lesson's effect, and
+    this experiment changed the task's requirements too.
+  - The exposure report names each build's arm: `memory_context: none`, `lessons: disabled` or `lessons on`. It
+    reads the arm from the cycle's own declaration, never from what recall answered, so a cycle whose every recall
+    failed still reports the arm it was created under.
+- **The diagnostic (T9):** in a cycle that declared the lessons withheld (either declaration), a prompt that holds an
+  approved lesson's text, whitespace normalized, is flagged. It's a signal, reported beside the arms by the exposure report,
+  and never fails anything.
+  - The prompts read are the authoring envelopes' messages: the four seams memory reaches, the only prompts captured
+    whole.
+  - A lesson counts only while its approval was in force at the envelope's capture. One approved later could not have
+    reached the prompt, and its text matching would only say it quotes the prompt it was drafted from.
+
+**Not built, and why:**
+- **A task instruction whose provenance cites a lesson revision, refused for a lessons-disabled unit.** Nothing
+  creates one yet. A record's source kinds name no lesson, and chat's capture of a task instruction ("apply lesson X
+  to this task") is #2180 stage B's remaining half. The refusal lands with that capture.
+- **A campaign's own declaration.** A campaign pins with memory on (`pin_campaign`), as it did before this. Its
+  memory-disabled declaration is SIP-0110's slice 4, and `memory_context: none` would join it there. Until then a
+  campaign's cycle can't declare either (above).
+- **The counted roll's pinned instruction set,** recorded and compared roll to roll. It's the driver's, and stays on
+  §5n's stage-2 list.
+
+**What the second read changed (2026-10-19, a fresh reader on PR #2528, ruled by the supervisor under the owner's
+grant of 2026-10-19).** It found no path where a pinned `none` cycle receives a lesson or a project instruction, and
+raised these:
+- **A `none` pin still read the lessons,** only to discard them. A lesson store that couldn't be read left the cycle
+  with no snapshot, and its tasks held whenever the project held a project instruction. Neither withholding pin
+  reads the lessons now.
+- **The arm was read from the exposures' dispositions,** so a withholding cycle whose every recall failed was reported
+  as lessons on, and the diagnostic never read it. The arm is now read from the cycle's declaration.
+- **A campaign's cycle could declare either and run with full context:** it uses its campaign's snapshot. Its launch
+  now refuses the declaration.
+- **The driver counted a roll that declared `memory_context`.** It now refuses it.
+- **Smaller:**
+  - the assessment's flag is required, not defaulted;
+  - the declaration key's constant is renamed, apart from chat's metadata key of the same value;
+  - T9 enters at `supply_for_cycle`, run provisioning's call.
+
+**Evidence:**
+- **T9's three arms,** entering where a cycle is admitted (`pin_standalone_cycle`) and where a run's plan is supplied
+  (`supply_for_cycle`). There is a lesson approved, a project instruction in force, and a task instruction for each
+  cycle. The design plan is handed:
+  - all three, with lessons on;
+  - the two instructions, with `memory: disabled`;
+  - the task instruction alone, with `memory_context: none`.
+- **The exposures:** they record `supplied`, `memory_disabled` and `memory_context_none`, with the project section
+  `supplied`, `supplied` and `memory_context_none`.
+- **Storage and the routes:**
+  - A withheld snapshot round-trips through its stored form and still recalls `memory_context_none`.
+  - A memory-disabled snapshot's stored form is unchanged.
+  - The assessment route refuses a withheld exposure and stores nothing.
+- **Four mutants are each caught:** the project section left as none-eligible, the declaration not stored, the
+  assessment not refused, and the cycle's pin ignoring the declaration.
+- **The second read's fixes, each with a mutant caught:**
+  - a withholding pin with an unreadable lesson store still pins;
+  - a campaign's cycle that withholds either is refused at `prepare_cycle` with the campaign named, and a standalone
+    one is admitted;
+  - a counted roll refuses `memory_context`;
+  - the arms are read from the declarations, a cycle the registry no longer holds getting none.
+- **The diagnostic:**
+  - It flags a lesson reflowed across lines in the prompt.
+  - It doesn't flag a lesson approved after the capture or revoked before it.
+  - It reads only the runs of withholding cycles, a cycle whose recalls all failed among them. A lessons-on run,
+    whose prompt holds the lesson because it was supplied, is not read.
+  - Three mutants are each caught: no normalization, the approval's timing ignored, and the `none` arm not read.
 
 ## 6. Mode neutrality: cycle, duty, and ambient utilization
 

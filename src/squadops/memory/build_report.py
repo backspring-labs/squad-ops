@@ -14,7 +14,8 @@ from typing import TYPE_CHECKING
 
 from squadops.campaigns.gate import RETURNING_DECISIONS
 from squadops.campaigns.models import ControlOperation, ControlOutcome
-from squadops.cycles.models import Run, RunStatus, WorkloadType
+from squadops.cycles.models import CycleNotFoundError, Run, RunStatus, WorkloadType
+from squadops.memory.declarations import arm_of
 from squadops.memory.exposures import Exposure
 from squadops.memory.indicators import (
     BuildIndicators,
@@ -31,6 +32,20 @@ if TYPE_CHECKING:
 
 _ENDED = frozenset({RunStatus.COMPLETED, RunStatus.FAILED, RunStatus.CANCELLED})
 _RETURNING = frozenset(d.value for d in RETURNING_DECISIONS)
+
+
+async def declared_arms(cycle_ids: Iterable[str], *, cycles: CycleRegistryPort) -> dict[str, str]:
+    """Each cycle's arm, from its own declaration (Appendix A §3.7), never from what its recalls
+    answered. A cycle the registry no longer holds, or whose declaration can't be read, is left
+    out, so its exposures report no arm rather than a guessed one."""
+    arms: dict[str, str] = {}
+    for cycle_id in sorted(set(cycle_ids)):
+        try:
+            cycle = await cycles.get_cycle(cycle_id)
+            arms[cycle_id] = arm_of(cycle.resolved_config())
+        except (CycleNotFoundError, ValueError):
+            continue
+    return arms
 
 
 def can_still_build(runs: Sequence[Run]) -> bool:
