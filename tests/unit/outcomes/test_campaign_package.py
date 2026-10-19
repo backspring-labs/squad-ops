@@ -167,7 +167,7 @@ async def test_the_package_never_carries_a_scenarios_goal_or_steps(store):
     [
         (
             [_record("cyc_inc1", INC1, CAL, ScenarioResult.PASSED)],
-            {"reading": None, "not_read": "no record of the tree it built on"},
+            {"reading": None, "unread_because": "no record of the tree it built on"},
         ),
     ],
     ids=["its-previous-tree-unrecorded"],
