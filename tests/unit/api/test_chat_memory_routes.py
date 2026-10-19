@@ -514,7 +514,7 @@ def test_a_conversational_claim_is_a_suggestion_note_that_can_never_become_a_les
         )  # fmt: skip
     snapshot = _run(
         pin_unit(world.store, unit_kind=UnitKind.CYCLE, unit_id="cyc_t5", project_id="group_run",
-                 pinned_at=datetime(2026, 10, 19, tzinfo=UTC), disabled=False)
+                 pinned_at=datetime(2026, 10, 19, tzinfo=UTC), disabled=False, records=world.records)
     )  # fmt: skip
     assert saved["record_id"] not in json.dumps(snapshot.to_dict())
 
