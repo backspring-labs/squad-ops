@@ -1444,3 +1444,13 @@ checks:
       from squadops.stacks.stack_nextjs_ts import APP_INVOCATION as a
       print(a.invokes("import CreateRunView from '@/app/runs/new/page'\n"), a.invokes("import { api } from '@/lib/api'\n"), a.mocks_subject("vi.mock('@/app/runs/new/page')"))
     expect: "True False True"
+  - id: "2457"
+    what: an agent's container holds no database credential, and its config loads without one
+    container: squadops-max
+    code: |
+      import os
+      from squadops.bootstrap.secrets import secret_provider_for
+      from squadops.config.loader import load_config
+      config = load_config(secret_provider_factory=secret_provider_for)
+      print(os.path.exists("/run/secrets/db_password"), "SQUADOPS__DB__URL" in os.environ, config.db)
+    expect: False False None

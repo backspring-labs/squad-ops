@@ -315,7 +315,7 @@ async def _init_migrations(config, pool) -> None:
         # deferred (optional): loads asyncpg, which the base install lacks
         from squadops.api.runtime.migrations import apply_migrations
 
-        migrations_dir = Path(config.db.migrations_dir)
+        migrations_dir = Path(config.database().migrations_dir)
         applied = await apply_migrations(pool, migrations_dir)
         if applied:
             logger.info("Applied %d migration(s) from %s", applied, migrations_dir)
@@ -429,7 +429,7 @@ async def _init_cycle_subsystem(state, config, pool) -> None:
     cycle_registry = create_cycle_registry(
         config.cycles.registry_provider,
         **(
-            {"pool": pool, "retry": config.db.retry}
+            {"pool": pool, "retry": config.database().retry}
             if config.cycles.registry_provider == "postgres"
             else {}
         ),
@@ -831,7 +831,7 @@ async def _startup(app: FastAPI) -> None:
     no AMQP connection of its own: every publish goes through the queue port, which opens its own
     (#2322)."""
     state, config = app.state, app.state.config
-    state.pool = await create_pool(config.db.url, min_size=1, max_size=10)  # #577: the one factory
+    state.pool = await create_pool(config.database().url, min_size=1, max_size=10)  # #577
     await _init_auth_subsystem(state, config)
     await _init_migrations(config, state.pool)
     # SIP-0110 (D13): the memory store, before the cycle subsystem whose executor recalls from it.

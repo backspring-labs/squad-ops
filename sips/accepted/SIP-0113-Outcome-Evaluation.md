@@ -984,6 +984,36 @@ implementer's, for the owner's review.
   - Vite's preview as the canonical stack's page server, a production build behind the scaffold's own proxy;
   - each delivery's own routes as its pages. Deltas then compare only the pages both trees declare.
 
+### 10g. The database boundary, as built (2026-10-19, §8.3 item 1, IR-4; #2457; decided by the supervisor under the owner's grant of 2026-10-19)
+
+**What §10a left open:** every agent's container held the runtime API's own database credential (the
+`db_password` secret and `SQUADOPS__DB__URL`). So a process in one could read `scenario_suites` directly, past
+the routes and the code guards.
+
+**What #2457 proposed, and what was built instead.** It proposed an agents' role with grants on what they use,
+and none on the held-out tables. **No agent uses any table, so agents get no credential at all.**
+- **In the code:** no module outside the runtime API reads `config.db`.
+- **On the live deploy:** no agent container held a connection on 2026-10-19. The connections came from the
+  runtime API, Prefect's server, Keycloak and LangFuse only.
+- **From the MacBook lane:** no SIP-0112 table is read or written by an agent. A source-backed task's view of
+  the product arrives in its envelope.
+
+So there is no grant to keep current, and a table added later is out of an agent's reach by construction.
+
+**What changed:**
+- **The config:** `AppConfig.db` is optional. An agent declares none.
+  - `AppConfig.database()` requires it, by name, where a pool is made: the runtime API's startup, its
+    migrations and its registry, `record_deploy`, and `campaign_binding_replay`.
+  - The runtime API refuses to start without one, before any pool is made.
+- **Compose:** the eight agent services lose `db_password` and `SQUADOPS__DB__URL`.
+- **The guard:** `test_held_out_scenarios_stay_out_of_the_squads_reach.py` refuses an agent service that holds
+  either. Its paired control is the runtime API, which holds both.
+- **The loaded check:** row `2457`, run in an agent's container.
+
+**Not covered here: the identity provider's credentials.** Found alongside: every service, the agents included,
+mounts Keycloak's admin password and database DSN, which no process reads. That is #2498, fixed before SIP-0112's
+brownfield demonstration.
+
 ### 10h. The runner's `where` check (2026-10-19, §4.1; #2464; the supervisor, under the owner's grant of 2026-10-19)
 
 **Why:** the independent review of the window's first suite found a core outcome no scenario could check: a created
