@@ -1,6 +1,6 @@
 ---
 template_id: request.development_propose_plan_tasks
-version: "8"
+version: "9"
 required_variables:
   - brief_content
   - planning_content
@@ -17,6 +17,7 @@ optional_variables:
   - rejection_context_section
   - prior_cycle_section
   - task_instructions_section
+  - project_instructions_section
   - cross_cycle_lessons_section
   - authoring_rules_section
 ---
@@ -82,4 +83,4 @@ confidence: ""  # low | medium | high
 {{frozen_surface_section}}
 {{increment_sections}}
 {{rejection_context_section}}
-{{prior_cycle_section}}{{task_instructions_section}}{{cross_cycle_lessons_section}}
+{{prior_cycle_section}}{{task_instructions_section}}{{project_instructions_section}}{{cross_cycle_lessons_section}}

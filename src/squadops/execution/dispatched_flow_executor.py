@@ -142,6 +142,7 @@ from squadops.execution.run_provisioning import RunInProgress, RunProvisioning
 from squadops.execution.task_dispatcher import TaskDispatcher
 from squadops.execution.task_naming import build_task_name
 from squadops.execution.workload_gate import GateOutcome, WorkloadGate, stored_change_request
+from squadops.memory.task_instructions import TaskInstructionsUnavailable
 from squadops.ports.comms.queue import QueueError
 from squadops.ports.cycles.flow_execution import FlowExecutionPort
 from squadops.ports.events.noop import NoOpCycleEventBus
@@ -585,13 +586,18 @@ class _TaskOutcomeRouter:
             # SIP-0110 §0.2 (#2162): the re-dispatch is another authoring invocation. It asks
             # its unit's snapshot again and records its own exposure under its attempt;
             # before, it rode the first attempt's envelope and had none.
-            await supply_the_redispatch(
-                (_envelope, _enriched),
-                recall=executor._failure_recall,
-                cycle=cycle,
-                run_id=run_id,
-                now=datetime.now(UTC),
-            )
+            try:
+                await supply_the_redispatch(
+                    (_envelope, _enriched),
+                    recall=executor._failure_recall,
+                    cycle=cycle,
+                    run_id=run_id,
+                    now=datetime.now(UTC),
+                )
+            except TaskInstructionsUnavailable as e:
+                # §3.6: a re-dispatch whose binding sections are incomplete is held, as the first
+                # dispatch is at provisioning; stage 1's hold fails the run, naming why (#2179).
+                raise _ExecutionError(str(e)) from e
         if action == "accept_patch":
             # #994: remember that THIS task now has accepted, stored repaired
             # state. A later round's rewind re-authors from the checkpoint and

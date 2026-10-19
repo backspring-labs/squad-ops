@@ -82,8 +82,8 @@ re-places it.
 | entry points: chat's conversation history reaching the agent, with session ownership checked (SIP-0085 §4, §9; §A.3.3) | **shipped** | 2.3.0, PR #2247, issue #2175: resuming or reading a session checks its owner and agent first, refused as a missing session; each turn carries its bounded history, the drop counted |
 | entry points: the context-assembly port, inert, at the four seams (§A.3.6) | **shipped** | 2.3.0, #2257 (closes #2176; §5j records where it departs from §A.3.6's text) |
 | entry points: the typed records (notes, preferences, project and task instructions), permissions by kind, provenance (§A.3.2–§A.3.4) | **shipped** (§5l) | 2.4.0, PR #2508, issue #2177 |
-| entry points: task instructions, with the work target, retries, references bound with the cycle, binding holds and emergency withdrawal (§A.3.5–§A.3.8) | **placed** | 2.4.0, #2178 |
-| entry points: project instructions in the snapshot with references bound, re-binding, the effective lesson budget, the comparison arms and disclosure (§A.3.6, §A.3.7) | **placed** | 2.4.0, #2179 |
+| entry points: task instructions, with the work target, retries, references bound with the cycle, binding holds and emergency withdrawal (§A.3.5–§A.3.8) | **placed** | 2.4.0, #2178: stage 1 (the records reach the tasks they name, binding, the task held when incomplete) shipped in PR #2513 (§5m); stage 2 remains |
+| entry points: project instructions in the snapshot with references bound, re-binding, the effective lesson budget, the comparison arms and disclosure (§A.3.6, §A.3.7) | **placed** | 2.4.0, #2179: stage 1 (pinned at admission, binding on the tasks they apply to, the lesson budget after them) ships in the PR that wrote this row (§5n); stage 2 remains |
 | entry points: chat on the substrate, with capture confirmed, chat exposures, server-side project binding and provenance authorized (§A.3.5) | **placed** | 2.4.0, #2180 |
 | entry points: lesson inspection from chat; a conversational claim never becomes a lesson (§A.3.5) | **placed** | 2.4.0, #2181 |
 | entry points: the console's memory record view (§A.3.11) | **placed** | 2.4.0, #2182 |
@@ -1711,6 +1711,67 @@ context-assembly port.
 - `@current` bound at admission;
 - `carries_into: continuations`;
 - the gate's structured `instructions` field.
+
+## 5n. Project instructions, stage 1, as built (2026-10-19, #2179; the supervisor, under the owner's grant of 2026-10-19)
+
+**What shipped:** §A.3.7's pin of project instructions, and §A.3.6's binding section for them.
+- **Confirmed through the records' route.** A project instruction is created with `memory:instruct` (§5l), confirmed by
+  its writer.
+- **Pinned at admission:** a unit's snapshot pins the project instructions in force when it's admitted, beside the
+  lessons, as self-contained revisions: text, applicability and references (`Snapshot.instructions`). A standalone cycle
+  pins at creation, a campaign at admission.
+  - A unit keeps the revision it pinned, however the record changes after it.
+  - A unit admitted later gets the record's current revision.
+  - A withdrawn or unconfirmed instruction is never pinned.
+- **The memory-disabled unit:** a unit that declares memory disabled pins no lesson, and still pins the instructions.
+  §A.3.7 makes today's "memory disabled" the `lessons: disabled` arm, so its arms differ only in the lessons. No
+  instruction existed before this, so no stored or counted unit changes.
+- **Supply:** the composer hands each dispatch the pinned instructions whose applicability covers it, on
+  `PROJECT_INSTRUCTIONS_INPUT`.
+  - The section is binding, after the task instructions, and takes the prompt budget they leave.
+  - An unreadable snapshot holds the task, after the reads lessons get. An unreadable snapshot can't say none were
+    pinned.
+  - The exposure records the revisions handed.
+- **Rendering:** every authoring seam shows the section from its managed fragment, between the task instructions and
+  the lessons.
+- **Storage:** a snapshot that pins none is stored as it was.
+
+**Where stage 1 narrows the design, as #2178's stage 1 does (§5m):**
+- **A hold fails the run's provisioning,** rather than waiting.
+- **A reference names a concrete revision.**
+- **The lesson budget is unchanged (stage 2, T17).** The lessons keep the snapshot's own budget. §A.3.6 has them take
+  what the binding sections leave, which changes recall's input, so that waits for the hold that makes an overrun
+  recoverable.
+
+**What the second read changed (2026-10-19, a fresh reader on PR #2515, ruled by the supervisor under the owner's grant
+of 2026-10-19):**
+- **A pin that can't read the records keeps its lessons and says so.** It pinned nothing and admitted the unit with no
+  snapshot, so its tasks read "no instruction" and dispatched without the one in force, and the lessons were lost with
+  it. Now the snapshot pins the lessons and records why it has no instructions (`instructions_unread`).
+- **An unknown pin holds the task only when an instruction could have been pinned.** What a unit pinned is unknown when
+  its snapshot is unreadable or absent, or its pin couldn't read the records. The records are append-only, withdrawn
+  ones kept, so a project that holds no project instruction now held none at any admission: its tasks run, the lessons
+  failing soft as in 2.3. A project that holds one, or records that can't be read either, holds the task, naming why.
+- **`@current` is refused on a project instruction too.** The narrowing above was enforced for task instructions only,
+  and a pin would have kept `@current` unresolved, where nothing could bind it later.
+- **A hold says whether the budget was unknown or spent.** `prompt_budget_of` gives `-1` for a model the registry doesn't
+  know, apart from a known window the inputs fill (`0`). Task instructions that spent a known budget had held the project
+  section as "the model's prompt budget is unknown".
+- **A re-dispatch is no longer charged for what its attempt was handed.** The attempt before's sections counted as the
+  task's own input and again as its section, so a binding that fit attempt 1 could hold attempt 2. This was #2178's too.
+- **A held re-dispatch fails the run as the first dispatch's hold does,** naming why, rather than as an unexpected error.
+- **An applicability naming what no dispatch carries is refused at write:** a task type that authors nothing, a role no
+  squad has (`development` for `dev`), a stack no profile builds. It would never match, and nothing would say so.
+- **Left for stage 2, a design question:** a task instruction reaches the repairs that revise its targeted output
+  (`task_plan.repairs_revising`, §5m); a project instruction matches by applicability only, so one for
+  `development.develop` doesn't reach that output's repairs unless it names them.
+
+**Stage 2 (#2179, still open):**
+- the effective lesson budget (T17);
+- `@current` bound at admission (T16);
+- the `memory_context: none` arm, with its declaration and the lesson-text diagnostic (T9's rest);
+- re-binding a running unit;
+- emergency withdrawal of a project instruction.
 
 ## 6. Mode neutrality: cycle, duty, and ambient utilization
 

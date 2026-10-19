@@ -318,13 +318,13 @@ def _check_revision(kind: str, scope: str, revision: Revision) -> None:
             raise RecordRefused("a project instruction names its applicability")
         if scope == RecordScope.TASK and revision.target is None:
             raise RecordRefused("a task instruction names its target cycle and its tasks")
-        if scope == RecordScope.TASK and any(
-            r.ref.endswith("@current") for r in revision.references
-        ):
-            # #2178: a task instruction's references are bound to a concrete revision with the
-            # cycle's inputs (§3.7). Resolving ``@current`` at admission is #2178's second stage.
+        if any(r.ref.endswith("@current") for r in revision.references):
+            # #2178, #2179: an instruction's references are bound to a concrete revision when the
+            # unit binds them (§3.7): a task instruction's with its cycle's inputs, a project
+            # instruction's in the snapshot that pins it. Resolving ``@current`` at that binding is
+            # each one's second stage; a pin that kept it unresolved could never be bound after.
             raise RecordRefused(
-                "a task instruction's reference names its revision; @current isn't bound yet"
+                f"a {scope} instruction's reference names its revision; @current isn't bound yet"
             )
         if revision.confirmed_by is None:
             raise RecordRefused("an instruction binds the work, so it is confirmed")
@@ -408,3 +408,67 @@ def revision_from_document(doc: Mapping[str, Any]) -> Revision:
             Reference(r["ref"], bool(r["required"])) for r in doc.get("references", [])
         ),
     )
+
+
+@dataclass(frozen=True)
+class PinnedInstruction:
+    """A project instruction's revision as a unit pinned it at admission (Appendix A §3.7; #2179).
+    Self-contained, as the rest of a snapshot is: the pin never depends on rows read later, so a
+    unit keeps the revision it pinned however the record changes after."""
+
+    record_id: str
+    revision: int
+    text: str
+    applicability: InstructionApplicability
+    references: tuple[Reference, ...] = ()
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "record_id": self.record_id,
+            "revision": self.revision,
+            "text": self.text,
+            "applicability": {
+                "task_types": list(self.applicability.task_types),
+                "roles": list(self.applicability.roles),
+                "stacks": list(self.applicability.stacks),
+            },
+            "references": [{"ref": r.ref, "required": r.required} for r in self.references],
+        }
+
+    @classmethod
+    def from_dict(cls, data: Mapping[str, Any]) -> PinnedInstruction:
+        a = data["applicability"]
+        return cls(
+            record_id=str(data["record_id"]),
+            revision=int(data["revision"]),
+            text=str(data["text"]),
+            applicability=InstructionApplicability(
+                tuple(a["task_types"]), tuple(a["roles"]), tuple(a["stacks"])
+            ),
+            references=tuple(
+                Reference(r["ref"], bool(r["required"])) for r in data.get("references", [])
+            ),
+        )
+
+
+def in_force(records: Collection[MemoryRecord]) -> tuple[PinnedInstruction, ...]:
+    """The project instructions in force now, as a unit admitted now pins them: active, confirmed,
+    each at its current revision, in the order they were recorded."""
+    pinned = []
+    for record in records:
+        if (
+            record.kind != RecordKind.INSTRUCTION
+            or record.scope != RecordScope.PROJECT
+            or record.status != RecordStatus.ACTIVE
+        ):
+            continue
+        current = record.current
+        if current.applicability is None or current.confirmed_by is None:
+            continue
+        pinned.append(
+            PinnedInstruction(
+                record.record_id, current.number, current.body, current.applicability,
+                current.references,
+            )
+        )  # fmt: skip
+    return tuple(pinned)

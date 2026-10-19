@@ -1,6 +1,6 @@
 ---
 template_id: request.planning_task_base
-version: "7"
+version: "8"
 required_variables:
   - prd
   - role
@@ -8,6 +8,7 @@ optional_variables:
   - increment_section
   - prior_cycle_section
   - task_instructions_section
+  - project_instructions_section
   - cross_cycle_lessons_section
   - target_stack_section
   - time_budget_section
@@ -19,7 +20,7 @@ optional_variables:
 
 {{prd}}
 {{increment_section}}
-{{prior_cycle_section}}{{task_instructions_section}}{{cross_cycle_lessons_section}}
+{{prior_cycle_section}}{{task_instructions_section}}{{project_instructions_section}}{{cross_cycle_lessons_section}}
 {{target_stack_section}}
 {{time_budget_section}}
 {{prior_outputs}}

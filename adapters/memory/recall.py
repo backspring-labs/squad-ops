@@ -14,8 +14,9 @@ from typing import Any
 
 from squadops.memory.exposures import Exposure
 from squadops.memory.lessons import RecallDisposition, Recalled, recall
-from squadops.memory.recall import RecallQuery
-from squadops.memory.records import MemoryRecord, RecordScope
+from squadops.memory.project_instructions import PinUnknown, none_could_be_pinned
+from squadops.memory.recall import RecallQuery, UnitKind
+from squadops.memory.records import MemoryRecord, PinnedInstruction, RecordScope
 from squadops.ports.memory.cross_cycle import CrossCycleMemoryStorePort, RecordIncompatible
 from squadops.ports.memory.recall import FailurePatternRecallPort
 from squadops.ports.memory.records import MemoryRecordsPort
@@ -39,6 +40,47 @@ class SnapshotRecall(FailurePatternRecallPort):
         #: (``create_failure_recall``); a unit test of the lessons alone may hold none.
         self._records = records
         self._attempts = attempts
+
+    async def pinned_instructions(
+        self, unit_kind: UnitKind, unit_id: str, project_id: str
+    ) -> tuple[PinnedInstruction, ...]:
+        try:
+            snapshot = await self._snapshot_for_instructions(unit_kind, unit_id)
+        except Exception as e:
+            why = f"the unit's snapshot could not be read ({e})"
+        else:
+            if snapshot is not None and snapshot.instructions_unread is None:
+                return snapshot.instructions
+            why = (
+                snapshot.instructions_unread
+                if snapshot is not None
+                else "the unit has no pinned snapshot"
+            )
+        # What it pinned can't be known; a project with no project instruction pinned none
+        # (#2179). Records that can't be read raise here, and the task holds.
+        held = await self._records.list_project(project_id) if self._records is not None else []
+        if none_could_be_pinned(held):
+            return ()
+        raise PinUnknown(f"the unit's project instructions can't be known: {why}")
+
+    async def _snapshot_for_instructions(self, unit_kind: UnitKind, unit_id: str):
+        """The snapshot, read as the lessons read it, with their attempts. A read that fails
+        them all raises."""
+        for attempt in range(1, self._attempts + 1):
+            try:
+                return await self._store.get_snapshot(unit_kind, unit_id)
+            except Exception:
+                if attempt == self._attempts:
+                    raise
+                logger.warning(
+                    "memory_instructions_read_failed unit=%s:%s attempt=%d/%d",
+                    unit_kind,
+                    unit_id,
+                    attempt,
+                    self._attempts,
+                    exc_info=True,
+                )
+        return None
 
     async def task_instructions(self, project_id: str, cycle_id: str) -> list[MemoryRecord]:
         if self._records is None:

@@ -26,6 +26,7 @@ from typing import Any
 
 from fastapi import APIRouter, Depends, Request
 
+from squadops.agents.models import DEFAULT_ROLES
 from squadops.api.errors import http_error
 from squadops.api.memory_schemas import (
     MemoryRecordContent,
@@ -59,6 +60,7 @@ from squadops.memory.records import (
     withdrawn,
 )
 from squadops.ports.memory.records import RecordConflict
+from squadops.stacks.development_profiles import DEVELOPMENT_PROFILES
 
 router = APIRouter(prefix="/api/v1/memory-records", tags=["memory"])
 
@@ -102,7 +104,32 @@ async def _campaign_cycle(request: Request, scope: str, project_id: str | None, 
     return bool(getattr(cycle, "campaign_id", None))
 
 
+def _unmatched(applicability) -> list[str]:
+    """What a project instruction's applicability names that no dispatch carries: a task type
+    that authors nothing, a role no squad has, a stack no profile builds. Each would never match,
+    so the instruction would bind nothing and say nothing (the second read of PR #2515)."""
+    vocabularies = (
+        ("task type", applicability.task_types, lambda t: authoring_seam_of(t) is not None),
+        ("role", applicability.roles, lambda r: r in DEFAULT_ROLES),
+        ("stack", applicability.stacks, lambda s: s in DEVELOPMENT_PROFILES),
+    )
+    return [
+        f"{name} {value!r}"
+        for name, values, known in vocabularies
+        for value in values
+        if value != "*" and not known(value)
+    ]
+
+
 def _revision(content: MemoryRecordContent, *, actor: str, kind: str, now: datetime) -> Revision:
+    if content.applicability is not None and (unmatched := _unmatched(content.applicability)):
+        raise http_error(
+            422,
+            "VALIDATION_ERROR",
+            f"the applicability names what no dispatch carries: {', '.join(unmatched)} "
+            f"(roles: {', '.join(sorted(DEFAULT_ROLES))}; stacks: "
+            f"{', '.join(sorted(DEVELOPMENT_PROFILES))}; '*' for any)",
+        )
     try:
         return Revision(
             number=1,

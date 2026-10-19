@@ -74,6 +74,8 @@ AUTHORING_INPUT_CONTRACT: frozenset[str] = frozenset(
         # task, binding. `squadops.memory.task_instructions.TASK_INSTRUCTIONS_INPUT`, spelled here
         # for the same reason; present only when one applies.
         "task_instructions",
+        # #2179: the unit's pinned project instructions that apply to this task.
+        "project_instructions",
     }
 )
 

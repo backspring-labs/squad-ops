@@ -103,7 +103,8 @@ class TaskInvocation:
     stack: str
     model_family: str
     agent_id: str
-    #: Tokens: the model's window less the completion reserve and the task's own inputs (§3.6 Budgets).
+    #: Tokens: the model's window less the completion reserve and the task's own inputs (§3.6 Budgets);
+    #: ``-1`` when the model's window is unknown, which never means room.
     prompt_budget: int
 
 
@@ -154,6 +155,8 @@ class ContextBundle:
     #: What the task is handed on ``TASK_INSTRUCTIONS_INPUT`` (#2178), carried as recall's answer is:
     #: ``None`` when no task instruction applies.
     task_instructions: Mapping[str, Any] | None = None
+    #: What the task is handed on ``PROJECT_INSTRUCTIONS_INPUT`` (#2179): ``None`` when none applies.
+    project_instructions: Mapping[str, Any] | None = None
 
     def section(self, kind: SectionKind) -> Section | None:
         return next((s for s in self.sections if s.kind == kind), None)

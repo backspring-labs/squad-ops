@@ -36,7 +36,10 @@ from squadops.capabilities.handlers._plan_authoring import retry_yaml_call
 from squadops.capabilities.handlers.base import HandlerEvidence, HandlerResult
 from squadops.capabilities.handlers.cross_cycle_lessons import cross_cycle_lessons_section
 from squadops.capabilities.handlers.planning.base import _PlanningTaskHandler
-from squadops.capabilities.handlers.task_instructions import task_instructions_section
+from squadops.capabilities.handlers.task_instructions import (
+    project_instructions_section,
+    task_instructions_section,
+)
 from squadops.stacks.scaffold import frozen_conventions_for
 from squadops.tasks.task_types import TaskType
 
@@ -179,6 +182,9 @@ class StrategyProposeIncrementHandler(_PlanningTaskHandler):
         instructions = await task_instructions_section(renderer, inputs)
         if instructions:
             variables["task_instructions_section"] = instructions
+        project = await project_instructions_section(renderer, inputs)
+        if project:
+            variables["project_instructions_section"] = project
         lessons = await cross_cycle_lessons_section(renderer, inputs)
         if lessons:
             variables["cross_cycle_lessons_section"] = lessons

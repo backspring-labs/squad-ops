@@ -79,12 +79,12 @@ async def test_a_tasks_lesson_section_is_recalls_answer_from_its_snapshot_owner(
     bundle = await LessonContextAssembly(recall, now=_NOW).assemble(request)
 
     assert bundle.recalled == await recall.recall(query_of(request))
-    # #2178: the task instructions' binding section beside it, none recorded for this cycle.
-    instructions, lessons = bundle.sections
-    assert (instructions.kind, instructions.disposition) == (
-        SectionKind.TASK_INSTRUCTIONS,
-        Disposition.NONE_ELIGIBLE,
-    )
+    # #2178, #2179: the two binding sections beside it, none recorded or pinned for this unit.
+    instructions, project, lessons = bundle.sections
+    assert [(s.kind, s.disposition) for s in (instructions, project)] == [
+        (SectionKind.TASK_INSTRUCTIONS, Disposition.NONE_ELIGIBLE),
+        (SectionKind.PROJECT_INSTRUCTIONS, Disposition.NONE_ELIGIBLE),
+    ]
     assert (lessons.kind, lessons.disposition, bundle.complete) == (
         SectionKind.LESSONS,
         Disposition.SUPPLIED,
