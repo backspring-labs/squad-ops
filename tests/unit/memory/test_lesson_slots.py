@@ -40,6 +40,7 @@ _SLOTTED = {
     "request.strategy_propose_increment": "prd_section",
     "request.cycle_repair_task": "disputed_checks_section",
     "request.repair_task_base": "verification_context",
+    "request.qa_test.test_validate": "test_supplement",
 }
 
 _LESSONS = {
@@ -368,3 +369,38 @@ async def test_a_lesson_and_a_retrys_prior_cycle_brief_render_in_separate_slots(
     assert f"\n\n{_HEADING}\n" in both
     assert attempted in prompts["brief"] and _HEADING not in prompts["brief"]
     assert _HEADING in prompts["lessons"] and attempted not in prompts["lessons"]
+
+
+async def test_the_test_author_shows_the_lessons_on_its_monolithic_path():
+    """#2509, entered at ``QATestHandler._compose_user_prompt`` with the shipped assets, on the path
+    a ``qa.test`` without a subtask focus takes. Bug caught: the lessons on the envelope, and the
+    exposure saying supplied, while this path's prompt never showed them (the focused path did)."""
+    import time
+
+    from squadops.capabilities.handlers.cycle.qa_test import QATestHandler
+    from squadops.stacks.development_profiles import get_development_profile
+
+    context = _author_context([])
+    profile = get_development_profile("python_cli")
+    base = {"artifact_contents": {"validation_plan.md": "check the join"}}
+
+    async def prompt(inputs):
+        composed = await QATestHandler()._compose_user_prompt(
+            context, inputs, profile, "python_cli", "the PRD", None, time.monotonic()
+        )
+        return composed.user_prompt
+
+    shown = await prompt({**base, LESSONS_INPUT: _LESSONS})
+    plain = await prompt(base)
+
+    assert _shows_the_lessons(shown)
+    assert _HEADING not in plain
+    assert (
+        shown.replace(
+            await cross_cycle_lessons_section(
+                context.ports.request_renderer, {LESSONS_INPUT: _LESSONS}
+            ),
+            "",
+        )
+        == plain
+    )
