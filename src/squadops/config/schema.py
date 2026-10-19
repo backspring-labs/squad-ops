@@ -603,9 +603,10 @@ class CyclesConfig(BaseModel):
         description="Squad profile provider (SIP-0075; required, #1568)",
     )
     #: SIP-0112 FR-03 (#2408): ``config`` reads config/projects.yaml, the only authority before
-    #: the cutover; ``postgres`` is the writable registry, the only one after it. Required, so a
-    #: deploy names which is authoritative rather than inheriting it.
-    project_registry_provider: Literal["config", "postgres"] = Field(
+    #: the cutover; ``postgres`` is the writable registry, the only one after it;
+    #: ``postgres_read_only`` is that registry with its writes gated off, the rollback (R3).
+    #: Required, so a deploy names which is authoritative rather than inheriting it.
+    project_registry_provider: Literal["config", "postgres", "postgres_read_only"] = Field(
         description="Project registry provider (SIP-0112 FR-03; required, #1568)",
     )
     inert_cycle_threshold: int = Field(
@@ -615,6 +616,23 @@ class CyclesConfig(BaseModel):
             "SIP-0096 §9 N: consecutive not-executed cycles before a stable "
             "framework check is surfaced as inert (#684)"
         ),
+    )
+
+
+class ProjectsConfig(BaseModel):
+    """What a Project registration may name as its repository (SIP-0112, the owner's R5).
+
+    Empty is the safe default for both: any ``https``/``ssh`` host, and no local path at all,
+    since a path on a caller's machine authorizes nothing on the server's.
+    """
+
+    locator_allowed_hosts: list[str] = Field(
+        default_factory=list,
+        description="Hosts a registration's repository may live on; empty allows any (R5)",
+    )
+    locator_local_roots: list[str] = Field(
+        default_factory=list,
+        description="Absolute directories under which a local repository path is allowed (R5)",
     )
 
 
@@ -929,6 +947,11 @@ class AppConfig(BaseModel):
     # Cycles
     cycles: CyclesConfig = Field(
         ..., description="Cycle registry configuration (carries a required selector, #1568)"
+    )
+
+    # Projects (SIP-0112: what a registration may name as its repository)
+    projects: ProjectsConfig = Field(
+        default_factory=ProjectsConfig, description="Project registration rules (SIP-0112 R5)"
     )
 
     # Runtime (SIP-0089: agent runtime state, duty scheduler)

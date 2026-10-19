@@ -13,7 +13,13 @@ from datetime import UTC, datetime
 
 import asyncpg
 
-from squadops.cycles.models import Project, ProjectNotFoundError
+from squadops.cycles.models import (
+    Project,
+    ProjectIdTakenError,
+    ProjectNotFoundError,
+    ProjectRegistryReadOnlyError,
+    RegistrationKeyConflictError,
+)
 from squadops.ports.cycles.project_registry import ProjectRegistryPort
 from squadops.projects.models import (
     ProjectLifecycleStatus,
@@ -21,6 +27,7 @@ from squadops.projects.models import (
     ProjectProvenance,
     ProjectSource,
 )
+from squadops.projects.registration import ProjectRegistration
 
 _COLUMNS = (
     "project_id, name, description, tags, prd_path, lifecycle_status, record_version, "
@@ -68,10 +75,14 @@ def _event_id() -> str:
 
 
 class PostgresProjectRegistry(ProjectRegistryPort):
-    """The writable registry: authoritative for every reader once selected (FR-03)."""
+    """The writable registry: authoritative for every reader once selected (FR-03).
 
-    def __init__(self, pool: asyncpg.Pool) -> None:
+    ``writable=False`` is the write gate closed (R3's rollback, provider ``postgres_read_only``):
+    every Project stays readable, and a registration is refused rather than written."""
+
+    def __init__(self, pool: asyncpg.Pool, *, writable: bool = True) -> None:
         self._pool = pool
+        self._writable = writable
 
     async def list_projects(self) -> list[Project]:
         async with self._pool.acquire() as conn:
@@ -86,6 +97,86 @@ class PostgresProjectRegistry(ProjectRegistryPort):
         if row is None:
             raise ProjectNotFoundError(f"Project not found: {project_id}")
         return _row_to_project(row)
+
+    # --- registration (FR-02, E.4.1) ---
+
+    async def register_project(
+        self, registration: ProjectRegistration, *, actor: str
+    ) -> tuple[Project, bool]:
+        """One transaction: the record at REGISTERING, version 1, and its event carrying the
+        idempotency key. Registrations under one key are serialized by an advisory lock, so a
+        retry racing its original replays rather than conflicts."""
+        if not self._writable:
+            raise ProjectRegistryReadOnlyError(
+                "the project registry's writes are gated off (postgres_read_only): every "
+                "Project stays readable, and none is registered until the gate opens"
+            )
+        key, digest = registration.idempotency_key, registration.request_hash()
+        source, ownership = registration.source, registration.ownership
+        async with self._pool.acquire() as conn, conn.transaction():
+            # Two-key form, class 112 (SIP-0112): apart from the migrations' single-key lock.
+            await conn.execute("SELECT pg_advisory_xact_lock(112, hashtext($1))", key)
+            prior = await conn.fetchrow(
+                "SELECT project_id, request_hash FROM project_record_events "
+                "WHERE idempotency_key = $1",
+                key,
+            )
+            if prior is not None:
+                if prior["request_hash"] != digest:
+                    raise RegistrationKeyConflictError(
+                        f"idempotency key {key!r} registered {prior['project_id']} with "
+                        "different content: a retry repeats its request exactly"
+                    )
+                row = await conn.fetchrow(
+                    f"SELECT {_COLUMNS} FROM project_records WHERE project_id = $1",
+                    prior["project_id"],
+                )
+                return _row_to_project(row), True
+            now = datetime.now(UTC)
+            inserted = await conn.fetchval(
+                "INSERT INTO project_records (project_id, name, description, tags, prd_path, "
+                "lifecycle_status, record_version, provenance, repo_uri, base_ref, "
+                "contribution_mode, repository_root, ownership, created_at, updated_at) "
+                "VALUES ($1, $2, $3, $4, NULL, $5, 1, $6, $7, $8, $9, $10, $11, $12, $12) "
+                "ON CONFLICT (project_id) DO NOTHING RETURNING project_id",
+                registration.project_id,
+                registration.name,
+                registration.description,
+                list(registration.tags),
+                ProjectLifecycleStatus.REGISTERING.value,
+                ProjectProvenance.REGISTERED.value,
+                source.repo_uri,
+                source.base_ref,
+                source.contribution_mode,
+                source.repository_root,
+                {
+                    "owner": ownership.owner,
+                    "delegated_actions": list(ownership.delegated_actions),
+                    "acceptance_policy_ref": ownership.acceptance_policy_ref,
+                },
+                now,
+            )
+            if inserted is None:
+                raise ProjectIdTakenError(
+                    f"Project {registration.project_id} is already registered"
+                )
+            await conn.execute(
+                "INSERT INTO project_record_events (event_id, project_id, operation, "
+                "record_version, actor, idempotency_key, request_hash, detail, recorded_at) "
+                "VALUES ($1, $2, 'register', 1, $3, $4, $5, $6, $7)",
+                _event_id(),
+                registration.project_id,
+                actor,
+                key,
+                digest,
+                {"origin": "import"},
+                now,
+            )
+            row = await conn.fetchrow(
+                f"SELECT {_COLUMNS} FROM project_records WHERE project_id = $1",
+                registration.project_id,
+            )
+        return _row_to_project(row), False
 
     # --- the cutover (FR-03) ---
 

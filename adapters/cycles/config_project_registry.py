@@ -12,7 +12,7 @@ from pathlib import Path
 
 import yaml
 
-from squadops.cycles.models import Project, ProjectNotFoundError
+from squadops.cycles.models import Project, ProjectNotFoundError, ProjectRegistryReadOnlyError
 from squadops.ports.cycles.project_registry import ProjectRegistryPort
 
 logger = logging.getLogger(__name__)
@@ -63,3 +63,9 @@ class ConfigProjectRegistry(ProjectRegistryPort):
         if project_id not in self._projects:
             raise ProjectNotFoundError(f"Project not found: {project_id}")
         return self._projects[project_id]
+
+    async def register_project(self, registration, *, actor: str):
+        raise ProjectRegistryReadOnlyError(
+            "the config provider is read-only: config/projects.yaml is edited, never written. "
+            "Registration needs cycles.project_registry_provider: postgres (SIP-0112 FR-03)"
+        )

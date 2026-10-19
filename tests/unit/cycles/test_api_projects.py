@@ -163,3 +163,156 @@ class TestTheProjectRecordAddsFieldsOnly:
 
 
 _LEGACY_FIELDS = {"project_id", "name", "description", "created_at", "tags", "has_prd"}
+
+
+_REGISTRATION = {
+    "idempotency_key": "import-1",
+    "name": "Tally",
+    "origin": {"mode": "import"},
+    "source": {
+        "repo_uri": "https://code.example.invalid/tally/tally.git",
+        "base_ref": "refs/heads/main",
+        "contribution_mode": "review_request",
+    },
+    "ownership": {"owner": "Tally Maintainer", "delegated_actions": ["contribution"]},
+}
+
+
+class TestRegisterProject:
+    """``POST /api/v1/projects`` (SIP-0112 E.4.1), entered at the route the CLI calls. Bugs
+    caught: a refused locator reaching the registry; the registration's fields lost between the
+    body and the record; a read-only registry's refusal surfacing as a 500; the key a safe retry
+    needs missing from the answer."""
+
+    @pytest.fixture
+    def registering(self, client, mock_project_registry):
+        from squadops.projects.models import ProjectLifecycleStatus
+        from squadops.projects.registration import LocatorPolicy
+
+        client.app.state.project_locator_policy = LocatorPolicy()
+
+        async def register(registration, *, actor):
+            return (
+                Project(
+                    project_id=registration.project_id,
+                    name=registration.name,
+                    description=registration.description,
+                    created_at=NOW,
+                    lifecycle_status=ProjectLifecycleStatus.REGISTERING,
+                    source=registration.source,
+                    ownership=registration.ownership,
+                ),
+                False,
+            )
+
+        mock_project_registry.register_project.side_effect = register
+        return mock_project_registry
+
+    def test_a_registration_is_answered_registering_with_its_key(self, client, registering):
+        resp = client.post("/api/v1/projects", json=_REGISTRATION)
+
+        body = resp.json()
+        assert resp.status_code == 201
+        assert (body["idempotency_key"], body["replayed"]) == ("import-1", False)
+        assert body["project"]["project_id"] == "prj-tally"
+        assert body["project"]["lifecycle_status"] == "REGISTERING"
+        assert body["project"]["source"]["repo_uri"] == _REGISTRATION["source"]["repo_uri"]
+        [call] = registering.register_project.await_args_list
+        assert call.kwargs == {"actor": "anonymous"}
+        assert call.args[0].ownership.delegated_actions == ("contribution",)
+
+    def test_a_refused_locator_never_reaches_the_registry(self, client, registering):
+        body = {
+            **_REGISTRATION,
+            "source": {**_REGISTRATION["source"], "repo_uri": "/home/me/tally"},
+        }
+
+        resp = client.post("/api/v1/projects", json=body)
+
+        error = resp.json()["detail"]["error"]
+        assert (resp.status_code, error["code"]) == (422, "LOCATOR_REFUSED")
+        assert error["details"] == {"reason": "local_path"}
+        registering.register_project.assert_not_awaited()
+
+    def test_only_an_existing_repository_is_registered_in_this_slice(self, client, registering):
+        """``new`` is greenfield (E.4.6), ``attach`` writing in place (E.4.7)."""
+        resp = client.post("/api/v1/projects", json={**_REGISTRATION, "origin": {"mode": "new"}})
+
+        assert resp.status_code == 422
+        registering.register_project.assert_not_awaited()
+
+    def test_the_config_registry_refuses_the_write_as_read_only(self, client):
+        from adapters.cycles.config_project_registry import ConfigProjectRegistry
+        from squadops.projects.registration import LocatorPolicy
+
+        client.app.state.project_registry = ConfigProjectRegistry()
+        client.app.state.project_locator_policy = LocatorPolicy()
+
+        resp = client.post("/api/v1/projects", json=_REGISTRATION)
+
+        error = resp.json()["detail"]["error"]
+        assert (resp.status_code, error["code"]) == (409, "PROJECT_REGISTRY_READ_ONLY")
+
+    @pytest.mark.parametrize(
+        ("role", "scopes", "expected"),
+        [
+            ("OPERATOR", ("CYCLES_READ", "CYCLES_WRITE"), 403),
+            ("ADMIN", ("CYCLES_READ", "CYCLES_WRITE", "ADMIN_WRITE"), 201),
+        ],
+    )
+    def test_registering_needs_admin_write(self, role, scopes, expected):
+        """R6. Bug caught: the route left on a read or cycle-write scope, so any operator or
+        viewer registers a product on the owner's behalf."""
+        from datetime import timedelta
+        from unittest.mock import patch
+
+        from adapters.auth.keycloak.authz_adapter import KeycloakAuthzAdapter
+        from squadops.api.middleware.auth import AuthMiddleware, RequestIDMiddleware
+        from squadops.auth.models import Identity, Role, Scope, TokenClaims
+        from squadops.projects.registration import LocatorPolicy
+
+        identity = Identity(
+            user_id="someone",
+            display_name="Someone",
+            roles=(getattr(Role, role),),
+            scopes=tuple(getattr(Scope, s) for s in scopes),
+        )
+        now = datetime.now(tz=UTC)
+        auth_port = AsyncMock()
+        auth_port.validate_token = AsyncMock(
+            return_value=TokenClaims(
+                subject="someone",
+                issuer="http://kc/realms/squadops",
+                audience="squadops-runtime",
+                expires_at=now + timedelta(hours=1),
+                issued_at=now,
+                roles=identity.roles,
+                scopes=identity.scopes,
+            )
+        )
+        auth_port.resolve_identity = AsyncMock(return_value=identity)
+        app = FastAPI()
+        app.add_middleware(
+            AuthMiddleware, auth_port=auth_port, provider="keycloak", expose_docs=False
+        )
+        app.add_middleware(RequestIDMiddleware)
+        app.include_router(router)
+        registry = AsyncMock()
+        registry.register_project.return_value = (
+            Project(project_id="prj-tally", name="Tally", description="", created_at=NOW),
+            False,
+        )
+        app.state.project_registry = registry
+        app.state.project_locator_policy = LocatorPolicy()
+
+        with patch(
+            "squadops.api.middleware.auth.get_authz_port", return_value=KeycloakAuthzAdapter()
+        ):
+            resp = TestClient(app).post(
+                "/api/v1/projects", json=_REGISTRATION, headers={"Authorization": "Bearer t"}
+            )
+
+        assert resp.status_code == expected
+        assert registry.register_project.await_count == (1 if expected == 201 else 0)
+        if expected == 201:
+            assert registry.register_project.await_args.kwargs == {"actor": "someone"}
