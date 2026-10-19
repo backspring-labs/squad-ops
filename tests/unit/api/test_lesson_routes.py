@@ -377,6 +377,44 @@ async def test_an_exposures_target_is_assessed_and_the_rate_reads_the_supplied_s
     assert [a["state"] for a in listed[0]["assessments"]] == ["absent"]
 
 
+async def test_an_exposure_whose_unit_withheld_memorys_context_is_never_assessed(world):
+    """Appendix A §3.7: ``memory_context: none`` withholds the project's instructions too, so its
+    exposure would read as the memory-off series with different requirements. Bug caught: it
+    assessed into that series, moving a lesson's absence rate with an experiment that never
+    measured the lesson."""
+    from squadops.memory.exposures import Exposure
+    from squadops.memory.lessons import RecallDisposition, Recalled
+    from squadops.memory.recall import RecallQuery
+
+    exposure = Exposure(
+        run_id="run_none",
+        task_id="task-design",
+        cycle_id="cyc_none",
+        agent_id="neo",
+        seam="plan_writing",
+        query=RecallQuery("group_run", "development.design_plan", "dev"),
+        recalled=Recalled("snp_none", RecallDisposition.CONTEXT_NONE).exposure(),
+        recorded_at=datetime.now(UTC),
+    )
+    await world.store.record_exposure(exposure)
+
+    refused = world.client.post(
+        f"{BASE}/exposures/{exposure.exposure_id}/assessments",
+        json={
+            "pattern_id": "pat_a",
+            "rubric": "lesson.r@1",
+            "evidence": "the design plan, v1",
+            "state": "absent",
+            "required_work_done": True,
+        },
+    )
+
+    assert refused.status_code == 422
+    assert "memory_context: none" in refused.json()["detail"]["error"]["message"]
+    assert await world.store.list_assessments("group_run") == []
+    assert world.client.get(f"{BASE}/lessons/absence-rates").json() == []
+
+
 ANNOTATION = {
     "values": ["criteria_not_checkable"],
     "target_behavior": "criterion_already_satisfied",

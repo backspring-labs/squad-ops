@@ -114,6 +114,7 @@ _SECTION_DISPOSITION = {
     RecallDisposition.SUPPLIED: Disposition.SUPPLIED,
     RecallDisposition.NONE_ELIGIBLE: Disposition.NONE_ELIGIBLE,
     RecallDisposition.DISABLED: Disposition.DISABLED,
+    RecallDisposition.CONTEXT_NONE: Disposition.CONTEXT_NONE,
     RecallDisposition.OMITTED_BY_BUDGET: Disposition.OMITTED_BY_BUDGET,
     RecallDisposition.INCOMPATIBLE: Disposition.INCOMPATIBLE,
     RecallDisposition.FAILED: Disposition.FAILED,
@@ -376,6 +377,12 @@ class LessonContextAssembly(ContextAssemblyPort):
         except Exception:  # the port never raises: a recall that raised is a failed one, never none
             logger.exception("recall raised for task %s", request.consumer.task_id)
             recalled = Recalled(snapshot_id=None, disposition=RecallDisposition.FAILED)
+        if recalled.disposition is RecallDisposition.CONTEXT_NONE:
+            # §3.7: the snapshot pinned none, and its project section says it was withheld rather
+            # than that none applied, so the exposure records the experiment it ran.
+            project = Section(
+                SectionKind.PROJECT_INSTRUCTIONS, Need.BINDING, Disposition.CONTEXT_NONE
+            )
         lessons = Section(
             SectionKind.LESSONS,
             Need.OPTIONAL,

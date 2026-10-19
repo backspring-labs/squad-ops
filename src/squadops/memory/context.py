@@ -36,6 +36,9 @@ class Disposition(StrEnum):
     #: Recall's own word for it (``RecallDisposition.DISABLED``), so a section and its exposure read the same.
     #: §3.6 writes "disabled"; that bare word would shadow unrelated config comparisons (#380's guard).
     DISABLED = "memory_disabled"
+    #: The unit declared ``memory_context: none`` (§3.7): its project instructions and lessons are
+    #: withheld, as recall words it (``RecallDisposition.CONTEXT_NONE``).
+    CONTEXT_NONE = "memory_context_none"
     #: An optional section only.
     OMITTED_BY_BUDGET = "omitted_by_budget"
     INCOMPATIBLE = "incompatible"

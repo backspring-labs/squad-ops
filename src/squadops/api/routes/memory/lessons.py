@@ -71,7 +71,14 @@ from squadops.memory.assessment import (
     supplied_to,
     target_absence_rates,
 )
-from squadops.memory.lessons import Applicability, Approval, PatternRevision, Snapshot, UnitKind
+from squadops.memory.lessons import (
+    Applicability,
+    Approval,
+    PatternRevision,
+    RecallDisposition,
+    Snapshot,
+    UnitKind,
+)
 
 router = APIRouter(prefix="/api/v1/projects/{project_id}", tags=["memory"])
 
@@ -458,6 +465,7 @@ async def assess_exposure(
             evidence=body.evidence,
             assessed_by=assessed_by,
             now=datetime.now(UTC),
+            context_withheld=exposure.disposition == RecallDisposition.CONTEXT_NONE,
         )
     except AssessmentRefused as e:
         raise _error(422, "VALIDATION_ERROR", str(e)) from e
