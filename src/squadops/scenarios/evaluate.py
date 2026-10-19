@@ -36,6 +36,7 @@ from squadops.scenarios.evaluation import (
 from squadops.scenarios.fields import resolve
 from squadops.scenarios.models import Scenario, SurfaceKind
 from squadops.scenarios.quality import (
+    LintReading,
     NotMeasured,
     QualityReading,
     QualityStatus,
@@ -175,6 +176,22 @@ def quality_of(
     )
 
 
+def lint_of(
+    blueprint: bool, blocked: BlockedReason | None, evaluated: TreeEvaluation | None
+) -> LintReading:
+    """#1937's lint of the evaluated tree: the runner's, or why there is none. Only a blueprint
+    tree has #1937's rule sets; a declared Project's own linter is never read in their place."""
+    if not blueprint:
+        return LintReading.not_measured(NotMeasured.NOT_A_SCAFFOLD_STACK)
+    if evaluated is not None and evaluated.lint is not None:
+        return evaluated.lint
+    if blocked is BlockedReason.NO_RUNNER:
+        return LintReading.not_measured(NotMeasured.NO_RUNNER)
+    return LintReading.not_measured(
+        NotMeasured.EVALUATOR_FAILED, "the runner returned no lint for the tree"
+    )
+
+
 def _outcome(
     scenario: Scenario,
     served: frozenset[SurfaceKind],
@@ -263,11 +280,12 @@ async def evaluate_cycle(
     # §4.2 (#2416): Lighthouse and axe on the declared pages, of a Project that serves pages.
     pages = declared_pages(manifest, declared) if SurfaceKind.PAGE in kinds else ()
     evaluated: TreeEvaluation | None = None
-    if (contents or pages) and unstartable is not None:
+    # A blueprint's tree is linted whether or not anything else runs (§4.2, #2416).
+    if (contents or pages or blueprint) and unstartable is not None:
         blocked = unstartable.reason
-    elif (contents or pages) and runner is None:
+    elif (contents or pages or blueprint) and runner is None:
         blocked = BlockedReason.NO_RUNNER
-    elif (contents or pages) and runner is not None:
+    elif (contents or pages or blueprint) and runner is not None:
         try:
             evaluated = await runner.evaluate_tree(
                 tree=tree,
@@ -303,6 +321,7 @@ async def evaluate_cycle(
             if SurfaceKind.PAGE in kinds
             else QualityReading(QualityStatus.NOT_APPLICABLE)
         ),
+        lint=lint_of(blueprint, blocked, evaluated),
     )
     await store.save_evaluation(record)
     return record

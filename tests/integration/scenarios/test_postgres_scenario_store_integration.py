@@ -17,7 +17,13 @@ import pytest_asyncio
 from adapters.persistence.pool import create_pool
 from adapters.scenarios.postgres_scenario_store import PostgresScenarioStore
 from squadops.scenarios.models import CampaignSuitePin, SuiteState, parse_suite
-from squadops.scenarios.quality import NotMeasured, PageMeasure, QualityReading, QualityStatus
+from squadops.scenarios.quality import (
+    LintReading,
+    NotMeasured,
+    PageMeasure,
+    QualityReading,
+    QualityStatus,
+)
 from squadops.scenarios.suites import approve_suite, draft_suite, pin_campaign_suite
 from tests.integration.conftest import integration_postgres_dsn
 from tests.unit.scenarios.suite_fixtures import SUITE
@@ -156,6 +162,14 @@ async def test_an_evaluation_reads_back_whole_and_the_table_refuses_a_commit_for
         ),
         21: QualityReading.not_measured(NotMeasured.START_FAILED),
     }
+    lints = {
+        22: LintReading(
+            QualityStatus.MEASURED,
+            reading={"version": 1, "total": 2, "by_rule": {"ruff:F401": 2}, "unavailable": {}},
+            evaluator="squadops-evaluator:test",
+        ),
+        21: LintReading.not_measured(NotMeasured.NOT_A_SCAFFOLD_STACK),
+    }
     records = [
         evaluation_record(
             suite,
@@ -167,6 +181,7 @@ async def test_an_evaluation_reads_back_whole_and_the_table_refuses_a_commit_for
             previous_accepted_tree_identity=None,
             evaluated_at=T0.replace(hour=h),
             quality=readings[h],
+            lint=lints[h],
         )
         for h in (22, 21)
     ]

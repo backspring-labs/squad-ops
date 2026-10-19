@@ -21,7 +21,7 @@ from typing import Any
 from urllib.parse import urlsplit
 
 from squadops.scenarios.evaluation import BlockedReason
-from squadops.scenarios.quality import QualityReading
+from squadops.scenarios.quality import LintReading, QualityReading
 from squadops.scenarios.steps import ScenarioRun
 
 
@@ -242,6 +242,8 @@ class TreeEvaluation:
     configuration_revision: int | None = None
     #: Lighthouse and axe on the started instance (#2416). ``None`` when nothing was started.
     quality: QualityReading | None = None
+    #: #1937's lint over the tree as delivered (#2416), whatever the start did.
+    lint: LintReading | None = None
 
     def as_dict(self) -> dict[str, Any]:
         return {
@@ -253,6 +255,7 @@ class TreeEvaluation:
             "duration_seconds": self.duration_seconds,
             "configuration_revision": self.configuration_revision,
             "quality": self.quality.as_dict() if self.quality is not None else None,
+            "lint": self.lint.as_dict() if self.lint is not None else None,
         }
 
     @classmethod
@@ -266,4 +269,5 @@ class TreeEvaluation:
             duration_seconds=d.get("duration_seconds", 0.0),
             configuration_revision=d.get("configuration_revision"),
             quality=QualityReading.from_dict(d["quality"]) if d.get("quality") else None,
+            lint=LintReading.from_dict(d["lint"]) if d.get("lint") else None,
         )

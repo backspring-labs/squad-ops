@@ -7,7 +7,9 @@ One evaluation is one call:
 4. once it is ready, and before any scenario writes to it, the evaluator's image measures its
    declared pages with Lighthouse and axe, on the app network (§4.2, #2416);
 5. each scenario's steps run from the service, outside the app's process;
-6. the app stops and the copy is removed, whatever happened.
+6. the app stops and the copy is removed, whatever happened;
+7. #1937's lint reads the tree as delivered, in the evaluator's image with no network, whatever the
+   start did (§4.2, #2416).
 
 Nothing a scenario caused reaches a workspace, a revision or a commit (contract 3). The steps
 are held in memory for the call, never written, and never in a result.
@@ -34,12 +36,22 @@ import httpx
 
 from adapters.sandbox.placement import address, placement
 from squadops.campaigns.evaluator_trees import FileTree
+from squadops.capabilities.delivered_lint import (
+    RUFF_ARGS,
+    eslint_findings,
+    eslint_runner_source,
+    lintable,
+    linted_counts,
+    ruff_findings,
+    tools_reading,
+)
 from squadops.ports.scenarios import ScenarioRunnerPort
 from squadops.ports.tools.container import ContainerPort
 from squadops.sandbox.environment import get_environment_contract
 from squadops.sandbox.models import OperationName, content_bytes, declared_argv
 from squadops.sandbox.workspace import WorkspaceEscapeError, tree_path, working_directory
 from squadops.scenarios.quality import (
+    LintReading,
     NotMeasured,
     QualityReading,
     QualityStatus,
@@ -180,7 +192,68 @@ class ContainerScenarioRunner(ScenarioRunnerPort):
             )
         finally:
             shutil.rmtree(copy, ignore_errors=True)
+        evaluation = dataclasses.replace(evaluation, lint=await self._lint(tree, declared))
         return _redacted(evaluation, environment.values())
+
+    async def _lint(
+        self, tree: Mapping[str, bytes | str], declared: DeclaredStart | None
+    ) -> LintReading:
+        """#1937's lint over the tree as delivered (§4.2, #2416). The evaluator's image runs the
+        tools with no network; the files, #1937's ruff command and its ESLint runner go on its
+        input, so each has one source. Only a blueprint's tree has #1937's rule sets."""
+        if declared is not None:
+            return LintReading.not_measured(NotMeasured.NOT_A_SCAFFOLD_STACK)
+        if not await self._container.has_image(self._evaluator_image):
+            return LintReading.not_measured(NotMeasured.EVALUATOR_ABSENT, self._evaluator_image)
+        files = lintable(tree)
+        request = {
+            "lint": {
+                "files": files,
+                "ruff_args": list(RUFF_ARGS),
+                "eslint_runner": eslint_runner_source(),
+            }
+        }
+        try:
+            run = await self._container.run(
+                ContainerSpec(
+                    image=self._evaluator_image,
+                    network="none",
+                    timeout_seconds=self._evaluator_timeout,
+                    memory_limit=self._limits[0],
+                    cpu_limit=self._limits[1],
+                    pids_limit=self._limits[2],
+                    cap_drop_all=True,
+                    no_new_privileges=True,
+                    stdin=json.dumps(request).encode("utf-8"),
+                )
+            )
+        except ToolContainerError as e:
+            return LintReading.not_measured(NotMeasured.EVALUATOR_FAILED, str(e))
+        if run.exit_code != 0:
+            tail = "\n".join((run.stdout + run.stderr).splitlines()[-_TAIL_LINES:])
+            return LintReading.not_measured(
+                NotMeasured.EVALUATOR_FAILED, f"exited {run.exit_code}: {tail}"
+            )
+        try:
+            answer = json.loads(run.stdout.strip().splitlines()[-1])["lint"]
+            ruff, eslint = answer["ruff"], answer["eslint"]
+            ran = {
+                "ruff": ruff_findings(
+                    (ruff["exit"], ruff["stdout"], ruff["stderr"]), ruff["version"], answer["root"]
+                )
+                if ruff
+                else None,
+                "eslint": eslint_findings((eslint["exit"], eslint["stdout"], eslint["stderr"]))
+                if eslint
+                else None,
+            }
+        except (ValueError, IndexError, KeyError, TypeError) as e:
+            return LintReading.not_measured(NotMeasured.EVALUATOR_FAILED, f"its answer: {e}")
+        return LintReading(
+            QualityStatus.MEASURED,
+            reading=tools_reading(linted_counts(files), ran),
+            evaluator=self._evaluator_image,
+        )
 
     def _start_for(self, stack: str | None, declared: DeclaredStart | None) -> _Start:
         if declared is not None:

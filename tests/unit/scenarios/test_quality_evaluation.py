@@ -14,7 +14,13 @@ from adapters.scenarios.memory_scenario_store import MemoryScenarioStore
 from squadops.scenarios import evaluate
 from squadops.scenarios.evaluate import declared_surfaces
 from squadops.scenarios.models import parse_suite
-from squadops.scenarios.quality import NotMeasured, PageMeasure, QualityReading, QualityStatus
+from squadops.scenarios.quality import (
+    LintReading,
+    NotMeasured,
+    PageMeasure,
+    QualityReading,
+    QualityStatus,
+)
 from squadops.scenarios.runner import (
     DeclaredStart,
     RunnerUnavailable,
@@ -73,10 +79,13 @@ class _Cycle:
         return {"build_profile": "fullstack_fastapi_react"}
 
 
+_LINTED = LintReading(QualityStatus.MEASURED, reading={"total": 3}, evaluator="e:1")
+
+
 class _Runner:
-    def __init__(self, *, started=True, quality=_MEASURED, raises=None):
+    def __init__(self, *, started=True, quality=_MEASURED, raises=None, lint=_LINTED):
         self.calls: list[dict] = []
-        self._started, self._quality, self._raises = started, quality, raises
+        self._started, self._quality, self._raises, self._lint = started, quality, raises, lint
 
     async def evaluate_tree(self, **kw):
         self.calls.append(kw)
@@ -90,6 +99,7 @@ class _Runner:
             started=self._started,
             runs=runs if self._started else (),
             quality=self._quality if self._started else None,
+            lint=self._lint,
         )
 
 
@@ -195,3 +205,64 @@ async def test_a_declared_project_is_measured_at_its_ui_base_and_never_by_a_mani
     assert runner.calls[0]["pages"] == pages
     assert record.quality.status is status
     assert vault.listed == 0
+
+
+@pytest.mark.parametrize(
+    ("runner", "declared", "lint"),
+    [
+        (_Runner(), False, _LINTED),
+        (_Runner(started=False), False, _LINTED),
+        (None, False, LintReading.not_measured(NotMeasured.NO_RUNNER)),
+        (
+            _Runner(raises=RunnerUnavailable("down")),
+            False,
+            LintReading.not_measured(NotMeasured.NO_RUNNER),
+        ),
+        (_Runner(), True, LintReading.not_measured(NotMeasured.NOT_A_SCAFFOLD_STACK)),
+    ],
+    ids=[
+        "linted",
+        "linted-though-it-didnt-start",
+        "no-runner",
+        "unreachable",
+        "a-declared-project",
+    ],
+)
+async def test_the_records_lint_is_the_runners_or_says_why_not(world, runner, declared, lint):
+    """§4.2. Bug caught: the runner's lint dropped on the way to the record; a delivery that
+    wouldn't start recorded with no lint, though its tree was read; or a declared Project's lint
+    recorded as measured by rules it never chose."""
+    kw = {}
+    if declared:
+        kw = {
+            "declared": DeclaredStart(
+                start=("./serve",),
+                port=8080,
+                ready_kind="tcp",
+                ready_path="",
+                ready_timeout_seconds=30,
+                api_port=8080,
+            ),
+            "served": declared_surfaces([{"kind": "http_base"}]),
+        }
+
+    record = await world(runner, **kw)
+
+    assert record.lint == lint
+
+
+async def test_a_blueprint_is_linted_when_nothing_else_would_start_it(world):
+    """Bug caught: a delivery none of whose scenarios apply and which declares no page left
+    unlinted, so its increment has no lint reading to compare."""
+    manifest = _MANIFEST.replace(b'path: "/"', b'path: "/:a"').replace(
+        b'path: "/create"', b'path: "/c/:b"'
+    )
+    # Its list endpoint moved, so the suite's one scenario is surface_absent.
+    manifest = manifest.replace(b"{ method: GET,  path: /runs,", b"{ method: GET,  path: /all,")
+    runner = _Runner()
+
+    record = await world(runner, vault=_Vault(manifest))
+
+    [call] = runner.calls
+    assert (call["scenarios"], call["pages"]) == ([], ())
+    assert record.lint == _LINTED

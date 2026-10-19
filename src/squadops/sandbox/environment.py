@@ -35,11 +35,12 @@ from squadops.sandbox.models import OperationName
 #: act at a point where a hash change is expected, never mid-set.
 SANDBOX_ENV_IMAGE = "squadops-sandbox-env:py3.12-node20-1.4"
 
-#: SIP-0113's evaluator image (A2, #2416): headless Chromium, Lighthouse and axe, built from
-#: ``infra/evaluator`` by ``scripts/dev/build_evaluator_image.sh``, which reads the tag from here.
-#: The tag is each quality measure's version, which the window records (the 2.4 plan's §1.3), so
-#: it moves whenever the image's sources do: ``test_evaluator_image.py`` pins their digest to it.
-EVALUATOR_IMAGE = "squadops-evaluator:lighthouse13.5-axe4.14-1"
+#: SIP-0113's evaluator image (A2, #2416): headless Chromium, Lighthouse and axe, and #1937's ruff
+#: and ESLint, built from ``infra/evaluator`` by ``scripts/dev/build_evaluator_image.sh``, which
+#: reads the tag from here. The tag is each quality measure's version, which the window records (the
+#: 2.4 plan's §1.3), so it moves whenever the image's sources, or the lint config each request
+#: carries, do: ``test_evaluator_image.py`` pins their digest to it.
+EVALUATOR_IMAGE = "squadops-evaluator:lighthouse13.5-axe4.14-ruff0.16-eslint10.12-2"
 
 
 @dataclass(frozen=True)
