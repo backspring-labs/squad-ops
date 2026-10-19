@@ -687,7 +687,11 @@ within them, for the owner's review.
     `Run:location: [meeting_location, location, meetingLocation]`;
   - the evaluation service resolves each concept against the evaluated cycle's own
     `interface_manifest.yaml`, or else that of the accepted cycle it built on, before anything runs;
-  - a delivery that declares none of the names is `blocked_unverified`, `surface_absent`, never `failed`;
+  - a concept the delivery's manifest declares under none of the names goes under the scenario's first name, and
+    the scenario runs. **A manifest's fields are a hint, not a list of what the app holds.** Read live: the §7
+    reference increment implemented capacity and stored no manifest of its own, so the one it built on, without
+    the field, was all there was to read. Reading an undeclared field as absent hid that job. Sent under its
+    first name, a delivery without the feature fails the scenario, as the reading needs;
   - `fields` is in each scenario's content, so in its version, so approving a suite approves its names.
     A scenario without `fields` keeps its content and version byte for byte.
 - **Why per delivery, not per stack** (read from the Spark's vault, 2026-10-18, 40 recent completed
@@ -703,9 +707,9 @@ within them, for the owner's review.
 - **A status check may accept several:** `{"check": "status", "in": [400, 422]}`. The PRD says a request is
   "rejected", and each delivery's manifest picks the status: 422 on the canonical stack and 400 on Next.js
   for a validation error, while 404 for an unknown run and 409 for a duplicate hold on both.
-- **Read live with one suite on both stacks:**
-  - on `cyc_bbedc850e6ff` (Next.js), "a created run reads back" passed, and the capacity scenario was
-    `surface_absent`, since that delivery declares no capacity;
+- **Read live with one suite on both stacks** (the capacity readings after the first-name fallback):
+  - on `cyc_bbedc850e6ff` (Next.js), "a created run reads back" passed, and the capacity scenario failed at
+    step 3, since that delivery doesn't hold a run to one place;
   - on `cyc_f6bfb0b88ebd` (the canonical stack), both passed;
   - on `cyc_f479d21e05ac`, which joins at `/participants`, the capacity scenario's `/join` was
     `surface_absent`.

@@ -30,7 +30,7 @@ from squadops.scenarios.evaluation import (
     ScenarioResult,
     evaluation_record,
 )
-from squadops.scenarios.fields import FieldAbsent, resolve
+from squadops.scenarios.fields import resolve
 from squadops.scenarios.models import Scenario, SurfaceKind
 from squadops.scenarios.runner import (
     DeclaredStart,
@@ -173,8 +173,8 @@ async def evaluate_cycle(
 
     blocked: BlockedReason | None = None
     runs: dict[str, ScenarioRun] = {}
-    # #2464: each scenario's concept fields, resolved against the delivery's own manifest. One
-    # the delivery doesn't declare can't be evaluated here: surface_absent, never failed.
+    # #2464: each scenario's endpoints checked against the delivery's own manifest (one it doesn't
+    # serve is surface_absent, never failed), and its concept fields resolved against it.
     absent: dict[str, BlockedReason] = {}
     contents: list[dict[str, Any]] = []
     manifest = await delivered_manifest(vault, cycle) if applicable and declared is None else None
@@ -193,11 +193,7 @@ async def evaluate_cycle(
             # /participants rather than /join. Unverified, never failed.
             absent[scenario.scenario_id] = BlockedReason.SURFACE_ABSENT
             continue
-        try:
-            content = resolve(scenario.content(), dict(scenario.fields), fields)
-        except FieldAbsent:
-            absent[scenario.scenario_id] = BlockedReason.SURFACE_ABSENT
-            continue
+        content = resolve(scenario.content(), dict(scenario.fields), fields)
         content.pop("fields", None)
         contents.append(content)
     if contents and unstartable is not None:

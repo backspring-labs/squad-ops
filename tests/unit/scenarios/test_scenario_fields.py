@@ -17,7 +17,7 @@ import pytest
 from adapters.scenarios.memory_scenario_store import MemoryScenarioStore
 from squadops.scenarios import evaluate
 from squadops.scenarios.evaluation import BlockedReason, ScenarioResult
-from squadops.scenarios.fields import FieldAbsent, resolve
+from squadops.scenarios.fields import resolve
 from squadops.scenarios.models import ScenarioInvalid, parse_scenario, parse_suite
 from squadops.scenarios.runner import TreeEvaluation
 from squadops.scenarios.steps import ScenarioRun
@@ -83,9 +83,13 @@ def test_a_concept_inside_a_dotted_json_path_resolves_as_one_segment():
     assert resolved == {"path": "participants.0.name"}
 
 
-def test_a_concept_the_delivery_doesnt_declare_is_absent():
-    with pytest.raises(FieldAbsent, match="Run:location"):
-        resolve({}, LOCATION, {"Run": {"title"}})
+def test_a_concept_the_delivery_doesnt_declare_is_sent_under_its_first_name():
+    """A manifest's fields are a hint (read live: an increment implementing capacity stored no
+    manifest, and the one it built on lacked the field). Bug caught: a feature the app has, read
+    as a surface it doesn't, so an increment that adds it reads as no change."""
+    resolved = resolve({"json": {"@Run:location": "Pier"}}, LOCATION, {"Run": {"title"}})
+
+    assert resolved == {"json": {"meeting_location": "Pier"}}
 
 
 @pytest.mark.parametrize(
@@ -165,9 +169,8 @@ async def test_the_evaluation_resolves_each_scenario_against_the_deliverys_own_m
     monkeypatch,
 ):
     """The wiring test (#2464): entered at ``evaluate_cycle``, with ``group_run``'s reference
-    manifest stored as the cycle's. Bug caught: a concept sent to the runner unresolved; or a
-    scenario whose field the delivery doesn't declare run anyway, failing, and read as the
-    product's failure rather than a surface it doesn't have."""
+    manifest stored as the cycle's. Bug caught: a concept sent to the runner unresolved, or a
+    concept the manifest doesn't declare kept from the runner, though the app may hold it."""
 
     async def tree_refs(vault, cycle):
         return {"backend/main.py": "tree"}
@@ -199,14 +202,14 @@ async def test_the_evaluation_resolves_each_scenario_against_the_deliverys_own_m
         evaluated_at=T0,
     )
 
-    [sent] = runner.scenarios
-    assert sent["steps"][0]["json"] == {"title": "Dawn 5k", "location": "Riverside"}
-    assert "fields" not in sent
-    outcomes = {o.scenario_id: (o.result, o.blocked_reason) for o in record.outcomes}
-    assert outcomes == {
-        "a-created-run-reads-back": (ScenarioResult.PASSED, None),
-        "a-run-keeps-its-colour": (ScenarioResult.BLOCKED_UNVERIFIED, BlockedReason.SURFACE_ABSENT),
+    sent = {s["scenario_id"]: s for s in runner.scenarios}
+    assert sent["a-created-run-reads-back"]["steps"][0]["json"] == {
+        "title": "Dawn 5k",
+        "location": "Riverside",
     }
+    assert sent["a-run-keeps-its-colour"]["steps"][0]["json"] == {"colour": "red"}
+    assert all("fields" not in s for s in runner.scenarios)
+    assert {o.result for o in record.outcomes} == {ScenarioResult.PASSED}
 
 
 @pytest.mark.parametrize(
