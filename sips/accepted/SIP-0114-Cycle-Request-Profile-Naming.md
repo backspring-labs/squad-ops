@@ -1,11 +1,13 @@
 ---
 sip_uid: '17883224960398652'
-status: proposed
+status: accepted
 title: Cycle Request-Profile Naming Taxonomy
 author: SquadOps Architecture (Spark lane)
 created_at: '2026-07-01T00:00:00Z'
+sip_number: 114
+updated_at: '2026-10-19T13:46:04.444128Z'
 ---
-# SIP-0XXX: Cycle Request-Profile Naming Taxonomy
+# SIP-0114: Cycle Request-Profile Naming Taxonomy
 
 > **Placement and delivery (2026-10-04: the owner's rulings on the SIP-portfolio audit, `sips/PORTFOLIO.md`).** **Placed: 2.1.0, via #316.** One constraint is ruled: **pinned campaign definitions keep resolving old profile names indefinitely.** The 2.0 set's pinned files name profiles, and the crew re-runs that set. The constraint goes into #316's acceptance, and the inventory here is refreshed in the implementing PR.
 >
@@ -14,11 +16,22 @@ created_at: '2026-07-01T00:00:00Z'
 > **Moved to 2.4.0 (2026-10-15, the owner's ruling of 2026-10-15, in session: "ok to defer").** The SIP was still proposed when 2.3's last structural rounds ran, and its acceptance is the owner's design review, so 2.3 is cut without it. The 2.4 plan places its review and #316's build. The constraint above stands.
 
 
-**Status:** Proposed
+**Status:** Accepted
 **Authors:** SquadOps Architecture (Spark lane)
 **Created:** 2026-07-01
 **Revision:** 4 (2026-10-19; revision 3 was 2026-10-18, revision 2 2026-10-13, revision 1 2026-07-01)
 **Tracking:** #316 (holds the deferred #279 fold)
+
+## Delivery ledger (current as of 2026-10-19)
+
+One row per part that ships separately. Statuses as CLAUDE.md defines them. Accepted 2026-10-19, after the MacBook
+lane's review (revision 4, PR #2494), by the owner's approval of that day.
+
+| part | status | where |
+|---|---|---|
+| the operator's request profiles, the stack's request defaults and the campaign profiles apart from them, with every old name still resolving for pinned definitions (revision 4's decisions; Q13) | **placed** | 2.4.0, #316, built in PR #2500 |
+
+**What closes this SIP:** #316 shipped, with every pinned definition still resolving the profile it names.
 
 ## Revision 4 (2026-10-19): the MacBook lane's review, for acceptance
 

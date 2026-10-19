@@ -31,7 +31,7 @@ The per-part record of what shipped where lives **in each SIP**, in its `Deliver
 
 ---
 
-## 1. Accepted SIPs (13: 9 after the v2.0.0 sweep and SIP-0107's promotion after the tag, then SIP-0110 accepted 2026-10-06, SIP-0111 accepted 2026-10-09, and SIP-0112 and SIP-0113 accepted 2026-10-17)
+## 1. Accepted SIPs (14: 9 after the v2.0.0 sweep and SIP-0107's promotion after the tag, then SIP-0110 accepted 2026-10-06, SIP-0111 accepted 2026-10-09, SIP-0112 and SIP-0113 accepted 2026-10-17, and SIP-0114 accepted 2026-10-19)
 
 | SIP | shipped | remaining, and where it is placed | promote? | ledger |
 |---|---|---|---|---|
@@ -48,6 +48,7 @@ The per-part record of what shipped where lives **in each SIP**, in its `Deliver
 | **0111** TensorFold Provider Adapter (accepted 2026-10-09; §9a ruled 2026-10-11; §9m ruled 2026-10-18) | **v2.3.0:** S, G0, G1, G2, G3 and the G4 cutover, the seed on every call, and the memory watchdog (#2252, #2256, #2262, #2268–#2270, #2282, #2283, #2285, #2289). The Spark serves the 27B on TensorFold 0.6.6 from 2026-10-13 (§9k) | the upgrade to TensorFold 1.x, #2230: the engine measured against 0.6.6 on the 27B, and the 27B against Flash-Next on 1.x. **Unplaced, deliberately** (the owner, 2026-10-18: "I will want to tackle this move to 1.1.0 - but not just yet"; §9m). It replaces the second candidate, Flash-Next on 0.6.6, which was unplaced on 2026-10-15 ("no second tensorfold candidate at this time"; the 2.4 plan's D9). The owner sequenced it after 2.4 and the Outcome Evaluation work on 2026-10-18. One question on its overlap with SIP-0113 awaits the owner (the intake log, 2026-10-18) | no: the #2230 row is open | its ledger |
 | **0112** Project Lifecycle Management (2.4's MacBook-lane feature; accepted 2026-10-17, PR #2401) | nothing | **2.4.0:** the shared fixture #2407, E.4.1 #2408, E.4.2 #2409, E.4.3 #2410, E.4.4 #2411 and greenfield E.4.6 #2412 (shipped by the cut, G6). E.4.5 (lifecycle completeness) unplaced, deliberately: required before close, not in 2.4. E.4.7 (direct attachment) unplaced, deliberately: optional. Q30–Q36 and Q40 ruled; seven contracts shared with Outcome Evaluation (§8, cluster 15) | no | added at acceptance |
 | **0113** Outcome Evaluation (2.4's Spark-lane feature; accepted 2026-10-17, PR #2406) | phase 0 (#1959, #1960, #1937; v2.1.0) | **2.4.0, phase 1:** the scenario store #2413, the runner #2414, the evaluation record #2415, the quality baselines #2416, the intervention ledger #2417, contribution and the derived metrics #2418. **Phase 2** unplaced until D4 rules on the window's record. A1 to A4 ruled (A4 through Q40); seven contracts shared with SIP-0112 (cluster 15) | no | added at acceptance |
+| **0114** Cycle Request-Profile Naming Taxonomy (accepted 2026-10-19, after the MacBook lane's review, PR #2494) | nothing | **2.4.0:** the rename, #316, built in PR #2500. Q13 ruled: pinned definitions resolve old names indefinitely | no: #316 is open | added at acceptance |
 
 **Implemented SIPs promoted with open items.** Each needs a text amendment, not a status change. The
 items go to each SIP's next touch, with Q22 for the decisions.
@@ -68,7 +69,7 @@ items go to each SIP's next touch, with Q22 for the decisions.
 
 ---
 
-## 2. Proposed SIPs (30 at the audit; 13 deprecated 2026-10-05 by Q14; 16 live after Cross-Cycle Memory's acceptance as SIP-0110, 2026-10-06; 17 with Project Lifecycle Management, filed 2026-10-17; 16 again after its acceptance as SIP-0112 the same day; 15 after Outcome Evaluation's acceptance as SIP-0113)
+## 2. Proposed SIPs (30 at the audit; 13 deprecated 2026-10-05 by Q14; 16 live after Cross-Cycle Memory's acceptance as SIP-0110, 2026-10-06; 17 with Project Lifecycle Management, filed 2026-10-17; 16 again after its acceptance as SIP-0112 the same day; 15 after Outcome Evaluation's acceptance as SIP-0113; 14 after the request-profile taxonomy's acceptance as SIP-0114, 2026-10-19)
 
 Class: **live** (wanted, not built), **partly absorbed** (some built or owned elsewhere),
 **superseded**, **stale** (names architecture or releases that no longer exist).
@@ -91,7 +92,7 @@ Class: **live** (wanted, not built), **partly absorbed** (some built or owned el
 | Fine-Grained Issue Enumeration | partly absorbed (vision) | none | keep as vision; fix its stale SIP names |
 | LLM Emission Contracts | partly absorbed; targets stale | P1–P3 in 1.5 | Q10 |
 | Agent Comms Delivery Guarantees | split | #1977 (2.3.0); duty-gated parts 3.x | ruled |
-| Cycle Request Profile Naming Taxonomy | live; inventory stale | **2.4.0** via #316 (moved from 2.1.0, 2026-10-05: the 2.1 plan's ruling 14; from 2.3.0, 2026-10-15: the owner) | Q13 |
+| Cycle Request Profile Naming Taxonomy | **accepted 2026-10-19 as SIP-0114** (§1) | 2.4.0 via #316 (moved from 2.1.0, 2026-10-05: the 2.1 plan's ruling 14; from 2.3.0, 2026-10-15: the owner) | Q13 |
 | Planning Sequence Strategy-First | live (greenfield only); details stale | none | an outer-loop experiment candidate |
 | API Contract Hardening | partly absorbed; residue in #1976 | pre-1.0 | **deprecated** 2026-10-05 (#2023, Q14) |
 | Experiment Queue and Cycle Assessment | superseded (by SIP-0108 and SIP-0109) | v1.1/v1.2 | **deprecated** 2026-10-05 (#2023, Q14) |

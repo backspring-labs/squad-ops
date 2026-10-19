@@ -103,4 +103,4 @@ fed it: features from the Macbook lane, hardening + supporting decisions from Sp
 | [SIP-0095-Cycle-Create-Preflight](../../design/sips/SIP-0095-Cycle-Create-Preflight.md) | new | accepted |
 | [SIP-Capability-Backed-Agents](../../design/sips/SIP-Capability-Backed-Agents.md) | new | proposed |
 | [SIP-Continuum-Runtime-Console](../../design/sips/SIP-Continuum-Runtime-Console.md) | new | proposed |
-| [SIP-Cycle-Request-Profile-Naming-Taxonomy](../../design/sips/SIP-Cycle-Request-Profile-Naming-Taxonomy.md) | new | proposed |
+| SIP-Cycle-Request-Profile-Naming-Taxonomy | new | proposed |
