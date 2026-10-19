@@ -891,10 +891,23 @@ implementer's, for the owner's review.
     `.jsx` file, while the reading counted them as linted. On the reference increment it read 3 of 11 JS
     files, and never the React UI. The runner now names its patterns, and all 11 are read. The qa path
     reads the same once its image is rebuilt.
-- **Not built yet, on #2416:**
-  - **each measure's delta** from the previous accepted tree, and the calibration's reading as the
-    campaign's baseline;
-  - **prediction 4's spread,** recorded across the window.
+- **Each measure's delta, as built** (2026-10-18, #2416; `squadops.outcomes.quality_deltas`). It reads two
+  evaluation records, as contribution does, and is reported beside it without changing it (§4.4).
+  - **What it compares the increment with:** the tree it was built on (`previous`), or the campaign's
+    baseline, the calibration's reading in the same campaign (`baseline`). Any other record is refused
+    (`NotComparable`).
+  - **Like with like only.** Lighthouse and axe are compared per page that both trees declare and score,
+    and lint by rule, when both trees were read by the same tools with none unavailable. Everything else is
+    named under `not_compared` with why, never read as a delta of zero:
+    - a page on one tree only;
+    - a page in error;
+    - a measure not measured or not applicable on either side;
+    - a different evaluator tag.
+  - **What a baseline *held* means is not decided here** (§4.6 needs it for AOR). It needs a tolerance, and
+    the tolerance is each measure's spread on an unchanged tree, prediction 4's reading in the window. Until
+    then the digest reports the deltas, and names no measure held.
+- **Not built yet, on #2416:** prediction 4's spread, recorded across the window, and from it the
+  tolerance a *held* baseline is read with.
 - **Choices for the owner's review:**
   - measuring before the scenarios;
   - Vite's preview as the canonical stack's page server, a production build behind the scaffold's own proxy;
