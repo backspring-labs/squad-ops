@@ -17,8 +17,52 @@ created_at: '2026-07-01T00:00:00Z'
 **Status:** Proposed
 **Authors:** SquadOps Architecture (Spark lane)
 **Created:** 2026-07-01
-**Revision:** 3 (2026-10-18; revision 2 was 2026-10-13, revision 1 2026-07-01)
+**Revision:** 4 (2026-10-19; revision 3 was 2026-10-18, revision 2 2026-10-13, revision 1 2026-07-01)
 **Tracking:** #316 (holds the deferred #279 fold)
+
+## Revision 4 (2026-10-19): the MacBook lane's review, for acceptance
+
+**Reviewed 2026-10-19, for acceptance under the owner's grant of that day.** The owner's words: "I grant you autonomy
+to use good judgement to approve cycles, PRs, issue choices etc." The supervisor wrote this SIP, so the MacBook lane
+reviewed revision 3 as the second reader. It approved all five decisions and asked for three additions, (a) to (c)
+below. The fourth, (d), was found while checking (c). The decisions below are what acceptance commits to.
+
+- **(a) Three names are in both sets: `build`, `wrapup` and `benchmark`.** Each is an operator name and an old name.
+  - **Each keeps its released YAML byte for byte.** It is the old profile, not a new one beside it, and the
+    implementing PR's byte-identity test covers all three.
+  - **What can change is the stack's defaults (R2.3).** They sit beneath a profile's own keys, and the overrides sit
+    above both. A profile that sets a key keeps it. A profile that doesn't, run with a stack set at create time, gains
+    the stack's. So `build --set build_profile=fullstack_fastapi_react` asks for the stack's required checks, where it
+    asked for none before.
+  - **No pinned config names that combination.** On main at dfe993f8, the pinned verification sets and campaign
+    definitions name `validated-fullstack` (185 occurrences), `validated-fullstack-solo` (1) and the campaign profiles
+    (33). None names `build`, `wrapup` or `benchmark`.
+  - **The implementing PR's tests, one added:** every pinned verification-set config and campaign definition resolves
+    to the same applied defaults and the same config hash before and after the change.
+- **(b) An external Project's cycle names no stack.**
+  - **What SIP-0112 E.4.3 does:** a cycle that pins an external Project's source refuses `build_profile` and
+    `contract_ref` at create (the preflight finding `source_backed_stack`, PR #2484). A stack would seed its skeleton
+    and author a manifest beside the product's own files.
+  - **So R2.3's stack defaults never apply to it.** Its verification is its Development Configuration's own checks
+    (SIP-0112 FR-20), and it gets its request profile's defaults only.
+  - **The boundary with SIP-0112:** this SIP names the request profiles and the defaults a stack carries. SIP-0112
+    owns what an external or a greenfield Project's cycle may name. A greenfield Project created from a blueprint
+    takes its stack from its Development Configuration (`technical.stack`), and a create-time stack that disagrees is
+    refused. SIP-0112 E.4.6 builds that.
+- **(c) A campaign's stack is optional (#2443), and it already is.** `CampaignPolicy.stack` is `None` unless declared,
+  and then the campaign profiles' own stack stands (`src/squadops/campaigns/models.py:405`). A campaign on an external
+  Project declares none.
+- **(d) Declaring none isn't enough for a campaign on an external Project. Open, for SIP-0112.**
+  - **Why:** every campaign profile pins `fullstack_fastapi_react` in its defaults, and the preflight reads the
+    effective config. So a Campaign launched on an external Project is refused by its own profile's stack.
+  - **What rules out the easy fixes:** an override can't remove a key (R2.4), and decision 4 with Q13 freezes the
+    campaign profiles, so the key can't be deleted from them either.
+  - **What's needed:** the campaign launcher needs a path without a stack for an external Project. Where that path
+    lives is SIP-0112's (E.4.3, E.4.4), and it doesn't change this SIP's decisions.
+  - **When:** it needs deciding before IR-2 and the shared demonstration's Campaign step (the 2.4 plan, §2.7).
+
+**Decision 5, for acceptance:** a campaign carries its stack in its policy (#2443), not in its profiles' names. The stack
+is optional, and a campaign on an external Project declares none.
 
 ## Revision 3 (2026-10-18): the inventory re-read, `framing` answered, and a campaign's stack
 
@@ -162,11 +206,11 @@ The cycle-create resolver adds the stack's defaults to `applied_defaults`, so `v
 3. **Old profiles stay, frozen, under their old names,** so every pinned config resolves to what it ran. Q13 already rules this for campaign definitions.
 4. **The campaign profiles stay outside the operator's set.**
 
-### Delivery ledger (current as of 2026-10-17)
+### Delivery ledger (current as of 2026-10-19)
 
 | part | status | where |
 |---|---|---|
-| the design (this SIP accepted) | **placed:** 2.4.0, #316 (moved from 2.3.0, 2026-10-15) | the owner's review of revision 2 |
+| the design (this SIP accepted) | **placed:** 2.4.0, #316 (moved from 2.3.0, 2026-10-15) | revision 4, reviewed by the MacBook lane 2026-10-19 |
 | the stack-declared defaults and the resolver (R2.3) | **placed:** 2.4.0, #316 (moved from 2.3.0, 2026-10-15) | the 2.4 plan |
 | the new names, with every old profile frozen under its old name | **placed:** 2.4.0, #316 (moved from 2.3.0, 2026-10-15) | the 2.4 plan |
 | CLI sugar flags (`--stack`, `--pulse`, `--multirole`) | **unplaced**, deliberately: `--set` covers them | — |
