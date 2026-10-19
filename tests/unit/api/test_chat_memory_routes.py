@@ -281,7 +281,7 @@ def test_a_save_that_fails_is_said_in_the_reply_answered_as_an_error_and_logged(
     turn = world.chats.messages[0]
 
     async def down(record):
-        raise ConnectionError("postgresql://svc:hunter2@db/squadops")
+        raise ConnectionError("password authentication failed for svc (hunter2)")
 
     world.records.create = down
     with caplog.at_level(logging.WARNING):
