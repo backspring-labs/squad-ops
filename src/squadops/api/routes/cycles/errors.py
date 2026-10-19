@@ -31,6 +31,7 @@ from squadops.cycles.models import (
     RunNotFoundError,
     RunTerminalError,
     StaleConfigurationRevisionError,
+    StaleSourcePreconditionError,
     ValidationError,
 )
 
@@ -47,6 +48,7 @@ _ERROR_MAP: list[ErrorRow] = [
     (ProjectIdTakenError, 409, "PROJECT_ID_TAKEN"),
     (ProjectStateConflictError, 409, "PROJECT_STATE_CONFLICT"),
     (StaleConfigurationRevisionError, 409, "STALE_CONFIGURATION_REVISION"),
+    (StaleSourcePreconditionError, 409, "STALE_SOURCE_PRECONDITION"),
     (RegistrationKeyConflictError, 409, "IDEMPOTENCY_KEY_CONFLICT"),
     (IllegalStateTransitionError, 409, "ILLEGAL_STATE_TRANSITION"),
     (GateAlreadyDecidedError, 409, "GATE_ALREADY_DECIDED"),

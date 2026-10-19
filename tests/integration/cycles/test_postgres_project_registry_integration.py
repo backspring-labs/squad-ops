@@ -419,3 +419,40 @@ async def test_mappings_resolve_both_ways_and_baselines_read_back(pool):
     assert await registry.get_inherited_baseline("prj-tally") == baseline
     async with pool.acquire() as conn:
         assert await conn.fetchval("SELECT count(*) FROM project_inherited_baselines") == 1
+
+
+async def test_a_cycles_pinned_source_context_round_trips_and_a_sample_apps_stays_null(pool):
+    """Contract 1's persistence (§D.3: persisted before dispatch). Bugs caught: the context
+    dropped by the cycle registry's insert or read; a sample application's cycle given one."""
+    import uuid
+    from datetime import UTC, datetime
+
+    from adapters.cycles.postgres_cycle_registry import PostgresCycleRegistry
+    from adapters.persistence.transient import TransientRetry
+    from squadops.cycles.models import Cycle, TaskFlowPolicy
+    from squadops.projects.source_context import parse_source_context
+    from tests.fixtures.shared_contract.repository import recorded
+
+    cycles = PostgresCycleRegistry(pool=pool, retry=TransientRetry(attempts=1, backoff_seconds=0.0))
+    context = parse_source_context(recorded("project_source_context", "valid"))
+
+    def cycle(source_context):
+        return Cycle(
+            cycle_id=f"cyc_{uuid.uuid4().hex[:12]}",
+            project_id=REFERENCED,
+            created_at=datetime.now(UTC),
+            created_by="it",
+            prd_ref=None,
+            squad_profile_id="full",
+            squad_profile_snapshot_ref="sha256:abc",
+            task_flow_policy=TaskFlowPolicy(mode="sequential"),
+            build_strategy="fresh",
+            source_context=source_context,
+        )
+
+    external, sample = cycle(context), cycle(None)
+    await cycles.create_cycle(external)
+    await cycles.create_cycle(sample)
+
+    assert (await cycles.get_cycle(external.cycle_id)).source_context == context
+    assert (await cycles.get_cycle(sample.cycle_id)).source_context is None

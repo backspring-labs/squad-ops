@@ -21,6 +21,7 @@ from squadops.api.cycle_schemas import (
     PreflightWarningDTO,
     ProposalRatingRequest,
     ProposalRatingResponse,
+    SourcePreconditionDTO,
 )
 from squadops.api.errors import http_error
 from squadops.api.middleware.auth import require_scopes
@@ -66,10 +67,13 @@ from squadops.cycles.models import (
     CycleStatus,
     Gate,
     PreflightRejectedError,
+    Project,
     ProjectNotReadyError,
+    ProjectStateConflictError,
     Run,
     RunNotFoundError,
     SquadProfile,
+    StaleSourcePreconditionError,
     TaskFlowPolicy,
     ValidationError,
     resolve_config,
@@ -95,6 +99,7 @@ from squadops.memory.records import RecordRefused, Source, SourceKind
 from squadops.memory.reference_binding import bound_for_cycle
 from squadops.memory.task_instructions import admitted, requested_references
 from squadops.ports.llm.provider import LLMCapability
+from squadops.projects.source_context import ProjectSourceContext
 from squadops.sandbox.environment import get_environment_contract
 from squadops.sandbox.main import sandbox_config_from_env
 from squadops.sandbox.preflight import sandbox_environment_decision
@@ -410,6 +415,47 @@ def first_run(cycle: Cycle, *, initiated_by: str) -> Run:
     )
 
 
+def pin_source_context(
+    project: Project, precondition: SourcePreconditionDTO | None
+) -> ProjectSourceContext | None:
+    """SIP-0112 contract 1 (FR-04, FR-09, §D.3): an external Project's source, resolved from the
+    registry's record and pinned before dispatch. A sample application has none. A stated
+    precondition the Project has moved past is refused; an absent one pins the current source,
+    which is persisted all the same."""
+    if project.source is None:
+        if precondition is not None:
+            raise ValidationError(
+                f"Project {project.project_id} is a sample application: it has no external "
+                "source to state a precondition for"
+            )
+        return None
+    commit = project.development_baseline_commit
+    revision = project.development_configuration_revision
+    if commit is None or revision is None:
+        raise ProjectStateConflictError(
+            f"Project {project.project_id} needs its source validated and a Development "
+            "Configuration recorded before a Cycle develops it (E.4.2)"
+        )
+    if precondition is not None and (
+        precondition.development_baseline_commit != commit
+        or precondition.development_configuration_revision not in (None, revision)
+    ):
+        raise StaleSourcePreconditionError(
+            f"Project {project.project_id} is at baseline {commit}, Development Configuration "
+            f"revision {revision}; the request expected "
+            f"{precondition.development_baseline_commit}, revision "
+            f"{precondition.development_configuration_revision or 'any'}"
+        )
+    return ProjectSourceContext(
+        project_id=project.project_id,
+        record_version=project.record_version,
+        development_configuration_revision=revision,
+        repo_uri=project.source.repo_uri,
+        development_baseline_commit=commit,
+        integrated_upstream_commit=project.integrated_upstream_commit,
+    )
+
+
 async def prepare_cycle(
     ports: CreationPorts,
     project_id: str,
@@ -430,6 +476,7 @@ async def prepare_cycle(
         raise ProjectNotReadyError(
             f"Project {project_id} is {project.lifecycle_status.value}: a Cycle needs it READY"
         )
+    source_context = pin_source_context(project, body.source_precondition)
 
     # Resolve squad profile snapshot
     profile, snapshot_hash = await ports.squad_profile.resolve_snapshot(body.squad_profile_id)
@@ -504,6 +551,7 @@ async def prepare_cycle(
         notes=body.notes,
         campaign_id=campaign_id,
         kind=kind,
+        source_context=source_context,
     )
     return PreparedCycle(
         cycle,
@@ -605,6 +653,9 @@ async def create_cycle(
         task_flow_policy=body.task_flow_policy,
         resolved_config_hash=config_hash,
         warnings=[PreflightWarningDTO(code=w.code, message=w.message) for w in preflight_warnings],
+        source_context=(
+            cycle.source_context.to_document() if cycle.source_context is not None else None
+        ),
     )
 
 

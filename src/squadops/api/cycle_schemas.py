@@ -50,6 +50,16 @@ class TaskInstructionDTO(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
 
+class SourcePreconditionDTO(BaseModel):
+    """What a caller expects an external Project's source to be (SIP-0112 FR-09, §D.3). A
+    Project that has moved past it is refused, never silently re-pinned."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    development_baseline_commit: str = Field(pattern=r"^[0-9a-f]{40}$")
+    development_configuration_revision: int | None = Field(default=None, ge=1)
+
+
 class CycleCreateRequest(BaseModel):
     """Create a new cycle + first run (T17: atomic)."""
 
@@ -65,6 +75,8 @@ class CycleCreateRequest(BaseModel):
     notes: str | None = None
     #: #2178: directives for this cycle's selected tasks, stored as task instructions with it.
     task_instructions: list[TaskInstructionDTO] = Field(default_factory=list)
+    # SIP-0112 §D.3 (E.4.3): an external Project's expected source; absent, the current one.
+    source_precondition: SourcePreconditionDTO | None = None
 
     model_config = ConfigDict(extra="forbid")
 
@@ -437,6 +449,8 @@ class CycleResponse(BaseModel):
     # launched, which is otherwise unchanged.
     campaign_id: str | None = None
     kind: str | None = None
+    # SIP-0112 contract 1 (E.4.3): the external source this Cycle pinned; None for a sample app.
+    source_context: dict[str, Any] | None = None
     notes: str | None = None
     status: str  # Derived CycleStatus
     runs: list[RunResponse] = Field(default_factory=list)
@@ -470,6 +484,8 @@ class CycleCreateResponse(BaseModel):
     resolved_config_hash: str
     # SIP-0095 Phase 4: non-blocking preflight warnings surfaced to the operator.
     warnings: list[PreflightWarningDTO] = Field(default_factory=list)
+    # SIP-0112 §D.3: the external source the server pinned, stated or implicit.
+    source_context: dict[str, Any] | None = None
 
 
 class EvidenceRefDTO(BaseModel):
