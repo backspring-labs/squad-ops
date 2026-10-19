@@ -829,11 +829,23 @@ within them, for the owner's review.
   - **A scenario that passed and is now blocked is `unverified`, not `regressed`.** §4.4 says a regression
     *fails*.
 - **Each reading names its scenarios by id:** newly passing, regressed, unverified, and those taking no part.
+- **The digest's wiring, as built** (2026-10-18, #2418; `squadops.outcomes.campaign_package`). The
+  campaign's evidence package (version 4) carries an `outcomes` section, read from the scenario store at its
+  materialization, and the digest renders it under **Outcomes**. For each cycle, from its latest record
+  against the pinned suite:
+  - its scenarios' results, by id;
+  - its contribution, read against the record of the tree it built on, or *not read* with why;
+  - its quality readings, and what moved against that tree and against the calibration's reading.
+
+  **Never a scenario's goal, steps or checks.** The package is a project-level vault artifact, so the readings
+  stay out of every squad task, and a guard holds that (`test_held_out_packages.py`): every vault listing in
+  `src/` and `adapters/` names a cycle or a run, or is one of three project-level readers, each named with
+  why no squad role reads it (the agent role holds only `agents:write`). A section that can't be read is
+  recorded in the package with why, and the package is still written.
 - **Not built yet, on #2418:**
-  - the digest's wiring, which comes with the hook at an increment's end (#2414);
   - AOR and AWE, which need the objective's declared work class, a contract 2 field with the MacBook lane's
     review;
-  - "every quality baseline held", which needs #2416's baselines.
+  - "every quality baseline held", which waits for prediction 4's tolerance (§10f).
 
 **Who ruled it.** The owner accepted §4.4 (2026-10-17). The precedence and the blocked-now reading are the
 implementer's, for the owner's review.

@@ -151,6 +151,7 @@ async def _world():
         assess=AsyncMock(),
         launch=AsyncMock(),
         evaluate_outcome=None,
+        outcome_section=None,
         clock=lambda: now[0],
     )
     return campaigns, cycles, progress, now, cycle.cycle_id
@@ -355,7 +356,13 @@ async def test_the_digest_asks_while_pending_then_for_a_late_answer_then_shows_i
 
     async def read():
         return digest(
-            package(await campaigns.get_campaign(CID), await campaigns.control_log(CID), [], [])
+            package(
+                await campaigns.get_campaign(CID),
+                await campaigns.control_log(CID),
+                [],
+                [],
+                outcomes=None,
+            )
         )
 
     now[0] = OPENED + timedelta(seconds=BOUND - 1)
@@ -429,7 +436,13 @@ async def test_a_late_answer_follows_its_question_with_one_sentence_end(question
     )
 
     text = digest(
-        package(await campaigns.get_campaign(CID), await campaigns.control_log(CID), [], [])
+        package(
+            await campaigns.get_campaign(CID),
+            await campaigns.control_log(CID),
+            [],
+            [],
+            outcomes=None,
+        )
     )
 
     assert f"{joined} human:owner: list-ordering: insertion order" in text

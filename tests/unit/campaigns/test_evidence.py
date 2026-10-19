@@ -77,6 +77,7 @@ async def closed():
         assess=AsyncMock(side_effect=_assessment),
         launch=AsyncMock(),
         evaluate_outcome=None,
+        outcome_section=None,
         clock=lambda: NOW + timedelta(hours=1),
     )
     draft = campaign(CID, policy=policy(calibration_profile="framing"))
@@ -202,7 +203,7 @@ async def test_the_package_carries_each_runs_lint_reading_from_its_persisted_sum
     assert after["cycles"][0]["lint_findings"] == [
         {"run_id": "run_impl", "workload_type": "implementation", "findings": found}
     ]
-    assert after["package_version"] == 3
+    assert after["package_version"] == 4
 
 
 async def test_the_digest_says_how_the_campaign_ended_and_what_failed(closed):
@@ -221,9 +222,27 @@ def test_the_identity_is_the_records_and_moves_with_them():
     """Bug caught: an identity that does not move when a record does — two different packages
     reading as one, and the second never stored."""
     c = campaign(CID)
-    one = package(c, [], [], [CycleRecords("cyc_1", "calibration", {"verdict": "accepted"}, ())])
-    same = package(c, [], [], [CycleRecords("cyc_1", "calibration", {"verdict": "accepted"}, ())])
-    other = package(c, [], [], [CycleRecords("cyc_1", "calibration", {"verdict": "rejected"}, ())])
+    one = package(
+        c,
+        [],
+        [],
+        [CycleRecords("cyc_1", "calibration", {"verdict": "accepted"}, ())],
+        outcomes=None,
+    )
+    same = package(
+        c,
+        [],
+        [],
+        [CycleRecords("cyc_1", "calibration", {"verdict": "accepted"}, ())],
+        outcomes=None,
+    )
+    other = package(
+        c,
+        [],
+        [],
+        [CycleRecords("cyc_1", "calibration", {"verdict": "rejected"}, ())],
+        outcomes=None,
+    )
 
     assert one["identity"] == same["identity"] != other["identity"]
 
@@ -247,7 +266,9 @@ async def test_an_escalated_campaign_tells_the_owner_what_to_rule():
     )
 
     text = digest(
-        package(await registry.get_campaign(CID), await registry.control_log(CID), [], [])
+        package(
+            await registry.get_campaign(CID), await registry.control_log(CID), [], [], outcomes=None
+        )
     )
 
     assert "The campaign is escalated (§10 row 9). Resume it naming an action, or abort it." in text
@@ -346,3 +367,47 @@ def test_a_launch_escalation_asks_for_a_resume_without_an_action(operation, bind
     )
 
     assert question == f"The campaign is escalated: {asked}"
+
+
+async def test_the_package_and_digest_carry_the_campaigns_outcome_readings(closed):
+    """SIP-0113 §4.4 (#2418), entered at ``materialize_package`` with the real section over a
+    store holding the calibration's record. Bug caught: the readings never reaching the package
+    the owner triages, or reaching it with a scenario's goal, which the store holds out."""
+    from dataclasses import replace
+    from functools import partial
+
+    from adapters.scenarios.memory_scenario_store import MemoryScenarioStore
+    from squadops.outcomes.campaign_package import campaign_outcomes
+    from squadops.scenarios.evaluation import ScenarioResult
+    from squadops.scenarios.models import CampaignSuitePin
+    from squadops.scenarios.suites import approve_suite, draft_suite
+    from tests.unit.outcomes.test_campaign_package import GOAL, SUITE, _record
+
+    _, campaigns, vault = closed
+    store = MemoryScenarioStore()
+    await draft_suite(store, SUITE, actor="supervisor", at=NOW)
+    await approve_suite(store, SUITE.digest, actor="owner", at=NOW)
+    await store.save_pin(CampaignSuitePin(CID, SUITE.digest, pinned_by="owner", pinned_at=NOW))
+    await store.save_evaluation(
+        replace(_record("cyc_cal", "a" * 64, None, ScenarioResult.PASSED), campaign_id=CID)
+    )
+    progress = CampaignProgress(
+        campaigns=campaigns,
+        cycles=MemoryCycleRegistry(),
+        vault=vault,
+        assess=AsyncMock(side_effect=_assessment),
+        launch=AsyncMock(),
+        evaluate_outcome=None,
+        outcome_section=partial(campaign_outcomes, store),
+        clock=lambda: NOW + timedelta(hours=2),
+    )
+
+    identity, package_id, digest_id = await progress.materialize_package(CID)
+
+    doc = json.loads(vault.stored[package_id][1])
+    text = vault.stored[digest_id][1].decode()
+    [cal] = doc["outcomes"]["cycles"]
+    assert (doc["package_version"], cal["contribution"]["reading"]) == (4, "contributed")
+    assert "- `cyc_cal`: **contributed**; 1 passed" in text
+    assert "  - newly passing: capacity" in text
+    assert GOAL not in vault.stored[package_id][1].decode() and GOAL not in text
