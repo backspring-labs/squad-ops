@@ -449,7 +449,9 @@ def test_a_record_the_rules_cant_read_fails_the_context_and_the_turn_still_answe
     its owner into a 500 after their message was already stored."""
     from squadops.memory.records import MemoryRecord
 
-    world.records._records["mrec_bad"] = MemoryRecord("mrec_bad", "preference", "user", None, "ada", ())
+    world.records._records["mrec_bad"] = MemoryRecord(
+        "mrec_bad", "preference", "user", None, "ada", ()
+    )
 
     with caplog.at_level(logging.WARNING):
         opened, events = world.say("hello")
