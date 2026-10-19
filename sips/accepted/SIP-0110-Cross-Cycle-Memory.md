@@ -85,7 +85,7 @@ re-places it.
 | entry points: task instructions, with the work target, retries, references bound with the cycle, binding holds and emergency withdrawal (§A.3.5–§A.3.8) | **placed** | 2.4.0, #2178: stage 1 (the records reach the tasks they name, binding, the task held when incomplete) shipped in PR #2513 (§5m); stage 2 remains |
 | entry points: project instructions in the snapshot with references bound, re-binding, the effective lesson budget, the comparison arms and disclosure (§A.3.6, §A.3.7) | **placed** | 2.4.0, #2179: stage 1 (pinned at admission, binding on the tasks they apply to, the lesson budget after them) ships in the PR that wrote this row (§5n); stage 2 remains |
 | entry points: chat on the substrate, with capture confirmed, chat exposures, server-side project binding and provenance authorized (§A.3.5) | **placed** | 2.4.0, #2180: stage A (the binding, each turn's context and exposure, confirmed capture of notes and preferences, authorized provenance, Q29's deletion) ships in the PR that wrote this row (§5o); stage B, instruction capture, remains |
-| entry points: lesson inspection from chat; a conversational claim never becomes a lesson (§A.3.5) | **placed** | 2.4.0, #2181 |
+| entry points: lesson inspection from chat; a conversational claim never becomes a lesson (§A.3.5) | **shipped** | 2.4.0, PR #2518, issue #2181 (§5p) |
 | entry points: the console's memory record view (§A.3.11) | **placed** | 2.4.0, #2182 |
 | entry points: the acceptance matrix, T1–T17, live on a deploy (§A.5) | **placed** | 2.4.0, #2183 |
 | entry points: the legacy agent store retired (§A.4.3), on the owner's OK for its compose change | **placed** | 2.5.0, #2184 |
@@ -1846,6 +1846,31 @@ routes, the records routes, the provenance link and the deleted-session marks.
 
 **Stage B (#2180, still open):** a task instruction (naming an existing cycle) and a project instruction (with
 `memory:instruct`) captured from chat, delivered through #2178's and #2179's paths (T1 and T3 through chat).
+
+## 5p. Chat inspects lessons, as built (2026-10-19, #2181; the supervisor, under the owner's grant of 2026-10-19)
+
+**What shipped:** §A.3.5's "lessons are inspected, not applied" and its conversational claim.
+- **A bound turn that asks about lessons inspects the approved ones.** It asks by saying "lesson", or by naming one
+  (`pat_…` or `pat_…@n`). Its person must hold `memory:read`, which the lessons API requires.
+  - The context gains an `inspected_lessons` section: each approval in force (not revoked), with its revision's
+    text, target behavior and cited observations, what it is approved for, who approved it and when, the ruling,
+    the replay check, and how many dispatches were supplied it. A lesson the turn names comes first.
+  - It is optional and comes last, from what the chat budget leaves. A lesson that doesn't fit is omitted whole and
+    listed, and a read that fails is `failed`.
+  - The template tells the agent to explain them and cite the revision, never to follow them in the conversation,
+    and that only the owner approves a lesson.
+  - The reply's closing line names each lesson shown by its revision id, beside the records used.
+- **The lesson section a task holds stays `not_applicable` on every chat turn.** Inspection is its own section, so a
+  chat exposure never reads as a lesson supplied.
+- **A conversational claim is a suggestion note** (T5).
+  - The agent proposes one as `"suggestion": true`, and the card offers it on a note.
+  - `draft_revision` refuses it as a citation (it cites only recorded, classified observations).
+  - A snapshot never carries it, since a note is never pinned.
+  - No chat route reaches the lessons' draft, approval, revocation or annotation review. A test lists chat's routes
+    and holds them to the three that write: the turn, the capture and the delete.
+
+**Where it narrows the design:** a turn asks about lessons by the word or an id. A question that names neither, such as
+"what did the squad learn?", inspects nothing.
 
 ## 6. Mode neutrality: cycle, duty, and ambient utilization
 

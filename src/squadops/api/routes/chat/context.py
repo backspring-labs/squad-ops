@@ -9,7 +9,15 @@ from datetime import datetime
 from typing import Any
 
 from squadops.auth.models import Scope
-from squadops.memory.chat import CHAT_SECTIONS, ChatExposure, ChatLimits, Loaded, chat_context
+from squadops.memory.chat import (
+    CHAT_SECTIONS,
+    ChatExposure,
+    ChatLimits,
+    LessonsLoaded,
+    Loaded,
+    asks_about_lessons,
+    chat_context,
+)
 from squadops.memory.context import (
     ChatTurn,
     ContextBundle,
@@ -28,8 +36,10 @@ logger = logging.getLogger(__name__)
 class ChatContextAssembly(ContextAssemblyPort):
     """The context-assembly port for a chat turn (§3.6), in the runtime API, which owns the store and the
     recall policy. Three reads: the person's own records, the bound project's, and the notes ranked for
-    the turn (§3.10: scope and status filtered in Postgres first, then full-text match and recency). It
-    never raises: a read that fails is that section's ``failed``."""
+    the turn (§3.10: scope and status filtered in Postgres first, then full-text match and recency). A
+    fourth when a bound turn asks about lessons and its person holds ``memory:read``: the project's
+    lessons, approvals and exposures, as the lessons API serves them, to inspect (#2181). It never
+    raises: a read that fails is that section's ``failed``."""
 
     def __init__(
         self,
@@ -54,7 +64,7 @@ class ChatContextAssembly(ContextAssemblyPort):
         if self._records is None:
             sections = tuple(
                 Section(kind, Need.OPTIONAL, Disposition.DISABLED)
-                for kind in (*CHAT_SECTIONS, SectionKind.LESSONS)
+                for kind in (*CHAT_SECTIONS, SectionKind.INSPECTED_LESSONS, SectionKind.LESSONS)
             )
             return ContextBundle(request, sections, complete=True, chat=None)
         # Project notes only for a bound turn whose person may read the project (§3.3).
@@ -76,6 +86,13 @@ class ChatContextAssembly(ContextAssemblyPort):
             ),
             session=turn.session_id,
         )
+        lessons = (
+            await self._lessons(project_id, session=turn.session_id)
+            if project_id is not None
+            and Scope.MEMORY_READ in turn.viewer_scopes
+            and asks_about_lessons(turn.text)
+            else None
+        )
         try:
             sections, handed = chat_context(
                 turn=turn,
@@ -87,11 +104,25 @@ class ChatContextAssembly(ContextAssemblyPort):
                     SectionKind.NOTES: notes,
                 },
                 limits=self._limits,
+                lessons=lessons,
             )
         except Exception:  # noqa: BLE001 — a record the rules can't read fails the context, not the turn
             logger.warning("chat_context_unassembled session=%s", turn.session_id, exc_info=True)
             return _all_failed(request, project_id)
         return ContextBundle(request, sections, complete=True, chat=handed)
+
+    async def _lessons(self, project_id: str, *, session: str) -> LessonsLoaded:
+        if self._exposures is None:
+            return LessonsLoaded(failure="no memory store is configured")
+        try:
+            return LessonsLoaded(
+                revisions=tuple(await self._exposures.list_revisions(project_id)),
+                approvals=tuple(await self._exposures.list_approvals(project_id)),
+                exposures=tuple(await self._exposures.list_project_exposures(project_id)),
+            )
+        except Exception as e:  # noqa: BLE001 — the section is failed and disclosed; the turn runs
+            logger.warning("chat_context_read_failed lessons session=%s", session, exc_info=True)
+            return LessonsLoaded(failure=f"{type(e).__name__}: {e}")
 
     @staticmethod
     async def _read(what: str, read: Any, *, session: str) -> Loaded:
@@ -118,7 +149,7 @@ class ChatContextAssembly(ContextAssemblyPort):
 
 def _all_failed(request: ContextRequest, project_id: str | None) -> ContextBundle:
     """A context that couldn't be assembled: every section ``failed``, and the reply says so."""
-    kinds = (*CHAT_SECTIONS,)
+    kinds = (*CHAT_SECTIONS, SectionKind.INSPECTED_LESSONS)
     sections = (
         *(Section(kind, Need.OPTIONAL, Disposition.FAILED) for kind in kinds),
         Section(SectionKind.LESSONS, Need.OPTIONAL, Disposition.NOT_APPLICABLE),

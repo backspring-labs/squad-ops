@@ -218,3 +218,67 @@ async def test_the_note_search_filters_before_it_ranks_then_orders_by_match_and_
     found = await records.search_notes(owner_id="ada", project_id="group_run", text="join")
 
     assert [r.record_id for r in found] == ["mrec_new", "mrec_old", "mrec_miss"]
+
+
+def _lessons(*, revoked=False, failure=None, texts=("Name the manifest element.",)):
+    from squadops.memory.chat import LessonsLoaded
+    from tests.unit.memory.test_lessons import _approve, _revision
+
+    revisions = tuple(_revision(f"behavior_{n}", text=t) for n, t in enumerate(texts))
+    approvals = tuple(
+        _approve(r, revoked_at=T0 if revoked and n == 0 else None, ruling="the owner, 10-19")
+        for n, r in enumerate(revisions)
+    )
+    return revisions, LessonsLoaded(revisions, approvals, failure=failure)
+
+
+def test_a_turn_that_asks_about_lessons_inspects_the_approved_ones_and_is_never_guided_by_them():
+    """#2181. Bug caught: a revoked lesson shown as approved, a lesson the turn names buried after
+    the others, its evidence or approval missing, or the lesson section a task holds reaching chat."""
+    revisions, lessons = _lessons(revoked=True, texts=("revoked one", "kept one", "named one"))
+    named = revisions[2].revision_id
+
+    sections, handed = chat_context(
+        turn=_turn(f"why does {named} exist, and what other lessons are there?"),
+        project_id="group_run",
+        reads={},
+        limits=ChatLimits(max_notes=8, max_tokens=1500),
+        lessons=lessons,
+    )
+
+    inspected = _sections(sections)[SectionKind.INSPECTED_LESSONS]
+    assert [r.record_id + "@" + r.revision for r in inspected.supplied] == [
+        named, revisions[1].revision_id,
+    ]  # fmt: skip
+    assert _sections(sections)[SectionKind.LESSONS].disposition is Disposition.NOT_APPLICABLE
+    [section] = [s for s in handed["sections"] if s["kind"] == "inspected_lessons"]
+    first = section["entries"][0]
+    assert (first["text"], first["cited_observations"], first["approval"]["ruling"]) == (
+        "named one", ["proposal_ruling:cmp_c4b81554bd59:e14"], "the owner, 10-19",
+    )  # fmt: skip
+    assert f"1. {named}, for behavior_2: named one" in memory_lines(handed)
+
+
+@pytest.mark.parametrize(
+    ("project_id", "loaded", "disposition"),
+    [
+        (None, "loaded", Disposition.NOT_APPLICABLE),
+        ("group_run", None, Disposition.NOT_APPLICABLE),
+        ("group_run", "failed", Disposition.FAILED),
+    ],
+    ids=["unbound", "didnt-ask", "the-read-failed"],
+)
+def test_lessons_are_inspected_only_on_a_bound_turn_that_asked(project_id, loaded, disposition):
+    """Bug caught: an unbound session inspecting a project's lessons, or a failed read shown as a
+    project with no lessons."""
+    _, lessons = _lessons(failure="ConnectionError: down" if loaded == "failed" else None)
+
+    sections, _ = chat_context(
+        turn=_turn("which lessons apply?"),
+        project_id=project_id,
+        reads={},
+        limits=ChatLimits(max_notes=8, max_tokens=1500),
+        lessons=None if loaded is None else lessons,
+    )
+
+    assert _sections(sections)[SectionKind.INSPECTED_LESSONS].disposition is disposition
