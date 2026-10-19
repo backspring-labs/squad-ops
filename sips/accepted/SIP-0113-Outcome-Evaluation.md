@@ -744,3 +744,27 @@ within them, for the owner's review.
     must name one of the campaign's own intervention rows.
 - **Constants, not enums.** Several of the words are other vocabularies' too (`implementation` is a
   workload, `recovery` a prompt mode), and #380's guard reads every such literal as an enum's shadow.
+
+### 10e. Contribution, per increment, as built (2026-10-19, §4.4; #2418; implementer's record, for the owner)
+
+- **The reading** (`squadops.outcomes.contribution`) compares two evaluation records of one suite: the
+  increment's tree against the accepted tree it was built on. Records of different suites, or a previous
+  record of another tree, are refused (`NotComparable`), so a reading never describes a change that didn't
+  happen. A calibration compares with nothing: what passes on it reads as new.
+- **What takes no part:** a scenario not applicable, and one that is `surface_absent` on both trees, since
+  the product never had that surface. A surface that disappears is different: it passed, and now it's
+  absent. That reads `unverified`.
+- **Two choices §4.4 leaves open:**
+  - **The precedence is regressed, then unverified, then contributed, then neutral.** So a contribution is
+    never claimed while a scenario that takes part was blocked: the reading couldn't check it.
+  - **A scenario that passed and is now blocked is `unverified`, not `regressed`.** §4.4 says a regression
+    *fails*.
+- **Each reading names its scenarios by id:** newly passing, regressed, unverified, and those taking no part.
+- **Not built yet, on #2418:**
+  - the digest's wiring, which comes with the hook at an increment's end (#2414);
+  - AOR and AWE, which need the objective's declared work class, a contract 2 field with the MacBook lane's
+    review;
+  - "every quality baseline held", which needs #2416's baselines.
+
+**Who ruled it.** The owner accepted §4.4 (2026-10-17). The precedence and the blocked-now reading are the
+implementer's, for the owner's review.
