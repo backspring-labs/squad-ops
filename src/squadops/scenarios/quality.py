@@ -1,4 +1,5 @@
-"""Quality baselines: Lighthouse and axe per declared page (SIP-0113 §4.2, phase 1; #2416).
+"""Quality baselines: Lighthouse and axe per declared page, and #1937's lint over the evaluated
+tree (SIP-0113 §4.2, phase 1; #2416).
 
 They're measured by the evaluator's image (A2), on the instance the scenarios read, after it is
 ready and before any scenario has written to it. So every tree is measured in the same state.
@@ -12,6 +13,10 @@ A reading is one of three:
 
 Neither of the last two is evidence. Neither counts in any rate, and neither ever reads as a
 baseline held (§4.2).
+
+Lint reads the tree as delivered, whatever the start did, by #1937's rule sets (``LintReading``).
+Only a scaffold stack's tree has them: a declared Project's lint is not measured, and its own
+linter is never read in their place.
 """
 
 from __future__ import annotations
@@ -52,6 +57,9 @@ class NotMeasured(StrEnum):
     EVALUATOR_ABSENT = "evaluator_absent"
     #: The evaluator ran and failed, or answered something it shouldn't.
     EVALUATOR_FAILED = "evaluator_failed"
+    #: #1937's rule sets exist only for the scaffold stacks: a declared Project's lint is never
+    #: read, and the product's own linter is never used in its place (§4.2).
+    NOT_A_SCAFFOLD_STACK = "not_a_scaffold_stack"
 
 
 @dataclass(frozen=True)
@@ -115,6 +123,50 @@ class QualityReading:
             status=QualityStatus(d["status"]),
             reason=NotMeasured(d["reason"]) if d.get("reason") else None,
             pages=tuple(PageMeasure.from_dict(p) for p in d.get("pages", ())),
+            evaluator=d.get("evaluator"),
+            detail=d.get("detail"),
+        )
+
+
+@dataclass(frozen=True)
+class LintReading:
+    """One tree's lint by #1937's rule sets (§4.2, #2416): ``reading`` is #1937's own shape
+    (``delivered_lint.reading``), counted by rule and by file, with any tool that couldn't run
+    named under its ``unavailable``. ``evaluator`` names the image that ran the tools."""
+
+    status: QualityStatus
+    reason: NotMeasured | None = None
+    reading: Mapping[str, Any] | None = None
+    evaluator: str | None = None
+    detail: str | None = None
+
+    def __post_init__(self) -> None:
+        if self.status is QualityStatus.NOT_APPLICABLE:
+            raise ValueError("lint applies to every tree: it is measured, or not measured")
+        if (self.status is QualityStatus.NOT_MEASURED) != (self.reason is not None):
+            raise ValueError("a reading that isn't measured says why, and only then")
+        if (self.status is QualityStatus.MEASURED) != (self.reading is not None):
+            raise ValueError("a measured lint carries its reading, and only it")
+
+    @classmethod
+    def not_measured(cls, reason: NotMeasured, detail: str | None = None) -> LintReading:
+        return cls(QualityStatus.NOT_MEASURED, reason=reason, detail=detail)
+
+    def as_dict(self) -> dict[str, Any]:
+        return {
+            "status": self.status.value,
+            "reason": self.reason.value if self.reason else None,
+            "reading": dict(self.reading) if self.reading is not None else None,
+            "evaluator": self.evaluator,
+            "detail": self.detail,
+        }
+
+    @classmethod
+    def from_dict(cls, d: Mapping[str, Any]) -> LintReading:
+        return cls(
+            status=QualityStatus(d["status"]),
+            reason=NotMeasured(d["reason"]) if d.get("reason") else None,
+            reading=d.get("reading"),
             evaluator=d.get("evaluator"),
             detail=d.get("detail"),
         )

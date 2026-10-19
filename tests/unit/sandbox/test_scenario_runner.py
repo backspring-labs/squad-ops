@@ -154,7 +154,7 @@ async def test_a_blueprint_tree_starts_by_its_stacks_environment_contract(tmp_pa
         declared=None,
     )
 
-    install, build, start = (s.command for s in container.specs)
+    install, build, start = (s.command for s in container.specs if s.image != EVALUATOR)
     assert install[:2] == ["sh", "-c"] and "pip install" in install[2]
     assert build == ["npm", "--prefix", "frontend", "run", "build"]
     assert start[:2] == ["sh", "-c"] and "uvicorn backend.main:app" in start[2]
@@ -491,7 +491,7 @@ class _Measured(_OnTheNetwork):
 
     async def run(self, spec: ContainerSpec) -> ContainerResult:
         if spec.image == EVALUATOR:
-            self.events.append("evaluator")
+            self.events.append("lint" if b'"lint"' in spec.stdin else "evaluator")
         return await super().run(spec)
 
 
@@ -510,7 +510,7 @@ async def test_the_pages_are_measured_on_the_app_network_before_any_scenario_wri
     )
 
     start = container.specs[2]
-    [evaluator] = [s for s in container.specs if s.image == EVALUATOR]
+    [evaluator] = [s for s in container.specs if s.image == EVALUATOR and b"base_url" in s.stdin]
     assert json.loads(evaluator.stdin) == {"base_url": f"http://{start.name}:4173", "pages": ["/"]}
     assert (evaluator.network, evaluator.volumes, evaluator.env) == (
         "squadops-sandbox-apps",
@@ -519,7 +519,7 @@ async def test_the_pages_are_measured_on_the_app_network_before_any_scenario_wri
     )
     assert evaluator.cap_drop_all and evaluator.no_new_privileges
     assert result.quality == _MEASURED
-    assert events == ["evaluator", "scenario"]
+    assert events == ["evaluator", "scenario", "lint"]
     assert [r.result for r in result.runs] == ["passed"]
 
 
@@ -606,3 +606,105 @@ async def test_a_declared_project_is_measured_at_its_ui_base_and_serves_its_own_
     assert start.command == list(DECLARED.start)
     assert json.loads(evaluator.stdin)["base_url"] == f"http://{start.name}:18409"
     assert result.quality.status is QualityStatus.MEASURED
+
+
+# --------------------------------------------------------------------------------------------
+# SIP-0113 §4.2 (#2416): #1937's lint over the tree as delivered, in the evaluator's image
+# --------------------------------------------------------------------------------------------
+
+_LINT_ANSWER = {
+    "lint": {
+        "root": "/tmp/lint-abc",
+        "ruff": {
+            "version": "ruff 0.16.6",
+            "exit": 0,
+            "stdout": json.dumps(
+                [{"code": "F401", "filename": "/tmp/lint-abc/app.py"}] * 2
+                + [{"code": "E501", "filename": "/tmp/lint-abc/app.py"}]
+            ),
+            "stderr": "",
+        },
+        "eslint": None,
+    }
+}
+
+
+class _Linted(_Container):
+    """The evaluator answering a lint request as scripted, and nothing else differently."""
+
+    def __init__(self, answer: ContainerResult, **kw) -> None:
+        super().__init__(**kw)
+        self.lint_answer = answer
+
+    async def run(self, spec: ContainerSpec) -> ContainerResult:
+        if spec.image == EVALUATOR and b'"lint"' in spec.stdin:
+            self.specs.append(spec)
+            return self.lint_answer
+        return await super().run(spec)
+
+
+async def test_a_blueprints_tree_is_linted_as_delivered_with_no_network_and_one_source(tmp_path):
+    """§4.2 and #1937. Bug caught: the lint read the copy after its install, so the app's
+    dependencies count as its findings; the tools given a route out; #1937's rules or ESLint
+    config copied into a second place, free to drift; or a binary file sent as text."""
+    from squadops.capabilities.delivered_lint import RUFF_ARGS, eslint_runner_source
+
+    container = _Linted(ContainerResult("", 0, json.dumps(_LINT_ANSWER) + "\n", ""))
+
+    result = await _evaluate(
+        _runner(tmp_path, container), stack="fullstack_fastapi_react", declared=None
+    )
+
+    [lint_spec] = [s for s in container.specs if s.image == EVALUATOR]
+    request = json.loads(lint_spec.stdin)["lint"]
+    assert set(request["files"]) == {"app.py", "run.sh"}  # the PNG isn't text
+    assert request["ruff_args"] == list(RUFF_ARGS)
+    assert request["eslint_runner"] == eslint_runner_source()
+    assert (lint_spec.network, lint_spec.volumes, lint_spec.env) == ("none", (), ())
+    assert result.lint.status is QualityStatus.MEASURED
+    assert result.lint.reading["by_rule"] == {"ruff:E501": 1, "ruff:F401": 2}
+    assert result.lint.reading["by_file"] == {"app.py": 3}
+    assert result.lint.evaluator == EVALUATOR
+
+
+@pytest.mark.parametrize(
+    ("container", "declared", "reason", "detail"),
+    [
+        (_Linted(ContainerResult("", 0, "", "")), DECLARED, NotMeasured.NOT_A_SCAFFOLD_STACK, None),
+        (
+            _Linted(ContainerResult("", 2, "", "ruff: not found\n")),
+            None,
+            NotMeasured.EVALUATOR_FAILED,
+            "ruff: not found",
+        ),
+        (_Linted(ContainerResult("", 0, "{}\n", "")), None, NotMeasured.EVALUATOR_FAILED, "answer"),
+    ],
+    ids=["a-declared-project", "the-evaluator-fails", "an-answer-with-no-lint"],
+)
+async def test_a_lint_that_cant_be_read_says_why(tmp_path, container, declared, reason, detail):
+    """§4.2: off the scaffold stacks lint is not measured, and the product's own linter is never
+    read in its place. Bug caught: a declared Project linted by #1937's rules it never chose, or
+    a failed lint read as a clean tree."""
+    result = await _evaluate(
+        _runner(tmp_path, container),
+        stack=None if declared else "fullstack_fastapi_react",
+        declared=declared,
+    )
+
+    assert (result.lint.status, result.lint.reason) == (QualityStatus.NOT_MEASURED, reason)
+    assert detail is None or detail in result.lint.detail
+    if declared is not None:
+        assert [s for s in container.specs if s.image == EVALUATOR] == []
+
+
+async def test_a_tree_that_cant_start_is_still_linted(tmp_path):
+    """Lint reads the tree, not the instance. Bug caught: a delivery whose install fails losing
+    its lint too, so the increments that most need the reading have none."""
+    container = _Linted(ContainerResult("", 0, json.dumps(_LINT_ANSWER) + "\n", ""), setup_exit=2)
+
+    result = await _evaluate(
+        _runner(tmp_path, container), stack="fullstack_fastapi_react", declared=None
+    )
+
+    assert result.started is False
+    assert result.lint.status is QualityStatus.MEASURED

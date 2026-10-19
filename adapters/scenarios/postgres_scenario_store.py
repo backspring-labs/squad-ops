@@ -18,12 +18,12 @@ from squadops.scenarios.models import (
     SuiteState,
     parse_suite,
 )
-from squadops.scenarios.quality import QualityReading
+from squadops.scenarios.quality import LintReading, QualityReading
 
 _SUITE_COLUMNS = "digest, content, state, drafted_by, drafted_at, approved_by, approved_at"
 _EVALUATION_COLUMNS = (
     "evaluation_id, project_id, campaign_id, cycle_id, evaluated_tree_identity, "
-    "previous_accepted_tree_identity, suite_digest, outcomes, evaluated_at, quality"
+    "previous_accepted_tree_identity, suite_digest, outcomes, evaluated_at, quality, lint"
 )
 
 
@@ -84,7 +84,7 @@ class PostgresScenarioStore(ScenarioStorePort):
         async with self._pool.acquire() as conn:
             await conn.execute(
                 f"INSERT INTO scenario_evaluations ({_EVALUATION_COLUMNS}) "
-                "VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)",
+                "VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)",
                 record.evaluation_id,
                 record.project_id,
                 record.campaign_id,
@@ -95,6 +95,7 @@ class PostgresScenarioStore(ScenarioStorePort):
                 [o.as_dict() for o in record.outcomes],
                 record.evaluated_at,
                 record.quality.as_dict() if record.quality is not None else None,
+                record.lint.as_dict() if record.lint is not None else None,
             )
 
     async def get_evaluation(self, evaluation_id: str) -> EvaluationRecord | None:
@@ -136,4 +137,5 @@ def _row_to_evaluation(row: asyncpg.Record) -> EvaluationRecord:
     values = dict(row)
     values["outcomes"] = tuple(ScenarioOutcome.from_dict(o) for o in row["outcomes"])
     values["quality"] = QualityReading.from_dict(row["quality"]) if row["quality"] else None
+    values["lint"] = LintReading.from_dict(row["lint"]) if row["lint"] else None
     return EvaluationRecord(**values)

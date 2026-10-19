@@ -56,47 +56,80 @@ def _authored(path: str) -> bool:
     return bool(parts) and not any(p in SKIPPED_DIRS for p in parts) and ".." not in parts
 
 
-def _ruff(root: Path) -> tuple[str | None, list[tuple[str, str]], str | None]:
-    """(version, [(rule, file)], why it could not run)."""
-    if shutil.which("ruff") is None:
-        return None, [], "ruff is not installed"
+#: ruff's command after ``ruff``, run in the tree's root: nothing in the tree configures it.
+RUFF_ARGS = (
+    "check",
+    "--isolated",
+    "--no-cache",
+    "--exit-zero",
+    "--output-format",
+    "json",
+    "--select",
+    ",".join(RUFF_RULES),
+    ".",
+)
+
+#: One tool's completed run, as either place reports it: (exit code, stdout, stderr).
+ToolRun = tuple[int, bytes | str, bytes | str]
+#: (version, [(rule, file)], why it could not be read)
+ToolFindings = tuple[str | None, list[tuple[str, str]], str | None]
+
+
+def _text(value: bytes | str) -> str:
+    return value.decode("utf-8", errors="replace") if isinstance(value, bytes) else value
+
+
+def ruff_findings(run: ToolRun, version: str | None, root: str | Path) -> ToolFindings:
+    """ruff's completed run over ``root``, read: the qa task's, or the evaluator's (#2416)."""
+    returncode, stdout, stderr = run
+    if returncode != 0:
+        return None, [], f"ruff exited {returncode}: {_text(stderr)[-300:]}"
     try:
-        version = run_bounded_sync(["ruff", "--version"], cwd=root, timeout=10)
-        run = run_bounded_sync(
-            [
-                "ruff",
-                "check",
-                "--isolated",
-                "--no-cache",
-                "--exit-zero",
-                "--output-format",
-                "json",
-                "--select",
-                ",".join(RUFF_RULES),
-                ".",
-            ],
-            cwd=root,
-            timeout=TOOL_TIMEOUT_S,
-        )
-    except OSError as e:
-        return None, [], f"ruff did not start: {e}"
-    if run.timed_out:
-        return None, [], f"ruff ran past {TOOL_TIMEOUT_S:.0f}s"
-    if run.returncode != 0:
-        return None, [], f"ruff exited {run.returncode}: {run.stderr.decode()[-300:]}"
-    try:
-        found = json.loads(run.stdout or b"[]")
+        found = json.loads(_text(stdout) or "[]")
     except json.JSONDecodeError as e:
         return None, [], f"ruff's report did not parse: {e}"
-    named = version.stdout.decode().strip() or None
     return (
-        named,
+        version or None,
         [(f"ruff:{f.get('code') or 'syntax'}", _relative(f["filename"], root)) for f in found],
         None,
     )
 
 
-def _eslint(root: Path) -> tuple[str | None, list[tuple[str, str]], str | None]:
+def eslint_findings(run: ToolRun) -> ToolFindings:
+    """``delivered_lint_eslint.cjs``'s completed run, read: the qa task's, or the evaluator's."""
+    returncode, stdout, stderr = run
+    if returncode != 0:
+        return None, [], f"eslint exited {returncode}: {_text(stderr)[-300:]}"
+    try:
+        report = json.loads(_text(stdout))
+    except json.JSONDecodeError as e:
+        return None, [], f"eslint's report did not parse: {e}"
+    found = [
+        (f"eslint:{rule}", entry["file"]) for entry in report["results"] for rule in entry["rules"]
+    ]
+    return report.get("version"), found, None
+
+
+def eslint_runner_source() -> str:
+    """The ESLint runner and its config, which the evaluator's image runs as sent (#2416)."""
+    return (package_files("squadops.capabilities") / _ESLINT_RUNNER).read_text(encoding="utf-8")
+
+
+def _ruff(root: Path) -> ToolFindings:
+    if shutil.which("ruff") is None:
+        return None, [], "ruff is not installed"
+    try:
+        version = run_bounded_sync(["ruff", "--version"], cwd=root, timeout=10)
+        run = run_bounded_sync(["ruff", *RUFF_ARGS], cwd=root, timeout=TOOL_TIMEOUT_S)
+    except OSError as e:
+        return None, [], f"ruff did not start: {e}"
+    if run.timed_out:
+        return None, [], f"ruff ran past {TOOL_TIMEOUT_S:.0f}s"
+    named = version.stdout.decode().strip() or None
+    return ruff_findings((run.returncode or 0, run.stdout, run.stderr), named, root)
+
+
+def _eslint(root: Path) -> ToolFindings:
     if shutil.which("node") is None:
         return None, [], "node is not installed"
     runner = package_files("squadops.capabilities") / _ESLINT_RUNNER
@@ -106,21 +139,12 @@ def _eslint(root: Path) -> tuple[str | None, list[tuple[str, str]], str | None]:
         return None, [], f"node did not start: {e}"
     if run.timed_out:
         return None, [], f"eslint ran past {TOOL_TIMEOUT_S:.0f}s"
-    if run.returncode != 0:
-        return None, [], f"eslint exited {run.returncode}: {run.stderr.decode()[-300:]}"
-    try:
-        report = json.loads(run.stdout)
-    except json.JSONDecodeError as e:
-        return None, [], f"eslint's report did not parse: {e}"
-    found = [
-        (f"eslint:{rule}", entry["file"]) for entry in report["results"] for rule in entry["rules"]
-    ]
-    return report.get("version"), found, None
+    return eslint_findings((run.returncode or 0, run.stdout, run.stderr))
 
 
-def _relative(path: str, root: Path) -> str:
+def _relative(path: str, root: str | Path) -> str:
     try:
-        return Path(path).resolve().relative_to(root.resolve()).as_posix()
+        return Path(path).resolve().relative_to(Path(root).resolve()).as_posix()
     except ValueError:
         return path
 
@@ -147,34 +171,68 @@ def reading(
     }
 
 
-def lint_delivered(tree: Mapping[str, str]) -> dict[str, Any]:
-    """The reading for ``tree`` (path to content): every authored file written to a scratch
-    directory, ruff over its Python and ESLint over its JS/TS. Never raises: a tool that cannot
-    run is named under ``unavailable``."""
-    authored = {p: c for p, c in tree.items() if _authored(p)}
-    py = [p for p in authored if p.endswith(".py")]
-    js = [p for p in authored if p.endswith(JS_SUFFIXES)]
+def lintable(tree: Mapping[str, bytes | str]) -> dict[str, str]:
+    """The authored files a reading lints, as text: generated and installed trees left out, and a
+    file that isn't UTF-8 (an image) too, since neither tool reads one."""
+    files = {}
+    for path, content in tree.items():
+        if not _authored(path):
+            continue
+        if isinstance(content, bytes):
+            try:
+                content = content.decode("utf-8")
+            except UnicodeDecodeError:
+                continue
+        files[path] = content
+    return files
+
+
+def linted_counts(files: Mapping[str, str]) -> dict[str, int]:
+    """How many files each tool reads: ruff the Python, ESLint the JS/TS."""
+    return {
+        "python": sum(1 for p in files if p.endswith(".py")),
+        "js": sum(1 for p in files if p.endswith(JS_SUFFIXES)),
+    }
+
+
+def tools_reading(
+    linted: Mapping[str, int], ran: Mapping[str, ToolFindings | None]
+) -> dict[str, Any]:
+    """The reading from each tool's findings, ``None`` for a tool that didn't run. A tool with no
+    file of its kind is left out, as it is from ``lint_delivered``'s."""
     findings: list[tuple[str, str]] = []
     tools: dict[str, str | None] = {}
     unavailable: dict[str, str] = {}
+    for name, kind in (("ruff", "python"), ("eslint", "js")):
+        if not linted.get(kind):
+            continue
+        result = ran.get(name)
+        if result is None:
+            unavailable[name] = f"{name} did not run"
+            continue
+        version, found, why = result
+        if why:
+            unavailable[name] = why
+            continue
+        tools[name] = version
+        findings.extend(found)
+    return reading(findings, tools=tools, linted=linted, unavailable=unavailable)
+
+
+def lint_delivered(tree: Mapping[str, bytes | str]) -> dict[str, Any]:
+    """The reading for ``tree`` (path to content): every authored file written to a scratch
+    directory, ruff over its Python and ESLint over its JS/TS. Never raises: a tool that cannot
+    run is named under ``unavailable``."""
+    files = lintable(tree)
+    linted = linted_counts(files)
+    ran: dict[str, ToolFindings | None] = {}
     with tempfile.TemporaryDirectory(prefix="qa_lint_") as tmp:
         root = Path(tmp)
-        for path, content in authored.items():
+        for path, content in files.items():
             target = root / path
             target.parent.mkdir(parents=True, exist_ok=True)
             target.write_text(content, encoding="utf-8")
-        for name, files_of_kind, run in (("ruff", py, _ruff), ("eslint", js, _eslint)):
-            if not files_of_kind:
-                continue
-            version, found, why = run(root)
-            if why:
-                unavailable[name] = why
-                continue
-            tools[name] = version
-            findings.extend(found)
-    return reading(
-        findings,
-        tools=tools,
-        linted={"python": len(py), "js": len(js)},
-        unavailable=unavailable,
-    )
+        for name, kind, run in (("ruff", "python", _ruff), ("eslint", "js", _eslint)):
+            if linted[kind]:
+                ran[name] = run(root)
+    return tools_reading(linted, ran)

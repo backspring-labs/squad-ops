@@ -10,15 +10,26 @@ import pytest
 from squadops.sandbox import environment
 from squadops.sandbox.environment import EVALUATOR_IMAGE, get_environment_contract
 
-_EVALUATOR = Path(__file__).resolve().parents[3] / "infra" / "evaluator"
-_SOURCES = ("Dockerfile", "driver.mjs", "package.json", "package-lock.json")
-#: The digest of the sources each tag was cut from. A change to them is a new measure: cut a new
-#: tag here and in ``EVALUATOR_IMAGE``, and the window's record names it.
-_CUT = {"squadops-evaluator:lighthouse13.5-axe4.14-1": "2011ffd3c1fa431a"}
+_REPO = Path(__file__).resolve().parents[3]
+_EVALUATOR = _REPO / "infra" / "evaluator"
+#: The image's sources, and what each lint request carries: #1937's ESLint runner (its config) and
+#: ruff's command (its rules). A change to any of them is a new measure.
+_SOURCES = (
+    _EVALUATOR / "Dockerfile",
+    _EVALUATOR / "driver.mjs",
+    _EVALUATOR / "package.json",
+    _EVALUATOR / "package-lock.json",
+    _REPO / "src" / "squadops" / "capabilities" / "delivered_lint_eslint.cjs",
+)
+#: The digest of the sources each tag was cut from: cut a new tag here and in ``EVALUATOR_IMAGE``
+#: when they change, and the window's record names it.
+_CUT = {"squadops-evaluator:lighthouse13.5-axe4.14-ruff0.16-eslint10.12-2": "ed170cddc62fe9f3"}
 
 
 def _digest() -> str:
-    joined = b"".join((_EVALUATOR / name).read_bytes() for name in _SOURCES)
+    from squadops.capabilities.delivered_lint import RUFF_ARGS
+
+    joined = b"".join(path.read_bytes() for path in _SOURCES) + " ".join(RUFF_ARGS).encode()
     return hashlib.sha256(joined).hexdigest()[:16]
 
 
@@ -30,6 +41,29 @@ def test_the_evaluator_tag_moves_whenever_its_sources_do():
         f"infra/evaluator's sources changed (digest {_digest()}): cut a new EVALUATOR_IMAGE tag "
         "and record it in _CUT"
     )
+
+
+def _qa_pins() -> dict[str, str]:
+    lines = (_REPO / "agents" / "instances" / "qa" / "npm-global-packages.txt").read_text()
+    pins = (line.rsplit("@", 1) for line in lines.splitlines() if line and not line.startswith("#"))
+    return dict(pins)
+
+
+def test_the_evaluators_lint_tools_are_the_qa_images_so_the_two_readings_are_one_measure():
+    """#1937's reading is taken in the qa image and, since #2416, in the evaluator's. Bug caught:
+    one image's ESLint, a config package or TypeScript moved and the other's not, or a different
+    ruff, so an increment's lint delta is a tool change read as a code change."""
+    import json
+    import re
+
+    evaluator = json.loads((_EVALUATOR / "package.json").read_text())["dependencies"]
+    qa = _qa_pins()
+    shared = ("eslint", "@eslint/js", "typescript-eslint", "globals", "typescript")
+    locked = re.search(r"^ruff==(\S+)$", (_REPO / "requirements" / "agent.lock").read_text(), re.M)
+    image = re.search(r"ghcr\.io/astral-sh/ruff:(\S+)@", (_EVALUATOR / "Dockerfile").read_text())
+
+    assert {p: evaluator.get(p) for p in shared} == {p: qa.get(p) for p in shared}
+    assert image is not None and locked is not None and image.group(1) == locked.group(1)
 
 
 @pytest.mark.parametrize("stack", sorted(environment._CONTRACTS))

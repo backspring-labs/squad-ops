@@ -19,7 +19,7 @@ from enum import StrEnum
 from typing import Any
 
 from squadops.scenarios.models import ScenarioSuite
-from squadops.scenarios.quality import QualityReading
+from squadops.scenarios.quality import LintReading, QualityReading
 from squadops.scenarios.reference import (
     EvaluationInvalid,
     OutcomeEvaluationRef,
@@ -130,6 +130,8 @@ class EvaluationRecord:
     #: Lighthouse and axe on the evaluated instance (§4.2, #2416). ``None`` on a record written
     #: before the baselines existed: never read as measured, nor as not measured.
     quality: QualityReading | None = None
+    #: #1937's lint over the evaluated tree (§4.2, #2416). ``None`` on a record written before it.
+    lint: LintReading | None = None
 
     def reference(self) -> OutcomeEvaluationRef:
         return OutcomeEvaluationRef(
@@ -158,6 +160,7 @@ def evaluation_record(
     previous_accepted_tree_identity: str | None,
     evaluated_at: datetime,
     quality: QualityReading,
+    lint: LintReading,
     evaluation_id: str | None = None,
 ) -> EvaluationRecord:
     """A record that names its suite's scenarios exactly: one outcome for each, at the version and
@@ -179,6 +182,7 @@ def evaluation_record(
         outcomes=outcomes,
         evaluated_at=evaluated_at,
         quality=quality,
+        lint=lint,
     )
     parse_reference(record.reference().to_dict())  # the reference it yields must be readable
     return record

@@ -878,8 +878,20 @@ implementer's, for the owner's review.
     - axe: 2 moderate violations each;
     - three re-measures were identical, a first read of §7 prediction 4 on a quiet box;
   - **`/runs` and `/create`, which this delivery doesn't declare,** painted nothing, and read as errors.
+- **Lint, as built** (2026-10-18, #2416). #1937's reading of the evaluated tree as delivered, by its own rule
+  sets, in each evaluation's record (`lint`, migration 1940):
+  - **Where:** in the evaluator's image with no network. It carries ruff and ESLint at #1937's pinned
+    versions, and a guard keeps them equal to the qa image's, so the two readings are one measure.
+  - **What it's sent:** the files, #1937's ruff command, and its ESLint runner and config, on its input. So
+    the rules have one source, and the evaluator's tag covers them.
+  - **When:** whatever the start did, since a tree that won't install is still read.
+  - **Off the scaffold stacks:** a declared Project's lint is *not measured* (`not_a_scaffold_stack`), and
+    its own linter is never read in its place.
+  - **Found while building it (#2478):** #1937's ESLint config named no file patterns, so ESLint linted no
+    `.jsx` file, while the reading counted them as linted. On the reference increment it read 3 of 11 JS
+    files, and never the React UI. The runner now names its patterns, and all 11 are read. The qa path
+    reads the same once its image is rebuilt.
 - **Not built yet, on #2416:**
-  - **lint** on the evaluated tree, by #1937's rule sets;
   - **each measure's delta** from the previous accepted tree, and the calibration's reading as the
     campaign's baseline;
   - **prediction 4's spread,** recorded across the window.
