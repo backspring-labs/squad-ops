@@ -49,9 +49,9 @@ STACK_NAME = "nextjs_ts"
 #: #1126: how a suite on this stack invokes the application. Under the in-process model
 #: (#877) a suite reaches the app by loading its ``app/api/`` route handler — an import
 #: statement, a ``require``, or a dynamic ``import(`` (``JS_MODULE_LOAD``, #1533), never a
-#: ``vi.mock('@/app/api/...')`` string — so
-#: there is no ``fetch`` for a correct suite to stub, and mocking the route module under
-#: test is unconditionally self-mocking. These three patterns used to live in the shared
+#: ``vi.mock('@/app/api/...')`` string. An API suite calls the handler directly; a page suite
+#: (#2534) stubs ``fetch`` and routes it to an imported handler, so it still invokes the app.
+#: Mocking the route module under test is unconditionally self-mocking. These three patterns used to live in the shared
 #: detector as if they were every stack's; they are this stack's.
 APP_INVOCATION = AppInvocation(
     invocation_import=JS_MODULE_LOAD + r"""['"`][^'"`]*app/api/""",
@@ -304,7 +304,7 @@ export default defineConfig({
   test: {
     environment: 'node',
     // A page suite renders a page, so it runs in a DOM (#2534); an API suite stays in node,
-    // where a route handler's Request and Response are Node's own.
+    // the environment the route handlers run in.
     environmentMatchGlobs: [['**/__tests__/**/*.test.tsx', 'jsdom']],
     setupFiles: ['vitest.setup.ts'],
     include: ['"""

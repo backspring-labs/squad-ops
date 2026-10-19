@@ -401,6 +401,20 @@ class TestVitestSuiteBroken:
 
         assert _vitest_suite_broken(1, "", "No test files found, exiting with code 1") is True
 
+    @pytest.mark.parametrize("name", ["document", "window"])
+    def test_a_page_suite_run_in_node_is_broken_not_the_page(self, name):
+        """#2534. Bug caught: a suite that renders a page, named `.test.ts`, so it ran in node
+        with no DOM, read as the page failing, and the dev repaired a correct page. Seen in the
+        2.4 Next.js shakeout's round 3 image (the eve container's own vitest)."""
+        from squadops.capabilities.handlers.test_runner import _vitest_suite_broken
+
+        out = (
+            f" FAIL  __tests__/run-detail.test.ts > renders\n"
+            f"ReferenceError: {name} is not defined\n"
+            " Test Files  1 failed (1)\n      Tests  1 failed (1)\n"
+        )
+        assert _vitest_suite_broken(1, out, "") is True
+
     def test_real_test_failures_are_not_broken(self):
         from squadops.capabilities.handlers.test_runner import _vitest_suite_broken
 

@@ -177,13 +177,24 @@ def test_every_page_suite_the_runner_collects_runs_in_a_dom_with_testing_library
     dom = test_file_patterns_from_glob(jsdom_glob)
     dev = json.loads(tree["package.json"])["devDependencies"]
 
-    assert matches_test_file_patterns(criterion_test_path("nextjs_ts", "T3", "client_route"), dom)
-    assert matches_test_file_patterns("__tests__/run-detail.test.tsx", dom)
+    from squadops.stacks.scaffold import test_config_files_for_stack
+
+    for page_suite in (
+        criterion_test_path("nextjs_ts", "T3", "client_route"),
+        "__tests__/run-detail.test.tsx",
+        "__tests__/harness-dom.test.tsx",
+    ):
+        assert matches_test_file_patterns(page_suite, dom), page_suite
     assert not matches_test_file_patterns("__tests__/runs-api.test.ts", dom)
-    assert {p: dev.get(p) for p in ("jsdom", "@testing-library/react", "@testing-library/dom",
-                                    "@testing-library/jest-dom")} == {
-        "jsdom": "25.0.1", "@testing-library/react": "16.0.1", "@testing-library/dom": "10.4.0",
-        "@testing-library/jest-dom": "6.5.0",
-    }  # fmt: skip
-    assert setup in tree and "jest-dom" in tree[setup]
-    assert "findByTestId" in tree["__tests__/harness-dom.test.tsx"]
+    # Each package a page suite imports is declared, and pinned as the stack pins all of them.
+    needed = (
+        "jsdom",
+        "@testing-library/react",
+        "@testing-library/dom",
+        "@testing-library/jest-dom",
+    )
+    assert all(dev.get(p, "")[:1].isdigit() for p in needed), {p: dev.get(p) for p in needed}
+    # The setup file the config names is in the tree, and is one of the test-config files a
+    # frozen evaluation tree carries, or vitest fails to start there.
+    assert setup in tree and setup in test_config_files_for_stack("nextjs_ts")
+    assert "__tests__/harness-dom.test.tsx" in tree
