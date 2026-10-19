@@ -859,7 +859,11 @@ within them, for the owner's review.
 - **Not built yet, on #2418:**
   - AOR and the AWE themselves, grouped by the class;
   - "every quality baseline held", which waits for prediction 4's tolerance (§10f);
-  - "every safety guarantee intact", which has no record yet saying what the guarantees are.
+  - "every safety guarantee intact": the 2.0 set's pre-registration (`docs/plans/2-0-0-preregistration.md` §3)
+    lists seven, each read from the control log and the cycle records, and SIP-0109's v2.0.0 record reads
+    them held. This SIP doesn't say AOR means those seven, and no code reads them yet. Which ones AOR takes is
+    the owner's to rule; the recommendation is the seven, read from the package's control log. (Corrected
+    2026-10-18: this line had said no record named the guarantees.)
 
 **Who ruled it.** The owner accepted §4.4 (2026-10-17). The precedence and the blocked-now reading are the
 implementer's, for the owner's review.
