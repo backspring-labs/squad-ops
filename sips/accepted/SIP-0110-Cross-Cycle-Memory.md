@@ -86,7 +86,7 @@ re-places it.
 | entry points: project instructions in the snapshot with references bound, re-binding, the effective lesson budget, the comparison arms and disclosure (§A.3.6, §A.3.7) | **placed** | 2.4.0, #2179: stage 1 (pinned at admission, binding on the tasks they apply to, the lesson budget after them) ships in the PR that wrote this row (§5n); stage 2 remains |
 | entry points: chat on the substrate, with capture confirmed, chat exposures, server-side project binding and provenance authorized (§A.3.5) | **placed** | 2.4.0, #2180: stage A (the binding, each turn's context and exposure, confirmed capture of notes and preferences, authorized provenance, Q29's deletion) ships in the PR that wrote this row (§5o); stage B, instruction capture, remains |
 | entry points: lesson inspection from chat; a conversational claim never becomes a lesson (§A.3.5) | **shipped** | 2.4.0, PR #2518, issue #2181 (§5p) |
-| entry points: the console's memory record view (§A.3.11) | **placed** | 2.4.0, #2182 |
+| entry points: the console's memory record view (§A.3.11) | **placed** | 2.4.0, #2182: the view and its uses route shipped in the PR that wrote this row (§5q); the page's capture test remains, live with #2183 |
 | entry points: the acceptance matrix, T1–T17, live on a deploy (§A.5) | **placed** | 2.4.0, #2183 |
 | entry points: the legacy agent store retired (§A.4.3), on the owner's OK for its compose change | **placed** | 2.5.0, #2184 |
 
@@ -1871,6 +1871,34 @@ routes, the records routes, the provenance link and the deleted-session marks.
 
 **Where it narrows the design:** a turn asks about lessons by the word or an id. A question that names neither, such as
 "what did the squad learn?", inspects nothing.
+
+## 5q. The console's memory record view, as built (2026-10-19, #2182; the supervisor, under the owner's grant of 2026-10-19)
+
+**What shipped:** §A.3.11's view, and the route its uses are read from.
+- **A record's uses** (`GET /api/v1/memory-records/{id}/uses`, read like the record itself):
+  - each dispatch whose binding section handed it, or that it held, with the cycle, run, task, attempt, section,
+    revision and disposition, and why it held;
+  - the reader's own chat turns that held it, and a count of other people's, never opened (§3.4);
+  - each build its dispatches fed, once, with §0.10's indicators (verdict, failed rounds, rounds to green, the
+    increment's promotion), and the dispatches with no build to report, by state, none of them a failure;
+  - **its effect, apart:** "no effect measured", with why a green build beside an exposure isn't evidence the record
+    helped. "Used" and "improved the outcome" never share a column.
+- **The builds are read once** (`squadops.memory.build_report.exposure_builds`), shared by the exposure report script
+  and the view, so the two can't disagree.
+- **The list filters** by kind, scope and status. A retrieval still answers with active records only; the view can ask
+  for withdrawn ones or all, since every revision is kept (§3.8).
+- **The console's Memory perspective** (`squadops.memory`): a project's records (or your own, unbound), and one page per
+  record with the header, the source (its chat turn opened only for the session's owner, marked when the session was
+  deleted), the revisions and status changes, the references, the uses, the builds and the effect.
+
+**Where it narrows §A.3.11 and #2182's acceptance:**
+- **The page's capture test against a seeded record** needs a running console and API, so it is taken live with #2183's
+  acceptance matrix, not in the console's unit suite. The unit suite holds what can be checked without a browser: the
+  perspective's registration, and that the page calls only routes the API serves.
+- **A superseded or emergency-withdrawn revision's restart** is listed once restarts exist (#2178's second stage).
+  Until then a revision's uses show every dispatch and turn that held it.
+- **A lesson's effect** (its assessments and the window's finding) stays the lessons API's (`/api/v1/projects/{id}/lessons`,
+  `/exposures`): a lesson is not a memory record, and this view is the records'.
 
 ## 6. Mode neutrality: cycle, duty, and ambient utilization
 
