@@ -694,9 +694,21 @@ within them, for the owner's review.
   deliveries): the canonical stack's run is `meeting_location` in 26 and `location` in 4. Next.js's is
   snake_case in 5, camelCase in 2 and mixed in 1. Every delivery's manifest names the entity `Run`; only the
   hand-written reference says `RunEvent`.
-- **Read live with one suite on both stacks.** On `cyc_bbedc850e6ff` (Next.js), "a created run reads back"
-  passed, and the capacity scenario was `surface_absent`: that delivery declares no capacity. On
-  `cyc_f6bfb0b88ebd` (the canonical stack), both passed.
+- **A scenario's `http_endpoint` surfaces are checked against the endpoints the delivery declares,**
+  after taking off its stack's API prefix and ignoring parameter names. One the delivery doesn't serve is
+  `surface_absent`. In the same 38 manifests, 32 take a join at `/runs/{run_id}/join` and 6 at
+  `/runs/{run_id}/participants`, so a `/join` scenario is unverified on those six, not failed. The prefix
+  is the stack's, not the manifest's `base_path`, which deliveries set both ways: 16 of the canonical
+  stack's say `/api` and serve at the root.
+- **A status check may accept several:** `{"check": "status", "in": [400, 422]}`. The PRD says a request is
+  "rejected", and each delivery's manifest picks the status: 422 on the canonical stack and 400 on Next.js
+  for a validation error, while 404 for an unknown run and 409 for a duplicate hold on both.
+- **Read live with one suite on both stacks:**
+  - on `cyc_bbedc850e6ff` (Next.js), "a created run reads back" passed, and the capacity scenario was
+    `surface_absent`, since that delivery declares no capacity;
+  - on `cyc_f6bfb0b88ebd` (the canonical stack), both passed;
+  - on `cyc_f479d21e05ac`, which joins at `/participants`, the capacity scenario's `/join` was
+    `surface_absent`.
 - **The vocabulary** is in `squadops.scenarios.steps`.
   - **Steps:** `http` actions, with saved values threaded into later paths and bodies, and an optional
     `expect_status`.

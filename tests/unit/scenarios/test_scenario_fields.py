@@ -207,3 +207,69 @@ async def test_the_evaluation_resolves_each_scenario_against_the_deliverys_own_m
         "a-created-run-reads-back": (ScenarioResult.PASSED, None),
         "a-run-keeps-its-colour": (ScenarioResult.BLOCKED_UNVERIFIED, BlockedReason.SURFACE_ABSENT),
     }
+
+
+@pytest.mark.parametrize(
+    ("stack", "manifest_paths", "outcome"),
+    [
+        ("fullstack_fastapi_react", b"/runs/{run_id}/join", ScenarioResult.PASSED),
+        ("nextjs_ts", b"/api/runs/{run_id}/join", ScenarioResult.PASSED),
+        (
+            "fullstack_fastapi_react",
+            b"/runs/{run_id}/participants",
+            ScenarioResult.BLOCKED_UNVERIFIED,
+        ),
+    ],
+    ids=["the-canonical-stack", "nextjs-under-its-prefix", "a-join-at-participants"],
+)
+async def test_an_endpoint_the_delivery_doesnt_declare_reads_absent_not_failed(
+    monkeypatch, stack, manifest_paths, outcome
+):
+    """#2464: 6 of 38 deliveries take a join at ``/participants``, not ``/join``. Bug caught: a
+    join scenario run against one and read as the product failing to join; or a Next.js
+    delivery's ``/api`` paths read as missing."""
+
+    async def tree_refs(vault, cycle):
+        return {"backend/main.py": "tree"}
+
+    monkeypatch.setattr(evaluate, "evaluated_tree_refs", tree_refs)
+    manifest = _REFERENCE_MANIFEST.read_bytes().replace(b"RunEvent", b"Run")
+    manifest = manifest.replace(b'"/runs/{run_id}/join"', b'"' + manifest_paths + b'"')
+    if stack == "nextjs_ts":
+        manifest = manifest.replace(b"path: /runs", b"path: /api/runs").replace(
+            b'path: "/runs/', b'path: "/api/runs/'
+        )
+    join = _scenario(
+        scenario_id="a-runner-joins",
+        surfaces=[{"kind": "http_endpoint", "method": "POST", "path": "/runs/{run_id}/join"}],
+        steps=[
+            {"action": "http", "method": "POST", "path": "/runs/r1/join", "json": {"name": "Ada"}}
+        ],
+        checks=[{"check": "status", "step": 1, "in": [200, 201]}],
+        fields={},
+    )
+    join.pop("fields")
+    suite = parse_suite({"name": "endpoints", "scenarios": [join]})
+    store, runner = MemoryScenarioStore(), _Runner()
+    await draft_suite(store, suite, actor="supervisor", at=T0)
+    await approve_suite(store, suite.digest, actor="owner", at=T0)
+
+    class _StackCycle(_Cycle):
+        def resolved_config(self):
+            return {"build_profile": stack}
+
+    record = await evaluate.evaluate_cycle(
+        store=store,
+        runner=runner,
+        vault=_Vault(manifest),
+        cycle=_StackCycle(),
+        suite_digest=suite.digest,
+        campaign_id=None,
+        previous_accepted_tree_identity=None,
+        evaluated_at=T0,
+    )
+
+    [result] = record.outcomes
+    assert result.result is outcome
+    if outcome is ScenarioResult.BLOCKED_UNVERIFIED:
+        assert result.blocked_reason is BlockedReason.SURFACE_ABSENT and runner.scenarios is None

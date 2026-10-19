@@ -15,6 +15,7 @@ row, gate or prompt reads what this writes, and no scenario goal or result reach
 
 from __future__ import annotations
 
+import re
 from collections.abc import Collection, Mapping
 from datetime import datetime
 from typing import TYPE_CHECKING, Any
@@ -62,10 +63,9 @@ def declared_surfaces(entry_points: Collection[Mapping[str, Any]]) -> frozenset[
 MANIFEST_FILENAME = "interface_manifest.yaml"
 
 
-async def delivered_fields(vault: Any, cycle: Any) -> dict[str, frozenset[str]]:
-    """Each entity's field names, as the evaluated delivery's own interface manifest declares
-    them (#2464): the cycle's latest manifest, or else the one of the accepted cycle it built on.
-    Empty when neither stored one, so every concept a scenario names reads as absent."""
+async def delivered_manifest(vault: Any, cycle: Any) -> InterfaceManifest | None:
+    """The evaluated delivery's own interface manifest (#2464): the cycle's latest, or else the
+    one of the accepted cycle it built on. ``None`` when neither stored one."""
     for cycle_id in (cycle.cycle_id, accepted_cycle_of(cycle)):
         if cycle_id is None:
             continue
@@ -73,9 +73,45 @@ async def delivered_fields(vault: Any, cycle: Any) -> dict[str, frozenset[str]]:
         stored = next((r for r in refs if r.filename == MANIFEST_FILENAME), None)
         if stored is not None:
             _ref, content = await vault.retrieve(stored.artifact_id)
-            manifest = InterfaceManifest.from_yaml(content.decode("utf-8"))
-            return {e.name: frozenset(f.name for f in e.fields) for e in manifest.entities}
-    return {}
+            return InterfaceManifest.from_yaml(content.decode("utf-8"))
+    return None
+
+
+def delivered_fields(manifest: InterfaceManifest | None) -> dict[str, frozenset[str]]:
+    """Each entity's field names, as the delivery declares them. Empty without a manifest, so
+    every concept a scenario names reads as absent."""
+    if manifest is None:
+        return {}
+    return {e.name: frozenset(f.name for f in e.fields) for e in manifest.entities}
+
+
+_PARAM = re.compile(r"\{[^}]*\}")
+
+
+def _endpoint(method: str, path: str, prefix: str) -> tuple[str, str]:
+    """An endpoint as a scenario names it: the PRD's path, its parameters unnamed."""
+    if prefix and path.startswith(prefix):
+        path = path[len(prefix) :] or "/"
+    return method.upper(), _PARAM.sub("{}", path)
+
+
+def _api_prefix(stack: str) -> str:
+    """Where the stack's app serves the PRD's paths: what the runner prefixes (#2466). A manifest's
+    own ``base_path`` can't say it, since deliveries set it both ways (read 2026-10-18: 16 of the
+    canonical stack's say ``/api`` and serve at the root)."""
+    # deferred (pair): squadops.sandbox imports this package's runner models at load
+    from squadops.sandbox.environment import get_environment_contract
+
+    return get_environment_contract(stack).api_prefix
+
+
+def delivered_endpoints(manifest: InterfaceManifest | None, prefix: str) -> frozenset | None:
+    """The delivery's declared endpoints, its stack's API prefix taken off (#2464). ``None``
+    without a manifest: then a scenario's endpoints aren't checked, since there is nothing to
+    check them against (a declared Project's surfaces come from its entry points)."""
+    if manifest is None:
+        return None
+    return frozenset(_endpoint(e.method, e.path, prefix) for e in manifest.api.endpoints)
 
 
 def _outcome(
@@ -141,8 +177,22 @@ async def evaluate_cycle(
     # the delivery doesn't declare can't be evaluated here: surface_absent, never failed.
     absent: dict[str, BlockedReason] = {}
     contents: list[dict[str, Any]] = []
-    fields = await delivered_fields(vault, cycle) if any(s.fields for s in applicable) else {}
+    manifest = await delivered_manifest(vault, cycle) if applicable and declared is None else None
+    fields = delivered_fields(manifest)
+    stack = cycle.resolved_config().get("build_profile")
+    prefix = _api_prefix(stack) if manifest is not None and stack else ""
+    endpoints = delivered_endpoints(manifest, prefix)
     for scenario in applicable:
+        needed = {
+            _endpoint(s.method or "", s.path, "")
+            for s in scenario.surfaces
+            if s.kind is SurfaceKind.HTTP_ENDPOINT
+        }
+        if endpoints is not None and not needed <= endpoints:
+            # #2464: an endpoint the delivery doesn't serve, e.g. a join it takes at
+            # /participants rather than /join. Unverified, never failed.
+            absent[scenario.scenario_id] = BlockedReason.SURFACE_ABSENT
+            continue
         try:
             content = resolve(scenario.content(), dict(scenario.fields), fields)
         except FieldAbsent:
