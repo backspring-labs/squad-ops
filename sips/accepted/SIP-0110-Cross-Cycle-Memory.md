@@ -84,7 +84,7 @@ re-places it.
 | entry points: the typed records (notes, preferences, project and task instructions), permissions by kind, provenance (§A.3.2–§A.3.4) | **shipped** (§5l) | 2.4.0, PR #2508, issue #2177 |
 | entry points: task instructions, with the work target, retries, references bound with the cycle, binding holds and emergency withdrawal (§A.3.5–§A.3.8) | **placed** | 2.4.0, #2178: stage 1 (the records reach the tasks they name, binding, the task held when incomplete) shipped in PR #2513 (§5m); stage 2 remains |
 | entry points: project instructions in the snapshot with references bound, re-binding, the effective lesson budget, the comparison arms and disclosure (§A.3.6, §A.3.7) | **placed** | 2.4.0, #2179: stage 1 (pinned at admission, binding on the tasks they apply to, the lesson budget after them) ships in the PR that wrote this row (§5n); stage 2 remains |
-| entry points: chat on the substrate, with capture confirmed, chat exposures, server-side project binding and provenance authorized (§A.3.5) | **placed** | 2.4.0, #2180 |
+| entry points: chat on the substrate, with capture confirmed, chat exposures, server-side project binding and provenance authorized (§A.3.5) | **placed** | 2.4.0, #2180: stage A (the binding, each turn's context and exposure, confirmed capture of notes and preferences, authorized provenance, Q29's deletion) ships in the PR that wrote this row (§5o); stage B, instruction capture, remains |
 | entry points: lesson inspection from chat; a conversational claim never becomes a lesson (§A.3.5) | **placed** | 2.4.0, #2181 |
 | entry points: the console's memory record view (§A.3.11) | **placed** | 2.4.0, #2182 |
 | entry points: the acceptance matrix, T1–T17, live on a deploy (§A.5) | **placed** | 2.4.0, #2183 |
@@ -1772,6 +1772,63 @@ of 2026-10-19):**
 - the `memory_context: none` arm, with its declaration and the lesson-text diagnostic (T9's rest);
 - re-binding a running unit;
 - emergency withdrawal of a project instruction.
+## 5o. Chat on the substrate, stage A, as built (2026-10-19, #2180; the supervisor, under the owner's grant of 2026-10-19)
+
+**What shipped:** §A.3.5's chat entry point and §A.3.6's chat consumer, with §A.3.3's binding, §A.3.4's provenance
+and §A.8 Q29's deletion.
+- **A session is bound to a project when it opens, server-side.** The request names the project; the runtime API checks
+  that it exists (422 otherwise) and that the person holds `memory:read` (403 otherwise). Every later turn reads the
+  stored binding, and a project the client claims on an existing session is ignored and logged (T14). An unbound
+  session sees only its owner's private records (T4).
+- **The runtime API assembles each turn's context** (`ChatContextAssembly`, the context-assembly port for a chat turn).
+  The rules that choose and bound it are the memory domain's (`squadops.memory.chat`). The agent renders it through a
+  managed template (`request.chat_memory_context`) and owns no memory.
+  - **The sections:** the project instructions in force, then the task instructions of the cycles the turn names by id,
+    then the person's preferences, then the notes. A lesson's section is `not_applicable`.
+  - **Every section is optional:** a chat turn executes no work. A record that doesn't fit is omitted whole and listed
+    with its limit (`budget`, or `count` for notes). A read that fails is `failed`, and the turn runs.
+  - **The chat budget:** history first (#2175's bounds), then the records under their own caps (`comms.chat`'s
+    `memory_max_tokens`, `memory_max_notes`).
+  - **Notes** are filtered by scope and status in Postgres, then ranked by `ts_rank` over the current revision's text,
+    then by recency (§A.3.10). The whole filtered set is read and bounded in the domain, so every omission is listed.
+- **A failure is visible.** A section that couldn't be read is named in the reply's first line, shown in the console,
+  logged at WARNING, and recorded as `failed` in the turn's exposure (T8's chat part).
+- **One exposure per turn,** in `chat_exposures`, keyed by session and message, with no cycle, run or task: each
+  section's disposition, its supplied records and every omission with its limit.
+- **Capture is explicit and confirmed.**
+  - The agent proposes at most one capture per reply, as a `<memory-capture>` block. The runtime API takes it off the
+    stored reply and offers it as a card.
+  - The card's choices are the person's permissions in that session (`capture_choices`): a private note or a
+    preference always, and a project note when the session is bound and the person holds `memory:note`.
+  - Only the confirmation stores (`POST /api/v1/chat/sessions/{id}/captures`). A kind or scope the session doesn't
+    offer is refused (403), whoever asks.
+  - The console can also keep any stored message through the same card.
+  - The reply says what was saved, its id, its scope and when it takes effect. A failed save is said in a stored
+    reply, answered as `MEMORY_SAVE_FAILED`, and logged at WARNING.
+- **Provenance is authorized** (T15).
+  - A captured record's source is the chat turn, recorded server-side. The records API refuses a client-claimed chat
+    source.
+  - Another reader sees "converted from a private chat turn by <author>, <time>".
+  - `GET /api/v1/memory-records/{id}/revisions/{n}/source` opens the one turn, for the session's owner only. Anyone else
+    is refused (403).
+- **Q29:** `DELETE /api/v1/chat/sessions/{id}` (204) removes the session's messages. The session's row stays, marked
+  (`deleted_at`), and reads as no session. A record confirmed from it stays, marked `session_deleted`, and its link
+  answers that the session was deleted.
+- **The trigger phrases** were already gone (#2174).
+
+**Where stage A narrows the design:**
+- **References are not read in chat.** No reader exists yet for a manifest or decision reference, so an instruction's
+  references aren't resolved for a chat turn, and the chat context has no references section. That arrives with the
+  reference readers (#2178's and #2179's second stages).
+- **A turn names a cycle by its id** (`cyc_` and twelve hex characters). A cycle named in other words selects no task
+  instruction.
+- **The agent's proposal is parsed from its reply,** not from a structured tool call. A malformed block proposes nothing
+  and is dropped from the reply.
+- **A failed save's reply is stored best-effort:** the store that failed the save may fail the reply too, and the error
+  answer still says it.
+
+**Stage B (#2180, still open):** a task instruction (naming an existing cycle) and a project instruction (with
+`memory:instruct`) captured from chat, delivered through #2178's and #2179's paths (T1 and T3 through chat).
 
 ## 6. Mode neutrality: cycle, duty, and ambient utilization
 

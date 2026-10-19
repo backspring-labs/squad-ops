@@ -23,6 +23,14 @@
   let textareaEl = $state(null);
   let streamAbort = null; // AbortController for in-flight stream
 
+  // SIP-0110 Appendix A (#2180): a new conversation is bound to a project server-side when it
+  // opens; a capture the agent proposes is stored only when you confirm it on its card.
+  let projects = $state([]);
+  let projectId = $state('');        // the project a NEW conversation is bound to; '' = unbound
+  let sessionProject = $state(null); // the open session's stored binding, read from the server
+  let card = $state(null);           // { text, sourceMessageId, choices, choice } while confirming
+  let cardBusy = $state(false);
+
   const config = window.__SQUADOPS_CONFIG__ || {};
   const apiBase = config.apiBaseUrl || '';
 
@@ -51,6 +59,15 @@
     }
   }
 
+  async function loadProjects() {
+    try {
+      const resp = await apiFetch(`${apiBase}/api/v1/projects`);
+      if (resp.ok) projects = await resp.json();
+    } catch (e) {
+      console.error('Failed to load projects:', e);
+    }
+  }
+
   // ── Session Management ─────────────────────────────────────────────────────
 
   async function loadSessions() {
@@ -71,6 +88,7 @@
       if (resp.ok) {
         messages = await resp.json();
         sessionId = sid;
+        sessionProject = sessions.find((s) => s.session_id === sid)?.project_id ?? sessionProject;
         scrollToBottom();
       }
     } catch (e) {
@@ -80,8 +98,77 @@
 
   function startNewSession() {
     sessionId = null;
+    sessionProject = null;
     messages = [];
     error = null;
+    card = null;
+  }
+
+  // Q29: you delete your own conversations; a record already confirmed from one stays, marked.
+  async function deleteSession() {
+    if (!sessionId || !confirm('Delete this conversation? Its messages are removed for good.')) return;
+    const resp = await apiFetch(`${apiBase}/api/v1/chat/sessions/${sessionId}`, { method: 'DELETE' });
+    if (resp.status !== 204) {
+      error = `Delete failed (${resp.status})`;
+      return;
+    }
+    startNewSession();
+    await loadSessions();
+  }
+
+  // ── Capture (confirmed, never automatic) ──────────────────────────────────
+
+  const CAPTURE_BLOCK = /<memory-capture>[\s\S]*?(<\/memory-capture>|$)/g;
+
+  function shown(text) {
+    return (text || '').replace(CAPTURE_BLOCK, '').trimEnd();
+  }
+
+  function choiceKey(c) {
+    return `${c.kind}:${c.scope}`;
+  }
+
+  function openCard({ text, sourceMessageId, choices, kind, scope }) {
+    const proposed = choices.find((c) => c.kind === kind && c.scope === scope) || choices[0];
+    card = { text, sourceMessageId, choices, choice: proposed ? choiceKey(proposed) : null };
+  }
+
+  // A console action: keep a message, through the same card and the same confirmation.
+  async function keepMessage(msg) {
+    if (!sessionId || !msg.message_id) return;
+    const resp = await apiFetch(`${apiBase}/api/v1/chat/sessions/${sessionId}/capture-choices`);
+    if (!resp.ok) {
+      error = `Could not load what you may keep (${resp.status})`;
+      return;
+    }
+    openCard({ text: shown(msg.content), sourceMessageId: msg.message_id, choices: await resp.json(),
+               kind: 'note', scope: 'user' });
+  }
+
+  async function confirmCard() {
+    if (!card || !card.choice || cardBusy) return;
+    const chosen = card.choices.find((c) => choiceKey(c) === card.choice);
+    cardBusy = true;
+    try {
+      const resp = await apiFetch(`${apiBase}/api/v1/chat/sessions/${sessionId}/captures`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ message_id: card.sourceMessageId, text: card.text,
+                               kind: chosen.kind, scope: chosen.scope }),
+      });
+      const body = await resp.json().catch(() => ({}));
+      if (resp.status === 201) {
+        messages = [...messages, body.reply];
+        card = null;
+      } else {
+        // §3.5: a failed save is shown, never swallowed; the server's reply says it too.
+        error = body?.detail?.error?.message || `Not saved (${resp.status})`;
+        await loadSessionMessages(sessionId);
+      }
+    } finally {
+      cardBusy = false;
+      scrollToBottom();
+    }
   }
 
   async function selectSession(sid) {
@@ -124,6 +211,7 @@
     try {
       const body = { message: text };
       if (sessionId) body.session_id = sessionId;
+      else if (projectId) body.project_id = projectId;
 
       const resp = await apiFetch(`${apiBase}/api/v1/chat/${agentId}`, {
         method: 'POST',
@@ -133,14 +221,18 @@
       });
 
       if (!resp.ok) {
-        error = `Chat request failed (${resp.status})`;
+        const failure = await resp.json().catch(() => ({}));
+        error = failure?.detail?.error?.message || `Chat request failed (${resp.status})`;
         streaming = false;
         return;
       }
 
       // Capture session ID from response header
       const headerSessionId = resp.headers.get('X-Session-Id');
-      if (headerSessionId) sessionId = headerSessionId;
+      if (headerSessionId && !sessionId) {
+        sessionId = headerSessionId;
+        sessionProject = projectId || null;
+      }
 
       // Parse SSE stream via ReadableStream (P4-RC2)
       const reader = resp.body.getReader();
@@ -163,6 +255,10 @@
             const evt = JSON.parse(jsonStr);
             if (evt.error) {
               error = evt.error;
+            } else if (evt.capture) {
+              openCard({ text: evt.capture.text, sourceMessageId: evt.capture.source_message_id,
+                         choices: evt.capture.choices, kind: evt.capture.kind,
+                         scope: evt.capture.scope });
             } else if (evt.done) {
               // Stream complete
             } else if (evt.text) {
@@ -179,8 +275,11 @@
         }
       }
 
-      // Refresh session list if this was a new session
+      // Refresh session list if this was a new session, and re-read the turn as stored, so each
+      // message carries its id (a capture names the turn it came from)
       await loadSessions();
+      streamingText = '';
+      if (sessionId) await loadSessionMessages(sessionId);
     } catch (e) {
       if (e.name === 'AbortError') {
         // User cancelled — not an error
@@ -236,6 +335,7 @@
 
   onMount(async () => {
     await discoverAgents();
+    await loadProjects();
     if (agentId) await loadSessions();
     setTimeout(() => textareaEl?.focus(), 100);
   });
@@ -252,10 +352,23 @@
       <option value="">New conversation</option>
       {#each sessions as s}
         <option value={s.session_id}>
-          {formatTime(s.started_at)} — {s.session_id.slice(0, 8)}
+          {formatTime(s.started_at)} — {s.session_id.slice(0, 8)}{s.project_id ? ` · ${s.project_id}` : ''}
         </option>
       {/each}
     </select>
+    {#if !sessionId}
+      <select class="session-select" bind:value={projectId} title="The project this conversation is bound to">
+        <option value="">No project (your own notes only)</option>
+        {#each projects as p}
+          <option value={p.project_id}>{p.project_id}</option>
+        {/each}
+      </select>
+    {:else}
+      <span class="agent-label" title="Bound when it opened; it can't change">
+        {sessionProject ? `Project: ${sessionProject}` : 'No project'}
+      </span>
+      <button class="link-btn" onclick={deleteSession} title="Delete this conversation">Delete</button>
+    {/if}
     <span class="agent-label">{agentName}</span>
   </div>
 
@@ -276,17 +389,20 @@
         <div class="message {msg.role}">
           <div class="bubble">
             {#if msg.role === 'assistant'}
-              {@html renderMarkdown(msg.content)}
+              {@html renderMarkdown(shown(msg.content))}
             {:else}
               <p>{msg.content}</p>
             {/if}
           </div>
+          {#if msg.message_id && !card}
+            <button class="link-btn keep" onclick={() => keepMessage(msg)} title="Keep this as a note or preference">Keep</button>
+          {/if}
         </div>
       {/each}
       {#if streaming && streamingText}
         <div class="message assistant">
           <div class="bubble streaming">
-            {@html renderMarkdown(streamingText)}
+            {@html renderMarkdown(shown(streamingText))}
           </div>
         </div>
       {/if}
@@ -302,6 +418,27 @@
       <div class="error-banner">{error}</div>
     {/if}
   </div>
+
+  <!-- Capture card: nothing is kept until you confirm (SIP-0110 §A.3.5) -->
+  {#if card}
+    <div class="capture-card">
+      <div class="capture-title">Keep this?</div>
+      <textarea bind:value={card.text} rows="2"></textarea>
+      {#each card.choices as c}
+        <label class="capture-choice">
+          <input type="radio" name="capture-choice" value={choiceKey(c)} bind:group={card.choice} />
+          <span>{c.scope === 'project' ? `Project note (${c.project_id})` : c.kind === 'preference' ? 'Your preference' : 'Your note'}</span>
+          <span class="hint">takes effect {c.takes_effect}</span>
+        </label>
+      {/each}
+      <div class="capture-actions">
+        <button class="link-btn" onclick={() => (card = null)} disabled={cardBusy}>Dismiss</button>
+        <button class="send-btn wide" onclick={confirmCard} disabled={cardBusy || !card.text.trim() || !card.choice}>
+          {cardBusy ? 'Saving…' : 'Confirm'}
+        </button>
+      </div>
+    </div>
+  {/if}
 
   <!-- Input -->
   <div class="input-area">
@@ -553,5 +690,64 @@
   .send-btn:disabled {
     opacity: 0.4;
     cursor: not-allowed;
+  }
+  .send-btn.wide {
+    width: auto;
+    padding: 0 14px;
+    font-size: var(--continuum-font-size-xs, 11px);
+  }
+
+  /* ── Memory: the capture card and its actions (#2180) ────────────────── */
+  .link-btn {
+    background: none;
+    border: none;
+    color: var(--continuum-text-secondary, #a0a0b8);
+    font-size: var(--continuum-font-size-xs, 11px);
+    cursor: pointer;
+    padding: 2px 4px;
+  }
+  .link-btn:hover:not(:disabled) {
+    color: var(--continuum-accent-primary, #6366f1);
+  }
+  .link-btn.keep {
+    align-self: flex-end;
+    opacity: 0.6;
+  }
+  .capture-card {
+    margin: 0 16px 8px;
+    padding: 10px 12px;
+    border: 1px solid var(--continuum-accent-primary, #6366f1);
+    border-radius: 8px;
+    background: var(--continuum-bg-secondary, #252540);
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    flex-shrink: 0;
+  }
+  .capture-title {
+    font-size: var(--continuum-font-size-sm, 13px);
+    color: var(--continuum-text-primary, #e0e0e8);
+  }
+  .capture-card textarea {
+    background: var(--continuum-bg-primary, #1a1a2e);
+    color: var(--continuum-text-primary, #e0e0e8);
+    border: 1px solid var(--continuum-border, #2d2d44);
+    border-radius: 6px;
+    padding: 6px 8px;
+    font-family: inherit;
+    font-size: var(--continuum-font-size-sm, 13px);
+    resize: vertical;
+  }
+  .capture-choice {
+    display: flex;
+    align-items: baseline;
+    gap: 6px;
+    font-size: var(--continuum-font-size-xs, 11px);
+    color: var(--continuum-text-secondary, #a0a0b8);
+  }
+  .capture-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 8px;
   }
 </style>
