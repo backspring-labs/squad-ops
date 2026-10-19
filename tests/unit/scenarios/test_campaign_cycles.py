@@ -81,6 +81,11 @@ class _Runner:
 
 
 class _Vault:
+    """A delivered tree with no interface manifest stored beside it."""
+
+    async def list_artifacts(self, *, cycle_id):
+        return []
+
     async def retrieve(self, artifact_id):
         return None, b"app = 1\n"
 

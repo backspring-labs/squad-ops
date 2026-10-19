@@ -778,6 +778,9 @@ within them, for the owner's review.
     from the control log's applied promotion. A calibration builds on nothing.
   - **Once per cycle and suite,** so a cycle heard again after a restart (§12a) isn't evaluated twice. A
     failure is logged and never stops the decision.
+  - **A delivery's manifest that can't be read** is read as none, with a warning, so the record is still
+    written: its concepts go under their first names and its endpoints aren't checked. Found when the hook
+    met #2467's manifest read: a malformed manifest had raised out of the evaluation, leaving no record.
   - **A Project that isn't a blueprint** has its applicable scenarios recorded `blocked_unverified`,
     `no_start_declaration`. The hook doesn't read its Development Configuration's start declaration
     (SIP-0112 E.4.2) yet.

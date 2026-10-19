@@ -329,3 +329,38 @@ async def test_a_declared_project_resolves_by_the_suites_names_and_reads_no_mani
     assert sent["checks"][0]["path"] == "meeting_location"
     assert listed == []
     assert [o.result for o in record.outcomes] == [ScenarioResult.PASSED]
+
+
+@pytest.mark.parametrize(
+    "stored",
+    [b"version: 1\nentities: []\n", b"- not\n- a mapping\n", b"key: [unclosed\n", b"\xff\xfe"],
+    ids=["missing-keys", "not-a-mapping", "bad-yaml", "not-utf-8"],
+)
+async def test_a_manifest_that_cant_be_read_still_gets_its_record(monkeypatch, stored):
+    """The record is written whatever happened (the service's rule 5). Bug caught: a delivery's
+    own malformed manifest raising out of the evaluation, so the hook at a cycle's end logs it and
+    the increment has no record; read live when #2467 met the campaign hook's fixture."""
+
+    async def tree_refs(vault, cycle):
+        return {"backend/main.py": "tree"}
+
+    monkeypatch.setattr(evaluate, "evaluated_tree_refs", tree_refs)
+    suite = parse_suite({"name": "unreadable", "scenarios": [_scenario()]})
+    store, runner = MemoryScenarioStore(), _Runner()
+    await draft_suite(store, suite, actor="supervisor", at=T0)
+    await approve_suite(store, suite.digest, actor="owner", at=T0)
+
+    record = await evaluate.evaluate_cycle(
+        store=store,
+        runner=runner,
+        vault=_Vault(stored),
+        cycle=_Cycle(),
+        suite_digest=suite.digest,
+        campaign_id=None,
+        previous_accepted_tree_identity=None,
+        evaluated_at=T0,
+    )
+
+    [sent] = runner.scenarios
+    assert sent["steps"][0]["json"] == {"title": "Dawn 5k", "meeting_location": "Riverside"}
+    assert await store.evaluations_for_cycle(_Cycle.cycle_id) == [record]
