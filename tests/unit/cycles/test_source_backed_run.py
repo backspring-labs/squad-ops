@@ -309,10 +309,12 @@ def summary_line(ledger):
 """
 
 
-async def _end_of_plan(executor, cycle, run, vault, changes):
+async def _end_of_plan(executor, cycle, run, vault, changes, task_type="development.develop"):
     """The run's plan done, with ``changes`` the developer's accepted emissions: the point at
     which ``_execute_sequential`` delivers. The emissions arrive as the run's stored artifacts
-    do, through the seed set the loop restores."""
+    do, through the seed set the loop restores. The plan's one task is ``task_type``, already
+    run: dispatch is out of this seam."""
+    executor._execute_task = AsyncMock()
     seeded = await _seed(executor, cycle, run)
     emitted = []
     for path, content in changes.items():
@@ -331,8 +333,9 @@ async def _end_of_plan(executor, cycle, run, vault, changes):
         )
         vault.stored[ref.artifact_id] = (ref, content)
         emitted.append(ref.artifact_id)
+    plan = [dataclasses.replace(_envelope(cycle, list(changes)), task_type=task_type)]
     await executor._execute_sequential(
-        [], run.run_id, cycle, seed_artifact_refs=[*seeded, *emitted], ledger=RunLedger()
+        plan, run.run_id, cycle, seed_artifact_refs=[*seeded, *emitted], ledger=RunLedger()
     )
 
 
@@ -416,5 +419,16 @@ async def test_a_run_that_changed_nothing_delivers_nothing(world):
 
     with pytest.raises(_ExecutionError, match="changed no file of the product"):
         await _end_of_plan(executor, cycle, run, vault, {})
+
+    assert _of_type(vault, SOURCE_VERIFICATION_TYPE) == []
+
+
+async def test_a_framing_run_delivers_nothing_and_completes(world):
+    """Found live (cyc_62ec4593f50a): the framing run of a source-backed cycle failed with
+    "the run changed no file of the product". Bug caught: delivery at the end of every run of the
+    cycle, where only a run that authors the product has a change to deliver."""
+    _repo, vault, executor, cycle, run = world
+
+    await _end_of_plan(executor, cycle, run, vault, {}, task_type="governance.review_plan")
 
     assert _of_type(vault, SOURCE_VERIFICATION_TYPE) == []

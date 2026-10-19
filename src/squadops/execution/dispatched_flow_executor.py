@@ -168,6 +168,7 @@ from squadops.tasks.models import TaskEnvelope, TaskResult, TaskResultStatus
 from squadops.tasks.task_types import (
     TaskType,
     authors_qa_suite,
+    authors_source,
     fails_without_correction,
 )
 from squadops.telemetry.context import use_correlation_context
@@ -1901,8 +1902,11 @@ class DispatchedFlowExecutor(FlowExecutionPort):
                 f"the run never emitted. Missing required files: {missing}."
             )
         # SIP-0112 E.4.3: a source-backed run's change is known here too, so its candidate is
-        # verified by the product's own checks and, when accepted, captured to Git.
-        if cycle.source_context is not None:
+        # verified by the product's own checks and, when accepted, captured to Git. Only a run
+        # that authors the product does: a framing run changes nothing by design.
+        if cycle.source_context is not None and any(
+            authors_source(e.task_type) or authors_qa_suite(e.task_type) for e in plan
+        ):
             await self._deliver_source_change(cycle, run_id, state.produced)
 
     async def _execute_task(
