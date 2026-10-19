@@ -74,7 +74,9 @@ async def test_the_search_filters_by_scope_and_status_then_ranks_by_match_and_re
         _note("mrec_old", "the join stays idempotent", at=T0),
         _note("mrec_new", "capacity is checked before the join", at=T0 + timedelta(hours=1)),
         _note("mrec_none", "unrelated", at=T0 + timedelta(hours=2)),
-        _note("mrec_proj", "the join returns 409 when full", scope="project", project_id="group_run"),
+        _note(
+            "mrec_proj", "the join returns 409 when full", scope="project", project_id="group_run"
+        ),
         _note("mrec_p2", "the join in another project", scope="project", project_id="play_game"),
         _note("mrec_bo", "bo's join note", owner="bo"),
         _note("mrec_gone", "a withdrawn join note"),
