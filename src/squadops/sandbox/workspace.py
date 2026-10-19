@@ -111,6 +111,16 @@ def _safe_relpath(path: str, *, tracked: Collection[str] | None = ()) -> str:
     return rel
 
 
+def tree_path(path: str) -> str:
+    """A file's path in a tree the sandbox writes outside a workspace, an evaluated tree's copy
+    (X-3b, #2414): every name is content, as in a checkout, and the path is refused unless it is
+    already in its normal form inside the tree, so no key writes outside the copy."""
+    rel = _safe_relpath(path, tracked=None)
+    if rel != path:
+        raise WorkspaceEscapeError(f"not a tree path in its normal form: {path!r}")
+    return rel
+
+
 def working_directory(path: str) -> str:
     """A declared command's working directory, repository-relative (X-3a, #2421): ``""`` for the
     tree's root, refused when it would leave the tree."""

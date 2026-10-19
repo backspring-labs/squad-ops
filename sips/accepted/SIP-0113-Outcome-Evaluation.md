@@ -622,6 +622,79 @@ within them, for the owner's review.
   reference with both nullable fields null as nulls. The record yields exactly the fixture's valid
   reference.
 
+### 10c. The scenario runner as built (2026-10-18, §4.1, A3; X-3b; #2414, #2421; implementer's record, for the owner)
+
+- **Where it runs:** `ContainerScenarioRunner`, in the sandbox service (A3). The service answers it at
+  `POST /api/v1/evaluations`, and the runtime API calls it through `HttpScenarioRunner`.
+- **What one call does:** it takes an evaluated tree, by its `FileTree.identity`, and refuses files that
+  hash to anything else. It writes a disposable copy with binaries and executable bits included, and
+  starts it.
+  - **A Project's own start declaration** (contract 7, read by `declared_start`) is ready at a 2xx from
+    its `http` target, or at a connection to its `tcp` port that the app holds. Docker's port proxy
+    accepts on the published port as soon as the container starts, before the app binds, and closes
+    at once while nothing listens. So a connection counts only if it stays open, or the app speaks
+    first. Read live: a bare connect read as ready, and step 1 answered "Server disconnected without
+    sending a response".
+    - **`command` readiness is `no_runner`, not `no_start_declaration`** (`ReadinessUnsupported`): the
+      kind is valid, but its target is a string the contract doesn't define as an argv, so this runner
+      doesn't check it.
+    - **The reader checks contract 7's schema where it reads it** (`StartUndeclared`,
+      `no_start_declaration`). It refuses a string where an argv belongs, a flat `build` list, a working
+      directory outside the repository, a missing `timeout_seconds` and an unknown kind. Each would
+      otherwise surface as a failed start. The sandbox checks the argvs and directory again with X-3a's
+      own rules before running them. `squadops.sandbox` already imports this reader, so the reader can't
+      import those rules back. When SIP-0112's E.4.2(b) lands its typed `StartDeclaration`, the runner
+      reads that, and the two readers become one.
+    - **The declaration's Development Configuration revision** travels with it, and each `TreeEvaluation`
+      names the revision that started it (`None` for a blueprint).
+  - **A blueprint** starts by its stack's environment contract: install, build, start, and today's
+    transport-level readiness (#520/#622).
+
+  It then runs each scenario's steps from the service over loopback. Last, it stops the app and removes
+  the copy, whatever happened (§7 prediction 6).
+- **The steps and the evaluation secrets** travel in the request and are held for the call. They are
+  never written or journaled. The secrets reach only the app's environment (Q40), and every value is
+  redacted from the free text the runner returns: the start's detail, the app's own last lines and each
+  step's detail. Results, identities and ids are never touched, so a short secret can't rewrite
+  `passed` (the MacBook lane's review).
+- **An evaluated tree's keys are checked before the copy is written:** absolute, climbing or
+  non-normal keys are refused, and nothing runs (contract 3: never the live tree).
+- **Not built yet, on #2421:** the declared entry points, so scenarios reach the readiness port's root;
+  and resolving only the owner-approved `secret://` references, with `secret not available` for the rest.
+  SIP-0102 §11e says where each lands.
+- **The vocabulary** is in `squadops.scenarios.steps`.
+  - **Steps:** `http` actions, with saved values threaded into later paths and bodies, and an optional
+    `expect_status`.
+  - **Checks:** a status, or a JSON path's value, length or contents.
+  - **How a scenario ends:** a transport failure, an unexpected status or an unanswerable save fails it
+    at that step. An unknown action or check is `blocked_unverified`, `no_runner`. A browser's action is
+    `browser_unavailable` until the evaluator's image runs pages (A2).
+- **A start that fails** runs no scenario. It carries why: the setup step that exited, or the readiness
+  that timed out, with the app's own last lines.
+- **Read live on the Spark's Docker** with the shared fixture's tree and its recorded declaration:
+  - the tree hashed to the recorded identity;
+  - three scenarios passed, the admin route among them, with the secret in no result;
+  - readiness at an undeclared path failed the start;
+  - the same declaration with `tcp` readiness started and passed, and both runs name revision 1;
+  - no copy or container was left.
+- **§7 prediction 1, read live on the Spark (2026-10-18):** the held-out capacity scenario (a run with
+  one place refuses a second runner, and its list keeps the first). Each tree was started by its stack's
+  environment contract from the vault's delivered tree:
+
+  | tree | identity | result |
+  |---|---|---|
+  | the reference baseline `cyc_7a4b7a6fbf0e` | `dcff44b8…`, its pinned `baseline_tree` | **failed** at step 3: the second join answered 200, not 409 |
+  | the reference increment `cyc_20246018f2b8` | `4692c159…` | **passed** |
+
+  The baseline's identity equalling its pin shows the delivered tree's `FileTree.identity` is the identity
+  SIP-0109 records for an accepted tree.
+- **An authoring rule the run settled:** a scenario's HTTP surfaces name the backend's own paths
+  (`/runs`). A manifest's `api.base_path` (`/api`) is the frontend's dev-proxy prefix, and the backend
+  answers it 404.
+- **Still to build for #2414:**
+  - the evaluation service (the vault's tree, the record, the increment's hook, reporting-only);
+  - §7's predictions 1, 2 and 6, read live on the reference scenario.
+
 ### 10d. The intervention ledger as built (2026-10-18, §4.3, §7 prediction 5; #2417; implementer's record, for the owner)
 
 - **A projection of SIP-0109's control log, never a second record of it** (`squadops.outcomes.ledger`).

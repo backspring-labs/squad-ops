@@ -80,7 +80,7 @@ Kept by the rule in CLAUDE.md ("SIP System"): one row per part, updated in the P
 | X-1: a `git_checkout` revision origin (§11d; SIP-0112 §8.2.2) | **shipped** | 2.4.0, PR #2441, issue #2419 |
 | X-2: a checkout's tracked tree round-trips: bytes, line endings, tracked derived names, the executable bit (§11d) | **shipped** | 2.4.0, PR #2442, issue #2420 |
 | X-3a: a product's declared command, run against a pinned revision in a disposable copy (§11d) | **shipped** | 2.4.0, PR #2447 |
-| X-3b: starting a product from its declaration, with readiness and the evaluation secrets, built with SIP-0113's scenario runner (§11d; SIP-0112 Q40) | **placed** | 2.4.0, #2421 |
+| X-3b: starting a product from its declaration, with readiness and the evaluation secrets, built with SIP-0113's scenario runner (§11d, §11e; SIP-0112 Q40) | **placed**: the start, `http` and `tcp` readiness and the secrets' redaction ship in PR #2450; the declared entry points and the approved secrets' resolution remain (§11e) | 2.4.0, #2421 |
 | the runtime API as the service's caller: its own client selector, the service's URL and token, the service's provider split from the preflight's (§11f; #2451 parts 1–3) | **shipped** | 2.4.0, PR #2456 |
 | a pinned revision's content, read through the port from the live tree only while it matches its pin (§11i; SIP-0112's E.4.3 capture) | **shipped** | 2.4.0, PR #2461 |
 
@@ -636,6 +636,46 @@ was agreed on #2407: E.4.2's inherited baseline runs a product's checks, which w
 **Who ruled it.** The owner accepted SIP-0112 with X-1 to X-3 in its §8.2.2 (2026-10-17), and D12
 assigns them. The tracked-name and executable-bit rules and the X-3 split are the implementer's, reviewed
 by the MacBook lane as consumer (G4), for the owner's review.
+
+### 11e. The sandbox runs SIP-0113's scenario runner, and X-3b starts a product from its declaration (2026-10-18, §4.6, §7 items 2, 3 and 10; SIP-0113 §4.1 A3; #2414, #2421; implementer's record, for the owner)
+
+- **A second surface, `POST /api/v1/evaluations`,** beside the cycle's operations. It takes an evaluated
+  tree by its `FileTree.identity`, not a workspace revision, as SIP-0112's contract 3 asks of Outcome
+  Evaluation. The tree's files are refused unless they hash to that identity, which is §7 item 3 for a
+  tree that never had a workspace.
+- **X-3b, the start:**
+  - **from a product's declaration:** setup argvs, the start argv and its port, with an `http`
+    readiness (a 2xx from the target) or a `tcp` one (a connection to the port). The argvs and the
+    working directory are checked again here with X-3a's own `declared_argv` and `working_directory`;
+  - **or from its stack's environment contract,** as today.
+
+  Either way it runs in a disposable copy that is removed afterwards. The live tree is never mounted, so
+  nothing a scenario does reaches a revision. This widens §7 item 2 the way §11d did: the argv is the
+  product's own declaration, never an agent's output.
+- **The evaluation secrets** (SIP-0112 Q40) reach only the app container's environment. They are never
+  written or journaled, and every value is replaced with `[redacted]` in the free text the runner
+  returns. An app may log its environment or answer with a token, and the start's detail, its last lines
+  and each step's detail are returned as written. Results, identities and ids are left alone.
+- **An evaluated tree's keys are checked before anything is written** (`workspace.tree_path`): a key that
+  is absolute, climbs out with `..` or isn't in its normal form is refused, and nothing runs. The tree is
+  a squad's files from the vault, and a key like `../<cycle>/workspace/x` would otherwise write into a
+  cycle's live tree.
+- **`declared_argv` refuses a string.** A string is a sequence of strings too, so `"ls -l"` had passed
+  as one-letter arguments.
+- **What X-3b doesn't ship yet, still on #2421:**
+  - **The declared entry points.** Scenarios reach the app at the readiness port's root, so an
+    `http_base` with a path prefix, or a `ui_base` on a second port, is lost. That's the runner's next
+    change, for SIP-0112's IR-6.
+  - **The approved secrets' resolution.** The runner takes the resolved values. Resolving only the
+    `secret://` references a Project declares and the owner approves, and refusing anything else as
+    `blocked_unverified`, `secret not available` (contract 7), needs the approval record. That record
+    is SIP-0112's E.4.2, so it lands after E.4.2(b), in the evaluation service.
+  - **Contract 7's three reasons:** `no start declaration` and `start failed` are mapped by the
+    evaluation service (#2453). `secret not available` lands with the resolution above.
+  - **The network:** the app still gets the bridge. #2451's fourth part puts it on the internal
+    `sandbox-apps` network.
+- **Posture:** setup gets the install network. The app gets the bridge to publish its one port to
+  loopback, with caps dropped, no new privileges and the copy owner's uid.
 
 ### 11f. The runtime API calls the sandbox service: its own client selector, and the service's URL and token (2026-10-18, §4.1, §11c, §11d; #2451; the owner's ruling)
 
