@@ -112,6 +112,7 @@ async def test_every_row_a_non_route_writer_commits_is_projected_once(world):
         vault=AsyncMock(list_artifacts=AsyncMock(return_value=[])),
         assess=AsyncMock(side_effect=_rejected),
         launch=AsyncMock(),
+        evaluate_outcome=None,
         clock=lambda: NOW + timedelta(hours=1),
     ).cycle_ended(cycle, run, CycleStopReason.SEQUENCE_COMPLETED)
 

@@ -150,6 +150,7 @@ async def _world():
         vault=AsyncMock(),
         assess=AsyncMock(),
         launch=AsyncMock(),
+        evaluate_outcome=None,
         clock=lambda: now[0],
     )
     return campaigns, cycles, progress, now, cycle.cycle_id

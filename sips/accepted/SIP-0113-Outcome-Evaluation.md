@@ -764,9 +764,27 @@ within them, for the owner's review.
       was in memory, so the deployed store's side of prediction 2 is read again in the window.
   - **The selection is the release capture's:** `evaluated_tree_refs` gave the capture's identity for
     both trees.
-- **Still to build for #2414:**
-  - the runtime API's runner client, and the reporting-only hook at an increment's end. Both wait on
-    #2451, the compose ruling that lets the runtime API call the sandbox service.
+- **The hook at a cycle's end** (`squadops.scenarios.campaign_cycles`, 2026-10-18). Each campaign cycle is
+  evaluated against its campaign's pinned suite, and the record is written. Reporting-only: nothing that
+  decides the campaign reads it.
+  - **When:** in the campaign's hearing of the ending (`CampaignProgress`), after its already-decided check
+    and before the decision. So the evaluation has the box between cycles, not beside the next one, and the
+    periodic re-hearing never evaluates a cycle it has already decided.
+  - **Which endings:** only one that reached its build (`assessed`). An increment rejected at its gate built
+    nothing, so it would only re-read the tree it was built on.
+  - **What is evaluated:** the cycle's whole app, by SIP-0109's selection. A cycle that delivered nothing
+    has no record.
+  - **Its previous tree:** the identity the campaign promoted for the accepted cycle this one built on, read
+    from the control log's applied promotion. A calibration builds on nothing.
+  - **Once per cycle and suite,** so a cycle heard again after a restart (§12a) isn't evaluated twice. A
+    failure is logged and never stops the decision.
+  - **A Project that isn't a blueprint** has its applicable scenarios recorded `blocked_unverified`,
+    `no_start_declaration`. The hook doesn't read its Development Configuration's start declaration
+    (SIP-0112 E.4.2) yet.
+  - **The runner** is the sandbox service's, through `create_scenario_runner` on the runtime API's one
+    sandbox-client binding (#2451). With `none`, each record says `no_runner`.
+- **Still to build for #2414:** the browser runner in the evaluator's image (A2), for `page` surfaces, and
+  the declared start at the hook once E.4.2 records it.
 
 ### 10d. The intervention ledger as built (2026-10-18, §4.3, §7 prediction 5; #2417; implementer's record, for the owner)
 

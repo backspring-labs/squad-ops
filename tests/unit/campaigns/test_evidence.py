@@ -76,6 +76,7 @@ async def closed():
         vault=vault,
         assess=AsyncMock(side_effect=_assessment),
         launch=AsyncMock(),
+        evaluate_outcome=None,
         clock=lambda: NOW + timedelta(hours=1),
     )
     draft = campaign(CID, policy=policy(calibration_profile="framing"))

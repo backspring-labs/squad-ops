@@ -1,12 +1,13 @@
-"""The runtime API's one binding of the sandbox client (#2451): SIP-0112's seeding and SIP-0113's
-runner both read it from ``create_sandbox_client``."""
+"""The runtime API's one binding of the sandbox client (#2451): SIP-0112's seeding reads it from
+``create_sandbox_client``, and SIP-0113's runner from ``create_scenario_runner`` over the same
+section (#2414)."""
 
 from __future__ import annotations
 
 import httpx
 import pytest
 
-from adapters.sandbox.factory import create_sandbox_client
+from adapters.sandbox.factory import create_sandbox_client, create_scenario_runner
 from squadops.config.loader import load_config
 from squadops.config.schema import SandboxClientConfig
 from squadops.sandbox.api import create_app
@@ -69,5 +70,64 @@ def test_none_is_no_client_and_an_absent_section_refuses_to_start():
     sandbox client and quietly calls nothing, every seed and evaluation reading as unavailable
     with no one having chosen it."""
     assert create_sandbox_client(SandboxClientConfig(provider="none")) is None
-    with pytest.raises(ValueError, match="SQUADOPS__SANDBOX_CLIENT__PROVIDER"):
-        create_sandbox_client(None)
+    assert create_scenario_runner(SandboxClientConfig(provider="none")) is None
+    for factory in (create_sandbox_client, create_scenario_runner):
+        with pytest.raises(ValueError, match="SQUADOPS__SANDBOX_CLIENT__PROVIDER"):
+            factory(None)
+
+
+async def test_the_runtimes_runner_reaches_the_services_runner_on_the_same_binding(
+    monkeypatch, tmp_path
+):
+    """#2414's runner, entered at ``load_config`` with the deploy's env and the factory the
+    runtime API's startup calls; asserted at the sandbox service's runner. Bug caught: a runner
+    built against the service's loopback default or without its token, so every campaign
+    cycle's evaluation in a deploy records ``no_runner``."""
+    from squadops.scenarios.runner import TreeEvaluation
+
+    for key, value in {**_ENV, **_DEPLOY}.items():
+        monkeypatch.setenv(key, value)
+    received: list[str] = []
+
+    class _ServiceRunner:
+        async def evaluate_tree(self, **kw):
+            received.append(kw["tree_identity"])
+            return TreeEvaluation(kw["tree_identity"], started=True)
+
+    root = tmp_path / "cycles"
+    service = create_app(
+        SandboxService(
+            store=WorkspaceStore(root),
+            journal=OperationEvidenceJournal(root),
+            scenario_runner=_ServiceRunner(),
+        ),
+        service_token="tok-2451",
+    )
+    asked: list[str] = []
+
+    async def record(request: httpx.Request) -> None:
+        asked.append(f"{request.url.host}:{request.url.port}")
+
+    real = httpx.AsyncClient
+    monkeypatch.setattr(
+        httpx,
+        "AsyncClient",
+        lambda **kw: real(
+            transport=httpx.ASGITransport(app=service), event_hooks={"request": [record]}, **kw
+        ),
+    )
+    config = load_config(cli_overrides={"secrets": {"provider": "env"}})
+
+    result = await create_scenario_runner(config.sandbox_client).evaluate_tree(
+        tree={"app/main.py": "print('evaluated')\n"},
+        tree_identity="c" * 64,
+        executable=(),
+        stack="fullstack_fastapi_react",
+        declared=None,
+        scenarios=[],
+        environment={},
+    )
+
+    assert asked == ["squadops-sandbox-service:8002"]
+    assert received == ["c" * 64]
+    assert result.started
