@@ -68,7 +68,7 @@ contracts (its §8.2). §4.8 says what this SIP produces and reads at each.
 >   revision's design (§4.1, §4.8).
 > - **No conflict.**
 
-## Delivery ledger (current as of 2026-10-18)
+## Delivery ledger (current as of 2026-10-20)
 
 One row per part that ships separately. Statuses as CLAUDE.md defines them. The 2.4 plan places phase 1 in 2.4
 (committed) and phase 2 in 2.4 conditionally. **Phase 1's parts are placed** with the issues filed at acceptance
@@ -1024,9 +1024,10 @@ names the entity exactly resolves as before.
 
 ### 10j. Lighthouse and axe on a seeded instance, parameterised pages included (proposed 2026-10-20, §4.2, §10f; #2562; queued for after the window by the owner)
 
-**Status: proposed, not built.** The owner, 2026-10-20: "yes, draft it and queue it for after the window." Its design
-review comes before it is built. The window runs on §10f's reading as it stands: the measure is frozen inside it
-(G7), and a measure changed mid-series is a different measure.
+**Status: proposed, not built.** The owner, 2026-10-20, answering the proposal to draft it: "yes, draft it and queue it
+for after the window." **The design review is the owner's,** on #2562, after the window and before any of it is built.
+The window runs on §10f's reading as it stands. Its deploy is frozen (G7), and a measure changed mid-series is a
+different measure.
 
 **What's wrong with §10f's reading.** Lighthouse and axe score a blueprint delivery's declared routes that load as
 they are, on the instance the scenarios read, before any scenario writes to it. For `group_run` that is `/` and
@@ -1042,35 +1043,47 @@ they are, on the instance the scenarios read, before any scenario writes to it. 
   The scores were performance 0.93 and 0.94, accessibility 0.96, best practices 0.78, and axe 2 moderate, on both
   pages. Only lint moved: +35 findings, then +8.
 - **What follows for the window:**
-  - Prediction 4 will read Lighthouse and axe as stable because nothing they see changes.
-  - §4.2's rule ("a measure that doesn't track scenario success loses its weight") would then retire them from
-    phase 2 without their ever having seen an increment.
+  - **Every increment's delta reads zero.** Prediction 4 re-measures one unchanged tree, so it reads the same with or
+    without a seed. What the empty reading costs is the deltas: a page the increment changed is never one that was
+    measured.
+  - §4.2's caution ("one that does not track scenario success loses its weight") would then retire Lighthouse and axe
+    from phase 2 without their ever having seen an increment.
 
 **What is proposed: a second, seeded reading beside §10f's.**
 - **A fixed seed, written through the delivery's own API.**
   - **The file:** one per Project, starting with `examples/03_group_run/quality_seed.json`. It has the shape the
     release screenshots' seed already has: create endpoints, field aliases, records, and a member action that joins
     participants.
-  - **The mapping:** it is mapped onto the delivery's own `interface_manifest.yaml` by the screenshots' mapping
-    (`plan_seed`). That mapping moves from `scripts/dev/capture_delivered_app.py` into `src/squadops/scenarios/`, and
-    the capture imports it, so the two never map a seed differently (#2084's base-path fix included).
+  - **The mapping onto the delivery's own `interface_manifest.yaml`** is one of two that exist today. The review
+    chooses which the seeded reading uses (item 4), and the chosen one moves into `src/squadops/scenarios/`, shared by
+    whatever else uses it:
+    - **The release screenshots'** (`plan_seed`, `scripts/dev/capture_delivered_app.py`): the seed's create endpoints
+      and field aliases mapped onto the manifest, under the API's base (#1730's `_under_base`). It takes the id it
+      photographs from the first row a list endpoint returns.
+    - **Route rendering's** (SIP-0109 §8.3; `increment_tree.route_seeds`, with #2084's written-prefix fix,
+      `src/squadops/capabilities/handlers/route_rendering.py`). It brings a parameterised route into being with the
+      create probe's request, and reads the id from the create response. It runs in the squad's qa container, and
+      this measure outside it.
   - **Its own file.** The screenshots' seed may change for a better picture. This one is part of the measure, so its
     sha256 is part of the measure's version.
-  - **There is a second seeding already:** the route-rendering check (SIP-0109 §8.3,
-    `capabilities/handlers/route_rendering.py`) brings a parameterised route into being through the API with the
-    create probe's request, then reads it in headless Chromium. That check runs in the squad's qa container, and this
-    measure outside it. The review chooses which mapping both should share.
-- **On its own disposable instance.**
-  - The same pinned tree is started a second time, in a disposable copy, by the runner's existing start (X-3b,
-    §10c). It is seeded, measured, and discarded.
+- **On its own disposable instance.** **This changes §4.2 and §10f,** which measure "on the same evaluated instance the
+  scenarios read". The review rules on the change.
+  - The same pinned tree is started a second time in a disposable copy, as a blueprint starts: by its stack's
+    environment contract (§10c). It is seeded, measured, and discarded.
+  - **The sandbox's runner changes:** it starts the tree twice, and seeds before it measures. The sandbox's contract
+    3 doesn't change.
   - **The scenarios and §10f's reading are untouched.** They still read a fresh, empty instance. So no outcome
     changes, and every reading taken before this stays comparable.
   - **Why not measure after the scenarios, on their instance:** what the scenarios write depends on which of them
     pass, so the state would differ per tree.
 - **Every declared page, parameterised routes included.**
-  - Each `:param` is filled with the id of the first record the seed created, read from the create response by the
-    manifest's own id field.
+  - Each parameter is filled with the id of the first record the seed created, in whichever form the delivery writes
+    it: `:id`, `{id}` or `[id]` (the forms `measurable_pages` already recognises). Where the id is read from is the
+    chosen mapping's rule (item 4).
   - A route whose parameter the seed can't fill is listed with why (`no_seed_value`). The rest are still measured.
+- **Where it doesn't apply:**
+  - a blueprint whose Project has no seed file: *not measured*, `no_seed`;
+  - a declared Project (SIP-0112): *not applicable*. Its `ui_base` entry point keeps §10f's reading only.
 - **New reasons for *not measured*,** each a record that the measure didn't run, never evidence and never a baseline
   held (§4.2):
   - `seed_refused`: the delivery's interface can't take the seed, because no create endpoint is declared, or a field
@@ -1083,9 +1096,12 @@ they are, on the instance the scenarios read, before any scenario writes to it. 
 - **Reporting-only, as §10f is.** No row, gate or prompt reads it. A gate on either reading waits for phase 2's rule
   (§4.2, §6).
 
-**Re-measuring the window, so D4 reads both.** After the window, `remeasure_quality.py` gains the seeded reading.
-Every tree the window evaluated is re-measured with it: each campaign's calibration and each increment. That gives
-§4.6's deltas and prediction 4's spread for both readings, on the window's own trees, with no campaign re-run.
+**Re-measuring the window's trees.** After the window, on the deploy that builds this, every tree the window evaluated
+is re-measured with the seeded reading: each campaign's calibration and each increment. No campaign is re-run.
+- **Where the readings land is the review's** (item 5). `remeasure_quality.py` writes nothing today: no evaluation
+  record and no store row. But the deltas (§4.2, §10f; `quality_deltas`) read two evaluation records. So the seeded
+  readings need a record to land in, or the deltas need a reader that takes re-measures.
+- **A request to the owner, not a decision:** D4 might wait for both readings. When D4 rules is the owner's call.
 
 **Predictions, pre-registered for its reading:**
 
@@ -1097,10 +1113,10 @@ Every tree the window evaluated is re-measured with it: each campaign's calibrat
 **Boundaries:**
 - **A declared Project** (SIP-0112) keeps its `ui_base` entry point (§10f). A seed for it would be its own
   declaration's, which is Project Lifecycle Management's. Nothing is asked of SIP-0112.
-- **The sandbox's contract 3** is used as built, with no change, so no G4 review is needed.
+- **The sandbox's contract 3** doesn't change, so no G4 review is needed. Its runner does (above).
 - **The held-out suite:** the seed is public, in the repository, and written without reading the suite. No scenario
   step is in it, and prediction 2's sweep is unaffected.
-- **The release capture** keeps its own seed file, and shares the mapping.
+- **The release capture** keeps its own seed file. It shares the mapping if the review chooses the screenshots' one.
 
 **What the design review settles:**
 1. **The second instance's cost:** one more start, seed and measure per evaluation. It is measured when built, and the
@@ -1111,14 +1127,21 @@ Every tree the window evaluated is re-measured with it: each campaign's calibrat
      one.
 3. **Whether the seeded reading should replace §10f's** after one series of both. The proposal keeps both, because
    §10f's reading is what every earlier record has.
+4. **Which mapping:** the screenshots' or route rendering's (above). That settles the base-path rule, where an id is
+   read from, and what moves into `src/`.
+5. **Where the window trees' seeded readings land,** and how their deltas are computed (above).
 
 ### 10k. The browser runner and page scenarios (proposed 2026-10-20, §4.1, A2, A3; #2564, split from #2414; queued for after the window by the owner)
 
-**Status: proposed, not built.** The owner, 2026-10-20: "yes, draft it and queue it for after the window." Its design
-review comes before it is built. This is the part of phase 1's runner §10c names as still to build: "the browser
-runner in the evaluator's image (A2), for `page` surfaces". It moves from #2414 to #2564, and #2414 keeps the declared
-start at the hook (E.4.2). The window runs without it. Its suite (revision 3) has no page scenario, and the suite and
-the measure are frozen inside it (G7).
+**Status: proposed, not built.** The owner, 2026-10-20, answering the proposal to draft the browser steps as §10j's
+companion: "yes, draft it and queue it for after the window." These are the same words as §10j's answer, given to its
+own question. **The design review is the owner's,** on #2564, after the window and before any of it is built.
+
+This is the part of phase 1's runner §10c names as still to build: "the browser runner in the evaluator's image (A2),
+for `page` surfaces". It moves from #2414 to #2564, and #2414 keeps the declared start at the hook (E.4.2). The window
+runs without it:
+- its suite (revision 3) has no page scenario;
+- the suite is frozen (D2), and so is the deploy (G7).
 
 **The driver is decided; the rest is for the design review.** The owner passed on a review the same day, whose decision
 reads: "Adopt Claude's recommendation to implement browser scenario evaluation using the existing Puppeteer dependency
@@ -1129,7 +1152,7 @@ rather than introducing Playwright at this stage." The review also asked for the
 - comparability that survives a suite revision.
 
 **What's missing.** §4.1 names browser pages as a surface kind, and A2 and A3 put the browser in the evaluator's image,
-receiving a run's steps on its input. The vocabulary reserves `visit`, `click`, `fill` and `page`, but each is
+receiving a run's steps on its input. The vocabulary reserves `visit`, `click`, `fill`, `page` and `browser`, but each is
 `blocked_unverified`, `browser_unavailable` (`squadops.scenarios.steps`).
 - **So nothing independent checks what a user sees,** such as capacity's "2 / 5 joined", or the list's order on the
   page.
@@ -1138,7 +1161,15 @@ receiving a run's steps on its input. The vocabulary reserves `visit`, `click`, 
 
 **What is proposed.**
 - **Browser steps, in the suite's own vocabulary,** beside `http`, and mixed freely in one scenario: a scenario can
-  create its run over HTTP, join it through the page, and check what the page shows.
+  create its run over HTTP, join it through the page, and check what the page shows. The table's values are
+  illustrations, now public. Revision 4's steps take no value from them: they are written apart and held out.
+- **Where a mixed scenario runs** (review item 7). HTTP steps run in Python in the sandbox service
+  (`squadops.scenarios.steps`). The browser runs in the evaluator's Node container (`infra/evaluator/driver.mjs`),
+  which takes its request on its input.
+  - **Proposed:** the sandbox's runner keeps the scenario. It runs the HTTP steps, and hands each run of browser steps
+    to the evaluator with the values saved so far, receiving the values the browser steps save. So each action kind
+    has one implementation.
+  - **The alternative:** port the HTTP vocabulary to Node, and run the whole scenario in the evaluator.
 
 | step or check | what it does |
 |---|---|
@@ -1216,7 +1247,7 @@ receiving a run's steps on its input. The vocabulary reserves `visit`, `click`, 
 
 | # | prediction | falsified by |
 |---|---|---|
-| B1 | a page scenario discriminates. It fails on a tree known to lack its outcome and passes on one known to have it. It is read on the reference pair (`cyc_7a4b7a6fbf0e`, `cyc_20246018f2b8`, where the HTTP capacity scenario failed on the first and passed on the second, §10c) if its delivery shows the indicator; otherwise on a pair the review names | a page scenario that passes on a tree known to lack its outcome. One that passes both trees of every pair is withdrawn as evidence |
+| B1 | a page scenario discriminates. It fails on a tree known to lack its outcome and passes on one known to have it. It is read on the reference pair (`cyc_7a4b7a6fbf0e`, `cyc_20246018f2b8`, where the HTTP capacity scenario failed on the first and passed on the second, §10c) if its delivery shows the indicator; otherwise on a pair the review names | a page scenario that passes on a tree known to lack its outcome. One that passes both trees of every pair is withdrawn as evidence. A `blocked_unverified` reading on either tree is not discrimination: B1 is unread for that scenario, and the record says so |
 | B2 | it doesn't flake. Every page scenario gives the same result on three runs of one unchanged tree | any differing result. That scenario is withdrawn as evidence, and the driver's waits are the first thing read |
 | B3 | its steps stay held out. No page step's value appears anywhere prediction 2's sweep reads | any marker found |
 
@@ -1224,7 +1255,8 @@ receiving a run's steps on its input. The vocabulary reserves `visit`, `click`, 
 1. **The locator rule:** role and candidate names only, as proposed, or a delivery's accessible labels resolved like
    §10i's concepts as well.
 2. **Whether a control not found is `surface_absent`,** as proposed, or a failure. A failure would count a different
-   label as a broken app. `surface_absent` lets a page that names nothing a user can find read as unverified.
+   label as a broken app. `surface_absent` lets a page that names nothing a user can find read as unverified, and it
+   repeats what §10c found for fields: "Reading an undeclared field as absent hid that job."
 3. **The bound on each wait,** measured when built on both stacks' pages, and the browser's cost per evaluation.
 4. **Which outcomes revision 4's page scenarios state:** at least capacity's indicator and the list's order, the two
    increments the shakeout's HTTP-only suite couldn't see on a page.
@@ -1234,3 +1266,5 @@ receiving a run's steps on its input. The vocabulary reserves `visit`, `click`, 
    - how a rate is reported when the shared set is small;
    - whether a scenario whose surfaces changed but whose steps didn't is the same scenario. Its content hash says
      it isn't.
+7. **Where a mixed scenario runs:** the sandbox's runner handing browser runs to the evaluator, as proposed, or the
+   whole vocabulary in Node (above).
