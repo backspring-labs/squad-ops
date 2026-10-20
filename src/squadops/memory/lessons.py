@@ -28,7 +28,7 @@ from enum import StrEnum
 from typing import Any
 
 from squadops.memory.recall import RecallQuery, UnitKind
-from squadops.memory.records import PinnedInstruction
+from squadops.memory.records import PinnedInstruction, Rebinding
 
 #: A stack-independent lesson says so explicitly (§0.8 step 3): unknown never means everywhere.
 ANY_STACK = "*"
@@ -240,7 +240,9 @@ class SnapshotEntry:
 
 @dataclass(frozen=True)
 class Snapshot:
-    """What one unit pinned at admission (§0.7). Immutable while the unit runs."""
+    """What one unit pinned at admission (§0.7), and its project instructions as bound now. Nothing
+    changes while the unit runs, except by a recorded re-binding (Appendix A §3.7), which replaces an
+    instruction's revision in ``instructions`` and keeps the replaced one in ``rebindings``."""
 
     snapshot_id: str
     unit_kind: UnitKind
@@ -259,6 +261,9 @@ class Snapshot:
     #: The unit declared ``memory_context: none`` (§3.7): it pins no lesson and no project
     #: instruction, and its exposures say so apart from a memory-disabled unit's.
     context_withheld: bool = False
+    #: Each re-binding of the running unit, in order (§3.7; #2179): ``instructions`` is what the unit
+    #: binds now, and these say what it bound before and who changed it.
+    rebindings: tuple[Rebinding, ...] = ()
 
     def to_dict(self) -> dict[str, Any]:
         """The whole pin, self-contained: a stored snapshot never depends on rows read later."""
@@ -290,6 +295,7 @@ class Snapshot:
             ),
             # Only when declared, so every other snapshot is stored as it was.
             **({"memory_context": "none"} if self.context_withheld else {}),
+            **({"rebindings": [r.to_dict() for r in self.rebindings]} if self.rebindings else {}),
         }
 
     @classmethod
@@ -312,6 +318,7 @@ class Snapshot:
             ),
             instructions_unread=data.get("instructions_unread"),
             context_withheld=data.get("memory_context") == "none",
+            rebindings=tuple(Rebinding.from_dict(r) for r in data.get("rebindings") or ()),
         )
 
 

@@ -14,7 +14,11 @@ from squadops.memory.exposures import Exposure
 from squadops.memory.lessons import Approval, PatternRevision, Snapshot, UnitKind
 from squadops.memory.observations import Observation, ObservationSource
 from squadops.memory.project_instructions import units_pinning
-from squadops.ports.memory.cross_cycle import CrossCycleMemoryStorePort, RecordIncompatible
+from squadops.ports.memory.cross_cycle import (
+    CrossCycleMemoryStorePort,
+    RecordIncompatible,
+    SnapshotMoved,
+)
 
 
 def _ordered(observations: list[Observation]) -> list[Observation]:
@@ -112,6 +116,13 @@ class InMemoryCrossCycleMemoryStore(CrossCycleMemoryStorePort):
 
     async def get_snapshot(self, unit_kind: UnitKind, unit_id: str) -> Snapshot | None:
         return self._snapshots.get((unit_kind.value, unit_id))
+
+    async def rebind_snapshot(self, snapshot: Snapshot, *, after: int) -> None:
+        key = (snapshot.unit_kind.value, snapshot.unit_id)
+        held = self._snapshots[key]
+        if len(held.rebindings) != after:
+            raise SnapshotMoved(f"{key[0]} {key[1]} was re-bound since it was read")
+        self._snapshots[key] = snapshot
 
     async def list_snapshots_holding(self, approval_id: str) -> list[Snapshot]:
         return units_holding(approval_id, self._snapshots.values())
@@ -362,6 +373,32 @@ class PostgresCrossCycleMemoryStore(CrossCycleMemoryStorePort):
             return Snapshot.from_dict(body)
         except (KeyError, TypeError, ValueError) as e:
             raise RecordIncompatible(f"{unit_kind.value} {unit_id}'s snapshot: {e!r}") from e
+
+    async def rebind_snapshot(self, snapshot: Snapshot, *, after: int) -> None:
+        # One statement, so two re-bindings read from the same snapshot can't both land.
+        async with self._pool.acquire() as conn:
+            status = await conn.execute(
+                "UPDATE memory_snapshots SET snapshot_body = $3 "
+                "WHERE unit_kind = $1 AND unit_id = $2 AND snapshot_id = $4 AND "
+                "json_array_length(coalesce(snapshot_body->'rebindings', '[]'::json)) = $5",
+                snapshot.unit_kind.value,
+                snapshot.unit_id,
+                snapshot.to_dict(),
+                snapshot.snapshot_id,
+                after,
+            )
+            if status == "UPDATE 1":
+                return
+            held = await conn.fetchval(
+                "SELECT 1 FROM memory_snapshots WHERE unit_kind = $1 AND unit_id = $2",
+                snapshot.unit_kind.value,
+                snapshot.unit_id,
+            )
+        if held is None:
+            raise KeyError(f"{snapshot.unit_kind.value} {snapshot.unit_id} pinned no snapshot")
+        raise SnapshotMoved(
+            f"{snapshot.unit_kind.value} {snapshot.unit_id} was re-bound since it was read"
+        )
 
     async def list_snapshots_holding(self, approval_id: str) -> list[Snapshot]:
         # A text match narrows the rows; the domain's read of each entry decides.

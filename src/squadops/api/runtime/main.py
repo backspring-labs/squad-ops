@@ -47,7 +47,11 @@ from squadops.api.routes.cycles import (
     runs_router,
 )
 from squadops.api.routes.cycles.cycles import CreationPorts
-from squadops.api.routes.memory import memory_records_router, memory_router
+from squadops.api.routes.memory import (
+    memory_records_router,
+    memory_router,
+    memory_snapshots_router,
+)
 from squadops.api.routes.outcomes import router as outcomes_router
 from squadops.api.routes.platform_health import router as platform_health_router
 from squadops.api.routes.scenarios import router as scenarios_router
@@ -155,6 +159,7 @@ def _include_routers(app: FastAPI) -> None:
     app.include_router(chat_agents_router)
     app.include_router(memory_router)  # SIP-0110 §0.6 (slice 3d): lessons, approvals, revocations
     app.include_router(memory_records_router)  # SIP-0110 Appendix A (#2177): the typed records
+    app.include_router(memory_snapshots_router)  # Appendix A §3.7 (#2179): re-binding a unit
     app.include_router(outcomes_router)  # SIP-0113 §4.3 (#2417): the intervention ledger
     app.include_router(scenarios_router)  # SIP-0113 §4.1 (#2413): held-out scenario suites
 

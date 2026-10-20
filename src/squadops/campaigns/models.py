@@ -118,6 +118,10 @@ class ControlOperation(StrEnum):
     #: A late answer to an expired or cancelled escalation (§24bj, §24bl). A record, accepted on a
     #: completed campaign; it never reopens one, and a later plan gate reads it by decision id.
     ESCALATION_ANSWERED = "escalation_answered"
+    #: The campaign's snapshot was re-bound (SIP-0110 Appendix A §3.7; #2179): a project
+    #: instruction's revision it bound was replaced. A record, and an intervention: its
+    #: measurements are set apart from the re-binding.
+    REBIND = "rebind"
 
     @property
     def records_only(self) -> bool:
@@ -135,6 +139,7 @@ class ControlOperation(StrEnum):
             ControlOperation.ESCALATION_OPENED,
             ControlOperation.ESCALATION_CLOSED,
             ControlOperation.ESCALATION_ANSWERED,
+            ControlOperation.REBIND,
         )
 
     @property
