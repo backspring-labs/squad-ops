@@ -46,7 +46,7 @@ from squadops.campaigns.models import (
     LaunchIntentState,
 )
 from squadops.cycles.models import CycleNotFoundError, CycleStatus
-from squadops.memory.cycle_bindings import instructions_bound_for
+from squadops.memory.cycle_bindings import instructions_bound_for, names_current
 from squadops.memory.lessons import Snapshot, UnitKind
 from squadops.memory.pinning import cycle_binding, source_commit_of
 from squadops.memory.rebinding import RebindRefused, rebound, runs_handed
@@ -246,8 +246,8 @@ async def _bound_for_running_cycles(
     so a paused one, which can resume, is bound too. A resolver's refusal is kept unbound with why.
     A fault (a resolver that fails, cycles that can't be read) raises, and the re-binding is
     refused, nothing written. A withdrawal binds nothing: the pin no longer holds the record."""
-    if replacement is None:
-        return {}
+    if replacement is None or not names_current((replacement,)):
+        return {}  # nothing a cycle binds for itself, so no cycle is read
     cycles = get_cycle_registry(request)
     resolvers = get_reference_resolvers(request)
     out = {}

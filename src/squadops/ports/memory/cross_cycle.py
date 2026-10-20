@@ -104,9 +104,9 @@ class CrossCycleMemoryStorePort(ABC):
         bound_at: datetime,
     ) -> None:
         """Store a campaign cycle's own bindings of these pinned instructions (SIP-0110 §5ad), one
-        per record. An entry lands only when its revision is the one the cycle holds for that record
-        or a newer one. So writers never read each other's entries, and a stale write never
-        replaces a newer revision."""
+        per record. An entry lands only where the cycle holds no entry for that record, or an older
+        revision. So writers never read each other's entries, a stale write never replaces a newer
+        revision, and an entry a dispatch may have been handed is never rewritten."""
 
     @abstractmethod
     async def get_cycle_binding(self, cycle_id: str) -> CycleBinding | None:

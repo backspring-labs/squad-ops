@@ -29,8 +29,9 @@ from adapters.memory.cross_cycle import InMemoryCrossCycleMemoryStore
 from adapters.memory.recall import SnapshotRecall
 from adapters.memory.records import InMemoryMemoryRecords
 from squadops.capabilities.lesson_supply import supply_lessons, unit_of
+from squadops.memory.cycle_bindings import instructions_bound_for
 from squadops.memory.lessons import UnitKind
-from squadops.memory.pinning import pin_unit
+from squadops.memory.pinning import cycle_binding, pin_unit
 from squadops.memory.project_instructions import PROJECT_INSTRUCTIONS_INPUT
 from squadops.memory.records import Reference
 from squadops.memory.task_instructions import TaskInstructionsUnavailable
@@ -149,9 +150,9 @@ class _Counting(InMemoryCrossCycleMemoryStore):
         self.reads += 1
         return await super().get_cycle_binding(cycle_id)
 
-    async def record_cycle_binding(self, binding):
+    async def record_cycle_bindings(self, cycle_id, unit_kind, unit_id, entries, bound_at):
         self.writes += 1
-        await super().record_cycle_binding(binding)
+        await super().record_cycle_bindings(cycle_id, unit_kind, unit_id, entries, bound_at)
 
 
 async def test_a_campaign_naming_no_current_reference_records_and_reads_no_binding(world):  # noqa: F811
@@ -504,3 +505,98 @@ async def test_a_stale_write_never_replaces_a_newer_revision():
     await store.record_cycle_bindings("cyc_x", "campaign", CID, (entry(2),), T0)
 
     assert [p.revision for p in (await store.get_cycle_binding("cyc_x")).instructions] == [3]
+
+
+async def _revised_and_rebound(store, records, text: str):
+    """The campaign's instruction revised and the campaign re-bound to it, as the route commits it,
+    with no cycle's entry written: the moment a launch can race."""
+    from squadops.memory.rebinding import rebound
+    from squadops.memory.records import Revision, Source, pinned_of, revised
+
+    record = await records.get("mrec_ref")
+    second = revised(
+        record,
+        Revision(number=2, body=text, author="ada", created_at=T0, source=Source("api_call"),
+                 confirmed_by="ada", applicability=record.current.applicability,
+                 references=(Reference(REF, True),)),
+    )  # fmt: skip
+    await records.append_revision("mrec_ref", second.current)
+    snapshot = await store.get_snapshot(UnitKind.CAMPAIGN, CID)
+    replacement = dataclasses.replace(pinned_of(second), unbound=((REF, "pins no source commit"),))
+    await store.rebind_snapshot(
+        rebound(snapshot, second, by="ada", at=T0, why="the spec moved", replacement=replacement),
+        after=len(snapshot.rebindings),
+    )
+
+
+async def test_a_launch_that_races_a_rebinding_is_filled_before_its_first_run(world):  # noqa: F811
+    """The fourth read of #2570, entered at the drain that starts the cycle's first run. Bug caught:
+    a cycle bound at its launch for the revision a re-binding then replaced (the re-binding lists
+    only cycles already marked launched, so it didn't reach this one) started with the old
+    revision's entry, so its first run fails before any sweep could fill it."""
+    from squadops.memory.records import pinned_of
+
+    store, records = InMemoryCrossCycleMemoryStore(), InMemoryMemoryRecords()
+    await _pinned_campaign(store, records)
+    world.start()  # launched, its first run not yet started by this launcher
+    [cycle_id] = [i.cycle_id for i in await world.campaigns.launch_intents(CID) if i.cycle_id]
+    at_launch = await instructions_bound_for(
+        (pinned_of(await records.get("mrec_ref")),), {"fake": _PerCycle()},
+        cycle_binding(await world.cycles.get_cycle(cycle_id)),
+    )  # fmt: skip
+    await store.record_cycle_bindings(cycle_id, UnitKind.CAMPAIGN.value, CID, at_launch, T0)
+    await _revised_and_rebound(store, records, "Read the revised spec.")
+
+    await _launcher(world, records, store).drain()
+
+    held = (await store.get_cycle_binding(cycle_id)).instructions
+    assert [(p.revision, [r.ref for r in p.references]) for p in held] == [
+        (2, [f"fake:doc:spec@{cycle_id}"])
+    ]
+
+
+@pytest.mark.parametrize("change", ["withdrawn", "names-a-revision"])
+async def test_a_rebinding_with_nothing_for_a_cycle_to_bind_reads_no_cycle(change):
+    """The fourth read of #2570. Bugs caught: a withdrawal refused (503) as if its cycles had to
+    bind it; a replacement naming no ``@current`` refused because the cycles couldn't be read,
+    though no cycle had anything to bind."""
+    from squadops.campaigns.models import ControlOperation
+    from tests.unit.api.test_rebinding import RECORDS
+
+    api, [record_id], (running, _paused, _ended) = await _campaign_world(REF)
+    if change == "withdrawn":
+        api.client.post(f"{RECORDS}/{record_id}/withdrawal", json={"why": "no longer applies"})
+    else:
+        _revise(api, record_id, "fake:doc:spec@r9", "Read revision r9 of the spec.")
+
+    async def unreadable(_campaign_id):
+        raise TimeoutError("the campaign registry did not answer")
+
+    api.campaigns.launch_intents = unreadable
+
+    applied = api.rebind(record_id, kind="campaign", unit_id=CID, why=change)
+
+    assert applied.status_code == 201, applied.text
+    assert [e.entry_id for e in await api.campaigns.control_log(CID)
+            if e.operation is ControlOperation.REBIND] == [applied.json()["control_log_entry_id"]]  # fmt: skip
+    assert await api.store.get_cycle_binding(running.cycle_id) is None
+
+
+async def test_a_same_revision_write_never_rewrites_an_entry():
+    """The fourth read of #2570. Bug caught: the sweep, having read "missing" before a re-binding
+    stored the entry, writing the same revision again after a dispatch was handed it, so the
+    cycle's later tasks could read a different binding of the same revision."""
+    from squadops.memory.records import InstructionApplicability, PinnedInstruction
+
+    where = InstructionApplicability((DESIGN,), ("*",), ("*",))
+    store = InMemoryCrossCycleMemoryStore()
+
+    def entry(digest):
+        return PinnedInstruction("mrec_ref", 2, "r2", where,
+                                 (Reference("fake:doc:spec@r2", True, digest=digest),))  # fmt: skip
+
+    await store.record_cycle_bindings("cyc_x", "campaign", CID, (entry("sha256:first"),), T0)
+    await store.record_cycle_bindings("cyc_x", "campaign", CID, (entry("sha256:again"),), T0)
+
+    [held] = (await store.get_cycle_binding("cyc_x")).instructions
+    assert held.references[0].digest == "sha256:first"

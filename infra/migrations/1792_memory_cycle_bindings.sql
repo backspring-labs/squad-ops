@@ -2,8 +2,8 @@
 -- SIP-0110 §5ad (#2179 T16; the owner's ruling of 2026-10-20): a campaign cycle's own bindings of
 -- its campaign's pinned instructions. The campaign's snapshot fixes which instruction revisions are
 -- in force; each cycle binds their @current references at its own pinned source commit, and every
--- dispatch of the cycle reads these rows. One row per cycle and record: a write lands only when its
--- revision is the held one or newer, so a launch, a re-binding and the sweep's fill can each write
+-- dispatch of the cycle reads these rows. One row per cycle and record: a write lands only on an
+-- older revision or none, so a launch, a re-binding and the sweep's fill can each write
 -- without reading the others' rows, and a stale write never replaces a newer revision. Additive: a
 -- cycle with no row reads its campaign's pin.
 

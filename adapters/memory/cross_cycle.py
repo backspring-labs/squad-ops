@@ -135,7 +135,7 @@ class InMemoryCrossCycleMemoryStore(CrossCycleMemoryStorePort):
         held = self._cycle_bindings.setdefault(cycle_id, {})
         for entry in entries:
             prior = held.get(entry.record_id)
-            if prior is None or prior[0].revision <= entry.revision:
+            if prior is None or prior[0].revision < entry.revision:
                 held[entry.record_id] = (entry, unit_kind, unit_id, bound_at)
 
     async def get_cycle_binding(self, cycle_id: str) -> CycleBinding | None:
@@ -412,7 +412,7 @@ class PostgresCrossCycleMemoryStore(CrossCycleMemoryStorePort):
         entries: Sequence[PinnedInstruction],
         bound_at: datetime,
     ) -> None:
-        # One statement per entry: it lands only on the held revision or a newer one.
+        # One statement per entry: it lands only where the cycle holds an older revision or none.
         async with self._pool.acquire() as conn:
             for entry in entries:
                 await conn.execute(
@@ -421,7 +421,7 @@ class PostgresCrossCycleMemoryStore(CrossCycleMemoryStorePort):
                     "ON CONFLICT (cycle_id, record_id) DO UPDATE SET revision = EXCLUDED.revision, "
                     "unit_kind = EXCLUDED.unit_kind, unit_id = EXCLUDED.unit_id, "
                     "bound_at = EXCLUDED.bound_at, entry_body = EXCLUDED.entry_body "
-                    "WHERE memory_cycle_bindings.revision <= EXCLUDED.revision",
+                    "WHERE memory_cycle_bindings.revision < EXCLUDED.revision",
                     cycle_id,
                     entry.record_id,
                     entry.revision,

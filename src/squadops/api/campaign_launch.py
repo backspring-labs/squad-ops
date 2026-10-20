@@ -232,6 +232,24 @@ class CampaignLaunchService:
                     started.append(run)
             return started
 
+    async def _fill_before_first_run(self, cycle: Cycle) -> None:
+        """§5ad: a cycle launched while a re-binding ran was bound for the revision it replaced, and
+        the re-binding, which lists only cycles already marked launched, didn't reach it. So before
+        its first run starts, its missing entries are filled, still at its launch. One that can't be
+        filled is logged, and the run starts: a required reference then holds it, loudly, rather
+        than the run waiting on a drain."""
+        store = self._creation.memory_store
+        if store is None or not cycle.campaign_id:
+            return
+        try:
+            snapshot = await store.get_snapshot(UnitKind.CAMPAIGN, cycle.campaign_id)
+            if snapshot is not None and names_current(snapshot.instructions):
+                await self._fill_binding(store, snapshot, cycle.cycle_id)
+        except Exception:
+            logger.warning(
+                "cycle_binding_launch_fill_failed cycle=%s", cycle.cycle_id, exc_info=True
+            )
+
     async def reconcile_bindings(self) -> list[str]:
         """§5ad, the sweep's (every interval, beside the ruling bounds): each running cycle of a live
         campaign holds a binding for every pinned instruction naming ``@current``. One it lacks is
@@ -245,7 +263,14 @@ class CampaignLaunchService:
             return []
         filled: list[str] = []
         for project in await self._creation.project_registry.list_projects():
-            for campaign in await self._campaigns.list_campaigns(project.project_id):
+            try:
+                campaigns = await self._campaigns.list_campaigns(project.project_id)
+            except Exception:
+                logger.warning(
+                    "cycle_binding_reconcile_unlisted project=%s", project.project_id, exc_info=True
+                )
+                continue
+            for campaign in campaigns:
                 if campaign.state is CampaignState.COMPLETED:
                     continue
                 try:
@@ -371,9 +396,11 @@ class CampaignLaunchService:
             if run.status != RunStatus.QUEUED.value or run.run_id in self._started:
                 return None
             cycle = await cycles.get_cycle(cycle_id)
+            await self._fill_before_first_run(cycle)
             self._execute(cycle, run)
             return run
         cycle = await cycles.get_cycle(cycle_id)
+        await self._fill_before_first_run(cycle)
         run = first_run(cycle, initiated_by=RunInitiator.SYSTEM)
         await cycles.create_run(run)
         self._event_bus.emit(
