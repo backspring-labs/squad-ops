@@ -2,8 +2,9 @@
 cycle (SIP-0110 Appendix A §3.5; #2178).
 
 ``add`` gives one to an existing cycle: an intervention, since the cycle is already admitted.
-It is refused once a task it selects has dispatched, and for a campaign's cycle it is a row in the
-campaign's control log. ``list`` shows a cycle's instructions, each marked admitted (given with the
+It is refused once a task it selects has dispatched. A run hands every task its inputs when it is
+provisioned, so in practice that is before the run that holds them starts: a later workload, after
+the gate between workloads. For a campaign's cycle it is a row in the campaign's control log. ``list`` shows a cycle's instructions, each marked admitted (given with the
 cycle's create request) or added after admission.
 """
 
@@ -41,7 +42,7 @@ def add(
     cycle_id: str = typer.Option(..., "--cycle", help="The cycle it directs"),
     task_types: list[str] = typer.Option(..., "--for", help="A task type it reaches; repeatable"),
 ):
-    """Give a cycle's selected tasks an instruction, before they dispatch."""
+    """Give a cycle's selected tasks an instruction, before the run that holds them starts."""
     data = _call(
         ctx,
         "post",

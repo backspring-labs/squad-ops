@@ -2221,12 +2221,22 @@ moved.
 **What shipped:** §A.3.5's "an addition after admission is an intervention".
 - **Admitted, or added after.** A task instruction given in the cycle's create request (`source: cycle_request`, #2513)
   is an admitted input. One written through `POST /api/v1/memory-records`, or revised there, is an intervention. A
-  revision of an admitted one counts as an intervention too.
+  revision of an admitted one counts as an intervention too. That route refuses a body claiming `cycle_request` or
+  `gate_decision` as its source: only their own routes write those. Otherwise a client's instruction would read as
+  admitted and reach its task unmarked.
+- **A task instruction's cycle is fixed.** A revision naming another cycle is refused. It would withdraw the
+  instruction from one cycle and add it to another, recorded on neither. The instruction is withdrawn, and the other
+  cycle gets its own.
 - **Refused once its task has dispatched** (`409 TASK_DISPATCHED`): an addition or a revision for a cycle any of whose
   runs dispatched a task type it selects. Otherwise the task's re-takes, its repairs and the work built on its output
-  would mix in a binding its first dispatch never had. The answer says where it can go: a new cycle's create request,
-  or a campaign's next cycle. Exposures that can't be read refuse it too (`503`), never read as "nothing dispatched".
-  Another cycle's dispatch of the same task type doesn't count.
+  would mix in a binding its first dispatch never had. A revision is checked on the types it drops as well as those
+  it names, since dropping a dispatched type withdraws it from that task after the fact. The answer says where it can
+  go: a new cycle's create request, or a campaign's next cycle. Exposures that can't be read refuse it too (`503`),
+  never read as "nothing dispatched". Another cycle's dispatch of the same task type doesn't count.
+- **"Dispatched" means provisioned.** A run supplies every authoring task's inputs when it is provisioned, and records
+  each one's exposure then. So once a run starts, all its tasks count as dispatched, even queued ones. The usable window
+  is before the run that holds the task starts: in practice a later workload, after the gate between workloads. This is
+  the safe direction.
 - **Marked where it lands.** Each dispatch that receives an intervention carries `"intervention": true` on that
   instruction in its envelope's `task_instructions` input. Its exposure's task-instruction section lists them
   (`interventions`). An admitted instruction's envelope and exposure are as they were.
@@ -2235,8 +2245,8 @@ moved.
     (record-only; migration `1791`), and the intervention ledger reads each as an intervention. The answer carries the
     row's id (`control_log_entry_id`).
   - For a standalone cycle, the record is the record: its target cycle, author, time and revision.
-  - The verification-set driver records a cycle's after-admission revisions, and headlines the roll as not counted,
-    since a counted roll refuses every intervention.
+  - The verification-set driver records a cycle's after-admission revisions and the withdrawals of its task
+    instructions, and headlines the roll as not counted, since a counted roll refuses every intervention.
 - **The CLI.** `squadops instructions add <project> "<text>" --cycle <id> --for <task type>…` gives one, and
   `squadops instructions list <project> --cycle <id>` shows a cycle's instructions, each marked admitted or added after.
 
@@ -2256,20 +2266,34 @@ moved.
 - **The route tests** (`tests/unit/api/test_task_instruction_interventions.py`) are wired through `supply_lessons`:
   - an instruction added before dispatch reaches the task marked, and the admitted one isn't;
   - adding or revising after dispatch is refused and stores nothing;
+  - a claimed `cycle_request` or `gate_decision` source is refused;
+  - a revision naming another cycle is refused, and so is one dropping a dispatched type;
   - an absent exposure store refuses;
   - a campaign cycle's addition and withdrawal are control-log rows read as interventions;
   - another cycle's dispatch doesn't block.
 - **The CLI tests:** `add` sends the cycle and every task type and exits on a refusal; `list` shows only the cycle's
   instructions, each marked.
 - **The driver:** the wiring test at `_run_cycle` and the headline.
-- **Seven mutants, each caught:**
+- **The second reader** (a fresh agent) found, each fixed above:
+  - a client claiming `cycle_request` to read as admitted;
+  - a revision moving an instruction to another cycle, which also passed an operator around the campaign's
+    permission;
+  - a revision dropping a dispatched type;
+  - "dispatched" meaning provisioned, unstated;
+  - the driver missing withdrawals.
+
+  The source refusal, the fixed cycle, the dropped types and the driver's withdrawals are each tested.
+- **Ten mutants, each caught:**
   - the dispatch check removed;
   - the envelope unmarked;
   - the exposure unmarked;
   - the admitted instruction marked;
   - no control-log row;
   - an absent store read as none;
-  - other cycles counted.
+  - other cycles counted;
+  - a spoofed source accepted;
+  - a retarget allowed;
+  - the dropped types unchecked.
 
 ## 6. Mode neutrality: cycle, duty, and ambient utilization
 
