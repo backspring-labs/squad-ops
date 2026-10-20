@@ -65,7 +65,8 @@ def next_step(live: list[Snapshot], finished: list[Snapshot], *, rule: str) -> s
         return (
             "units admitted from now pin without it. Each unit named here keeps it while it runs: "
             "halt or restart its work under a new snapshot, and set its measurements apart "
-            f"({rule})."
+            f"({rule}). A unit pins once, so a new run of the same unit reads the same snapshot: "
+            "the restart is a new cycle or campaign."
         )
     if finished:
         return (

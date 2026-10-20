@@ -83,7 +83,7 @@ re-places it.
 | entry points: the context-assembly port, inert, at the four seams (§A.3.6) | **shipped** | 2.3.0, #2257 (closes #2176; §5j records where it departs from §A.3.6's text) |
 | entry points: the typed records (notes, preferences, project and task instructions), permissions by kind, provenance (§A.3.2–§A.3.4) | **shipped** (§5l) | 2.4.0, PR #2508, issue #2177 |
 | entry points: task instructions, with the work target, retries, references bound with the cycle, binding holds and emergency withdrawal (§A.3.5–§A.3.8) | **placed** | 2.4.0, #2178: stage 1 (the records reach the tasks they name, binding, the task held when incomplete) shipped in PR #2513 (§5m); stage 2 remains |
-| entry points: project instructions in the snapshot with references bound, re-binding, the effective lesson budget, the comparison arms and disclosure (§A.3.6, §A.3.7) | **placed** | 2.4.0, #2179: stage 1 (pinned at admission, binding on the tasks they apply to, the lesson budget after them) shipped in PR #2515 (§5n), stage 2's effective lesson budget (T17) in PR #2526 (§5r), the `memory_context: none` arm with the lesson-text diagnostic in PR #2528 (§5s), and a counted roll's pinned instruction set in the PR that wrote this row (§5t); the rest of stage 2 remains |
+| entry points: project instructions in the snapshot with references bound, re-binding, the effective lesson budget, the comparison arms and disclosure (§A.3.6, §A.3.7) | **placed** | 2.4.0, #2179: stage 1 (pinned at admission, binding on the tasks they apply to, the lesson budget after them) shipped in PR #2515 (§5n), stage 2's effective lesson budget (T17) in PR #2526 (§5r), the `memory_context: none` arm with the lesson-text diagnostic in PR #2528 (§5s), a counted roll's pinned instruction set in PR #2533 (§5t), and a project instruction's emergency withdrawal in the PR that wrote this row (§5u); `@current` bound at admission (T16) and re-binding remain |
 | entry points: chat on the substrate, with capture confirmed, chat exposures, server-side project binding and provenance authorized (§A.3.5) | **placed** | 2.4.0, #2180: stage A (the binding, each turn's context and exposure, confirmed capture of notes and preferences, authorized provenance, Q29's deletion) shipped in PR #2517, and stage B's project-instruction capture in the PR that wrote this row (§5o); a task instruction's capture from chat remains, with #2178's second stage |
 | entry points: lesson inspection from chat; a conversational claim never becomes a lesson (§A.3.5) | **shipped** | 2.4.0, PR #2518, issue #2181 (§5p) |
 | entry points: the console's memory record view (§A.3.11) | **placed** | 2.4.0, #2182: the view and its uses route shipped in the PR that wrote this row (§5q); the page's capture test remains, live with #2183 |
@@ -1773,7 +1773,7 @@ of 2026-10-19):**
 - a counted roll's pinned instruction set, recorded in its record and flagged when it differs from the previous roll's
   (§A.3.7; the verification-set driver): shipped, §5t;
 - re-binding a running unit;
-- emergency withdrawal of a project instruction.
+- emergency withdrawal of a project instruction: shipped, §5u.
 
 ## 5o. Chat on the substrate, stage A, as built (2026-10-19, #2180; the supervisor, under the owner's grant of 2026-10-19)
 
@@ -2068,6 +2068,49 @@ moved.
   roll, not an older roll and not a later shakeout.
 - No flag is raised with no earlier roll, or with the same set.
 - Two mutants are each caught: the comparison removed, and the comparison reading every record.
+
+## 5u. A project instruction's emergency withdrawal, as built (2026-10-20, #2179 stage 2; the supervisor, under the owner's grant of 2026-10-19)
+
+**What shipped:** §A.3.8's emergency withdrawal of a project instruction, following §0.7 as lesson revocation does
+(#2210), and the mark on the exposures that used it.
+- **The withdrawal names the units holding it.** Withdrawing a project instruction
+  (`POST /api/v1/memory-records/{id}/withdrawal`, `memory:instruct`) answers with every unit whose snapshot pinned a
+  revision of it. The running units (`units_holding_it`) are the work to halt or restart. The finished ones
+  (`finished_units_holding_it`) are kept apart, with their measurements set apart. A unit that can't be read counts as
+  running, as a revocation's does.
+- **Units admitted afterwards pin without it.** This was already so (§5n): a withdrawn instruction is never pinned.
+- **A holder that can't be read is named unknown.** When the snapshots can't be read, both lists are `null` and the next
+  step says the holders are unknown. The withdrawal stands, and the store's error stays in the log.
+- **The exposures that used it are marked, not rewritten.** A run's exposures
+  (`GET /api/v1/projects/{p}/exposures`) carry `withdrawn_instructions`: each instruction the dispatch was handed whose
+  record is withdrawn now, with who withdrew it, when and why. The exposure's own fields are as recorded. The rule is
+  §A.3.8's for both kinds of instruction, so a withdrawn task instruction is marked the same way. When the records
+  can't be read, an exposure that was handed one reads `null`, never "none withdrawn".
+- **One helper serves both answers.** Lesson revocation's split between running and finished units moved to a shared
+  route module (`held_units`), and its answer is unchanged apart from the sentence below.
+
+**Where it narrows §A.3.8, and why:**
+- **The answer names the work, and halting it is the operator's.** §A.3.8 has the affected work "halted or restarted
+  under a new snapshot without it". As with §0.7's revocation, the route names the units, and the operator halts them
+  with the existing cycle and campaign controls. An automatic halt needs the executor to stop one unit at its next task
+  boundary, which is the restart path #2178's stage 2 builds for a task instruction.
+- **A restart under a new snapshot is a new unit.** A unit pins once (§0.7: a restart reproduces the original), and
+  recall serves what the unit pinned. So a new run of the same cycle or campaign is handed the withdrawn instruction
+  again. The next step now says so, for a revoked lesson too: the restart is a new cycle or campaign. Replacing a
+  running unit's pinned revision in place is re-binding (§A.3.7), still to come in stage 2.
+
+**Evidence:** `tests/unit/api/test_instruction_withdrawal.py`.
+- The wiring tests enter where admission pins (`pin_unit`) and where the composer records an exposure
+  (`supply_lessons`).
+- Named: a running campaign. Kept apart: a finished cycle. Not named: a unit admitted before the instruction was
+  confirmed. A unit admitted afterwards pins nothing.
+- An absent or failing snapshot store reads as unknown, and the error's text isn't returned.
+- The one exposure handed the instruction is marked. The others aren't, and every other field is unchanged. When the
+  records can't be read, the handed exposure reads `null`.
+- The Postgres query (`list_snapshots_pinning`) is tested against the table. A unit whose own instruction quotes the
+  withdrawn record's id isn't named.
+- Three mutants are each caught: every snapshot named, an unread records store read as "none withdrawn", and an unread
+  snapshot store read as "none holds it".
 
 ## 6. Mode neutrality: cycle, duty, and ambient utilization
 

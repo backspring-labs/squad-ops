@@ -100,6 +100,7 @@ async def test_a_withdrawal_names_the_units_that_pinned_it_and_later_units_pin_w
     assert [u["unit_id"] for u in body["units_holding_it"]] == ["cmp_live"]
     assert [u["unit_id"] for u in body["finished_units_holding_it"]] == ["cyc_done"]
     assert "halt or restart" in body["next"] and "Appendix A §3.8" in body["next"]
+    assert "a new run of the same unit reads the same snapshot" in body["next"]
     assert after.instructions == ()
 
 
