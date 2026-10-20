@@ -35,13 +35,17 @@ from squadops.api.runtime.deps import (
     get_cycle_registry,
     get_memory_records,
     get_memory_store,
+    get_reference_resolvers,
 )
 from squadops.auth.models import Identity, Scope, scopes_for_roles
 from squadops.campaigns.models import CampaignNotFoundError, CampaignState, ControlOperation
 from squadops.cycles.models import CycleNotFoundError, CycleStatus
 from squadops.memory.lessons import Snapshot, UnitKind
+from squadops.memory.pinning import source_commit_of
 from squadops.memory.rebinding import RebindRefused, rebound, runs_handed
-from squadops.memory.records import Rebinding
+from squadops.memory.records import Rebinding, RecordStatus, pinned_of
+from squadops.memory.reference_binding import bound_instruction
+from squadops.memory.references import BindingContext
 from squadops.ports.memory.cross_cycle import RecordIncompatible, SnapshotMoved
 
 router = APIRouter(prefix="/api/v1/projects/{project_id}/snapshots", tags=["memory"])
@@ -175,7 +179,18 @@ async def rebind_unit(
         )
     now = datetime.now(UTC)
     try:
-        updated = rebound(snapshot, record, by=identity.user_id, at=now, why=body.why)
+        replacement = None
+        if record.status != RecordStatus.WITHDRAWN and record.current.applicability is not None:
+            # #2179 T16: the new revision's ``@current`` references are bound for this unit, as
+            # its admission bound the old one's.
+            replacement = await bound_instruction(
+                pinned_of(record),
+                get_reference_resolvers(request),
+                BindingContext(project_id, kind.value, unit_id, source_commit_of(unit)),
+            )
+        updated = rebound(
+            snapshot, record, by=identity.user_id, at=now, why=body.why, replacement=replacement
+        )
         await store.rebind_snapshot(updated, after=len(snapshot.rebindings))
     except RebindRefused as e:
         raise http_error(422, "VALIDATION_ERROR", str(e)) from e

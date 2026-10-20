@@ -5987,7 +5987,18 @@ def pinned_instruction_set(cycle_id: str) -> list[dict] | None:
         return None
     return sorted(
         (
-            {"record_id": i["record_id"], "revision": i["revision"]}
+            {
+                "record_id": i["record_id"],
+                "revision": i["revision"],
+                # T16: a reference bound at admission is part of the set, so two rolls bound to
+                # different revisions of it read as changed. Only when one is, so a set from
+                # before T16 compares as it was.
+                **(
+                    {"references": sorted(r["ref"] for r in i["references"] if r.get("digest"))}
+                    if any(r.get("digest") for r in i.get("references") or ())
+                    else {}
+                ),
+            }
             for i in snapshot.get("instructions") or ()
         ),
         key=lambda i: (i["record_id"], i["revision"]),

@@ -61,6 +61,7 @@ from squadops.api.runtime.deps import (
     get_cycle_registry,
     get_memory_records,
     get_memory_store,
+    get_reference_resolvers,
 )
 from squadops.auth.models import Identity, scopes_for_roles
 from squadops.comms.models import SessionNotFoundError
@@ -85,6 +86,7 @@ from squadops.memory.records import (
     revised,
     revision_document,
     shown_source,
+    unbindable,
     visible,
     withdrawn,
 )
@@ -107,6 +109,18 @@ def _who(identity: Identity | None) -> tuple[str, frozenset[str]]:
     if identity is None:
         raise http_error(401, "UNAUTHENTICATED", "a memory record names who wrote it")
     return identity.user_id, frozenset(identity.scopes) | scopes_for_roles(identity.roles)
+
+
+def _refuse_unbindable(request: Request, revision: Revision) -> None:
+    """Refuse (422) an ``@current`` reference no registered resolver can bind (#2179 T16): it
+    could never be bound at a unit's admission, so every task it applied to would be held."""
+    unbound = unbindable(revision, get_reference_resolvers(request).keys())
+    if unbound:
+        raise http_error(
+            422,
+            "VALIDATION_ERROR",
+            f"no resolver binds @current for {', '.join(unbound)}: name the revision it means",
+        )
 
 
 #: Sources only their own route writes (the cycle's create request; a gate's decision): never
@@ -252,6 +266,7 @@ async def create_memory_record(
             body.kind, body.scope, actor_id=actor, actor_scopes=scopes, owner_id=actor,
             campaign_cycle=of_campaign(cycle),
         )  # fmt: skip
+        _refuse_unbindable(request, revision)
         record = new_record(
             record_id=f"mrec_{uuid.uuid4().hex[:16]}",
             kind=body.kind,
@@ -442,6 +457,7 @@ async def revise_memory_record(
             record.kind, record.scope, actor_id=actor, actor_scopes=scopes,
             owner_id=record.owner_id, campaign_cycle=of_campaign(cycle),
         )  # fmt: skip
+        _refuse_unbindable(request, revision)
         updated = revised(record, revision)
         if cycle is not None:
             # §3.8: a task instruction is corrected before its task dispatches, or not at all: the

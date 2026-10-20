@@ -52,7 +52,12 @@ from squadops.memory.context import (
 )
 from squadops.memory.exposures import Exposure
 from squadops.memory.lessons import RecallDisposition, Recalled, RecallPolicy, _tokens
-from squadops.memory.project_instructions import PROJECT_INSTRUCTIONS_INPUT, PinUnknown
+from squadops.memory.project_instructions import (
+    PROJECT_INSTRUCTIONS_INPUT,
+    PinUnknown,
+    bound_references,
+    unbound_references,
+)
 from squadops.memory.project_instructions import applicable as project_applicable
 from squadops.memory.project_instructions import handed as project_handed
 from squadops.memory.project_instructions import section_of as project_section_of
@@ -500,15 +505,24 @@ class LessonContextAssembly(ContextAssemblyPort):
                     marked=interventions(bundle.task_instructions),
                 ),
                 project_instructions=_section_record(
-                    bundle.section(SectionKind.PROJECT_INSTRUCTIONS)
+                    bundle.section(SectionKind.PROJECT_INSTRUCTIONS),
+                    bound=bound_references(bundle.project_instructions),
+                    omitted=unbound_references(bundle.project_instructions),
                 ),
             )
         )
 
 
-def _section_record(section: Section | None, *, marked: Sequence[str] = ()) -> dict | None:
+def _section_record(
+    section: Section | None,
+    *,
+    marked: Sequence[str] = (),
+    bound: Sequence[dict] = (),
+    omitted: Sequence[dict] = (),
+) -> dict | None:
     """A binding section as its exposure keeps it: the disposition, each revision supplied, and
-    each that couldn't be with why, and the interventions among them (§3.5). ``None`` for no
+    each that couldn't be with why, the interventions among them (§3.5), and each reference a
+    unit's admission bound and the revision it was handed at (§3.7, T16). ``None`` for no
     section, so an exposure with no instructions read is what it was before #2178."""
     if section is None or section.disposition is Disposition.NONE_ELIGIBLE:
         return None
@@ -521,4 +535,6 @@ def _section_record(section: Section | None, *, marked: Sequence[str] = ()) -> d
         ],
         # Only when one was handed, so every other exposure is recorded as it was.
         **({"interventions": list(marked)} if marked else {}),
+        **({"bound_references": list(bound)} if bound else {}),
+        **({"omitted_references": list(omitted)} if omitted else {}),
     }

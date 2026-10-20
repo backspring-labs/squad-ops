@@ -83,7 +83,7 @@ re-places it.
 | entry points: the context-assembly port, inert, at the four seams (§A.3.6) | **shipped** | 2.3.0, #2257 (closes #2176; §5j records where it departs from §A.3.6's text) |
 | entry points: the typed records (notes, preferences, project and task instructions), permissions by kind, provenance (§A.3.2–§A.3.4) | **shipped** (§5l) | 2.4.0, PR #2508, issue #2177 |
 | entry points: task instructions, with the work target, retries, references bound with the cycle, binding holds and emergency withdrawal (§A.3.5–§A.3.8) | **placed** | 2.4.0, #2178: stage 1 (the records reach the tasks they name, binding, the task held when incomplete) shipped in PR #2513 (§5m), and stage 2's interventions after admission with `squadops instructions` in the PR that wrote this row (§5w); the hold and its release, emergency withdrawal after dispatch, `@current`, `carries_into` and the gate's structured field remain |
-| entry points: project instructions in the snapshot with references bound, re-binding, the effective lesson budget, the comparison arms and disclosure (§A.3.6, §A.3.7) | **placed** | 2.4.0, #2179: stage 1 (pinned at admission, binding on the tasks they apply to, the lesson budget after them) shipped in PR #2515 (§5n), stage 2's effective lesson budget (T17) in PR #2526 (§5r), the `memory_context: none` arm with the lesson-text diagnostic in PR #2528 (§5s), a counted roll's pinned instruction set in PR #2533 (§5t), and a project instruction's emergency withdrawal in PR #2544 (§5u), and re-binding a running unit's project instruction in the PR that wrote this row (§5v); `@current` bound at admission (T16, after #2484) remains, with re-binding a reference's revision once references are bound |
+| entry points: project instructions in the snapshot with references bound, re-binding, the effective lesson budget, the comparison arms and disclosure (§A.3.6, §A.3.7) | **placed** | 2.4.0, #2179: stage 1 (pinned at admission, binding on the tasks they apply to, the lesson budget after them) shipped in PR #2515 (§5n), stage 2's effective lesson budget (T17) in PR #2526 (§5r), the `memory_context: none` arm with the lesson-text diagnostic in PR #2528 (§5s), a counted roll's pinned instruction set in PR #2533 (§5t), and a project instruction's emergency withdrawal in PR #2544 (§5u), re-binding a running unit's project instruction in PR #2546 (§5v), and `@current` bound at admission, the project part of T16, in the PR that wrote this row (§5z); re-binding a reference's revision, reading a reference's content at dispatch (the MacBook lane, with the hold), and a campaign's repository references (§5z) remain |
 | entry points: chat on the substrate, with capture confirmed, chat exposures, server-side project binding and provenance authorized (§A.3.5) | **shipped** | 2.4.0, issue #2180: stage A (the binding, each turn's context and exposure, confirmed capture of notes and preferences, authorized provenance, Q29's deletion) in PR #2517, stage B's project-instruction capture in PR #2525 (§5o), and its task-instruction capture in the PR that wrote this row (§5x) |
 | entry points: lesson inspection from chat; a conversational claim never becomes a lesson (§A.3.5) | **shipped** | 2.4.0, PR #2518, issue #2181 (§5p) |
 | entry points: the console's memory record view (§A.3.11) | **placed** | 2.4.0, #2182: the view and its uses route shipped in the PR that wrote this row (§5q); the page's capture test remains, live with #2183 |
@@ -1769,7 +1769,7 @@ of 2026-10-19):**
 
 **Stage 2 (#2179, still open):**
 - the effective lesson budget (T17): shipped, §5r;
-- `@current` bound at admission (T16);
+- `@current` bound at admission (T16): its project part shipped, §5z;
 - the `memory_context: none` arm, with its declaration and the lesson-text diagnostic (T9's rest): shipped, §5s;
 - a counted roll's pinned instruction set, recorded in its record and flagged when it differs from the previous roll's
   (§A.3.7; the verification-set driver): shipped, §5t;
@@ -2358,6 +2358,96 @@ lesson-effectiveness control.
 
   Six mutants are now each caught: those three, the agent's cycle kept, the row's id dropped, and a project
   instruction carrying a lesson.
+
+## 5z. A project instruction's `@current` reference, bound at admission, as built (2026-10-20, #2179 T16; the supervisor, under the owner's grant of 2026-10-19, with the MacBook lane's agreement on the port)
+
+**What shipped:** the project part of T16, and the port SIP-0112's contract 6 builds against.
+- **The port** is `squadops.ports.memory.references`: `ReferenceResolverPort` per family, with
+  `bind(ref, ctx) -> BoundReference(ref, revision, digest)` and `read(bound, ctx)`, plus `BindingContext` and
+  `ReferenceUnresolved`.
+  - `BindingContext` is the unit and its `source_commit`: the commit the unit's source context pins, `None` for a
+    project with none.
+  - The composition root registers resolvers by family (`reference_resolvers`). None is registered on main.
+  - Project Lifecycle Management supplies the repository family (`repo:file:<path>@current`, bound at
+    `source_context.development_baseline_commit`). It raises this port's `ReferenceUnresolved`, and refuses a project
+    with no source context rather than binding to a default (agreed with the MacBook lane, 2026-10-20).
+  - **`Cycle.source_context` isn't on main yet.** It arrives with #2484, so on main every unit binds with
+    `source_commit=None`. The pin reads the field through `getattr` until then.
+- **Written:**
+  - A project instruction may name `@current`, but only for a family a resolver binds. Any other family is refused at
+    write (`unbindable`), since nothing could ever bind it.
+  - A task instruction's `@current` stays refused, because its binding with the cycle's inputs is T16's task part.
+- **Bound at admission:** the pin binds each pinned instruction's `@current` reference (`bound_instruction`). It
+  rewrites the reference to the revision and keeps the content's digest. Every task of the unit, every re-dispatch,
+  and both arms of a comparison admitted together carry that revision, however the target moves after. A unit admitted
+  later binds the revision current then. It is never resolved at dispatch.
+- **Unbound:** a reference that won't bind is kept on the pin with why (`unbound`). That covers a resolver that
+  raises anything, not only `ReferenceUnresolved`: one failing family never makes the unit's instructions unread.
+  - A required one leaves the instruction's binding section incomplete, so the task it applies to is held, naming the
+    reference (§3.6).
+  - An optional one is omitted from what the task is handed and disclosed: in the handed input's `unbound`, and the
+    exposure's `omitted_references`. Its task runs.
+- **Re-binding (§5v) binds too.** The new revision's `@current` references are bound for the unit before it replaces
+  the old one, so a re-binding never stores `@current` verbatim. Nor does it release a hold by dropping an unbound
+  reference: one still unbound keeps holding.
+- **Disclosed:**
+  - The handed input carries each bound reference with its digest.
+  - The exposure lists them (`bound_references`).
+  - A counted roll's pinned set includes them (§5t), so two rolls bound to different revisions read as changed.
+
+**Where it narrows §A.3.6 and §A.3.7, and why:**
+- **Reading a reference's content into the prompt at dispatch** isn't built. It belongs to the composer and the hold,
+  and the MacBook lane builds it with #2178's hold. T16 itself needs only the binding and the bound revision in the
+  snapshot and the exposure.
+- **A campaign's repository references can't bind yet, and this conflicts with SIP-0112 §B.5.1.** That section binds a
+  Campaign's repository reference "when it is admitted … at the commit the unit's source context pins". A campaign
+  pins its snapshot at admission, before any of its cycles exists, and it has no source context of its own: each
+  cycle pins one when it is prepared (the MacBook lane, 2026-10-20). So the campaign's pin has no commit, the
+  repository family refuses, and a required reference holds its tasks.
+  - The ways out are a campaign-level source pin, or binding per cycle, which conflicts with one shared snapshot.
+  - The conflict is named here and in `sips/PORTFOLIO.md`'s intake log. SIP-0112 names it in #2484, which edits that
+    section. It awaits the owner's ruling and is not decided here.
+- **Re-binding a reference's bound revision** (§3.7) still waits. §5v's re-binding replaces an instruction's revision
+  only.
+- **T16's task part:** binding a task instruction's `@current` with its cycle's inputs.
+
+**The second reader** (a fresh agent) found five things, each fixed or named above:
+- re-binding stored `@current` verbatim and silently released a hold (verified by running);
+- any resolver exception other than `ReferenceUnresolved` held the whole unit for good;
+- an optional unbound reference was handed unmarked;
+- the routes' resolver wiring had no test (a dropped keyword passed 1,468 tests);
+- §5z overstated `source_context` on main, and didn't name the conflict with SIP-0112.
+
+**Evidence:**
+- `tests/unit/memory/test_reference_binding.py` enters through `pin_unit`, `pin_standalone_cycle`, `pin_campaign` and
+  `supply_lessons`:
+  - a unit keeps the revision bound at admission after the target moves, and its handed input and exposure name it;
+  - two arms admitted together carry the same revision;
+  - a unit admitted after the move binds the new one;
+  - a required reference that won't bind holds its task, and an optional one runs;
+  - the resolver is given the cycle's source commit, and a campaign none;
+  - with no resolver for the family, the reference is kept unbound.
+- **Records route:** `@current` is refused for a family no resolver binds and on a task instruction, and accepted
+  where a resolver binds it.
+- **Driver:** a bound reference is part of the pinned set.
+- **The test that held stage 1's staging rule** (`@current` refused outright) now holds the rule that replaced it:
+  never pinned verbatim.
+- **The fixes' tests:**
+  - a resolver that times out leaves one reference unbound, not the unit unread;
+  - an optional unbound reference is omitted and disclosed;
+  - the stored snapshot keeps digest and `unbound`;
+  - a re-binding to a revision naming `@current` binds it, `@r2` with its digest, and `rebound` refuses one with no
+    binding given;
+  - the create route and the campaign start each hand the pin its resolvers.
+- **Eight mutants, each caught:**
+  - the pin not binding;
+  - an unbound required reference ignored;
+  - the source commit dropped;
+  - the exposure not naming the bound reference;
+  - the re-binding route not binding;
+  - the create route dropping its resolvers;
+  - the campaign start dropping its resolvers;
+  - an optional unbound reference handed.
 
 ## 6. Mode neutrality: cycle, duty, and ambient utilization
 

@@ -9,16 +9,20 @@ original, so a unit's guidance never changes while it runs.
 from __future__ import annotations
 
 import logging
+from collections.abc import Mapping
 from datetime import datetime
 from typing import TYPE_CHECKING, Any
 
 from squadops.memory.declarations import memory_context_none, memory_disabled
 from squadops.memory.lessons import RecallPolicy, Snapshot, UnitKind, pin
 from squadops.memory.records import PinnedInstruction, in_force
+from squadops.memory.reference_binding import bound_instruction
+from squadops.memory.references import BindingContext
 
 if TYPE_CHECKING:
     from squadops.ports.memory.cross_cycle import CrossCycleMemoryStorePort
     from squadops.ports.memory.records import MemoryRecordsPort
+    from squadops.ports.memory.references import ReferenceResolverPort
 
 logger = logging.getLogger(__name__)
 
@@ -34,6 +38,8 @@ async def pin_unit(
     policy: RecallPolicy | None = None,
     records: MemoryRecordsPort | None = None,
     context_withheld: bool = False,
+    resolvers: Mapping[str, ReferenceResolverPort] | None = None,
+    source_commit: str | None = None,
 ) -> Snapshot:
     """The unit's snapshot: the one it already pinned, or a new pin of what is approved now, with
     the project instructions in force now from ``records`` (#2179). Records that can't be read
@@ -49,6 +55,11 @@ async def pin_unit(
     if records is not None and not context_withheld:
         try:
             instructions = in_force(await records.list_project(project_id))
+            # #2179 T16: each ``@current`` reference is bound now, at admission, and kept.
+            ctx = BindingContext(project_id, unit_kind.value, unit_id, source_commit)
+            instructions = tuple(
+                [await bound_instruction(p, resolvers or {}, ctx) for p in instructions]
+            )
         except Exception as e:  # noqa: BLE001 — the lessons pin; the snapshot records the miss
             unread = f"the project's instructions could not be read at admission ({e})"
             logger.warning(
@@ -71,12 +82,20 @@ async def pin_unit(
     return await store.record_snapshot(snapshot)
 
 
+def source_commit_of(cycle: Any) -> str | None:
+    """The commit a cycle's source context pins (SIP-0112 FR-04), which a repository reference
+    binds at; ``None`` for a cycle with no source context."""
+    context = getattr(cycle, "source_context", None)
+    return getattr(context, "development_baseline_commit", None) if context else None
+
+
 async def pin_standalone_cycle(
     store: CrossCycleMemoryStorePort,
     cycle: Any,
     *,
     now: datetime,
     records: MemoryRecordsPort | None = None,
+    resolvers: Mapping[str, ReferenceResolverPort] | None = None,
 ) -> Snapshot | None:
     """A standalone cycle's pin at its creation (§0.7), or ``None`` for a campaign's cycle, which
     uses its campaign's snapshot."""
@@ -94,6 +113,8 @@ async def pin_standalone_cycle(
         disabled=withheld or memory_disabled(config),
         records=records,
         context_withheld=withheld,
+        resolvers=resolvers,
+        source_commit=source_commit_of(cycle),
     )
 
 
@@ -103,6 +124,7 @@ async def pin_campaign(
     *,
     now: datetime,
     records: MemoryRecordsPort | None = None,
+    resolvers: Mapping[str, ReferenceResolverPort] | None = None,
 ) -> Snapshot:
     """A campaign's pin at its admission (§0.7); its proposals and cycles use it. A campaign-level
     memory-disabled declaration, for a live confirmation's off arm (§0.12), arrives with slice 4."""
@@ -114,4 +136,9 @@ async def pin_campaign(
         pinned_at=now,
         disabled=False,
         records=records,
+        # A campaign has no source context of its own: each of its cycles pins one when it is
+        # prepared (SIP-0112), after the campaign's snapshot. So a repository reference has no
+        # commit to bind at here, and its resolver refuses it (§5z).
+        resolvers=resolvers,
+        source_commit=None,
     )

@@ -268,3 +268,39 @@ async def test_a_rebinding_the_rules_refuse_stores_nothing(arrange, path, status
     assert says in response.json()["detail"]["error"]["message"]
     held = await world.store.get_snapshot(*unit_of(_framing_cycle()))
     assert held is None or held.rebindings == ()
+
+
+async def test_a_rebinding_to_a_revision_naming_current_binds_it_for_the_unit():
+    """#2179 T16, the second read's first finding. Bugs caught: the new revision's ``@current``
+    stored verbatim, which reads as bound to nothing and releases a hold it should keep; a bound
+    reference's revision and digest swapped for the verbatim form."""
+    from squadops.memory.rebinding import RebindRefused, rebound
+    from tests.unit.memory.test_reference_binding import _Resolver
+
+    world = _World()
+    resolver = _Resolver()
+    world.client.app.state.reference_resolvers = {"fake": resolver}
+    response = world.client.post(
+        RECORDS,
+        json={"kind": "instruction", "scope": "project", "project_id": "group_run",
+              "body": "Read the spec.", "applicability": WHERE,
+              "references": [{"ref": "fake:doc:spec@current", "required": True}]},
+    )  # fmt: skip
+    record_id = response.json()["record_id"]
+    cycle = await world.admit_cycle()
+    resolver.revision = "r2"
+    world.client.post(
+        f"{RECORDS}/{record_id}/revisions",
+        json={"body": "Read the spec, then the notes.", "applicability": WHERE,
+              "references": [{"ref": "fake:doc:spec@current", "required": True}]},
+    )  # fmt: skip
+
+    applied = world.rebind(record_id, why="the spec moved")
+
+    assert applied.status_code == 201, applied.text
+    stored = await world.store.get_snapshot(*unit_of(cycle))
+    [bound] = stored.instructions[0].references
+    assert (bound.ref, bound.digest) == ("fake:doc:spec@r2", "sha256:r2")
+    record = await world.records.get(record_id)
+    with pytest.raises(RebindRefused, match="names @current"):
+        rebound(stored, record, by="ada", at=NOW, why="no binding given")

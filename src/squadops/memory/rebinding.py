@@ -24,10 +24,12 @@ from squadops.memory.exposures import Exposure
 from squadops.memory.lessons import Snapshot
 from squadops.memory.records import (
     MemoryRecord,
+    PinnedInstruction,
     Rebinding,
     RecordKind,
     RecordScope,
     RecordStatus,
+    is_current,
     pinned_of,
 )
 
@@ -43,9 +45,13 @@ def rebound(
     by: str,
     at: datetime,
     why: str,
+    replacement: PinnedInstruction | None = None,
 ) -> Snapshot:
     """``snapshot`` with ``record``'s bound revision replaced by its current one, or removed when the
-    record is withdrawn, and the re-binding recorded."""
+    record is withdrawn, and the re-binding recorded. ``replacement`` is that current revision with
+    its ``@current`` references bound for the unit (``bound_instruction``), which the caller does
+    since binding asks the resolvers; without it, a revision naming ``@current`` is refused, so a
+    re-binding never puts one in the snapshot verbatim (the second read of #2179 T16)."""
     unit = f"{snapshot.unit_kind.value} {snapshot.unit_id}"
     if record.kind != RecordKind.INSTRUCTION or record.scope != RecordScope.PROJECT:
         raise RebindRefused(f"{record.record_id} is not a project instruction: no unit binds it")
@@ -65,7 +71,17 @@ def rebound(
             f"{unit} binds no revision of {record.record_id}. A re-binding replaces one the unit "
             "bound; an instruction confirmed after admission reaches the units admitted after it"
         )
-    replacement = None if record.status == RecordStatus.WITHDRAWN else pinned_of(record)
+    if record.status == RecordStatus.WITHDRAWN:
+        replacement = None
+    else:
+        replacement = replacement or pinned_of(record)
+        if replacement.record_id != record.record_id:
+            raise RebindRefused(f"{replacement.record_id} is not a revision of {record.record_id}")
+        if any(is_current(r.ref) for r in replacement.references) and not replacement.unbound:
+            raise RebindRefused(
+                f"revision {replacement.revision} of {record.record_id} names @current: it is bound "
+                "for the unit before it is re-bound, never stored verbatim"
+            )
     if replacement is not None and replacement.revision == held.revision:
         raise RebindRefused(f"{unit} already binds revision {held.revision} of {record.record_id}")
     kept = [p for p in snapshot.instructions if p is not held]

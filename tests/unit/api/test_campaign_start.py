@@ -198,6 +198,31 @@ async def test_a_start_pins_the_campaigns_snapshot_before_its_calibration_cycle_
     assert await store.get_snapshot(UnitKind.CYCLE, cycle_id) is None
 
 
+async def test_a_start_hands_its_pin_the_reference_resolvers(world):
+    """#2179 T16, wired (the second read): the start route hands the campaign's pin its resolvers,
+    and a campaign, with no source context of its own, binds with no commit. Bug caught: the kwarg
+    dropped, so every required ``@current`` reference holds the campaign's tasks."""
+    from adapters.memory.records import InMemoryMemoryRecords
+    from squadops.memory.records import Reference
+    from tests.unit.memory.test_project_instructions import DESIGN, _instruction
+    from tests.unit.memory.test_reference_binding import _Resolver
+
+    store, records, resolver = InMemoryCrossCycleMemoryStore(), InMemoryMemoryRecords(), _Resolver()
+    world.client.app.state.memory_store = store
+    world.client.app.state.memory_records = records
+    world.client.app.state.reference_resolvers = {"fake": resolver}
+    await records.create(
+        _instruction("mrec_c", DESIGN, references=(Reference("fake:doc:spec@current", True),))
+    )
+
+    world.start()
+    await asyncio.sleep(0)
+
+    pinned = await store.get_snapshot(UnitKind.CAMPAIGN, CID)
+    assert [r.ref for r in pinned.instructions[0].references] == ["fake:doc:spec@r1"]
+    assert [(c.unit_kind, c.source_commit) for c in resolver.seen] == [("campaign", None)]
+
+
 async def test_the_supervisor_starts_a_campaign_and_its_row_names_the_supervisor(world):
     """#1940: the crew dispatches. Bug caught: the supervisor's start refused, or recorded under
     another actor than the token's. Entered at the start route, through the real launch service."""

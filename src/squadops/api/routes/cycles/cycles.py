@@ -39,6 +39,7 @@ from squadops.api.runtime.deps import (
     get_memory_records,
     get_memory_store,
     get_project_registry,
+    get_reference_resolvers,
     get_squad_profile_port,
 )
 from squadops.auth.models import AuditEvent, Identity, Scope
@@ -629,7 +630,11 @@ async def _pin_memory(request: Request, cycle) -> None:
         return
     try:
         await pin_standalone_cycle(
-            store, cycle, now=datetime.now(UTC), records=get_memory_records(request)
+            store,
+            cycle,
+            now=datetime.now(UTC),
+            records=get_memory_records(request),
+            resolvers=get_reference_resolvers(request),
         )
     except Exception:
         logger.warning("memory_snapshot_not_pinned cycle=%s", cycle.cycle_id, exc_info=True)
