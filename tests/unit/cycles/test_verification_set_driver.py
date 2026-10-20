@@ -3914,6 +3914,7 @@ class TestASoloRollProvesTheAbsences:
         monkeypatch.setattr(driver, "loaded_check_evidence", lambda *a, **k: {})
         monkeypatch.setattr(driver, "boot_audit", lambda *a, **k: {"ran": False})
         monkeypatch.setattr(driver, "pinned_instruction_set", lambda *a, **k: [])
+        monkeypatch.setattr(driver, "snapshot_rebindings", lambda *a, **k: [])
         monkeypatch.setattr(driver, "cycle_log_until", lambda *a, **k: "t1")
         monkeypatch.setattr(driver, "render", lambda *a, **k: "")
         monkeypatch.setattr(
@@ -5649,6 +5650,7 @@ class TestRecordsHaveOneHome:
         monkeypatch.setattr(driver, "loaded_check_evidence", lambda *a, **k: {})
         monkeypatch.setattr(driver, "boot_audit", lambda *a, **k: {"ran": False})
         monkeypatch.setattr(driver, "pinned_instruction_set", lambda *a, **k: [])
+        monkeypatch.setattr(driver, "snapshot_rebindings", lambda *a, **k: [])
         monkeypatch.setattr(driver, "cycle_log_until", lambda *a, **k: "t1")
         monkeypatch.setattr(driver, "render", lambda *a, **k: "md")
 
@@ -5835,6 +5837,7 @@ class TestTheChainRunsUnattended:
         monkeypatch.setattr(driver, "seam_readouts", lambda *a, **k: {})
         monkeypatch.setattr(driver, "boot_audit", lambda *a, **k: {"ran": False})
         monkeypatch.setattr(driver, "pinned_instruction_set", lambda *a, **k: [])
+        monkeypatch.setattr(driver, "snapshot_rebindings", lambda *a, **k: [])
         monkeypatch.setattr(driver, "cycle_log_until", lambda *a, **k: "t1")
         monkeypatch.setattr(driver, "cycle_run_states", lambda cycle_id: [])
         monkeypatch.setattr(driver, "render", lambda *a, **k: "")
