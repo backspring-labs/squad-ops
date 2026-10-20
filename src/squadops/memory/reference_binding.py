@@ -37,9 +37,13 @@ async def bound_instruction(
     pinned: PinnedInstruction,
     resolvers: Mapping[str, ReferenceResolverPort],
     ctx: BindingContext,
+    *,
+    strict: bool = False,
 ) -> PinnedInstruction:
     """``pinned`` with each ``@current`` reference bound for ``ctx``'s unit, or kept unbound with
-    why. A reference naming a revision is kept as written."""
+    why. A reference naming a revision is kept as written. ``strict``: a resolver that fails
+    otherwise than by refusing raises, for a caller that can repeat the binding (a campaign cycle's
+    launch, §5ad), rather than keeping the reference unbound for the unit's life."""
     references: list[Reference] = []
     unbound: list[tuple[str, str]] = list(pinned.unbound)
     for reference in pinned.references:
@@ -56,6 +60,8 @@ async def bound_instruction(
             references.append(reference)
             continue
         except Exception as e:  # noqa: BLE001 — a resolver that fails leaves this one unbound
+            if strict:
+                raise
             # Not the unit's other instructions, nor its lessons: one reference that couldn't be
             # bound holds what it applies to, and only if it is required (the second read).
             logger.warning(

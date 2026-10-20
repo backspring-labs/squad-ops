@@ -71,16 +71,33 @@ async def instructions_bound_for(
     ctx: BindingContext,
 ) -> tuple[PinnedInstruction, ...]:
     """Each of ``pinned`` that names an ``@current`` reference, bound for the cycle ``ctx`` names
-    (§5ad). A reference that won't bind is kept unbound with why, as at admission (§5z). The rest
-    need no binding of their own, since the campaign's pin is already what the cycle reads."""
+    (§5ad). A reference its resolver refuses is kept unbound with why, as at admission (§5z). A
+    resolver that fails otherwise raises, so the launch or the reconciliation that asked repeats it
+    rather than leaving the reference unbound for the cycle's life. The rest need no binding of their
+    own, since the campaign's pin is already what the cycle reads."""
     out = []
     for p in pinned:
         if not any(is_current(r.ref) for r in p.references):
             continue
         # The campaign's own attempt is dropped: every unbound entry is an @current reference,
         # bound now for this cycle instead.
-        out.append(await bound_instruction(replace(p, unbound=()), resolvers, ctx))
+        out.append(await bound_instruction(replace(p, unbound=()), resolvers, ctx, strict=True))
     return tuple(out)
+
+
+def missing_from(
+    binding: CycleBinding | None, pinned: Iterable[PinnedInstruction]
+) -> tuple[PinnedInstruction, ...]:
+    """The pinned instructions naming ``@current`` that ``binding`` holds no entry for, by record
+    and revision: a revision a re-binding put in force that couldn't reach this cycle, or a launch
+    that raced it. Filling them never changes an entry the cycle holds, so nothing already handed
+    moves."""
+    held = {(p.record_id, p.revision) for p in binding.instructions} if binding else set()
+    return tuple(
+        p
+        for p in pinned
+        if any(is_current(r.ref) for r in p.references) and (p.record_id, p.revision) not in held
+    )
 
 
 def as_bound_for(
@@ -95,10 +112,15 @@ def as_bound_for(
 
 
 def replacing(
-    binding: CycleBinding, record_id: str, instructions: Iterable[PinnedInstruction]
+    binding: CycleBinding,
+    record_ids: Iterable[str],
+    instructions: Iterable[PinnedInstruction],
+    *,
+    at: datetime,
 ) -> CycleBinding:
-    """``binding`` with ``record_id``'s entry replaced by ``instructions``, which are its
-    re-bound revision as this cycle bound it (§5v). If there are none (the revision names no
-    ``@current``, or the record was withdrawn), the cycle reads the campaign's pin for it."""
-    kept = tuple(p for p in binding.instructions if p.record_id != record_id)
-    return replace(binding, instructions=(*kept, *instructions))
+    """``binding`` with each of ``record_ids``' entries replaced by ``instructions``, which are
+    their revisions as this cycle bound them (§5v). A record left with none (its revision names no
+    ``@current``, or it was withdrawn) is read from the campaign's pin."""
+    gone = set(record_ids)
+    kept = tuple(p for p in binding.instructions if p.record_id not in gone)
+    return replace(binding, instructions=(*kept, *instructions), bound_at=at)

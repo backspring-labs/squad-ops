@@ -1,8 +1,7 @@
 """A campaign cycle's own bindings, stored by the Postgres memory store (SIP-0110 §5ad; #2179 T16):
 migration ``1792``'s table, written at a launch, replaced by a re-binding, and read back by a dispatch.
 
-What bugs would these catch? A binding that loses a reference's digest or what was written on its way
-through JSON; a re-binding that adds a second row instead of replacing the cycle's one; a cycle with no
+What bugs would these catch? A binding that loses a reference's digest on its way through JSON; a re-binding that adds a second row instead of replacing the cycle's one; a cycle with no
 binding read as an empty one.
 """
 

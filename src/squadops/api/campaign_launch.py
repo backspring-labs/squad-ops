@@ -25,6 +25,7 @@ import pydantic
 from squadops.api.cycle_schemas import CycleCreateRequest
 from squadops.api.routes.cycles.cycles import CreationPorts, first_run, prepare_cycle
 from squadops.api.routes.cycles.errors import cycle_error_envelope
+from squadops.api.routes.cycles.mapping import cycle_status_of
 from squadops.campaigns.launcher import BoxVerdict, CampaignLauncher, LaunchRefused, unblocked
 from squadops.campaigns.models import (
     Campaign,
@@ -34,16 +35,27 @@ from squadops.campaigns.models import (
     LaunchIntent,
     LaunchIntentState,
 )
-from squadops.cycles.models import Cycle, CycleError, Run, RunInitiator, RunStatus
+from squadops.cycles.models import Cycle, CycleError, CycleStatus, Run, RunInitiator, RunStatus
 from squadops.events.types import EventType
-from squadops.memory.cycle_bindings import CycleBinding, instructions_bound_for, names_current
+from squadops.memory.cycle_bindings import (
+    CycleBinding,
+    instructions_bound_for,
+    missing_from,
+    names_current,
+    replacing,
+)
 from squadops.memory.lessons import UnitKind
 from squadops.memory.pinning import cycle_binding
 from squadops.memory.records import RecordRefused
 from squadops.memory.reference_binding import bound_for_cycle
 from squadops.memory.task_instructions import carried, carrying
+from squadops.ports.memory.cross_cycle import RecordIncompatible
 
 logger = logging.getLogger(__name__)
+
+#: A cycle in one of these dispatches nothing more, so it needs no binding filled (§5ad). A paused
+#: one can resume, so it isn't one.
+_ENDED = frozenset({CycleStatus.COMPLETED, CycleStatus.CANCELLED})
 
 #: The launches that continue an earlier cycle, so carry its instructions given to carry (§3.7).
 _CONTINUING = frozenset({CycleKind.REPAIR, CycleKind.RETRY})
@@ -128,7 +140,14 @@ class CampaignLaunchService:
         store = self._creation.memory_store
         if store is None:
             return  # no snapshot is pinned without a store, so nothing to bind
-        snapshot = await store.get_snapshot(UnitKind.CAMPAIGN, campaign.campaign_id)
+        try:
+            snapshot = await store.get_snapshot(UnitKind.CAMPAIGN, campaign.campaign_id)
+        except RecordIncompatible as e:
+            # Deterministic: as a fault every drain would repeat it, holding every launch behind
+            # it. Refused, so the campaign escalates.
+            raise LaunchRefused(
+                f"VALIDATION_ERROR: the campaign's snapshot can't be read: {e}"
+            ) from e
         if snapshot is None or not names_current(snapshot.instructions):
             return
         instructions = await instructions_bound_for(
@@ -218,7 +237,56 @@ class CampaignLaunchService:
                 run = await self._start_first_run(cycle_id)
                 if run is not None:
                     started.append(run)
+            try:
+                await self._reconcile_bindings()
+            except Exception:
+                logger.exception("cycle_binding_reconcile_failed")
             return started
+
+    async def _reconcile_bindings(self) -> None:
+        """§5ad: each running cycle of a live campaign holds a binding for every pinned instruction
+        naming ``@current``. One it lacks is filled, never one it holds changed, since a dispatch
+        may have been handed it. A cycle lacks one when a re-binding couldn't reach it, raced its
+        launch, or raced another re-binding. Until filled, a required reference holds its task. A
+        cycle that can't be filled now is logged and tried at the next drain."""
+        store = self._creation.memory_store
+        if store is None:
+            return
+        cycles = self._creation.cycle_registry
+        resolvers = self._creation.reference_resolvers or {}
+        for project in await self._creation.project_registry.list_projects():
+            for campaign in await self._campaigns.list_campaigns(project.project_id):
+                if campaign.state is CampaignState.COMPLETED:
+                    continue
+                snapshot = await store.get_snapshot(UnitKind.CAMPAIGN, campaign.campaign_id)
+                if snapshot is None or not names_current(snapshot.instructions):
+                    continue
+                for intent in await self._campaigns.launch_intents(campaign.campaign_id):
+                    if intent.state is not LaunchIntentState.LAUNCHED or not intent.cycle_id:
+                        continue
+                    try:
+                        await self._fill_binding(
+                            store, cycles, resolvers, snapshot, intent.cycle_id
+                        )
+                    except Exception:
+                        logger.warning(
+                            "cycle_binding_fill_failed cycle=%s", intent.cycle_id, exc_info=True
+                        )
+
+    async def _fill_binding(self, store, cycles, resolvers, snapshot, cycle_id: str) -> None:
+        cycle = await cycles.get_cycle(cycle_id)
+        if cycle_status_of(cycle, await cycles.list_runs(cycle_id)) in _ENDED:
+            return
+        held = await store.get_cycle_binding(cycle_id)
+        missing = missing_from(held, snapshot.instructions)
+        if not missing:
+            return
+        now = datetime.now(UTC)
+        bound = await instructions_bound_for(missing, resolvers, cycle_binding(cycle))
+        base = held or CycleBinding(cycle_id, UnitKind.CAMPAIGN.value, snapshot.unit_id, (), now)
+        await store.record_cycle_binding(
+            replacing(base, {p.record_id for p in missing}, bound, at=now)
+        )
 
     async def retry_blocked(self) -> list:
         """§9.3 (#1802): each blocked campaign whose attempt is due reads the box again; one

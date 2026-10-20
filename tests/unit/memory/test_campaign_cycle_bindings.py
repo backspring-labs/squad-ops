@@ -90,6 +90,8 @@ async def _handed(store, records, cycle_id: str):
     )  # fmt: skip
     [design] = [e for e in envelopes if str(e.task_type) == DESIGN]
     [instruction] = design.inputs[PROJECT_INSTRUCTIONS_INPUT]["instructions"]
+    # §3.6: an instruction the cycle bound carries no unbound entry, the campaign's included.
+    assert "unbound" not in instruction, instruction
     return instruction["references"]
 
 
@@ -168,60 +170,119 @@ async def test_a_campaign_naming_no_current_reference_records_and_reads_no_bindi
     assert (store.reads, store.writes) == (0, 0)
 
 
-async def test_a_rebinding_reaches_a_running_cycle_as_that_cycle_binds_it():
-    """§5ad with §5v. Bugs caught: a campaign's re-bound revision reaching its running cycle
-    with its ``@current`` reference unbound, holding the very tasks the re-binding was for; an
-    ended cycle's binding rewritten after the fact."""
+async def _campaign_world(*records_refs: str):
+    """The re-binding route's world, with this campaign pinned over one instruction per reference,
+    and its three launched cycles: one running, one paused (which can resume), one cancelled."""
     from types import SimpleNamespace
 
     from squadops.campaigns.models import LaunchIntentState
+    from squadops.cycles.cycle_end import CycleStopReason, RecordedEnd
+    from squadops.cycles.models import RunStatus
+    from squadops.memory.pinning import pin_campaign
     from tests.unit.api.test_rebinding import RECORDS, WHERE, _World
     from tests.unit.campaigns.builders import campaign
 
     api = _World()
     api.client.app.state.reference_resolvers = {"fake": _PerCycle()}
-    body = {"kind": "instruction", "scope": "project", "project_id": "group_run",
-            "body": "Read the spec.", "applicability": WHERE,
-            "references": [{"ref": REF, "required": True}]}  # fmt: skip
-    record_id = api.client.post(RECORDS, json=body).json()["record_id"]
+    ids = []
+    for ref in records_refs:
+        body = {"kind": "instruction", "scope": "project", "project_id": "group_run",
+                "body": f"Read {ref}.", "applicability": WHERE,
+                "references": [{"ref": ref, "required": True}]}  # fmt: skip
+        ids.append(api.client.post(RECORDS, json=body).json()["record_id"])
     cmp = campaign(CID)
     await api.campaigns.create_campaign(
         cmp, actor="ada", actor_role="admin", reason="t", idempotency_key="create"
     )
-    from squadops.memory.pinning import pin_campaign
-
     await pin_campaign(api.store, cmp, now=T0, records=api.records,
                        resolvers={"fake": _PerCycle()})  # fmt: skip
-    running, ended = (
+    running, paused, ended = (
         dataclasses.replace(_framing_cycle(), cycle_id=c, campaign_id=CID)
-        for c in ("cyc_running00", "cyc_ended0000")
+        for c in ("cyc_running00", "cyc_paused000", "cyc_ended0000")
     )
-    for c in (running, ended):
+    for c in (running, paused, ended):
         await api.cycles.create_cycle(c)
+    await api.cycles.cancel_cycle(ended.cycle_id)
+    await api.run(paused, "run_paused00", RunStatus.PAUSED)
+    # Its run paused, and the ending is recorded; ``runs resume`` re-enters it (cycle_end.py).
+    await api.cycles.record_cycle_end(
+        RecordedEnd(paused.cycle_id, "run_paused00", CycleStopReason.RUN_PAUSED)
+    )
     launched = [SimpleNamespace(state=LaunchIntentState.LAUNCHED, cycle_id=c.cycle_id)
-                for c in (running, ended)]  # fmt: skip
+                for c in (running, paused, ended)]  # fmt: skip
 
     async def launch_intents(_campaign_id):
         return launched
 
-    async def get_cycle_end(cycle_id):
-        return object() if cycle_id == ended.cycle_id else None
-
     api.campaigns.launch_intents = launch_intents
-    api.cycles.get_cycle_end = get_cycle_end
-    api.client.post(f"{RECORDS}/{record_id}/revisions",
-                      json={**{k: body[k] for k in ("applicability", "references")},
-                            "body": "Read the spec, then its notes."})  # fmt: skip
+    return api, ids, (running, paused, ended)
+
+
+def _revise(api, record_id: str, ref: str, text: str):
+    from tests.unit.api.test_rebinding import RECORDS, WHERE
+
+    response = api.client.post(
+        f"{RECORDS}/{record_id}/revisions",
+        json={"body": text, "applicability": WHERE, "references": [{"ref": ref, "required": True}]},
+    )
+    assert response.status_code == 201, response.text
+
+
+async def test_a_rebinding_reaches_running_and_paused_cycles_as_each_binds_it():
+    """§5ad with §5v. Bugs caught: a campaign's re-bound revision reaching its running cycle with
+    its ``@current`` reference unbound, holding the very tasks the re-binding was for; a paused
+    cycle, which can resume, skipped as ended; a cancelled cycle's binding rewritten."""
+    api, [record_id], (running, paused, ended) = await _campaign_world(REF)
+    _revise(api, record_id, REF, "Read the spec, then its notes.")
 
     applied = api.rebind(record_id, kind="campaign", unit_id=CID, why="the spec moved")
 
     assert applied.status_code == 201, applied.text
-    binding = await api.store.get_cycle_binding(running.cycle_id)
-    [instruction] = binding.instructions
-    assert (instruction.revision, [r.ref for r in instruction.references]) == (
-        2, [f"fake:doc:spec@{running.cycle_id}"],
-    )  # fmt: skip
+    for live in (running, paused):
+        [instruction] = (await api.store.get_cycle_binding(live.cycle_id)).instructions
+        assert (instruction.revision, [r.ref for r in instruction.references]) == (
+            2, [f"fake:doc:spec@{live.cycle_id}"],
+        )  # fmt: skip
     assert await api.store.get_cycle_binding(ended.cycle_id) is None
+
+
+async def test_rebinding_one_record_keeps_the_cycles_binding_of_another():
+    """The second read of #2570. Bug caught: a re-binding that rebuilds the cycle's binding from
+    nothing, so re-binding one instruction erases another's, and its required reference holds."""
+    other = "fake:doc:notes@current"
+    api, [spec_id, notes_id], (running, _paused, _ended) = await _campaign_world(REF, other)
+    for record_id, ref in ((spec_id, REF), (notes_id, other)):
+        _revise(api, record_id, ref, f"Read {ref}, revised.")
+    api.rebind(notes_id, kind="campaign", unit_id=CID, why="the notes moved")
+
+    applied = api.rebind(spec_id, kind="campaign", unit_id=CID, why="the spec moved")
+
+    assert applied.status_code == 201, applied.text
+    held = (await api.store.get_cycle_binding(running.cycle_id)).instructions
+    assert sorted((p.record_id, p.revision) for p in held) == sorted([(spec_id, 2), (notes_id, 2)])
+
+
+async def test_a_rebinding_whose_cycles_cant_be_read_is_still_recorded_and_answered():
+    """The second read of #2570. Bug caught: the campaign's launches unreadable after the
+    snapshot was re-bound, answered 500 with no control-log row, so the intervention is invisible
+    to the ledger and a retry is refused as already bound."""
+    from squadops.campaigns.models import ControlOperation
+
+    api, [record_id], _cycles = await _campaign_world(REF)
+    _revise(api, record_id, REF, "Read the spec, then its notes.")
+
+    async def unreadable(_campaign_id):
+        raise TimeoutError("the campaign registry did not answer")
+
+    api.campaigns.launch_intents = unreadable
+
+    applied = api.rebind(record_id, kind="campaign", unit_id=CID, why="the spec moved")
+
+    assert applied.status_code == 201, applied.text
+    rows = [
+        e for e in await api.campaigns.control_log(CID) if e.operation is ControlOperation.REBIND
+    ]
+    assert [r.entry_id for r in rows] == [applied.json()["control_log_entry_id"]]
 
 
 async def test_a_binding_of_an_earlier_revision_is_never_handed_for_the_pinned_one():
@@ -260,3 +321,85 @@ async def _pinned_campaign_as_is(store, records):
         store, unit_kind=UnitKind.CAMPAIGN, unit_id=CID, project_id="group_run", pinned_at=T0,
         disabled=False, records=records, resolvers={"fake": _PerCycle()},
     )  # fmt: skip
+
+
+async def test_a_drain_fills_a_cycle_a_rebinding_could_not_reach(world):  # noqa: F811
+    """The second read of #2570. Bug caught: a cycle whose re-binding failed, or raced its launch,
+    left holding its required reference for the rest of its life, since re-binding the same
+    revision again is refused."""
+    from squadops.memory.rebinding import rebound
+    from squadops.memory.records import Revision, Source, pinned_of, revised
+
+    store, records = InMemoryCrossCycleMemoryStore(), InMemoryMemoryRecords()
+    await _pinned_campaign(store, records)
+    world.start()
+    launcher = _launcher(world, records, store)
+    await launcher.drain()
+    [cycle_id] = [i.cycle_id for i in await world.campaigns.launch_intents(CID) if i.cycle_id]
+    record = await records.get("mrec_ref")
+    second = revised(
+        record,
+        Revision(number=2, body="Read the revised spec.", author="ada", created_at=T0,
+                 source=Source("api_call"), confirmed_by="ada",
+                 applicability=record.current.applicability, references=(Reference(REF, True),)),
+    )  # fmt: skip
+    await records.append_revision("mrec_ref", second.current)
+    snapshot = await store.get_snapshot(UnitKind.CAMPAIGN, CID)
+    replacement = dataclasses.replace(pinned_of(second), unbound=((REF, "pins no source commit"),))
+    await store.rebind_snapshot(
+        rebound(snapshot, second, by="ada", at=T0, why="the spec moved", replacement=replacement),
+        after=0,
+    )  # the campaign is re-bound, and this cycle's binding isn't reached
+
+    with pytest.raises(TaskInstructionsUnavailable, match=f"required reference {REF}"):
+        await _handed(store, records, cycle_id)
+    await launcher.drain()
+
+    assert await _handed(store, records, cycle_id) == [
+        {"ref": f"fake:doc:spec@{cycle_id}", "required": True, "digest": f"sha256:{cycle_id}"}
+    ]
+
+
+class _Faulting(_PerCycle):
+    async def bind(self, ref, ctx):
+        if ctx.unit_kind == UnitKind.CYCLE.value:
+            raise TimeoutError("the repository did not answer")
+        return await super().bind(ref, ctx)
+
+
+async def test_a_resolver_fault_at_launch_is_repeated_never_bound_as_nothing(world):  # noqa: F811
+    """The second read of #2570. Bug caught: a timeout in the family's resolver at a cycle's
+    launch kept as "unbound", so the cycle holds its required reference for life, where the next
+    drain could have bound it."""
+    store, records = InMemoryCrossCycleMemoryStore(), InMemoryMemoryRecords()
+    await _pinned_campaign(store, records)
+    world.start()
+    [intent] = await world.campaigns.launch_intents(CID)
+    launcher = _launcher(world, records, store)
+    launcher._creation = dataclasses.replace(
+        launcher._creation, reference_resolvers={"fake": _Faulting()}
+    )
+
+    with pytest.raises(TimeoutError):
+        await launcher._build_cycle(intent)
+
+
+class _SnapshotUnreadable(InMemoryCrossCycleMemoryStore):
+    async def get_snapshot(self, unit_kind, unit_id):
+        from squadops.ports.memory.cross_cycle import RecordIncompatible
+
+        raise RecordIncompatible("a body this code can't read")
+
+
+async def test_an_unreadable_snapshot_refuses_the_launch_not_every_launch_behind_it(world):  # noqa: F811
+    """The second read of #2570. Bug caught: a snapshot this code can't read raised as a fault,
+    which every drain repeats, holding every intent queued behind it. It is refused, so the
+    campaign escalates."""
+    from squadops.campaigns.launcher import LaunchRefused
+
+    world.start()
+    [intent] = await world.campaigns.launch_intents(CID)
+    launcher = _launcher(world, InMemoryMemoryRecords(), _SnapshotUnreadable())
+
+    with pytest.raises(LaunchRefused, match="snapshot can't be read"):
+        await launcher._build_cycle(intent)

@@ -208,8 +208,8 @@ async def rebind_unit(
     rebinding = updated.rebindings[-1]
     entry_id = None
     if kind is UnitKind.CAMPAIGN:
-        await _rebind_running_cycles(request, unit_id, record.record_id, replacement, now)
         entry_id = await _record_on_control_log(request, identity, updated, rebinding)
+        await _rebind_running_cycles(request, unit_id, record.record_id, replacement, now)
     return RebindResponse.model_validate(
         {
             **_shown(updated),
@@ -224,21 +224,26 @@ async def _rebind_running_cycles(
     request: Request, campaign_id: str, record_id: str, replacement: Any, now: datetime
 ) -> None:
     """§5ad: a campaign's re-bound revision reaches its running cycles as each binds it, at the
-    commit that cycle pins. Its later cycles bind it at their launch. A cycle that can't be
-    rebound is logged and keeps reading the new revision as the campaign's pin holds it, with any
-    ``@current`` reference unbound, so a required one holds its tasks rather than reading a
-    revision the re-binding replaced."""
-    store = get_memory_store(request)
-    cycles = get_cycle_registry(request)
-    resolvers = get_reference_resolvers(request)
-    intents = await get_campaign_registry(request).launch_intents(campaign_id)
-    for cycle_id in [
-        i.cycle_id for i in intents if i.state is LaunchIntentState.LAUNCHED and i.cycle_id
-    ]:
+    commit that cycle pins. Its later cycles bind it at their launch.
+
+    The snapshot is re-bound and its control-log row written before this runs, and nothing here
+    fails the response. A cycle that can't be rebound now is logged, and the launcher's next drain
+    fills it (``_reconcile_bindings``). Until then a required reference holds its task rather than
+    reading the revision the re-binding replaced."""
+    try:
+        store = get_memory_store(request)
+        cycles = get_cycle_registry(request)
+        resolvers = get_reference_resolvers(request)
+        intents = await get_campaign_registry(request).launch_intents(campaign_id)
+    except Exception:  # noqa: BLE001 — the drain fills what this couldn't
+        logger.warning("cycle_rebinding_unread campaign=%s", campaign_id, exc_info=True)
+        return
+    launched = [i.cycle_id for i in intents if i.state is LaunchIntentState.LAUNCHED and i.cycle_id]
+    for cycle_id in launched:
         try:
-            if await cycles.get_cycle_end(cycle_id) is not None:
-                continue
             cycle = await cycles.get_cycle(cycle_id)
+            if cycle_status_of(cycle, await cycles.list_runs(cycle_id)) in _ENDED_CYCLE:
+                continue  # a paused cycle can resume, so it is rebound
             bound = (
                 await instructions_bound_for((replacement,), resolvers, cycle_binding(cycle))
                 if replacement is not None
@@ -248,8 +253,8 @@ async def _rebind_running_cycles(
             if held is None and not bound:
                 continue  # the cycle reads the campaign's pin, which now holds the revision
             base = held or CycleBinding(cycle_id, UnitKind.CAMPAIGN.value, campaign_id, (), now)
-            await store.record_cycle_binding(replacing(base, record_id, bound))
-        except Exception:  # noqa: BLE001 — the snapshot is re-bound; this cycle holds instead
+            await store.record_cycle_binding(replacing(base, {record_id}, bound, at=now))
+        except Exception:  # noqa: BLE001 — the drain fills what this couldn't
             logger.warning(
                 "cycle_rebinding_failed cycle=%s record=%s", cycle_id, record_id, exc_info=True
             )
