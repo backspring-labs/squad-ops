@@ -70,8 +70,8 @@ def test_the_bound_record_and_the_verification_scaffold_keep_their_identities():
         # route handler states its request fields and errors, so the tree moved a third time, the
         # spine and scaffold hashes again unmoved. #2531 (2026-10-19): the vitest config collects
         # `.test.tsx` too, a fourth tree-only move. #2534 (2026-10-19): the page-suite DOM harness,
-        # a fifth.
-        "752a9edf548a8ef324b0e17acdf85ac2f77413d30e2d33324dd43cfc792cf699",
+        # a fifth. 2026-10-20: each route handler states its response entity's fields, a sixth.
+        "c7cc400575c86ce19e044fa36bf1757e22ed5d8ee1cb1fff7f442915695feee6",
     )
 
 

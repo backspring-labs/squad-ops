@@ -636,16 +636,18 @@ export function errorResponse(err: unknown): Response {{
 # --------------------------------------------------------------------------- #
 
 
-def _route_stub(path: str, endpoints: list[Any], shapes: Mapping[str, Any]) -> str:
+def _route_stub(
+    path: str, endpoints: list[Any], shapes: Mapping[str, Any], entities: Mapping[str, Any]
+) -> str:
     """A route file exporting one handler per declared method.
 
     Stubs throw rather than return: the bare skeleton must fail its probes, or the
     behavioral gate would measure the scaffold instead of the fill (SIP-0098 §7).
 
-    Each handler states its contract where it is written: the request shape's fields and the
-    declared errors. A route file is one endpoint's, not every endpoint's as FastAPI's
-    ``routes.py`` is, so without them a change to an endpoint's request or errors left its
-    file's skeleton unchanged. An increment's footprint is the files whose skeleton the delta
+    Each handler states its contract where it is written: the request shape's fields, the
+    response entity's fields and the declared errors. A route file is one endpoint's, not every
+    endpoint's as FastAPI's ``routes.py`` is, so without them a change to an endpoint's request,
+    response or errors left its file's skeleton unchanged. An increment's footprint is the files whose skeleton the delta
     changes (``change_request.derive_footprint``), so the route a capacity increment must
     implement fell outside it, and every edit to it was dropped as another producer's slot
     (Next.js shakeout round 2, cyc_0df8d7215ef2).
@@ -668,7 +670,7 @@ def _route_stub(path: str, endpoints: list[Any], shapes: Mapping[str, Any]) -> s
             f"export async function {ep.method.upper()}(request: Request) {{",
             "  try {",
             f"    // TODO: implement {ep.method} {ep.path} — respond {status}",
-            *_contract_lines(ep, shapes),
+            *_contract_lines(ep, shapes, entities=entities),
             *order,
             f"    throw new ApiError('not_implemented', '{ep.method} {ep.path}')",
             "  } catch (err) {",
@@ -680,14 +682,32 @@ def _route_stub(path: str, endpoints: list[Any], shapes: Mapping[str, Any]) -> s
     return "\n".join(head + body)
 
 
-def _contract_lines(ep: Any, shapes: Mapping[str, Any]) -> list[str]:
-    """The endpoint's request fields and declared errors, as comment lines in its handler."""
+def _contract_lines(
+    ep: Any, shapes: Mapping[str, Any], *, entities: Mapping[str, Any]
+) -> list[str]:
+    """The endpoint's request fields, response fields and declared errors, as comment lines in
+    its handler.
+
+    The response line is #2522's request line for what the handler returns: a field added to the
+    entity changes every route that returns it, so those routes join the increment's footprint. A
+    handler that lists the fields it returns could otherwise never add one (Next.js shakeout
+    round 5, ``cyc_311e2117c21d``: the detail route returned a run without ``capacity``)."""
     lines = []
     shape = shapes.get(ep.request) if ep.request else None
     if shape is not None:
         optional = f"; optional {', '.join(shape.optional)}" if shape.optional else ""
         lines.append(
             f"    // request {shape.name}: {', '.join(shape.required) or 'no required field'}{optional}"
+        )
+    response = str(ep.response or "")
+    listed = response.startswith("list[") and response.endswith("]")
+    entity = entities.get(response[5:-1] if listed else response)
+    if entity is not None:
+        always = [f.name for f in entity.fields if f.required]
+        sometimes = [f.name for f in entity.fields if not f.required]
+        rest = f"; optional {', '.join(sometimes)}" if sometimes else ""
+        lines.append(
+            f"    // response {response}: {', '.join(always) or 'no required field'}{rest}"
         )
     if ep.errors:
         lines.append(f"    // errors: {', '.join(ep.errors)}")
@@ -740,8 +760,9 @@ def expand_nextjs_ts(manifest: InterfaceManifest) -> list[dict[str, str]]:
         *render_packaging("nextjs_ts"),
     ]
     shapes = {s.name: s for s in getattr(manifest.api, "request_shapes", ()) or ()}
+    entities = {e.name: e for e in getattr(manifest, "entities", ()) or ()}
     for path, endpoints in _route_groups(manifest).items():
-        files.append({"name": path, "content": _route_stub(path, endpoints, shapes)})
+        files.append({"name": path, "content": _route_stub(path, endpoints, shapes, entities)})
     for route in getattr(manifest.frontend, "routes", ()) or ():
         files.append({"name": _page_path(route), "content": _page_stub(route)})
     return files

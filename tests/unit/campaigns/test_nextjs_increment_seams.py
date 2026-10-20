@@ -135,6 +135,31 @@ def test_a_change_to_an_endpoints_request_or_errors_puts_its_route_file_in_the_f
     assert "app/api/runs/[run_id]/route.ts" not in footprint  # unchanged: GET, no new error
 
 
+def test_a_field_added_to_an_entity_puts_every_route_that_returns_it_in_the_footprint():
+    """Next.js shakeout round 5 (``cyc_311e2117c21d``). Bug caught: a capacity increment that adds
+    ``capacity`` to ``Run`` left the detail route, which returns a ``Run`` and listed its fields,
+    outside the footprint. No repair could add the field there, so the page's capacity criterion
+    could never pass, though the page itself rendered it."""
+    from squadops.campaigns.change_request import derive_footprint, footprint_product_files
+
+    participants = (
+        '      - { name: participants, type: "list[string]", required: true, default: [] }'
+    )
+    base = _manifest("nextjs_ts", capacity=False)
+    with_field = base.replace(
+        participants, participants + "\n      - { name: capacity, type: number, required: false }"
+    )
+    assert with_field != base
+
+    footprint = footprint_product_files(derive_footprint(base, with_field))
+
+    assert {
+        "app/api/runs/route.ts",
+        "app/api/runs/[run_id]/route.ts",
+        "app/api/runs/[run_id]/join/route.ts",
+    } <= set(footprint)
+
+
 def test_fastapis_footprint_for_the_same_delta_is_unchanged_by_the_route_contract():
     """Bug caught: the Next.js fix reaching FastAPI's scaffold, whose one routes.py already changed
     with any endpoint."""
