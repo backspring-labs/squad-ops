@@ -69,11 +69,10 @@ def rebound(
     replacement = None if record.status == RecordStatus.WITHDRAWN else pinned_of(record)
     if replacement is not None and replacement.revision == held.revision:
         raise RebindRefused(f"{unit} already binds revision {held.revision} of {record.record_id}")
-    instructions = tuple(
-        replacement if p is held else p
-        for p in snapshot.instructions
-        if p is not held or replacement is not None
-    )
+    kept = [p for p in snapshot.instructions if p is not held]
+    if replacement is not None:
+        kept.insert(snapshot.instructions.index(held), replacement)
+    instructions = tuple(kept)
     rebinding = Rebinding(
         record_id=record.record_id,
         replaced=held,
