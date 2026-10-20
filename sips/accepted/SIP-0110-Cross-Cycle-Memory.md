@@ -82,11 +82,11 @@ re-places it.
 | entry points: chat's conversation history reaching the agent, with session ownership checked (SIP-0085 §4, §9; §A.3.3) | **shipped** | 2.3.0, PR #2247, issue #2175: resuming or reading a session checks its owner and agent first, refused as a missing session; each turn carries its bounded history, the drop counted |
 | entry points: the context-assembly port, inert, at the four seams (§A.3.6) | **shipped** | 2.3.0, #2257 (closes #2176; §5j records where it departs from §A.3.6's text) |
 | entry points: the typed records (notes, preferences, project and task instructions), permissions by kind, provenance (§A.3.2–§A.3.4) | **shipped** (§5l) | 2.4.0, PR #2508, issue #2177 |
-| entry points: task instructions, with the work target, retries, references bound with the cycle, binding holds and emergency withdrawal (§A.3.5–§A.3.8) | **placed** | 2.4.0, #2178: stage 1 (the records reach the tasks they name, binding, the task held when incomplete) shipped in PR #2513 (§5m), stage 2's interventions after admission with `squadops instructions` in PR #2549 (§5w), and `carries_into: continuations` with the increment gate's structured `task_instructions` field in PR #2556 (§5aa), and a task instruction's `@current` bound with its cycle (T16's task part) in the PR that wrote this row (§5ab); the hold and its release, and emergency withdrawal after dispatch remain |
-| entry points: project instructions in the snapshot with references bound, re-binding, the effective lesson budget, the comparison arms and disclosure (§A.3.6, §A.3.7) | **placed** | 2.4.0, #2179: stage 1 (pinned at admission, binding on the tasks they apply to, the lesson budget after them) shipped in PR #2515 (§5n), stage 2's effective lesson budget (T17) in PR #2526 (§5r), the `memory_context: none` arm with the lesson-text diagnostic in PR #2528 (§5s), a counted roll's pinned instruction set in PR #2533 (§5t), and a project instruction's emergency withdrawal in PR #2544 (§5u), re-binding a running unit's project instruction in PR #2546 (§5v), and `@current` bound at admission, the project part of T16, in PR #2555 (§5z), with the write-time refusal of a reference no unit of its project can bind in the PR that wrote this row (§5ac); re-binding a reference's revision, reading a reference's content at dispatch (the MacBook lane, with the hold), and a campaign's repository references (§5z; ruled by the owner 2026-10-20, §5ad: bound per cycle against the campaign's snapshot, to build) remain |
-| entry points: chat on the substrate, with capture confirmed, chat exposures, server-side project binding and provenance authorized (§A.3.5) | **shipped** | 2.4.0, issue #2180: stage A (the binding, each turn's context and exposure, confirmed capture of notes and preferences, authorized provenance, Q29's deletion) in PR #2517, stage B's project-instruction capture in PR #2525 (§5o), and its task-instruction capture in the PR that wrote this row (§5x) |
+| entry points: task instructions, with the work target, retries, references bound with the cycle, binding holds and emergency withdrawal (§A.3.5–§A.3.8) | **placed** | 2.4.0, #2178: stage 1 (the records reach the tasks they name, binding, the task held when incomplete) shipped in PR #2513 (§5m), stage 2's interventions after admission with `squadops instructions` in PR #2549 (§5w), and `carries_into: continuations` with the increment gate's structured `task_instructions` field in PR #2556 (§5aa), and a task instruction's `@current` bound with its cycle (T16's task part) in PR #2559 (§5ab); the hold and its release, and emergency withdrawal after dispatch remain |
+| entry points: project instructions in the snapshot with references bound, re-binding, the effective lesson budget, the comparison arms and disclosure (§A.3.6, §A.3.7) | **placed** | 2.4.0, #2179: stage 1 (pinned at admission, binding on the tasks they apply to, the lesson budget after them) shipped in PR #2515 (§5n), stage 2's effective lesson budget (T17) in PR #2526 (§5r), the `memory_context: none` arm with the lesson-text diagnostic in PR #2528 (§5s), a counted roll's pinned instruction set in PR #2533 (§5t), and a project instruction's emergency withdrawal in PR #2544 (§5u), re-binding a running unit's project instruction in PR #2546 (§5v), and `@current` bound at admission, the project part of T16, in PR #2555 (§5z), with the write-time refusal of a reference no unit of its project can bind in PR #2567 (§5ac); re-binding a reference's revision and reading a reference's content at dispatch (the MacBook lane, with the hold) remain; a campaign's repository references, bound per cycle against the campaign's snapshot (the owner's ruling of 2026-10-20, §5ad), shipped in the PR that wrote this row (§5ae) |
+| entry points: chat on the substrate, with capture confirmed, chat exposures, server-side project binding and provenance authorized (§A.3.5) | **shipped** | 2.4.0, issue #2180: stage A (the binding, each turn's context and exposure, confirmed capture of notes and preferences, authorized provenance, Q29's deletion) in PR #2517, stage B's project-instruction capture in PR #2525 (§5o), and its task-instruction capture in PR #2550 (§5x) |
 | entry points: lesson inspection from chat; a conversational claim never becomes a lesson (§A.3.5) | **shipped** | 2.4.0, PR #2518, issue #2181 (§5p) |
-| entry points: the console's memory record view (§A.3.11) | **placed** | 2.4.0, #2182: the view and its uses route shipped in the PR that wrote this row (§5q); the page's capture test remains, live with #2183 |
+| entry points: the console's memory record view (§A.3.11) | **placed** | 2.4.0, #2182: the view and its uses route shipped in PR #2524 (§5q); the page's capture test remains, live with #2183 |
 | entry points: the acceptance matrix, T1–T17, live on a deploy (§A.5) | **placed** | 2.4.0, #2183 |
 | entry points: the legacy agent store retired (§A.4.3), on the owner's OK for its compose change | **placed** | 2.5.0, #2184 |
 | a unit pinned while a revocation or a withdrawal is answered, missed by its answer (§0.7, §A.3.8) | **placed** | 2.4.0, #2545: found by the second reader on PR #2544 (§5u) |
@@ -2780,6 +2780,63 @@ The two ways out §5z named both fail:
 
 **When it matters:** only once a campaign runs over a Project with a source repository, starting with the shared
 demonstration (D13). A sample application has no repository, so §5ac refuses its `repo:` references at write.
+
+## 5ae. A campaign's repository references, bound per cycle, as built (2026-10-20, #2179 T16; the supervisor, building the owner's ruling of the same day, §5ad)
+
+**What shipped:** §5ad's ruling.
+- **At a campaign cycle's launch** (`CampaignLaunchService._build_cycle`), the cycle binds its campaign's pinned
+  instructions' `@current` references at its own pinned source commit (`cycle_binding`).
+  - It records the result as the cycle's own binding (`CycleBinding`, in the memory store, migration `1792`).
+  - It binds only the references the campaign's pin left written `@current`, which are those its family couldn't bind
+    for the campaign, as the repository family can't (§5z).
+  - A reference the campaign bound stays the campaign's, shared by every cycle.
+  - A store that can't be read or written is a fault the next drain repeats, so a cycle never launches without the
+    binding its tasks need.
+- **Every dispatch of a campaign cycle reads it.** `pinned_instructions(…, cycle_id=)` applies the cycle's binding over
+  the campaign's pin.
+  - It matches each instruction by record and revision. A binding of a revision the pin no longer holds is never
+    handed for the one it holds.
+  - It reads the binding only where an instruction names `@current`, so no other campaign touches the store.
+  - A binding that can't be read holds the task. An instruction the cycle has no binding for is read as the
+    campaign's pin, with a required reference holding as before.
+- **A re-binding of the campaign (§5v) reaches its running cycles.** Each cycle that hasn't ended binds the replacement
+  at its own commit, in place of the replaced revision. A withdrawal drops the record's entry.
+  - **A cycle that can't be rebound is logged.** It keeps reading the new revision as the campaign's pin holds it, so
+    a required reference holds its tasks rather than reading the revision the re-binding replaced.
+- **Wiring:** a launch is given the memory store (`CreationPorts.memory_store`). The composition root's guard holds
+  every port it declares.
+
+**Where it narrows §5ad, and why:**
+- **`Cycle.source_context` arrives with #2484,** so on main every cycle binds with no commit, and the repository family
+  refuses it (§5z). The binding is recorded with that reason, and a required reference holds as before. Once #2484
+  lands, the same path binds at each cycle's commit.
+- **The cycle's binding is what its dispatches read, not a second snapshot.** The campaign's snapshot stays the one
+  §5t's comparison and the exposure read. Each exposure names the bound references it was handed
+  (`bound_references`), so two cycles bound at different commits read as such.
+
+**Evidence** (`tests/unit/memory/test_campaign_cycle_bindings.py`, entered at `_build_cycle`, `supply_lessons` and the
+re-binding route, with a resolver that binds nothing for the campaign and each cycle at its own revision):
+- each of two cycles launched by the campaign is handed the reference bound for itself, with its digest;
+- a cycle with no binding holds a required reference;
+- a binding that can't be read holds the task;
+- a campaign naming no `@current` reference writes and reads no binding;
+- a re-binding reaches a running cycle bound for that cycle, and leaves an ended cycle's alone;
+- a binding of an earlier revision is never handed for the pinned one.
+
+The Postgres store's round trip, and its replacing a cycle's row, are
+`tests/integration/memory/test_postgres_cycle_bindings_integration.py`.
+
+**Ten mutants, each caught:**
+- the launch not binding;
+- the launch binding as the campaign;
+- the recall ignoring the binding;
+- the recall reading it with no `@current`;
+- an unread binding read as none;
+- the composer passing no cycle;
+- the re-binding skipping running cycles;
+- the re-binding touching ended ones;
+- the binding matched by record alone;
+- the composition root dropping the store.
 
 ## 6. Mode neutrality: cycle, duty, and ambient utilization
 
