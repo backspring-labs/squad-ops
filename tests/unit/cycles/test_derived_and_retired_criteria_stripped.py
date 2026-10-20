@@ -243,8 +243,13 @@ def _boundary(file: str = _T6) -> TypedCheck:
         ({"file": _T6, "module": "backend.main", "symbol": "app"}, [_boundary()], True),
         # The boundary reads `from .main import x` as module `main`, and #441 reads a dotless
         # spec as relative: each asks for an import the boundary refuses.
-        ({"file": _T6, "module": ".main"}, [_boundary()], True),
+        ({"file": _T6, "module": ".main", "symbol": "app"}, [_boundary()], True),
         ({"file": _T6, "module": "main"}, [_boundary()], True),
+        ({"file": _T6, "module": ".backend.main"}, [_boundary()], True),
+        # `from . import main` satisfies a one-segment relative spec, and the boundary reads no
+        # module from it, so the row can pass beside the boundary.
+        ({"file": _T6, "module": ".main"}, [_boundary()], False),
+        ({"file": _T6, "module": "..main"}, [_boundary()], False),
         ({"file": _T6, "module": "backend.main.routes"}, [_boundary()], True),
         ({"file": f"./{_T6}", "module": "backend.main"}, [_boundary()], True),
         # A module whose name only starts like an entry module is not inside one.
@@ -256,9 +261,10 @@ def _boundary(file: str = _T6) -> TypedCheck:
     ],
 )
 def test_an_import_is_dropped_only_where_the_bound_boundary_refuses_it(params, harness, dropped):
-    """Bug caught: a strip too wide (a module merely prefixed like an entry module, a file the
-    boundary isn't bound on, an author-mode suite) deletes a check nothing contradicts; one too
-    narrow (a relative or dotless spec, a submodule, a path spelled `./`) leaves the pair."""
+    """Bug caught: a strip too wide (a module merely prefixed like an entry module, a relative spec
+    `from . import main` satisfies, a file the boundary isn't bound on, an author-mode suite)
+    deletes a check nothing contradicts; one too narrow (a relative or dotless spec, a submodule,
+    a path spelled `./`) leaves the pair."""
     from squadops.cycles.task_plan import _without_entry_module_imports
 
     authored = TypedCheck(check="import_present", params=params, severity="error")

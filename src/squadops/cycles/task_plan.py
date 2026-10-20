@@ -1185,8 +1185,8 @@ def _without_entry_module_imports(acceptance: list, harness: list[TypedCheck]) -
     suite added the import, disputed the boundary, and the analyzer confirmed the dispute, which
     ended the run (``contested_check``). The boundary is the row whose intent is right — the suite
     reaches the app through the scaffold's ``client`` fixture — so the authored row is dropped,
-    loudly, as a derived row is (#1254). A relative spec is read without its dots, as the
-    boundary reads the import it asks for."""
+    loudly, as a derived row is (#1254). Only a row no suite can pass beside the boundary is
+    dropped (``_boundary_refuses``)."""
     bound = {_normalize(c.params["file"]): c.params["entry_modules"] for c in harness}
     kept: list = []
     for criterion in acceptance:
@@ -1196,7 +1196,7 @@ def _without_entry_module_imports(acceptance: list, harness: list[TypedCheck]) -
             if (
                 target in bound
                 and isinstance(module, str)
-                and names_entry_module(module.lstrip("."), bound[target])
+                and _boundary_refuses(module, criterion.params.get("symbol"), bound[target])
             ):
                 logger.warning(
                     "entry_module_import_stripped file=%s module=%s — the harness boundary "
@@ -1208,6 +1208,18 @@ def _without_entry_module_imports(acceptance: list, harness: list[TypedCheck]) -
                 continue
         kept.append(criterion)
     return kept
+
+
+def _boundary_refuses(module: str, symbol: Any, entry_modules: list[str]) -> bool:
+    """Whether every import that satisfies ``import_present`` of ``module`` (and ``symbol``) is one
+    the harness boundary refuses. The boundary reads a from-import's module without its relative
+    dots, so ``from .main import x`` is ``main``. The one form it reads no module from is
+    ``from . import main``, which satisfies a one-segment relative spec without a symbol (``.main``,
+    ``..main``): that row can pass beside the boundary, and is kept."""
+    name = module.lstrip(".")
+    if module.startswith(".") and symbol is None and "." not in name:
+        return False
+    return names_entry_module(name, entry_modules)
 
 
 def _fill_slot_signature_criteria(
