@@ -27,6 +27,7 @@ from squadops.api.runtime.deps import (
     get_cycle_registry,
     get_flow_executor,
     get_memory_records,
+    get_reference_resolvers,
 )
 from squadops.auth.models import Identity, Scope
 from squadops.campaigns.gate import INCREMENT_RULING_GATE, ruling_transition
@@ -53,8 +54,10 @@ from squadops.cycles.models import (
     validate_workload_type,
 )
 from squadops.events.types import EventType
+from squadops.memory.pinning import cycle_binding
 from squadops.memory.records import RecordRefused, Source, SourceKind
-from squadops.memory.task_instructions import admitted
+from squadops.memory.reference_binding import bound_for_cycle
+from squadops.memory.task_instructions import admitted, requested_references
 from squadops.ports.cycles.artifact_vault import ArtifactVaultPort
 from squadops.ports.memory.records import RecordConflict
 
@@ -269,9 +272,14 @@ async def _ruling_instructions(
         raise ValidationError("a ruling's task instructions go with an approval")
     if get_memory_records(request) is None:
         raise ValidationError("no store holds task instructions")
+    requested = [i.model_dump() for i in body.task_instructions]
     try:
+        # T16: bound with the ruled cycle, now; a repeat keeps what the first attempt bound.
+        bound = await bound_for_cycle(
+            requested_references(requested), get_reference_resolvers(request), cycle_binding(cycle)
+        )
         built = admitted(
-            [i.model_dump() for i in body.task_instructions],
+            requested,
             project_id=cycle.project_id,
             cycle_id=cycle.cycle_id,
             actor=actor,
@@ -281,6 +289,7 @@ async def _ruling_instructions(
                 SourceKind.GATE_DECISION,
                 {"cycle_id": cycle.cycle_id, "run_id": run_id, "gate": INCREMENT_RULING_GATE},
             ),
+            bound=bound,
         )
     except RecordRefused as e:
         raise ValidationError(str(e)) from e

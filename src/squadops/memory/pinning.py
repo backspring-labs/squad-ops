@@ -89,6 +89,14 @@ def source_commit_of(cycle: Any) -> str | None:
     return getattr(context, "development_baseline_commit", None) if context else None
 
 
+def cycle_binding(cycle: Any) -> BindingContext:
+    """What a task instruction's reference is bound for: its cycle, at the commit the cycle's source
+    context pins (§3.7; #2178 T16). A campaign's cycle pins its own, unlike the campaign."""
+    return BindingContext(
+        cycle.project_id, UnitKind.CYCLE.value, cycle.cycle_id, source_commit_of(cycle)
+    )
+
+
 async def pin_standalone_cycle(
     store: CrossCycleMemoryStorePort,
     cycle: Any,
