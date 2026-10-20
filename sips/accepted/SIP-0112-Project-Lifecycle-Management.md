@@ -756,6 +756,14 @@ The external product owner/maintainer owns product intent, priorities, scope, co
 
 **Changed upstream instructions never modify an admitted snapshot.** A running unit changes what it bound only by SIP-0110's re-binding (§A.3.7): an authorized, recorded intervention, forward when no dispatched task used the old binding and a restart otherwise, with the unit's measurements set apart from the first affected task. Routine upstream edits need no re-confirmation, because a confirmed instruction that cites a repository source binds that source's content afresh at each admission.
 
+**Open conflict, awaiting the owner (2026-10-20; SIP-0110 §5z; `sips/PORTFOLIO.md`'s intake log of the same day).**
+- **The conflict.** The binding bullet above binds a Campaign's repository references when it's admitted, at the commit its source context pins. But a Campaign has no source context of its own. Each of its Cycles pins one when it's prepared (contract 1, FR-04, #2410), after the Campaign's snapshot.
+- **The effect.** At a Campaign's admission there's no commit to bind at. So SIP-0110 §5z leaves a Campaign's repository references unbound, and a required one holds the Campaign's tasks.
+- **The ways out:**
+  - a source pin at the Campaign's admission, which its Cycles inherit;
+  - binding per Cycle, which gives each Cycle its own revision of a reference and so breaks the Campaign's one shared snapshot.
+- **The ruling is the owner's.** Until then, a Campaign over an external product can't run a task that requires a repository reference. A standalone Cycle isn't affected: it pins its source context and its snapshot together.
+
 ## B.6 Project lifecycle state model
 
 Proposed project state machine:
