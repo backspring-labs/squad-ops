@@ -9,6 +9,11 @@ records again, so a withdrawal stops the next dispatch. Nothing is copied from t
 It is a **binding** section (§3.6): never omitted, never cut. A task instruction that can't be loaded or
 fitted into the prompt budget leaves the section incomplete, and the task is not dispatched.
 
+**An instruction given with the cycle's create request is an admitted input.** One added or revised
+after it is an **intervention** (§3.5): allowed only while the tasks it selects haven't dispatched in a
+run still running, and marked in the envelope and the exposure of each dispatch that receives it, so
+its measurement is set apart.
+
 Pure: the composer reads the records and the budget, and these rules decide what is handed.
 """
 
@@ -21,6 +26,7 @@ from datetime import datetime
 from typing import Any
 
 from squadops.memory.context import Disposition, Need, RecordRef, Section, SectionKind
+from squadops.memory.exposures import Exposure
 from squadops.memory.lessons import _tokens
 from squadops.memory.records import (
     MemoryRecord,
@@ -31,6 +37,7 @@ from squadops.memory.records import (
     Reference,
     Revision,
     Source,
+    SourceKind,
     TaskTarget,
     new_record,
     reference_of,
@@ -53,6 +60,8 @@ class Bound:
     revision: int
     text: str
     references: tuple[Reference, ...] = ()
+    #: Added or revised after its cycle was admitted (§3.5): an intervention.
+    intervention: bool = False
 
     @property
     def ref(self) -> RecordRef:
@@ -79,8 +88,37 @@ def applicable(
         if current.target is None or current.target.cycle_id != cycle_id:
             continue
         if reaches(current.target.task_types):
-            bound.append(Bound(record.record_id, current.number, current.body, current.references))
+            bound.append(
+                Bound(
+                    record.record_id, current.number, current.body, current.references,
+                    intervention=is_intervention(record),
+                )
+            )  # fmt: skip
     return bound
+
+
+def is_intervention(record: MemoryRecord) -> bool:
+    """Whether a task instruction's current revision came after its cycle's admission: anything but
+    the cycle's own create request (§3.5). A revision of an admitted one is an intervention too."""
+    return record.current.source.kind != SourceKind.CYCLE_REQUEST
+
+
+def dispatched(
+    selector: Collection[str], exposures: Iterable[Exposure], running: Collection[str]
+) -> list[tuple[str, str]]:
+    """Each ``(run_id, task_id)`` that dispatched a selected task type in a run still ``running``,
+    in the order first seen. An instruction added for one is refused: the task already has its
+    inputs, and its re-takes and repairs would get a binding its first dispatch never had (§3.5).
+    Read from the exposures, which every dispatch of an authoring task records."""
+    seen: list[tuple[str, str]] = []
+    for e in exposures:
+        if (
+            e.run_id in running
+            and e.query.task_type in selector
+            and (e.run_id, e.task_id) not in seen
+        ):
+            seen.append((e.run_id, e.task_id))
+    return seen
 
 
 def binding_section(
@@ -135,10 +173,21 @@ def handed(bound: list[Bound]) -> dict[str, Any] | None:
                 "revision": b.revision,
                 "text": b.text,
                 "references": [{"ref": r.ref, "required": r.required} for r in b.references],
+                # Only when it is one, so an admitted instruction's envelope is what it was.
+                **({"intervention": True} if b.intervention else {}),
             }
             for b in bound
         ]
     }
+
+
+def interventions(handed_input: Mapping[str, Any] | None) -> list[str]:
+    """The record ids of the interventions among what a task was handed, for its exposure."""
+    return [
+        str(i["record_id"])
+        for i in (handed_input or {}).get("instructions", ())
+        if i.get("intervention")
+    ]
 
 
 def unresolved_reason(section: Section) -> str:

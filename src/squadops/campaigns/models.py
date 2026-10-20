@@ -122,6 +122,9 @@ class ControlOperation(StrEnum):
     #: instruction's revision it bound was replaced. A record, and an intervention: its
     #: measurements are set apart from the re-binding.
     REBIND = "rebind"
+    #: A task instruction was added to, revised on or withdrawn from one of the campaign's cycles
+    #: after its admission (SIP-0110 Appendix A §3.5; #2178). A record, and an intervention.
+    INSTRUCT = "instruct"
 
     @property
     def records_only(self) -> bool:
@@ -140,6 +143,7 @@ class ControlOperation(StrEnum):
             ControlOperation.ESCALATION_CLOSED,
             ControlOperation.ESCALATION_ANSWERED,
             ControlOperation.REBIND,
+            ControlOperation.INSTRUCT,
         )
 
     @property
