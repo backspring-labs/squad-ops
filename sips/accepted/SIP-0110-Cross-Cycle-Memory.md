@@ -83,7 +83,7 @@ re-places it.
 | entry points: the context-assembly port, inert, at the four seams (§A.3.6) | **shipped** | 2.3.0, #2257 (closes #2176; §5j records where it departs from §A.3.6's text) |
 | entry points: the typed records (notes, preferences, project and task instructions), permissions by kind, provenance (§A.3.2–§A.3.4) | **shipped** (§5l) | 2.4.0, PR #2508, issue #2177 |
 | entry points: task instructions, with the work target, retries, references bound with the cycle, binding holds and emergency withdrawal (§A.3.5–§A.3.8) | **placed** | 2.4.0, #2178: stage 1 (the records reach the tasks they name, binding, the task held when incomplete) shipped in PR #2513 (§5m); stage 2 remains |
-| entry points: project instructions in the snapshot with references bound, re-binding, the effective lesson budget, the comparison arms and disclosure (§A.3.6, §A.3.7) | **placed** | 2.4.0, #2179: stage 1 (pinned at admission, binding on the tasks they apply to, the lesson budget after them) shipped in PR #2515 (§5n), stage 2's effective lesson budget (T17) in PR #2526 (§5r), the `memory_context: none` arm with the lesson-text diagnostic in PR #2528 (§5s), a counted roll's pinned instruction set in PR #2533 (§5t), and a project instruction's emergency withdrawal in the PR that wrote this row (§5u); `@current` bound at admission (T16) and re-binding remain |
+| entry points: project instructions in the snapshot with references bound, re-binding, the effective lesson budget, the comparison arms and disclosure (§A.3.6, §A.3.7) | **placed** | 2.4.0, #2179: stage 1 (pinned at admission, binding on the tasks they apply to, the lesson budget after them) shipped in PR #2515 (§5n), stage 2's effective lesson budget (T17) in PR #2526 (§5r), the `memory_context: none` arm with the lesson-text diagnostic in PR #2528 (§5s), a counted roll's pinned instruction set in PR #2533 (§5t), and a project instruction's emergency withdrawal in PR #2544 (§5u), and re-binding a running unit's project instruction in the PR that wrote this row (§5v); `@current` bound at admission (T16, after #2484) remains, with re-binding a reference's revision once references are bound |
 | entry points: chat on the substrate, with capture confirmed, chat exposures, server-side project binding and provenance authorized (§A.3.5) | **placed** | 2.4.0, #2180: stage A (the binding, each turn's context and exposure, confirmed capture of notes and preferences, authorized provenance, Q29's deletion) shipped in PR #2517, and stage B's project-instruction capture in the PR that wrote this row (§5o); a task instruction's capture from chat remains, with #2178's second stage |
 | entry points: lesson inspection from chat; a conversational claim never becomes a lesson (§A.3.5) | **shipped** | 2.4.0, PR #2518, issue #2181 (§5p) |
 | entry points: the console's memory record view (§A.3.11) | **placed** | 2.4.0, #2182: the view and its uses route shipped in the PR that wrote this row (§5q); the page's capture test remains, live with #2183 |
@@ -1773,7 +1773,7 @@ of 2026-10-19):**
 - the `memory_context: none` arm, with its declaration and the lesson-text diagnostic (T9's rest): shipped, §5s;
 - a counted roll's pinned instruction set, recorded in its record and flagged when it differs from the previous roll's
   (§A.3.7; the verification-set driver): shipped, §5t;
-- re-binding a running unit;
+- re-binding a running unit: its project instruction's revision shipped, §5v;
 - emergency withdrawal of a project instruction: shipped, §5u.
 
 ## 5o. Chat on the substrate, stage A, as built (2026-10-19, #2180; the supervisor, under the owner's grant of 2026-10-19)
@@ -2126,6 +2126,80 @@ moved.
   - every kind's withdrawal reading the snapshots.
 
   A second reader found the last three surviving, and the tests were added in this PR.
+
+## 5v. Re-binding a running unit, as built (2026-10-20, #2179 stage 2; the supervisor, under the owner's grant of 2026-10-19)
+
+**What shipped:** §A.3.7's re-binding of a project instruction's pinned revision, on its forward path, with the
+restart path's guard.
+- **The route.** `POST /api/v1/projects/{p}/snapshots/{cycle|campaign}/{id}/rebindings` (`record_id`, `why`). The
+  CLI is `squadops snapshots rebind`, and `GET …/snapshots/{kind}/{id}` (`squadops snapshots show`) reads what the unit
+  binds now.
+- **What it replaces.** The unit's bound revision of the record gives way to the record's current revision. When the
+  record is withdrawn, the revision is removed.
+- **What it refuses:**
+  - an instruction the unit didn't pin (one confirmed after admission reaches the units admitted after it);
+  - the revision the unit already binds;
+  - a campaign's cycle, which binds its campaign's snapshot, so the campaign is named instead;
+  - a unit that has ended: a completed or cancelled cycle, or a completed campaign;
+  - a pin that withheld its instructions (`memory_context: none`) or couldn't read them.
+- **Who.** Both `memory:instruct` and the unit's authority are needed: `cycles:write` for a standalone cycle,
+  `campaigns:supervise` for a campaign. Either alone is refused.
+- **The snapshot keeps the history.** `instructions` is what the unit binds now, and `rebindings` lists each
+  re-binding: the revision replaced, its replacement, who, when, why, and the runs that had been handed the replaced
+  revision. Recall, the withdrawal's holder query (§5u) and the driver's pinned set (§5t) read the current binding with
+  no change of their own. The store's write is a compare-and-swap on the number of re-bindings, so two re-bindings read
+  from one snapshot can't both land.
+- **Forward, and the restart path's guard.** If a run still running was handed the replaced revision, the route
+  refuses (`RESTART_REQUIRED`) and names the run, which is halted first. Once it has ended, the re-binding goes forward
+  and names it among the runs handed the old revision. Resuming such a run from its checkpoint is refused: the
+  checkpoint carries work done under the replaced revision, and §3.8's restart keeps history without reusing it. A new
+  run starts under the new binding.
+- **Recorded, and measured apart.**
+  - A campaign's re-binding is a control-log row (`rebind`, record-only; migration `1790`). The intervention ledger
+    reads it as an intervention (SIP-0113 §4.3), so a window reports it.
+  - The answer says the unit's measurements are set apart from the re-binding's time.
+  - The verification-set driver records a cycle's re-bindings. A roll re-bound while it ran is headlined as not
+    counted, since a counted roll refuses every intervention.
+
+**Where it narrows §A.3.7, and why:**
+- **A project instruction's revision only.** Re-binding a reference's bound revision waits for references to be bound
+  (T16, after #2484). Re-binding the unit's total budget, which is the owner's, waits for a budget the snapshot holds.
+- **A standalone cycle's re-binding is recorded on its snapshot, not on a run.**
+  - The cycle has no record of interventions yet. That record is #2178's stage 2 (`squadops instructions add`).
+  - Until then, the snapshot names the runs handed the old revision, and each later exposure names the revision it was
+    handed.
+- **The halt is the operator's.** As with §5u, the route names the run to halt and refuses until it has ended, rather
+  than stopping it at a task boundary.
+- **A held task's release is a new run.** A hold still fails the run's provisioning (§5n). So the release §A.3.7
+  describes is: re-bind the unit, then start a new run, which binds the new revision from its first task.
+- **The driver can't refuse a re-binding made through the API.** It can't know in advance that a cycle is a counted
+  roll, so it records the re-binding and headlines the roll as not counted.
+
+**Evidence:**
+- **The route tests** (`tests/unit/api/test_rebinding.py`) are wired from `pin_standalone_cycle`, `pin_campaign` and
+  `supply_lessons`:
+  - the next dispatch is handed the new revision and another unit keeps the old;
+  - each of the two permissions is required;
+  - a running run holds the re-binding, and once it has failed the re-binding goes forward and resuming it is refused;
+  - a withdrawn record is re-bound off;
+  - a campaign's row is read as an intervention;
+  - five refusals store nothing.
+- **The domain tests** (`tests/unit/memory/test_rebinding.py`) cover the order kept on replacement, the round-trip and
+  compare-and-swap, and that only the unit's own dispatches of the bound revision decide the path.
+- **The Postgres test** checks the compare-and-swap against the table.
+- **The driver test** enters at `_run_cycle`.
+- **Mutants, each caught (eleven):**
+  - the store's write dropped;
+  - the unit's authority unchecked;
+  - a running run ignored;
+  - the resume guard off;
+  - no control-log row;
+  - an ended unit re-bound;
+  - the ledger ignoring `rebind`;
+  - re-bindings dropped on read;
+  - no compare-and-swap;
+  - other units deciding the path;
+  - a withheld pin re-bound.
 
 ## 6. Mode neutrality: cycle, duty, and ambient utilization
 

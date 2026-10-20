@@ -5748,6 +5748,21 @@ def render(cfg: SetConfig, title: str, rec: dict) -> str:
         ),
         *(
             [
+                "- **Re-bound while it ran**: "
+                + ", ".join(
+                    f"`{r['record_id']}` revision {r['replaced']} to "
+                    + (f"revision {r['replacement']}" if r["replacement"] else "none (withdrawn)")
+                    + f" by {r['by']}"
+                    for r in rec["rebindings"]
+                )
+                + ". A re-binding is an intervention, and a counted roll refuses one (SIP-0110 "
+                "Appendix A §3.7): this roll is not counted."
+            ]
+            if rec.get("rebindings")
+            else []
+        ),
+        *(
+            [
                 "- **DIAGNOSTIC — injected fault(s): "
                 f"{', '.join(sorted(declared_fault_names(cfg.overrides)))}"
                 "**. This cycle carried a deliberate emission defect (#1251): its verdict is "
@@ -5936,17 +5951,22 @@ def identity_mismatch(expected_prefix: str, actual: str) -> bool:
     return bool(expected_prefix) and not (actual or "").startswith(expected_prefix)
 
 
-def pinned_instruction_set(cycle_id: str) -> list[dict] | None:
-    """SIP-0110 Appendix A §3.7: the project instructions the cycle's snapshot pinned, each by
-    its record and revision, sorted. ``None`` when the cycle pinned no snapshot, or its pin could
-    not read the project's records: an unknown set, never read as an empty one."""
+def _cycle_snapshot(cycle_id: str) -> dict | None:
+    """The cycle's stored memory snapshot, or ``None`` when it pinned none."""
     body = psql(
         "select coalesce(snapshot_body::text,'') from memory_snapshots "
         f"where unit_kind='cycle' and unit_id='{cycle_id}';"
     )
-    if not body:
+    return json.loads(body) if body else None
+
+
+def pinned_instruction_set(cycle_id: str) -> list[dict] | None:
+    """SIP-0110 Appendix A §3.7: the project instructions the cycle's snapshot binds, each by
+    its record and revision, sorted. ``None`` when the cycle pinned no snapshot, or its pin could
+    not read the project's records: an unknown set, never read as an empty one."""
+    snapshot = _cycle_snapshot(cycle_id)
+    if snapshot is None:
         return None
-    snapshot = json.loads(body)
     if snapshot.get("instructions_unread"):
         return None
     return sorted(
@@ -5956,6 +5976,23 @@ def pinned_instruction_set(cycle_id: str) -> list[dict] | None:
         ),
         key=lambda i: (i["record_id"], i["revision"]),
     )
+
+
+def snapshot_rebindings(cycle_id: str) -> list[dict]:
+    """§3.7: each re-binding the cycle's snapshot records while it ran, by record and revisions.
+    A re-binding is an intervention, and a counted roll refuses every intervention (§3.5): the API
+    can't know a cycle is a counted roll, so the driver records it and the roll isn't counted."""
+    snapshot = _cycle_snapshot(cycle_id) or {}
+    return [
+        {
+            "record_id": r["record_id"],
+            "replaced": r["replaced"]["revision"],
+            "replacement": (r.get("replacement") or {}).get("revision"),
+            "by": r["by"],
+            "at": r["at"],
+        }
+        for r in snapshot.get("rebindings") or ()
+    ]
 
 
 def instruction_set_change(cfg: SetConfig, pinned: list[dict] | None) -> dict | None:
@@ -6032,6 +6069,13 @@ def _run_cycle(
                 "a listed input moved (SIP-0110 §0.12)"
             )
             rec["instruction_set_change"] = change
+    rebindings = snapshot_rebindings(cyc)
+    if rebindings:
+        rec["rebindings"] = rebindings
+        log(
+            f"!! the cycle was re-bound while it ran ({len(rebindings)}): an intervention, so the "
+            "roll is not counted (SIP-0110 Appendix A §3.7)"
+        )
     if identity_mismatch(cfg.expected_squad_snapshot_prefix, rec["squad_profile_snapshot_ref"]):
         log(
             f"!! squad-profile snapshot {rec['squad_profile_snapshot_ref'][:16]} != the set's "
