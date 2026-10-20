@@ -18,6 +18,8 @@ import pytest
 from adapters.memory.recall import SnapshotRecall
 from squadops.campaigns.models import ControlOperation
 from squadops.capabilities.lesson_supply import supply_lessons, unit_of
+from squadops.memory.lessons import UnitKind
+from squadops.memory.pinning import pin_unit
 from squadops.memory.records import Source, SourceKind
 from squadops.memory.task_instructions import TASK_INSTRUCTIONS_INPUT, admitted
 from squadops.outcomes.ledger import is_intervention
@@ -211,3 +213,91 @@ async def test_a_revision_dropping_a_task_type_that_dispatched_is_refused():
     assert response.status_code == 409
     assert response.json()["detail"]["error"]["code"] == "TASK_DISPATCHED"
     assert len((await world.records.get(record_id)).revisions) == 1
+
+
+def _citing(cycle_id: str, scope: str = "task", **extra) -> dict:
+    """A records-API body whose provenance cites a lesson revision."""
+    body = {
+        "kind": "instruction",
+        "scope": scope,
+        "project_id": "group_run",
+        "body": "Apply it.",
+        "source": {"kind": "api_call", "ids": {"lesson_revision": "pat_0123456789abcdef@2"}},
+    }
+    if scope == "task":
+        body["target"] = {"cycle_id": cycle_id, "task_types": [DESIGN]}
+    else:
+        body["applicability"] = {"task_types": [DESIGN], "roles": ["*"], "stacks": ["*"]}
+    return {**body, **extra}  # fmt: skip
+
+
+class _SnapshotUnreadable:
+    """A memory store whose snapshot read fails, everything else as the in-memory one."""
+
+    def __init__(self, inner):
+        self._inner = inner
+
+    async def get_snapshot(self, *_):
+        raise ConnectionError("the pool is gone")
+
+    def __getattr__(self, name):
+        return getattr(self._inner, name)
+
+
+@pytest.mark.parametrize(
+    ("unit", "disabled", "status", "says"),
+    [
+        ("cycle", True, 422, "declares lessons disabled"),
+        ("cycle", False, 201, None),
+        ("campaign", True, 422, "declares lessons disabled"),
+        ("campaign", False, 201, None),
+        ("unreadable", False, 422, "can't be read"),
+    ],
+    ids=["own-unit-disabled", "own-unit-on", "campaigns-unit-disabled", "campaigns-unit-on",
+         "snapshot-unreadable"],
+)  # fmt: skip
+async def test_the_records_api_never_lets_a_lesson_reach_the_lessons_disabled_control(
+    unit, disabled, status, says
+):
+    """§3.7, through the records API, the second reader's finding on #2180 (its three mutants
+    survived). Bugs caught: the rule enforced in chat only; a campaign's cycle judged by a snapshot
+    of its own, which it never has, rather than its campaign's; an unreadable snapshot read as
+    "not the control"."""
+    world = _World()
+    if unit == "campaign":
+        cmp = campaign("cmp_lessons")
+        await world.campaigns.create_campaign(
+            cmp, actor="ada", actor_role="admin", reason="t", idempotency_key="c"
+        )
+        cycle = dataclasses.replace(_framing_cycle(), cycle_id="cyc_c", campaign_id="cmp_lessons")
+        await world.cycles.create_cycle(cycle)
+        await pin_unit(
+            world.store, unit_kind=UnitKind.CAMPAIGN, unit_id="cmp_lessons",
+            project_id="group_run", pinned_at=NOW, disabled=disabled, records=world.records,
+        )  # fmt: skip
+    else:
+        cycle = _framing_cycle()
+        await world.cycles.create_cycle(cycle)
+        await pin_unit(
+            world.store, unit_kind=UnitKind.CYCLE, unit_id=cycle.cycle_id, project_id="group_run",
+            pinned_at=NOW, disabled=disabled, records=world.records,
+        )  # fmt: skip
+        if unit == "unreadable":
+            world.client.app.state.memory_store = _SnapshotUnreadable(world.store)
+
+    response = world.client.post(RECORDS, json=_citing(cycle.cycle_id))
+
+    assert response.status_code == status, response.text
+    if says:
+        assert says in response.json()["detail"]["error"]["message"]
+
+
+async def test_a_project_instruction_never_carries_a_lesson():
+    """Bug caught: a lesson cited by a project instruction, which every unit pins, the
+    lessons-disabled control included, so the guarantee leaks through the project."""
+    world = _World()
+
+    response = world.client.post(RECORDS, json=_citing("", scope="project"))
+
+    assert response.status_code == 422
+    assert "through its approval" in response.json()["detail"]["error"]["message"]

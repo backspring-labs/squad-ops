@@ -110,6 +110,9 @@ class CaptureResponse(BaseModel):
     scope: str
     project_id: str | None = None
     takes_effect: str
+    #: A campaign cycle's task instruction: its row in the campaign's control log, or ``None`` when
+    #: the row couldn't be written, as the records API answers (§3.5). ``None`` for anything else.
+    control_log_entry_id: str | None = None
     reply: ChatMessageDTO
 
 

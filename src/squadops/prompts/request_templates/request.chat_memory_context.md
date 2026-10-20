@@ -49,5 +49,9 @@ list", propose a task instruction for that cycle, naming the cycle by its id and
 
 Name only a cycle the person named; if they named none, leave "cycle_id" out and they fill it on the
 card. It reaches that cycle's tasks from their next dispatch, and is refused once they have
-dispatched. When they ask for a lesson to be applied to a cycle's task, add the lesson's revision as
-"lesson": "pat_…@n".
+dispatched.
+
+When the person asks for an approved lesson to be applied to a cycle's task, such as "apply
+pat_0123456789abcdef@2 to QA in cyc_0123456789ab", add the lesson's revision, exactly as listed above:
+
+<memory-capture>{"text": "Apply the lesson on mocking the clock.", "kind": "instruction", "scope": "task", "target": {"cycle_id": "cyc_0123456789ab", "task_types": ["qa.test"]}, "lesson": "pat_0123456789abcdef@2"}</memory-capture>

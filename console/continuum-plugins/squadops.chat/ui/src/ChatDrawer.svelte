@@ -498,6 +498,9 @@
           </label>
         {/each}
       {/if}
+      {#if card.lessonRevision && card.choice && card.choice !== 'instruction:task'}
+        <div class="hint">The agent proposed applying lesson {card.lessonRevision} to a cycle's task; only a task instruction carries it.</div>
+      {/if}
       {#if card.choice?.startsWith('note:')}
         <label class="capture-choice" title="A claim to check, never a lesson's evidence">
           <input type="checkbox" bind:checked={card.suggestion} />

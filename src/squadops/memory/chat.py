@@ -501,8 +501,9 @@ def proposed_capture(reply: str) -> tuple[ProposedCapture | None, str]:
             proposal = ProposedCapture(
                 text, RecordKind.INSTRUCTION, RecordScope.TASK,
                 target=_proposed_target(doc.get("target")),
-                lesson_revision=lesson
-                if isinstance(lesson, str) and "@" in lesson and NAMED_LESSON.fullmatch(lesson)
+                # Kept as named, malformed or not: dropping one would drop the check it carries, so
+                # the card shows it and the capture refuses a malformed one (the second read).
+                lesson_revision=lesson.strip() if isinstance(lesson, str) and lesson.strip()
                 else None,
             )  # fmt: skip
         elif (
@@ -522,10 +523,21 @@ _CAPTURE_SCOPES = frozenset({RecordScope.USER, RecordScope.PROJECT})
 _APPLICABILITY_FIELDS = ("task_types", "roles", "stacks")
 
 
+def offered_target(target: Mapping[str, Any], said: str) -> dict[str, Any]:
+    """The proposed target as the card offers it: its cycle blanked unless the person's own message
+    named it. The agent may only repeat a cycle, never pick one (the second read of #2180)."""
+    cycle = target.get("cycle_id") or ""
+    return {
+        "cycle_id": cycle if cycle in named_cycles(said) else "",
+        "task_types": list(target.get("task_types") or ()),
+    }
+
+
 def _proposed_target(raw: Any) -> dict[str, Any]:
     """The target cycle and task types an agent proposed. A cycle left out or malformed is ``""``,
-    and task types the same as an applicability's: empty, for the person to fill. A target is never
-    guessed: an instruction for the wrong cycle would bind that cycle's work."""
+    and task types the same as an applicability's: empty, for the person to fill. The card keeps the
+    cycle only when the person named it (``offered_target``): an instruction for the wrong cycle
+    would bind that cycle's work."""
     raw = raw if isinstance(raw, dict) else {}
     cycle = raw.get("cycle_id")
     types = raw.get("task_types")

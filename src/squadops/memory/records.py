@@ -84,6 +84,11 @@ CHANGE_PATHS: Mapping[str, str] = {
 _ANY = "*"
 
 
+#: Where an instruction names the lesson revision it applies ("apply lesson X to this task"): its
+#: provenance, in the revision's source ids (§3.7).
+LESSON_CITED = "lesson_revision"
+
+
 class RecordRefused(ValueError):
     """A record, revision or withdrawal the rules refuse, with why. Raised before anything is
     stored."""
@@ -322,6 +327,13 @@ def _check_revision(kind: str, scope: str, revision: Revision) -> None:
     if kind == RecordKind.INSTRUCTION:
         if scope == RecordScope.PROJECT and revision.applicability is None:
             raise RecordRefused("a project instruction names its applicability")
+        if scope == RecordScope.PROJECT and revision.source.ids.get(LESSON_CITED):
+            # §0.6, §3.7: a lesson reaches a project's tasks through the owner's approval, never as a
+            # standing instruction, which every unit pins, the lessons-disabled control included.
+            raise RecordRefused(
+                "a lesson reaches a project's tasks through its approval (SIP-0110 §0.6), not a "
+                "project instruction; one cycle's task may apply it"
+            )
         if scope == RecordScope.TASK and revision.target is None:
             raise RecordRefused("a task instruction names its target cycle and its tasks")
         if any(r.ref.endswith("@current") for r in revision.references):

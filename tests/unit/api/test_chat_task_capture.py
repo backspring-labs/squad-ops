@@ -50,8 +50,9 @@ def _registries(chat):
     return cycles, campaigns
 
 
-def _proposed(chat, cycle_id: str, role: str = Role.ADMIN, **extra):
-    """The agent proposes a task instruction for ``cycle_id``; the card shows it."""
+def _proposed(chat, cycle_id: str, role: str = Role.ADMIN, said: str | None = None, **extra):
+    """The agent proposes a task instruction for ``cycle_id``, which the person named unless
+    ``said`` says otherwise; the card shows it."""
     chat.agent.reply = (
         "I'll pass it on.\n<memory-capture>"
         + json.dumps(
@@ -60,7 +61,8 @@ def _proposed(chat, cycle_id: str, role: str = Role.ADMIN, **extra):
         )
         + "</memory-capture>"
     )  # fmt: skip
-    response, events = chat.as_("ada", role).say("tell design to cover it", project_id="group_run")
+    said = f"tell design in {cycle_id} to cover it" if said is None else said
+    response, events = chat.as_("ada", role).say(said, project_id="group_run")
     [card] = [e["capture"] for e in events if e.get("capture")]
     return response.headers["X-Session-Id"], card
 
@@ -171,6 +173,7 @@ async def test_a_campaign_cycles_capture_needs_the_supervisor_and_is_a_control_l
         if e.operation is ControlOperation.INSTRUCT
     ]  # fmt: skip
     assert (row.binding["action"], row.binding["record_id"]) == ("add", saved.json()["record_id"])
+    assert saved.json()["control_log_entry_id"] == row.entry_id
 
 
 @pytest.mark.parametrize(
@@ -192,3 +195,31 @@ async def test_a_task_instruction_without_its_target_is_refused(world, target, s
 
     assert response.status_code == 422
     assert says in response.json()["detail"]["error"]["message"]
+
+
+async def test_the_card_keeps_a_cycle_only_when_the_person_named_it(world):  # noqa: F811
+    """The second reader's finding. Bug caught: the agent choosing the cycle, a real one the person
+    never named, pre-filled on the card for a confirmation that reads as theirs."""
+    cycles, _ = _registries(world)
+    await cycles.create_cycle(_cycle())
+
+    _, named = _proposed(world, CYCLE)
+    _, unnamed = _proposed(world, CYCLE, said="tell design to cover the empty list")
+
+    assert named["target"]["cycle_id"] == CYCLE
+    assert unnamed["target"] == {"cycle_id": "", "task_types": [DESIGN]}
+
+
+async def test_a_malformed_lesson_citation_is_refused_never_dropped(world):  # noqa: F811
+    """The second reader's finding. Bug caught: a lesson named without its revision dropped by the
+    parser, so the instruction is stored with no citation and reaches the lessons-disabled
+    control unchecked."""
+    cycles, _ = _registries(world)
+    await cycles.create_cycle(_cycle())
+    session_id, card = _proposed(world, CYCLE, lesson="pat_0123456789abcdef")
+
+    response = _confirm(world, session_id, card, lesson_revision=card["lesson_revision"])
+
+    assert card["lesson_revision"] == "pat_0123456789abcdef"
+    assert response.status_code == 422
+    assert await world.records.list_project("group_run") == []

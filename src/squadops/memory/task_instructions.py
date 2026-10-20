@@ -29,6 +29,7 @@ from squadops.memory.context import Disposition, Need, RecordRef, Section, Secti
 from squadops.memory.exposures import Exposure
 from squadops.memory.lessons import _tokens
 from squadops.memory.records import (
+    LESSON_CITED,
     MemoryRecord,
     RecordKind,
     RecordRefused,
@@ -101,11 +102,6 @@ def is_intervention(record: MemoryRecord) -> bool:
     """Whether a task instruction's current revision came after its cycle's admission: anything but
     the cycle's own create request (§3.5). A revision of an admitted one is an intervention too."""
     return record.current.source.kind != SourceKind.CYCLE_REQUEST
-
-
-#: Where a task instruction names the lesson revision it applies ("apply lesson X to this task"):
-#: its provenance, in the revision's source ids (§3.7).
-LESSON_CITED = "lesson_revision"
 
 
 def cited_lesson(revision: Revision) -> str | None:

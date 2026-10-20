@@ -62,6 +62,7 @@ from squadops.memory.chat import (
     ProposedCapture,
     capture_choices,
     failure_notice,
+    offered_target,
     proposed_capture,
     used_line,
 )
@@ -464,8 +465,9 @@ async def confirm_capture(
             status=503,
             code="MEMORY_SAVE_FAILED",
         ) from e
+    entry = None
     if target is not None:
-        await log_intervention(
+        entry = await log_intervention(
             request, getattr(request.state, "identity", None), cycle, record, "add"
         )
         where = f"{target.cycle_id}'s {', '.join(target.task_types)}"
@@ -474,7 +476,13 @@ async def confirm_capture(
     reply = await _reply(
         request,
         session_id,
-        f"Saved {choice.kind} {record.record_id} ({where}). It takes effect {choice.takes_effect}.",
+        f"Saved {choice.kind} {record.record_id} ({where}). It takes effect {choice.takes_effect}."
+        + (
+            " The campaign's control log couldn't record it, so the intervention ledger can't see "
+            "it: declare it there."
+            if of_campaign(cycle) and entry is None
+            else ""
+        ),
         metadata={"capture": record.record_id},
     )
     logger.info(
@@ -487,6 +495,7 @@ async def confirm_capture(
         scope=choice.scope,
         project_id=choice.project_id,
         takes_effect=choice.takes_effect,
+        control_log_entry_id=entry,
         reply=ChatMessageDTO(
             message_id=reply.message_id,
             session_id=reply.session_id,
@@ -609,10 +618,7 @@ def _offered(
             else None
         ),
         "target": (
-            {
-                "cycle_id": proposal.target["cycle_id"],
-                "task_types": list(proposal.target["task_types"]),
-            }
+            offered_target(proposal.target, source.content)
             if proposal.target is not None
             else None
         ),
