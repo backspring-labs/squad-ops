@@ -1,11 +1,11 @@
 """A campaign cycle's own bindings, stored by the Postgres memory store (SIP-0110 §5ad; #2179 T16):
-migration ``1792``'s table, one row per cycle and record, written at a launch, by a re-binding and by
-the sweep's fill, and read back by a dispatch.
+migration ``1792``'s table, one row per cycle, record and revision, written once at a launch, by a
+re-binding and by the sweep's fill, and read back by a dispatch.
 
 What bugs would these catch? A binding that loses a reference's digest on its way through JSON; a
-stale write (the sweep, or a re-binding that read the snapshot before another) storing an older
-revision over a newer one; one record's write erasing another's; a cycle with no binding read as an
-empty one.
+stale write (the sweep, or a re-binding that read the snapshot before another) replacing the newer
+revision's row, or a second write of a revision rewriting a row a dispatch was handed; one record's
+write erasing another's; a cycle with no binding read as an empty one.
 """
 
 from __future__ import annotations
@@ -64,22 +64,22 @@ def _pinned(record_id: str, revision: int, digest: str) -> PinnedInstruction:
     )  # fmt: skip
 
 
-async def test_a_newer_revision_wins_and_each_record_keeps_its_own_row(pool):
+async def test_each_revision_is_its_own_row_and_a_row_is_written_once(pool):
     store = PostgresCrossCycleMemoryStore(pool=pool)
 
-    await store.record_cycle_bindings(
-        "cyc_a", "campaign", "cmp_1", (_pinned("mrec_x", 3, "sha256:x3"),), T0
-    )
-    await store.record_cycle_bindings(
-        "cyc_a", "campaign", "cmp_1", (_pinned("mrec_x", 2, "sha256:x2"),), T0
-    )
-    await store.record_cycle_bindings(
-        "cyc_a", "campaign", "cmp_1", (_pinned("mrec_y", 1, "sha256:y1"),), T0
-    )
+    for record_id, revision, digest in (
+        ("mrec_x", 3, "sha256:x3"),
+        ("mrec_x", 2, "sha256:x2"),  # a stale write lands beside the newer revision
+        ("mrec_x", 3, "sha256:x3-again"),  # a second write of a held revision changes nothing
+        ("mrec_y", 1, "sha256:y1"),
+    ):
+        await store.record_cycle_bindings(
+            "cyc_a", "campaign", "cmp_1", (_pinned(record_id, revision, digest),), T0
+        )
     held = await store.get_cycle_binding("cyc_a")
 
     assert [(p.record_id, p.revision, p.references[0].digest) for p in held.instructions] == [
-        ("mrec_x", 3, "sha256:x3"), ("mrec_y", 1, "sha256:y1"),
+        ("mrec_x", 2, "sha256:x2"), ("mrec_x", 3, "sha256:x3"), ("mrec_y", 1, "sha256:y1"),
     ]  # fmt: skip
     assert (held.unit_kind, held.unit_id) == ("campaign", "cmp_1")
     assert await store.get_cycle_binding("cyc_none") is None

@@ -11,6 +11,7 @@ under the replaced revision; a campaign's re-binding the intervention ledger nev
 
 from __future__ import annotations
 
+import asyncio
 import dataclasses
 from datetime import UTC, datetime
 
@@ -46,6 +47,16 @@ WHERE = {"task_types": [DESIGN], "roles": ["*"], "stacks": ["*"]}
 NOW = datetime(2026, 10, 20, tzinfo=UTC)
 
 
+class _Launches:
+    """The campaign launcher's lock, which a campaign's re-binding holds (``launches_held``)."""
+
+    def __init__(self) -> None:
+        self.lock = asyncio.Lock()
+
+    def launches_held(self) -> asyncio.Lock:
+        return self.lock
+
+
 class _World:
     def __init__(self) -> None:
         self.store = InMemoryCrossCycleMemoryStore()
@@ -68,6 +79,7 @@ class _World:
         app.state.memory_records = self.records
         app.state.cycle_registry = self.cycles
         app.state.campaign_registry = self.campaigns
+        app.state.campaign_launch = self.launches = _Launches()
         app.state.authz_port = KeycloakAuthzAdapter()
         self.client = TestClient(app)
 

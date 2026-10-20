@@ -227,3 +227,33 @@ async def test_a_launch_without_a_campaign_or_launch_id_is_refused_by_the_cycle_
         )
     with pytest.raises(ValidationError, match="launch needs"):
         await cycles.create_cycle_for_launch(cycle, "")
+
+
+async def test_one_campaigns_fault_holds_only_its_own_launch(campaigns):
+    """The fifth read of #2570. Bug caught: a fault in one campaign's launch, such as its
+    project's repository unreachable when its cycle binds, raising out of the drain before any
+    later intent is read, so every other campaign's launch waits behind it, drain after drain,
+    because the faulting intent is always the oldest."""
+    other = "cmp_bbbbbbbbbbbb"
+    await campaigns.create_campaign(
+        campaign(other), actor="owner", actor_role="owner", reason="r", idempotency_key="create-2"
+    )
+    await campaigns.transition(other, move(S.CALIBRATING, "k-cal-2"))
+    held = await _decide_launch(campaigns)
+    result = await campaigns.transition(
+        other, move(S.AT_PROPOSAL, "k-decide-2", launch=LaunchRequest(CycleKind.INCREMENT))
+    )
+    cycles = MemoryCycleRegistry()
+
+    async def build(intent: LaunchIntent) -> Cycle:
+        if intent.campaign_id == CID:
+            raise TimeoutError("the project's repository did not answer")
+        return cycle_for(intent)
+
+    with pytest.raises(TimeoutError):
+        await CampaignLauncher(campaigns, cycles, build, actor="l1", box_verdict=quiet_box).drain()
+
+    assert [c.campaign_id for c in await _cycles_of(cycles)] == [other]
+    assert (await campaigns.get_launch_intent(held)).state is LaunchIntentState.PENDING
+    launched = await campaigns.get_launch_intent(result.intent.launch_id)
+    assert launched.state is LaunchIntentState.LAUNCHED

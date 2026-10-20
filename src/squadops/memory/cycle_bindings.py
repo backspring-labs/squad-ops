@@ -30,8 +30,8 @@ if TYPE_CHECKING:
 @dataclass(frozen=True)
 class CycleBinding:
     """One campaign cycle's bindings, as read: each of its campaign's pinned instructions that names
-    an ``@current`` reference, as this cycle bound it, one per record (the newest revision bound).
-    Read by record and revision, so a re-bound revision is never read under the old one's binding."""
+    an ``@current`` reference, as this cycle bound it, one per record and revision. Read by record
+    and revision, so a re-bound revision is never read under the old one's binding."""
 
     cycle_id: str
     unit_kind: str

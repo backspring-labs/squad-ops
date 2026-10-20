@@ -38,9 +38,9 @@ class InMemoryCrossCycleMemoryStore(CrossCycleMemoryStorePort):
         self._revisions: dict[str, PatternRevision] = {}
         self._approvals: dict[str, Approval] = {}
         self._snapshots: dict[tuple[str, str], Snapshot] = {}
-        #: cycle -> record -> (its binding, the unit's kind and id, when it was bound)
+        #: cycle -> (record, revision) -> (its binding, the unit's kind and id, when it was bound)
         self._cycle_bindings: dict[
-            str, dict[str, tuple[PinnedInstruction, str, str, datetime]]
+            str, dict[tuple[str, int], tuple[PinnedInstruction, str, str, datetime]]
         ] = {}
         self._exposures: dict[str, Exposure] = {}
         self._chat_exposures: dict[tuple[str, str], ChatExposure] = {}
@@ -134,15 +134,15 @@ class InMemoryCrossCycleMemoryStore(CrossCycleMemoryStorePort):
     ) -> None:
         held = self._cycle_bindings.setdefault(cycle_id, {})
         for entry in entries:
-            prior = held.get(entry.record_id)
-            if prior is None or prior[0].revision < entry.revision:
-                held[entry.record_id] = (entry, unit_kind, unit_id, bound_at)
+            held.setdefault(
+                (entry.record_id, entry.revision), (entry, unit_kind, unit_id, bound_at)
+            )
 
     async def get_cycle_binding(self, cycle_id: str) -> CycleBinding | None:
         held = self._cycle_bindings.get(cycle_id)
         if not held:
             return None
-        rows = sorted(held.values(), key=lambda r: r[0].record_id)
+        rows = [held[key] for key in sorted(held)]
         return CycleBinding(
             cycle_id, rows[0][1], rows[0][2], tuple(r[0] for r in rows), max(r[3] for r in rows)
         )
@@ -412,16 +412,13 @@ class PostgresCrossCycleMemoryStore(CrossCycleMemoryStorePort):
         entries: Sequence[PinnedInstruction],
         bound_at: datetime,
     ) -> None:
-        # One statement per entry: it lands only where the cycle holds an older revision or none.
+        # One row per record and revision, written once: an entry the cycle holds never changes.
         async with self._pool.acquire() as conn:
             for entry in entries:
                 await conn.execute(
                     "INSERT INTO memory_cycle_bindings (cycle_id, record_id, revision, unit_kind, "
                     "unit_id, bound_at, entry_body) VALUES ($1, $2, $3, $4, $5, $6, $7) "
-                    "ON CONFLICT (cycle_id, record_id) DO UPDATE SET revision = EXCLUDED.revision, "
-                    "unit_kind = EXCLUDED.unit_kind, unit_id = EXCLUDED.unit_id, "
-                    "bound_at = EXCLUDED.bound_at, entry_body = EXCLUDED.entry_body "
-                    "WHERE memory_cycle_bindings.revision < EXCLUDED.revision",
+                    "ON CONFLICT (cycle_id, record_id, revision) DO NOTHING",
                     cycle_id,
                     entry.record_id,
                     entry.revision,
@@ -435,7 +432,7 @@ class PostgresCrossCycleMemoryStore(CrossCycleMemoryStorePort):
         async with self._pool.acquire() as conn:
             rows = await conn.fetch(
                 "SELECT unit_kind, unit_id, bound_at, entry_body FROM memory_cycle_bindings "
-                "WHERE cycle_id = $1 ORDER BY record_id",
+                "WHERE cycle_id = $1 ORDER BY record_id, revision",
                 cycle_id,
             )
         if not rows:

@@ -487,71 +487,99 @@ class _UnreadableFor(InMemoryCrossCycleMemoryStore):
         return await super().get_cycle_binding(cycle_id)
 
 
-async def test_a_stale_write_never_replaces_a_newer_revision():
-    """The third read of #2570. Bug caught: a writer that read the snapshot before a re-binding
-    (the sweep, or a second re-binding) storing the older revision over the newer one the
-    re-binding just stored, so the cycle reads the re-bound record from the campaign's pin and
-    holds."""
+async def test_a_stale_write_adds_its_own_revision_and_never_touches_another():
+    """The third and fifth reads of #2570. Bug caught: a writer that read the snapshot before a
+    re-binding (the sweep, or a second re-binding) storing the older revision over the newer one
+    the re-binding just stored, so the cycle reads the re-bound record from the campaign's pin and
+    holds. Each revision is its own entry, so the older one lands beside it and the pinned one is
+    still the one handed."""
+    from squadops.memory.cycle_bindings import as_bound_for
     from squadops.memory.records import InstructionApplicability, PinnedInstruction
 
     where = InstructionApplicability((DESIGN,), ("*",), ("*",))
     store = InMemoryCrossCycleMemoryStore()
 
-    def entry(revision):
+    def entry(revision, ref="fake:doc:spec@current"):
         return PinnedInstruction("mrec_ref", revision, f"r{revision}", where,
-                                 (Reference(f"fake:doc:spec@{revision}", True, digest="d"),))  # fmt: skip
+                                 (Reference(ref, True, digest=f"d{revision}"),))  # fmt: skip
 
-    await store.record_cycle_bindings("cyc_x", "campaign", CID, (entry(3),), T0)
-    await store.record_cycle_bindings("cyc_x", "campaign", CID, (entry(2),), T0)
+    await store.record_cycle_bindings("cyc_x", "campaign", CID, (entry(3, "fake:doc:spec@b3"),), T0)
+    await store.record_cycle_bindings("cyc_x", "campaign", CID, (entry(2, "fake:doc:spec@b2"),), T0)
 
-    assert [p.revision for p in (await store.get_cycle_binding("cyc_x")).instructions] == [3]
-
-
-async def _revised_and_rebound(store, records, text: str):
-    """The campaign's instruction revised and the campaign re-bound to it, as the route commits it,
-    with no cycle's entry written: the moment a launch can race."""
-    from squadops.memory.rebinding import rebound
-    from squadops.memory.records import Revision, Source, pinned_of, revised
-
-    record = await records.get("mrec_ref")
-    second = revised(
-        record,
-        Revision(number=2, body=text, author="ada", created_at=T0, source=Source("api_call"),
-                 confirmed_by="ada", applicability=record.current.applicability,
-                 references=(Reference(REF, True),)),
-    )  # fmt: skip
-    await records.append_revision("mrec_ref", second.current)
-    snapshot = await store.get_snapshot(UnitKind.CAMPAIGN, CID)
-    replacement = dataclasses.replace(pinned_of(second), unbound=((REF, "pins no source commit"),))
-    await store.rebind_snapshot(
-        rebound(snapshot, second, by="ada", at=T0, why="the spec moved", replacement=replacement),
-        after=len(snapshot.rebindings),
-    )
+    binding = await store.get_cycle_binding("cyc_x")
+    assert [p.revision for p in binding.instructions] == [2, 3]
+    [handed] = as_bound_for((entry(3),), binding)
+    assert handed.references[0].ref == "fake:doc:spec@b3"
 
 
-async def test_a_launch_that_races_a_rebinding_is_filled_before_its_first_run(world):  # noqa: F811
-    """The fourth read of #2570, entered at the drain that starts the cycle's first run. Bug caught:
-    a cycle bound at its launch for the revision a re-binding then replaced (the re-binding lists
-    only cycles already marked launched, so it didn't reach this one) started with the old
-    revision's entry, so its first run fails before any sweep could fill it."""
+async def test_a_rebinding_holds_launches_and_stores_each_cycles_entry_before_its_commit():
+    """The fifth read of #2570, entered at the route. Bugs caught:
+    - the running cycles listed outside the launch lock, so a cycle launched between the listing
+      and the commit binds the revision being replaced, and nothing binds the new one;
+    - the cycles' entries stored after the snapshot names the new revision, so a dispatch between
+      the two reads the new revision with no entry and holds;
+    - the new revision's entry replacing the old one's, so a dispatch before the commit, still on
+      the old revision, finds no entry and holds."""
     from squadops.memory.records import pinned_of
+
+    api, [record_id], (running, _paused, _ended) = await _campaign_world(REF)
+    at_launch = await instructions_bound_for(
+        (pinned_of(await api.records.get(record_id)),), {"fake": _PerCycle()}, cycle_binding(running)
+    )
+    await api.store.record_cycle_bindings(running.cycle_id, "campaign", CID, at_launch, T0)
+    _revise(api, record_id, REF, "Read the spec, then its notes.")
+    lock, seen = api.launches.lock, {}
+    listed, commit = api.campaigns.launch_intents, api.store.rebind_snapshot
+
+    async def launch_intents(campaign_id):
+        seen["listed_held"] = lock.locked()
+        return await listed(campaign_id)
+
+    async def rebind_snapshot(snapshot, *, after):
+        held = (await api.store.get_cycle_binding(running.cycle_id)).instructions
+        seen["at_commit"] = (lock.locked(), sorted(p.revision for p in held))
+        await commit(snapshot, after=after)
+
+    api.campaigns.launch_intents, api.store.rebind_snapshot = launch_intents, rebind_snapshot
+
+    applied = api.rebind(record_id, kind="campaign", unit_id=CID, why="the spec moved")
+
+    assert applied.status_code == 201, applied.text
+    assert seen == {"listed_held": True, "at_commit": (True, [1, 2])}
+    assert not lock.locked()
+
+
+async def test_a_drain_launches_nothing_while_a_rebinding_holds_its_launches(world, monkeypatch):  # noqa: F811
+    """The fifth read of #2570, entered at the drain. Bug caught: the lock a re-binding holds not
+    being the one every drain launches under, so the launch it exists to keep out still falls
+    between the re-binding's listing and its commit."""
+    import asyncio
+
+    from squadops.api import campaign_launch
+    from squadops.campaigns.models import LaunchIntentState
 
     store, records = InMemoryCrossCycleMemoryStore(), InMemoryMemoryRecords()
     await _pinned_campaign(store, records)
-    world.start()  # launched, its first run not yet started by this launcher
-    [cycle_id] = [i.cycle_id for i in await world.campaigns.launch_intents(CID) if i.cycle_id]
-    at_launch = await instructions_bound_for(
-        (pinned_of(await records.get("mrec_ref")),), {"fake": _PerCycle()},
-        cycle_binding(await world.cycles.get_cycle(cycle_id)),
-    )  # fmt: skip
-    await store.record_cycle_bindings(cycle_id, UnitKind.CAMPAIGN.value, CID, at_launch, T0)
-    await _revised_and_rebound(store, records, "Read the revised spec.")
+    prepare = campaign_launch.prepare_cycle
 
-    await _launcher(world, records, store).drain()
+    async def fault(*args, **kwargs):
+        raise RuntimeError("the artifact vault is unreachable")
 
-    held = (await store.get_cycle_binding(cycle_id)).instructions
-    assert [(p.revision, [r.ref for r in p.references]) for p in held] == [
-        (2, [f"fake:doc:spec@{cycle_id}"])
+    monkeypatch.setattr(campaign_launch, "prepare_cycle", fault)
+    world.start()  # the start's own drain faults, so its intent is still pending
+    monkeypatch.setattr(campaign_launch, "prepare_cycle", prepare)
+    launcher = _launcher(world, records, store)
+
+    async with launcher.launches_held():
+        drain = asyncio.create_task(launcher.drain())
+        await asyncio.sleep(0.05)
+        states = [i.state for i in await world.campaigns.launch_intents(CID)]
+        assert not drain.done()
+    await drain
+
+    assert states == [LaunchIntentState.PENDING]
+    assert [i.state for i in await world.campaigns.launch_intents(CID)] == [
+        LaunchIntentState.LAUNCHED
     ]
 
 
@@ -600,3 +628,38 @@ async def test_a_same_revision_write_never_rewrites_an_entry():
 
     [held] = (await store.get_cycle_binding("cyc_x")).instructions
     assert held.references[0].digest == "sha256:first"
+
+
+async def test_the_sweep_fills_every_project_after_one_whose_campaigns_cant_be_listed(world):  # noqa: F811
+    """The fifth read of #2570, entered at the sweep's own reconciliation. Bug caught: one project
+    whose campaigns can't be listed stopping the fill for every project after it."""
+    from types import SimpleNamespace
+
+    from squadops.campaigns.models import LaunchIntentState
+
+    store, records = InMemoryCrossCycleMemoryStore(), InMemoryMemoryRecords()
+    await _pinned_campaign(store, records)
+    world.start()
+    launcher = _launcher(world, records, store)
+    cycle = dataclasses.replace(_framing_cycle(), cycle_id="cyc_fillable0", campaign_id=CID)
+    await world.cycles.create_cycle(cycle)
+    projects = [SimpleNamespace(project_id="broken"), SimpleNamespace(project_id="group_run")]
+
+    async def list_projects():
+        return projects
+
+    registry = SimpleNamespace(list_projects=list_projects)
+    launcher._creation = dataclasses.replace(launcher._creation, project_registry=registry)
+    listed = world.campaigns.list_campaigns
+
+    async def list_campaigns(project_id):
+        if project_id == "broken":
+            raise TimeoutError("the registry did not answer")
+        return await listed(project_id)
+
+    async def launch_intents(_campaign_id):
+        return [SimpleNamespace(state=LaunchIntentState.LAUNCHED, cycle_id=cycle.cycle_id)]
+
+    world.campaigns.list_campaigns, world.campaigns.launch_intents = list_campaigns, launch_intents
+
+    assert await launcher.reconcile_bindings() == ["cyc_fillable0"]

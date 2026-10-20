@@ -232,32 +232,23 @@ class CampaignLaunchService:
                     started.append(run)
             return started
 
-    async def _fill_before_first_run(self, cycle: Cycle) -> None:
-        """§5ad: a cycle launched while a re-binding ran was bound for the revision it replaced, and
-        the re-binding, which lists only cycles already marked launched, didn't reach it. So before
-        its first run starts, its missing entries are filled, still at its launch. One that can't be
-        filled is logged, and the run starts: a required reference then holds it, loudly, rather
-        than the run waiting on a drain."""
-        store = self._creation.memory_store
-        if store is None or not cycle.campaign_id:
-            return
-        try:
-            snapshot = await store.get_snapshot(UnitKind.CAMPAIGN, cycle.campaign_id)
-            if snapshot is not None and names_current(snapshot.instructions):
-                await self._fill_binding(store, snapshot, cycle.cycle_id)
-        except Exception:
-            logger.warning(
-                "cycle_binding_launch_fill_failed cycle=%s", cycle.cycle_id, exc_info=True
-            )
+    def launches_held(self) -> asyncio.Lock:
+        """§5ad: what a campaign's re-binding holds from listing its launched cycles until its
+        snapshot names the new revision, the lock every drain launches under. No cycle launches in
+        between, binding at the revision being replaced where the re-binding can't see it: one
+        launched before is listed and bound, and one launched after reads the committed snapshot
+        (the fifth read of #2570)."""
+        return self._lock
 
     async def reconcile_bindings(self) -> list[str]:
         """§5ad, the sweep's (every interval, beside the ruling bounds): each running cycle of a live
         campaign holds a binding for every pinned instruction naming ``@current``. One it lacks is
-        filled. A re-binding couldn't reach it, raced its launch, or raced another re-binding. An
-        entry it holds is never replaced by an older revision, since the store keeps the newer one.
-        Until filled, a required reference holds its task. Each campaign and each cycle is apart: a
-        snapshot or a cycle that can't be read is logged, and the rest are filled. Returns the
-        cycles filled."""
+        filled. A launch and a re-binding write their own entries, under the launch lock and before
+        the snapshot names them, so this is the safety net: a cycle launched before its campaign's
+        bindings were recorded (the deploy that brings them), or an entry a store lost. An entry the
+        cycle holds is never rewritten. Until filled, a required reference holds its task. Each
+        project, campaign and cycle is apart: one that can't be read is logged, and the rest are
+        filled. Returns the cycles filled."""
         store = self._creation.memory_store
         if store is None:
             return []
@@ -396,11 +387,9 @@ class CampaignLaunchService:
             if run.status != RunStatus.QUEUED.value or run.run_id in self._started:
                 return None
             cycle = await cycles.get_cycle(cycle_id)
-            await self._fill_before_first_run(cycle)
             self._execute(cycle, run)
             return run
         cycle = await cycles.get_cycle(cycle_id)
-        await self._fill_before_first_run(cycle)
         run = first_run(cycle, initiated_by=RunInitiator.SYSTEM)
         await cycles.create_run(run)
         self._event_bus.emit(

@@ -17,6 +17,7 @@ unit (§5u). A campaign's re-binding is a row in its control log, which the inte
 from __future__ import annotations
 
 import logging
+from contextlib import AbstractAsyncContextManager, nullcontext
 from datetime import UTC, datetime
 from typing import Any
 
@@ -32,6 +33,7 @@ from squadops.api.middleware.auth import require_scopes
 from squadops.api.routes.cycles.mapping import cycle_status_of
 from squadops.api.routes.memory.interventions import record_on_control_log
 from squadops.api.runtime.deps import (
+    get_campaign_launch,
     get_campaign_registry,
     get_cycle_registry,
     get_memory_records,
@@ -187,43 +189,30 @@ async def rebind_unit(
             "binds the record's current revision (SIP-0110 Appendix A §3.7, §5u)",
         )
     now = datetime.now(UTC)
-    try:
-        replacement = None
-        if record.status != RecordStatus.WITHDRAWN and record.current.applicability is not None:
-            # #2179 T16: the new revision's ``@current`` references are bound for this unit, as
-            # its admission bound the old one's.
-            replacement = await bound_instruction(
-                pinned_of(record),
-                get_reference_resolvers(request),
-                BindingContext(project_id, kind.value, unit_id, source_commit_of(unit)),
+    async with _launches_held(request, kind):
+        try:
+            replacement = await _replacement(request, record, kind, project_id, unit_id, unit)
+            updated = rebound(
+                snapshot, record, by=identity.user_id, at=now, why=body.why, replacement=replacement
             )
-        updated = rebound(
-            snapshot, record, by=identity.user_id, at=now, why=body.why, replacement=replacement
-        )
-        # §5ad: the running cycles' own bindings of the replacement, made before anything is
-        # written, so one that can't be made refuses the re-binding rather than half-applying it.
-        cycle_entries = (
-            await _bound_for_running_cycles(request, unit_id, replacement)
-            if kind is UnitKind.CAMPAIGN
-            else {}
-        )
-        await store.rebind_snapshot(updated, after=len(snapshot.rebindings))
-    except RebindRefused as e:
-        raise http_error(422, "VALIDATION_ERROR", str(e)) from e
-    except SnapshotMoved as e:
-        raise http_error(409, "CONFLICT", str(e)) from e
-    except _CyclesUnbound as e:
-        raise http_error(
-            503,
-            "CYCLES_UNBOUND",
-            f"the campaign's running cycles couldn't bind the replacement ({e}); nothing was "
-            "re-bound, so the re-binding can be sent again",
-        ) from e
+            if kind is UnitKind.CAMPAIGN:
+                await _bind_running_cycles(request, store, unit_id, replacement, now)
+            await store.rebind_snapshot(updated, after=len(snapshot.rebindings))
+        except RebindRefused as e:
+            raise http_error(422, "VALIDATION_ERROR", str(e)) from e
+        except SnapshotMoved as e:
+            raise http_error(409, "CONFLICT", str(e)) from e
+        except _CyclesUnbound as e:
+            raise http_error(
+                503,
+                "CYCLES_UNBOUND",
+                f"the campaign's running cycles couldn't bind the replacement ({e}); nothing was "
+                "re-bound, so the re-binding can be sent again",
+            ) from e
     rebinding = updated.rebindings[-1]
     entry_id = None
     if kind is UnitKind.CAMPAIGN:
         entry_id = await _record_on_control_log(request, identity, updated, rebinding)
-        await _record_cycle_entries(store, unit_id, cycle_entries, now)
     return RebindResponse.model_validate(
         {
             **_shown(updated),
@@ -234,23 +223,53 @@ async def rebind_unit(
     )
 
 
+async def _replacement(
+    request: Request, record: Any, kind: UnitKind, project_id: str, unit_id: str, unit: Any
+) -> Any:
+    """The record's current revision as this unit pins it, or ``None`` for a withdrawal or a
+    revision with no applicability. #2179 T16: its ``@current`` references are bound for the unit,
+    as its admission bound the old one's."""
+    if record.status == RecordStatus.WITHDRAWN or record.current.applicability is None:
+        return None
+    return await bound_instruction(
+        pinned_of(record),
+        get_reference_resolvers(request),
+        BindingContext(project_id, kind.value, unit_id, source_commit_of(unit)),
+    )
+
+
 class _CyclesUnbound(Exception):
     """A running cycle's binding of the replacement couldn't be made: the re-binding is refused."""
 
 
-async def _bound_for_running_cycles(
-    request: Request, campaign_id: str, replacement: Any
-) -> dict[str, tuple]:
+def _launches_held(request: Request, kind: UnitKind) -> AbstractAsyncContextManager[Any]:
+    """§5ad: a campaign's re-binding holds its launches, from listing its running cycles until its
+    snapshot names the new revision (``CampaignLaunchService.launches_held``). A cycle launched
+    before is listed and bound; one launched after binds at the committed snapshot. Without it, a
+    cycle launched in between bound the revision being replaced, and nothing bound the new one
+    before its first task read it (the fifth read of #2570)."""
+    if kind is not UnitKind.CAMPAIGN:
+        return nullcontext()
+    return get_campaign_launch(request).launches_held()
+
+
+async def _bind_running_cycles(
+    request: Request, store: Any, campaign_id: str, replacement: Any, now: datetime
+) -> None:
     """§5ad: the replacement as each of the campaign's running cycles binds it, at the commit that
-    cycle pins, before anything is written. A cycle is running until it completes or is cancelled,
-    so a paused one, which can resume, is bound too. A resolver's refusal is kept unbound with why.
-    A fault (a resolver that fails, cycles that can't be read) raises, and the re-binding is
-    refused, nothing written. A withdrawal binds nothing: the pin no longer holds the record."""
+    cycle pins, stored **before** the snapshot names the new revision. Each revision is its own
+    entry, so the cycle still holds the one being replaced, and a dispatch reading either revision
+    finds its own: there is no moment between the snapshot and the cycles' entries.
+
+    A cycle is running until it completes or is cancelled, so a paused one, which can resume, is
+    bound too. A resolver's refusal is kept unbound with why. A fault (a resolver that fails, cycles
+    that can't be read, an entry that can't be stored) raises, and the re-binding is refused with
+    the snapshot unchanged. An entry already stored then names a revision no snapshot names, and is
+    never read. A withdrawal binds nothing: the pin no longer holds the record."""
     if replacement is None or not names_current((replacement,)):
-        return {}  # nothing a cycle binds for itself, so no cycle is read
+        return  # nothing a cycle binds for itself, so no cycle is read
     cycles = get_cycle_registry(request)
     resolvers = get_reference_resolvers(request)
-    out = {}
     try:
         intents = await get_campaign_registry(request).launch_intents(campaign_id)
         for cycle_id in [
@@ -261,27 +280,12 @@ async def _bound_for_running_cycles(
                 continue
             bound = await instructions_bound_for((replacement,), resolvers, cycle_binding(cycle))
             if bound:
-                out[cycle_id] = bound
+                await store.record_cycle_bindings(
+                    cycle_id, UnitKind.CAMPAIGN.value, campaign_id, bound, now
+                )
     except Exception as e:
         logger.warning("cycle_rebinding_unbound campaign=%s", campaign_id, exc_info=True)
         raise _CyclesUnbound(f"{type(e).__name__}: {e}") from e
-    return out
-
-
-async def _record_cycle_entries(
-    store: Any, campaign_id: str, entries: dict[str, tuple], now: datetime
-) -> None:
-    """Store each running cycle's binding of the replacement, after the snapshot and its row.
-    Nothing here fails the response: an entry that can't be stored is logged, and the sweep fills
-    it (``reconcile_bindings``). Until then a required reference holds its task rather than reading
-    the revision the re-binding replaced."""
-    for cycle_id, bound in entries.items():
-        try:
-            await store.record_cycle_bindings(
-                cycle_id, UnitKind.CAMPAIGN.value, campaign_id, bound, now
-            )
-        except Exception:  # noqa: BLE001 — the sweep fills what this couldn't store
-            logger.warning("cycle_rebinding_unstored cycle=%s", cycle_id, exc_info=True)
 
 
 async def _record_on_control_log(
