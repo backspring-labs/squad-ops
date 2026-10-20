@@ -107,6 +107,9 @@ class Reference:
     #: The content's digest at the bound revision, when the reference was written ``@current`` and
     #: a unit's admission bound it (§3.7; #2179 T16). ``None`` for one written with its revision.
     digest: str | None = None
+    #: The reference as written, ``…@current``, when ``ref`` is its binding for a task
+    #: instruction's cycle (§3.7; #2178 T16). A continuation it carries into binds this again.
+    written: str | None = None
 
     def __post_init__(self) -> None:
         if not _REFERENCE.match(self.ref):
@@ -124,6 +127,7 @@ class Reference:
             "ref": self.ref,
             "required": self.required,
             **({"digest": self.digest} if self.digest else {}),
+            **({"written": self.written} if self.written else {}),
         }
 
 
@@ -152,7 +156,18 @@ def reference_of(doc: Mapping[str, Any]) -> Reference:
             f"{ref or 'a reference'} is stored as a reference, never a copy: to change what it says, "
             f"use {path}"
         )
-    return Reference(str(doc.get("ref", "")), bool(doc.get("required", False)))
+    ref, written = str(doc.get("ref", "")), doc.get("written")
+    if written:
+        # A reference as a read returns a bound one (T16): what was written is bound again where
+        # it is written now, never kept at the revision another write bound. Its digest is the
+        # binding's, so a submitted one is never taken.
+        if not is_current(str(written)) or str(written).rsplit("@", 1)[0] != ref.rsplit("@", 1)[0]:
+            raise RecordRefused(
+                f"{written!r} is not {ref!r} written @current: a reference's written form is the "
+                "same record at @current"
+            )
+        ref = str(written)
+    return Reference(ref, bool(doc.get("required", False)))
 
 
 @dataclass(frozen=True)
@@ -378,11 +393,12 @@ def _check_revision(kind: str, scope: str, revision: Revision) -> None:
         if scope == RecordScope.TASK and revision.target is None:
             raise RecordRefused("a task instruction names its target cycle and its tasks")
         if scope == RecordScope.TASK and any(is_current(r.ref) for r in revision.references):
-            # #2178: a task instruction's references are bound with its cycle's inputs (§3.7);
-            # binding ``@current`` there is the task part of T16, not built. A project
-            # instruction's is bound in the snapshot that pins it (#2179 T16).
+            # §3.7 (#2178 T16): a task instruction is its cycle's binding, so its ``@current`` is
+            # bound with the cycle when it is written, and the record keeps the bound revision. A
+            # project instruction's is bound in the snapshot that pins it (#2179 T16).
             raise RecordRefused(
-                "a task instruction's reference names its revision; @current isn't bound yet"
+                "a task instruction's @current reference is bound with its cycle before it is "
+                "stored"
             )
         if revision.confirmed_by is None:
             raise RecordRefused("an instruction binds the work, so it is confirmed")
@@ -452,7 +468,7 @@ def revision_document(revision: Revision) -> dict[str, Any]:
             if revision.target
             else None
         ),
-        "references": [{"ref": r.ref, "required": r.required} for r in revision.references],
+        "references": [r.to_dict() for r in revision.references],
     }
 
 
@@ -484,7 +500,10 @@ def revision_from_document(doc: Mapping[str, Any]) -> Revision:
             else None
         ),
         references=tuple(
-            Reference(r["ref"], bool(r["required"])) for r in doc.get("references", [])
+            Reference(
+                r["ref"], bool(r["required"]), digest=r.get("digest"), written=r.get("written")
+            )
+            for r in doc.get("references", [])
         ),
     )
 

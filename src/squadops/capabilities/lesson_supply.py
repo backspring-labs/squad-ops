@@ -503,6 +503,7 @@ class LessonContextAssembly(ContextAssemblyPort):
                 task_instructions=_section_record(
                     bundle.section(SectionKind.TASK_INSTRUCTIONS),
                     marked=interventions(bundle.task_instructions),
+                    bound=bound_references(bundle.task_instructions),
                 ),
                 project_instructions=_section_record(
                     bundle.section(SectionKind.PROJECT_INSTRUCTIONS),

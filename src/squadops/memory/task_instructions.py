@@ -14,7 +14,11 @@ after it is an **intervention** (§3.5): allowed only while no task it selects h
 run of the cycle, and marked in the envelope and the exposure of each dispatch that receives it, so
 its measurement is set apart.
 
-Pure: the composer reads the records and the budget, and these rules decide what is handed.
+**Its references are bound with its cycle** (§3.7, T16): a ``@current`` one is resolved when the
+instruction is written, and the record keeps that revision. Every dispatch of the cycle reads it.
+
+Pure: the composer reads the records and the budget, and these rules decide what is handed. The
+caller binds the references (``reference_binding.bound_for_cycle``) and passes what they bound.
 """
 
 from __future__ import annotations
@@ -45,6 +49,8 @@ from squadops.memory.records import (
     new_record,
     reference_of,
 )
+from squadops.memory.reference_binding import with_bindings
+from squadops.memory.references import BoundReference
 
 #: Where a dispatch is handed its task instructions, beside ``LESSONS_INPUT``.
 TASK_INSTRUCTIONS_INPUT = "task_instructions"
@@ -205,7 +211,16 @@ def handed(bound: list[Bound]) -> dict[str, Any] | None:
                 "record_id": b.record_id,
                 "revision": b.revision,
                 "text": b.text,
-                "references": [{"ref": r.ref, "required": r.required} for r in b.references],
+                # The digest only when its cycle bound one (T16), so every other envelope is
+                # what it was.
+                "references": [
+                    {
+                        "ref": r.ref,
+                        "required": r.required,
+                        **({"digest": r.digest} if r.digest else {}),
+                    }
+                    for r in b.references
+                ],
                 # Only when it is one, so an admitted instruction's envelope is what it was.
                 **({"intervention": True} if b.intervention else {}),
             }
@@ -228,6 +243,11 @@ def unresolved_reason(section: Section) -> str:
     return "; ".join(f"{ref.record_id}@{ref.revision}: {why}" for ref, why in section.unresolved)
 
 
+def requested_references(requested: Iterable[Mapping[str, Any]]) -> list[Reference]:
+    """The references a request's task instructions give, which their cycle binds first (T16)."""
+    return [reference_of(r) for item in requested for r in item.get("references") or ()]
+
+
 def admitted(
     requested: Iterable[Mapping[str, Any]],
     *,
@@ -237,11 +257,12 @@ def admitted(
     now: datetime,
     instructable: Callable[[str], bool],
     source: Source,
+    bound: Mapping[str, BoundReference] | None = None,
 ) -> list[MemoryRecord]:
     """The task instructions a cycle is created with, as records whose target is that cycle,
-    confirmed by its creator (§3.5). Refused, before anything is stored, for a task type that is no
-    authoring task (an instruction for it would reach nothing) or for any record §A.3.2's rules
-    refuse."""
+    confirmed by its creator (§3.5), each ``@current`` reference replaced by its binding in
+    ``bound``. Refused, before anything is stored, for a task type that is no authoring task (an
+    instruction for it would reach nothing) or for any record §A.3.2's rules refuse."""
     records = []
     for n, item in enumerate(requested, start=1):
         types = tuple(str(t) for t in item.get("task_types") or ())
@@ -258,7 +279,9 @@ def admitted(
             source=source,
             confirmed_by=actor,
             target=TaskTarget(cycle_id, types, item.get("carries_into") or None),
-            references=tuple(reference_of(r) for r in item.get("references") or ()),
+            references=with_bindings(
+                (reference_of(r) for r in item.get("references") or ()), bound or {}
+            ),
         )
         records.append(
             new_record(
@@ -273,31 +296,39 @@ def admitted(
     return records
 
 
+def carrying(records: Iterable[MemoryRecord], *, from_cycle: str) -> list[MemoryRecord]:
+    """The active task instructions of ``from_cycle`` given with ``carries_into: continuations``:
+    what a cycle continuing it carries (§3.7). An instruction given without it never reaches a new
+    cycle."""
+    return [
+        record
+        for record in records
+        if record.kind == RecordKind.INSTRUCTION
+        and record.scope == RecordScope.TASK
+        and record.status == RecordStatus.ACTIVE
+        and record.current.target is not None
+        and record.current.target.cycle_id == from_cycle
+        and record.current.target.carries_into == CARRIES_INTO_CONTINUATIONS
+    ]
+
+
 def carried(
     records: Iterable[MemoryRecord],
     *,
-    from_cycle: str,
     to_cycle: str,
     project_id: str,
     now: datetime,
+    bound: Mapping[str, BoundReference] | None = None,
 ) -> list[MemoryRecord]:
-    """Each active task instruction of ``from_cycle`` given with ``carries_into: continuations``, as
-    an admitted record of ``to_cycle``, the cycle continuing it (a repair or a retry, §3.7). Each
-    copy is linked to its original (``carried_from``) and withdrawn on its own; it keeps who gave
-    and confirmed it, and carries on into the continuation's own continuations. An instruction
-    given without it never reaches a new cycle."""
+    """Each of ``records`` (``carrying``'s) as an admitted record of ``to_cycle``, the cycle
+    continuing theirs (a repair or a retry, §3.7). Each copy is linked to its original
+    (``carried_from``) and withdrawn on its own. It keeps who gave and confirmed it, and carries on
+    into the continuation's own continuations. Its references written ``@current`` are bound again
+    for ``to_cycle`` (``bound``): the continuation's admission is its own binding."""
     copies = []
     for record in records:
         current = record.current
-        if (
-            record.kind != RecordKind.INSTRUCTION
-            or record.scope != RecordScope.TASK
-            or record.status != RecordStatus.ACTIVE
-            or current.target is None
-            or current.target.cycle_id != from_cycle
-            or current.target.carries_into != CARRIES_INTO_CONTINUATIONS
-        ):
-            continue
+        assert current.target is not None  # carrying() selects task instructions only
         copies.append(
             new_record(
                 record_id=f"mrec_{uuid.uuid4().hex[:16]}",
@@ -324,7 +355,7 @@ def carried(
                     target=TaskTarget(
                         to_cycle, current.target.task_types, CARRIES_INTO_CONTINUATIONS
                     ),
-                    references=current.references,
+                    references=with_bindings(current.references, bound or {}),
                 ),
             )
         )

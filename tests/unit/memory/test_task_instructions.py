@@ -23,7 +23,11 @@ from squadops.capabilities.lesson_supply import (
 )
 from squadops.memory.records import (
     RecordRefused,
+    Reference,
+    Revision,
     Source,
+    TaskTarget,
+    new_record,
     withdrawn,
 )
 from squadops.memory.task_instructions import (
@@ -181,16 +185,30 @@ def test_an_instruction_for_a_task_that_authors_nothing_is_refused_at_admission(
         )  # fmt: skip
 
 
-def test_a_task_instructions_current_reference_is_refused_until_it_can_be_bound():
-    """Bug caught: ``@current`` stored, then read at each dispatch, so two attempts of one task
-    see two revisions of the decision it names (T16)."""
+@pytest.mark.parametrize("path", ["admitted-unbound", "the-record-model"])
+def test_a_task_instructions_current_reference_is_never_stored_unbound(path):
+    """T16's task part: a task instruction is bound with its cycle when written. Bugs caught:
+    ``@current`` stored, then read at each dispatch, so two attempts of one task see two revisions
+    of the decision it names; a write path that forgot to bind storing it anyway, past the record
+    model's own check."""
+    current = {"ref": "manifest:decision:join@current", "required": True}
     with pytest.raises(RecordRefused, match="@current"):
-        admitted(
-            [{"text": "x", "task_types": [DESIGN],
-              "references": [{"ref": "manifest:decision:join@current", "required": True}]}],
-            project_id="group_run", cycle_id="c", actor="ada", now=T0,
-            instructable=lambda t: True, source=Source("cycle_request"),
-        )  # fmt: skip
+        if path == "admitted-unbound":
+            admitted(
+                [{"text": "x", "task_types": [DESIGN], "references": [current]}],
+                project_id="group_run", cycle_id="c", actor="ada", now=T0,
+                instructable=lambda t: True, source=Source("cycle_request"),
+            )  # fmt: skip
+        else:
+            new_record(
+                record_id="mrec_x", kind="instruction", scope="task", project_id="group_run",
+                owner_id="ada",
+                revision=Revision(
+                    number=1, body="x", author="ada", created_at=T0, source=Source("api_call"),
+                    confirmed_by="ada", target=TaskTarget("c", (DESIGN,)),
+                    references=(Reference(current["ref"], True),),
+                ),
+            )  # fmt: skip
 
 
 async def test_no_instruction_leaves_every_task_as_it_was():

@@ -77,3 +77,36 @@ async def test_a_launch_with_instructions_and_no_store_is_a_fault_the_drain_repe
 
     with pytest.raises(RuntimeError, match="no store holds them"):
         await _service(world, None)._build_cycle(intent)
+
+
+@pytest.mark.parametrize("resolver", [None, "fake"], ids=["no-resolver", "a-resolver"])
+async def test_a_launchs_current_reference_is_bound_with_its_cycle_or_the_launch_refused(
+    world,  # noqa: F811
+    resolver,
+):
+    """T16's task part, entered at the launcher (the second read). Bugs caught: a campaign's
+    launch storing ``@current`` as written, or launching without the instruction when it can't
+    be bound, rather than refused so the campaign escalates; the launcher's ports lacking the
+    resolvers the route has."""
+    from squadops.campaigns.launcher import LaunchRefused
+    from tests.unit.memory.test_reference_binding import _Resolver
+
+    records = InMemoryMemoryRecords()
+    given = {**INSTRUCTION, "references": [{"ref": "fake:doc:spec@current", "required": False}]}
+    w = world
+    w.start()
+    [intent] = await w.campaigns.launch_intents("cmp_start0000001")
+    body = {**intent.cycle_request["body"], "task_instructions": [given]}
+    intent = dataclasses.replace(intent, cycle_request={**intent.cycle_request, "body": body})
+    service = _service(w, records)
+    if resolver:
+        service._creation = dataclasses.replace(
+            service._creation, reference_resolvers={resolver: _Resolver()}
+        )
+        cycle = await service._build_cycle(intent)
+        [record] = await records.list_project(cycle.project_id)
+        assert [r.ref for r in record.current.references] == ["fake:doc:spec@r1"]
+    else:
+        with pytest.raises(LaunchRefused, match="no resolver binds the fake family"):
+            await service._build_cycle(intent)
+        assert await records.list_project("group_run") == []

@@ -35,7 +35,10 @@ from squadops.campaigns.models import (
 )
 from squadops.cycles.models import Cycle, CycleError, Run, RunInitiator, RunStatus
 from squadops.events.types import EventType
-from squadops.memory.task_instructions import carried
+from squadops.memory.pinning import cycle_binding
+from squadops.memory.records import RecordRefused
+from squadops.memory.reference_binding import bound_for_cycle
+from squadops.memory.task_instructions import carried, carrying
 
 logger = logging.getLogger(__name__)
 
@@ -123,13 +126,27 @@ class CampaignLaunchService:
         if records is None:
             return  # no store holds instructions, so the continued cycle has none to carry
         continued = await self._continued_cycle(intent)
-        for copy in carried(
-            await records.list_project(cycle.project_id),
-            from_cycle=str(continued),
-            to_cycle=cycle.cycle_id,
-            project_id=cycle.project_id,
-            now=datetime.now(UTC),
-        ):
+        originals = carrying(
+            await records.list_project(cycle.project_id), from_cycle=str(continued)
+        )
+        try:
+            # T16: the continuation's admission binds each @current reference again, for itself.
+            bound = await bound_for_cycle(
+                [r for o in originals for r in o.current.references],
+                self._creation.reference_resolvers or {},
+                cycle_binding(cycle),
+            )
+            copies = carried(
+                originals,
+                to_cycle=cycle.cycle_id,
+                project_id=cycle.project_id,
+                now=datetime.now(UTC),
+                bound=bound,
+            )
+        except RecordRefused as e:
+            # The supervisor decides: withdraw the instruction, or revise its reference (§3.6).
+            raise LaunchRefused(f"VALIDATION_ERROR: a carried task instruction: {e}") from e
+        for copy in copies:
             await records.create(copy)
 
     async def _continued_cycle(self, intent: LaunchIntent) -> str:

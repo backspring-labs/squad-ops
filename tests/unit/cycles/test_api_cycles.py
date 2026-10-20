@@ -1262,6 +1262,58 @@ class TestCreateCycleTaskInstructions:
         mock_cycle_registry.create_cycle.assert_not_called()
         assert await records.list_project("hello_squad") == []
 
+    async def test_a_current_reference_is_bound_with_the_cycle_it_was_given_with(
+        self, client, records
+    ):
+        """SIP-0110 §3.7, T16's task part (#2178). Bugs caught: ``@current`` stored as written, so
+        the cycle's tasks read whatever is current at each dispatch; the binding made for some
+        unit other than the cycle the instruction targets; what was written lost, so a
+        continuation can't bind it again."""
+        from tests.unit.memory.test_reference_binding import _Resolver
+
+        resolver = _Resolver()
+        client.app.state.reference_resolvers = {"fake": resolver}
+        instruction = {"text": "Follow the spec.", "task_types": ["qa.test"],
+                       "references": [{"ref": "fake:doc:spec@current", "required": True}]}  # fmt: skip
+
+        resp = client.post(self._URL, json={**self._REQUEST, "task_instructions": [instruction]})
+
+        assert resp.status_code == 201, resp.text
+        [record] = await records.list_project("hello_squad")
+        [reference] = record.current.references
+        assert (reference.ref, reference.digest, reference.written) == (
+            "fake:doc:spec@r1", "sha256:r1", "fake:doc:spec@current",
+        )  # fmt: skip
+        [ctx] = resolver.seen
+        assert (ctx.unit_kind, ctx.unit_id) == ("cycle", resp.json()["cycle_id"])
+
+    @pytest.mark.parametrize(
+        ("families", "required"),
+        [((), True), (("fake",), True), (("fake",), False)],
+        ids=["no-resolver-for-the-family", "a-required-one-the-resolver-refuses",
+             "an-optional-one-the-resolver-refuses"],
+    )  # fmt: skip
+    async def test_a_reference_that_wont_bind_leaves_no_cycle(
+        self, client, records, mock_cycle_registry, families, required
+    ):
+        """§3.6. Bugs caught: the cycle created with an instruction whose reference binds nothing,
+        so its task is held at dispatch for a reason its creator could have fixed at create; an
+        optional one dropped silently, so the creator believes the task reads it."""
+        from tests.unit.memory.test_reference_binding import _Resolver
+
+        resolver = _Resolver()
+        resolver.refuse = "no such document"
+        client.app.state.reference_resolvers = {f: resolver for f in families}
+        instruction = {"text": "Follow the spec.", "task_types": ["qa.test"],
+                       "references": [{"ref": "fake:doc:spec@current", "required": required}]}  # fmt: skip
+
+        resp = client.post(self._URL, json={**self._REQUEST, "task_instructions": [instruction]})
+
+        assert resp.status_code == 422, resp.text
+        assert "fake:doc:spec@current" in resp.json()["detail"]["error"]["message"]
+        mock_cycle_registry.create_cycle.assert_not_called()
+        assert await records.list_project("hello_squad") == []
+
 
 class TestTheConsolesResolvedRequestCreatesTheCLIsCycle:
     """#2520, entered as the console creates a cycle: the request-profile route resolves the body,

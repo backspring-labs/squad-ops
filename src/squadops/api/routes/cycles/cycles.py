@@ -90,9 +90,10 @@ from squadops.cycles.preflight import (
 )
 from squadops.cycles.replay import check_replay_compatibility, parse_replay_declaration
 from squadops.events.types import EventType
-from squadops.memory.pinning import pin_standalone_cycle
+from squadops.memory.pinning import cycle_binding, pin_standalone_cycle
 from squadops.memory.records import RecordRefused, Source, SourceKind
-from squadops.memory.task_instructions import admitted
+from squadops.memory.reference_binding import bound_for_cycle
+from squadops.memory.task_instructions import admitted, requested_references
 from squadops.ports.llm.provider import LLMCapability
 from squadops.sandbox.environment import get_environment_contract
 from squadops.sandbox.main import sandbox_config_from_env
@@ -355,6 +356,8 @@ class CreationPorts:
     #: Where a cycle's admitted task instructions are stored (#2178): by the route, and by a
     #: campaign's launch, which creates its cycles through this same path.
     memory_records: Any | None = None
+    #: What binds a task instruction's ``@current`` references with its cycle, by family (T16).
+    reference_resolvers: Any | None = None
 
     @classmethod
     def of_request(cls, request: Request) -> "CreationPorts":
@@ -373,6 +376,7 @@ class CreationPorts:
             llm=optional(get_llm_port),
             artifact_vault=optional(get_artifact_vault),
             memory_records=get_memory_records(request),
+            reference_resolvers=get_reference_resolvers(request),
         )
 
 
@@ -501,7 +505,9 @@ async def prepare_cycle(
         cycle,
         first_run(cycle, initiated_by=initiated_by),
         preflight_warnings,
-        _admitted_instructions(cycle, body, actor=instructed_by or created_by),
+        await _admitted_instructions(
+            cycle, body, actor=instructed_by or created_by, resolvers=ports.reference_resolvers
+        ),
     )
 
 
@@ -598,22 +604,28 @@ async def create_cycle(
     )
 
 
-def _admitted_instructions(cycle, body, *, actor: str) -> tuple:
+async def _admitted_instructions(cycle, body, *, actor: str, resolvers) -> tuple:
     """The task instructions a cycle is created with (SIP-0110 Appendix A §3.5; #2178), as
-    records, or the refusal (422) for one the rules refuse. Pure: whoever stores the cycle stores
-    them, the route or a campaign's launch, before its first run is enqueued."""
+    records, their ``@current`` references bound with the cycle (T16), or the refusal (422) for one
+    the rules refuse or that won't bind. Nothing is stored: whoever stores the cycle stores them,
+    the route or a campaign's launch, before its first run is enqueued."""
     if not body.task_instructions:
         return ()
+    requested = [i.model_dump() for i in body.task_instructions]
     try:
+        bound = await bound_for_cycle(
+            requested_references(requested), resolvers or {}, cycle_binding(cycle)
+        )
         return tuple(
             admitted(
-                [i.model_dump() for i in body.task_instructions],
+                requested,
                 project_id=cycle.project_id,
                 cycle_id=cycle.cycle_id,
                 actor=actor,
                 now=datetime.now(UTC),
                 instructable=lambda t: authoring_seam_of(t) is not None,
                 source=Source(SourceKind.CYCLE_REQUEST, {"cycle_id": cycle.cycle_id}),
+                bound=bound,
             )
         )
     except RecordRefused as e:

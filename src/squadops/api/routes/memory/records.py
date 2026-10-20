@@ -25,6 +25,7 @@ chat can vouch for. Its link opens that one turn, and only for the session's own
 
 from __future__ import annotations
 
+import dataclasses
 import logging
 import uuid
 from datetime import UTC, datetime
@@ -67,6 +68,7 @@ from squadops.auth.models import Identity, scopes_for_roles
 from squadops.comms.models import SessionNotFoundError
 from squadops.memory.build_report import exposure_builds
 from squadops.memory.indicators import BuildRow
+from squadops.memory.pinning import cycle_binding
 from squadops.memory.record_uses import NO_EFFECT_MEASURED, chat_uses, task_uses
 from squadops.memory.records import (
     InstructionApplicability,
@@ -90,6 +92,7 @@ from squadops.memory.records import (
     visible,
     withdrawn,
 )
+from squadops.memory.reference_binding import bound_for_cycle, with_bindings
 from squadops.ports.memory.records import RecordConflict
 
 router = APIRouter(prefix="/api/v1/memory-records", tags=["memory"])
@@ -109,6 +112,18 @@ def _who(identity: Identity | None) -> tuple[str, frozenset[str]]:
     if identity is None:
         raise http_error(401, "UNAUTHENTICATED", "a memory record names who wrote it")
     return identity.user_id, frozenset(identity.scopes) | scopes_for_roles(identity.roles)
+
+
+async def _bound_with_cycle(request: Request, cycle: Any, revision: Revision) -> Revision:
+    """A task instruction's revision, its ``@current`` references bound for its cycle as it is
+    written (§3.7; #2178 T16), or the refusal for one that won't bind. Any other record's is as
+    written: a project instruction's is bound when a unit pins it."""
+    if cycle is None:
+        return revision
+    bound = await bound_for_cycle(
+        revision.references, get_reference_resolvers(request), cycle_binding(cycle)
+    )
+    return dataclasses.replace(revision, references=with_bindings(revision.references, bound))
 
 
 def _refuse_unbindable(request: Request, revision: Revision) -> None:
@@ -271,6 +286,12 @@ async def create_memory_record(
             campaign_cycle=of_campaign(cycle),
         )  # fmt: skip
         _refuse_unbindable(request, revision)
+        if cycle is not None:
+            # §3.5: a task instruction written here comes after its cycle's admission. Refused
+            # before its references are bound, which neither refusal reads (T16).
+            await refuse_lesson_for_control(request, cycle, revision)
+            await refuse_dispatched(request, cycle, revision.target)
+        revision = await _bound_with_cycle(request, cycle, revision)
         record = new_record(
             record_id=f"mrec_{uuid.uuid4().hex[:16]}",
             kind=body.kind,
@@ -279,10 +300,6 @@ async def create_memory_record(
             owner_id=actor,
             revision=revision,
         )
-        if cycle is not None:
-            # §3.5: a task instruction written here comes after its cycle's admission.
-            await refuse_lesson_for_control(request, cycle, revision)
-            await refuse_dispatched(request, cycle, revision.target)
         await _store(request).create(record)
     except NotPermitted as e:
         raise http_error(403, "FORBIDDEN", str(e)) from e
@@ -462,15 +479,17 @@ async def revise_memory_record(
             owner_id=record.owner_id, campaign_cycle=of_campaign(cycle),
         )  # fmt: skip
         _refuse_unbindable(request, revision)
-        updated = revised(record, revision)
         if cycle is not None:
             # §3.8: a task instruction is corrected before its task dispatches, or not at all: the
             # types it drops are checked as well as those it names (the second read of #2178).
+            # Refused before its references are bound, which neither refusal reads (T16).
             before = record.current.target.task_types if record.current.target else ()
             after = revision.target.task_types if revision.target else ()
             together = tuple(dict.fromkeys((*before, *after)))
             await refuse_lesson_for_control(request, cycle, revision)
             await refuse_dispatched(request, cycle, TaskTarget(cycle.cycle_id, together))
+        revision = await _bound_with_cycle(request, cycle, revision)
+        updated = revised(record, revision)
         await _store(request).append_revision(record_id, updated.current)
     except NotPermitted as e:
         raise http_error(403, "FORBIDDEN", str(e)) from e

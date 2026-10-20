@@ -3,7 +3,8 @@
 
 A reference names its target and the revision it means: ``<family>:<kind>:<id>@<revision>``. A
 reference written ``@current`` means the revision current when the instruction is bound to a unit,
-which is the unit's admission and never a dispatch. A resolver per family binds it: it gives the
+and never at a dispatch: a project instruction at its unit's admission, a task instruction with its
+cycle, when it is written (#2178). A resolver per family binds it: it gives the
 concrete revision and a digest of the content at that revision. It also reads the content back at
 a bound revision, refusing a digest that no longer matches.
 

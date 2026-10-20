@@ -189,15 +189,27 @@ def test_an_applicability_naming_what_no_dispatch_carries_is_refused(world, appl
 
 
 @pytest.mark.parametrize(
-    ("resolvers", "scope", "status"),
-    [((), "project", 422), (("fake",), "project", 201), (("fake",), "task", 422)],
-    ids=["no-resolver-for-the-family", "a-resolver-binds-it", "a-task-instructions-at-current"],
-)
-def test_at_current_is_written_only_where_a_resolver_will_bind_it(world, resolvers, scope, status):
-    """#2179 T16. Bugs caught: ``@current`` accepted for a family nothing binds, so every task the
-    instruction applies to is held at its first dispatch; ``@current`` on a task instruction,
-    whose binding with its cycle's inputs is not built."""
-    world.client.app.state.reference_resolvers = {f: object() for f in resolvers}
+    ("resolvers", "scope", "status", "stored"),
+    [
+        ((), "project", 422, None),
+        (("fake",), "project", 201, {"ref": "fake:doc:spec@current", "required": True}),
+        ((), "task", 422, None),
+        (("fake",), "task", 201, {"ref": "fake:doc:spec@r1", "required": True,
+                                  "digest": "sha256:r1", "written": "fake:doc:spec@current"}),
+    ],
+    ids=["no-resolver-for-the-family", "a-resolver-binds-it-at-admission",
+         "no-resolver-for-a-task-instruction", "a-task-instruction-binds-it-with-its-cycle"],
+)  # fmt: skip
+def test_at_current_is_written_only_where_a_resolver_will_bind_it(
+    world, resolvers, scope, status, stored
+):
+    """#2179 and #2178 T16. Bugs caught: ``@current`` accepted for a family nothing binds, so every
+    task the instruction applies to is held at its first dispatch; a task instruction's stored as
+    written, so its cycle's tasks would read whatever is current at dispatch; a project
+    instruction's bound at write, when each unit pinning it binds its own."""
+    from tests.unit.memory.test_reference_binding import _Resolver
+
+    world.client.app.state.reference_resolvers = {f: _Resolver() for f in resolvers}
     body = {
         "kind": "instruction",
         "scope": scope,
@@ -212,3 +224,5 @@ def test_at_current_is_written_only_where_a_resolver_will_bind_it(world, resolve
     response = world.as_("ada", Role.ADMIN).create(**body)
 
     assert response.status_code == status, response.text
+    if stored:
+        assert response.json()["revisions"][-1]["references"] == [stored]

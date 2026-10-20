@@ -143,3 +143,45 @@ async def test_a_repair_naming_no_cycle_it_continues_is_refused_not_a_fault(worl
 
     with pytest.raises(LaunchRefused, match="names no cycle it continues"):
         await _service(world, InMemoryMemoryRecords())._build_cycle(intent)
+
+
+def _resolving(w, records, resolver):
+    service = _service(w, records)
+    service._creation = dataclasses.replace(
+        service._creation, reference_resolvers={"fake": resolver}
+    )
+    return service
+
+
+async def test_a_carried_reference_is_bound_again_for_the_continuation(world):  # noqa: F811
+    """T16's task part, §3.7: "the new cycle's admission records its own binding". Bugs caught: the
+    copy keeping the revision its original's cycle bound, so a repair reads a target revised since;
+    a carry whose reference won't bind for the continuation launched without it, rather than
+    refused for the supervisor."""
+    from squadops.memory.records import Reference
+    from tests.unit.memory.test_reference_binding import _Resolver
+
+    records = InMemoryMemoryRecords()
+    original = _instruction("mrec_carry", carries=True)
+    bound = Reference("fake:doc:spec@r1", True, digest="sha256:r1", written="fake:doc:spec@current")
+    original = dataclasses.replace(
+        original, revisions=(dataclasses.replace(original.current, references=(bound,)),)
+    )
+    await records.create(original)
+    resolver = _Resolver()
+    resolver.revision = "r2"  # the target was revised after the original's cycle bound it
+    intent = await _repair_intent(world)
+
+    cycle = await _resolving(world, records, resolver)._build_cycle(intent)
+
+    [copy] = [r for r in await records.list_project("group_run")
+              if r.current.target.cycle_id == cycle.cycle_id]  # fmt: skip
+    [reference] = copy.current.references
+    assert (reference.ref, reference.digest, reference.written) == (
+        "fake:doc:spec@r2", "sha256:r2", "fake:doc:spec@current",
+    )  # fmt: skip
+    assert [c.unit_id for c in resolver.seen] == [cycle.cycle_id]
+
+    resolver.refuse = "the document was deleted"
+    with pytest.raises(LaunchRefused, match="the document was deleted"):
+        await _resolving(world, records, resolver)._build_cycle(await _repair_intent(world))

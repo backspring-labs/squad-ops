@@ -27,6 +27,7 @@ from squadops.api.runtime.deps import (
     get_cycle_registry,
     get_flow_executor,
     get_memory_records,
+    get_reference_resolvers,
 )
 from squadops.auth.models import Identity, Scope
 from squadops.campaigns.gate import INCREMENT_RULING_GATE, ruling_transition
@@ -53,8 +54,10 @@ from squadops.cycles.models import (
     validate_workload_type,
 )
 from squadops.events.types import EventType
-from squadops.memory.records import RecordRefused, Source, SourceKind
-from squadops.memory.task_instructions import admitted
+from squadops.memory.pinning import cycle_binding
+from squadops.memory.records import RecordRefused, Source, SourceKind, TaskTarget
+from squadops.memory.reference_binding import bound_for_cycle
+from squadops.memory.task_instructions import admitted, requested_references
 from squadops.ports.cycles.artifact_vault import ArtifactVaultPort
 from squadops.ports.memory.records import RecordConflict
 
@@ -269,9 +272,31 @@ async def _ruling_instructions(
         raise ValidationError("a ruling's task instructions go with an approval")
     if get_memory_records(request) is None:
         raise ValidationError("no store holds task instructions")
+    store = get_memory_records(request)
+    ids = [
+        _ruling_record_id(cycle.cycle_id, body.idempotency_key or "", n, given)
+        for n, given in enumerate(body.task_instructions)
+    ]
+    # One already stored was stored by this ruling's applied attempt, which a repeat replays as it
+    # stands: its framing may have dispatched since, and its reference is bound already (T16).
+    stored = {rid: await store.get(rid) for rid in ids}
+    fresh = [(rid, given) for rid, given in zip(ids, body.task_instructions, strict=True)
+             if stored[rid] is None]  # fmt: skip
+    # deferred (cycle): api.routes.memory.interventions loads api.routes.campaigns, which loads this
+    from squadops.api.routes.memory.interventions import refuse_dispatched
+
+    requested = [given.model_dump() for _, given in fresh]
     try:
+        for item in requested:
+            await refuse_dispatched(
+                request, cycle, TaskTarget(cycle.cycle_id, tuple(item.get("task_types") or ()))
+            )
+        # T16: bound with the ruled cycle, after the refusals that read no reference.
+        bound = await bound_for_cycle(
+            requested_references(requested), get_reference_resolvers(request), cycle_binding(cycle)
+        )
         built = admitted(
-            [i.model_dump() for i in body.task_instructions],
+            requested,
             project_id=cycle.project_id,
             cycle_id=cycle.cycle_id,
             actor=actor,
@@ -281,25 +306,14 @@ async def _ruling_instructions(
                 SourceKind.GATE_DECISION,
                 {"cycle_id": cycle.cycle_id, "run_id": run_id, "gate": INCREMENT_RULING_GATE},
             ),
+            bound=bound,
         )
     except RecordRefused as e:
         raise ValidationError(str(e)) from e
-    records = tuple(
-        dataclasses.replace(
-            r, record_id=_ruling_record_id(cycle.cycle_id, body.idempotency_key or "", n, given)
-        )
-        for n, (r, given) in enumerate(zip(built, body.task_instructions, strict=True))
-    )
-    # deferred (cycle): api.routes.memory.interventions loads api.routes.campaigns, which loads this
-    from squadops.api.routes.memory.interventions import refuse_dispatched
-
-    store = get_memory_records(request)
-    for r in records:
-        # One already stored was stored by this ruling's applied attempt, which a repeat replays:
-        # its framing may have dispatched since, and the replay is answered as the ruling was.
-        if await store.get(r.record_id) is None:
-            await refuse_dispatched(request, cycle, r.current.target)
-    return records
+    made = {
+        rid: dataclasses.replace(r, record_id=rid) for (rid, _), r in zip(fresh, built, strict=True)
+    }
+    return tuple(stored[rid] or made[rid] for rid in ids)
 
 
 def _ruling_record_id(cycle_id: str, key: str, n: int, given: TaskInstructionDTO) -> str:

@@ -117,9 +117,10 @@ def unbound_references(handed_input: Mapping[str, Any] | None) -> list[dict[str,
 
 
 def bound_references(handed_input: Mapping[str, Any] | None) -> list[dict[str, Any]]:
-    """Each reference a unit's admission bound, as a task was handed it: the instruction, the bound
-    reference and its digest (§3.7, T16). A reference written with its revision has no digest and
-    isn't listed: its exposure already names the revision as written."""
+    """Each bound reference a task was handed: the instruction, the bound reference and its digest
+    (§3.7, T16). A project instruction's was bound at its unit's admission, a task instruction's
+    with its cycle. A reference written with its revision has no digest and isn't listed: its
+    exposure already names the revision as written."""
     return [
         {"record_id": i["record_id"], "ref": r["ref"], "digest": r["digest"]}
         for i in (handed_input or {}).get("instructions", ())
