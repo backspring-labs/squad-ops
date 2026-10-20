@@ -725,8 +725,8 @@ checks:
     what: "a revocation names only running units as work to halt, read by the cycle states that still run"
     container: squadops-runtime-api
     code: |
-      from squadops.api.routes.memory import lessons
-      print(sorted(str(s.value) for s in lessons._RUNNING_CYCLE))
+      from squadops.api.routes.memory import held_units
+      print(sorted(str(s.value) for s in held_units._RUNNING_CYCLE))
     expect: "['active', 'created', 'paused']"
   - id: "2231"
     what: "max_proposal_run_retries bounds failed proposal cycles in a row, and the failure past it is its own limit"
