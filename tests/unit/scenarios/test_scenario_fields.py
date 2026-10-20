@@ -71,6 +71,27 @@ def test_a_concept_resolves_to_the_name_the_delivery_declares(declared, name):
     assert resolved["checks"][0]["path"] == name
 
 
+@pytest.mark.parametrize(
+    ("declared", "name"),
+    [
+        ({"RunEvent": {"meetingLocation", "title"}, "RunSummary": {"meetingLocation"}}, "meetingLocation"),
+        ({"Run": {"location"}, "RunEvent": {"meetingLocation"}}, "location"),
+        ({"Event": {"meeting_location"}, "Participant": {"name"}}, "meeting_location"),
+        ({}, "meeting_location"),
+    ],
+    ids=["named-runevent-as-round-7", "an-exact-entity-wins", "named-unrelatedly", "nothing-declared"],
+)  # fmt: skip
+def test_a_concept_resolves_on_the_entity_the_delivery_named_itself(declared, name):
+    """The 2.4 Next.js shakeout's round 7 (``cyc_2ba73ff40024``). Bug caught: a delivery naming its
+    run ``RunEvent``, so ``Run:location`` found no entity and went out as ``meeting_location`` to an
+    app declaring ``meetingLocation``: every create refused, 12 scenarios failed at step 1."""
+    content = parse_scenario(_scenario()).content()
+
+    resolved = resolve(content, LOCATION, declared)
+
+    assert resolved["steps"][0]["json"] == {"title": "Dawn 5k", name: "Riverside"}
+
+
 def test_a_concept_named_in_a_where_check_resolves_to_the_deliverys_name():
     """#2464: "a created run appears in the list" finds the run by its title and meeting place.
     Bug caught: the ``where`` check's concept key left unresolved, so it looks for a field named
@@ -182,8 +203,9 @@ class _Runner:
         )
 
 
+@pytest.mark.parametrize("entity", [b"Run", b"RunEvent"])
 async def test_the_evaluation_resolves_each_scenario_against_the_deliverys_own_manifest(
-    monkeypatch,
+    monkeypatch, entity
 ):
     """The wiring test (#2464): entered at ``evaluate_cycle``, with ``group_run``'s reference
     manifest stored as the cycle's. Bug caught: a concept sent to the runner unresolved, or a
@@ -209,9 +231,9 @@ async def test_the_evaluation_resolves_each_scenario_against_the_deliverys_own_m
     record = await evaluate.evaluate_cycle(
         store=store,
         runner=runner,
-        # Shaped as a delivery's: every delivered manifest read names the entity ``Run``; only the
-        # hand-written reference says ``RunEvent``.
-        vault=_Vault(_REFERENCE_MANIFEST.read_bytes().replace(b"RunEvent", b"Run")),
+        # A delivery names its own entity: ``Run`` in most, ``RunEvent`` as the reference and the
+        # 2.4 Next.js shakeout's round 7 did; either resolves the suite's ``Run`` concepts.
+        vault=_Vault(_REFERENCE_MANIFEST.read_bytes().replace(b"RunEvent", entity)),
         cycle=_Cycle(),
         suite_digest=suite.digest,
         campaign_id=None,
