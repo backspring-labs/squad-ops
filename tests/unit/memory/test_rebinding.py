@@ -83,6 +83,8 @@ async def test_the_store_keeps_every_rebinding_and_refuses_one_read_from_a_stale
     first = rebound(read, _revision_two(record), by="ada", at=T0, why="clarified")
     late = rebound(read, withdrawn(record, by="bo", at=T0, why="x"), by="bo", at=T0, why="x")
 
+    with pytest.raises(SnapshotMoved):  # another pin's snapshot, at the right count
+        await store.rebind_snapshot(replace(first, snapshot_id="snap_other"), after=0)
     await store.rebind_snapshot(first, after=0)
     with pytest.raises(SnapshotMoved):
         await store.rebind_snapshot(late, after=0)
