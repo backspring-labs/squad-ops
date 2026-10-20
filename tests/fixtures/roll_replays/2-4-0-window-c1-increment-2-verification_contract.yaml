@@ -1,0 +1,226 @@
+# Verification contract — emitted by the scaffold expander (SIP-0098).
+# Roll-invariant: framing BINDS these criteria by id; it never authors them.
+# Regenerate with the expander; do not hand-edit.
+contract_version: 1
+skeleton:
+  expander: fullstack_fastapi_react
+  interface_manifest_hash: eb4d6fba8df77b98a39b7c4a3f70e4cf6d13cae5283926194f5d7efbf403286a
+capabilities:
+- python
+- node
+frozen:
+- path: .dockerignore
+  sha256: 8d31ecb9fdf4396dc1ccd424f7b47b5f7386646b0c680b12f65c3015c151697a
+- path: Dockerfile
+  sha256: cb0edb0409244eee4784c65badec73697d156686b018bda53868b29b8116fce2
+- path: backend/__init__.py
+  sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+- path: backend/errors.py
+  sha256: acee1205e05fcf621aa61819f4f51832e94fd33cc50d10d38b4c938e5cdd6028
+- path: backend/main.py
+  sha256: 1d0ea8c4ce2438196a4b3463a5b622f946f3754105c06b09f12aab6452f9a12d
+- path: backend/models.py
+  sha256: 7d9277bf5dcf530c3249025ddd4b7e40a3fc9da8977f16f0511c3d378a36580b
+- path: backend/requirements.txt
+  sha256: 91c0e75b9979625c004d43c76d8a9876ca3794d101ff277285aef448d5675ab2
+- path: backend/store.py
+  sha256: 634ed2c70c34f59ac9de31ac261b9a8adda67f91ae8a199b074dc9627a771042
+- path: conftest.py
+  sha256: 905ff070ee15b9692a3bac380c7e214e51ed97f7ccc69e5a64cec0f95e60e0f6
+- path: frontend/index.html
+  sha256: 166c0d4e42057dc9620e02811cb3ba10026c20f0f349c4b17af634c5185c6a15
+- path: frontend/package.json
+  sha256: f10dfb6f40c789a1271871099cacc2ec5276fcadb1a942f621790691525ee936
+- path: frontend/src/App.jsx
+  sha256: f73841bb00fb2b023f92aec859f8be5df1f2accdbb43184de23d690ccb184d6c
+- path: frontend/src/__tests__/harness.test.jsx
+  sha256: 4cb9209071d7fad138a00b907a2aab890fe977036f19ecfba677c6a1e2f2f163
+- path: frontend/src/api.js
+  sha256: d3531b3567f5abbdd38d6182908f8c38683da85f55ccd201b1374afa34c77c78
+- path: frontend/src/index.css
+  sha256: 6e9c7eeccc326c785b22a991862a9bb4715422eec174f6f4ca2ceea8d55e68ab
+- path: frontend/src/main.jsx
+  sha256: 9fe1b3c5a0c10e44126be15c381d3f96147381910132ca006ac1395fd6a6fe6c
+- path: frontend/src/test-setup.js
+  sha256: 05b8e5382db03b86b7a2cbc4271c0809f73e7e7c13a0592b9069e41e7f303bb3
+- path: frontend/vite.config.js
+  sha256: f8c5d6638a37327840c2d74f5fd16415bd610da1428d1e335e91e030827d0eae
+- path: nginx.conf
+  sha256: bb1961295dfd040c3d6c92b7239105851a44d6974115926d7b192293f3e144cd
+- path: start.sh
+  sha256: 13f608e45ccbdf8a4cd27ec01c3c5ac652e8c0969f29b123bc1c0abaaee50b67
+fill_files:
+  backend/routes.py:
+    interface:
+    - check: endpoint_defined
+      id: vc-routes-endpoints
+      methods_paths:
+      - POST /runs
+      - GET /runs
+      - GET /runs/{run_id}
+      - POST /runs/{run_id}/join
+      - POST /runs/{run_id}/leave
+    - check: import_present
+      id: vc-routes-apierror
+      module: .errors
+      symbol: ApiError
+    implementation:
+    - check: command_exit_zero
+      id: vc-routes-compiles
+      argv:
+      - python
+      - -m
+      - py_compile
+      - backend/routes.py
+      requires: python
+    - check: module_imports
+      id: vc-routes-imports
+      file: backend/routes.py
+      requires: python
+  frontend/src/views/RunList.jsx:
+    interface: []
+    implementation:
+    - check: frontend_compiles
+      id: vc-view-compiles-run-list
+      file: frontend/src/views/RunList.jsx
+      requires: node
+  frontend/src/views/RunCreate.jsx:
+    interface: []
+    implementation:
+    - check: frontend_compiles
+      id: vc-view-compiles-run-create
+      file: frontend/src/views/RunCreate.jsx
+      requires: node
+  frontend/src/views/RunDetail.jsx:
+    interface: []
+    implementation:
+    - check: frontend_compiles
+      id: vc-view-compiles-run-detail
+      file: frontend/src/views/RunDetail.jsx
+      requires: node
+behavioral:
+  build:
+  - check: frontend_build
+    id: vc-frontend-builds
+    requires: node
+  suite:
+    checks:
+    - check: tests_pass
+      id: vc-suite-passes
+      requires: python
+    coverage_expectations:
+    - 'happy path for each endpoint: POST /runs, GET /runs, GET /runs/{run_id}, POST
+      /runs/{run_id}/join, POST /runs/{run_id}/leave'
+    - validation_error -> HTTP 422
+    - run_not_found -> HTTP 404
+    - participant_not_found -> HTTP 404
+    - duplicate_participant -> HTTP 409
+    - capacity_reached -> HTTP 409, message 'This run has reached its capacity.'
+    - tests are order-independent; module-level state reset per test
+  probes:
+  - id: vc-probe-runs
+    subject: backend
+    request:
+      method: POST
+      path: /runs
+      json:
+        title: sample
+        datetime: '2026-08-01T08:00:00'
+        meeting_location: sample
+    expect:
+      status: 201
+      json_has:
+      - id
+      - title
+      - datetime
+      - meeting_location
+      - participants
+    capture:
+      run_id: id
+  - id: vc-probe-runs-rejects-blank
+    subject: backend
+    request:
+      method: POST
+      path: /runs
+      json:
+        title: ''
+        datetime: ''
+        meeting_location: ''
+    expect:
+      status: 422
+      error_code: validation_error
+    guards: scaffold
+  - id: vc-probe-runs-join
+    subject: backend
+    request:
+      method: POST
+      path: /runs/{run_id}/join
+      json: &id001
+        name: sample
+    expect:
+      status: 200
+      json_has:
+      - id
+      - title
+      - datetime
+      - meeting_location
+      - participants
+  - id: vc-probe-runs-join-duplicate
+    subject: backend
+    request:
+      method: POST
+      path: /runs/{run_id}/join
+      json: *id001
+    expect:
+      status: 409
+      error_code: duplicate_participant
+  - id: vc-probe-runs-leave
+    subject: backend
+    request:
+      method: POST
+      path: /runs/{run_id}/leave
+      json:
+        name: sample
+    expect:
+      status: 200
+      json_has:
+      - id
+      - title
+      - datetime
+      - meeting_location
+      - participants
+  - id: vc-probe-runs-ordered
+    subject: backend
+    seed:
+    - method: POST
+      path: /runs
+      json:
+        title: sample 1
+        datetime: '2026-08-03T08:00:00'
+        meeting_location: sample 1
+    - method: POST
+      path: /runs
+      json:
+        title: sample 2
+        datetime: '2026-08-01T09:00:00'
+        meeting_location: sample 2
+    - method: POST
+      path: /runs
+      json:
+        title: sample 3
+        datetime: '2026-08-02T08:00:00'
+        meeting_location: sample 3
+    request:
+      method: GET
+      path: /runs
+    expect:
+      status: 200
+      json_has:
+      - id
+      - title
+      - datetime
+      - meeting_location
+      - participants
+      ordered_by:
+        field: datetime
+        direction: asc

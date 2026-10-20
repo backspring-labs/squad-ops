@@ -76,6 +76,7 @@ from squadops.stacks.scaffold import (
     harness_entry_modules,
     is_qa_test_path_for_stack,
     is_scaffoldable_stack,
+    names_entry_module,
     root_persisted_entities,
     scaffold_stack_for,
     testid_surface_instructions,
@@ -1175,6 +1176,52 @@ def _harness_boundary_criteria(
     ]
 
 
+def _without_entry_module_imports(acceptance: list, harness: list[TypedCheck]) -> list:
+    """#2572: ``acceptance`` without each authored ``import_present`` that requires importing an
+    app entry module in a file ``harness`` binds the boundary onto.
+
+    The boundary refuses that import, so no suite passes both rows: one that imports the module
+    fails the boundary, and one that doesn't fails the authored row. ``cyc_898dc802e89b``'s qa
+    suite added the import, disputed the boundary, and the analyzer confirmed the dispute, which
+    ended the run (``contested_check``). The boundary is the row whose intent is right — the suite
+    reaches the app through the scaffold's ``client`` fixture — so the authored row is dropped,
+    loudly, as a derived row is (#1254). Only a row no suite can pass beside the boundary is
+    dropped (``_boundary_refuses``)."""
+    bound = {_normalize(c.params["file"]): c.params["entry_modules"] for c in harness}
+    kept: list = []
+    for criterion in acceptance:
+        if isinstance(criterion, TypedCheck) and criterion.check == "import_present":
+            target = _normalize(criterion.params.get("file", ""))
+            module = criterion.params.get("module")
+            if (
+                target in bound
+                and isinstance(module, str)
+                and _boundary_refuses(module, criterion.params.get("symbol"), bound[target])
+            ):
+                logger.warning(
+                    "entry_module_import_stripped file=%s module=%s — the harness boundary "
+                    "bound on this file refuses importing the app entry module, so no suite "
+                    "passes both rows (#2572)",
+                    target,
+                    module,
+                )
+                continue
+        kept.append(criterion)
+    return kept
+
+
+def _boundary_refuses(module: str, symbol: Any, entry_modules: list[str]) -> bool:
+    """Whether every import that satisfies ``import_present`` of ``module`` (and ``symbol``) is one
+    the harness boundary refuses. The boundary reads a from-import's module without its relative
+    dots, so ``from .main import x`` is ``main``. The one form it reads no module from is
+    ``from . import main``, which satisfies a one-segment relative spec without a symbol (``.main``,
+    ``..main``): that row can pass beside the boundary, and is kept."""
+    name = module.lstrip(".")
+    if module.startswith(".") and symbol is None and "." not in name:
+        return False
+    return names_entry_module(name, entry_modules)
+
+
 def _fill_slot_signature_criteria(
     task_type: str,
     plan_task: Any,
@@ -1336,15 +1383,16 @@ def _plan_task_acceptance(
 ) -> list[Any]:
     """A plan task's acceptance criteria: its own, then the seven families bound onto it, in
     order (#1994, the extraction map's §4e step 5b)."""
-    acceptance = _applicable_acceptance(plan_task)
+    # SIP-0100 1.1: scaffold-owned harness_boundary checks for bound qa.test slots, bound below.
+    harness = _harness_boundary_criteria(task_type, plan_task, contract)
+    acceptance = _without_entry_module_imports(_applicable_acceptance(plan_task), harness)
     # SIP-0098 98.3: in bind mode, resolve the task's criteria_refs into
     # TypedChecks (stamped with contract ids) and merge them in. The plan
     # binds by id, dispatch materializes — evaluation is unchanged. Author
     # mode (no contract / no refs) leaves acceptance_criteria as authored.
     if contract is not None and plan_task.criteria_refs:
         acceptance.extend(resolve_contract_refs(plan_task.criteria_refs, contract))
-    # SIP-0100 1.1: bind scaffold-owned harness_boundary checks onto bound qa.test slots.
-    acceptance.extend(_harness_boundary_criteria(task_type, plan_task, contract))
+    acceptance.extend(harness)
     # #629 (A6/D2): bind contract-owned assertion-vs-contract checks onto
     # bound qa.test suite files — layer 1's authoring block is guidance,
     # this is the guarantee.

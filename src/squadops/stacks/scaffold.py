@@ -27,7 +27,7 @@ import ast
 import hashlib
 import json
 import re
-from collections.abc import Callable, Mapping, Sequence
+from collections.abc import Callable, Iterable, Mapping, Sequence
 from dataclasses import dataclass, field
 from enum import StrEnum
 from pathlib import Path
@@ -1718,6 +1718,13 @@ def harness_entry_modules(stack: str) -> tuple[str, ...]:
     check (author-mode / non-scaffolded parity)."""
     known = _STACKS.get(stack)
     return known.harness_entry_modules if known else ()
+
+
+def names_entry_module(module: str, entry_modules: Iterable[str]) -> bool:
+    """Whether ``module`` is one of ``entry_modules`` or a module inside one: an import the harness
+    boundary refuses (SIP-0100). Read by the boundary itself and by dispatch, which drops an
+    authored row requiring that import (#2572)."""
+    return any(module == m or module.startswith(m + ".") for m in entry_modules)
 
 
 def test_config_files_for_stack(stack: str) -> tuple[str, ...]:
