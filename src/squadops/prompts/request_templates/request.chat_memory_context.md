@@ -1,6 +1,6 @@
 ---
 template_id: request.chat_memory_context
-version: "3"
+version: "4"
 required_variables:
   - memory_lines
 optional_variables: []
@@ -41,3 +41,13 @@ capacity in every suite", propose it as a project instruction, naming the tasks 
 
 An instruction binds the squad's work in the cycles and campaigns admitted after it is confirmed, so
 name only the tasks it is for, and give all three fields: use "*" only where it is for any. The person confirms it on a card, and nothing is kept until they do.
+
+When the person directs one cycle's tasks, such as "tell QA in cyc_0123456789ab to cover the empty
+list", propose a task instruction for that cycle, naming the cycle by its id and the tasks by type:
+
+<memory-capture>{"text": "Cover the empty list.", "kind": "instruction", "scope": "task", "target": {"cycle_id": "cyc_0123456789ab", "task_types": ["qa.test"]}}</memory-capture>
+
+Name only a cycle the person named; if they named none, leave "cycle_id" out and they fill it on the
+card. It reaches that cycle's tasks from their next dispatch, and is refused once they have
+dispatched. When they ask for a lesson to be applied to a cycle's task, add the lesson's revision as
+"lesson": "pat_…@n".

@@ -103,6 +103,38 @@ def is_intervention(record: MemoryRecord) -> bool:
     return record.current.source.kind != SourceKind.CYCLE_REQUEST
 
 
+#: Where a task instruction names the lesson revision it applies ("apply lesson X to this task"):
+#: its provenance, in the revision's source ids (§3.7).
+LESSON_CITED = "lesson_revision"
+
+
+def cited_lesson(revision: Revision) -> str | None:
+    """The lesson revision a task instruction's provenance cites, or ``None``."""
+    value = revision.source.ids.get(LESSON_CITED)
+    return str(value) if value else None
+
+
+def refuse_for_lessons_disabled(revision: Revision, snapshot: Any) -> None:
+    """§3.7's structural guarantee: a ``lessons: disabled`` unit is the lesson-effectiveness control,
+    so no lesson reaches it, through a task instruction either. One whose provenance cites a lesson
+    revision is refused for it, and refused too when the unit's snapshot can't be read, since
+    whether it is the control is then unknown. An instruction citing no lesson is never refused
+    here: the text check is a diagnostic, not this guarantee (§5s)."""
+    lesson = cited_lesson(revision)
+    if lesson is None:
+        return
+    if snapshot is None:
+        raise RecordRefused(
+            f"it applies lesson {lesson}, and whether its cycle's unit disables lessons can't be "
+            "read"
+        )
+    if snapshot.disabled:
+        raise RecordRefused(
+            f"it applies lesson {lesson}, and its cycle's unit declares lessons disabled: the "
+            "lesson-effectiveness control, which no lesson reaches (SIP-0110 Appendix A §3.7)"
+        )
+
+
 def dispatched(
     selector: Collection[str], exposures: Iterable[Exposure], *, cycle_id: str
 ) -> list[tuple[str, str]]:

@@ -501,7 +501,8 @@ def proposed_capture(reply: str) -> tuple[ProposedCapture | None, str]:
             proposal = ProposedCapture(
                 text, RecordKind.INSTRUCTION, RecordScope.TASK,
                 target=_proposed_target(doc.get("target")),
-                lesson_revision=lesson if isinstance(lesson, str) and _LESSON_REVISION.match(lesson)
+                lesson_revision=lesson
+                if isinstance(lesson, str) and "@" in lesson and NAMED_LESSON.fullmatch(lesson)
                 else None,
             )  # fmt: skip
         elif (
@@ -519,8 +520,6 @@ def proposed_capture(reply: str) -> tuple[ProposedCapture | None, str]:
 
 _CAPTURE_SCOPES = frozenset({RecordScope.USER, RecordScope.PROJECT})
 _APPLICABILITY_FIELDS = ("task_types", "roles", "stacks")
-#: A lesson revision as a capture may cite it: ``pat_…@<n>``.
-_LESSON_REVISION = re.compile(r"^pat_[A-Za-z0-9_]+@[0-9]+$")
 
 
 def _proposed_target(raw: Any) -> dict[str, Any]:
@@ -531,7 +530,9 @@ def _proposed_target(raw: Any) -> dict[str, Any]:
     cycle = raw.get("cycle_id")
     types = raw.get("task_types")
     return {
-        "cycle_id": cycle.strip() if isinstance(cycle, str) and _CYCLE_ID.match(cycle.strip()) else "",
+        "cycle_id": cycle.strip()
+        if isinstance(cycle, str) and NAMED_CYCLE.fullmatch(cycle.strip())
+        else "",
         "task_types": tuple(str(t).strip() for t in types if str(t).strip())
         if isinstance(types, list)
         else (),

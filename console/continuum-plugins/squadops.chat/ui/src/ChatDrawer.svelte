@@ -134,16 +134,25 @@
   // A project instruction's applicability, as comma-separated names the person can narrow; '*' is any.
   const APPLICABILITY_FIELDS = ['task_types', 'roles', 'stacks'];
 
-  function openCard({ text, sourceMessageId, choices, kind, scope, suggestion = false, applicability = null }) {
+  function openCard({ text, sourceMessageId, choices, kind, scope, suggestion = false, applicability = null,
+                     target = null, lessonRevision = null }) {
     const exact = choices.find((c) => c.kind === kind && c.scope === scope);
-    const sameKind = exact || choices.find((c) => c.kind === kind);
+    // A task instruction is never offered as a project one: widening it is a new record (§3.5).
+    const sameKind = exact || (scope === 'task' ? null : choices.find((c) => c.kind === kind && c.scope !== 'task'));
     const changed = exact ? null : `Proposed as a ${scope} ${kind}, which this conversation doesn't offer you.`;
     const applies = Object.fromEntries(
       // A field the agent didn't name stays blank: '*' (any) is the person's to choose, never a default.
       APPLICABILITY_FIELDS.map((f) => [f, (applicability?.[f] || []).join(', ')])
     );
+    // A task instruction's cycle and tasks (#2180): a cycle the agent didn't name stays blank.
+    const aims = { cycle_id: target?.cycle_id || '', task_types: (target?.task_types || []).join(', ') };
     card = { text, sourceMessageId, choices, choice: sameKind ? choiceKey(sameKind) : null,
-             suggestion, changed, applies };
+             suggestion, changed, applies, aims, lessonRevision };
+  }
+
+  function targetOf(aims) {
+    return { cycle_id: aims.cycle_id.trim(),
+             task_types: aims.task_types.split(',').map((v) => v.trim()).filter(Boolean) };
   }
 
   function applicabilityOf(applies) {
@@ -175,8 +184,12 @@
         body: JSON.stringify({ message_id: card.sourceMessageId, text: card.text,
                                kind: chosen.kind, scope: chosen.scope,
                                suggestion: chosen.kind === 'note' && card.suggestion,
-                               ...(chosen.kind === 'instruction'
-                                 ? { applicability: applicabilityOf(card.applies) } : {}) }),
+                               ...(chosen.kind === 'instruction' && chosen.scope === 'project'
+                                 ? { applicability: applicabilityOf(card.applies) } : {}),
+                               ...(chosen.scope === 'task'
+                                 ? { target: targetOf(card.aims),
+                                     ...(card.lessonRevision ? { lesson_revision: card.lessonRevision } : {}) }
+                                 : {}) }),
       });
       const body = await resp.json().catch(() => ({}));
       if (resp.status === 201) {
@@ -284,7 +297,8 @@
               openCard({ text: evt.capture.text, sourceMessageId: evt.capture.source_message_id,
                          choices: evt.capture.choices, kind: evt.capture.kind,
                          scope: evt.capture.scope, suggestion: evt.capture.suggestion,
-                         applicability: evt.capture.applicability });
+                         applicability: evt.capture.applicability, target: evt.capture.target,
+                         lessonRevision: evt.capture.lesson_revision });
             } else if (evt.done) {
               // Stream complete
             } else if (evt.text) {
@@ -458,11 +472,24 @@
       {#each card.choices as c}
         <label class="capture-choice">
           <input type="radio" name="capture-choice" value={choiceKey(c)} bind:group={card.choice} />
-          <span>{c.kind === 'instruction' ? `Project instruction (${c.project_id})` : c.scope === 'project' ? `Project note (${c.project_id})` : c.kind === 'preference' ? 'Your preference' : 'Your note'}</span>
+          <span>{c.scope === 'task' ? `Task instruction for one cycle (${c.project_id})` : c.kind === 'instruction' ? `Project instruction (${c.project_id})` : c.scope === 'project' ? `Project note (${c.project_id})` : c.kind === 'preference' ? 'Your preference' : 'Your note'}</span>
           <span class="hint">takes effect {c.takes_effect}</span>
         </label>
       {/each}
-      {#if card.choice?.startsWith('instruction:')}
+      {#if card.choice === 'instruction:task'}
+        <div class="hint">An intervention: it reaches this cycle's named tasks from their next dispatch, and is refused once they have dispatched.</div>
+        <label class="capture-choice">
+          <span>cycle</span>
+          <input class="applies" bind:value={card.aims.cycle_id} placeholder="cyc_…" />
+        </label>
+        <label class="capture-choice">
+          <span>task types</span>
+          <input class="applies" bind:value={card.aims.task_types} />
+        </label>
+        {#if card.lessonRevision}
+          <div class="hint">Applies lesson {card.lessonRevision}: refused for a cycle whose unit disables lessons.</div>
+        {/if}
+      {:else if card.choice?.startsWith('instruction:')}
         <div class="hint">It binds the squad's work in units admitted after you confirm it, on the tasks named here ('*' for any).</div>
         {#each APPLICABILITY_FIELDS as f}
           <label class="capture-choice">

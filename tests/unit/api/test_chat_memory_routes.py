@@ -418,14 +418,14 @@ def _task_receives(records, text: str) -> bool:
     [
         (Role.VIEWER, True, "note", "project"),
         (Role.ADMIN, False, "note", "project"),
-        (Role.ADMIN, True, "instruction", "task"),
+        (Role.VIEWER, True, "instruction", "task"),
         (Role.VIEWER, True, "instruction", "project"),
         (Role.ADMIN, True, "preference", "project"),
     ],
     ids=[
         "no-memory-note",
         "no-binding",
-        "a-task-instruction-waits-for-2178",
+        "no-cycle-authority",
         "no-memory-instruct",
         "no-such-scope-for-the-kind",
     ],

@@ -6,7 +6,7 @@ from datetime import datetime
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from squadops.api.memory_schemas import InstructionApplicabilityDTO
+from squadops.api.memory_schemas import InstructionApplicabilityDTO, TaskTargetDTO
 
 # =============================================================================
 # Request DTOs
@@ -48,8 +48,20 @@ class CaptureRequest(BaseModel):
         default=None,
         description=(
             "A project instruction's task_types, roles and stacks, each explicit ('*' for any). "
-            "Required for an instruction, refused for anything else."
+            "Required for a project instruction, refused for anything else."
         ),
+    )
+    target: TaskTargetDTO | None = Field(
+        default=None,
+        description=(
+            "A task instruction's cycle and its task types (#2180). Required for a task "
+            "instruction, refused for anything else."
+        ),
+    )
+    lesson_revision: str | None = Field(
+        default=None,
+        pattern=r"^pat_[0-9a-f]{16}@\d+$",
+        description="The lesson revision a task instruction applies, kept as its provenance (§3.7)",
     )
 
     model_config = ConfigDict(extra="forbid")
