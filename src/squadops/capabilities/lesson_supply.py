@@ -424,8 +424,9 @@ class LessonContextAssembly(ContextAssemblyPort):
         owner = task.snapshot_owner
         try:
             pinned = await self._recall.pinned_instructions(
-                owner.kind, owner.unit_id, request.binding.project_id
-            )
+                owner.kind, owner.unit_id, request.binding.project_id,
+                cycle_id=task.target_cycle_id,
+            )  # fmt: skip
         except Exception as e:
             logger.warning(
                 "project_instructions_unreadable unit=%s:%s task=%s",

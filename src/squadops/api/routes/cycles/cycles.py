@@ -358,6 +358,9 @@ class CreationPorts:
     memory_records: Any | None = None
     #: What binds a task instruction's ``@current`` references with its cycle, by family (T16).
     reference_resolvers: Any | None = None
+    #: Where a campaign cycle's own bindings of its campaign's pinned instructions are recorded
+    #: when the campaign launches it (SIP-0110 §5ad). Read by a launch only.
+    memory_store: Any | None = None
 
     @classmethod
     def of_request(cls, request: Request) -> "CreationPorts":
@@ -377,6 +380,7 @@ class CreationPorts:
             artifact_vault=optional(get_artifact_vault),
             memory_records=get_memory_records(request),
             reference_resolvers=get_reference_resolvers(request),
+            memory_store=optional(get_memory_store),
         )
 
 

@@ -19,28 +19,38 @@ from __future__ import annotations
 import asyncio
 import logging
 from datetime import UTC, datetime
+from typing import Any
 
 import pydantic
 
 from squadops.api.cycle_schemas import CycleCreateRequest
 from squadops.api.routes.cycles.cycles import CreationPorts, first_run, prepare_cycle
 from squadops.api.routes.cycles.errors import cycle_error_envelope
+from squadops.api.routes.cycles.mapping import cycle_status_of
 from squadops.campaigns.launcher import BoxVerdict, CampaignLauncher, LaunchRefused, unblocked
 from squadops.campaigns.models import (
+    Campaign,
     CampaignState,
     ControlOperation,
     CycleKind,
     LaunchIntent,
     LaunchIntentState,
 )
-from squadops.cycles.models import Cycle, CycleError, Run, RunInitiator, RunStatus
+from squadops.cycles.models import Cycle, CycleError, CycleStatus, Run, RunInitiator, RunStatus
 from squadops.events.types import EventType
+from squadops.memory.cycle_bindings import instructions_bound_for, missing_from, names_current
+from squadops.memory.lessons import UnitKind
 from squadops.memory.pinning import cycle_binding
 from squadops.memory.records import RecordRefused
 from squadops.memory.reference_binding import bound_for_cycle
 from squadops.memory.task_instructions import carried, carrying
+from squadops.ports.memory.cross_cycle import RecordIncompatible
 
 logger = logging.getLogger(__name__)
+
+#: A cycle in one of these dispatches nothing more, so it needs no binding filled (§5ad). A paused
+#: one can resume, so it isn't one.
+_ENDED = frozenset({CycleStatus.COMPLETED, CycleStatus.CANCELLED})
 
 #: The launches that continue an earlier cycle, so carry its instructions given to carry (§3.7).
 _CONTINUING = frozenset({CycleKind.REPAIR, CycleKind.RETRY})
@@ -113,7 +123,38 @@ class CampaignLaunchService:
             for record in prepared.instructions:
                 await records.create(record)
         await self._carry_instructions(intent, prepared.cycle)
+        await self._bind_for_cycle(campaign, prepared.cycle)
         return prepared.cycle
+
+    async def _bind_for_cycle(self, campaign: Campaign, cycle: Cycle) -> None:
+        """SIP-0110 §5ad (the owner's ruling of 2026-10-20): the campaign's snapshot fixes which
+        instruction revisions are in force, and this cycle binds their ``@current`` references at
+        its own pinned source commit, now, as its launch. Every dispatch of the cycle reads what is
+        recorded here. A store that can't be read or written is a fault the next drain repeats:
+        the cycle never launches reading a binding it doesn't have."""
+        store = self._creation.memory_store
+        if store is None:
+            return  # no snapshot is pinned without a store, so nothing to bind
+        try:
+            snapshot = await store.get_snapshot(UnitKind.CAMPAIGN, campaign.campaign_id)
+        except RecordIncompatible as e:
+            # Deterministic: as a fault every drain would repeat it, holding every launch behind
+            # it. Refused, so the campaign escalates.
+            raise LaunchRefused(
+                f"VALIDATION_ERROR: the campaign's snapshot can't be read: {e}"
+            ) from e
+        if snapshot is None or not names_current(snapshot.instructions):
+            return
+        instructions = await instructions_bound_for(
+            snapshot.instructions, self._creation.reference_resolvers or {}, cycle_binding(cycle)
+        )
+        await store.record_cycle_bindings(
+            cycle.cycle_id,
+            UnitKind.CAMPAIGN.value,
+            campaign.campaign_id,
+            instructions,
+            datetime.now(UTC),
+        )
 
     async def _carry_instructions(self, intent: LaunchIntent, cycle: Cycle) -> None:
         """A repair or a retry continues a cycle (§10a), and carries into it each of that cycle's
@@ -190,6 +231,100 @@ class CampaignLaunchService:
                 if run is not None:
                     started.append(run)
             return started
+
+    async def _fill_before_first_run(self, cycle: Cycle) -> None:
+        """§5ad: the cycle that starts is the one stored under its launch id, which a repeated
+        launch finds rather than creates. That launch bound the cycle it built and threw away, so
+        the stored cycle holds only what its first attempt bound; a re-binding committed between
+        the attempts listed no launched cycle to reach it (the sixth read of #2570). So before its
+        first run starts, under the launch lock, its missing entries are filled. One that can't be
+        filled is logged, and the run starts: a required reference then holds it, loudly, rather
+        than the run waiting on a drain nothing schedules."""
+        store = self._creation.memory_store
+        if store is None or not cycle.campaign_id:
+            return
+        try:
+            snapshot = await store.get_snapshot(UnitKind.CAMPAIGN, cycle.campaign_id)
+            if snapshot is not None and names_current(snapshot.instructions):
+                await self._fill_binding(store, snapshot, cycle.cycle_id)
+        except Exception:
+            logger.warning(
+                "cycle_binding_launch_fill_failed cycle=%s", cycle.cycle_id, exc_info=True
+            )
+
+    def launches_held(self) -> asyncio.Lock:
+        """§5ad: what a campaign's re-binding holds from listing its launched cycles until its
+        snapshot names the new revision, the lock every drain launches under. No cycle launches in
+        between, binding at the revision being replaced where the re-binding can't see it: one
+        launched before is listed and bound, and one launched after reads the committed snapshot
+        (the fifth read of #2570)."""
+        return self._lock
+
+    async def reconcile_bindings(self) -> list[str]:
+        """§5ad, the sweep's (every interval, beside the ruling bounds): each running cycle of a live
+        campaign holds a binding for every pinned instruction naming ``@current``. One it lacks is
+        filled. A launch and a re-binding write their own entries, under the launch lock and before
+        the snapshot names them, and a cycle's first run is filled before it starts, so this is the
+        safety net: a cycle launched before its campaign's bindings were recorded (the deploy that
+        brings them), or an entry a store lost. An entry the
+        cycle holds is never rewritten. Until filled, a required reference holds its task. Each
+        project, campaign and cycle is apart: one that can't be read is logged, and the rest are
+        filled. Returns the cycles filled."""
+        store = self._creation.memory_store
+        if store is None:
+            return []
+        filled: list[str] = []
+        for project in await self._creation.project_registry.list_projects():
+            try:
+                campaigns = await self._campaigns.list_campaigns(project.project_id)
+            except Exception:
+                logger.warning(
+                    "cycle_binding_reconcile_unlisted project=%s", project.project_id, exc_info=True
+                )
+                continue
+            for campaign in campaigns:
+                if campaign.state is CampaignState.COMPLETED:
+                    continue
+                try:
+                    filled += await self._reconcile_campaign(store, campaign.campaign_id)
+                except Exception:
+                    logger.warning(
+                        "cycle_binding_reconcile_failed campaign=%s",
+                        campaign.campaign_id,
+                        exc_info=True,
+                    )
+        return filled
+
+    async def _reconcile_campaign(self, store: Any, campaign_id: str) -> list[str]:
+        snapshot = await store.get_snapshot(UnitKind.CAMPAIGN, campaign_id)
+        if snapshot is None or not names_current(snapshot.instructions):
+            return []
+        filled = []
+        for intent in await self._campaigns.launch_intents(campaign_id):
+            if intent.state is not LaunchIntentState.LAUNCHED or not intent.cycle_id:
+                continue
+            try:
+                if await self._fill_binding(store, snapshot, intent.cycle_id):
+                    filled.append(intent.cycle_id)
+            except Exception:
+                logger.warning("cycle_binding_fill_failed cycle=%s", intent.cycle_id, exc_info=True)
+        return filled
+
+    async def _fill_binding(self, store: Any, snapshot: Any, cycle_id: str) -> bool:
+        missing = missing_from(await store.get_cycle_binding(cycle_id), snapshot.instructions)
+        if not missing:
+            return False
+        cycles = self._creation.cycle_registry
+        cycle = await cycles.get_cycle(cycle_id)
+        if cycle_status_of(cycle, await cycles.list_runs(cycle_id)) in _ENDED:
+            return False
+        bound = await instructions_bound_for(
+            missing, self._creation.reference_resolvers or {}, cycle_binding(cycle)
+        )
+        await store.record_cycle_bindings(
+            cycle_id, UnitKind.CAMPAIGN.value, snapshot.unit_id, bound, datetime.now(UTC)
+        )
+        return True
 
     async def retry_blocked(self) -> list:
         """§9.3 (#1802): each blocked campaign whose attempt is due reads the box again; one
@@ -268,14 +403,16 @@ class CampaignLaunchService:
         none, and start it if it is still queued and this process has not started it."""
         cycles = self._creation.cycle_registry
         runs = await cycles.list_runs(cycle_id)
-        if runs:
-            run = min(runs, key=lambda r: r.run_number)
-            if run.status != RunStatus.QUEUED.value or run.run_id in self._started:
-                return None
-            cycle = await cycles.get_cycle(cycle_id)
-            self._execute(cycle, run)
-            return run
+        queued = min(runs, key=lambda r: r.run_number) if runs else None
+        if queued is not None and (
+            queued.status != RunStatus.QUEUED.value or queued.run_id in self._started
+        ):
+            return None
         cycle = await cycles.get_cycle(cycle_id)
+        await self._fill_before_first_run(cycle)
+        if queued is not None:
+            self._execute(cycle, queued)
+            return queued
         run = first_run(cycle, initiated_by=RunInitiator.SYSTEM)
         await cycles.create_run(run)
         self._event_bus.emit(

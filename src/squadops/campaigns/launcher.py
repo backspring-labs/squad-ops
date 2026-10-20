@@ -93,23 +93,53 @@ class CampaignLauncher:
 
     async def drain(self) -> list[Launched]:
         """Launch every pending intent the box allows, oldest first. An intent that fails stays
-        pending, and the failure propagates: the next drain repeats it. One the box refuses
-        blocks its campaign (§9.3), one the cycle-create path refuses escalates it (#1971), and
-        one whose campaign is holding waits for it."""
+        pending, and the failure propagates once every other campaign's intents have been
+        launched: the next drain repeats it. One the box refuses blocks its campaign (§9.3), one
+        the cycle-create path refuses escalates it (#1971), and one whose campaign is holding
+        waits for it.
+
+        A failure holds only its own campaign, whose later intents wait so that its order is
+        kept. Before #2179's per-cycle binding a fault here was the store's or the registry's,
+        which every campaign shares; a cycle's launch now asks its project's repository too, so
+        one project whose repository can't be reached would otherwise hold every project's
+        launches behind it, drain after drain (the fifth read of #2570)."""
         launched = []
+        faulted: dict[str, Exception] = {}
         for intent in await self._campaigns.pending_launch_intents():
-            campaign = await self._campaigns.get_campaign(intent.campaign_id)
-            if campaign.state in HOLDING_STATES:
-                continue
-            verdict = await self._box_verdict()
-            if not verdict.allowed:
-                await self._block(campaign, intent, verdict)
+            if intent.campaign_id in faulted:
                 continue
             try:
-                launched.append(await self.launch(intent))
-            except LaunchRefused as refused:
-                await self._escalate_refused(campaign, intent, refused)
+                result = await self._launch_one(intent)
+            except Exception as fault:
+                logger.warning(
+                    "campaign_launch_fault campaign=%s launch=%s",
+                    intent.campaign_id,
+                    intent.launch_id,
+                    exc_info=fault,
+                )
+                faulted[intent.campaign_id] = fault
+                continue
+            if result is not None:
+                launched.append(result)
+        if faulted:
+            raise next(iter(faulted.values()))
         return launched
+
+    async def _launch_one(self, intent: LaunchIntent) -> Launched | None:
+        """One pending intent, as the drain takes it: its campaign holding, the box refusing, the
+        cycle-create path refusing (each recorded, and ``None``), or its cycle launched."""
+        campaign = await self._campaigns.get_campaign(intent.campaign_id)
+        if campaign.state in HOLDING_STATES:
+            return None
+        verdict = await self._box_verdict()
+        if not verdict.allowed:
+            await self._block(campaign, intent, verdict)
+            return None
+        try:
+            return await self.launch(intent)
+        except LaunchRefused as refused:
+            await self._escalate_refused(campaign, intent, refused)
+            return None
 
     async def _escalate_refused(self, campaign, intent: LaunchIntent, refused: LaunchRefused):
         log = await self._campaigns.control_log(campaign.campaign_id)

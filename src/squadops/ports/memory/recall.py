@@ -35,10 +35,14 @@ class FailurePatternRecallPort(ABC):
 
     @abstractmethod
     async def pinned_instructions(
-        self, unit_kind: UnitKind, unit_id: str, project_id: str
+        self, unit_kind: UnitKind, unit_id: str, project_id: str, *, cycle_id: str | None = None
     ) -> tuple[PinnedInstruction, ...]:
         """The project instructions the unit's snapshot pinned at admission (Appendix A §3.7;
         #2179): none when it pinned none. When what it pinned can't be known (its snapshot is
         unreadable or absent, or its pin couldn't read the records), none only if
         ``project_id`` holds no project instruction (``none_could_be_pinned``); otherwise raises
-        ``PinUnknown``, since they bind and an unknown pin is never read as an empty one."""
+        ``PinUnknown``, since they bind and an unknown pin is never read as an empty one.
+
+        For a campaign's cycle (``cycle_id``), each pinned instruction naming an ``@current``
+        reference is read as that cycle bound it at its launch (§5ad). A binding that can't be read
+        raises, so the task holds."""
