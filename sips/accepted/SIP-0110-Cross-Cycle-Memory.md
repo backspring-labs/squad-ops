@@ -2714,11 +2714,15 @@ That gave a gap, found in the Spark lane's G4 review of #2565:
 - **The port gains an optional method,** `binds_nothing_for(project_id) -> str | None`: why the family can bind no
   reference for any unit of the project, or `None` when it may. It isn't abstract, so a resolver without it answers
   `None`, and every existing resolver is unchanged.
-  - The repository family's adapter answers "no source repository" for a Project its managed clones don't hold. That
-    is the MacBook lane's, in #2565, agreed in the G4 exchange (2026-10-20).
+  - **The repository family's adapter answers from the Project registry,** not from whether a clone exists yet. That
+    is the MacBook lane's, in #2565, agreed in the G4 exchange (2026-10-20):
+    - "it is a sample application, with no source repository" for a Project with no source;
+    - "no Project <id> is registered" for an unknown one.
+
+    A registered external Project that hasn't been validated yet has a repository, so its references may bind.
 - **The records route asks it at write,** for every `@current` reference whose family has a resolver, on a creation
-  and a revision. A family that binds nothing for the record's project is refused (`422`), naming the reference and
-  why.
+  and a revision. A family that binds nothing for the record's project is refused (`422`). The refusal names the
+  reference and why, and says the reference can't apply to this project: no revision of it would bind either.
   - **An answer that can't be read is logged and doesn't refuse.** This is an early refusal only: a unit's admission
     still binds the reference, or keeps it unbound with why (§5z).
 - **`CHANGE_PATHS` gains the repository family.** A reference sent with its content is refused naming "a commit to the

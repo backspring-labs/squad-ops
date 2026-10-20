@@ -156,7 +156,8 @@ async def _refuse_unbindable(request: Request, revision: Revision, project_id: s
         raise http_error(
             422,
             "VALIDATION_ERROR",
-            f"no unit of {project_id} can bind {'; '.join(refused)}: name the revision it means",
+            f"no unit of {project_id} can bind {'; '.join(refused)}: the reference can't apply to "
+            "this project",
         )
 
 
