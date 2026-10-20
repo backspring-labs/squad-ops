@@ -89,10 +89,11 @@ re-places it.
 | entry points: the console's memory record view (§A.3.11) | **placed** | 2.4.0, #2182: the view and its uses route shipped in the PR that wrote this row (§5q); the page's capture test remains, live with #2183 |
 | entry points: the acceptance matrix, T1–T17, live on a deploy (§A.5) | **placed** | 2.4.0, #2183 |
 | entry points: the legacy agent store retired (§A.4.3), on the owner's OK for its compose change | **placed** | 2.5.0, #2184 |
+| a unit pinned while a revocation or a withdrawal is answered, missed by its answer (§0.7, §A.3.8) | **placed** | 2.4.0, #2545: found by the second reader on PR #2544 (§5u) |
 
 **What closes this SIP:** Phase 1's four slices shipped in 2.2.0 with the window's finding recorded (§0.13), Phase 2's
 gate ruled by the owner on that finding (both done, §5h), the next build-side experiment shipped or dropped, and the
-entry points' eleven rows (§5g, Appendix A) shipped or dropped.
+entry points' eleven rows (§5g, Appendix A) shipped or dropped, and the pin's race with a revocation (#2545) fixed.
 
 ## 0. The Phase-1 contract (normative, revision 6)
 
@@ -2084,8 +2085,9 @@ moved.
 - **The exposures that used it are marked, not rewritten.** A run's exposures
   (`GET /api/v1/projects/{p}/exposures`) carry `withdrawn_instructions`: each instruction the dispatch was handed whose
   record is withdrawn now, with who withdrew it, when and why. The exposure's own fields are as recorded. The rule is
-  §A.3.8's for both kinds of instruction, so a withdrawn task instruction is marked the same way. When the records
-  can't be read, an exposure that was handed one reads `null`, never "none withdrawn".
+  §A.3.8's for both kinds of instruction, so a withdrawn task instruction is marked the same way. A held task's
+  exposure is marked with nothing: its bundle couldn't be completed, so no instruction reached the model. When the
+  records can't be read, an exposure that was handed one reads `null`, never "none withdrawn".
 - **One helper serves both answers.** Lesson revocation's split between running and finished units moved to a shared
   route module (`held_units`), and its answer is unchanged apart from the sentence below.
 
@@ -2095,9 +2097,13 @@ moved.
   with the existing cycle and campaign controls. An automatic halt needs the executor to stop one unit at its next task
   boundary, which is the restart path #2178's stage 2 builds for a task instruction.
 - **A restart under a new snapshot is a new unit.** A unit pins once (§0.7: a restart reproduces the original), and
-  recall serves what the unit pinned. So a new run of the same cycle or campaign is handed the withdrawn instruction
-  again. The next step now says so, for a revoked lesson too: the restart is a new cycle or campaign. Replacing a
-  running unit's pinned revision in place is re-binding (§A.3.7), still to come in stage 2.
+  recall serves what the unit pinned. So a new run of a standalone cycle, or a new cycle of a campaign, is handed the
+  withdrawn instruction again. The next step now says so, for a revoked lesson too: the restart is a new standalone
+  cycle or a new campaign. Replacing a running unit's pinned revision in place is re-binding (§A.3.7), still to come
+  in stage 2.
+- **A unit pinned while the answer is read can be missed.** The pin reads the records, then stores the snapshot two
+  reads later. A withdrawal answered in between doesn't name that unit, which pinned the withdrawn instruction. A
+  lesson's revocation has had the same window since 2.2. Found by the second reader, by reading; placed as #2545.
 
 **Evidence:** `tests/unit/api/test_instruction_withdrawal.py`.
 - The wiring tests enter where admission pins (`pin_unit`) and where the composer records an exposure
@@ -2109,8 +2115,17 @@ moved.
   records can't be read, the handed exposure reads `null`.
 - The Postgres query (`list_snapshots_pinning`) is tested against the table. A unit whose own instruction quotes the
   withdrawn record's id isn't named.
-- Three mutants are each caught: every snapshot named, an unread records store read as "none withdrawn", and an unread
-  snapshot store read as "none holds it".
+- Each section's withdrawn instruction is marked, an active one isn't, and a held task's exposure is marked with
+  nothing (`tests/unit/memory/test_withdrawn_uses.py`). A note's withdrawal reads no snapshot.
+- Six mutants are each caught:
+  - every snapshot named;
+  - an unread records store read as "none withdrawn";
+  - an unread snapshot store read as "none holds it";
+  - only the project section marked;
+  - a held exposure marked;
+  - every kind's withdrawal reading the snapshots.
+
+  A second reader found the last three surviving, and the tests were added in this PR.
 
 ## 6. Mode neutrality: cycle, duty, and ambient utilization
 
