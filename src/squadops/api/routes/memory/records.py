@@ -524,7 +524,8 @@ async def revise_memory_record(
             # §3.8: a task instruction is corrected before its task dispatches, or not at all: the
             # types it drops are checked as well as those it names (the second read of #2178).
             before = record.current.target.task_types if record.current.target else ()
-            together = tuple(dict.fromkeys((*before, *revision.target.task_types)))
+            after = revision.target.task_types if revision.target else ()
+            together = tuple(dict.fromkeys((*before, *after)))
             await _refuse_dispatched(request, cycle, TaskTarget(cycle.cycle_id, together))
         await _store(request).append_revision(record_id, updated.current)
     except NotPermitted as e:
