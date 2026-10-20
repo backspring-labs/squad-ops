@@ -2516,7 +2516,9 @@ lesson-effectiveness control.
   - `carries_into` ignored;
   - the gate's instructions not stored;
   - the gate's source read as an intervention;
-  - the record id drawn from the retry key alone.
+  - the record id drawn from the retry key alone;
+  - `--carry` not sent;
+  - the gate's instructions file read and not sent.
 
 ## 6. Mode neutrality: cycle, duty, and ambient utilization
 
