@@ -15,36 +15,10 @@ pins. A family with no resolver can't bind ``@current``, and the records refuse 
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
-from dataclasses import dataclass
 
+from squadops.memory.references import BindingContext, BoundReference, ReferenceUnresolved
 
-class ReferenceUnresolved(Exception):
-    """A reference that can't be bound, or read at its bound revision, with why. Admission records
-    it on the pinned instruction, and a required one holds the task it applies to (§3.6)."""
-
-
-@dataclass(frozen=True)
-class BindingContext:
-    """The unit a reference is bound for, as admission knows it.
-
-    ``source_commit`` is the commit the unit's source context pins (SIP-0112 FR-04). It is ``None``
-    for a project with no source context, which a resolver that needs one refuses rather than
-    binding to a default (SIP-0112 §B.5.1)."""
-
-    project_id: str
-    unit_kind: str
-    unit_id: str
-    source_commit: str | None = None
-
-
-@dataclass(frozen=True)
-class BoundReference:
-    """A reference bound to a concrete revision: ``ref`` is rewritten from ``…@current`` to
-    ``…@<revision>``, and ``digest`` is the content's at that revision."""
-
-    ref: str
-    revision: str
-    digest: str
+__all__ = ["BindingContext", "BoundReference", "ReferenceResolverPort", "ReferenceUnresolved"]
 
 
 class ReferenceResolverPort(ABC):

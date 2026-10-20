@@ -16,13 +16,13 @@ from __future__ import annotations
 
 from collections.abc import Mapping
 from dataclasses import replace
+from typing import TYPE_CHECKING
 
 from squadops.memory.records import PinnedInstruction, Reference, is_current
-from squadops.ports.memory.references import (
-    BindingContext,
-    ReferenceResolverPort,
-    ReferenceUnresolved,
-)
+from squadops.memory.references import BindingContext, ReferenceUnresolved
+
+if TYPE_CHECKING:
+    from squadops.ports.memory.references import ReferenceResolverPort
 
 
 async def bound_instruction(

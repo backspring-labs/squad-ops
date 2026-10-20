@@ -17,7 +17,7 @@ from squadops.memory.declarations import memory_context_none, memory_disabled
 from squadops.memory.lessons import RecallPolicy, Snapshot, UnitKind, pin
 from squadops.memory.records import PinnedInstruction, in_force
 from squadops.memory.reference_binding import bound_instruction
-from squadops.ports.memory.references import BindingContext
+from squadops.memory.references import BindingContext
 
 if TYPE_CHECKING:
     from squadops.ports.memory.cross_cycle import CrossCycleMemoryStorePort
