@@ -60,7 +60,6 @@ from squadops.auth.models import Identity, scopes_for_roles
 from squadops.campaigns.models import ControlOperation
 from squadops.capabilities.context_assembly import authoring_seam_of
 from squadops.comms.models import SessionNotFoundError
-from squadops.cycles.models import RunStatus
 from squadops.memory.build_report import exposure_builds
 from squadops.memory.indicators import BuildRow
 from squadops.memory.record_uses import NO_EFFECT_MEASURED, chat_uses, task_uses
@@ -135,21 +134,14 @@ def _of_campaign(cycle: Any) -> bool:
     return bool(getattr(cycle, "campaign_id", None))
 
 
-#: A run in one of these may still dispatch: an instruction added for a task it dispatched would
-#: reach the task's re-takes and repairs with a binding its first dispatch never had (§3.5).
-_LIVE_RUN = frozenset({RunStatus.QUEUED.value, RunStatus.RUNNING.value, RunStatus.PAUSED.value})
-
-
 async def _refuse_dispatched(request: Request, cycle: Any, target: Any) -> None:
     """Refuse (409) an instruction added or revised after admission for a task its cycle has
-    dispatched in a run still running; unknown refuses too (503), never reads as undispatched."""
+    dispatched, in any run; unknown refuses too (503), never reads as undispatched."""
+    store = get_memory_store(request)
     try:
-        runs = await get_cycle_registry(request).list_runs(cycle.cycle_id)
-        live = [r.run_id for r in runs if r.status in _LIVE_RUN]
-        store = get_memory_store(request)
-        if live and store is None:
+        if store is None:
             raise LookupError("the memory store is not configured")
-        exposures = [e for run_id in live for e in await store.list_exposures(run_id)]
+        exposures = await store.list_project_exposures(cycle.project_id)
     except Exception:  # noqa: BLE001 — an unknown dispatch is refused, never assumed absent
         logger.warning("task_instruction_dispatch_unread cycle=%s", cycle.cycle_id, exc_info=True)
         raise http_error(
@@ -157,14 +149,15 @@ async def _refuse_dispatched(request: Request, cycle: Any, target: Any) -> None:
             "MEMORY_UNAVAILABLE",
             f"whether {cycle.cycle_id}'s selected tasks have dispatched can't be read",
         ) from None
-    hit = dispatched(target.task_types, exposures, live)
+    hit = dispatched(target.task_types, exposures, cycle_id=cycle.cycle_id)
     if hit:
         raise http_error(
             409,
             "TASK_DISPATCHED",
-            f"{', '.join(f'{run} {task}' for run, task in hit)} already dispatched: an instruction "
-            "added now would reach its re-takes and repairs with a binding its first dispatch "
-            "didn't have. Give it to the cycle's next run (SIP-0110 Appendix A §3.5)",
+            f"{', '.join(f'{run} {task}' for run, task in hit)} already dispatched, so the work "
+            "would mix a binding its first dispatch didn't have. Give it to a cycle whose selected "
+            "tasks haven't dispatched: a new cycle's create request, or a campaign's next cycle "
+            "(SIP-0110 Appendix A §3.5)",
         )
 
 

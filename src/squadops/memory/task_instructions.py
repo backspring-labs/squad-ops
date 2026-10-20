@@ -10,8 +10,8 @@ It is a **binding** section (§3.6): never omitted, never cut. A task instructio
 fitted into the prompt budget leaves the section incomplete, and the task is not dispatched.
 
 **An instruction given with the cycle's create request is an admitted input.** One added or revised
-after it is an **intervention** (§3.5): allowed only while the tasks it selects haven't dispatched in a
-run still running, and marked in the envelope and the exposure of each dispatch that receives it, so
+after it is an **intervention** (§3.5): allowed only while no task it selects has dispatched in any
+run of the cycle, and marked in the envelope and the exposure of each dispatch that receives it, so
 its measurement is set apart.
 
 Pure: the composer reads the records and the budget, and these rules decide what is handed.
@@ -104,20 +104,17 @@ def is_intervention(record: MemoryRecord) -> bool:
 
 
 def dispatched(
-    selector: Collection[str], exposures: Iterable[Exposure], running: Collection[str]
+    selector: Collection[str], exposures: Iterable[Exposure], *, cycle_id: str
 ) -> list[tuple[str, str]]:
-    """Each ``(run_id, task_id)`` that dispatched a selected task type in a run still ``running``,
-    in the order first seen. An instruction added for one is refused: the task already has its
-    inputs, and its re-takes and repairs would get a binding its first dispatch never had (§3.5).
+    """Each ``(run_id, task_id)`` of ``cycle_id`` that dispatched a selected task type, in any run,
+    in the order first seen. An instruction added or revised for one is refused: the task, its
+    re-takes, its repairs and the work built on its output would mix a binding it never had (§3.5).
     Read from the exposures, which every dispatch of an authoring task records."""
     seen: list[tuple[str, str]] = []
     for e in exposures:
-        if (
-            e.run_id in running
-            and e.query.task_type in selector
-            and (e.run_id, e.task_id) not in seen
-        ):
-            seen.append((e.run_id, e.task_id))
+        if e.cycle_id == cycle_id and e.query.task_type in selector:
+            if (e.run_id, e.task_id) not in seen:
+                seen.append((e.run_id, e.task_id))
     return seen
 
 

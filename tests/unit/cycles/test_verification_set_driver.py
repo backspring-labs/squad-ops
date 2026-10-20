@@ -3915,6 +3915,7 @@ class TestASoloRollProvesTheAbsences:
         monkeypatch.setattr(driver, "boot_audit", lambda *a, **k: {"ran": False})
         monkeypatch.setattr(driver, "pinned_instruction_set", lambda *a, **k: [])
         monkeypatch.setattr(driver, "snapshot_rebindings", lambda *a, **k: [])
+        monkeypatch.setattr(driver, "instruction_interventions", lambda *a, **k: [])
         monkeypatch.setattr(driver, "cycle_log_until", lambda *a, **k: "t1")
         monkeypatch.setattr(driver, "render", lambda *a, **k: "")
         monkeypatch.setattr(
@@ -5651,6 +5652,7 @@ class TestRecordsHaveOneHome:
         monkeypatch.setattr(driver, "boot_audit", lambda *a, **k: {"ran": False})
         monkeypatch.setattr(driver, "pinned_instruction_set", lambda *a, **k: [])
         monkeypatch.setattr(driver, "snapshot_rebindings", lambda *a, **k: [])
+        monkeypatch.setattr(driver, "instruction_interventions", lambda *a, **k: [])
         monkeypatch.setattr(driver, "cycle_log_until", lambda *a, **k: "t1")
         monkeypatch.setattr(driver, "render", lambda *a, **k: "md")
 
@@ -5838,6 +5840,7 @@ class TestTheChainRunsUnattended:
         monkeypatch.setattr(driver, "boot_audit", lambda *a, **k: {"ran": False})
         monkeypatch.setattr(driver, "pinned_instruction_set", lambda *a, **k: [])
         monkeypatch.setattr(driver, "snapshot_rebindings", lambda *a, **k: [])
+        monkeypatch.setattr(driver, "instruction_interventions", lambda *a, **k: [])
         monkeypatch.setattr(driver, "cycle_log_until", lambda *a, **k: "t1")
         monkeypatch.setattr(driver, "cycle_run_states", lambda cycle_id: [])
         monkeypatch.setattr(driver, "render", lambda *a, **k: "")
@@ -7295,6 +7298,14 @@ class TestTheLoginKeepsThePasswordOutOfTheCommand:
         assert "invalid credentials" in str(refused.value)
 
 
+def _psql_answering(snapshot: dict, *, revisions: str = ""):
+    """A ``psql`` stub that answers the snapshot query with ``snapshot`` and the task-instruction
+    revisions query with ``revisions`` (one ``record@revision`` per line)."""
+    import json
+
+    return lambda q: revisions if "memory_record_revisions" in q else json.dumps(snapshot)
+
+
 class TestACountedRollRecordsTheInstructionsItPinned:
     """SIP-0110 Appendix A §3.7 (#2179 stage 2): the project instructions each roll pinned are in
     its record, and a counted roll whose set differs from the previous counted roll's is flagged
@@ -7379,7 +7390,7 @@ class TestACountedRollRecordsTheInstructionsItPinned:
             "collect",
             lambda *a, **k: {"impl_run_id": "run_1", "squad_profile_snapshot_ref": "s"},
         )
-        monkeypatch.setattr(driver, "psql", lambda q: json.dumps(now))
+        monkeypatch.setattr(driver, "psql", _psql_answering(now))
         monkeypatch.setattr(driver, "completed_framing_run", lambda *a, **k: None)
         for name in ("static_checks", "ledger_checks", "loop_texture", "typed_checks_by_check"):
             monkeypatch.setattr(driver, name, lambda *a, **k: {})
@@ -7400,13 +7411,19 @@ class TestACountedRollRecordsTheInstructionsItPinned:
             "now": [{"record_id": "mrec_a", "revision": 2}],
         }
 
+    @pytest.mark.parametrize(
+        ("revisions", "interventions"),
+        [("", None), ("mrec_t@2\nmrec_u@1", [
+            {"record_id": "mrec_t", "revision": 2}, {"record_id": "mrec_u", "revision": 1},
+        ])],
+        ids=["re-bound", "re-bound-and-instructed-after-admission"],
+    )  # fmt: skip
     def test_a_roll_rebound_while_it_ran_is_recorded_and_its_headline_says_it_isnt_counted(
-        self, driver, tmp_path, monkeypatch
+        self, driver, tmp_path, monkeypatch, revisions, interventions
     ):
         """§3.7: a counted roll refuses a re-binding. Wiring, entered at ``_run_cycle``. Bug caught:
         a cycle re-bound through the API mid-roll recorded as an ordinary roll, so an intervention
         moves the yardstick and nothing says so."""
-        import json
 
         cfg = self._cfg(driver, tmp_path, monkeypatch)
         body = {
@@ -7425,7 +7442,7 @@ class TestACountedRollRecordsTheInstructionsItPinned:
             "collect",
             lambda *a, **k: {"impl_run_id": "run_1", "squad_profile_snapshot_ref": "s"},
         )
-        monkeypatch.setattr(driver, "psql", lambda q: json.dumps(body))
+        monkeypatch.setattr(driver, "psql", _psql_answering(body, revisions=revisions))
         monkeypatch.setattr(driver, "completed_framing_run", lambda *a, **k: None)
         for name in ("static_checks", "ledger_checks", "loop_texture", "typed_checks_by_check"):
             monkeypatch.setattr(driver, name, lambda *a, **k: {})
@@ -7444,6 +7461,7 @@ class TestACountedRollRecordsTheInstructionsItPinned:
              "at": "2026-10-20T12:00:00+00:00"},
         ]  # fmt: skip
         assert captured["pinned_instructions"] == [{"record_id": "mrec_a", "revision": 2}]
+        assert captured.get("instruction_interventions") == interventions
 
     def test_a_rebound_roll_is_never_the_baseline_a_later_roll_is_compared_with(
         self, driver, tmp_path, monkeypatch
@@ -7483,6 +7501,18 @@ class TestACountedRollRecordsTheInstructionsItPinned:
         assert "**Re-bound while it ran**: `mrec_a` revision 1 to none (withdrawn) by ada" in out
         assert "this roll is not counted" in out
         assert "Re-bound" not in plain
+
+    def test_the_headline_names_each_instruction_given_after_admission(self, driver, tmp_path):
+        """§3.5. Bug caught: a task instruction added mid-roll recorded but invisible where a
+        reader looks, so the roll reads as counted."""
+        helper = TestTheRecordNamesTheDeployItObserved()
+        cfg = helper._cfg(driver, tmp_path)
+        given = [{"record_id": "mrec_t", "revision": 2}]
+
+        out = driver.render(cfg, "roll 1 of 2", helper._rec(instruction_interventions=given))
+
+        assert "**Instructed after admission**: `mrec_t` revision 2" in out
+        assert "this roll is not counted" in out
 
     @pytest.mark.parametrize(
         ("earlier", "pinned"),

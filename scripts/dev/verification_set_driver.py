@@ -5763,6 +5763,20 @@ def render(cfg: SetConfig, title: str, rec: dict) -> str:
         ),
         *(
             [
+                "- **Instructed after admission**: "
+                + ", ".join(
+                    f"`{i['record_id']}` revision {i['revision']}"
+                    for i in rec["instruction_interventions"]
+                )
+                + ". A task instruction added or revised after a cycle is admitted is an "
+                "intervention, and a counted roll refuses one (SIP-0110 Appendix A §3.5): this "
+                "roll is not counted."
+            ]
+            if rec.get("instruction_interventions")
+            else []
+        ),
+        *(
+            [
                 "- **DIAGNOSTIC — injected fault(s): "
                 f"{', '.join(sorted(declared_fault_names(cfg.overrides)))}"
                 "**. This cycle carried a deliberate emission defect (#1251): its verdict is "
@@ -5995,6 +6009,22 @@ def snapshot_rebindings(cycle_id: str) -> list[dict]:
     ]
 
 
+def instruction_interventions(cycle_id: str) -> list[dict]:
+    """§3.5: each task instruction revision written for the cycle after its admission, by record
+    and revision. One given in the cycle's create request is an admitted input; any other is an
+    intervention, and a counted roll refuses every intervention, so the roll isn't counted."""
+    rows = psql(
+        "select r.record_id || '@' || r.number from memory_record_revisions r "
+        "join memory_records m on m.record_id = r.record_id "
+        f"where m.scope = 'task' and r.document->'target'->>'cycle_id' = '{cycle_id}' "
+        "and r.document->'source'->>'kind' <> 'cycle_request' order by r.record_id, r.number;"
+    )
+    return [
+        {"record_id": ref.rsplit("@", 1)[0], "revision": int(ref.rsplit("@", 1)[1])}
+        for ref in (rows or "").split()
+    ]
+
+
 def instruction_set_change(cfg: SetConfig, pinned: list[dict] | None) -> dict | None:
     """§3.7: a counted roll whose pinned instruction set differs from the set's previous counted
     roll's has changed a listed input (SIP-0110 §0.12), so it is flagged and the yardstick never
@@ -6071,6 +6101,13 @@ def _run_cycle(
                 "a listed input moved (SIP-0110 §0.12)"
             )
             rec["instruction_set_change"] = change
+    interventions = instruction_interventions(cyc)
+    if interventions:
+        rec["instruction_interventions"] = interventions
+        log(
+            f"!! the cycle was given {len(interventions)} task instruction revision(s) after its "
+            "admission: an intervention, so the roll is not counted (SIP-0110 Appendix A §3.5)"
+        )
     rebindings = snapshot_rebindings(cyc)
     if rebindings:
         rec["rebindings"] = rebindings
