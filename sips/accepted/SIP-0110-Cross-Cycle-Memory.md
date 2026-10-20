@@ -2797,13 +2797,18 @@ demonstration (D13). A sample application has no repository, so §5ac refuses it
     bind for the campaign, as the repository family can't (§5z). A reference the campaign bound stays the
     campaign's, shared by every cycle.
   - A store that can't be read or written, or a resolver that fails other than by refusing, is a fault the next drain
-    repeats. A resolver's refusal is kept unbound with why, as at admission. A fault holds only its own campaign's
-    launches: the drain launches every other campaign's intents first, then raises it (`CampaignLauncher.drain`).
+    repeats. A resolver's refusal is kept unbound with why, as at admission. A fault anywhere in an intent's launch
+    holds only its own campaign: the drain launches every other campaign's intents first, then raises it, and the
+    faulted campaign's later intents wait behind it (`CampaignLauncher.drain`).
   - A campaign snapshot this code can't read refuses the launch (`LaunchRefused`), so the campaign escalates. As a
     fault, every drain would repeat it, holding every launch behind it.
   - **No launch falls inside a re-binding.** Every drain launches under one lock, and a campaign's re-binding holds
     it from listing its cycles until its snapshot names the new revision (`CampaignLaunchService.launches_held`). A
     cycle launched before is listed and bound; one launched after binds at the committed snapshot.
+  - **Before its first run starts,** under that lock, the cycle that starts has its missing entries filled. It is
+    the cycle stored under its launch id, which a repeated launch finds rather than creates: that launch bound the
+    cycle it built and threw away, and a re-binding committed between the two attempts listed no launched cycle to
+    reach it. One that can't be filled is logged, and the run starts, so a required reference holds it loudly.
 - **Every dispatch of a campaign cycle reads them.** `pinned_instructions(…, cycle_id=)` applies the cycle's entries
   over the campaign's pin.
   - Each instruction is matched by record and revision, so an entry of a revision the pin no longer holds is never
@@ -2812,7 +2817,7 @@ demonstration (D13). A sample application has no repository, so §5ac refuses it
   - Entries that can't be read hold the task. An instruction the cycle has no entry for is read as the campaign's
     pin, and a required reference holds as before.
 - **A re-binding of the campaign (§5v) reaches its running cycles before its snapshot names the new revision,**
-  under the launch lock.
+  under the launch lock. The campaign's own binding of the replacement reads no cycle, and is made before the lock.
   - **First,** each running cycle binds the replacement at its own commit, and its entry is stored. A cycle is running
     until it completes or is cancelled, by its runs, so a paused one, which can resume, is bound too. If the cycles
     can't be listed, a resolver fails, or an entry can't be stored, the re-binding is refused (`503 CYCLES_UNBOUND`)
@@ -2843,6 +2848,10 @@ demonstration (D13). A sample application has no repository, so §5ac refuses it
   cover is the sweep's: a cycle launched before the bindings existed, or a write a store lost. Until the next pass
   (every 60 s, after the sweep's other steps), a dispatch with a required reference fails its run, as any hold does.
   An optional one is omitted, and disclosed as such.
+- **One hung resolver stalls every campaign's launches** (#2575). A cycle's launch, its fill and a campaign's
+  re-binding each call the resolver under the launcher's single lock, and the port states no time bound. It is
+  latent: no resolver is registered on a deploy. The bound belongs at the port, applied once, and is shared with the
+  repository resolver's lane (#2484, #2565).
 
 **Evidence** (`tests/unit/memory/test_campaign_cycle_bindings.py`, entered at `_build_cycle`, `supply_lessons`, the
 re-binding route and the runtime's sweep loop, with a resolver that binds nothing for the campaign and each cycle at its
@@ -2860,7 +2869,10 @@ own revision):
 - a stale write adds its own revision's entry and changes no other, and a same-revision write never rewrites an entry;
 - a re-binding lists its cycles and commits under the launch lock, and at its commit a running cycle holds both
   revisions' entries; a drain launches nothing while the lock is held;
-- one campaign's launch fault holds only its own launch (`tests/unit/campaigns/test_campaign_launcher.py`);
+- one campaign's launch fault holds only its own launch, a fault before the launch (its campaign unreadable) holds
+  only that campaign, and its later intent waits behind it (`tests/unit/campaigns/test_campaign_launcher.py`);
+- a launch repeated by its launch id after a re-binding fills the stored cycle before its first run, and its first
+  task is handed the new revision bound for it;
 - a withdrawal, or a replacement naming no `@current`, reads no cycle and is answered 201;
 - a resolver fault at launch raises, and an unreadable snapshot refuses the launch;
 - an entry of an earlier revision is never handed for the pinned one.
@@ -2868,7 +2880,7 @@ own revision):
 The Postgres store's rows, one per record and revision and each written once, and its read of no entries as none,
 are `tests/integration/memory/test_postgres_cycle_bindings_integration.py`, which runs in CI.
 
-**The readers** (five fresh agents) found the following, each fixed and tested:
+**The readers** (six fresh agents) found the following, each fixed and tested:
 - **Second read:**
   - a re-binding that failed after the snapshot was committed answered 500 with no control-log row;
   - no repair path for a stale or missing entry;
@@ -2906,8 +2918,20 @@ are `tests/integration/memory/test_postgres_cycle_bindings_integration.py`, whic
   - between the snapshot's commit and the cycles' entries, a dispatch read the new revision with no entry.
 
   The redesign answers the race and the gap at once: the launch lock, held by a campaign's re-binding; entries per
-  revision, written before the commit. The fill before a first run then has nothing to find, and is removed, with its
-  untested branch. The drain isolates a fault per campaign, and the two claims have their tests.
+  revision, written before the commit. The fill before a first run was removed as having nothing left to find, and
+  the sixth read showed otherwise. The drain isolates a fault per campaign, and the two claims have their tests.
+- **Sixth read**, of the fifth read's redesign:
+  - a repeated launch binds the cycle it builds and throws away, not the stored one it finds, so the stored cycle
+    starts without a revision a re-binding committed between the attempts (reproduced by the reader's test);
+  - a fault before the launch itself (the campaign unreadable, the box, a refusal's escalation) still held every
+    campaign, and the faulted campaign's skip of its later intents was untested;
+  - resolver calls run under the one launch lock, so a hung resolver stalls every campaign (#2575, above);
+  - migration `1792`'s key changed in place, which only matters to a database that applied the earlier one. None
+    did: `1792` is on no deploy and not on main.
+
+  Each is answered: the fill before a first run, reinstated at one call site under the lock and named for the
+  repeated launch; the drain's isolation widened to the whole of an intent's launch, with a test of the skip; the
+  campaign's own binding moved outside the lock, and the time bound filed as #2575.
 
 **Mutants, each caught** (single-process runs):
 - **The launch:**
@@ -2946,6 +2970,10 @@ are `tests/integration/memory/test_postgres_cycle_bindings_integration.py`, whic
   - the launch lock not the one drains take;
   - no fault isolation per campaign in the drain;
   - no per-project isolation in the sweep.
+- **The sixth read's:**
+  - no fill before a first run;
+  - the campaign read before the drain's isolation;
+  - no skip of a faulted campaign's later intents.
 
   The Postgres store's `ON CONFLICT … DO NOTHING` is held by the integration test, in CI only while the 2.4 window is
   open.
