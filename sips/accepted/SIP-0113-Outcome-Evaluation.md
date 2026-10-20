@@ -80,7 +80,8 @@ One row per part that ships separately. Statuses as CLAUDE.md defines them. The 
 | phase 0: the per-increment scorecard (#1960) | **shipped** | v2.1.0, PR #2027 |
 | phase 0: reporting-only lint findings on the delivered app (#1937) | **shipped** | v2.1.0, PR #2088 |
 | phase 1: the scenario store, its suites and the campaign's suite pin (§4.1, §4.7) | **shipped** (§10a) | 2.4.0, PR #2448, issue #2413 |
-| phase 1: the runner, outside the squad's containers, on a disposable copy (§4.1; needs the sandbox's X-3, #2421) | **placed** | 2.4.0, #2414 |
+| phase 1: the runner, outside the squad's containers, on a disposable copy (§4.1; needs the sandbox's X-3, #2421) | **placed** | 2.4.0, #2414: the HTTP runner and the cycle-end hook shipped (§10c); the declared start at the hook remains here, and the browser runner moved to #2564 (§10k) |
+| phase 1: the browser runner and page scenarios, in the evaluator's image (§4.1, A2, A3; §10k, proposed; its design review before it is built) | **placed** | 2.4.0, after the window, #2564 |
 | phase 1: the evaluation record and its reference (§4.1, contract 5) | **shipped** (§10b) | 2.4.0, PR #2449, issue #2415 |
 | phase 1: the quality baselines, Lighthouse, axe and lint, in the evaluator's image (§4.2) | **placed** | 2.4.0, #2416 |
 | phase 1: the intervention ledger's classifications (§4.3) | **shipped** (§10d) | 2.4.0, PR #2454, issue #2417 |
@@ -1110,3 +1111,79 @@ Every tree the window evaluated is re-measured with it: each campaign's calibrat
      one.
 3. **Whether the seeded reading should replace §10f's** after one series of both. The proposal keeps both, because
    §10f's reading is what every earlier record has.
+
+### 10k. The browser runner and page scenarios (proposed 2026-10-20, §4.1, A2, A3; #2564, split from #2414; queued for after the window by the owner)
+
+**Status: proposed, not built.** The owner, 2026-10-20: "yes, draft it and queue it for after the window." Its design
+review comes before it is built. This is the part of phase 1's runner §10c names as still to build: "the browser
+runner in the evaluator's image (A2), for `page` surfaces". It moves from #2414 to #2564, and #2414 keeps the declared
+start at the hook (E.4.2). The window runs without it. Its suite (revision 3) has no page scenario, and the suite and
+the measure are frozen inside it (G7).
+
+**What's missing.** §4.1 names browser pages as a surface kind, and A2 and A3 put the browser in the evaluator's image,
+receiving a run's steps on its input. The vocabulary reserves `visit`, `click`, `fill` and `page`, but each is
+`blocked_unverified`, `browser_unavailable` (`squadops.scenarios.steps`).
+- **So nothing independent checks what a user sees,** such as capacity's "2 / 5 joined", or the list's order on the
+  page.
+- **Only the squad's own tests check it,** written by the qa role that the held-out suite exists to stand apart from
+  (§2).
+
+**What is proposed.**
+- **Browser steps, in the suite's own vocabulary,** beside `http`, and mixed freely in one scenario: a scenario can
+  create its run over HTTP, join it through the page, and check what the page shows.
+
+| step or check | what it does |
+|---|---|
+| `{"action": "visit", "path": "/runs/{run_id}"}` | loads a path under the declared UI base, with saved values threaded in as for `http` |
+| `{"action": "fill", "target": {"role": "textbox", "names": ["Name", "Your name"]}, "value": "Ada"}` | types into the first control found |
+| `{"action": "click", "target": {"role": "button", "names": ["Join", "Join run"]}}` | clicks it, then waits for the page to settle |
+| `{"check": "text", "step": 4, "pattern": "2\\s*/\\s*5"}` | the page after that step shows text matching the pattern |
+| `{"check": "count", "step": 4, "target": {"role": "listitem"}, "equals": 2}` | so many elements match |
+| `{"check": "order", "step": 4, "target": {"role": "listitem"}, "patterns": ["Nov", "Dec"]}` | elements matching each pattern appear in this order |
+
+- **Elements are found the way a user finds them:** by role, accessible name and visible text.
+  - A step names its candidate names, as a scenario names its fields' candidates (§10i), and the first one found is
+    used, case-insensitively.
+  - **Never by the delivery's test ids.** §4.1 rules a Project's manifest never a scenario's source, and a test id is
+    the squad's own naming. A step that finds controls by accessible name also reads what axe measures, so an
+    unlabelled control is visible to both.
+- **When a step can't act:**
+  - a control none of the step's names finds is `blocked_unverified`, `surface_absent`, never failed. It is the
+    page's version of an endpoint the delivery doesn't declare;
+  - a control that is found, whose action leaves the page without what the check reads, **fails** the scenario at that
+    check;
+  - every wait is bounded. A wait that runs out fails at its step, naming what it waited for.
+- **Each scenario gets a fresh browser context,** with no cookies or storage carried from the one before, on the
+  instance the scenarios share as today. Each sets up its own data in its own steps (§4.1). §10j's seed is not used.
+- **The driver** is Puppeteer, which the evaluator's image already pins (`puppeteer-core`) for Lighthouse and axe,
+  with the image's Chromium.
+  - **No second driver or browser bundle in an audited image.** Steps are the suite's vocabulary and the runner
+    executes them, so the driver is the runner's implementation.
+  - **Playwright** is the alternative if Puppeteer's waits prove flaky (prediction B2). That would be a new evaluator
+    tag, so no two readings mix drivers.
+- **Held out as the HTTP steps are.** Steps reach the browser on its input only (A3), never on a mounted path, and no
+  squad role sees them. Prediction 2's sweep covers their values as well.
+- **A suite revision with page scenarios** is drafted by the supervisor, read by an independent reviewer, and
+  approved as revision 3 was (D2, #2464). A suite is content-addressed, so it starts a new series. No reading of
+  revision 3 is compared with one of revision 4.
+- **Unchanged:**
+  - the squad's own qa tests, which add no browser framework;
+  - route rendering (SIP-0109 §8.3), the framework's own check that each declared route renders;
+  - every rule of §4.1 on who writes scenarios and what the squad sees.
+
+**Predictions, pre-registered for its reading:**
+
+| # | prediction | falsified by |
+|---|---|---|
+| B1 | a page scenario discriminates. It fails on a tree known to lack its outcome and passes on one known to have it. It is read on the reference pair (`cyc_7a4b7a6fbf0e`, `cyc_20246018f2b8`, where the HTTP capacity scenario failed on the first and passed on the second, §10c) if its delivery shows the indicator; otherwise on a pair the review names | a page scenario that passes on a tree known to lack its outcome. One that passes both trees of every pair is withdrawn as evidence |
+| B2 | it doesn't flake. Every page scenario gives the same result on three runs of one unchanged tree | any differing result. That scenario is withdrawn as evidence, and the driver's waits are the first thing read |
+| B3 | its steps stay held out. No page step's value appears anywhere prediction 2's sweep reads | any marker found |
+
+**What the design review settles:**
+1. **The locator rule:** role and candidate names only, as proposed, or a delivery's accessible labels resolved like
+   §10i's concepts as well.
+2. **Whether a control not found is `surface_absent`,** as proposed, or a failure. A failure would count a different
+   label as a broken app. `surface_absent` lets a page that names nothing a user can find read as unverified.
+3. **The bound on each wait,** measured when built on both stacks' pages, and the browser's cost per evaluation.
+4. **Which outcomes revision 4's page scenarios state:** at least capacity's indicator and the list's order, the two
+   increments the shakeout's HTTP-only suite couldn't see on a page.
