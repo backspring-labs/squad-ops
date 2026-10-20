@@ -91,6 +91,11 @@ class CrossCycleMemoryStorePort(ABC):
         """The pinned snapshots that carry ``approval_id``: the units a revocation names."""
 
     @abstractmethod
+    async def list_snapshots_pinning(self, record_id: str) -> list[Snapshot]:
+        """The pinned snapshots that carry a revision of project instruction ``record_id``: the
+        units its emergency withdrawal names (Appendix A §3.8; #2179)."""
+
+    @abstractmethod
     async def record_exposure(self, exposure: Exposure) -> bool:
         """Store an exposure, once per authoring invocation (``exposure_id``: the run, the task and
         its attempt, §0.2); composing the task again adds nothing, and dispatching it again adds

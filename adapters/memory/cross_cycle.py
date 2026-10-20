@@ -13,6 +13,7 @@ from squadops.memory.chat import ChatExposure
 from squadops.memory.exposures import Exposure
 from squadops.memory.lessons import Approval, PatternRevision, Snapshot, UnitKind
 from squadops.memory.observations import Observation, ObservationSource
+from squadops.memory.project_instructions import units_pinning
 from squadops.ports.memory.cross_cycle import CrossCycleMemoryStorePort, RecordIncompatible
 
 
@@ -114,6 +115,9 @@ class InMemoryCrossCycleMemoryStore(CrossCycleMemoryStorePort):
 
     async def list_snapshots_holding(self, approval_id: str) -> list[Snapshot]:
         return units_holding(approval_id, self._snapshots.values())
+
+    async def list_snapshots_pinning(self, record_id: str) -> list[Snapshot]:
+        return units_pinning(record_id, self._snapshots.values())
 
     async def record_exposure(self, exposure: Exposure) -> bool:
         if exposure.exposure_id in self._exposures:
@@ -368,6 +372,16 @@ class PostgresCrossCycleMemoryStore(CrossCycleMemoryStorePort):
                 approval_id,
             )
         return units_holding(approval_id, [Snapshot.from_dict(r["snapshot_body"]) for r in rows])
+
+    async def list_snapshots_pinning(self, record_id: str) -> list[Snapshot]:
+        # As a revocation's: the text match narrows the rows, the domain's read decides.
+        async with self._pool.acquire() as conn:
+            rows = await conn.fetch(
+                "SELECT snapshot_body FROM memory_snapshots "
+                "WHERE strpos(snapshot_body::text, $1) > 0 ORDER BY pinned_at, unit_id",
+                record_id,
+            )
+        return units_pinning(record_id, [Snapshot.from_dict(r["snapshot_body"]) for r in rows])
 
     async def record_exposure(self, exposure: Exposure) -> bool:
         async with self._pool.acquire() as conn:

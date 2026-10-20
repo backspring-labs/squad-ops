@@ -524,6 +524,46 @@ class TestMemoryLessons:
                 await conn.execute("DELETE FROM memory_approvals WHERE project_id = $1", project)
                 await conn.execute("DELETE FROM memory_revisions WHERE project_id = $1", project)
 
+    async def test_a_withdrawal_names_only_the_units_whose_snapshot_pinned_the_instruction(
+        self, migrated_pool
+    ):
+        """Appendix A §3.8 against the table (#2179). Bugs caught: the text match deciding alone,
+        so a unit whose own instruction quotes the withdrawn record's id is named as holding it; a
+        query that can't read the stored body."""
+        from adapters.memory.cross_cycle import PostgresCrossCycleMemoryStore
+        from adapters.memory.records import InMemoryMemoryRecords
+        from squadops.memory.lessons import UnitKind
+        from squadops.memory.pinning import pin_unit
+        from tests.unit.memory.test_project_instructions import _instruction
+
+        project = "group_run"
+        tag = uuid.uuid4().hex[:8]
+        withdrawn_id, quoting_id = f"mrec_w{tag}", f"mrec_q{tag}"
+        store = PostgresCrossCycleMemoryStore(pool=migrated_pool)
+        units = [f"cyc_holds_{tag}", f"cyc_quotes_{tag}"]
+        try:
+            for unit_id, record in zip(
+                units,
+                [
+                    _instruction(withdrawn_id, "qa.test"),
+                    _instruction(quoting_id, "qa.test", text=f"Unlike {withdrawn_id}, keep ids."),
+                ],
+                strict=True,
+            ):
+                records = InMemoryMemoryRecords()
+                await records.create(record)
+                await pin_unit(
+                    store, unit_kind=UnitKind.CYCLE, unit_id=unit_id, project_id=project,
+                    pinned_at=datetime.now(UTC), disabled=False, records=records,
+                )  # fmt: skip
+
+            holding = await store.list_snapshots_pinning(withdrawn_id)
+
+            assert [s.unit_id for s in holding] == [units[0]]
+        finally:
+            async with migrated_pool.acquire() as conn:
+                await conn.execute("DELETE FROM memory_snapshots WHERE unit_id = ANY($1)", units)
+
     async def test_an_exposure_is_stored_once_per_invocation_and_a_damaged_pin_reads_as_incompatible(
         self, migrated_pool
     ):

@@ -229,6 +229,17 @@ class AssessmentResponse(_Record):
     assessed_at: str
 
 
+class WithdrawnUseResponse(BaseModel):
+    """An instruction the exposure was handed whose record is withdrawn now (Appendix A §3.8)."""
+
+    record_id: str
+    revision: str
+    section: str
+    withdrawn_by: str
+    withdrawn_at: str
+    why: str
+
+
 class ExposureResponse(_Record):
     """One exposure (what a task was supplied) and its latest assessments."""
 
@@ -243,6 +254,9 @@ class ExposureResponse(_Record):
     recalled: dict[str, Any]
     recorded_at: str
     assessments: list[AssessmentResponse]
+    #: The instructions it was handed that are withdrawn now, marked; the exposure is unchanged.
+    #: ``None`` when it was handed instructions and the records couldn't be read.
+    withdrawn_instructions: list[WithdrawnUseResponse] | None = []
 
 
 class AbsenceRateResponse(BaseModel):
@@ -393,3 +407,14 @@ class MemoryRecordResponse(BaseModel):
     current: MemoryRecordRevisionResponse
     revisions: list[MemoryRecordRevisionResponse]
     status_changes: list[dict[str, Any]]
+
+
+class MemoryRecordWithdrawalResponse(MemoryRecordResponse):
+    """A withdrawn record. For a project instruction, the units whose snapshot pinned it (running,
+    then finished) and what to do next: its emergency withdrawal (Appendix A §3.8). No other kind
+    is pinned, so for them the lists are empty and ``next`` is ``None``. A list is ``None`` when the
+    snapshots couldn't be read, and ``next`` says so: unknown is never read as "none holds it"."""
+
+    units_holding_it: list[HoldingUnitResponse] | None = []
+    finished_units_holding_it: list[HoldingUnitResponse] | None = []
+    next: str | None = None

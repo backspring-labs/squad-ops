@@ -14,6 +14,7 @@ from collections.abc import Iterable
 from typing import Any
 
 from squadops.memory.context import RecordRef, Section, SectionKind
+from squadops.memory.lessons import Snapshot
 from squadops.memory.records import MemoryRecord, PinnedInstruction, RecordKind, RecordScope
 from squadops.memory.task_instructions import binding_section
 
@@ -33,6 +34,14 @@ def none_could_be_pinned(records: Iterable[MemoryRecord]) -> bool:
     return not any(
         r.kind == RecordKind.INSTRUCTION and r.scope == RecordScope.PROJECT for r in records
     )
+
+
+def units_pinning(record_id: str, snapshots: Iterable[Snapshot]) -> list[Snapshot]:
+    """The units whose snapshot pinned a revision of ``record_id``: the work its emergency
+    withdrawal names, so it can be halted or restarted under a new snapshot without it and its
+    measurements set apart (Appendix A §3.8, SIP-0110 §0.7). A pinned unit hands the revision to
+    each later task it applies to, so pinning it is holding it, used yet or not."""
+    return [s for s in snapshots if any(p.record_id == record_id for p in s.instructions)]
 
 
 def applicable(
