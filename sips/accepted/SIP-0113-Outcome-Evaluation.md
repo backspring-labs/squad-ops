@@ -1055,6 +1055,10 @@ they are, on the instance the scenarios read, before any scenario writes to it. 
     the capture imports it, so the two never map a seed differently (#2084's base-path fix included).
   - **Its own file.** The screenshots' seed may change for a better picture. This one is part of the measure, so its
     sha256 is part of the measure's version.
+  - **There is a second seeding already:** the route-rendering check (SIP-0109 §8.3,
+    `capabilities/handlers/route_rendering.py`) brings a parameterised route into being through the API with the
+    create probe's request, then reads it in headless Chromium. That check runs in the squad's qa container, and this
+    measure outside it. The review chooses which mapping both should share.
 - **On its own disposable instance.**
   - The same pinned tree is started a second time, in a disposable copy, by the runner's existing start (X-3b,
     §10c). It is seeded, measured, and discarded.
