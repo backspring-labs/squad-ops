@@ -1430,3 +1430,17 @@ checks:
       from squadops.scenarios.fields import resolve
       print(resolve({"json": {"@Run:location": "x"}}, {"Run:location": ["meeting_location", "meetingLocation"]}, {"RunEvent": {"meetingLocation"}}))
     expect: "{'json': {'meetingLocation': 'x'}}"
+  - id: "nextjs-page-suite-invokes"
+    what: a Next.js page suite that renders a real page invokes the application, as round 8's T4 did, in the qa role that judges it
+    container: squadops-eve
+    code: |
+      from squadops.stacks.stack_nextjs_ts import APP_INVOCATION as a
+      print(a.invokes("import CreateRunView from '@/app/runs/new/page'\n"), a.invokes("import { api } from '@/lib/api'\n"), a.mocks_subject("vi.mock('@/app/runs/new/page')"))
+    expect: "True False True"
+  - id: "nextjs-page-suite-invokes-api"
+    what: the same reading in the runtime API, where the verifier re-evaluates a repaired suite
+    container: squadops-runtime-api
+    code: |
+      from squadops.stacks.stack_nextjs_ts import APP_INVOCATION as a
+      print(a.invokes("import CreateRunView from '@/app/runs/new/page'\n"), a.invokes("import { api } from '@/lib/api'\n"), a.mocks_subject("vi.mock('@/app/runs/new/page')"))
+    expect: "True False True"
