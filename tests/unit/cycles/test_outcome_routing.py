@@ -24,7 +24,7 @@ from squadops.cycles.models import (
     TaskFlowPolicy,
 )
 from squadops.cycles.task_outcome import TaskOutcome
-from squadops.tasks.models import TaskResult
+from squadops.tasks.models import INPUT_REFUSAL_EVIDENCE, TaskResult
 
 NOW = datetime(2026, 1, 15, 12, 0, 0, tzinfo=UTC)
 
@@ -465,6 +465,74 @@ class TestFallbackTable:
         status_calls = mock_registry.update_run_status.call_args_list
         terminal_statuses = [c.args[1] for c in status_calls]
         assert RunStatus.FAILED in terminal_statuses
+
+
+class TestInputRefusal:
+    """#2553: a handler that refused its inputs refuses the same envelope again, so the run fails
+    at once, naming why. ``cyc_50354cfc8dbb`` retried it, then ran two correction rounds and failed
+    "Max correction attempts (2) exhausted", with the reason in no log or record."""
+
+    async def test_a_refused_envelope_fails_the_run_with_no_retry_or_correction(
+        self, executor, mock_queue, mock_registry
+    ):
+        refusal = "'artifact_contents' or 'artifact_vault' is required for build tasks"
+
+        def responder(env):
+            return TaskResult(
+                task_id=env["task_id"],
+                status="FAILED",
+                error=f"Validation failed: {refusal}",
+                execution_evidence={INPUT_REFUSAL_EVIDENCE: [refusal]},
+            )
+
+        mock_queue.reply_router.responder = responder
+
+        with patch(
+            "squadops.execution.dispatched_flow_executor.asyncio.sleep",
+            new_callable=AsyncMock,
+        ):
+            await executor.execute_run(cycle_id="cyc_001", run_id="run_001")
+
+        # one dispatch: no retry of the same envelope, and no analysis or repair after it
+        assert mock_queue.publish.call_count == 1
+        [failed] = [
+            c for c in mock_registry.update_run_status.call_args_list
+            if c.args[1] == RunStatus.FAILED
+        ]  # fmt: skip
+        assert "refused its inputs" in failed.kwargs["failure_reason"]
+        assert refusal in failed.kwargs["failure_reason"]
+
+    async def test_a_failure_without_a_refusal_still_retries(
+        self, executor, mock_queue, mock_registry
+    ):
+        """The fast path reads only the refusal's evidence: other evidence keeps D5's retry."""
+        call = {"n": 0}
+
+        def responder(env):
+            call["n"] += 1
+            if call["n"] == 1:
+                return TaskResult(
+                    task_id=env["task_id"], status="FAILED", error="transient",
+                    execution_evidence={"stderr": "connection reset"},
+                )  # fmt: skip
+            return TaskResult(
+                task_id=env["task_id"],
+                status="SUCCEEDED",
+                outputs={"summary": "ok", "role": "strat"},
+            )
+
+        mock_queue.reply_router.responder = responder
+
+        with patch(
+            "squadops.execution.dispatched_flow_executor.asyncio.sleep",
+            new_callable=AsyncMock,
+        ):
+            await executor.execute_run(cycle_id="cyc_001", run_id="run_001")
+
+        assert mock_queue.publish.call_count == 6
+        assert RunStatus.COMPLETED in [
+            c.args[1] for c in mock_registry.update_run_status.call_args_list
+        ]
 
 
 class TestNeedsRepairOutcome:
