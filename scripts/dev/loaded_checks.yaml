@@ -1333,12 +1333,12 @@ checks:
       print([(s.measure, s.spread) for s in spread.spreads])
     expect: "[('lint:total', 2), ('lint:E501', 2)]"
   - id: "2511-criterion-test"
-    what: a Next.js page criterion's test is a file vitest collects (*.test.ts), not one it never runs
+    what: a Next.js page criterion's test is a file vitest collects, a .test.tsx since #2531 and #2534, not one it never runs
     container: squadops-runtime-api
     code: |
       from squadops.stacks.scaffold import criterion_test_path
       print(criterion_test_path("nextjs_ts", "T2", "client_route"))
-    expect: "__tests__/criteria/T2.test.ts"
+    expect: "__tests__/criteria/T2.test.tsx"
   - id: "2512-footprint-brackets"
     what: a footprint reads a Next.js dynamic route's brackets literally
     container: squadops-runtime-api
@@ -1384,4 +1384,18 @@ checks:
     code: |
       from squadops.stacks.development_profiles import get_development_profile
       print(".test.tsx for a suite that renders a page" in get_development_profile("nextjs_ts").test_prompt_supplement)
+    expect: "True"
+  - id: "2534-dom-harness"
+    what: the Next.js scaffold runs a page suite in a DOM with Testing Library, and ships the setup and the harness proof
+    container: squadops-runtime-api
+    code: |
+      from squadops.stacks import stack_nextjs_ts as s
+      print("environmentMatchGlobs" in s._VITEST_CONFIG, "jest-dom" in s._VITEST_SETUP, "findByTestId" in s._HARNESS_DOM_TEST)
+    expect: True True True
+  - id: "2534-qa-guidance"
+    what: the qa author's Next.js guidance tests a page in a DOM, stubbing fetch, not with renderToString
+    container: squadops-eve
+    code: |
+      from squadops.stacks.development_profiles import get_development_profile
+      print("runs in a DOM with Testing Library" in get_development_profile("nextjs_ts").test_prompt_supplement)
     expect: "True"

@@ -148,3 +148,53 @@ def test_fastapis_footprint_for_the_same_delta_is_unchanged_by_the_route_contrac
     )
 
     assert "backend/routes.py" in footprint
+
+
+def _expanded_nextjs():
+    from squadops.stacks.scaffold import expand
+    from tests.unit.capabilities._stack_fixtures import manifest_for_stack
+
+    return {f["name"]: f["content"] for f in expand(manifest_for_stack("nextjs_ts"))}
+
+
+def test_every_page_suite_the_runner_collects_runs_in_a_dom_with_testing_library():
+    """#2534, the 2.4 shakeout's round 3 (``run_a5756a5606ef``). Bug caught: a page suite
+    collected but run in node with no DOM, so a page that loads its data in the browser shows only
+    its loading state and its criterion can never pass; or the DOM named in the config with its
+    packages, its setup file or its proof missing from the tree, so every page suite fails to load."""
+    import json
+    import re
+
+    from squadops.stacks.development_profiles import (
+        matches_test_file_patterns,
+        test_file_patterns_from_glob,
+    )
+
+    tree = _expanded_nextjs()
+    config = tree["vitest.config.ts"]
+    (jsdom_glob,) = re.findall(r"environmentMatchGlobs: \[\['([^']+)', 'jsdom'\]\]", config)
+    (setup,) = re.findall(r"setupFiles: \['([^']+)'\]", config)
+    dom = test_file_patterns_from_glob(jsdom_glob)
+    dev = json.loads(tree["package.json"])["devDependencies"]
+
+    from squadops.stacks.scaffold import test_config_files_for_stack
+
+    for page_suite in (
+        criterion_test_path("nextjs_ts", "T3", "client_route"),
+        "__tests__/run-detail.test.tsx",
+        "__tests__/harness-dom.test.tsx",
+    ):
+        assert matches_test_file_patterns(page_suite, dom), page_suite
+    assert not matches_test_file_patterns("__tests__/runs-api.test.ts", dom)
+    # Each package a page suite imports is declared, and pinned as the stack pins all of them.
+    needed = (
+        "jsdom",
+        "@testing-library/react",
+        "@testing-library/dom",
+        "@testing-library/jest-dom",
+    )
+    assert all(dev.get(p, "")[:1].isdigit() for p in needed), {p: dev.get(p) for p in needed}
+    # The setup file the config names is in the tree, and is one of the test-config files a
+    # frozen evaluation tree carries, or vitest fails to start there.
+    assert setup in tree and setup in test_config_files_for_stack("nextjs_ts")
+    assert "__tests__/harness-dom.test.tsx" in tree

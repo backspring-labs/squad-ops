@@ -49,9 +49,9 @@ STACK_NAME = "nextjs_ts"
 #: #1126: how a suite on this stack invokes the application. Under the in-process model
 #: (#877) a suite reaches the app by loading its ``app/api/`` route handler — an import
 #: statement, a ``require``, or a dynamic ``import(`` (``JS_MODULE_LOAD``, #1533), never a
-#: ``vi.mock('@/app/api/...')`` string — so
-#: there is no ``fetch`` for a correct suite to stub, and mocking the route module under
-#: test is unconditionally self-mocking. These three patterns used to live in the shared
+#: ``vi.mock('@/app/api/...')`` string. An API suite calls the handler directly; a page suite
+#: (#2534) stubs ``fetch`` and routes it to an imported handler, so it still invokes the app.
+#: Mocking the route module under test is unconditionally self-mocking. These three patterns used to live in the shared
 #: detector as if they were every stack's; they are this stack's.
 APP_INVOCATION = AppInvocation(
     invocation_import=JS_MODULE_LOAD + r"""['"`][^'"`]*app/api/""",
@@ -219,9 +219,14 @@ def _package_json(manifest: Any) -> str:
                     "test": "vitest run",
                 },
                 "dependencies": {"next": "14.2.5", "react": "18.3.1", "react-dom": "18.3.1"},
+                # #2534: a page suite renders in a DOM with Testing Library, as stack #1's do.
                 "devDependencies": {
+                    "@testing-library/dom": "10.4.0",
+                    "@testing-library/jest-dom": "6.5.0",
+                    "@testing-library/react": "16.0.1",
                     "@types/node": "20.14.10",
                     "@types/react": "18.3.3",
+                    "jsdom": "25.0.1",
                     "typescript": "5.5.3",
                     "vitest": "1.6.0",
                 },
@@ -296,12 +301,53 @@ const root = path.dirname(fileURLToPath(import.meta.url))
 export default defineConfig({
   esbuild: { jsx: 'automatic' },
   resolve: { alias: { '@': root } },
-  test: { environment: 'node', include: ['"""
+  test: {
+    environment: 'node',
+    // A page suite renders a page, so it runs in a DOM (#2534); an API suite stays in node,
+    // the environment the route handlers run in.
+    environmentMatchGlobs: [['**/__tests__/**/*.test.tsx', 'jsdom']],
+    setupFiles: ['vitest.setup.ts'],
+    include: ['"""
     + "', '".join(VITEST_SUITE_GLOBS)
-    + """'] },
+    + """'],
+  },
 })
 """
 )
+
+#: Scaffold-owned setup (frozen, #2534), stack #1's ``test-setup.js`` for this stack: jest-dom's
+#: matchers on vitest's ``expect``, and Testing Library's cleanup after each test that rendered,
+#: since under ``globals: false`` it registers none itself (#1127). It runs for API suites too,
+#: in node, where there is no document and nothing to clean up.
+_VITEST_SETUP = """// Scaffold-owned (frozen): jest-dom's matchers, and Testing Library's cleanup after each
+// test, so one test's render never leaks into the next (a suite that renders in more than one
+// `it` would otherwise fail "Found multiple elements").
+import '@testing-library/jest-dom/vitest'
+import { afterEach } from 'vitest'
+
+afterEach(async () => {
+  if (typeof document === 'undefined') return
+  const { cleanup } = await import('@testing-library/react')
+  cleanup()
+})
+"""
+
+#: Scaffold-owned harness proof (frozen, #2534): a ``.test.tsx`` suite renders in a DOM and
+#: Testing Library finds a test id in it. It imports no page, so it passes on the bare skeleton
+#: and after any fill, and an install that lost the DOM fails here, by name.
+_HARNESS_DOM_TEST = """// Scaffold-owned harness proof (frozen): a page suite (`.test.tsx`) runs in a DOM, with
+// Testing Library and jest-dom's matchers. Write page suites in NEW files beside this one,
+// rendering the page as below and mocking what it fetches.
+import { describe, expect, it } from 'vitest'
+import { render, screen } from '@testing-library/react'
+
+describe('page test harness', () => {
+  it('renders into a DOM where a test id is found', async () => {
+    render(<main data-testid="harness-root">ready</main>)
+    expect(await screen.findByTestId('harness-root')).toHaveTextContent('ready')
+  })
+})
+"""
 
 _HARNESS_TEST_HEAD = """// Scaffold-owned harness (SIP-0100). QA suites consume the seams this proves, and must
 // not reach past them into the app entry — the boundary that killed pf-25/26 on stack #1.
@@ -681,6 +727,7 @@ def expand_nextjs_ts(manifest: InterfaceManifest) -> list[dict[str, str]]:
         {"name": "tsconfig.json", "content": _TSCONFIG},
         {"name": "next.config.mjs", "content": _NEXT_CONFIG},
         {"name": "vitest.config.ts", "content": _VITEST_CONFIG},
+        {"name": "vitest.setup.ts", "content": _VITEST_SETUP},
         {"name": "lib/models.ts", "content": _models_source(manifest)},
         {"name": "lib/store.ts", "content": _store_source(manifest)},
         {"name": "lib/errors.ts", "content": _errors_source(manifest)},
@@ -688,6 +735,7 @@ def expand_nextjs_ts(manifest: InterfaceManifest) -> list[dict[str, str]]:
         {"name": "app/layout.tsx", "content": _LAYOUT},
         {"name": "app/globals.css", "content": BASELINE_CSS},
         {"name": "__tests__/harness.test.ts", "content": _harness_test_source(manifest)},
+        {"name": "__tests__/harness-dom.test.tsx", "content": _HARNESS_DOM_TEST},
         # #598: rendered from the environment contract and frozen, not builder-authored.
         *render_packaging("nextjs_ts"),
     ]

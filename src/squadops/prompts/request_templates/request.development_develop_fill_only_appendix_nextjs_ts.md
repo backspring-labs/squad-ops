@@ -1,6 +1,6 @@
 ---
 template_id: request.development_develop_fill_only_appendix_nextjs_ts
-version: "3"
+version: "4"
 required_variables:
   - stack
 optional_variables:
@@ -25,6 +25,22 @@ fixed slots** — never to rebuild, rewire, or regenerate the scaffold.
   IS its URL, so a handler in `app/api/runs/[run_id]/route.ts` serves
   `/api/runs/<run_id>`.
 - Page components in `app/**/page.tsx` — implement each component's body.
+- **A form's values come from state or from `FormData`.** A page's tests run in a DOM (jsdom)
+  that does not expose a form's controls as properties of the form: a handler reading
+  `event.currentTarget.email.value` type-checks, builds and works in a browser, then throws in
+  the tests. Either form works in both:
+
+  ```tsx
+  // held in state
+  const [email, setEmail] = useState('')
+  // <input name="email" value={email} onChange={(e) => setEmail(e.target.value)} />
+
+  // or read from the form when it is submitted
+  function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault()
+    const email = new FormData(event.currentTarget).get('email')
+  }
+  ```
 
 **The store seam, stated exactly — pass `TABLES.<Entity>`, never a string you invent:**
 `@/lib/store` exports `TABLES`, one entry per entity a correct application stores as rows of
@@ -71,7 +87,7 @@ server component that opts out of prerendering with `export const dynamic =
   `app/**/route.ts` — the directory determines the URL the app serves.
 - Do NOT edit `lib/models.ts`, `lib/store.ts`, `lib/errors.ts`, `lib/api.ts`,
   `app/layout.tsx`, `app/globals.css`, `package.json`, `tsconfig.json`, `next.config.mjs`,
-  or `vitest.config.ts`.
+  `vitest.config.ts` or `vitest.setup.ts`.
 - **Presentation is already handled.** `app/globals.css` styles ordinary elements —
   headings, lists, tables, forms, inputs, buttons — so plain semantic markup comes out
   looking right with no effort from you. Write `<ul><li>`, `<table>`, `<form>`, `<button>`
