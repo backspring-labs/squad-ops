@@ -618,9 +618,7 @@ def _offered(
             else None
         ),
         "target": (
-            offered_target(proposal.target, source.content)
-            if proposal.target is not None
-            else None
+            offered_target(proposal.target, source.content) if proposal.target is not None else None
         ),
         "lesson_revision": proposal.lesson_revision,
         "source_message_id": source.message_id,
