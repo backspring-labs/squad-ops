@@ -173,3 +173,23 @@ def test_two_cycles_ruled_with_one_key_and_instruction_get_their_own_records():
     assert _ruling_record_id("cyc_a", "approve-1", 0, given) != _ruling_record_id(
         "cyc_b", "approve-1", 0, given
     )
+
+
+async def test_an_approvals_current_reference_is_bound_with_the_ruled_cycle(world):  # noqa: F811
+    """T16's task part. Bug caught: the gate's instruction stored ``@current`` as written, or bound
+    for some unit other than the cycle whose framing and build it directs."""
+    from tests.unit.memory.test_reference_binding import _Resolver
+
+    records = _with_records(world)
+    resolver = _Resolver()
+    world.client.app.state.reference_resolvers = {"fake": resolver}
+    given = {**INSTRUCTION, "references": [{"ref": "fake:doc:spec@current", "required": True}]}
+
+    response = world.rule(task_instructions=[given])
+
+    assert response.status_code == 200, response.text
+    [record] = await records.list_project("group_run")
+    assert [(r.ref, r.digest) for r in record.current.references] == [
+        ("fake:doc:spec@r1", "sha256:r1")
+    ]
+    assert [(c.unit_kind, c.unit_id) for c in resolver.seen] == [("cycle", "cyc_inc")]

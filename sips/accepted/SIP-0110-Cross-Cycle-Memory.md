@@ -82,8 +82,8 @@ re-places it.
 | entry points: chat's conversation history reaching the agent, with session ownership checked (SIP-0085 §4, §9; §A.3.3) | **shipped** | 2.3.0, PR #2247, issue #2175: resuming or reading a session checks its owner and agent first, refused as a missing session; each turn carries its bounded history, the drop counted |
 | entry points: the context-assembly port, inert, at the four seams (§A.3.6) | **shipped** | 2.3.0, #2257 (closes #2176; §5j records where it departs from §A.3.6's text) |
 | entry points: the typed records (notes, preferences, project and task instructions), permissions by kind, provenance (§A.3.2–§A.3.4) | **shipped** (§5l) | 2.4.0, PR #2508, issue #2177 |
-| entry points: task instructions, with the work target, retries, references bound with the cycle, binding holds and emergency withdrawal (§A.3.5–§A.3.8) | **placed** | 2.4.0, #2178: stage 1 (the records reach the tasks they name, binding, the task held when incomplete) shipped in PR #2513 (§5m), stage 2's interventions after admission with `squadops instructions` in PR #2549 (§5w), and `carries_into: continuations` with the increment gate's structured `task_instructions` field in the PR that wrote this row (§5aa); the hold and its release, emergency withdrawal after dispatch, and a task instruction's `@current` (T16's task part) remain |
-| entry points: project instructions in the snapshot with references bound, re-binding, the effective lesson budget, the comparison arms and disclosure (§A.3.6, §A.3.7) | **placed** | 2.4.0, #2179: stage 1 (pinned at admission, binding on the tasks they apply to, the lesson budget after them) shipped in PR #2515 (§5n), stage 2's effective lesson budget (T17) in PR #2526 (§5r), the `memory_context: none` arm with the lesson-text diagnostic in PR #2528 (§5s), a counted roll's pinned instruction set in PR #2533 (§5t), and a project instruction's emergency withdrawal in PR #2544 (§5u), re-binding a running unit's project instruction in PR #2546 (§5v), and `@current` bound at admission, the project part of T16, in the PR that wrote this row (§5z); re-binding a reference's revision, reading a reference's content at dispatch (the MacBook lane, with the hold), and a campaign's repository references (§5z) remain |
+| entry points: task instructions, with the work target, retries, references bound with the cycle, binding holds and emergency withdrawal (§A.3.5–§A.3.8) | **placed** | 2.4.0, #2178: stage 1 (the records reach the tasks they name, binding, the task held when incomplete) shipped in PR #2513 (§5m), stage 2's interventions after admission with `squadops instructions` in PR #2549 (§5w), and `carries_into: continuations` with the increment gate's structured `task_instructions` field in PR #2556 (§5aa), and a task instruction's `@current` bound with its cycle (T16's task part) in the PR that wrote this row (§5ab); the hold and its release, and emergency withdrawal after dispatch remain |
+| entry points: project instructions in the snapshot with references bound, re-binding, the effective lesson budget, the comparison arms and disclosure (§A.3.6, §A.3.7) | **placed** | 2.4.0, #2179: stage 1 (pinned at admission, binding on the tasks they apply to, the lesson budget after them) shipped in PR #2515 (§5n), stage 2's effective lesson budget (T17) in PR #2526 (§5r), the `memory_context: none` arm with the lesson-text diagnostic in PR #2528 (§5s), a counted roll's pinned instruction set in PR #2533 (§5t), and a project instruction's emergency withdrawal in PR #2544 (§5u), re-binding a running unit's project instruction in PR #2546 (§5v), and `@current` bound at admission, the project part of T16, in PR #2555 (§5z); re-binding a reference's revision, reading a reference's content at dispatch (the MacBook lane, with the hold), and a campaign's repository references (§5z) remain |
 | entry points: chat on the substrate, with capture confirmed, chat exposures, server-side project binding and provenance authorized (§A.3.5) | **shipped** | 2.4.0, issue #2180: stage A (the binding, each turn's context and exposure, confirmed capture of notes and preferences, authorized provenance, Q29's deletion) in PR #2517, stage B's project-instruction capture in PR #2525 (§5o), and its task-instruction capture in the PR that wrote this row (§5x) |
 | entry points: lesson inspection from chat; a conversational claim never becomes a lesson (§A.3.5) | **shipped** | 2.4.0, PR #2518, issue #2181 (§5p) |
 | entry points: the console's memory record view (§A.3.11) | **placed** | 2.4.0, #2182: the view and its uses route shipped in the PR that wrote this row (§5q); the page's capture test remains, live with #2183 |
@@ -1709,7 +1709,7 @@ context-assembly port.
 - the hold and its release;
 - interventions after admission, recorded on the cycle (`squadops instructions add`): shipped, §5w;
 - emergency withdrawal after dispatch (§A.3.8);
-- `@current` bound at admission;
+- `@current` bound at admission: shipped, a task instruction's bound with its cycle when it is written, §5ab;
 - `carries_into: continuations`: shipped, §5aa;
 - the gate's structured `instructions` field: shipped as the increment gate's `task_instructions`, §5aa.
 
@@ -2585,6 +2585,80 @@ deploy, and found four smaller things:
   - chat dropping `carries_into`;
   - `--carry` not sent;
   - the instructions file read and not sent.
+
+## 5ab. A task instruction's `@current` reference, bound with its cycle, as built (2026-10-20, #2178, T16's task part; the supervisor, under the owner's grant of 2026-10-19)
+
+**What shipped:** §A.3.7's binding for a task instruction: "when it is admitted with its cycle, or added later by a
+recorded intervention", with the revision "recorded … in the cycle's inputs". It replaces §5z's "a task instruction's
+`@current` stays refused".
+- **Bound when it is written.** A task instruction is its cycle's binding, so each `@current` reference is resolved
+  then, through the same resolver port as a project instruction's (§5z). The record keeps the result as `ref`
+  (`…@<revision>`), `digest`, and `written` (`…@current`, what was given). That happens at each place a task
+  instruction is written:
+  - with the cycle's create request (`prepare_cycle`, so the route's and a campaign launch's alike);
+  - at the increment gate's approval (§5aa);
+  - by an intervention through the records route, a creation or a revision (§5w);
+  - carried into a continuation (§5aa): the copy binds `written` again for the new cycle, which is "the new cycle's
+    admission records its own binding" (§A.3.7).
+- **The unit is the cycle,** at the commit its own source context pins (`cycle_binding`). A campaign's cycle pins its
+  own, so a task instruction's repository reference can bind there, unlike a campaign's project instruction (§5z).
+- **Never stored as `@current`.** The record model refuses a task instruction whose reference still names `@current`,
+  so a write path that forgot to bind can't store one. A revision document keeps `digest` and `written`.
+- **Every dispatch reads the bound revision:**
+  - the first, a re-dispatched attempt, a re-take and a repair;
+  - the handed input carries the bound `ref` with its `digest`;
+  - the exposure's task-instruction section lists them (`bound_references`), as a project instruction's does.
+
+  A target revised after binding reaches the cycle only by revising the instruction before its task dispatches.
+  That revision binds again, and is an intervention (§5w).
+- **The launcher's ports.** A campaign's launches are given the resolvers (`CreationPorts.reference_resolvers`), as
+  the route is. A guard (`test_launcher_creation_ports.py`) now holds the composition root to passing every port
+  `CreationPorts` declares.
+
+**Where it narrows §A.3.6 and §A.3.7, and why:**
+- **A reference that won't bind is refused at write, required or optional,** naming each one and why (`422`). Its
+  writer is there to name the revision or drop it, which is earlier and plainer than §3.6's hold at dispatch.
+  - For a create request, that refusal leaves no cycle. For a campaign's continuation, it is `LaunchRefused`, so the
+    campaign escalates and the supervisor withdraws or revises the instruction.
+  - An optional reference is not omitted and disclosed, as a project instruction's is at admission (§5z). A unit's
+    admission must not fail for one reference, but a single instruction's write can.
+- **A resolver that fails otherwise is a fault, not a refusal.** It propagates, so the write is answered as a server
+  failure and nothing is stored, never as the writer's mistake.
+- **No resolver is registered on main** (§5z), so on main every task instruction's `@current` is refused for want of
+  one: "no resolver binds the … family". The repository family arrives with #2484.
+- **Reading the content at dispatch, and the hold,** remain the MacBook lane's, with #2178's hold (§5z).
+
+**Evidence:**
+- **The create route** (`tests/unit/cycles/test_api_cycles.py`):
+  - a `@current` reference is stored bound, with its digest and what was written;
+  - the resolver is given the created cycle;
+  - with no resolver, a required one refused or an optional one refused, the request is a `422` naming it, and no
+    cycle is created and nothing stored.
+- **The dispatch** (`tests/unit/memory/test_task_reference_binding.py`, written through the records route, composed by
+  `supply_lessons`):
+  - two dispatches either side of the target's revision both read the revision bound at write, and the exposure lists
+    it;
+  - a revision before dispatch binds again;
+  - a resolver that times out raises, and nothing is stored;
+  - a revision document keeps the digest and what was written.
+- **The records route:** the stage-1 test that held `@current` refused on a task instruction
+  (`test_at_current_is_written_only_where_a_resolver_will_bind_it`) now holds the rule that replaced it: bound with
+  its cycle when a resolver binds the family, refused when none does.
+- **The gate:** an approval's `@current` is bound for the ruled cycle.
+- **The carry:** the copy binds again for the continuation, with the new revision and what was written, and is
+  `LaunchRefused` when it won't bind.
+- **Eleven mutants, each caught:**
+  - the route not binding;
+  - the create path given no resolvers;
+  - `of_request` dropping them;
+  - the composition root dropping them;
+  - the digest not handed;
+  - the exposure not listing the bound references;
+  - the carry keeping the old binding;
+  - the carry binding for the continued cycle instead of its own;
+  - the gate not binding;
+  - the document dropping `written`;
+  - a resolver's crash read as a refusal.
 
 ## 6. Mode neutrality: cycle, duty, and ambient utilization
 
