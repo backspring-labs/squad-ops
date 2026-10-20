@@ -50,6 +50,20 @@ async def test_an_approvals_instructions_are_the_ruled_cycles_admitted_inputs(wo
     assert row.binding["task_instructions"] == [record.record_id]
 
 
+async def test_a_ruling_repeated_with_other_instructions_conflicts_and_keeps_the_first(world):  # noqa: F811
+    """§12a. Bug caught: the record ids drawn from the retry key alone, so a repeat with other
+    instructions replays the first ruling and its caller is told they were taken."""
+    records = _with_records(world)
+    world.rule(task_instructions=[INSTRUCTION])
+
+    changed = world.rule(task_instructions=[{**INSTRUCTION, "text": "Make capacity required."}])
+
+    assert changed.status_code == 409, changed.text
+    assert [r.current.body for r in await records.list_project("group_run")] == [
+        INSTRUCTION["text"]
+    ]
+
+
 @pytest.mark.parametrize(
     ("change", "says"),
     [

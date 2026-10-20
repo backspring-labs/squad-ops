@@ -82,7 +82,7 @@ re-places it.
 | entry points: chat's conversation history reaching the agent, with session ownership checked (SIP-0085 §4, §9; §A.3.3) | **shipped** | 2.3.0, PR #2247, issue #2175: resuming or reading a session checks its owner and agent first, refused as a missing session; each turn carries its bounded history, the drop counted |
 | entry points: the context-assembly port, inert, at the four seams (§A.3.6) | **shipped** | 2.3.0, #2257 (closes #2176; §5j records where it departs from §A.3.6's text) |
 | entry points: the typed records (notes, preferences, project and task instructions), permissions by kind, provenance (§A.3.2–§A.3.4) | **shipped** (§5l) | 2.4.0, PR #2508, issue #2177 |
-| entry points: task instructions, with the work target, retries, references bound with the cycle, binding holds and emergency withdrawal (§A.3.5–§A.3.8) | **placed** | 2.4.0, #2178: stage 1 (the records reach the tasks they name, binding, the task held when incomplete) shipped in PR #2513 (§5m), and stage 2's interventions after admission with `squadops instructions` in the PR that wrote this row (§5w); the hold and its release, emergency withdrawal after dispatch, `@current`, `carries_into` and the gate's structured field remain |
+| entry points: task instructions, with the work target, retries, references bound with the cycle, binding holds and emergency withdrawal (§A.3.5–§A.3.8) | **placed** | 2.4.0, #2178: stage 1 (the records reach the tasks they name, binding, the task held when incomplete) shipped in PR #2513 (§5m), stage 2's interventions after admission with `squadops instructions` in PR #2549 (§5w), and `carries_into: continuations` with the increment gate's structured `task_instructions` field in the PR that wrote this row (§5aa); the hold and its release, emergency withdrawal after dispatch, and a task instruction's `@current` (T16's task part) remain |
 | entry points: project instructions in the snapshot with references bound, re-binding, the effective lesson budget, the comparison arms and disclosure (§A.3.6, §A.3.7) | **placed** | 2.4.0, #2179: stage 1 (pinned at admission, binding on the tasks they apply to, the lesson budget after them) shipped in PR #2515 (§5n), stage 2's effective lesson budget (T17) in PR #2526 (§5r), the `memory_context: none` arm with the lesson-text diagnostic in PR #2528 (§5s), a counted roll's pinned instruction set in PR #2533 (§5t), and a project instruction's emergency withdrawal in PR #2544 (§5u), re-binding a running unit's project instruction in PR #2546 (§5v), and `@current` bound at admission, the project part of T16, in the PR that wrote this row (§5z); re-binding a reference's revision, reading a reference's content at dispatch (the MacBook lane, with the hold), and a campaign's repository references (§5z) remain |
 | entry points: chat on the substrate, with capture confirmed, chat exposures, server-side project binding and provenance authorized (§A.3.5) | **shipped** | 2.4.0, issue #2180: stage A (the binding, each turn's context and exposure, confirmed capture of notes and preferences, authorized provenance, Q29's deletion) in PR #2517, stage B's project-instruction capture in PR #2525 (§5o), and its task-instruction capture in the PR that wrote this row (§5x) |
 | entry points: lesson inspection from chat; a conversational claim never becomes a lesson (§A.3.5) | **shipped** | 2.4.0, PR #2518, issue #2181 (§5p) |
@@ -1710,8 +1710,8 @@ context-assembly port.
 - interventions after admission, recorded on the cycle (`squadops instructions add`): shipped, §5w;
 - emergency withdrawal after dispatch (§A.3.8);
 - `@current` bound at admission;
-- `carries_into: continuations`;
-- the gate's structured `instructions` field.
+- `carries_into: continuations`: shipped, §5aa;
+- the gate's structured `instructions` field: shipped as the increment gate's `task_instructions`, §5aa.
 
 ## 5n. Project instructions, stage 1, as built (2026-10-19, #2179; the supervisor, under the owner's grant of 2026-10-19)
 
@@ -2448,6 +2448,75 @@ lesson-effectiveness control.
   - the create route dropping its resolvers;
   - the campaign start dropping its resolvers;
   - an optional unbound reference handed.
+
+## 5aa. A task instruction carried into a continuation, and given at the increment gate, as built (2026-10-20, #2178 stage 2; the supervisor, under the owner's grant of 2026-10-19)
+
+**What shipped:** §A.3.7's exception for continuations, and §A.3.5's structured field at a gate.
+- **`carries_into: continuations`.** A task instruction's target may say it (`TaskTarget.carries_into`; any other value
+  is refused at write). It is given in a cycle's create request, through `POST /api/v1/memory-records`, at the gate
+  (below), or with `squadops instructions add … --carry`. Stored only when set, so every other revision's document is
+  as it was.
+- **Carried by the campaign launcher.** When a campaign launches a repair or a retry, the deciding row names the cycle
+  it continues. The launcher copies into the new cycle each active task instruction of that cycle given with
+  `carries_into: continuations` (`task_instructions.carried`):
+  - **Its own record,** as an admitted input of the new cycle (`source: cycle_request`), linked to the original by
+    `carried_from` in its source. So withdrawing one leaves the other, and each is told apart.
+  - **The same text, task types and references,** with the original's author and confirmer. It keeps
+    `carries_into`, so a repair of the repair carries it on.
+  - **A withdrawn original is not carried,** and one given without `carries_into` never reaches a new cycle, as before.
+  - **A deciding row that names no cycle** is a fault the next drain repeats, never a launch without the binding.
+- **The increment gate's `task_instructions`.** An approval of `progress_increment_ruling` (approved, or approved with
+  refinements) may carry task instructions as a structured field beside its free notes, which reach no prompt. They
+  are for the ruled cycle, whose framing and build follow the gate, and are stored as its admitted inputs
+  (`source: gate_decision`, naming the cycle, run and gate). The CLI's `squadops runs gate … --task-instructions
+  <yaml>` sends a YAML list of `{text, task_types, carries_into?}` and refuses anything else before the ruling is sent.
+  - **Checked before the ruling's row is written:** a return, a task type that authors nothing, a store that isn't
+    there, and a task type the cycle has dispatched (`409 TASK_DISPATCHED`, as §5w) are each refused, and nothing is
+    stored or ruled.
+  - **The `rule` row names them** by record id (`task_instructions` in its binding), only when there are any, so every
+    other ruling's row is as it was.
+  - **Their ids come from the ruling's retry key and what each says.** A repeated ruling replays its row and stores
+    nothing twice. One repeating the key with other instructions is a `conflicting_idempotency_key` refusal, and the
+    first are kept.
+  - **Any other gate refuses the field,** as it refuses a binding and a classification.
+- **Admitted, not interventions.** `is_intervention` reads a `gate_decision` source as admitted, beside
+  `cycle_request`. The verification-set driver's count of after-admission revisions leaves both out. The records route
+  still refuses a client body claiming either source (§5w).
+
+**Where it narrows §A.3.5 and §A.3.7, and why:**
+- **"A gate" is the increment gate.** It is the gate whose free notes §2.3 found reaching no prompt, and its approval
+  launches the work an instruction would direct. A plan review's or a workload gate's ruling takes none: no case has
+  needed one, and the dispatched check would refuse most of them, since the run they follow has dispatched.
+- **"Continuations" are a campaign's repair and retry.** SIP-0109 has no fork kind on main. A cycle created by hand
+  from another is no continuation, and doesn't carry.
+- **A launch repeated by its launch id** carries into the cycle it builds that time, as its own instructions do
+  (#2554): the copies of a build that was never persisted target a cycle id that was never stored, which nothing
+  matches.
+
+**Evidence:**
+- **The gate** (`tests/unit/api/test_ruling_instructions.py`) enters at
+  `POST …/gates/progress_increment_ruling` with the gate's own test world and a records store:
+  - an approval's instructions are the ruled cycle's admitted records, with the gate as their source, and the `rule`
+    row names them;
+  - the same ruling repeated stores them once;
+  - repeated with other instructions, it is refused and the first are kept;
+  - a return, or a task type that authors nothing, is refused and stores nothing;
+  - another gate refuses the field.
+- **The launcher** (`tests/unit/api/test_carried_instructions.py`) enters at `CampaignLaunchService._build_cycle` with
+  a repair intent whose deciding row names the continued cycle:
+  - only the active instruction given to carry reaches the repair, as its own admitted record linked to the original,
+    not an intervention;
+  - a launch that isn't a continuation carries nothing;
+  - a deciding row naming no cycle refuses the launch.
+- **The CLI:** the gate sends a well-formed instructions file and exits 2 on anything else; `instructions add --carry`
+  sends `carries_into`.
+- **Mutants, each caught:**
+  - the carry dropped from the launcher;
+  - a withdrawn original carried;
+  - `carries_into` ignored;
+  - the gate's instructions not stored;
+  - the gate's source read as an intervention;
+  - the record id drawn from the retry key alone.
 
 ## 6. Mode neutrality: cycle, duty, and ambient utilization
 

@@ -41,6 +41,12 @@ def add(
     text: str = typer.Argument(..., help="The instruction"),
     cycle_id: str = typer.Option(..., "--cycle", help="The cycle it directs"),
     task_types: list[str] = typer.Option(..., "--for", help="A task type it reaches; repeatable"),
+    carry: bool = typer.Option(
+        False,
+        "--carry",
+        help="It also reaches a campaign's repair or retry of the cycle (carries_into: "
+        "continuations), each with its own copy",
+    ),
 ):
     """Give a cycle's selected tasks an instruction, before the run that holds them starts."""
     data = _call(
@@ -52,7 +58,11 @@ def add(
             "scope": "task",
             "project_id": project_id,
             "body": text,
-            "target": {"cycle_id": cycle_id, "task_types": task_types},
+            "target": {
+                "cycle_id": cycle_id,
+                "task_types": task_types,
+                **({"carries_into": "continuations"} if carry else {}),
+            },
         },
     )
     if _json(ctx):

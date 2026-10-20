@@ -167,6 +167,41 @@ class TestRunsGateIncrementRuling:
         "content_hash: hash-cap-v2\nkind: feature\n"
     )
 
+    @pytest.mark.parametrize(
+        ("content", "sent"),
+        [
+            ("- text: Keep capacity optional.\n  task_types: [development.develop]\n",
+             [{"text": "Keep capacity optional.", "task_types": ["development.develop"]}]),
+            ("text: not a list\n", None),
+        ],
+        ids=["a-list-is-sent", "anything-else-is-refused"],
+    )  # fmt: skip
+    @patch("squadops.cli.commands.runs._get_client")
+    def test_an_approvals_task_instructions_are_read_from_their_file(
+        self, mock_get_client, tmp_path, content, sent
+    ):
+        """SIP-0110 §3.5 (#2178). Bugs caught: the instructions file read and not sent, so they
+        stay as free notes no prompt sees; a malformed file sent anyway."""
+        reviewed, given = tmp_path / "change_request.yaml", tmp_path / "instructions.yaml"
+        reviewed.write_text(self._CR)
+        given.write_text(content)
+        mock_get_client.return_value = _mock_client(post_val={"status": "ok"})
+
+        result = runner.invoke(
+            app,
+            ["runs", "gate", "group_run", "cyc_1", "run_1", "progress_increment_ruling",
+             "--approve", "--notes", "scope reads right", "--change-request", str(reviewed),
+             "--idempotency-key", "k-1", "--task-instructions", str(given)],
+        )  # fmt: skip
+
+        if sent is None:
+            assert result.exit_code == 2
+            assert not mock_get_client.return_value.post.called
+        else:
+            assert result.exit_code == 0, result.output
+            body = mock_get_client.return_value.post.call_args.kwargs["json"]
+            assert body["task_instructions"] == sent
+
     @patch("squadops.cli.commands.runs._get_client")
     def test_the_binding_is_read_from_the_reviewed_change_request(self, mock_get_client, tmp_path):
         """Bug caught: a binding typed by hand, or taken from whatever is current, so an approval

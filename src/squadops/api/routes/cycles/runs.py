@@ -16,6 +16,7 @@ from squadops.api.cycle_schemas import (
     RunCancelResponse,
     RunResponse,
     RunResumeRequest,
+    TaskInstructionDTO,
 )
 from squadops.api.middleware.auth import require_scopes
 from squadops.api.paging import Page, page
@@ -260,7 +261,8 @@ async def _ruling_instructions(
     """The approval's task instructions as records of the ruled cycle (SIP-0110 Appendix A §3.5;
     #2178), checked before the ruling's row is written. Their source is the gate's decision, so
     they are the cycle's admitted inputs, never interventions. Their ids come from the ruling's
-    retry key, so a repeated ruling replays its row rather than conflicting with it."""
+    retry key and what each says, so a repeated ruling replays its row, and one repeating the key
+    with other instructions conflicts with it rather than keeping the first silently."""
     if not body.task_instructions:
         return ()
     if body.decision not in _INSTRUCTING:
@@ -283,8 +285,8 @@ async def _ruling_instructions(
     except RecordRefused as e:
         raise ValidationError(str(e)) from e
     records = tuple(
-        dataclasses.replace(r, record_id=_ruling_record_id(body.idempotency_key or "", n))
-        for n, r in enumerate(built)
+        dataclasses.replace(r, record_id=_ruling_record_id(body.idempotency_key or "", n, given))
+        for n, (r, given) in enumerate(zip(built, body.task_instructions, strict=True))
     )
     # deferred (cycle): api.routes.memory.interventions loads api.routes.campaigns, which loads this
     from squadops.api.routes.memory.interventions import refuse_dispatched
@@ -294,8 +296,9 @@ async def _ruling_instructions(
     return records
 
 
-def _ruling_record_id(key: str, n: int) -> str:
-    return "mrec_" + hashlib.sha256(f"{key}|{n}".encode()).hexdigest()[:16]
+def _ruling_record_id(key: str, n: int, given: TaskInstructionDTO) -> str:
+    content = given.model_dump_json()
+    return "mrec_" + hashlib.sha256(f"{key}|{n}|{content}".encode()).hexdigest()[:16]
 
 
 async def _store_ruling_instructions(request: Request, records: tuple) -> None:
