@@ -36,11 +36,11 @@ def _add(world: _World, cycle_id: str = "cyc_recall", text: str = "Cover the emp
     )  # fmt: skip
 
 
-async def _admit_with_instruction(world: _World, cycle) -> str:
+async def _admit_with_instruction(world: _World, cycle, types=(DESIGN,)) -> str:
     """The cycle and the instruction its create request carried, as the cycle route stores them."""
     await world.cycles.create_cycle(cycle)
     [record] = admitted(
-        [{"text": "Name the routes.", "task_types": [DESIGN]}],
+        [{"text": "Name the routes.", "task_types": list(types)}],
         project_id="group_run", cycle_id=cycle.cycle_id, actor="ada", now=NOW,
         instructable=lambda t: True,
         source=Source(SourceKind.CYCLE_REQUEST, {"cycle_id": cycle.cycle_id}),
@@ -156,3 +156,58 @@ async def test_another_cycles_dispatch_leaves_this_cycles_instruction_open():
     response = _add(world)
 
     assert response.status_code == 201, response.text
+
+
+@pytest.mark.parametrize("kind", ["cycle_request", "gate_decision"])
+async def test_a_source_only_its_own_route_writes_is_refused_here(kind):
+    """The second reader's finding. Bug caught: a client claiming ``cycle_request`` so its
+    instruction reads as admitted and reaches the task unmarked, its roll still counted."""
+    world = _World()
+    await world.cycles.create_cycle(_framing_cycle())
+
+    response = world.client.post(
+        RECORDS,
+        json={"kind": "instruction", "scope": "task", "project_id": "group_run", "body": "Spoof.",
+              "target": {"cycle_id": "cyc_recall", "task_types": [DESIGN]},
+              "source": {"kind": kind, "ids": {"cycle_id": "cyc_recall"}}},
+    )  # fmt: skip
+
+    assert response.status_code == 422
+    assert "written by its own route" in response.json()["detail"]["error"]["message"]
+    assert await world.records.list_project("group_run") == []
+
+
+async def test_a_revision_never_moves_an_instruction_to_another_cycle():
+    """The second reader's finding. Bug caught: an instruction whose task dispatched, moved to a
+    standalone cycle: in effect a withdrawal after dispatch, recorded on neither cycle, and past
+    the campaign's permission for someone who lacks it."""
+    world = _World()
+    record_id = await _admit_with_instruction(world, _framing_cycle())
+    await world.cycles.create_cycle(dataclasses.replace(_framing_cycle(), cycle_id="cyc_b"))
+
+    response = world.client.post(
+        f"{RECORDS}/{record_id}/revisions",
+        json={"body": "Moved.", "target": {"cycle_id": "cyc_b", "task_types": [DESIGN]}},
+    )
+
+    assert response.status_code == 422
+    assert "cycle is fixed" in response.json()["detail"]["error"]["message"]
+    assert len((await world.records.get(record_id)).revisions) == 1
+
+
+async def test_a_revision_dropping_a_task_type_that_dispatched_is_refused():
+    """Bug caught: narrowing an instruction to leave out a type that already dispatched, which
+    withdraws it from that task's re-takes and repairs after its first dispatch had it."""
+    world = _World()
+    cycle = _framing_cycle()
+    record_id = await _admit_with_instruction(world, cycle, types=(DESIGN, "qa.test"))
+    await _dispatch(world, cycle)
+
+    response = world.client.post(
+        f"{RECORDS}/{record_id}/revisions",
+        json={"body": "Narrowed.", "target": {"cycle_id": "cyc_recall", "task_types": ["qa.test"]}},
+    )
+
+    assert response.status_code == 409
+    assert response.json()["detail"]["error"]["code"] == "TASK_DISPATCHED"
+    assert len((await world.records.get(record_id)).revisions) == 1

@@ -187,6 +187,11 @@ async def _log_intervention(
     )
 
 
+#: Sources only their own route writes (the cycle's create request; a gate's decision): never
+#: claimed through this one (§A.3.4).
+_VOUCHED_ELSEWHERE = frozenset({SourceKind.CYCLE_REQUEST, SourceKind.GATE_DECISION})
+
+
 def _revision(content: MemoryRecordContent, *, actor: str, kind: str, now: datetime) -> Revision:
     if content.source.kind == SourceKind.CHAT_MESSAGE:
         # #2180: a chat turn's record is captured in chat, which checks the session is the
@@ -196,6 +201,15 @@ def _revision(content: MemoryRecordContent, *, actor: str, kind: str, now: datet
             "VALIDATION_ERROR",
             "a chat turn's record is captured in chat (POST /api/v1/chat/sessions/{session_id}/"
             "captures), which records its source",
+        )
+    if content.source.kind in _VOUCHED_ELSEWHERE:
+        # #2178: a source only its own route writes. A task instruction claiming the cycle's create
+        # request would read as admitted, reaching its task unmarked as the intervention it is.
+        raise http_error(
+            422,
+            "VALIDATION_ERROR",
+            f"a {content.source.kind} record is written by its own route, which vouches for it; "
+            "one written here is an api_call",
         )
     if content.applicability is not None:
         refuse_unmatched(content.applicability)
@@ -507,8 +521,11 @@ async def revise_memory_record(
         )  # fmt: skip
         updated = revised(record, revision)
         if cycle is not None:
-            # §3.8: a task instruction is corrected before its task dispatches, or not at all.
-            await _refuse_dispatched(request, cycle, revision.target)
+            # §3.8: a task instruction is corrected before its task dispatches, or not at all: the
+            # types it drops are checked as well as those it names (the second read of #2178).
+            before = record.current.target.task_types if record.current.target else ()
+            together = tuple(dict.fromkeys((*before, *revision.target.task_types)))
+            await _refuse_dispatched(request, cycle, TaskTarget(cycle.cycle_id, together))
         await _store(request).append_revision(record_id, updated.current)
     except NotPermitted as e:
         raise http_error(403, "FORBIDDEN", str(e)) from e

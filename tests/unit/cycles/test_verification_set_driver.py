@@ -7298,12 +7298,20 @@ class TestTheLoginKeepsThePasswordOutOfTheCommand:
         assert "invalid credentials" in str(refused.value)
 
 
-def _psql_answering(snapshot: dict, *, revisions: str = ""):
-    """A ``psql`` stub that answers the snapshot query with ``snapshot`` and the task-instruction
-    revisions query with ``revisions`` (one ``record@revision`` per line)."""
+def _psql_answering(snapshot: dict, *, revisions: str = "", withdrawn: str = ""):
+    """A ``psql`` stub that answers the snapshot query with ``snapshot``, the task-instruction
+    revisions query with ``revisions`` (one ``record@revision`` per line) and the withdrawals query
+    with ``withdrawn`` (one record id per line)."""
     import json
 
-    return lambda q: revisions if "memory_record_revisions" in q else json.dumps(snapshot)
+    def answer(q: str) -> str:
+        if "memory_record_status_changes" in q:
+            return withdrawn
+        if "memory_record_revisions" in q:
+            return revisions
+        return json.dumps(snapshot)
+
+    return answer
 
 
 class TestACountedRollRecordsTheInstructionsItPinned:
@@ -7415,6 +7423,7 @@ class TestACountedRollRecordsTheInstructionsItPinned:
         ("revisions", "interventions"),
         [("", None), ("mrec_t@2\nmrec_u@1", [
             {"record_id": "mrec_t", "revision": 2}, {"record_id": "mrec_u", "revision": 1},
+            {"record_id": "mrec_w", "withdrawn": True},
         ])],
         ids=["re-bound", "re-bound-and-instructed-after-admission"],
     )  # fmt: skip
@@ -7442,7 +7451,11 @@ class TestACountedRollRecordsTheInstructionsItPinned:
             "collect",
             lambda *a, **k: {"impl_run_id": "run_1", "squad_profile_snapshot_ref": "s"},
         )
-        monkeypatch.setattr(driver, "psql", _psql_answering(body, revisions=revisions))
+        monkeypatch.setattr(
+            driver,
+            "psql",
+            _psql_answering(body, revisions=revisions, withdrawn="mrec_w" if revisions else ""),
+        )
         monkeypatch.setattr(driver, "completed_framing_run", lambda *a, **k: None)
         for name in ("static_checks", "ledger_checks", "loop_texture", "typed_checks_by_check"):
             monkeypatch.setattr(driver, name, lambda *a, **k: {})
@@ -7507,11 +7520,11 @@ class TestACountedRollRecordsTheInstructionsItPinned:
         reader looks, so the roll reads as counted."""
         helper = TestTheRecordNamesTheDeployItObserved()
         cfg = helper._cfg(driver, tmp_path)
-        given = [{"record_id": "mrec_t", "revision": 2}]
+        given = [{"record_id": "mrec_t", "revision": 2}, {"record_id": "mrec_w", "withdrawn": True}]
 
         out = driver.render(cfg, "roll 1 of 2", helper._rec(instruction_interventions=given))
 
-        assert "**Instructed after admission**: `mrec_t` revision 2" in out
+        assert "**Instructed after admission**: `mrec_t` revision 2, `mrec_w` withdrawn" in out
         assert "this roll is not counted" in out
 
     @pytest.mark.parametrize(

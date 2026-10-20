@@ -5765,10 +5765,12 @@ def render(cfg: SetConfig, title: str, rec: dict) -> str:
             [
                 "- **Instructed after admission**: "
                 + ", ".join(
-                    f"`{i['record_id']}` revision {i['revision']}"
+                    f"`{i['record_id']}` withdrawn"
+                    if i.get("withdrawn")
+                    else f"`{i['record_id']}` revision {i['revision']}"
                     for i in rec["instruction_interventions"]
                 )
-                + ". A task instruction added or revised after a cycle is admitted is an "
+                + ". A task instruction added, revised or withdrawn after a cycle is admitted is an "
                 "intervention, and a counted roll refuses one (SIP-0110 Appendix A §3.5): this "
                 "roll is not counted."
             ]
@@ -6010,19 +6012,28 @@ def snapshot_rebindings(cycle_id: str) -> list[dict]:
 
 
 def instruction_interventions(cycle_id: str) -> list[dict]:
-    """§3.5: each task instruction revision written for the cycle after its admission, by record
-    and revision. One given in the cycle's create request is an admitted input; any other is an
-    intervention, and a counted roll refuses every intervention, so the roll isn't counted."""
-    rows = psql(
+    """§3.5, §3.8: each task instruction revision written for the cycle after its admission, by
+    record and revision, and each of its task instructions withdrawn. One given in the cycle's
+    create request is an admitted input; any later revision or withdrawal is an intervention, and a
+    counted roll refuses every intervention, so the roll isn't counted."""
+    target = f"r.document->'target'->>'cycle_id' = '{cycle_id}'"
+    revised = psql(
         "select r.record_id || '@' || r.number from memory_record_revisions r "
         "join memory_records m on m.record_id = r.record_id "
-        f"where m.scope = 'task' and r.document->'target'->>'cycle_id' = '{cycle_id}' "
+        f"where m.scope = 'task' and {target} "
         "and r.document->'source'->>'kind' <> 'cycle_request' order by r.record_id, r.number;"
+    )
+    withdrawn = psql(
+        "select distinct c.record_id from memory_record_status_changes c "
+        "join memory_records m on m.record_id = c.record_id "
+        "where m.scope = 'task' and c.status = 'withdrawn' and exists (select 1 from "
+        f"memory_record_revisions r where r.record_id = c.record_id and {target}) "
+        "order by c.record_id;"
     )
     return [
         {"record_id": ref.rsplit("@", 1)[0], "revision": int(ref.rsplit("@", 1)[1])}
-        for ref in (rows or "").split()
-    ]
+        for ref in (revised or "").split()
+    ] + [{"record_id": rid, "withdrawn": True} for rid in (withdrawn or "").split()]
 
 
 def instruction_set_change(cfg: SetConfig, pinned: list[dict] | None) -> dict | None:

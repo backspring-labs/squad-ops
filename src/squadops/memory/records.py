@@ -345,6 +345,14 @@ def revised(record: MemoryRecord, revision: Revision) -> MemoryRecord:
         raise RecordRefused(f"{record.record_id} is withdrawn, and a withdrawal isn't undone")
     numbered = replace(revision, number=record.current.number + 1, supersedes=record.current.number)
     _check_revision(record.kind, record.scope, numbered)
+    before, after = record.current.target, numbered.target
+    if before is not None and after is not None and before.cycle_id != after.cycle_id:
+        # §3.5: a task instruction is authoritative for its target cycle only. Moving it would
+        # withdraw it from one cycle and add it to another, unrecorded on either (#2178).
+        raise RecordRefused(
+            f"a task instruction's cycle is fixed ({before.cycle_id}): withdraw it, and give "
+            f"{after.cycle_id} its own"
+        )
     return replace(record, revisions=(*record.revisions, numbered))
 
 
