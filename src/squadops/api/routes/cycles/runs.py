@@ -2,6 +2,8 @@
 Run API routes (SIP-0064 §9.4).
 """
 
+import dataclasses
+import hashlib
 import logging
 import uuid
 from datetime import UTC, datetime
@@ -14,6 +16,7 @@ from squadops.api.cycle_schemas import (
     RunCancelResponse,
     RunResponse,
     RunResumeRequest,
+    TaskInstructionDTO,
 )
 from squadops.api.middleware.auth import require_scopes
 from squadops.api.paging import Page, page
@@ -23,10 +26,12 @@ from squadops.api.runtime.deps import (
     get_cycle_event_bus,
     get_cycle_registry,
     get_flow_executor,
+    get_memory_records,
 )
 from squadops.auth.models import Identity, Scope
 from squadops.campaigns.gate import INCREMENT_RULING_GATE, ruling_transition
 from squadops.campaigns.models import ProposalBinding
+from squadops.capabilities.context_assembly import authoring_seam_of
 from squadops.cycles.gate_attribution import compose_decided_by
 from squadops.cycles.gate_decisions import record_gate_decision
 from squadops.cycles.lifecycle import (
@@ -48,7 +53,10 @@ from squadops.cycles.models import (
     validate_workload_type,
 )
 from squadops.events.types import EventType
+from squadops.memory.records import RecordRefused, Source, SourceKind
+from squadops.memory.task_instructions import admitted
 from squadops.ports.cycles.artifact_vault import ArtifactVaultPort
+from squadops.ports.memory.records import RecordConflict
 
 logger = logging.getLogger(__name__)
 
@@ -243,6 +251,74 @@ async def _gate_scopes(request: Request, gate_name: str) -> Identity | None:
     return await require_scopes(scope)(request)
 
 
+#: The decisions a ruling's task instructions may go with: an approval launches the work they direct.
+_INSTRUCTING = frozenset({"approved", "approved_with_refinements"})
+
+
+async def _ruling_instructions(
+    request: Request, cycle: Cycle, run_id: str, body: GateDecisionRequest, actor: str
+) -> tuple:
+    """The approval's task instructions as records of the ruled cycle (SIP-0110 Appendix A §3.5;
+    #2178), checked before the ruling's row is written. Their source is the gate's decision, so
+    they are the cycle's admitted inputs, never interventions. Their ids come from the cycle, the
+    ruling's retry key and what each says, so a repeated ruling replays its row, and one repeating
+    the key with other instructions conflicts with it rather than keeping the first silently."""
+    if not body.task_instructions:
+        return ()
+    if body.decision not in _INSTRUCTING:
+        raise ValidationError("a ruling's task instructions go with an approval")
+    if get_memory_records(request) is None:
+        raise ValidationError("no store holds task instructions")
+    try:
+        built = admitted(
+            [i.model_dump() for i in body.task_instructions],
+            project_id=cycle.project_id,
+            cycle_id=cycle.cycle_id,
+            actor=actor,
+            now=datetime.now(UTC),
+            instructable=lambda t: authoring_seam_of(t) is not None,
+            source=Source(
+                SourceKind.GATE_DECISION,
+                {"cycle_id": cycle.cycle_id, "run_id": run_id, "gate": INCREMENT_RULING_GATE},
+            ),
+        )
+    except RecordRefused as e:
+        raise ValidationError(str(e)) from e
+    records = tuple(
+        dataclasses.replace(
+            r, record_id=_ruling_record_id(cycle.cycle_id, body.idempotency_key or "", n, given)
+        )
+        for n, (r, given) in enumerate(zip(built, body.task_instructions, strict=True))
+    )
+    # deferred (cycle): api.routes.memory.interventions loads api.routes.campaigns, which loads this
+    from squadops.api.routes.memory.interventions import refuse_dispatched
+
+    store = get_memory_records(request)
+    for r in records:
+        # One already stored was stored by this ruling's applied attempt, which a repeat replays:
+        # its framing may have dispatched since, and the replay is answered as the ruling was.
+        if await store.get(r.record_id) is None:
+            await refuse_dispatched(request, cycle, r.current.target)
+    return records
+
+
+def _ruling_record_id(cycle_id: str, key: str, n: int, given: TaskInstructionDTO) -> str:
+    # The cycle too: a retry key is unique within a campaign, and a record id in the whole store.
+    content = given.model_dump_json()
+    return "mrec_" + hashlib.sha256(f"{cycle_id}|{key}|{n}|{content}".encode()).hexdigest()[:16]
+
+
+async def _store_ruling_instructions(request: Request, records: tuple) -> None:
+    """Store an applied ruling's instructions before its cycle's framing dispatches. One an
+    earlier attempt of the same ruling stored is kept as it was."""
+    store = get_memory_records(request)
+    for record in records:
+        try:
+            await store.create(record)
+        except RecordConflict:
+            continue  # the ruling was repeated: its first attempt stored this one
+
+
 async def _rule_increment(
     request: Request,
     registry,
@@ -279,6 +355,7 @@ async def _rule_increment(
     if not cycle.campaign_id:
         raise ValidationError(f"cycle {cycle_id} belongs to no campaign")
     actor, role = actor_from(identity)
+    instructions = await _ruling_instructions(request, cycle, run_id, body, actor)
     try:
         transition = ruling_transition(
             GateDecisionValue(body.decision),
@@ -290,10 +367,12 @@ async def _rule_increment(
             idempotency_key=body.idempotency_key,
             classification=body.classification,
             classification_rationale=body.classification_rationale,
+            instruction_ids=tuple(r.record_id for r in instructions),
         )
     except ValueError as e:  # §24bi: a return names what went wrong, or it is refused
         raise ValidationError(str(e)) from e
     await apply_control(request, cycle.campaign_id, transition, identity)
+    await _store_ruling_instructions(request, instructions)
     run = await registry.get_run(run_id)
     return not any(d.gate_name == INCREMENT_RULING_GATE for d in run.gate_decisions)
 
@@ -314,17 +393,20 @@ async def gate_decision(
     if gate_name == INCREMENT_RULING_GATE:
         if not await _rule_increment(request, registry, cycle_id, run_id, body, identity):
             return run_to_response(await registry.get_run(run_id))
-    elif any(
-        value is not None
-        for value in (
-            body.binding,
-            body.idempotency_key,
-            body.classification,
-            body.classification_rationale,
+    elif (
+        any(
+            value is not None
+            for value in (
+                body.binding,
+                body.idempotency_key,
+                body.classification,
+                body.classification_rationale,
+            )
         )
+        or body.task_instructions
     ):
         raise ValidationError(
-            "binding, idempotency_key and classification belong to the "
+            "binding, idempotency_key, classification and task_instructions belong to the "
             f"{INCREMENT_RULING_GATE} gate only"
         )
 

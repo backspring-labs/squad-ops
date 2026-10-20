@@ -1190,6 +1190,10 @@ class CampaignProgress:
         if seeds is None:
             return f"cycle {cycle.cycle_id}'s approved seed cannot be found"
         plan_refs, contract_ref = seeds
+        # SIP-0110 §3.7 (#2178): the cycle it continues, which carries into it each task
+        # instruction given to carry. Named here, whichever row decided the launch: a decision's
+        # names it, and the owner's word's (a ``resume``) doesn't.
+        block = {**block, "continues": cycle.cycle_id}
         if kind is CycleKind.REPAIR:
             plan = await self._approved_plan(cycle)
             if plan is None:

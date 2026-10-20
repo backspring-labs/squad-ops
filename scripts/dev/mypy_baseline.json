@@ -134,7 +134,6 @@
 "src/squadops/capabilities/handlers/wrapup_tasks.py\toperator\tUnsupported right operand type for in (\"dict[Any, Any] | None\")": 3,
 "src/squadops/cli/commands/meta.py\tassignment\tIncompatible types in assignment (expression has type \"dict[Any, Any]\", variable has type \"list[dict[Any, Any]] | None\")": 2,
 "src/squadops/cli/commands/models.py\tassignment\tIncompatible types in assignment (expression has type \"float\", variable has type \"int\")": 1,
-"src/squadops/cli/commands/runs.py\tassignment\tIncompatible types in assignment (expression has type \"list[str]\", target has type \"str\")": 1,
 "src/squadops/cli/main.py\ttype-var\tValue of type variable \"CommandFunctionType\" of function cannot be \"Callable[..., Any] | None\"": 1,
 "src/squadops/contracts/cycle_request_profiles/__init__.py\tunused-ignore\tUnused \"type: ignore\" comment": 4,
 "src/squadops/core/secrets.py\targ-type\tArgument 1 to \"append\" of \"list\" has incompatible type \"list[Any]\"; expected \"dict[str, Any]\"": 1,

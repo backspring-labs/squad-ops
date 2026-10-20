@@ -287,6 +287,8 @@ class TaskTargetDTO(BaseModel):
     model_config = ConfigDict(extra="forbid")
     cycle_id: str
     task_types: list[str]
+    #: ``"continuations"``: it also reaches a campaign's repair or retry of the cycle (§3.7).
+    carries_into: str | None = None
 
 
 class RecordSourceDTO(BaseModel):

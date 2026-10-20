@@ -102,6 +102,23 @@ async def test_a_captured_task_instruction_reaches_its_task_as_an_intervention(w
     assert f"{cycle.cycle_id}'s {DESIGN}" in response.json()["reply"]["content"]
 
 
+@pytest.mark.parametrize(("carries", "status"), [("continuations", 201), ("forks", 422)])
+async def test_a_capture_given_to_carry_is_stored_to_carry(world, carries, status):  # noqa: F811
+    """SIP-0110 §3.7 (#2178), the second read of PR #2556. Bugs caught: the card's target taking
+    ``carries_into`` and the record dropping it, so the person is told it carries and a repair of
+    the cycle runs without it; a value the records refuse answered as a failure to save."""
+    cycles, _ = _registries(world)
+    cycle = _cycle()
+    await cycles.create_cycle(cycle)
+    session_id, card = _proposed(world, cycle.cycle_id)
+
+    response = _confirm(world, session_id, card, target={**card["target"], "carries_into": carries})
+
+    assert response.status_code == status, response.text
+    stored = [r.current.target.carries_into for r in await world.records.list_project("group_run")]
+    assert stored == ([carries] if status == 201 else [])
+
+
 async def test_a_capture_for_a_task_that_already_dispatched_is_refused_as_such(world):  # noqa: F811
     """Bugs caught: chat landing an instruction the records API refuses; the refusal caught by the
     capture's catch-all and answered as a 503 "not saved", with that reply added to the chat."""

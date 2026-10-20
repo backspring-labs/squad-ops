@@ -718,7 +718,9 @@ def _capture_target(choice: CaptureChoice, body: CaptureRequest) -> TaskTarget |
             422, "VALIDATION_ERROR", "a task instruction names its cycle and its task types"
         )
     try:
-        return TaskTarget(body.target.cycle_id, tuple(body.target.task_types))
+        return TaskTarget(
+            body.target.cycle_id, tuple(body.target.task_types), body.target.carries_into
+        )
     except RecordRefused as e:  # a cycle the card left blank, which the person didn't fill
         raise http_error(422, "VALIDATION_ERROR", str(e)) from e
 

@@ -170,7 +170,11 @@ def _revision(content: MemoryRecordContent, *, actor: str, kind: str, now: datet
                 else None
             ),
             target=(
-                TaskTarget(content.target.cycle_id, tuple(content.target.task_types))
+                TaskTarget(
+                    content.target.cycle_id,
+                    tuple(content.target.task_types),
+                    content.target.carries_into,
+                )
                 if content.target
                 else None
             ),

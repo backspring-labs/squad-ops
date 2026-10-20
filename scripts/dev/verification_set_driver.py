@@ -6032,7 +6032,8 @@ def instruction_interventions(cycle_id: str) -> list[dict]:
         "select r.record_id || '@' || r.number from memory_record_revisions r "
         "join memory_records m on m.record_id = r.record_id "
         f"where m.scope = 'task' and {target} "
-        "and r.document->'source'->>'kind' <> 'cycle_request' order by r.record_id, r.number;"
+        "and r.document->'source'->>'kind' not in ('cycle_request', 'gate_decision') "
+        "order by r.record_id, r.number;"
     )
     withdrawn = psql(
         "select distinct c.record_id from memory_record_status_changes c "

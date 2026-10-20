@@ -26,11 +26,21 @@ from squadops.api.cycle_schemas import CycleCreateRequest
 from squadops.api.routes.cycles.cycles import CreationPorts, first_run, prepare_cycle
 from squadops.api.routes.cycles.errors import cycle_error_envelope
 from squadops.campaigns.launcher import BoxVerdict, CampaignLauncher, LaunchRefused, unblocked
-from squadops.campaigns.models import CampaignState, LaunchIntent, LaunchIntentState
+from squadops.campaigns.models import (
+    CampaignState,
+    ControlOperation,
+    CycleKind,
+    LaunchIntent,
+    LaunchIntentState,
+)
 from squadops.cycles.models import Cycle, CycleError, Run, RunInitiator, RunStatus
 from squadops.events.types import EventType
+from squadops.memory.task_instructions import carried
 
 logger = logging.getLogger(__name__)
+
+#: The launches that continue an earlier cycle, so carry its instructions given to carry (§3.7).
+_CONTINUING = frozenset({CycleKind.REPAIR, CycleKind.RETRY})
 
 #: The actor on the launcher's own control-log rows.
 LAUNCHER_ACTOR = "campaign-launcher"
@@ -99,7 +109,54 @@ class CampaignLaunchService:
                 )
             for record in prepared.instructions:
                 await records.create(record)
+        await self._carry_instructions(intent, prepared.cycle)
         return prepared.cycle
+
+    async def _carry_instructions(self, intent: LaunchIntent, cycle: Cycle) -> None:
+        """A repair or a retry continues a cycle (§10a), and carries into it each of that cycle's
+        task instructions given with ``carries_into: continuations``, as its own admitted record
+        linked to the original (SIP-0110 Appendix A §3.7; #2178). A read that fails is a fault the
+        next drain repeats: a binding input is never dropped."""
+        if intent.cycle_kind not in _CONTINUING:
+            return
+        records = self._creation.memory_records
+        if records is None:
+            return  # no store holds instructions, so the continued cycle has none to carry
+        continued = await self._continued_cycle(intent)
+        for copy in carried(
+            await records.list_project(cycle.project_id),
+            from_cycle=str(continued),
+            to_cycle=cycle.cycle_id,
+            project_id=cycle.project_id,
+            now=datetime.now(UTC),
+        ):
+            await records.create(copy)
+
+    async def _continued_cycle(self, intent: LaunchIntent) -> str:
+        """The cycle a repair or a retry continues: the one its request names (``continues``). An
+        intent written before the request named it is read from its log: the deciding row's cycle,
+        or for the owner's word (a ``resume``, which names none) the cycle of the latest decision
+        before it, as ``owner_action`` read it. Naming none is refused, so the campaign escalates:
+        as a fault, every drain would repeat it, holding every intent queued behind it."""
+        overrides = intent.cycle_request.get("body", {}).get("execution_overrides") or {}
+        named = (overrides.get("campaign_proposal") or {}).get("continues")
+        if named:
+            return str(named)
+        log = await self._campaigns.control_log(intent.campaign_id)
+        at = next((i for i, e in enumerate(log) if e.entry_id == intent.decision_entry_id), None)
+        if at is not None:
+            named = (log[at].binding or {}).get("cycle_id")
+            if not named:
+                decided = [
+                    e for e in log[:at] if e.operation is ControlOperation.DECIDE and e.target
+                ]
+                named = decided[-1].target if decided else None
+        if not named:
+            raise LaunchRefused(
+                f"VALIDATION_ERROR: the {intent.cycle_kind.value} names no cycle it continues, so "
+                "the task instructions given to carry into it can't be found"
+            )
+        return str(named)
 
     async def drain(self) -> list[Run]:
         """Launch every pending intent, then start every launched cycle's first run that has

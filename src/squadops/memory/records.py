@@ -183,14 +183,30 @@ class InstructionApplicability:
 
 @dataclass(frozen=True)
 class TaskTarget:
-    """A task instruction's target (§A.3.7): one cycle, and the tasks within it by type."""
+    """A task instruction's target (§A.3.7): one cycle, and the tasks within it by type.
+
+    ``carries_into`` is ``"continuations"`` when the instruction also reaches the cycles that
+    continue this one: a campaign's repair or retry of it, each admitting its own copy, linked to
+    this record and withdrawn on its own (§3.7). Otherwise a new cycle never inherits it."""
 
     cycle_id: str
     task_types: tuple[str, ...]
+    carries_into: str | None = None
 
     def __post_init__(self) -> None:
         if not self.cycle_id.strip() or not self.task_types:
             raise RecordRefused("a task instruction names its target cycle and its tasks")
+        if self.carries_into not in (None, CARRIES_INTO_CONTINUATIONS):
+            raise RecordRefused(
+                f"a task instruction carries into {CARRIES_INTO_CONTINUATIONS!r} or nothing, "
+                f"not {self.carries_into!r}"
+            )
+
+
+#: What a task instruction may carry into besides its own cycle (§3.7): the cycles continuing it.
+CARRIES_INTO_CONTINUATIONS = "continuations"
+#: The source id naming the record a continuation's copy of an instruction was carried from.
+CARRIED_FROM = "carried_from"
 
 
 @dataclass(frozen=True)
@@ -423,7 +439,16 @@ def revision_document(revision: Revision) -> dict[str, Any]:
             else None
         ),
         "target": (
-            {"cycle_id": revision.target.cycle_id, "task_types": list(revision.target.task_types)}
+            {
+                "cycle_id": revision.target.cycle_id,
+                "task_types": list(revision.target.task_types),
+                # Only when set, so every other revision is stored as it was.
+                **(
+                    {"carries_into": revision.target.carries_into}
+                    if revision.target.carries_into
+                    else {}
+                ),
+            }
             if revision.target
             else None
         ),
@@ -453,7 +478,11 @@ def revision_from_document(doc: Mapping[str, Any]) -> Revision:
             if applicability
             else None
         ),
-        target=TaskTarget(target["cycle_id"], tuple(target["task_types"])) if target else None,
+        target=(
+            TaskTarget(target["cycle_id"], tuple(target["task_types"]), target.get("carries_into"))
+            if target
+            else None
+        ),
         references=tuple(
             Reference(r["ref"], bool(r["required"])) for r in doc.get("references", [])
         ),

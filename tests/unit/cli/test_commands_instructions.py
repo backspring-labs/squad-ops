@@ -81,3 +81,21 @@ def test_list_shows_only_the_cycles_instructions_each_marked_how_it_was_given(mo
     rows = {line.split()[1]: line for line in result.output.splitlines() if "mrec_" in line}
     assert set(rows) == {"mrec_admitted", "mrec_added"}
     assert "admitted" in rows["mrec_admitted"] and "added after" in rows["mrec_added"]
+
+
+@patch("squadops.cli.commands.instructions._get_client")
+def test_carry_sends_carries_into_continuations(mock_get_client):
+    """§3.7. Bug caught: --carry accepted and not sent, so a repair of the cycle runs without the
+    instruction its operator asked to carry."""
+    client = MagicMock()
+    client.post.return_value = {"record_id": "mrec_1"}
+    mock_get_client.return_value = client
+
+    result = runner.invoke(
+        app,
+        ["instructions", "add", "group_run", "x", "--cycle", "cyc_1", "--for", "qa.test",
+         "--carry"],
+    )  # fmt: skip
+
+    assert result.exit_code == 0, result.output
+    assert client.post.call_args.kwargs["json"]["target"]["carries_into"] == "continuations"

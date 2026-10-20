@@ -8,6 +8,7 @@ import dataclasses
 import uuid
 from datetime import datetime
 from pathlib import Path
+from typing import Any
 from urllib.parse import quote
 
 import typer
@@ -264,6 +265,13 @@ def gate_decision(
         "--classification-rationale",
         help="With --classification unclassified: why none of the classes fits.",
     ),
+    task_instructions: Path | None = typer.Option(
+        None,
+        "--task-instructions",
+        help="The increment gate's approval only (SIP-0110 Appendix A §3.5): a YAML list of "
+        "{text, task_types, carries_into?} for the ruled cycle's framing and build. Unlike "
+        "--notes, these reach the tasks they name.",
+    ),
 ):
     """Record a gate decision.
 
@@ -297,7 +305,7 @@ def gate_decision(
     else:
         decision = "returned_for_revision"
 
-    body = {"decision": decision}
+    body: dict[str, Any] = {"decision": decision}
     # #812: only sent when declared. Omitted → the API uses the token's own identity type,
     # which is the truthful default for a person and the known gap for an undeclared agent.
     if as_agent:
@@ -313,6 +321,8 @@ def gate_decision(
             gate_name, change_request, idempotency_key, classification, classification_rationale
         )
     )
+    if task_instructions is not None:
+        body["task_instructions"] = _instructions_file(task_instructions)
 
     try:
         client = _get_client(ctx)
@@ -329,6 +339,20 @@ def gate_decision(
         print_json(data)
     else:
         print_success(f"Gate {gate_name!r} {decision}")
+
+
+def _instructions_file(path: Path) -> list[dict]:
+    """A ruling's task instructions from YAML: a list of mappings, each with its text and task
+    types. Anything else is refused here, before the ruling is sent."""
+    try:
+        data = yaml.safe_load(path.read_text(encoding="utf-8"))
+    except (OSError, yaml.YAMLError) as e:
+        print_error(f"{path}: {e}")
+        raise typer.Exit(code=2) from e
+    if not isinstance(data, list) or not all(isinstance(i, dict) for i in data):
+        print_error(f"{path}: expected a list of {{text, task_types}} mappings")
+        raise typer.Exit(code=2)
+    return data
 
 
 def _increment_ruling_fields(

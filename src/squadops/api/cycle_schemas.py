@@ -44,6 +44,8 @@ class TaskInstructionDTO(BaseModel):
     text: str
     task_types: list[str]
     references: list[dict] = Field(default_factory=list)
+    #: ``"continuations"``: it also reaches a campaign's repair or retry of this cycle (§3.7).
+    carries_into: str | None = None
 
     model_config = ConfigDict(extra="forbid")
 
@@ -124,6 +126,10 @@ class GateDecisionRequest(BaseModel):
     #: ``unclassified``) and, with ``unclassified``, the rationale. Refused elsewhere.
     classification: str | None = None
     classification_rationale: str | None = None
+    #: SIP-0110 Appendix A §3.5 (#2178), the increment gate's approval only: task instructions for
+    #: the ruled cycle's framing and build, beside the free notes, which reach no prompt. Refused
+    #: elsewhere, and for a task that has dispatched.
+    task_instructions: list[TaskInstructionDTO] = Field(default_factory=list)
 
     model_config = ConfigDict(extra="forbid")
 
