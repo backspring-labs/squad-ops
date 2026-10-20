@@ -1,8 +1,8 @@
 # 2.4.0: pre-registration of the measurement window (plan §1.3, M2; D3, D4; SIP-0113 §7)
 
-**Status: DRAFT, by the supervisor under the owner's grant of 2026-10-19 ("I grant you autonomy to use good judgement
-to approve cycles, PRs, issue choices etc."). It is REGISTERED when the five conditions below hold and the pins are read
-(§6). Nothing in the window has launched.**
+**Status: REGISTERED 2026-10-20, pins read at 18:38:29Z, by the supervisor under the owner's grant of 2026-10-19 ("I
+grant you autonomy to use good judgement to approve cycles, PRs, issue choices etc."). The five conditions below hold, each
+with its reading (§0), and the pins are in §6. Nothing in the window had launched when they were read.**
 
 The window is phase 1's data. Phase 2's thresholds come from measured noise, not guesses, and the owner decides D4 on
 this record. It also doubles as SIP-0110's next build-side memory experiment: multi-increment campaigns on both stacks,
@@ -41,6 +41,39 @@ with memory observing and no lesson approved, so memory supplies nothing (the 2.
      (`2-4-0-fastapi-shakeout-1.yaml`, carrying the suite).
    - **On a finding:** it is fixed, the deploy rebuilt, and the loop re-run. The record reports how many rounds it took.
 5. **The pins are read** (§6), and nothing in the window has launched.
+
+## 0. The conditions, as read at registration (2026-10-20)
+
+1. **The suite is approved and pinned.** Revision 3 (`db69fd37…`) is approved (#2464). Each of the four window
+   definitions pins it (`scenario_suite`) and carries §2's policy (`max_cycles: 9`, `max_elapsed_s: 64800`,
+   `budget_tokens: 6000000`) and its stack.
+2. **The instruments are deployed and loaded.**
+   - `verify_loaded.py` reads 157 of 157 checks loaded, the runner's `where` check among them, in both services:
+     `2464-where-sandbox` and `2464-where-runtime`.
+   - The spread instrument (`remeasure_quality.py`, which runs in the runtime image) imports
+     `squadops.outcomes.quality_spread` and the quality readers in the running runtime API.
+3. **The final deploy is fixed:** `dep_19dfa94c0a0a`, built from `92e26330` by `rebuild_and_deploy.sh all`, 24 services.
+   `verify_loaded.py` reads that the record describes what runs, and no later deploy is recorded.
+   - **#2457 (agents hold no database credential) is not in it.** Its compose change (#2506) hasn't landed, so it lands
+     after the window, as condition 3 allows.
+   - **#316's rename** lands after the window, as decided above.
+4. **The shakeout loop's exit rule holds.**
+   - **The loop:** ten Next.js rounds and one FastAPI campaign, across seven deploys.
+   - **What it found and fixed:** nine seam findings, #2511 and #2512, #2522, #2531, #2534, #2536, #2538, #2540,
+     #2542 and #2547, each fixed by its PR and the deploy rebuilt.
+   - **On the final deploy:**
+     - **round 9** (Next.js, `cmp_51011c06ed90`) had no new seam finding, but its calibration ended as #2306's known
+       `plan_defect` before any increment ran;
+     - **the FastAPI campaign** (`cmp_41d4a7185a3a`) completed with success: the calibration and two increments
+       (capacity, sorting) accepted with no repair or retry, all seven safety guarantees held, no seam finding;
+     - **round 10** (Next.js, `cmp_7197fdc82778`) completed with success: the calibration accepted, capacity accepted
+       through one repair, and sorting accepted.
+       - Capacity's first implementation failed on a squad defect: its T1 task wrote a page test for T3 into an API
+         suite, in node, and the correction loop ended it as #2306's known `plan_defect`.
+       - The repair ran T3's own page suite in jsdom, passing, with `acceptance:additive_containment` passing on every
+         task. That is #2547's fix, live.
+       - No seam finding.
+5. **The pins are read** (§6) at 18:38:29Z, after round 10 ended at 18:35:54Z. Nothing in the window had launched.
 
 ---
 
@@ -163,15 +196,19 @@ In `var/window/2-4-0/manifest.json`, with a copy committed beside this file when
 
 ## 6. Pins (read at registration)
 
+Read 2026-10-20 at 18:38:29Z, from the running deploy, its record and the tree it was built from.
+
 | pin | value |
 |---|---|
-| deploy commit | *read at registration* |
-| deploy record | *read at registration*, `verify_loaded` all answering, including `where` in the sandbox service |
-| image ids | *read at registration*, from the running containers |
-| model | `full-38-tf`'s model and its digest, *read at registration* |
-| evaluator | *read at registration* (`EVALUATOR_IMAGE`) |
+| deploy commit | `92e26330` |
+| deploy record | `dep_19dfa94c0a0a`, recorded 2026-10-20 14:18:10Z by `rebuild_and_deploy.sh all`, 24 services; the latest record. `verify_loaded.py`: 157 of 157 loaded, `where` included in the sandbox service and the runtime API, and the record describes what runs |
+| image ids | `squadops-bob` d4472067f0e7; `squadops-caddy` d6f3b771cd41; `squadops-console` 2aa630029b8b; `squadops-data` 7d86219bf347; `squadops-dcgm-exporter` ad8339fcb648; `squadops-eve` 7680d996eca4; `squadops-grafana` 618b96f5c3f1; `squadops-han` 031c0d5345ac; `squadops-joi` 8b51d31944b6; `squadops-keycloak` bbc4de472c9d; `squadops-langfuse` bfb03bde31de; `squadops-max` 1d53ef08e81c; `squadops-nat` 1e43ac9eab3f; `squadops-neo` e434a0df96c2; `squadops-node-exporter` 95133add9e51; `squadops-otel-collector` 9acf2ba42604; `squadops-postgres` 8e044a3419af; `squadops-prefect-server` af308092ef5b; `squadops-prometheus` 5ccfaca220fc; `squadops-rabbitmq` 95cf051f517d; `squadops-redis` 49898aa0365c; `squadops-runtime-api` a56ce18b4015; `squadops-sandbox-service` aca9adf3b800; `squadops-tensorfold` b62567b8d89f |
+| model | `full-38-tf`'s `qwen3.8-27b-tf-nvfp4`, served by TensorFold. Its identity is the frozen recipe `infra/tensorfold/recipes/qwen27b-nvfp4.yaml`, sha256 `a3d260ecd24ca895e882063f9ed0530f1f913a3231fda29fad16c966919bc283`, and the `squadops-tensorfold` image above. **The deploy record names no digest for any model** (#2561, below) |
+| evaluator | `squadops-evaluator:lighthouse13.5-axe4.14-ruff0.16-eslint10.12-2` (`EVALUATOR_IMAGE`, read from the running sandbox service) |
 | suite | `db69fd3707ea65b0c22e64aeefb90f2fc4621565b94244399be6de2ad697044d`, approved |
-| definitions | the four window files' sha256, *read at registration* |
+| definitions | `2-4-0-window-fastapi-react-1.yaml` `2d9c74f1ca2e1cd77c057b67f12fd5c3806d9374c3028257c93137f11b39d82d`; `-fastapi-react-2.yaml` `e12484cb97a9ff6e18c6065a5e409a1727f0ab09aca6e0c84817a12aac198c36`; `-nextjs-1.yaml` `a2ff593a5d29b15310dc993d8c2b8f3eca262879b9943898af9831df78c515f9`; `-nextjs-2.yaml` `4a0cccc71e49a2be8f0e987ee0adc7c4e94c45cc930691cec9eda8270d0f93c1` |
+| PRD | `examples/03_group_run/prd.md` sha256 `de1555a68cd3d0602e2c8968c8a499fc15bdf067322397915e4482604ab70d16` |
+| prompts and config | `src/squadops/prompts/` `145583c612d52af92626edc2b05f4cea3c813f6a4f7b19a39acba975ae3b8a3e`; `config/` `afa24ce69262341fe58738ec4d28bdb1a7c7dd1a74ece32ee192f4c052dea431`. Each is the sha256 of its files' sha256 list, sorted by path, read where neither differs from `92e26330` |
 
 ---
 
@@ -187,3 +224,36 @@ In `var/window/2-4-0/manifest.json`, with a copy committed beside this file when
 - **Any difference between the registered deploy and main,** each named additive or behavioural.
 - **Each void and re-run,** with its cause.
 - **Each owner action,** and each supervisor ruling under the grant.
+
+**Declared at registration.** main (`f3f6f0a7`) is ahead of the deploy (`92e26330`) by seven PRs. None is in the window's
+runtime, because the window runs the deploy. For a reader comparing the two:
+- **Additive and inert for the window's campaigns:**
+  - #2552: a loaded check's row only;
+  - #2554: `prepare_cycle` builds a cycle's admitted task instructions, and a campaign's launch stores them;
+  - #2555 and #2559: `@current` bound for project and task instructions;
+  - #2567: a reference no unit of its project can bind, refused at write.
+
+  No window campaign gives a task instruction or names `@current`, and no resolver is registered on the deploy.
+- **#2556** adds `carries_into` and the increment gate's `task_instructions`, neither of which a window ruling uses (§2's
+  rule names none). It also adds a `continues` key to a repair's or a retry's `campaign_proposal` block. That key is read
+  by name only, never hashed or compared.
+- **#2563** is documentation.
+
+## 9. Declared before launch: what the window's evidence does not cover, and what it is expected to show
+
+- **No user-interface outcome is measured independently.** Revision 3's 25 scenarios all name `http_endpoint`
+  surfaces, so what a page shows is checked only by the squad's own tests. The browser runner and page scenarios are
+  SIP-0113 §10k (#2564), after the window.
+- **Lighthouse and axe see only the parameterless pages, on an empty app** (`/` and `/runs/new`). They will mostly read
+  flat across a campaign. A flat reading is not a baseline held for the pages increments change. The seeded reading is
+  SIP-0113 §10j (#2562), after the window, and the window's trees are re-measured with it then.
+- **The model is pinned by its recipe and image, not by a digest.** Every deploy record since 2026-10-14 names no model
+  digest (#2561).
+- **Expected once per calibration at most, and answered identically:** the plan review's list-order question. PRD §5.2
+  states no core list order (#2557).
+  - The answer: the core list shows runs in insertion order, and sorting is Expansion Tier 1 item 2.
+  - The intervention ledger counts each, and the readout names them. Round 10's calibration didn't raise it.
+- **Known shapes that may appear, and are named, not new:**
+  - #2306, a correction ended as `plan_defect` when its failure signature repeats;
+  - #2558, a retry of a failed repair starting from the original increment's candidate. The readout checks whether
+    any retry followed a repair.
