@@ -87,6 +87,18 @@ class CampaignLaunchService:
             if status >= 500:
                 raise
             raise LaunchRefused(f"{detail['error']['code']}: {e}") from e
+        # #2178: the launch's task instructions are its cycle's admitted inputs, stored before
+        # the launcher persists the cycle, so its first run reads them. A launch repeated by its
+        # launch id stores the earlier cycle's; these then target an id that was never stored,
+        # which nothing matches. No store is a fault the next drain repeats, never a silent drop.
+        if prepared.instructions:
+            records = self._creation.memory_records
+            if records is None:
+                raise RuntimeError(
+                    f"launch {intent.launch_id} gives task instructions, and no store holds them"
+                )
+            for record in prepared.instructions:
+                await records.create(record)
         return prepared.cycle
 
     async def drain(self) -> list[Run]:

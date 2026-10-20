@@ -713,6 +713,7 @@ async def _init_cycle_subsystem(state, config, pool) -> None:
             deploy_registry=deploy_registry,
             llm=llm_adapter,
             artifact_vault=artifact_vault,
+            memory_records=state.memory_records,
         ),
         flow_executor=flow_executor,
         event_bus=event_bus,
