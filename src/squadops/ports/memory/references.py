@@ -37,3 +37,11 @@ class ReferenceResolverPort(ABC):
     async def read(self, bound: BoundReference, ctx: BindingContext) -> str:
         """The content at ``bound``'s revision. Raises :class:`ReferenceUnresolved` when it can't
         be read there, or its digest no longer matches."""
+
+    async def binds_nothing_for(self, project_id: str) -> str | None:
+        """Why this family can bind no reference for any unit of ``project_id``, or ``None`` when
+        it may. The records refuse a project instruction naming such a reference at write, since
+        every unit would pin it unbound, and a required one would hold every task it applies to
+        (§3.6). The repository family binds nothing for a Project with no source repository. A
+        family that can always try answers ``None``, the default."""
+        return None
