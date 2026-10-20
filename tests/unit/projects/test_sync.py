@@ -7,18 +7,27 @@ stand-in is the forge, which answers a review request's state. Bugs caught:
   relies on evidence validated against an older tree;
 - a contribution the product took left pending, or one it closed read as taken;
 - a squash merge, which makes a new commit, never recognized as integration;
-- a sync that moves the approved baseline by itself.
+- a sync that moves the approved baseline by itself;
+- an instruction's repository reference bound at the branch's head, not the unit's pinned commit.
 """
 
 from __future__ import annotations
 
+import dataclasses
 import subprocess
 from datetime import UTC, datetime
 
 import pytest
 
+from adapters.memory.cross_cycle import InMemoryCrossCycleMemoryStore
+from adapters.memory.records import InMemoryMemoryRecords
 from adapters.tools.git_source import GitSourceRepository
+from adapters.tools.repository_references import REPOSITORY_FAMILY, RepositoryReferenceResolver
 from squadops.cycles.models import Project
+from squadops.memory.lessons import UnitKind
+from squadops.memory.pinning import pin_unit
+from squadops.memory.records import Reference
+from squadops.ports.memory.references import BindingContext, BoundReference, ReferenceUnresolved
 from squadops.ports.projects.review_request import ReviewRequestState
 from squadops.projects.contribution import Contribution, capture_ref
 from squadops.projects.development_configuration import parse_configuration
@@ -35,6 +44,7 @@ from squadops.projects.models import ProjectSource
 from squadops.projects.registration import LocatorPolicy
 from squadops.projects.sync import sync_project
 from tests.fixtures.shared_contract.repository import build_repository, recorded, tracked_files
+from tests.unit.memory.test_project_instructions import DESIGN, T0, _instruction
 
 ENV = {
     "GIT_AUTHOR_NAME": "o",
@@ -248,33 +258,59 @@ async def test_a_contribution_stands_as_the_product_took_it(world, merge, forge_
     assert (standing["state"], standing["integrated_commit"]) == (expected, merged)
 
 
-async def test_a_reference_reads_the_pinned_commit_never_the_branch_head(world):
-    """Contract 6's resolver. Bugs caught: an instruction read at the branch's head, so a
-    unit's instructions and the commands it pinned come from different commits; a digest that
-    isn't the one discovery recorded for that commit; a missing source passed over silently."""
-    from squadops.projects.references import ReferenceUnresolved, resolve_repository_reference
-    from squadops.projects.source_context import parse_source_context
-
+async def test_a_repository_reference_binds_the_pinned_commit_never_the_branch_head(world):
+    """Contract 6's resolver, on the T16 port. Bugs caught: an instruction bound at the branch's
+    head, so a unit's instructions and the commands it pinned come from different commits; a digest
+    that isn't the one discovery recorded for that commit; a read that hands back content the
+    binding never saw; a missing source, or a unit with no source commit, bound to something."""
     repo, clones, _registry = world
     await clones.sync("prj-tally", str(repo.path), "refs/heads/main")
     _commit(repo.path, {"CONTRIBUTING.md": "changed upstream\n"}, "outside")
     await clones.sync("prj-tally", str(repo.path), "refs/heads/main")
-    context = parse_source_context(recorded("project_source_context", "valid"))
-    recorded_source = recorded("development_configuration", "valid")["configuration"][
+    resolver = RepositoryReferenceResolver(clones)
+    pinned = BindingContext("prj-tally", "cycle", "cyc_1", repo.second_commit)
+    [discovered] = recorded("development_configuration", "valid")["configuration"][
         "instruction_sources"
-    ][0]
+    ]
 
-    reference = await resolve_repository_reference(
-        context.__class__(**{**context.__dict__, "project_id": "prj-tally"}),
-        "CONTRIBUTING.md",
-        repository=clones,
+    bound = await resolver.bind("repo:file:CONTRIBUTING.md@current", pinned)
+
+    assert bound == BoundReference(
+        f"repo:file:CONTRIBUTING.md@{repo.second_commit}", repo.second_commit, discovered["digest"]
     )
-
-    assert reference.commit == repo.second_commit
-    assert reference.digest == recorded_source["digest"]
+    assert "changed upstream" not in await resolver.read(bound, pinned)
+    tampered = BoundReference(bound.ref, bound.revision, "sha256:" + "0" * 64)
+    with pytest.raises(ReferenceUnresolved, match="no longer matches"):
+        await resolver.read(tampered, pinned)
     with pytest.raises(ReferenceUnresolved, match="AGENTS.md"):
-        await resolve_repository_reference(
-            context.__class__(**{**context.__dict__, "project_id": "prj-tally"}),
-            "AGENTS.md",
-            repository=clones,
+        await resolver.bind("repo:file:AGENTS.md@current", pinned)
+    with pytest.raises(ReferenceUnresolved, match="pins no source commit"):
+        await resolver.bind(
+            "repo:file:CONTRIBUTING.md@current", BindingContext("prj-tally", "campaign", "cmp_1")
         )
+
+
+async def test_admission_pins_a_project_instruction_at_the_units_source_commit(world):
+    """The wiring: SIP-0110's admission (``pin_unit``), with this resolver registered for ``repo``,
+    as the runtime registers it. Bug caught: the unit's source commit not reaching the resolver, so
+    the snapshot binds another commit, or none."""
+    repo, clones, _registry = world
+    await clones.sync("prj-tally", str(repo.path), "refs/heads/main")
+    _commit(repo.path, {"CONTRIBUTING.md": "changed upstream\n"}, "outside")
+    await clones.sync("prj-tally", str(repo.path), "refs/heads/main")
+    store, records = InMemoryCrossCycleMemoryStore(), InMemoryMemoryRecords()
+    instruction = _instruction(
+        "mrec_contrib", DESIGN, references=(Reference("repo:file:CONTRIBUTING.md@current", True),)
+    )
+    await records.create(dataclasses.replace(instruction, project_id="prj-tally"))
+
+    snapshot = await pin_unit(
+        store, unit_kind=UnitKind.CYCLE, unit_id="cyc_1", project_id="prj-tally", pinned_at=T0,
+        disabled=False, records=records,
+        resolvers={REPOSITORY_FAMILY: RepositoryReferenceResolver(clones)},
+        source_commit=repo.second_commit,
+    )  # fmt: skip
+
+    [pinned] = snapshot.instructions
+    assert [r.ref for r in pinned.references] == [f"repo:file:CONTRIBUTING.md@{repo.second_commit}"]
+    assert pinned.unbound == ()
