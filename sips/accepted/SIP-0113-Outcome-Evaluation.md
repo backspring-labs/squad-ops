@@ -68,7 +68,7 @@ contracts (its §8.2). §4.8 says what this SIP produces and reads at each.
 >   revision's design (§4.1, §4.8).
 > - **No conflict.**
 
-## Delivery ledger (current as of 2026-10-18)
+## Delivery ledger (current as of 2026-10-20)
 
 One row per part that ships separately. Statuses as CLAUDE.md defines them. The 2.4 plan places phase 1 in 2.4
 (committed) and phase 2 in 2.4 conditionally. **Phase 1's parts are placed** with the issues filed at acceptance
@@ -80,7 +80,8 @@ One row per part that ships separately. Statuses as CLAUDE.md defines them. The 
 | phase 0: the per-increment scorecard (#1960) | **shipped** | v2.1.0, PR #2027 |
 | phase 0: reporting-only lint findings on the delivered app (#1937) | **shipped** | v2.1.0, PR #2088 |
 | phase 1: the scenario store, its suites and the campaign's suite pin (§4.1, §4.7) | **shipped** (§10a) | 2.4.0, PR #2448, issue #2413 |
-| phase 1: the runner, outside the squad's containers, on a disposable copy (§4.1; needs the sandbox's X-3, #2421) | **placed** | 2.4.0, #2414 |
+| phase 1: the runner, outside the squad's containers, on a disposable copy (§4.1; needs the sandbox's X-3, #2421) | **placed** | 2.4.0, #2414: the HTTP runner and the cycle-end hook shipped (§10c); the declared start at the hook remains here, and the browser runner moved to #2564 (§10k) |
+| phase 1: the browser runner and page scenarios, in the evaluator's image (§4.1, A2, A3; §10k, proposed; its design review before it is built) | **placed** | 2.4.0, after the window, #2564 |
 | phase 1: the evaluation record and its reference (§4.1, contract 5) | **shipped** (§10b) | 2.4.0, PR #2449, issue #2415 |
 | phase 1: the quality baselines, Lighthouse, axe and lint, in the evaluator's image (§4.2) | **placed** | 2.4.0, #2416 |
 | phase 1: the intervention ledger's classifications (§4.3) | **shipped** (§10d) | 2.4.0, PR #2454, issue #2417 |
@@ -88,6 +89,7 @@ One row per part that ships separately. Statuses as CLAUDE.md defines them. The 
 | phase 2: the proposer sees each goal's result (§4.5) | **unplaced** | 2.4 if D4 rules it in, with its issue filed then; otherwise the next even release |
 | phase 2: the objective's scenario measure, read by SIP-0109 §10 row 3, as a SIP-0109 amendment (§4.7) | **unplaced** | 2.4 if D4 rules it in, with its issue filed then; otherwise the next even release |
 | quality gates where phase 1's data supports a threshold (§4.2, §6) | **unplaced** | with phase 2, each with its phase-1 evidence |
+| phase 1 amendment: Lighthouse and axe on a seeded instance, parameterised pages included (§10j, proposed; its design review before it is built) | **placed** | 2.4.0, after the window, #2562 |
 
 **What closes this SIP:** phase 1 shipped and phase 2 shipped, or phase 2 dropped by a numbered amendment the owner
 rules.
@@ -1019,3 +1021,250 @@ names the entity exactly resolves as before.
 - The wiring test enters at `evaluate_cycle`, now with the reference manifest's own `RunEvent` as well as `Run`. Before,
   it renamed the reference to `Run`, on the premise that every delivered manifest says `Run`, which round 7 disproved.
 - With the lookup back to the exact name only, both fail.
+
+### 10j. Lighthouse and axe on a seeded instance, parameterised pages included (proposed 2026-10-20, §4.2, §10f; #2562; queued for after the window by the owner)
+
+**Status: proposed, not built.** The owner, 2026-10-20, answering the proposal to draft it: "yes, draft it and queue it
+for after the window." **The design review is the owner's,** on #2562, after the window and before any of it is built.
+The window runs on §10f's reading as it stands. Its deploy is frozen (G7), and a measure changed mid-series is a
+different measure.
+
+**What's wrong with §10f's reading.** Lighthouse and axe score a blueprint delivery's declared routes that load as
+they are, on the instance the scenarios read, before any scenario writes to it. For `group_run` that is `/` and
+`/runs/new`, on an empty app.
+- **A route with a parameter is never measured** (`/runs/:id`, "needs data no measure creates").
+- **The list is only ever measured empty.**
+- **The evidence:** the 2.4 FastAPI shakeout (`cmp_41d4a7185a3a`, on `dep_19dfa94c0a0a`) read identical Lighthouse
+  and axe scores on all three of its trees:
+  - the calibration `cyc_7f3af6920b55`;
+  - capacity `cyc_54a601cec50b`, whose indicator is on `/runs/:id`;
+  - sorting `cyc_7280393ca6b9`, which shows only with data.
+
+  The scores were performance 0.93 and 0.94, accessibility 0.96, best practices 0.78, and axe 2 moderate, on both
+  pages. Only lint moved: +35 findings, then +8.
+- **What follows for the window:**
+  - **Every increment's delta reads zero.** Prediction 4 re-measures one unchanged tree, so it reads the same with or
+    without a seed. What the empty reading costs is the deltas: a page the increment changed is never one that was
+    measured.
+  - §4.2's caution ("one that does not track scenario success loses its weight") would then retire Lighthouse and axe
+    from phase 2 without their ever having seen an increment.
+
+**What is proposed: a second, seeded reading beside §10f's.**
+- **A fixed seed, written through the delivery's own API.**
+  - **The file:** one per Project, starting with `examples/03_group_run/quality_seed.json`. It has the shape the
+    release screenshots' seed already has: create endpoints, field aliases, records, and a member action that joins
+    participants.
+  - **The mapping onto the delivery's own `interface_manifest.yaml`** is one of two that exist today. The review
+    chooses which the seeded reading uses (item 4), and the chosen one moves into `src/squadops/scenarios/`, shared by
+    whatever else uses it:
+    - **The release screenshots'** (`plan_seed`, `scripts/dev/capture_delivered_app.py`): the seed's create endpoints
+      and field aliases mapped onto the manifest, under the API's base (#1730's `_under_base`). It takes the id it
+      photographs from the first row a list endpoint returns.
+    - **Route rendering's** (SIP-0109 §8.3; `increment_tree.route_seeds`, with #2084's written-prefix fix,
+      `src/squadops/capabilities/handlers/route_rendering.py`). It brings a parameterised route into being with the
+      create probe's request, and reads the id from the create response. It runs in the squad's qa container, and
+      this measure outside it.
+  - **Its own file.** The screenshots' seed may change for a better picture. This one is part of the measure, so its
+    sha256 is part of the measure's version.
+- **On its own disposable instance.** **This changes §4.2 and §10f,** which measure "on the same evaluated instance the
+  scenarios read". The review rules on the change.
+  - The same pinned tree is started a second time in a disposable copy, as a blueprint starts: by its stack's
+    environment contract (§10c). It is seeded, measured, and discarded.
+  - **The sandbox's runner changes:** it starts the tree twice, and seeds before it measures. The sandbox's contract
+    3 doesn't change.
+  - **The scenarios and §10f's reading are untouched.** They still read a fresh, empty instance. So no outcome
+    changes, and every reading taken before this stays comparable.
+  - **Why not measure after the scenarios, on their instance:** what the scenarios write depends on which of them
+    pass, so the state would differ per tree.
+- **Every declared page, parameterised routes included.**
+  - Each parameter is filled with the id of the first record the seed created, in whichever form the delivery writes
+    it: `:id`, `{id}` or `[id]` (the forms `measurable_pages` already recognises). Where the id is read from is the
+    chosen mapping's rule (item 4).
+  - A route whose parameter the seed can't fill is listed with why (`no_seed_value`). The rest are still measured.
+- **Where it doesn't apply:**
+  - a blueprint whose Project has no seed file: *not measured*, `no_seed`;
+  - a declared Project (SIP-0112): *not applicable*. Its `ui_base` entry point keeps §10f's reading only.
+- **New reasons for *not measured*,** each a record that the measure didn't run, never evidence and never a baseline
+  held (§4.2):
+  - `seed_refused`: the delivery's interface can't take the seed, because no create endpoint is declared, or a field
+    it requires has no value;
+  - `seed_failed`: the app answered a seed request with an error. The request and the status are kept.
+- **Its version** is the evaluator's tag and the seed's sha256, together. Deltas compare seeded with seeded only, at
+  one version (§10f's like-with-like rule).
+- **Recorded in its own column** (`quality_seeded`, an additive migration). Nothing that reads `quality` today
+  changes, and a record written before it has none. That is never read as measured, nor as not measured.
+- **Reporting-only, as §10f is.** No row, gate or prompt reads it. A gate on either reading waits for phase 2's rule
+  (§4.2, §6).
+
+**Re-measuring the window's trees.** After the window, on the deploy that builds this, every tree the window evaluated
+is re-measured with the seeded reading: each campaign's calibration and each increment. No campaign is re-run.
+- **Where the readings land is the review's** (item 5). `remeasure_quality.py` writes nothing today: no evaluation
+  record and no store row. But the deltas (§4.2, §10f; `quality_deltas`) read two evaluation records. So the seeded
+  readings need a record to land in, or the deltas need a reader that takes re-measures.
+- **A request to the owner, not a decision:** D4 might wait for both readings. When D4 rules is the owner's call.
+
+**Predictions, pre-registered for its reading:**
+
+| # | prediction | falsified by |
+|---|---|---|
+| S1 | the seeded reading is as stable as prediction 4's bounds on an unchanged tree: axe, accessibility and best practices spread 0; performance at most 0.05; three re-measures per tree | a measure beyond its bound on any tree. It is reported, and phase 2 may not gate on it |
+| S2 | it sees the increments: across the window's pairs, at least one measure differs on at least one page whose route the increment changed, such as `/runs/:id` for capacity | no difference on any changed page in any pair. Then Lighthouse and axe don't track this app's increments even seeded, and §4.2's weight rule applies to them on that evidence |
+
+**Boundaries:**
+- **A declared Project** (SIP-0112) keeps its `ui_base` entry point (§10f). A seed for it would be its own
+  declaration's, which is Project Lifecycle Management's. Nothing is asked of SIP-0112.
+- **The sandbox's contract 3** doesn't change, so no G4 review is needed. Its runner does (above).
+- **The held-out suite:** the seed is public, in the repository, and written without reading the suite. No scenario
+  step is in it, and prediction 2's sweep is unaffected.
+- **The release capture** keeps its own seed file. It shares the mapping if the review chooses the screenshots' one.
+
+**What the design review settles:**
+1. **The second instance's cost:** one more start, seed and measure per evaluation. It is measured when built, and the
+   review sees the figure before it lands in a series.
+2. **What state the seed reaches:**
+   - three runs and three participants on the first, as the screenshots have;
+   - or also a run at its capacity, so the full state of a capacity indicator is in the reading, when a delivery has
+     one.
+3. **Whether the seeded reading should replace §10f's** after one series of both. The proposal keeps both, because
+   §10f's reading is what every earlier record has.
+4. **Which mapping:** the screenshots' or route rendering's (above). That settles the base-path rule, where an id is
+   read from, and what moves into `src/`.
+5. **Where the window trees' seeded readings land,** and how their deltas are computed (above).
+
+### 10k. The browser runner and page scenarios (proposed 2026-10-20, §4.1, A2, A3; #2564, split from #2414; queued for after the window by the owner)
+
+**Status: proposed, not built.** The owner, 2026-10-20, answering the proposal to draft the browser steps as §10j's
+companion: "yes, draft it and queue it for after the window." These are the same words as §10j's answer, given to its
+own question. **The design review is the owner's,** on #2564, after the window and before any of it is built.
+
+This is the part of phase 1's runner §10c names as still to build: "the browser runner in the evaluator's image (A2),
+for `page` surfaces". It moves from #2414 to #2564, and #2414 keeps the declared start at the hook (E.4.2). The window
+runs without it:
+- its suite (revision 3) has no page scenario;
+- the suite is frozen (D2), and so is the deploy (G7).
+
+**The driver is decided; the rest is for the design review.** The owner passed on a review the same day, whose decision
+reads: "Adopt Claude's recommendation to implement browser scenario evaluation using the existing Puppeteer dependency
+rather than introducing Playwright at this stage." The review also asked for the following, each folded in below:
+- evidence captured with every result;
+- the driver kept behind an adapter;
+- scenarios that measure completed user outcomes, not interactions;
+- comparability that survives a suite revision.
+
+**What's missing.** §4.1 names browser pages as a surface kind, and A2 and A3 put the browser in the evaluator's image,
+receiving a run's steps on its input. The vocabulary reserves `visit`, `click`, `fill`, `page` and `browser`, but each is
+`blocked_unverified`, `browser_unavailable` (`squadops.scenarios.steps`).
+- **So nothing independent checks what a user sees,** such as capacity's "2 / 5 joined", or the list's order on the
+  page.
+- **Only the squad's own tests check it,** written by the qa role that the held-out suite exists to stand apart from
+  (§2).
+
+**What is proposed.**
+- **Browser steps, in the suite's own vocabulary,** beside `http`, and mixed freely in one scenario: a scenario can
+  create its run over HTTP, join it through the page, and check what the page shows. The table's values are
+  illustrations, now public. Revision 4's steps take no value from them: they are written apart and held out.
+- **Where a mixed scenario runs** (review item 7). HTTP steps run in Python in the sandbox service
+  (`squadops.scenarios.steps`). The browser runs in the evaluator's Node container (`infra/evaluator/driver.mjs`),
+  which takes its request on its input.
+  - **Proposed:** the sandbox's runner keeps the scenario. It runs the HTTP steps, and hands each run of browser steps
+    to the evaluator with the values saved so far, receiving the values the browser steps save. So each action kind
+    has one implementation.
+  - **The alternative:** port the HTTP vocabulary to Node, and run the whole scenario in the evaluator.
+
+| step or check | what it does |
+|---|---|
+| `{"action": "visit", "path": "/runs/{run_id}"}` | loads a path under the declared UI base, with saved values threaded in as for `http` |
+| `{"action": "fill", "target": {"role": "textbox", "names": ["Name", "Your name"]}, "value": "Ada"}` | types into the first control found |
+| `{"action": "click", "target": {"role": "button", "names": ["Join", "Join run"]}}` | clicks it, then waits for the page to settle |
+| `{"check": "text", "step": 4, "pattern": "2\\s*/\\s*5"}` | the page after that step shows text matching the pattern |
+| `{"check": "count", "step": 4, "target": {"role": "listitem"}, "equals": 2}` | so many elements match |
+| `{"check": "order", "step": 4, "target": {"role": "listitem"}, "patterns": ["Nov", "Dec"]}` | elements matching each pattern appear in this order |
+| `{"check": "absent", "step": 4, "pattern": "error\|went wrong"}` | the page after that step shows no text matching the pattern: a failure condition the scenario names |
+
+- **Elements are found the way a user finds them:** by role, accessible name and visible text.
+  - A step names its candidate names, as a scenario names its fields' candidates (§10i), and the first one found is
+    used, case-insensitively.
+  - **Never by the delivery's test ids.** §4.1 rules a Project's manifest never a scenario's source, and a test id is
+    the squad's own naming. A step that finds controls by accessible name also reads what axe measures, so an
+    unlabelled control is visible to both.
+- **Outcomes, not interactions.** A page scenario completes a user's job and checks what it left behind. For example:
+  create a run, join it from its page, and then, on a fresh load of the page or over HTTP, read the joined count back.
+  - A scenario whose checks only say that a page rendered, or that a control could be clicked, isn't one. That is
+    route rendering's job (SIP-0109 §8.3).
+  - **Each scenario states:**
+    - its preconditions, as its own setup steps, held out with the rest, so every run starts from the same known
+      state;
+    - its user actions;
+    - the outcomes it expects;
+    - the failure conditions it rules out (`absent`);
+    - the evidence it keeps (below).
+  - **Where its criteria come from:** the campaign's pinned suite is its outcome contract (§10a). It is written and
+    approved outside the squad before the campaign starts (§4.1), never after an implementation by the role that built
+    it.
+- **When a step can't act:**
+  - a control none of the step's names finds is `blocked_unverified`, `surface_absent`, never failed. It is the
+    page's version of an endpoint the delivery doesn't declare;
+  - a control that is found, whose action leaves the page without what the check reads, **fails** the scenario at that
+    check;
+  - every wait is bounded. A wait that runs out fails at its step, naming what it waited for.
+- **Each scenario gets a fresh browser context,** with no cookies or storage carried from the one before, on the
+  instance the scenarios share as today. Each sets up its own data in its own steps (§4.1). §10j's seed is not used.
+- **The driver** is Puppeteer, which the evaluator's image already pins (`puppeteer-core`) for Lighthouse and axe,
+  with the image's Chromium. It sits behind a small driver interface inside the evaluator: load a path, find by role
+  and name, fill, click, read text, capture evidence. So a change of driver changes one module and the image's tag,
+  and nothing in the vocabulary or the runner.
+  - **No second driver or browser bundle in an audited image.** Steps are the suite's vocabulary and the runner
+    executes them, so the driver is the runner's implementation.
+  - **Playwright** is reconsidered only on a measured limitation: flake that B2 reads, waits that need its
+    auto-waiting, or a browser a product needs that Chromium isn't. That would be a new evaluator tag, so no two
+    readings mix drivers.
+- **Evidence with every result.**
+  - **Every scenario:** each step's timing.
+  - **A failed or blocked step:** a screenshot of the page, the accessibility tree around the target, the page's
+    console errors and its failed requests.
+  - **Where it's kept:** with the evaluation record, in the scenario store's own tables behind its port (§4.1), never
+    in the artifact vault, where squad tasks' inputs come from.
+- **Held out as the HTTP steps are, evidence included.** Steps reach the browser on its input only (A3), never on a
+  mounted path, and no squad role sees them. A screenshot of a filled form shows a step's values, so the evidence is
+  held out like the steps. Prediction 2's sweep covers both.
+- **A suite revision with page scenarios** is drafted by the supervisor, read by an independent reviewer, and
+  approved as revision 3 was (D2, #2464). It keeps revision 3's scenarios unchanged and adds the page scenarios.
+- **Comparability survives the revision, per scenario.** Each scenario is content-addressed on its own (§4.1), so
+  one that is unchanged between revisions keeps its version, and its results continue their series.
+  - **Readings across revisions:** contribution, rates and the package compare only the scenario versions both
+    readings share, and report the new ones apart, with their own series.
+  - **A changed scenario is a methodology break for that scenario only,** named in the record. It is never averaged
+    into the shared set.
+  - **Today:** contribution refuses any two readings of different suites (`squadops.outcomes.contribution`,
+    `_comparable`). That refusal becomes a comparison of the shared scenario versions, with the rest listed.
+  - **Within a window, its own rule stands:** one suite, frozen (the 2.4 pre-registration §7).
+- **Unchanged:**
+  - the squad's own qa tests, which add no browser framework;
+  - route rendering (SIP-0109 §8.3), the framework's own check that each declared route renders;
+  - every rule of §4.1 on who writes scenarios and what the squad sees.
+
+**Predictions, pre-registered for its reading:**
+
+| # | prediction | falsified by |
+|---|---|---|
+| B1 | a page scenario discriminates. It fails on a tree known to lack its outcome and passes on one known to have it. It is read on the reference pair (`cyc_7a4b7a6fbf0e`, `cyc_20246018f2b8`, where the HTTP capacity scenario failed on the first and passed on the second, §10c) if its delivery shows the indicator; otherwise on a pair the review names | a page scenario that passes on a tree known to lack its outcome. One that passes both trees of every pair is withdrawn as evidence. A `blocked_unverified` reading on either tree is not discrimination: B1 is unread for that scenario, and the record says so |
+| B2 | it doesn't flake. Every page scenario gives the same result on three runs of one unchanged tree | any differing result. That scenario is withdrawn as evidence, and the driver's waits are the first thing read |
+| B3 | its steps stay held out. No page step's value appears anywhere prediction 2's sweep reads | any marker found |
+
+**What the design review settles:**
+1. **The locator rule:** role and candidate names only, as proposed, or a delivery's accessible labels resolved like
+   §10i's concepts as well.
+2. **Whether a control not found is `surface_absent`,** as proposed, or a failure. A failure would count a different
+   label as a broken app. `surface_absent` lets a page that names nothing a user can find read as unverified, and it
+   repeats what §10c found for fields: "Reading an undeclared field as absent hid that job."
+3. **The bound on each wait,** measured when built on both stacks' pages, and the browser's cost per evaluation.
+4. **Which outcomes revision 4's page scenarios state:** at least capacity's indicator and the list's order, the two
+   increments the shakeout's HTTP-only suite couldn't see on a page.
+5. **The evidence's size and how long it's kept,** and who may read it: the owner's console and CLI, never a squad
+   identity.
+6. **The per-scenario comparison's rules:**
+   - how a rate is reported when the shared set is small;
+   - whether a scenario whose surfaces changed but whose steps didn't is the same scenario. Its content hash says
+     it isn't.
+7. **Where a mixed scenario runs:** the sandbox's runner handing browser runs to the evaluator, as proposed, or the
+   whole vocabulary in Node (above).
