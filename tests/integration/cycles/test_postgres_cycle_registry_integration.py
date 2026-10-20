@@ -564,6 +564,49 @@ class TestMemoryLessons:
             async with migrated_pool.acquire() as conn:
                 await conn.execute("DELETE FROM memory_snapshots WHERE unit_id = ANY($1)", units)
 
+    async def test_a_rebinding_lands_once_on_the_snapshot_it_was_read_from(self, migrated_pool):
+        """Appendix A §3.7 against the table (#2179). Bugs caught: a second re-binding read from
+        the same snapshot overwriting the first; the update writing a body that reads back
+        different; a unit with no pin answered as conflict instead of absent."""
+        from dataclasses import replace
+
+        from adapters.memory.cross_cycle import PostgresCrossCycleMemoryStore
+        from adapters.memory.records import InMemoryMemoryRecords
+        from squadops.memory.lessons import UnitKind
+        from squadops.memory.pinning import pin_unit
+        from squadops.memory.rebinding import rebound
+        from squadops.memory.records import revised, withdrawn
+        from squadops.ports.memory.cross_cycle import SnapshotMoved
+        from tests.unit.memory.test_project_instructions import _instruction
+
+        tag = uuid.uuid4().hex[:8]
+        unit_id = f"cyc_rebound_{tag}"
+        record = _instruction(f"mrec_r{tag}", "qa.test")
+        records = InMemoryMemoryRecords()
+        await records.create(record)
+        store = PostgresCrossCycleMemoryStore(pool=migrated_pool)
+        try:
+            read = await pin_unit(
+                store, unit_kind=UnitKind.CYCLE, unit_id=unit_id, project_id="group_run",
+                pinned_at=datetime.now(UTC), disabled=False, records=records,
+            )  # fmt: skip
+            two = revised(record, replace(record.current, body="revised"))
+            first = rebound(read, two, by="ada", at=datetime.now(UTC), why="clarified")
+            late = rebound(
+                read, withdrawn(record, by="bo", at=_NOW, why="x"), by="bo", at=_NOW, why="x"
+            )
+
+            await store.rebind_snapshot(first, after=0)
+            with pytest.raises(SnapshotMoved):
+                await store.rebind_snapshot(late, after=0)
+            with pytest.raises(KeyError):
+                await store.rebind_snapshot(replace(first, unit_id=f"cyc_none_{tag}"), after=0)
+
+            assert await store.get_snapshot(UnitKind.CYCLE, unit_id) == first
+        finally:
+            async with migrated_pool.acquire() as conn:
+                await conn.execute("DELETE FROM memory_snapshots WHERE unit_id = $1", unit_id)
+
     async def test_an_exposure_is_stored_once_per_invocation_and_a_damaged_pin_reads_as_incompatible(
         self, migrated_pool
     ):

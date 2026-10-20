@@ -3914,6 +3914,7 @@ class TestASoloRollProvesTheAbsences:
         monkeypatch.setattr(driver, "loaded_check_evidence", lambda *a, **k: {})
         monkeypatch.setattr(driver, "boot_audit", lambda *a, **k: {"ran": False})
         monkeypatch.setattr(driver, "pinned_instruction_set", lambda *a, **k: [])
+        monkeypatch.setattr(driver, "snapshot_rebindings", lambda *a, **k: [])
         monkeypatch.setattr(driver, "cycle_log_until", lambda *a, **k: "t1")
         monkeypatch.setattr(driver, "render", lambda *a, **k: "")
         monkeypatch.setattr(
@@ -5649,6 +5650,7 @@ class TestRecordsHaveOneHome:
         monkeypatch.setattr(driver, "loaded_check_evidence", lambda *a, **k: {})
         monkeypatch.setattr(driver, "boot_audit", lambda *a, **k: {"ran": False})
         monkeypatch.setattr(driver, "pinned_instruction_set", lambda *a, **k: [])
+        monkeypatch.setattr(driver, "snapshot_rebindings", lambda *a, **k: [])
         monkeypatch.setattr(driver, "cycle_log_until", lambda *a, **k: "t1")
         monkeypatch.setattr(driver, "render", lambda *a, **k: "md")
 
@@ -5835,6 +5837,7 @@ class TestTheChainRunsUnattended:
         monkeypatch.setattr(driver, "seam_readouts", lambda *a, **k: {})
         monkeypatch.setattr(driver, "boot_audit", lambda *a, **k: {"ran": False})
         monkeypatch.setattr(driver, "pinned_instruction_set", lambda *a, **k: [])
+        monkeypatch.setattr(driver, "snapshot_rebindings", lambda *a, **k: [])
         monkeypatch.setattr(driver, "cycle_log_until", lambda *a, **k: "t1")
         monkeypatch.setattr(driver, "cycle_run_states", lambda cycle_id: [])
         monkeypatch.setattr(driver, "render", lambda *a, **k: "")
@@ -7396,6 +7399,90 @@ class TestACountedRollRecordsTheInstructionsItPinned:
             "previous": old,
             "now": [{"record_id": "mrec_a", "revision": 2}],
         }
+
+    def test_a_roll_rebound_while_it_ran_is_recorded_and_its_headline_says_it_isnt_counted(
+        self, driver, tmp_path, monkeypatch
+    ):
+        """§3.7: a counted roll refuses a re-binding. Wiring, entered at ``_run_cycle``. Bug caught:
+        a cycle re-bound through the API mid-roll recorded as an ordinary roll, so an intervention
+        moves the yardstick and nothing says so."""
+        import json
+
+        cfg = self._cfg(driver, tmp_path, monkeypatch)
+        body = {
+            "instructions": [{"record_id": "mrec_a", "revision": 2}],
+            "rebindings": [{
+                "record_id": "mrec_a", "replaced": {"revision": 1}, "replacement": {"revision": 2},
+                "by": "ada", "at": "2026-10-20T12:00:00+00:00", "why": "clarified",
+            }],
+        }  # fmt: skip
+        captured: dict = {}
+        monkeypatch.setattr(driver, "log_since", lambda *_a, **_k: "2026-10-20T00:00")
+        monkeypatch.setattr(driver, "launch", lambda *a, **k: ("cyc_1", "run_1", "hash"))
+        monkeypatch.setattr(driver, "drive", lambda *a, **k: None)
+        monkeypatch.setattr(
+            driver,
+            "collect",
+            lambda *a, **k: {"impl_run_id": "run_1", "squad_profile_snapshot_ref": "s"},
+        )
+        monkeypatch.setattr(driver, "psql", lambda q: json.dumps(body))
+        monkeypatch.setattr(driver, "completed_framing_run", lambda *a, **k: None)
+        for name in ("static_checks", "ledger_checks", "loop_texture", "typed_checks_by_check"):
+            monkeypatch.setattr(driver, name, lambda *a, **k: {})
+        monkeypatch.setattr(driver, "loaded_check_evidence", lambda *a, **k: {})
+        monkeypatch.setattr(driver, "boot_audit", lambda *a, **k: {"ran": False})
+        monkeypatch.setattr(driver, "cycle_log_until", lambda *a, **k: "t1")
+        monkeypatch.setattr(driver, "render", lambda *a, **k: "")
+        monkeypatch.setattr(driver, "_write_record", lambda _c, _s, rec, _md: captured.update(rec))
+
+        driver._run_cycle(
+            cfg, "nextjs_ts", "notes", title="t", stem="roll-03", assert_hash=False, identity={}
+        )
+
+        assert captured["rebindings"] == [
+            {"record_id": "mrec_a", "replaced": 1, "replacement": 2, "by": "ada",
+             "at": "2026-10-20T12:00:00+00:00"},
+        ]  # fmt: skip
+        assert captured["pinned_instructions"] == [{"record_id": "mrec_a", "revision": 2}]
+
+    def test_a_rebound_roll_is_never_the_baseline_a_later_roll_is_compared_with(
+        self, driver, tmp_path, monkeypatch
+    ):
+        """The second reader's finding: roll 2 pinned r1 and was re-bound to r2, so its record's
+        set reads r2; roll 3 pins r2 and, compared with roll 2, reads as unchanged, though the
+        counted yardstick moved from r1. Bug caught: the re-bound roll taken as the baseline."""
+        import json
+
+        cfg = self._cfg(driver, tmp_path, monkeypatch)
+        r1, r2 = [{"record_id": "mrec_a", "revision": 1}], [{"record_id": "mrec_a", "revision": 2}]
+        (cfg.records_path / "roll-01-a.json").write_text(
+            json.dumps({"launched_at": "2026-10-18", "pinned_instructions": r1})
+        )
+        (cfg.records_path / "roll-02-b.json").write_text(
+            json.dumps(
+                {"launched_at": "2026-10-19", "pinned_instructions": r2, "rebindings": [{"x": 1}]}
+            )
+        )
+
+        change = driver.instruction_set_change(cfg, r2)
+
+        assert change == {"previous_record": "roll-01-a.json", "previous": r1, "now": r2}
+
+    def test_the_headline_names_each_rebinding_and_an_unbound_roll_says_nothing(
+        self, driver, tmp_path
+    ):
+        """Bug caught: the re-binding recorded but invisible where a reader looks, or a roll never
+        re-bound headlined as one."""
+        helper = TestTheRecordNamesTheDeployItObserved()
+        cfg = helper._cfg(driver, tmp_path)
+        rebound = [{"record_id": "mrec_a", "replaced": 1, "replacement": None, "by": "ada"}]
+
+        out = driver.render(cfg, "roll 1 of 2", helper._rec(rebindings=rebound))
+        plain = driver.render(cfg, "roll 1 of 2", helper._rec())
+
+        assert "**Re-bound while it ran**: `mrec_a` revision 1 to none (withdrawn) by ada" in out
+        assert "this roll is not counted" in out
+        assert "Re-bound" not in plain
 
     @pytest.mark.parametrize(
         ("earlier", "pinned"),

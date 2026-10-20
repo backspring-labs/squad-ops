@@ -418,3 +418,60 @@ class MemoryRecordWithdrawalResponse(MemoryRecordResponse):
     units_holding_it: list[HoldingUnitResponse] | None = []
     finished_units_holding_it: list[HoldingUnitResponse] | None = []
     next: str | None = None
+
+
+# --- a unit's snapshot as it binds now, and its re-binding (Appendix A §3.7; #2179) ---
+
+
+class PinnedInstructionResponse(BaseModel):
+    record_id: str
+    revision: int
+    text: str
+    applicability: dict[str, list[str]]
+    references: list[dict[str, Any]]
+
+
+class RebindingResponse(BaseModel):
+    """One re-binding: the revision replaced, its replacement (``None``: withdrawn), who, when and
+    why."""
+
+    record_id: str
+    replaced: PinnedInstructionResponse
+    replacement: PinnedInstructionResponse | None
+    by: str
+    at: str
+    why: str
+
+
+class SnapshotBindingResponse(BaseModel):
+    """A unit's snapshot: the project instructions it binds now, and every re-binding since it was
+    admitted, so what it bound then is still read."""
+
+    unit_kind: str
+    unit_id: str
+    snapshot_id: str
+    pinned_at: str
+    instructions: list[PinnedInstructionResponse]
+    instructions_unread: str | None
+    memory_context_withheld: bool
+    rebindings: list[RebindingResponse]
+
+
+class RebindRequest(BaseModel):
+    """Re-bind a running unit to a project instruction's current revision, or off it when the
+    record is withdrawn. ``why`` is the intervention's reason."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    record_id: str
+    why: str
+
+
+class RebindResponse(SnapshotBindingResponse):
+    """The unit after its re-binding, the re-binding itself, its control-log row for a campaign
+    (``None`` for a cycle, or when the row couldn't be written, which ``next`` says), and what
+    follows."""
+
+    rebinding: RebindingResponse
+    control_log_entry_id: str | None
+    next: str

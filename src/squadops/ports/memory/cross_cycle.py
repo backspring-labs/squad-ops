@@ -21,6 +21,11 @@ from squadops.memory.lessons import Approval, PatternRevision, Snapshot, UnitKin
 from squadops.memory.observations import Observation, ObservationSource
 
 
+class SnapshotMoved(RuntimeError):
+    """A re-binding written over a snapshot that changed since it was read: another re-binding
+    landed first. Nothing was written; the caller re-reads and decides (#2179)."""
+
+
 class RecordIncompatible(ValueError):
     """A stored record this code cannot read: written by a newer version, or damaged. Recall
     reports it as its own outcome (§0.8), never as nothing eligible."""
@@ -85,6 +90,12 @@ class CrossCycleMemoryStorePort(ABC):
     async def get_snapshot(self, unit_kind: UnitKind, unit_id: str) -> Snapshot | None:
         """The snapshot a unit pinned, or ``None`` for a unit that has not. Raises
         :class:`RecordIncompatible` for a stored pin this code cannot read."""
+
+    @abstractmethod
+    async def rebind_snapshot(self, snapshot: Snapshot, *, after: int) -> None:
+        """Store ``snapshot``, a re-binding of its unit's, if the stored one still carries ``after``
+        re-bindings (Appendix A §3.7; #2179). Raises :class:`SnapshotMoved` when it doesn't, and
+        ``KeyError`` for a unit that pinned none."""
 
     @abstractmethod
     async def list_snapshots_holding(self, approval_id: str) -> list[Snapshot]:

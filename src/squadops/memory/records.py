@@ -457,6 +457,53 @@ class PinnedInstruction:
         )
 
 
+@dataclass(frozen=True)
+class Rebinding:
+    """One re-binding of a running unit (Appendix A §3.7; #2179): the project instruction's revision
+    the unit bound, replaced by the record's current revision, or by nothing when the record is
+    withdrawn. An intervention, recorded with who, when and why. The snapshot keeps every
+    re-binding, so what the unit bound at admission is still read."""
+
+    record_id: str
+    replaced: PinnedInstruction
+    replacement: PinnedInstruction | None
+    by: str
+    at: datetime
+    why: str
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "record_id": self.record_id,
+            "replaced": self.replaced.to_dict(),
+            "replacement": self.replacement.to_dict() if self.replacement else None,
+            "by": self.by,
+            "at": self.at.isoformat(),
+            "why": self.why,
+        }
+
+    @classmethod
+    def from_dict(cls, data: Mapping[str, Any]) -> Rebinding:
+        replacement = data.get("replacement")
+        return cls(
+            record_id=str(data["record_id"]),
+            replaced=PinnedInstruction.from_dict(data["replaced"]),
+            replacement=PinnedInstruction.from_dict(replacement) if replacement else None,
+            by=str(data["by"]),
+            at=datetime.fromisoformat(str(data["at"])),
+            why=str(data["why"]),
+        )
+
+
+def pinned_of(record: MemoryRecord) -> PinnedInstruction:
+    """A project instruction's current revision, as a unit binds it."""
+    current = record.current
+    if current.applicability is None:
+        raise RecordRefused(f"{record.record_id} is not a project instruction")
+    return PinnedInstruction(
+        record.record_id, current.number, current.body, current.applicability, current.references
+    )
+
+
 def in_force(records: Collection[MemoryRecord]) -> tuple[PinnedInstruction, ...]:
     """The project instructions in force now, as a unit admitted now pins them: active, confirmed,
     each at its current revision, in the order they were recorded."""
@@ -471,10 +518,5 @@ def in_force(records: Collection[MemoryRecord]) -> tuple[PinnedInstruction, ...]
         current = record.current
         if current.applicability is None or current.confirmed_by is None:
             continue
-        pinned.append(
-            PinnedInstruction(
-                record.record_id, current.number, current.body, current.applicability,
-                current.references,
-            )
-        )  # fmt: skip
+        pinned.append(pinned_of(record))
     return tuple(pinned)
