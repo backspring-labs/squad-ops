@@ -40,7 +40,7 @@ from squadops.projects.drift import (
     TOOLCHAIN,
     drift_between,
 )
-from squadops.projects.models import ProjectSource
+from squadops.projects.models import ProjectSource, SourceUnavailable
 from squadops.projects.registration import LocatorPolicy
 from squadops.projects.source_context import parse_source_context
 from squadops.projects.sync import sync_project
@@ -290,6 +290,33 @@ async def test_a_repository_reference_binds_the_pinned_commit_never_the_branch_h
         await resolver.bind(
             "repo:file:CONTRIBUTING.md@current", BindingContext("prj-tally", "campaign", "cmp_1")
         )
+
+
+async def test_a_clone_that_times_out_is_a_fault_never_a_reference_kept_unbound(world, tmp_path):
+    """SIP-0110 §5ae, through the real managed clone with git's own bound cut short. Bug caught:
+    git's timeout turned into ``ReferenceUnresolved``, so a campaign cycle launched while the clone
+    was slow keeps a required reference unbound for its life, holding every task it applies to,
+    where a fault would have had the next drain bind it."""
+    repo, clones, _registry = world
+    await clones.sync("prj-tally", str(repo.path), "refs/heads/main")
+    pinned = BindingContext("prj-tally", "cycle", "cyc_1", repo.second_commit)
+    bound = await RepositoryReferenceResolver(clones, _registry).bind(
+        "repo:file:CONTRIBUTING.md@current", pinned
+    )
+    slow = GitSourceRepository(
+        tmp_path / "cache",
+        LocatorPolicy.of([], [str(tmp_path / "sources")]),
+        timeout_seconds=1e-6,
+        committer_name="SquadOps",
+        committer_email="squadops@squadops.invalid",
+    )
+    resolver = RepositoryReferenceResolver(slow, _registry)
+
+    for call in (resolver.bind(bound.ref.replace(repo.second_commit, "current"), pinned),
+                 resolver.read(bound, pinned)):  # fmt: skip
+        with pytest.raises(SourceUnavailable) as raised:
+            await call
+        assert raised.value.reason == "timeout"
 
 
 async def test_a_standalone_cycle_pins_a_project_instruction_at_its_source_context(world):

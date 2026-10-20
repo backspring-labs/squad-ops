@@ -31,6 +31,12 @@ REPOSITORY_FAMILY = "repo"
 #: A file in the product's tree, by its path from the root: the family's one kind.
 _FILE = re.compile(r"^repo:file:(?P<path>[^@]+)@(?P<revision>[^@]+)$")
 
+#: The managed clone's reasons that are about the reference: the commit or path isn't one, or git
+#: found no such file there. Every other reason (a timeout, no git) is about the deploy, and says
+#: nothing of whether the reference binds, so it's raised as a fault for the caller to repeat
+#: rather than kept unbound (SIP-0110 §5ae).
+_REFUSALS = frozenset({"not_a_commit", "path_refused", "read"})
+
 
 def _digest(content: bytes) -> str:
     return f"sha256:{hashlib.sha256(content).hexdigest()}"
@@ -76,7 +82,7 @@ class RepositoryReferenceResolver(ReferenceResolverPort):
         path = _path_of(ref)
         if ctx.source_commit is None:
             # §B.5.1: never a default commit. A sample application has no source context, and a
-            # Campaign has none of its own (the open conflict §B.5.1 names).
+            # Campaign has none of its own: each of its cycles binds at its own (SIP-0110 §5ad).
             raise ReferenceUnresolved(
                 f"{ref}: {ctx.unit_kind} {ctx.unit_id} pins no source commit to bind it at"
             )
@@ -99,4 +105,6 @@ class RepositoryReferenceResolver(ReferenceResolverPort):
         try:
             return await self._repository.file_at(ctx.project_id, commit, path)
         except SourceUnavailable as e:
+            if e.reason not in _REFUSALS:
+                raise
             raise ReferenceUnresolved(f"{path} at {commit[:12]}: {e}") from e
