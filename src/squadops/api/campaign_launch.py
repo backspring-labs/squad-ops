@@ -26,7 +26,13 @@ from squadops.api.cycle_schemas import CycleCreateRequest
 from squadops.api.routes.cycles.cycles import CreationPorts, first_run, prepare_cycle
 from squadops.api.routes.cycles.errors import cycle_error_envelope
 from squadops.campaigns.launcher import BoxVerdict, CampaignLauncher, LaunchRefused, unblocked
-from squadops.campaigns.models import CampaignState, CycleKind, LaunchIntent, LaunchIntentState
+from squadops.campaigns.models import (
+    CampaignState,
+    ControlOperation,
+    CycleKind,
+    LaunchIntent,
+    LaunchIntentState,
+)
 from squadops.cycles.models import Cycle, CycleError, Run, RunInitiator, RunStatus
 from squadops.events.types import EventType
 from squadops.memory.task_instructions import carried
@@ -127,18 +133,24 @@ class CampaignLaunchService:
             await records.create(copy)
 
     async def _continued_cycle(self, intent: LaunchIntent) -> str:
-        """The cycle a repair or a retry continues: the one its request names (``continues``, or a
-        repair's ``repair_of``), else the deciding row's, for an intent written before the request
-        named it. Naming none is refused, so the campaign escalates: it is deterministic, and as a
-        fault every drain would repeat it, holding every intent queued behind it."""
+        """The cycle a repair or a retry continues: the one its request names (``continues``). An
+        intent written before the request named it is read from its log: the deciding row's cycle,
+        or for the owner's word (a ``resume``, which names none) the cycle of the latest decision
+        before it, as ``owner_action`` read it. Naming none is refused, so the campaign escalates:
+        as a fault, every drain would repeat it, holding every intent queued behind it."""
         overrides = intent.cycle_request.get("body", {}).get("execution_overrides") or {}
-        block = overrides.get("campaign_proposal") or {}
-        named = block.get("continues") or block.get("repair_of")
+        named = (overrides.get("campaign_proposal") or {}).get("continues")
         if named:
             return str(named)
         log = await self._campaigns.control_log(intent.campaign_id)
-        decided = next((e for e in log if e.entry_id == intent.decision_entry_id), None)
-        named = (decided.binding or {}).get("cycle_id") if decided else None
+        at = next((i for i, e in enumerate(log) if e.entry_id == intent.decision_entry_id), None)
+        if at is not None:
+            named = (log[at].binding or {}).get("cycle_id")
+            if not named:
+                decided = [
+                    e for e in log[:at] if e.operation is ControlOperation.DECIDE and e.target
+                ]
+                named = decided[-1].target if decided else None
         if not named:
             raise LaunchRefused(
                 f"VALIDATION_ERROR: the {intent.cycle_kind.value} names no cycle it continues, so "

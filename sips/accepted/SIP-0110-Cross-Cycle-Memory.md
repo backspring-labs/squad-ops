@@ -2472,9 +2472,11 @@ lesson-effectiveness control.
     campaign's, under the snapshot the original was checked against.
   - **A withdrawn original is not carried,** nor another cycle's. One given without `carries_into` never reaches a new
     cycle, as before.
-  - **A continuation that names no cycle** is refused, so the campaign escalates. That covers an intent written before
-    the request named the cycle, whose deciding row names none. The refusal is deterministic: as a fault, every drain
-    would repeat it, holding every intent queued behind it.
+  - **An intent written before the request named the cycle** is read from its log. Its deciding row names the cycle.
+    For the owner's word, which names none, the cycle is the one in the latest decision before it, as `owner_action`
+    read it.
+  - **A continuation that names no cycle anywhere** is refused, so the campaign escalates. Treated as a fault instead,
+    every drain would repeat it, holding every intent queued behind it.
 - **The increment gate's `task_instructions`.** An approval of `progress_increment_ruling` (approved, or approved with
   refinements) may carry task instructions as a structured field beside its free notes, which reach no prompt.
   - They are for the ruled cycle, whose framing and build follow the gate. They are stored as its admitted inputs
@@ -2522,8 +2524,19 @@ lesson-effectiveness control.
   - the checks moved after the `rule` row;
   - the dispatched check removed;
   - the no-store refusal removed;
-  - another cycle's instruction carried;
-  - the deciding row hand-built.
+  - another cycle's instruction carried.
+
+**The third reader** (a fresh agent, on the fixes) confirmed the high finding closed for every intent written after the
+deploy, and found four smaller things:
+- **An owner-resumed retry pending across the deploy was refused for good.** It had no `continues`, its `resume` row
+  names no cycle, and only an abort cleared it. It now reads the decision before the resume.
+- **The `repair_of` fallback named the wrong cycle** for a retry of a repair, which inherits its repair's `repair_of`.
+  It is no longer read for this. The same inheritance makes such a retry start from the original increment's failed
+  candidate. That defect is older than this PR: it is filed as #2558, placed after the window.
+- **The record id's cycle was tested at the helper only.** It is now asserted through the route.
+- **This section overclaimed twice,** and both claims are corrected here. The carry test builds its `resume` row and
+  its request by hand: `owner_action`'s half is tested separately, and no single test runs from the owner's word
+  through the stored intent. And an intent from before the deploy is now read, not refused.
 
 **Evidence:**
 - **The gate** (`tests/unit/api/test_ruling_instructions.py`) enters at `POST …/gates/progress_increment_ruling`, with
@@ -2532,24 +2545,28 @@ lesson-effectiveness control.
     row names them;
   - the same ruling repeated stores them once, and replays after its framing dispatched;
   - repeated with other instructions, it is refused and the first are kept;
+  - the stored record's id is drawn with the ruled cycle;
   - a return, a task type that authors nothing, a dispatched task and a missing store are each refused, with nothing
     stored and no `rule` row;
   - another gate refuses the field;
   - two cycles ruled with one key get distinct ids.
 - **The launcher** (`tests/unit/api/test_carried_instructions.py`) enters at `CampaignLaunchService._build_cycle`. It
-  uses the repair the owner's word launches, whose request names the continued cycle and whose deciding row is a
-  `resume` naming none:
+  uses the repair the owner's word launches: its request names the continued cycle, and its deciding row is a hand-built
+  `resume` that names none:
   - only the active instruction of that cycle given to carry reaches the repair, as its own admitted record, linked to
     the original, keeping its cited lesson, and not an intervention;
+  - an intent with no `continues` reads the decision before its `resume`;
   - a launch that isn't a continuation carries nothing;
-  - one that names no cycle is refused (`LaunchRefused`).
+  - one that names no cycle anywhere is refused (`LaunchRefused`).
 - **The continuation names its cycle** (`tests/unit/campaigns/test_progress.py`): a decided repair, and an owner's
   retry entered at `owner_action`.
-- **Chat:** a capture given to carry is stored to carry.
+- **Chat:** a capture given to carry is stored to carry, and one naming another value is a `422` that stores nothing.
 - **The CLI:** the gate sends a well-formed instructions file and exits 2 on anything else; `instructions add --carry`
   sends `carries_into`.
-- **Nineteen mutants, each caught:**
+- **Twenty-one mutants, each caught:**
   - the carry dropped from the launcher;
+  - the log's fallback for an intent from before the deploy removed;
+  - the route drawing the id without the cycle;
   - a withdrawn original carried;
   - another cycle's carried;
   - `carries_into` ignored;

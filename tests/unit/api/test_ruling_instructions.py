@@ -68,6 +68,10 @@ async def test_an_approvals_instructions_are_the_ruled_cycles_admitted_inputs(wo
         e for e in await world.campaigns.control_log(CID) if e.operation is ControlOperation.RULE
     ]
     assert row.binding["task_instructions"] == [record.record_id]
+    # Its id is the ruled cycle's, so another campaign's ruling under the same key gets its own.
+    assert record.record_id == _ruling_record_id(
+        "cyc_inc", "rule-1", 0, TaskInstructionDTO(**INSTRUCTION)
+    )
 
 
 async def test_a_ruling_repeated_with_other_instructions_conflicts_and_keeps_the_first(world):  # noqa: F811

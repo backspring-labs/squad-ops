@@ -19,7 +19,7 @@ import pytest
 
 from adapters.memory.records import InMemoryMemoryRecords
 from squadops.campaigns.launcher import LaunchRefused
-from squadops.campaigns.models import CycleKind
+from squadops.campaigns.models import ControlOperation, CycleKind
 from squadops.memory.records import (
     LESSON_CITED,
     Revision,
@@ -51,10 +51,11 @@ def _instruction(record_id: str, carries: bool, cycle: str = CONTINUED, lesson: 
     )  # fmt: skip
 
 
-async def _repair_intent(w, *, continues: str | None = CONTINUED):
+async def _repair_intent(w, *, continues: str | None = CONTINUED, decided: str | None = None):
     """The calibration intent a start writes, as the repair the owner's word launches: its
     request names the cycle it continues, as a repair's or a retry's does (``_bound_launch``), and
-    its deciding row is a ``resume``, whose binding names no cycle (``owner_action``)."""
+    its deciding row is a ``resume``, whose binding names no cycle (``owner_action``). ``decided``
+    puts a decision for that cycle before the resume, as the owner's word follows one."""
     w.start()
     [intent] = await w.campaigns.launch_intents("cmp_start0000001")
     body = intent.cycle_request["body"]
@@ -65,12 +66,17 @@ async def _repair_intent(w, *, continues: str | None = CONTINUED):
     overrides["campaign_proposal"] = block
     request = {**intent.cycle_request, "body": {**body, "execution_overrides": overrides}}
     resume = SimpleNamespace(
-        entry_id="ctl_resume", binding={"action": "repair", "executes": "held"}
-    )
+        entry_id="ctl_resume", operation=ControlOperation.RESUME, target=None,
+        binding={"action": "repair", "executes": "held"},
+    )  # fmt: skip
+    decision = SimpleNamespace(
+        entry_id="ctl_decide", operation=ControlOperation.DECIDE, target=decided,
+        binding={"cycle_id": decided, "action": "escalate"},
+    )  # fmt: skip
     log = w.campaigns.control_log
 
     async def control_log(campaign_id):
-        return [*await log(campaign_id), resume]
+        return [*await log(campaign_id), *([decision] if decided else []), resume]
 
     w.campaigns.control_log = control_log
     return dataclasses.replace(
@@ -113,6 +119,20 @@ async def test_a_launch_that_continues_nothing_carries_nothing(world):  # noqa: 
 
     assert [r for r in await records.list_project(cycle.project_id)
             if r.current.target.cycle_id == cycle.cycle_id] == []  # fmt: skip
+
+
+async def test_a_repair_written_before_its_request_named_the_cycle_reads_it_from_its_log(world):  # noqa: F811
+    """The third read of PR #2556. Bug caught: an owner-resumed repair or retry pending across the
+    deploy refused for good, though the decision the owner's word executed names its cycle."""
+    records = InMemoryMemoryRecords()
+    await records.create(_instruction("mrec_carry", carries=True))
+    intent = await _repair_intent(world, continues=None, decided=CONTINUED)
+
+    cycle = await _service(world, records)._build_cycle(intent)
+
+    [copy] = [r for r in await records.list_project("group_run")
+              if r.current.target.cycle_id == cycle.cycle_id]  # fmt: skip
+    assert copy.current.source.ids["carried_from"] == "mrec_carry"
 
 
 async def test_a_repair_naming_no_cycle_it_continues_is_refused_not_a_fault(world):  # noqa: F811
