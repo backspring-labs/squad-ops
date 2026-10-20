@@ -29,6 +29,8 @@ from squadops.memory.context import Disposition, Need, RecordRef, Section, Secti
 from squadops.memory.exposures import Exposure
 from squadops.memory.lessons import _tokens
 from squadops.memory.records import (
+    CARRIED_FROM,
+    CARRIES_INTO_CONTINUATIONS,
     LESSON_CITED,
     MemoryRecord,
     RecordKind,
@@ -98,10 +100,16 @@ def applicable(
     return bound
 
 
+#: The sources of a task instruction given with its cycle's admitted inputs: its create request,
+#: and the increment gate's approval, which launches the work it directs (§3.5).
+_ADMITTED_SOURCES = frozenset({SourceKind.CYCLE_REQUEST, SourceKind.GATE_DECISION})
+
+
 def is_intervention(record: MemoryRecord) -> bool:
     """Whether a task instruction's current revision came after its cycle's admission: anything but
-    the cycle's own create request (§3.5). A revision of an admitted one is an intervention too."""
-    return record.current.source.kind != SourceKind.CYCLE_REQUEST
+    the cycle's own create request or its gate's approval (§3.5). A revision of an admitted one is
+    an intervention too."""
+    return record.current.source.kind not in _ADMITTED_SOURCES
 
 
 def cited_lesson(revision: Revision) -> str | None:
@@ -249,7 +257,7 @@ def admitted(
             created_at=now,
             source=source,
             confirmed_by=actor,
-            target=TaskTarget(cycle_id, types),
+            target=TaskTarget(cycle_id, types, item.get("carries_into") or None),
             references=tuple(reference_of(r) for r in item.get("references") or ()),
         )
         records.append(
@@ -263,3 +271,55 @@ def admitted(
             )
         )
     return records
+
+
+def carried(
+    records: Iterable[MemoryRecord],
+    *,
+    from_cycle: str,
+    to_cycle: str,
+    project_id: str,
+    now: datetime,
+) -> list[MemoryRecord]:
+    """Each active task instruction of ``from_cycle`` given with ``carries_into: continuations``, as
+    an admitted record of ``to_cycle``, the cycle continuing it (a repair or a retry, §3.7). Each
+    copy is linked to its original (``carried_from``) and withdrawn on its own; it keeps who gave
+    and confirmed it, and carries on into the continuation's own continuations. An instruction
+    given without it never reaches a new cycle."""
+    copies = []
+    for record in records:
+        current = record.current
+        if (
+            record.kind != RecordKind.INSTRUCTION
+            or record.scope != RecordScope.TASK
+            or record.status != RecordStatus.ACTIVE
+            or current.target is None
+            or current.target.cycle_id != from_cycle
+            or current.target.carries_into != CARRIES_INTO_CONTINUATIONS
+        ):
+            continue
+        copies.append(
+            new_record(
+                record_id=f"mrec_{uuid.uuid4().hex[:16]}",
+                kind=RecordKind.INSTRUCTION,
+                scope=RecordScope.TASK,
+                project_id=project_id,
+                owner_id=record.owner_id,
+                revision=Revision(
+                    number=1,
+                    body=current.body,
+                    author=current.author,
+                    created_at=now,
+                    source=Source(
+                        SourceKind.CYCLE_REQUEST,
+                        {"cycle_id": to_cycle, CARRIED_FROM: record.record_id},
+                    ),
+                    confirmed_by=current.confirmed_by,
+                    target=TaskTarget(
+                        to_cycle, current.target.task_types, CARRIES_INTO_CONTINUATIONS
+                    ),
+                    references=current.references,
+                ),
+            )
+        )
+    return copies

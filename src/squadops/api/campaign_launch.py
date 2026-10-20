@@ -26,11 +26,15 @@ from squadops.api.cycle_schemas import CycleCreateRequest
 from squadops.api.routes.cycles.cycles import CreationPorts, first_run, prepare_cycle
 from squadops.api.routes.cycles.errors import cycle_error_envelope
 from squadops.campaigns.launcher import BoxVerdict, CampaignLauncher, LaunchRefused, unblocked
-from squadops.campaigns.models import CampaignState, LaunchIntent, LaunchIntentState
+from squadops.campaigns.models import CampaignState, CycleKind, LaunchIntent, LaunchIntentState
 from squadops.cycles.models import Cycle, CycleError, Run, RunInitiator, RunStatus
 from squadops.events.types import EventType
+from squadops.memory.task_instructions import carried
 
 logger = logging.getLogger(__name__)
+
+#: The launches that continue an earlier cycle, so carry its instructions given to carry (§3.7).
+_CONTINUING = frozenset({CycleKind.REPAIR, CycleKind.RETRY})
 
 #: The actor on the launcher's own control-log rows.
 LAUNCHER_ACTOR = "campaign-launcher"
@@ -99,7 +103,35 @@ class CampaignLaunchService:
                 )
             for record in prepared.instructions:
                 await records.create(record)
+        await self._carry_instructions(intent, prepared.cycle)
         return prepared.cycle
+
+    async def _carry_instructions(self, intent: LaunchIntent, cycle: Cycle) -> None:
+        """A repair or a retry continues a cycle (§10a), and carries into it each of that cycle's
+        task instructions given with ``carries_into: continuations``, as its own admitted record
+        linked to the original (SIP-0110 Appendix A §3.7; #2178). The continued cycle is the one
+        the deciding row names. A read that fails is a fault the next drain repeats: a binding
+        input is never dropped."""
+        if intent.cycle_kind not in _CONTINUING:
+            return
+        records = self._creation.memory_records
+        if records is None:
+            return  # no store holds instructions, so the continued cycle has none to carry
+        log = await self._campaigns.control_log(intent.campaign_id)
+        decided = next((e for e in log if e.entry_id == intent.decision_entry_id), None)
+        continued = (decided.binding or {}).get("cycle_id") if decided else None
+        if not continued:
+            raise RuntimeError(
+                f"launch {intent.launch_id}: its deciding row names no cycle it continues"
+            )
+        for copy in carried(
+            await records.list_project(cycle.project_id),
+            from_cycle=str(continued),
+            to_cycle=cycle.cycle_id,
+            project_id=cycle.project_id,
+            now=datetime.now(UTC),
+        ):
+            await records.create(copy)
 
     async def drain(self) -> list[Run]:
         """Launch every pending intent, then start every launched cycle's first run that has
