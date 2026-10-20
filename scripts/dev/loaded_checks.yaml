@@ -1454,3 +1454,16 @@ checks:
       print("command_timeout_seconds" in inspect.signature(HttpExecutionSandbox).parameters,
             SandboxClientConfig.model_fields["command_timeout_seconds"].default)
     expect: "True 600.0"
+  - id: "2411-repo-resolver"
+    what: the repository family's reference resolver, built by the tools factory, refuses a unit that pins no source commit rather than binding a default (SIP-0112 contract 6, §B.5.1)
+    container: squadops-runtime-api
+    code: |
+      import asyncio
+      from adapters.tools.factory import create_repository_reference_resolver
+      from squadops.ports.memory.references import BindingContext, ReferenceUnresolved
+      resolver = create_repository_reference_resolver(None)
+      try:
+          asyncio.run(resolver.bind("repo:file:AGENTS.md@current", BindingContext("p", "campaign", "c")))
+      except ReferenceUnresolved as e:
+          print(resolver.family, "pins no source commit" in str(e))
+    expect: "repo True"
