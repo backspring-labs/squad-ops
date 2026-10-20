@@ -93,7 +93,7 @@ re-places it.
 
 **What closes this SIP:** Phase 1's four slices shipped in 2.2.0 with the window's finding recorded (§0.13), Phase 2's
 gate ruled by the owner on that finding (both done, §5h), the next build-side experiment shipped or dropped, and the
-entry points' eleven rows (§5g, Appendix A) shipped or dropped, and the pin's race with a revocation (#2545) fixed.
+entry points' eleven rows (§5g, Appendix A) shipped or dropped, and #2545's two windows closed.
 
 ## 0. The Phase-1 contract (normative, revision 6)
 
@@ -2358,6 +2358,38 @@ lesson-effectiveness control.
 
   Six mutants are now each caught: those three, the agent's cycle kept, the row's id dropped, and a project
   instruction carrying a lesson.
+
+## 5y. A pin settled against a removal made while it was taken, as built (2026-10-20, #2545; the supervisor, under the owner's grant of 2026-10-19)
+
+**What shipped:** the pin's half of #2545.
+- **The race.** `pin_unit` reads the project's instructions and approvals, then stores the snapshot. A withdrawal (§5u)
+  or a revocation (§0.7) answered in between found no snapshot to name, and told the operator that units admitted from
+  then pin without it. The unit being admitted pinned it anyway, unnamed.
+- **The fix.** Once a fresh pin is stored, it reads the records and approvals again (`_settled`). It drops any
+  instruction withdrawn, and any lesson whose approval was revoked, since its first read (`removed_since_read`), and
+  writes the corrected snapshot with the store's compare-and-swap. So the answer's "units admitted from now pin
+  without it" holds for the unit that was being admitted.
+- **Why it isn't a re-binding.** Nothing can have dispatched: a standalone cycle pins before its run is queued, and a
+  campaign pins before its calibration launches. So the snapshot is corrected as part of admission. Its `rebindings`
+  stay empty, and the unit's measurements aren't set apart.
+- **When the answer names one too many.** A removal answered after the store but before the settle names the unit,
+  which then no longer holds the record. Naming one unit too many is the direction §0.7's revocation already takes
+  with a unit it can't read.
+- **A settle read that fails** keeps the snapshot as stored and logs it (`memory_snapshot_not_settled`). The window
+  stays open in that case only.
+
+**What remains of #2545:** the dispatch's half. A dispatch can land between a re-binding's read of the exposures and
+its write (§5v), or between an instruction's dispatched check and its write (§5w). Closing it needs the write ordered
+against dispatches, not only against other writes: the composer re-checking the snapshot after recording its
+exposure, or a per-unit lock. That is the executor's ground.
+
+**Evidence:** `tests/unit/memory/test_pinning.py`, through `pin_unit`.
+- An instruction withdrawn between the pin's read and its write is held by neither the returned nor the stored
+  snapshot, and the holder query finds no unit.
+- The same holds for a lesson whose approval is revoked in the window.
+- A pin with no removal is written once, with no second write.
+- A settle read that fails keeps the snapshot.
+- Three mutants are each caught: no settle, revocations ignored, and withdrawals ignored.
 
 ## 5z. A project instruction's `@current` reference, bound at admission, as built (2026-10-20, #2179 T16; the supervisor, under the owner's grant of 2026-10-19, with the MacBook lane's agreement on the port)
 
