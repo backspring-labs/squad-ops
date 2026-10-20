@@ -29,6 +29,7 @@ from squadops.memory.context import Disposition, Need, RecordRef, Section, Secti
 from squadops.memory.exposures import Exposure
 from squadops.memory.lessons import _tokens
 from squadops.memory.records import (
+    LESSON_CITED,
     MemoryRecord,
     RecordKind,
     RecordRefused,
@@ -101,6 +102,33 @@ def is_intervention(record: MemoryRecord) -> bool:
     """Whether a task instruction's current revision came after its cycle's admission: anything but
     the cycle's own create request (§3.5). A revision of an admitted one is an intervention too."""
     return record.current.source.kind != SourceKind.CYCLE_REQUEST
+
+
+def cited_lesson(revision: Revision) -> str | None:
+    """The lesson revision a task instruction's provenance cites, or ``None``."""
+    value = revision.source.ids.get(LESSON_CITED)
+    return str(value) if value else None
+
+
+def refuse_for_lessons_disabled(revision: Revision, snapshot: Any) -> None:
+    """§3.7's structural guarantee: a ``lessons: disabled`` unit is the lesson-effectiveness control,
+    so no lesson reaches it, through a task instruction either. One whose provenance cites a lesson
+    revision is refused for it, and refused too when the unit's snapshot can't be read, since
+    whether it is the control is then unknown. An instruction citing no lesson is never refused
+    here: the text check is a diagnostic, not this guarantee (§5s)."""
+    lesson = cited_lesson(revision)
+    if lesson is None:
+        return
+    if snapshot is None:
+        raise RecordRefused(
+            f"it applies lesson {lesson}, and whether its cycle's unit disables lessons can't be "
+            "read"
+        )
+    if snapshot.disabled:
+        raise RecordRefused(
+            f"it applies lesson {lesson}, and its cycle's unit declares lessons disabled: the "
+            "lesson-effectiveness control, which no lesson reaches (SIP-0110 Appendix A §3.7)"
+        )
 
 
 def dispatched(

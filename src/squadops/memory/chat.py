@@ -409,6 +409,11 @@ class CaptureChoice:
     @property
     def takes_effect(self) -> str:
         """When a record of this choice reaches what it reaches: §3.5's sentence for the reply."""
+        if self.scope == RecordScope.TASK:
+            return (
+                "for the named cycle's selected tasks from their next dispatch, as an intervention: "
+                "refused once one of them has dispatched"
+            )
         if self.kind == RecordKind.INSTRUCTION:
             return (
                 f"for {self.project_id}'s cycles and campaigns admitted from now, on the tasks its "
@@ -425,9 +430,10 @@ def capture_choices(
     *, scopes: Collection[str], project_id: str | None
 ) -> tuple[CaptureChoice, ...]:
     """What a card offers this person in this session: a private note or a preference always; on a
-    bound session, a project note with ``memory:note`` and a project instruction with
-    ``memory:instruct`` (stage B, #2180). A task instruction from chat names an admitted cycle, so it is
-    an intervention (§3.5), and waits for #2178's second stage."""
+    bound session, a project note with ``memory:note``, a project instruction with
+    ``memory:instruct``, and a task instruction with ``cycles:write`` or ``campaigns:supervise``
+    (stage B, #2180). A task instruction names an admitted cycle, so it is an intervention (§3.5):
+    which of the two its cycle needs is checked when it is confirmed."""
     choices = [
         CaptureChoice(RecordKind.NOTE, RecordScope.USER, None),
         CaptureChoice(RecordKind.PREFERENCE, RecordScope.USER, None),
@@ -436,6 +442,8 @@ def capture_choices(
         choices.append(CaptureChoice(RecordKind.NOTE, RecordScope.PROJECT, project_id))
     if project_id is not None and Scope.MEMORY_INSTRUCT in scopes:
         choices.append(CaptureChoice(RecordKind.INSTRUCTION, RecordScope.PROJECT, project_id))
+    if project_id is not None and {Scope.CYCLES_WRITE, Scope.CAMPAIGNS_SUPERVISE} & set(scopes):
+        choices.append(CaptureChoice(RecordKind.INSTRUCTION, RecordScope.TASK, project_id))
     return tuple(choices)
 
 
@@ -457,6 +465,12 @@ class ProposedCapture:
     #: field left out or malformed empty; ``None`` for a note or a preference. The card shows it, and
     #: the person fills, confirms or changes it.
     applicability: Mapping[str, tuple[str, ...]] | None = None
+    #: A task instruction's target as the agent proposes it: the cycle (``""`` when left out) and its
+    #: task types, which the person fills, confirms or changes on the card. ``None`` for anything else.
+    target: Mapping[str, Any] | None = None
+    #: The lesson revision a task instruction applies ("apply lesson X to this task"), named as its
+    #: provenance. A lessons-disabled unit refuses one (§3.7's guarantee).
+    lesson_revision: str | None = None
 
 
 def proposed_capture(reply: str) -> tuple[ProposedCapture | None, str]:
@@ -481,13 +495,22 @@ def proposed_capture(reply: str) -> tuple[ProposedCapture | None, str]:
         if text and kind in (RecordKind.NOTE, RecordKind.PREFERENCE) and scope in _CAPTURE_SCOPES:
             suggestion = doc.get("suggestion") is True and kind == RecordKind.NOTE
             proposal = ProposedCapture(text, str(kind), str(scope), suggestion)
+        elif text and kind == RecordKind.INSTRUCTION and doc.get("scope") == RecordScope.TASK:
+            # A task instruction stays one: never widened into a project instruction (§3.5).
+            lesson = doc.get("lesson")
+            proposal = ProposedCapture(
+                text, RecordKind.INSTRUCTION, RecordScope.TASK,
+                target=_proposed_target(doc.get("target")),
+                # Kept as named, malformed or not: dropping one would drop the check it carries, so
+                # the card shows it and the capture refuses a malformed one (the second read).
+                lesson_revision=lesson.strip() if isinstance(lesson, str) and lesson.strip()
+                else None,
+            )  # fmt: skip
         elif (
             text
             and kind == RecordKind.INSTRUCTION
             and (doc.get("scope") or RecordScope.PROJECT) == RecordScope.PROJECT
         ):
-            # Stage B: a project instruction only. A task instruction from chat is an intervention
-            # (#2178's second stage), and is never widened into a project one.
             proposal = ProposedCapture(
                 text, RecordKind.INSTRUCTION, RecordScope.PROJECT,
                 applicability=_proposed_applicability(doc.get("applicability")),
@@ -498,6 +521,34 @@ def proposed_capture(reply: str) -> tuple[ProposedCapture | None, str]:
 
 _CAPTURE_SCOPES = frozenset({RecordScope.USER, RecordScope.PROJECT})
 _APPLICABILITY_FIELDS = ("task_types", "roles", "stacks")
+
+
+def offered_target(target: Mapping[str, Any], said: str) -> dict[str, Any]:
+    """The proposed target as the card offers it: its cycle blanked unless the person's own message
+    named it. The agent may only repeat a cycle, never pick one (the second read of #2180)."""
+    cycle = target.get("cycle_id") or ""
+    return {
+        "cycle_id": cycle if cycle in named_cycles(said) else "",
+        "task_types": list(target.get("task_types") or ()),
+    }
+
+
+def _proposed_target(raw: Any) -> dict[str, Any]:
+    """The target cycle and task types an agent proposed. A cycle left out or malformed is ``""``,
+    and task types the same as an applicability's: empty, for the person to fill. The card keeps the
+    cycle only when the person named it (``offered_target``): an instruction for the wrong cycle
+    would bind that cycle's work."""
+    raw = raw if isinstance(raw, dict) else {}
+    cycle = raw.get("cycle_id")
+    types = raw.get("task_types")
+    return {
+        "cycle_id": cycle.strip()
+        if isinstance(cycle, str) and NAMED_CYCLE.fullmatch(cycle.strip())
+        else "",
+        "task_types": tuple(str(t).strip() for t in types if str(t).strip())
+        if isinstance(types, list)
+        else (),
+    }
 
 
 def _proposed_applicability(raw: Any) -> dict[str, tuple[str, ...]]:

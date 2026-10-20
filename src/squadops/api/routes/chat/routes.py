@@ -17,7 +17,7 @@ import logging
 import uuid
 from datetime import UTC, datetime
 
-from fastapi import APIRouter, Request, Response
+from fastapi import APIRouter, HTTPException, Request, Response
 from fastapi.responses import StreamingResponse
 
 from squadops.api.errors import http_error, server_error
@@ -33,6 +33,13 @@ from squadops.api.routes.chat.dtos import (
 )
 from squadops.api.routes.chat.errors import handle_chat_error
 from squadops.api.routes.memory.applicability import refuse_unmatched
+from squadops.api.routes.memory.interventions import (
+    log_intervention,
+    of_campaign,
+    refuse_dispatched,
+    refuse_lesson_for_control,
+    target_cycle,
+)
 from squadops.api.runtime.deps import get_memory_records, get_memory_store, get_project_registry
 from squadops.auth.models import Scope, scopes_for_roles
 from squadops.comms.chat_history import (
@@ -55,6 +62,7 @@ from squadops.memory.chat import (
     ProposedCapture,
     capture_choices,
     failure_notice,
+    offered_target,
     proposed_capture,
     used_line,
 )
@@ -64,12 +72,15 @@ from squadops.memory.records import (
     NotPermitted,
     RecordKind,
     RecordRefused,
+    RecordScope,
     Revision,
     Source,
     SourceKind,
+    TaskTarget,
     authorize_write,
     new_record,
 )
+from squadops.memory.task_instructions import LESSON_CITED
 
 logger = logging.getLogger(__name__)
 
@@ -388,14 +399,19 @@ async def confirm_capture(
             + ", ".join(f"{c.scope} {c.kind}" for c in offered),
         )
     applicability = _capture_applicability(choice, body)
+    target = _capture_target(choice, body)
+    # #2180: a task instruction captured in chat names an admitted cycle, so it is an
+    # intervention, judged by the records API's own rules (§3.5).
+    cycle = await target_cycle(request, choice.scope, choice.project_id, target)
     records = get_memory_records(request)
     now = datetime.now(UTC)
     try:
         if records is None:
             raise RuntimeError("the memory records' store is not configured")
         authorize_write(
-            choice.kind, choice.scope, actor_id=user_id, actor_scopes=scopes, owner_id=user_id
-        )
+            choice.kind, choice.scope, actor_id=user_id, actor_scopes=scopes, owner_id=user_id,
+            campaign_cycle=of_campaign(cycle),
+        )  # fmt: skip
         record = new_record(
             record_id=f"mrec_{uuid.uuid4().hex[:16]}",
             kind=choice.kind,
@@ -409,18 +425,28 @@ async def confirm_capture(
                 created_at=now,
                 source=Source(
                     SourceKind.CHAT_MESSAGE,
-                    {"session_id": session_id, "message_id": body.message_id},
+                    {
+                        "session_id": session_id,
+                        "message_id": body.message_id,
+                        **({LESSON_CITED: body.lesson_revision} if body.lesson_revision else {}),
+                    },
                 ),
                 confirmed_by=user_id,
                 suggestion=body.suggestion,
                 applicability=applicability,
+                target=target,
             ),
         )
+        if cycle is not None:
+            await refuse_lesson_for_control(request, cycle, record.current)
+            await refuse_dispatched(request, cycle, target)
         await records.create(record)
     except NotPermitted as e:
         raise http_error(403, "FORBIDDEN", str(e)) from e
     except RecordRefused as e:
         raise http_error(422, "VALIDATION_ERROR", str(e)) from e
+    except HTTPException:
+        raise  # a refusal the rules gave, said as itself
     except Exception as e:
         # #1976: a server failure answers with the request id, never the exception's text, and the
         # transcript keeps only what failed.
@@ -439,11 +465,24 @@ async def confirm_capture(
             status=503,
             code="MEMORY_SAVE_FAILED",
         ) from e
-    where = f"project {choice.project_id}" if choice.project_id else "yours only"
+    entry = None
+    if target is not None:
+        entry = await log_intervention(
+            request, getattr(request.state, "identity", None), cycle, record, "add"
+        )
+        where = f"{target.cycle_id}'s {', '.join(target.task_types)}"
+    else:
+        where = f"project {choice.project_id}" if choice.project_id else "yours only"
     reply = await _reply(
         request,
         session_id,
-        f"Saved {choice.kind} {record.record_id} ({where}). It takes effect {choice.takes_effect}.",
+        f"Saved {choice.kind} {record.record_id} ({where}). It takes effect {choice.takes_effect}."
+        + (
+            " The campaign's control log couldn't record it, so the intervention ledger can't see "
+            "it: declare it there."
+            if of_campaign(cycle) and entry is None
+            else ""
+        ),
         metadata={"capture": record.record_id},
     )
     logger.info(
@@ -456,6 +495,7 @@ async def confirm_capture(
         scope=choice.scope,
         project_id=choice.project_id,
         takes_effect=choice.takes_effect,
+        control_log_entry_id=entry,
         reply=ChatMessageDTO(
             message_id=reply.message_id,
             session_id=reply.session_id,
@@ -577,6 +617,10 @@ def _offered(
             if proposal.applicability is not None
             else None
         ),
+        "target": (
+            offered_target(proposal.target, source.content) if proposal.target is not None else None
+        ),
+        "lesson_revision": proposal.lesson_revision,
         "source_message_id": source.message_id,
         "choices": [
             _choice_dto(c).model_dump()
@@ -636,9 +680,10 @@ def _capture_applicability(
     """A project instruction's applicability as the card confirmed it (stage B): every field
     explicit, and only what a dispatch carries (the records API's check, one rule). Refused (422)
     for an instruction without one, and for anything else that carries one."""
-    if choice.kind != RecordKind.INSTRUCTION:
+    if choice.kind != RecordKind.INSTRUCTION or choice.scope == RecordScope.TASK:
         if body.applicability is not None:
-            raise http_error(422, "VALIDATION_ERROR", f"a {choice.kind} has no applicability")
+            what = "task instruction" if choice.scope == RecordScope.TASK else choice.kind
+            raise http_error(422, "VALIDATION_ERROR", f"a {what} has no applicability")
         return None
     if body.applicability is None:
         raise http_error(
@@ -656,6 +701,26 @@ def _capture_applicability(
         raise http_error(422, "VALIDATION_ERROR", str(e)) from e
     refuse_unmatched(applicability)
     return applicability
+
+
+def _capture_target(choice: CaptureChoice, body: CaptureRequest) -> TaskTarget | None:
+    """A task instruction's cycle and tasks as the card confirmed them (#2180), or ``None`` for any
+    other kind. Refused (422) when a task instruction names none, or anything else names one; a
+    cited lesson is a task instruction's provenance only."""
+    if choice.scope != RecordScope.TASK:
+        if body.target is not None or body.lesson_revision is not None:
+            raise http_error(
+                422, "VALIDATION_ERROR", f"a {choice.scope} {choice.kind} has no target or lesson"
+            )
+        return None
+    if body.target is None or not body.target.task_types:
+        raise http_error(
+            422, "VALIDATION_ERROR", "a task instruction names its cycle and its task types"
+        )
+    try:
+        return TaskTarget(body.target.cycle_id, tuple(body.target.task_types))
+    except RecordRefused as e:  # a cycle the card left blank, which the person didn't fill
+        raise http_error(422, "VALIDATION_ERROR", str(e)) from e
 
 
 def _choice_dto(choice: CaptureChoice) -> CaptureChoiceDTO:

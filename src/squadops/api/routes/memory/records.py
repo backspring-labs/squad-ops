@@ -49,7 +49,13 @@ from squadops.api.memory_schemas import (
 from squadops.api.middleware.auth import require_scopes
 from squadops.api.routes.memory.applicability import refuse_unmatched
 from squadops.api.routes.memory.held_units import next_step, running_and_finished, unit_row
-from squadops.api.routes.memory.interventions import record_on_control_log
+from squadops.api.routes.memory.interventions import (
+    log_intervention,
+    of_campaign,
+    refuse_dispatched,
+    refuse_lesson_for_control,
+    target_cycle,
+)
 from squadops.api.runtime.deps import (
     get_campaign_registry,
     get_cycle_registry,
@@ -57,8 +63,6 @@ from squadops.api.runtime.deps import (
     get_memory_store,
 )
 from squadops.auth.models import Identity, scopes_for_roles
-from squadops.campaigns.models import ControlOperation
-from squadops.capabilities.context_assembly import authoring_seam_of
 from squadops.comms.models import SessionNotFoundError
 from squadops.memory.build_report import exposure_builds
 from squadops.memory.indicators import BuildRow
@@ -84,7 +88,6 @@ from squadops.memory.records import (
     visible,
     withdrawn,
 )
-from squadops.memory.task_instructions import dispatched
 from squadops.ports.memory.records import RecordConflict
 
 router = APIRouter(prefix="/api/v1/memory-records", tags=["memory"])
@@ -104,87 +107,6 @@ def _who(identity: Identity | None) -> tuple[str, frozenset[str]]:
     if identity is None:
         raise http_error(401, "UNAUTHENTICATED", "a memory record names who wrote it")
     return identity.user_id, frozenset(identity.scopes) | scopes_for_roles(identity.roles)
-
-
-async def _target_cycle(request: Request, scope: str, project_id: str | None, target) -> Any:
-    """A task instruction's target cycle, after checking it is a cycle of the record's project and
-    that every task type it selects is an authoring task (#2178: an instruction for any other would
-    reach nothing). ``None`` for any other record."""
-    if scope != RecordScope.TASK or target is None:
-        return None
-    unreachable = [t for t in target.task_types if authoring_seam_of(t) is None]
-    if unreachable:
-        raise http_error(
-            422,
-            "VALIDATION_ERROR",
-            f"{', '.join(unreachable)} authors nothing an instruction reaches",
-        )
-    try:
-        cycle = await get_cycle_registry(request).get_cycle(target.cycle_id)
-    except Exception as e:
-        raise http_error(422, "VALIDATION_ERROR", f"no cycle {target.cycle_id}") from e
-    if cycle.project_id != project_id:
-        raise http_error(
-            422, "VALIDATION_ERROR", f"{target.cycle_id} is not a cycle of {project_id}"
-        )
-    return cycle
-
-
-def _of_campaign(cycle: Any) -> bool:
-    return bool(getattr(cycle, "campaign_id", None))
-
-
-async def _refuse_dispatched(request: Request, cycle: Any, target: Any) -> None:
-    """Refuse (409) an instruction added or revised after admission for a task its cycle has
-    dispatched, in any run; unknown refuses too (503), never reads as undispatched."""
-    store = get_memory_store(request)
-    try:
-        if store is None:
-            raise LookupError("the memory store is not configured")
-        exposures = await store.list_project_exposures(cycle.project_id)
-    except Exception:  # noqa: BLE001 — an unknown dispatch is refused, never assumed absent
-        logger.warning("task_instruction_dispatch_unread cycle=%s", cycle.cycle_id, exc_info=True)
-        raise http_error(
-            503,
-            "MEMORY_UNAVAILABLE",
-            f"whether {cycle.cycle_id}'s selected tasks have dispatched can't be read",
-        ) from None
-    hit = dispatched(target.task_types, exposures, cycle_id=cycle.cycle_id)
-    if hit:
-        raise http_error(
-            409,
-            "TASK_DISPATCHED",
-            f"{', '.join(f'{run} {task}' for run, task in hit)} already dispatched, so the work "
-            "would mix a binding its first dispatch didn't have. Give it to a cycle whose selected "
-            "tasks haven't dispatched: a new cycle's create request, or a campaign's next cycle "
-            "(SIP-0110 Appendix A §3.5)",
-        )
-
-
-async def _log_intervention(
-    request: Request, identity: Identity | None, cycle: Any, record: MemoryRecord, action: str
-) -> str | None:
-    """A campaign cycle's task instruction changed after admission, as a row in the campaign's
-    control log (§3.5): ``None`` for a standalone cycle's, or when the row couldn't be written."""
-    if not _of_campaign(cycle):
-        return None
-    current = record.current
-    return await record_on_control_log(
-        request,
-        identity,
-        cycle.campaign_id,
-        operation=ControlOperation.INSTRUCT,
-        reason=current.body if action != "withdraw" else record.status_changes[-1].why,
-        idempotency_key=f"instruct:{record.record_id}:{action}:{current.number}",
-        target=record.record_id,
-        binding={
-            "action": action,
-            "record_id": record.record_id,
-            "revision": current.number,
-            "cycle_id": cycle.cycle_id,
-            "task_types": list(current.target.task_types) if current.target else [],
-        },
-    )
 
 
 #: Sources only their own route writes (the cycle's create request; a gate's decision): never
@@ -324,11 +246,11 @@ async def create_memory_record(
     kind and scope need, and (422) when the record breaks §A.3.2's rules."""
     actor, scopes = _who(identity)
     revision = _revision(body, actor=actor, kind=body.kind, now=datetime.now(UTC))
-    cycle = await _target_cycle(request, body.scope, body.project_id, revision.target)
+    cycle = await target_cycle(request, body.scope, body.project_id, revision.target)
     try:
         authorize_write(
             body.kind, body.scope, actor_id=actor, actor_scopes=scopes, owner_id=actor,
-            campaign_cycle=_of_campaign(cycle),
+            campaign_cycle=of_campaign(cycle),
         )  # fmt: skip
         record = new_record(
             record_id=f"mrec_{uuid.uuid4().hex[:16]}",
@@ -340,7 +262,8 @@ async def create_memory_record(
         )
         if cycle is not None:
             # §3.5: a task instruction written here comes after its cycle's admission.
-            await _refuse_dispatched(request, cycle, revision.target)
+            await refuse_lesson_for_control(request, cycle, revision)
+            await refuse_dispatched(request, cycle, revision.target)
         await _store(request).create(record)
     except NotPermitted as e:
         raise http_error(403, "FORBIDDEN", str(e)) from e
@@ -348,7 +271,7 @@ async def create_memory_record(
         raise http_error(422, "VALIDATION_ERROR", str(e)) from e
     except RecordConflict as e:
         raise http_error(409, "CONFLICT", str(e)) from e
-    entry = await _log_intervention(request, identity, cycle, record, "add")
+    entry = await log_intervention(request, identity, cycle, record, "add")
     return _response(record, actor, control_log_entry_id=entry)
 
 
@@ -513,11 +436,11 @@ async def revise_memory_record(
     actor, scopes = _who(identity)
     record = await _readable(request, record_id, actor, scopes)
     revision = _revision(body, actor=actor, kind=record.kind, now=datetime.now(UTC))
-    cycle = await _target_cycle(request, record.scope, record.project_id, revision.target)
+    cycle = await target_cycle(request, record.scope, record.project_id, revision.target)
     try:
         authorize_write(
             record.kind, record.scope, actor_id=actor, actor_scopes=scopes,
-            owner_id=record.owner_id, campaign_cycle=_of_campaign(cycle),
+            owner_id=record.owner_id, campaign_cycle=of_campaign(cycle),
         )  # fmt: skip
         updated = revised(record, revision)
         if cycle is not None:
@@ -526,7 +449,8 @@ async def revise_memory_record(
             before = record.current.target.task_types if record.current.target else ()
             after = revision.target.task_types if revision.target else ()
             together = tuple(dict.fromkeys((*before, *after)))
-            await _refuse_dispatched(request, cycle, TaskTarget(cycle.cycle_id, together))
+            await refuse_lesson_for_control(request, cycle, revision)
+            await refuse_dispatched(request, cycle, TaskTarget(cycle.cycle_id, together))
         await _store(request).append_revision(record_id, updated.current)
     except NotPermitted as e:
         raise http_error(403, "FORBIDDEN", str(e)) from e
@@ -534,7 +458,7 @@ async def revise_memory_record(
         raise http_error(422, "VALIDATION_ERROR", str(e)) from e
     except RecordConflict as e:
         raise http_error(409, "CONFLICT", str(e)) from e
-    entry = await _log_intervention(request, identity, cycle, updated, "revise")
+    entry = await log_intervention(request, identity, cycle, updated, "revise")
     return _response(
         updated, actor, await _deleted_sessions(request, [updated]), control_log_entry_id=entry
     )
@@ -554,11 +478,11 @@ async def withdraw_memory_record(
     actor, scopes = _who(identity)
     record = await _readable(request, record_id, actor, scopes)
     target: Any = record.current.target
-    cycle = await _target_cycle(request, record.scope, record.project_id, target)
+    cycle = await target_cycle(request, record.scope, record.project_id, target)
     try:
         authorize_write(
             record.kind, record.scope, actor_id=actor, actor_scopes=scopes,
-            owner_id=record.owner_id, campaign_cycle=_of_campaign(cycle),
+            owner_id=record.owner_id, campaign_cycle=of_campaign(cycle),
         )  # fmt: skip
         updated = withdrawn(record, by=actor, at=datetime.now(UTC), why=body.why)
         await _store(request).append_status(record_id, updated.status_changes[-1])
@@ -566,7 +490,7 @@ async def withdraw_memory_record(
         raise http_error(403, "FORBIDDEN", str(e)) from e
     except RecordRefused as e:
         raise http_error(422, "VALIDATION_ERROR", str(e)) from e
-    entry = await _log_intervention(request, identity, cycle, updated, "withdraw")
+    entry = await log_intervention(request, identity, cycle, updated, "withdraw")
     shown = _response(
         updated, actor, await _deleted_sessions(request, [updated]), control_log_entry_id=entry
     )
