@@ -1096,7 +1096,8 @@ async def _increment_failed_by_the_environment(
     ``assessed`` is the cycle's own verdict when the cause is the work, ``frozen`` the criteria
     earlier promotions froze (carried on its bound proposal), and ``evaluation`` the increment
     evaluation its run stored, if any (#2318). With ``repair_of``, the failed cycle is a repair
-    of that cycle, bound as a repair's launch binds it."""
+    of that cycle, bound as a repair's launch binds it: it continues that cycle, and carries its
+    brief."""
     stored["art_candidate"] = (
         _ref("art_candidate", "interface_manifest.yaml", "interface_manifest", -2),
         MANIFEST.encode(),
@@ -1116,7 +1117,15 @@ async def _increment_failed_by_the_environment(
         "accepted_cycle_id": "cyc_cal",
         "baseline_manifest": MANIFEST,
         **({"frozen_criteria": list(frozen)} if frozen else {}),
-        **({"repair_of": repair_of} if repair_of else {}),
+        **(
+            {
+                "repair_of": repair_of,
+                "continues": repair_of,
+                "prior_cycle": {"cycle_id": repair_of, "verdict": "rejected"},
+            }
+            if repair_of
+            else {}
+        ),
     }
     if evaluation is not None:
         stored["art_eval"] = (
@@ -1309,6 +1318,7 @@ async def test_a_retry_of_a_repair_starts_from_the_accepted_tree(calibrating, st
     assert retry.cycle_kind is CycleKind.RETRY
     assert "repair_of" not in overrides["campaign_proposal"]
     assert overrides["campaign_proposal"]["continues"] == "cyc_inc"
+    assert overrides["campaign_proposal"]["prior_cycle"]["cycle_id"] == "cyc_inc"
 
     async def accepted(_vault, _cycle, _frozen):
         return ["art_accepted_routes"]
@@ -1320,6 +1330,32 @@ async def test_a_retry_of_a_repair_starts_from_the_accepted_tree(calibrating, st
     monkeypatch.setattr(increment_tree, "_delivered", delivered)
     retry_cycle = SimpleNamespace(resolved_config=lambda: overrides)
     assert await increment_tree.starting_tree_refs(None, retry_cycle) == ["art_accepted_routes"]
+
+
+async def test_a_retry_whose_failed_cycle_cant_be_read_carries_no_brief_not_an_older_one(
+    calibrating, stored, monkeypatch
+):
+    """§24u, #2576. Bug caught: a retry of a repair whose records can't be read keeping the
+    repair's own brief, of the increment it repaired, so the retry's authors are shown that
+    cycle's failures as the one they recover from."""
+    from squadops.campaigns import progress
+
+    async def unreadable(*args, **kwargs):
+        raise TimeoutError("the cycle registry did not answer")
+
+    original = progress.CampaignProgress._prior_cycle_brief
+
+    async def brief_unreadable(self, cycle, latest):
+        self._cycles.list_run_verification_summaries = unreadable
+        return await original(self, cycle, latest)
+
+    monkeypatch.setattr(progress.CampaignProgress, "_prior_cycle_brief", brief_unreadable)
+    w = await _increment_failed_by_the_environment(calibrating, stored, repair_of="cyc_first")
+
+    *_, retry = await w.campaigns.launch_intents(CID)
+    block = retry.cycle_request["body"]["execution_overrides"]["campaign_proposal"]
+    assert retry.cycle_kind is CycleKind.RETRY
+    assert "prior_cycle" not in block
 
 
 @pytest.mark.parametrize(

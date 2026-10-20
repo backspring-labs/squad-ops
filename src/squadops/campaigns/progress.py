@@ -1208,6 +1208,9 @@ class CampaignProgress:
             block = {k: v for k, v in block.items() if k != "repair_of"}
         # #1692: the failed cycle's record, from its typed assessment and its runs' stored
         # verification summaries, for its successor.
+        # The copied block carries its own launch's brief, of the cycle before it. This launch's is
+        # of ``cycle``, or none when its records can't be read (§24u), never the older one (#2576).
+        block = {k: v for k, v in block.items() if k != "prior_cycle"}
         brief = await self._prior_cycle_brief(cycle, latest)
         if brief is not None:
             block = {**block, "prior_cycle": brief}
