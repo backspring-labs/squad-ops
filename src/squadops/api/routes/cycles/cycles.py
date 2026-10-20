@@ -351,6 +351,9 @@ class CreationPorts:
     deploy_registry: Any
     llm: Any | None = None
     artifact_vault: Any | None = None
+    #: Where a cycle's admitted task instructions are stored (#2178): by the route, and by a
+    #: campaign's launch, which creates its cycles through this same path.
+    memory_records: Any | None = None
 
     @classmethod
     def of_request(cls, request: Request) -> "CreationPorts":
@@ -368,6 +371,7 @@ class CreationPorts:
             deploy_registry=get_deploy_registry(request),
             llm=optional(get_llm_port),
             artifact_vault=optional(get_artifact_vault),
+            memory_records=get_memory_records(request),
         )
 
 
@@ -378,6 +382,9 @@ class PreparedCycle:
     cycle: Cycle
     run: Run
     warnings: tuple[Finding, ...]
+    #: The task instructions the request gave (#2178), as records of this cycle, confirmed by
+    #: whoever instructed it: stored by the caller before the first run is enqueued.
+    instructions: tuple[Any, ...] = ()
 
 
 def first_run(cycle: Cycle, *, initiated_by: str) -> Run:
@@ -403,6 +410,7 @@ async def prepare_cycle(
     initiated_by: str = "api",
     campaign_id: str | None = None,
     kind: str | None = None,
+    instructed_by: str | None = None,
 ) -> PreparedCycle:
     """Build and preflight a cycle and its first run from a create request: the route's body,
     or a campaign launch's (SIP-0109 §12b), which also names the campaign and the cycle's kind.
@@ -488,7 +496,12 @@ async def prepare_cycle(
         campaign_id=campaign_id,
         kind=kind,
     )
-    return PreparedCycle(cycle, first_run(cycle, initiated_by=initiated_by), preflight_warnings)
+    return PreparedCycle(
+        cycle,
+        first_run(cycle, initiated_by=initiated_by),
+        preflight_warnings,
+        _admitted_instructions(cycle, body, actor=instructed_by or created_by),
+    )
 
 
 @router.post("", status_code=201)
@@ -525,12 +538,16 @@ async def create_cycle(
         )
 
     ports = CreationPorts.of_request(request)
-    prepared = await prepare_cycle(ports, project_id, body)
+    prepared = await prepare_cycle(
+        ports, project_id, body, instructed_by=identity.user_id if identity is not None else None
+    )
     cycle, run, preflight_warnings = prepared.cycle, prepared.run, prepared.warnings
     snapshot_hash = cycle.squad_profile_snapshot_ref
     config_hash = run.resolved_config_hash
-    # #2178: the cycle's task instructions, checked before anything is stored.
-    instructions = _admitted_instructions(request, identity, cycle, body)
+    # #2178: the cycle's task instructions, checked by prepare_cycle before anything is stored.
+    instructions = prepared.instructions
+    if instructions and ports.memory_records is None:
+        raise http_error(503, "MEMORY_RECORDS_UNAVAILABLE", "no store holds task instructions")
 
     # Persist atomically (T17)
     await ports.cycle_registry.create_cycle(cycle)
@@ -538,7 +555,7 @@ async def create_cycle(
     await _pin_memory(request, cycle)
     # Before the run is enqueued, so its provisioning reads them.
     for record in instructions:
-        await get_memory_records(request).create(record)
+        await ports.memory_records.create(record)
 
     # SIP-0077: cycle.created
 
@@ -579,26 +596,26 @@ async def create_cycle(
     )
 
 
-def _admitted_instructions(request: Request, identity: Identity | None, cycle, body) -> list:
+def _admitted_instructions(cycle, body, *, actor: str) -> tuple:
     """The task instructions a cycle is created with (SIP-0110 Appendix A §3.5; #2178), as
-    records, or the refusal: 422 for one the rules refuse, 503 when there is no store to hold
-    them. ``cycles:write``, which the route requires, is what a standalone cycle's need (§3.3)."""
+    records, or the refusal (422) for one the rules refuse. Pure: whoever stores the cycle stores
+    them, the route or a campaign's launch, before its first run is enqueued."""
     if not body.task_instructions:
-        return []
-    if get_memory_records(request) is None:
-        raise http_error(503, "MEMORY_RECORDS_UNAVAILABLE", "no store holds task instructions")
+        return ()
     try:
-        return admitted(
-            [i.model_dump() for i in body.task_instructions],
-            project_id=cycle.project_id,
-            cycle_id=cycle.cycle_id,
-            actor=identity.user_id if identity is not None else cycle.created_by,
-            now=datetime.now(UTC),
-            instructable=lambda t: authoring_seam_of(t) is not None,
-            source=Source(SourceKind.CYCLE_REQUEST, {"cycle_id": cycle.cycle_id}),
+        return tuple(
+            admitted(
+                [i.model_dump() for i in body.task_instructions],
+                project_id=cycle.project_id,
+                cycle_id=cycle.cycle_id,
+                actor=actor,
+                now=datetime.now(UTC),
+                instructable=lambda t: authoring_seam_of(t) is not None,
+                source=Source(SourceKind.CYCLE_REQUEST, {"cycle_id": cycle.cycle_id}),
+            )
         )
     except RecordRefused as e:
-        raise http_error(422, "VALIDATION_ERROR", str(e)) from e
+        raise ValidationError(str(e)) from e
 
 
 async def _pin_memory(request: Request, cycle) -> None:
