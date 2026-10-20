@@ -88,6 +88,7 @@ One row per part that ships separately. Statuses as CLAUDE.md defines them. The 
 | phase 2: the proposer sees each goal's result (§4.5) | **unplaced** | 2.4 if D4 rules it in, with its issue filed then; otherwise the next even release |
 | phase 2: the objective's scenario measure, read by SIP-0109 §10 row 3, as a SIP-0109 amendment (§4.7) | **unplaced** | 2.4 if D4 rules it in, with its issue filed then; otherwise the next even release |
 | quality gates where phase 1's data supports a threshold (§4.2, §6) | **unplaced** | with phase 2, each with its phase-1 evidence |
+| phase 1 amendment: Lighthouse and axe on a seeded instance, parameterised pages included (§10j, proposed; its design review before it is built) | **placed** | 2.4.0, after the window, #2562 |
 
 **What closes this SIP:** phase 1 shipped and phase 2 shipped, or phase 2 dropped by a numbered amendment the owner
 rules.
@@ -1019,3 +1020,89 @@ names the entity exactly resolves as before.
 - The wiring test enters at `evaluate_cycle`, now with the reference manifest's own `RunEvent` as well as `Run`. Before,
   it renamed the reference to `Run`, on the premise that every delivered manifest says `Run`, which round 7 disproved.
 - With the lookup back to the exact name only, both fail.
+
+### 10j. Lighthouse and axe on a seeded instance, parameterised pages included (proposed 2026-10-20, §4.2, §10f; #2562; queued for after the window by the owner)
+
+**Status: proposed, not built.** The owner, 2026-10-20: "yes, draft it and queue it for after the window." Its design
+review comes before it is built. The window runs on §10f's reading as it stands: the measure is frozen inside it
+(G7), and a measure changed mid-series is a different measure.
+
+**What's wrong with §10f's reading.** Lighthouse and axe score a blueprint delivery's declared routes that load as
+they are, on the instance the scenarios read, before any scenario writes to it. For `group_run` that is `/` and
+`/runs/new`, on an empty app.
+- **A route with a parameter is never measured** (`/runs/:id`, "needs data no measure creates").
+- **The list is only ever measured empty.**
+- **The evidence:** the 2.4 FastAPI shakeout (`cmp_41d4a7185a3a`, on `dep_19dfa94c0a0a`) read identical Lighthouse
+  and axe scores on all three of its trees:
+  - the calibration `cyc_7f3af6920b55`;
+  - capacity `cyc_54a601cec50b`, whose indicator is on `/runs/:id`;
+  - sorting `cyc_7280393ca6b9`, which shows only with data.
+
+  The scores were performance 0.93 and 0.94, accessibility 0.96, best practices 0.78, and axe 2 moderate, on both
+  pages. Only lint moved: +35 findings, then +8.
+- **What follows for the window:**
+  - Prediction 4 will read Lighthouse and axe as stable because nothing they see changes.
+  - §4.2's rule ("a measure that doesn't track scenario success loses its weight") would then retire them from
+    phase 2 without their ever having seen an increment.
+
+**What is proposed: a second, seeded reading beside §10f's.**
+- **A fixed seed, written through the delivery's own API.**
+  - **The file:** one per Project, starting with `examples/03_group_run/quality_seed.json`. It has the shape the
+    release screenshots' seed already has: create endpoints, field aliases, records, and a member action that joins
+    participants.
+  - **The mapping:** it is mapped onto the delivery's own `interface_manifest.yaml` by the screenshots' mapping
+    (`plan_seed`). That mapping moves from `scripts/dev/capture_delivered_app.py` into `src/squadops/scenarios/`, and
+    the capture imports it, so the two never map a seed differently (#2084's base-path fix included).
+  - **Its own file.** The screenshots' seed may change for a better picture. This one is part of the measure, so its
+    sha256 is part of the measure's version.
+- **On its own disposable instance.**
+  - The same pinned tree is started a second time, in a disposable copy, by the runner's existing start (X-3b,
+    §10c). It is seeded, measured, and discarded.
+  - **The scenarios and §10f's reading are untouched.** They still read a fresh, empty instance. So no outcome
+    changes, and every reading taken before this stays comparable.
+  - **Why not measure after the scenarios, on their instance:** what the scenarios write depends on which of them
+    pass, so the state would differ per tree.
+- **Every declared page, parameterised routes included.**
+  - Each `:param` is filled with the id of the first record the seed created, read from the create response by the
+    manifest's own id field.
+  - A route whose parameter the seed can't fill is listed with why (`no_seed_value`). The rest are still measured.
+- **New reasons for *not measured*,** each a record that the measure didn't run, never evidence and never a baseline
+  held (§4.2):
+  - `seed_refused`: the delivery's interface can't take the seed, because no create endpoint is declared, or a field
+    it requires has no value;
+  - `seed_failed`: the app answered a seed request with an error. The request and the status are kept.
+- **Its version** is the evaluator's tag and the seed's sha256, together. Deltas compare seeded with seeded only, at
+  one version (§10f's like-with-like rule).
+- **Recorded in its own column** (`quality_seeded`, an additive migration). Nothing that reads `quality` today
+  changes, and a record written before it has none. That is never read as measured, nor as not measured.
+- **Reporting-only, as §10f is.** No row, gate or prompt reads it. A gate on either reading waits for phase 2's rule
+  (§4.2, §6).
+
+**Re-measuring the window, so D4 reads both.** After the window, `remeasure_quality.py` gains the seeded reading.
+Every tree the window evaluated is re-measured with it: each campaign's calibration and each increment. That gives
+§4.6's deltas and prediction 4's spread for both readings, on the window's own trees, with no campaign re-run.
+
+**Predictions, pre-registered for its reading:**
+
+| # | prediction | falsified by |
+|---|---|---|
+| S1 | the seeded reading is as stable as prediction 4's bounds on an unchanged tree: axe, accessibility and best practices spread 0; performance at most 0.05; three re-measures per tree | a measure beyond its bound on any tree. It is reported, and phase 2 may not gate on it |
+| S2 | it sees the increments: across the window's pairs, at least one measure differs on at least one page whose route the increment changed, such as `/runs/:id` for capacity | no difference on any changed page in any pair. Then Lighthouse and axe don't track this app's increments even seeded, and §4.2's weight rule applies to them on that evidence |
+
+**Boundaries:**
+- **A declared Project** (SIP-0112) keeps its `ui_base` entry point (§10f). A seed for it would be its own
+  declaration's, which is Project Lifecycle Management's. Nothing is asked of SIP-0112.
+- **The sandbox's contract 3** is used as built, with no change, so no G4 review is needed.
+- **The held-out suite:** the seed is public, in the repository, and written without reading the suite. No scenario
+  step is in it, and prediction 2's sweep is unaffected.
+- **The release capture** keeps its own seed file, and shares the mapping.
+
+**What the design review settles:**
+1. **The second instance's cost:** one more start, seed and measure per evaluation. It is measured when built, and the
+   review sees the figure before it lands in a series.
+2. **What state the seed reaches:**
+   - three runs and three participants on the first, as the screenshots have;
+   - or also a run at its capacity, so the full state of a capacity indicator is in the reading, when a delivery has
+     one.
+3. **Whether the seeded reading should replace §10f's** after one series of both. The proposal keeps both, because
+   §10f's reading is what every earlier record has.
