@@ -665,3 +665,62 @@ async def test_the_sweep_fills_every_project_after_one_whose_campaigns_cant_be_l
     world.campaigns.list_campaigns, world.campaigns.launch_intents = list_campaigns, launch_intents
 
     assert await launcher.reconcile_bindings() == ["cyc_fillable0"]
+
+
+async def test_a_repeated_launch_fills_the_cycle_it_finds_before_its_first_run(world, monkeypatch):  # noqa: F811
+    """The sixth read of #2570, entered at the drain. Bug caught: a launch repeated by its launch
+    id (its first attempt stored the cycle, then faulted before the mark) binds the cycle it builds
+    and throws away, not the stored one it finds; a re-binding committed between the attempts
+    listed no launched cycle, so the stored cycle starts holding only the old revision and its
+    first task holds."""
+    from squadops.api import campaign_launch
+    from squadops.campaigns.models import LaunchIntentState
+    from squadops.memory.rebinding import rebound
+    from squadops.memory.records import Revision, Source, pinned_of, revised
+
+    store, records = InMemoryCrossCycleMemoryStore(), InMemoryMemoryRecords()
+    await _pinned_campaign(store, records)
+    prepare = campaign_launch.prepare_cycle
+
+    async def fault(*args, **kwargs):
+        raise RuntimeError("the artifact vault is unreachable")
+
+    monkeypatch.setattr(campaign_launch, "prepare_cycle", fault)
+    world.start()  # the start's own drain faults, so its intent is still pending
+    monkeypatch.setattr(campaign_launch, "prepare_cycle", prepare)
+    launcher = _launcher(world, records, store)
+    mark, marks = world.campaigns.mark_launch_intent_launched, []
+
+    async def mark_once_faulting(*args, **kwargs):
+        marks.append(args)
+        if len(marks) == 1:
+            raise ConnectionError("the registry dropped the mark after the cycle was stored")
+        return await mark(*args, **kwargs)
+
+    world.campaigns.mark_launch_intent_launched = mark_once_faulting
+    await launcher.drain()
+    [stored] = await world.cycles.list_cycles("group_run")
+    record = await records.get("mrec_ref")
+    second = revised(
+        record,
+        Revision(number=2, body="Read the revised spec.", author="ada", created_at=T0,
+                 source=Source("api_call"), confirmed_by="ada",
+                 applicability=record.current.applicability, references=(Reference(REF, True),)),
+    )  # fmt: skip
+    await records.append_revision("mrec_ref", second.current)
+    snapshot = await store.get_snapshot(UnitKind.CAMPAIGN, CID)
+    replacement = dataclasses.replace(pinned_of(second), unbound=((REF, "pins no source commit"),))
+    await store.rebind_snapshot(
+        rebound(snapshot, second, by="ada", at=T0, why="the spec moved", replacement=replacement),
+        after=0,
+    )  # the re-binding lists no launched cycle of the campaign, so it reaches none
+
+    started = await launcher.drain()
+
+    [intent] = await world.campaigns.launch_intents(CID)
+    assert (intent.state, intent.cycle_id) == (LaunchIntentState.LAUNCHED, stored.cycle_id)
+    assert [r.cycle_id for r in started] == [stored.cycle_id]
+    assert await _handed(store, records, stored.cycle_id) == [
+        {"ref": f"fake:doc:spec@{stored.cycle_id}", "required": True,
+         "digest": f"sha256:{stored.cycle_id}"},
+    ]  # fmt: skip

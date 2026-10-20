@@ -189,17 +189,20 @@ async def rebind_unit(
             "binds the record's current revision (SIP-0110 Appendix A §3.7, §5u)",
         )
     now = datetime.now(UTC)
+    try:
+        replacement = await _replacement(request, record, kind, project_id, unit_id, unit)
+        updated = rebound(
+            snapshot, record, by=identity.user_id, at=now, why=body.why, replacement=replacement
+        )
+    except RebindRefused as e:
+        raise http_error(422, "VALIDATION_ERROR", str(e)) from e
+    # Only the running cycles' bindings and the commit hold launches: the unit's own binding of
+    # the replacement, above, reads no cycle.
     async with _launches_held(request, kind):
         try:
-            replacement = await _replacement(request, record, kind, project_id, unit_id, unit)
-            updated = rebound(
-                snapshot, record, by=identity.user_id, at=now, why=body.why, replacement=replacement
-            )
             if kind is UnitKind.CAMPAIGN:
                 await _bind_running_cycles(request, store, unit_id, replacement, now)
             await store.rebind_snapshot(updated, after=len(snapshot.rebindings))
-        except RebindRefused as e:
-            raise http_error(422, "VALIDATION_ERROR", str(e)) from e
         except SnapshotMoved as e:
             raise http_error(409, "CONFLICT", str(e)) from e
         except _CyclesUnbound as e:

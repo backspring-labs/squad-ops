@@ -108,17 +108,8 @@ class CampaignLauncher:
         for intent in await self._campaigns.pending_launch_intents():
             if intent.campaign_id in faulted:
                 continue
-            campaign = await self._campaigns.get_campaign(intent.campaign_id)
-            if campaign.state in HOLDING_STATES:
-                continue
-            verdict = await self._box_verdict()
-            if not verdict.allowed:
-                await self._block(campaign, intent, verdict)
-                continue
             try:
-                launched.append(await self.launch(intent))
-            except LaunchRefused as refused:
-                await self._escalate_refused(campaign, intent, refused)
+                result = await self._launch_one(intent)
             except Exception as fault:
                 logger.warning(
                     "campaign_launch_fault campaign=%s launch=%s",
@@ -127,9 +118,28 @@ class CampaignLauncher:
                     exc_info=fault,
                 )
                 faulted[intent.campaign_id] = fault
+                continue
+            if result is not None:
+                launched.append(result)
         if faulted:
             raise next(iter(faulted.values()))
         return launched
+
+    async def _launch_one(self, intent: LaunchIntent) -> Launched | None:
+        """One pending intent, as the drain takes it: its campaign holding, the box refusing, the
+        cycle-create path refusing (each recorded, and ``None``), or its cycle launched."""
+        campaign = await self._campaigns.get_campaign(intent.campaign_id)
+        if campaign.state in HOLDING_STATES:
+            return None
+        verdict = await self._box_verdict()
+        if not verdict.allowed:
+            await self._block(campaign, intent, verdict)
+            return None
+        try:
+            return await self.launch(intent)
+        except LaunchRefused as refused:
+            await self._escalate_refused(campaign, intent, refused)
+            return None
 
     async def _escalate_refused(self, campaign, intent: LaunchIntent, refused: LaunchRefused):
         log = await self._campaigns.control_log(campaign.campaign_id)

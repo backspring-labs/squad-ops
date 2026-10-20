@@ -232,6 +232,26 @@ class CampaignLaunchService:
                     started.append(run)
             return started
 
+    async def _fill_before_first_run(self, cycle: Cycle) -> None:
+        """§5ad: the cycle that starts is the one stored under its launch id, which a repeated
+        launch finds rather than creates. That launch bound the cycle it built and threw away, so
+        the stored cycle holds only what its first attempt bound; a re-binding committed between
+        the attempts listed no launched cycle to reach it (the sixth read of #2570). So before its
+        first run starts, under the launch lock, its missing entries are filled. One that can't be
+        filled is logged, and the run starts: a required reference then holds it, loudly, rather
+        than the run waiting on a drain nothing schedules."""
+        store = self._creation.memory_store
+        if store is None or not cycle.campaign_id:
+            return
+        try:
+            snapshot = await store.get_snapshot(UnitKind.CAMPAIGN, cycle.campaign_id)
+            if snapshot is not None and names_current(snapshot.instructions):
+                await self._fill_binding(store, snapshot, cycle.cycle_id)
+        except Exception:
+            logger.warning(
+                "cycle_binding_launch_fill_failed cycle=%s", cycle.cycle_id, exc_info=True
+            )
+
     def launches_held(self) -> asyncio.Lock:
         """§5ad: what a campaign's re-binding holds from listing its launched cycles until its
         snapshot names the new revision, the lock every drain launches under. No cycle launches in
@@ -244,8 +264,9 @@ class CampaignLaunchService:
         """§5ad, the sweep's (every interval, beside the ruling bounds): each running cycle of a live
         campaign holds a binding for every pinned instruction naming ``@current``. One it lacks is
         filled. A launch and a re-binding write their own entries, under the launch lock and before
-        the snapshot names them, so this is the safety net: a cycle launched before its campaign's
-        bindings were recorded (the deploy that brings them), or an entry a store lost. An entry the
+        the snapshot names them, and a cycle's first run is filled before it starts, so this is the
+        safety net: a cycle launched before its campaign's bindings were recorded (the deploy that
+        brings them), or an entry a store lost. An entry the
         cycle holds is never rewritten. Until filled, a required reference holds its task. Each
         project, campaign and cycle is apart: one that can't be read is logged, and the rest are
         filled. Returns the cycles filled."""
@@ -382,14 +403,16 @@ class CampaignLaunchService:
         none, and start it if it is still queued and this process has not started it."""
         cycles = self._creation.cycle_registry
         runs = await cycles.list_runs(cycle_id)
-        if runs:
-            run = min(runs, key=lambda r: r.run_number)
-            if run.status != RunStatus.QUEUED.value or run.run_id in self._started:
-                return None
-            cycle = await cycles.get_cycle(cycle_id)
-            self._execute(cycle, run)
-            return run
+        queued = min(runs, key=lambda r: r.run_number) if runs else None
+        if queued is not None and (
+            queued.status != RunStatus.QUEUED.value or queued.run_id in self._started
+        ):
+            return None
         cycle = await cycles.get_cycle(cycle_id)
+        await self._fill_before_first_run(cycle)
+        if queued is not None:
+            self._execute(cycle, queued)
+            return queued
         run = first_run(cycle, initiated_by=RunInitiator.SYSTEM)
         await cycles.create_run(run)
         self._event_bus.emit(

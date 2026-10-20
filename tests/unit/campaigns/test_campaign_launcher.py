@@ -257,3 +257,46 @@ async def test_one_campaigns_fault_holds_only_its_own_launch(campaigns):
     assert (await campaigns.get_launch_intent(held)).state is LaunchIntentState.PENDING
     launched = await campaigns.get_launch_intent(result.intent.launch_id)
     assert launched.state is LaunchIntentState.LAUNCHED
+
+
+async def test_a_campaign_faulted_before_its_launch_holds_only_itself_and_keeps_its_order(
+    campaigns,
+):
+    """The sixth read of #2570. Bugs caught: a fault before the launch itself (the campaign
+    unreadable) still raising out of the drain and holding every campaign behind it; and the
+    faulted campaign's next pending intent launched ahead of the one that faulted."""
+    other = "cmp_bbbbbbbbbbbb"
+    await campaigns.create_campaign(
+        campaign(other), actor="owner", actor_role="owner", reason="r", idempotency_key="create-2"
+    )
+    await campaigns.transition(other, move(S.CALIBRATING, "k-cal-2"))
+    first = await _decide_launch(campaigns)
+    later = (
+        await campaigns.transition(
+            CID, move(S.AT_PROPOSAL, "k-decide-3", launch=LaunchRequest(CycleKind.INCREMENT))
+        )
+    ).intent.launch_id
+    await campaigns.transition(
+        other, move(S.AT_PROPOSAL, "k-decide-2", launch=LaunchRequest(CycleKind.INCREMENT))
+    )
+    read = campaigns.get_campaign
+    reads = []
+
+    async def get_campaign(campaign_id):
+        reads.append(campaign_id)
+        if campaign_id == CID:
+            raise TimeoutError("the campaign registry did not answer")
+        return await read(campaign_id)
+
+    campaigns.get_campaign = get_campaign
+    cycles = MemoryCycleRegistry()
+
+    with pytest.raises(TimeoutError):
+        await CampaignLauncher(
+            campaigns, cycles, _builder(), actor="l1", box_verdict=quiet_box
+        ).drain()
+
+    assert [c.campaign_id for c in await _cycles_of(cycles)] == [other]
+    assert reads.count(CID) == 1
+    for launch_id in (first, later):
+        assert (await campaigns.get_launch_intent(launch_id)).state is LaunchIntentState.PENDING
