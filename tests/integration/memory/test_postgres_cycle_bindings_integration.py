@@ -1,8 +1,11 @@
 """A campaign cycle's own bindings, stored by the Postgres memory store (SIP-0110 §5ad; #2179 T16):
-migration ``1792``'s table, written at a launch, replaced by a re-binding, and read back by a dispatch.
+migration ``1792``'s table, one row per cycle and record, written at a launch, by a re-binding and by
+the sweep's fill, and read back by a dispatch.
 
-What bugs would these catch? A binding that loses a reference's digest on its way through JSON; a re-binding that adds a second row instead of replacing the cycle's one; a cycle with no
-binding read as an empty one.
+What bugs would these catch? A binding that loses a reference's digest on its way through JSON; a
+stale write (the sweep, or a re-binding that read the snapshot before another) storing an older
+revision over a newer one; one record's write erasing another's; a cycle with no binding read as an
+empty one.
 """
 
 from __future__ import annotations
@@ -15,7 +18,6 @@ import pytest_asyncio
 
 from adapters.memory.cross_cycle import PostgresCrossCycleMemoryStore
 from adapters.persistence.pool import create_pool
-from squadops.memory.cycle_bindings import CycleBinding, replacing
 from squadops.memory.records import InstructionApplicability, PinnedInstruction, Reference
 from tests.integration.conftest import integration_postgres_dsn
 
@@ -55,34 +57,29 @@ async def pool():
     await pool.close()
 
 
-def _pinned(revision: int, ref: str, digest: str) -> PinnedInstruction:
+def _pinned(record_id: str, revision: int, digest: str) -> PinnedInstruction:
     return PinnedInstruction(
-        "mrec_ref", revision, "Read the spec.", WHERE,
-        (Reference(ref, True, digest=digest),),
+        record_id, revision, "Read the spec.", WHERE,
+        (Reference(f"repo:file:SPEC.md@{revision:040d}", True, digest=digest),),
     )  # fmt: skip
 
 
-async def test_a_cycles_binding_round_trips_and_a_rebinding_replaces_it(pool):
+async def test_a_newer_revision_wins_and_each_record_keeps_its_own_row(pool):
     store = PostgresCrossCycleMemoryStore(pool=pool)
-    first = CycleBinding(
-        "cyc_a",
-        "campaign",
-        "cmp_1",
-        (_pinned(1, "repo:file:SPEC.md@" + "a" * 40, "sha256:aa"),),
-        T0,
-    )
 
-    await store.record_cycle_binding(first)
-    read = await store.get_cycle_binding("cyc_a")
-    await store.record_cycle_binding(
-        replacing(first, "mrec_ref", (_pinned(2, "repo:file:SPEC.md@" + "b" * 40, "sha256:bb"),))
+    await store.record_cycle_bindings(
+        "cyc_a", "campaign", "cmp_1", (_pinned("mrec_x", 3, "sha256:x3"),), T0
     )
-    rebound = await store.get_cycle_binding("cyc_a")
+    await store.record_cycle_bindings(
+        "cyc_a", "campaign", "cmp_1", (_pinned("mrec_x", 2, "sha256:x2"),), T0
+    )
+    await store.record_cycle_bindings(
+        "cyc_a", "campaign", "cmp_1", (_pinned("mrec_y", 1, "sha256:y1"),), T0
+    )
+    held = await store.get_cycle_binding("cyc_a")
 
-    assert read == first
-    assert [(p.revision, p.references[0].digest) for p in rebound.instructions] == [
-        (2, "sha256:bb")
-    ]
+    assert [(p.record_id, p.revision, p.references[0].digest) for p in held.instructions] == [
+        ("mrec_x", 3, "sha256:x3"), ("mrec_y", 1, "sha256:y1"),
+    ]  # fmt: skip
+    assert (held.unit_kind, held.unit_id) == ("campaign", "cmp_1")
     assert await store.get_cycle_binding("cyc_none") is None
-    async with pool.acquire() as conn:
-        assert await conn.fetchval("SELECT count(*) FROM memory_cycle_bindings") == 1

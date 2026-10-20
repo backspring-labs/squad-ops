@@ -17,7 +17,7 @@ from __future__ import annotations
 from collections.abc import Iterable, Mapping
 from dataclasses import dataclass, replace
 from datetime import datetime
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING
 
 from squadops.memory.records import PinnedInstruction, is_current
 from squadops.memory.reference_binding import bound_instruction
@@ -29,34 +29,15 @@ if TYPE_CHECKING:
 
 @dataclass(frozen=True)
 class CycleBinding:
-    """One campaign cycle's bindings: each of its campaign's pinned instructions that names an
-    ``@current`` reference, as this cycle bound it. Keyed by the instruction's record and revision,
-    so a re-bound revision is never read under the old one's binding."""
+    """One campaign cycle's bindings, as read: each of its campaign's pinned instructions that names
+    an ``@current`` reference, as this cycle bound it, one per record (the newest revision bound).
+    Read by record and revision, so a re-bound revision is never read under the old one's binding."""
 
     cycle_id: str
     unit_kind: str
     unit_id: str
     instructions: tuple[PinnedInstruction, ...]
     bound_at: datetime
-
-    def to_dict(self) -> dict[str, Any]:
-        return {
-            "cycle_id": self.cycle_id,
-            "unit_kind": self.unit_kind,
-            "unit_id": self.unit_id,
-            "instructions": [p.to_dict() for p in self.instructions],
-            "bound_at": self.bound_at.isoformat(),
-        }
-
-    @classmethod
-    def from_dict(cls, d: Mapping[str, Any]) -> CycleBinding:
-        return cls(
-            cycle_id=str(d["cycle_id"]),
-            unit_kind=str(d["unit_kind"]),
-            unit_id=str(d["unit_id"]),
-            instructions=tuple(PinnedInstruction.from_dict(p) for p in d.get("instructions", [])),
-            bound_at=datetime.fromisoformat(str(d["bound_at"])),
-        )
 
 
 def names_current(pinned: Iterable[PinnedInstruction]) -> bool:
@@ -109,18 +90,3 @@ def as_bound_for(
         return tuple(pinned)
     bound = {(p.record_id, p.revision): p for p in binding.instructions}
     return tuple(bound.get((p.record_id, p.revision), p) for p in pinned)
-
-
-def replacing(
-    binding: CycleBinding,
-    record_ids: Iterable[str],
-    instructions: Iterable[PinnedInstruction],
-    *,
-    at: datetime,
-) -> CycleBinding:
-    """``binding`` with each of ``record_ids``' entries replaced by ``instructions``, which are
-    their revisions as this cycle bound them (§5v). A record left with none (its revision names no
-    ``@current``, or it was withdrawn) is read from the campaign's pin."""
-    gone = set(record_ids)
-    kept = tuple(p for p in binding.instructions if p.record_id not in gone)
-    return replace(binding, instructions=(*kept, *instructions), bound_at=at)

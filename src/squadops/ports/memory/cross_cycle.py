@@ -12,6 +12,7 @@ from __future__ import annotations
 
 from abc import ABC, abstractmethod
 from collections.abc import Sequence
+from datetime import datetime
 
 from squadops.memory.annotation import Annotation
 from squadops.memory.assessment import Assessment
@@ -20,6 +21,7 @@ from squadops.memory.cycle_bindings import CycleBinding
 from squadops.memory.exposures import Exposure
 from squadops.memory.lessons import Approval, PatternRevision, Snapshot, UnitKind
 from squadops.memory.observations import Observation, ObservationSource
+from squadops.memory.records import PinnedInstruction
 
 
 class SnapshotMoved(RuntimeError):
@@ -93,9 +95,18 @@ class CrossCycleMemoryStorePort(ABC):
         :class:`RecordIncompatible` for a stored pin this code cannot read."""
 
     @abstractmethod
-    async def record_cycle_binding(self, binding: CycleBinding) -> None:
-        """Store a campaign cycle's own bindings of its campaign's pinned instructions (SIP-0110
-        §5ad), replacing any it held: a re-binding of the campaign rebinds its running cycles."""
+    async def record_cycle_bindings(
+        self,
+        cycle_id: str,
+        unit_kind: str,
+        unit_id: str,
+        entries: Sequence[PinnedInstruction],
+        bound_at: datetime,
+    ) -> None:
+        """Store a campaign cycle's own bindings of these pinned instructions (SIP-0110 §5ad), one
+        per record. An entry lands only when its revision is the one the cycle holds for that record
+        or a newer one. So writers never read each other's entries, and a stale write never
+        replaces a newer revision."""
 
     @abstractmethod
     async def get_cycle_binding(self, cycle_id: str) -> CycleBinding | None:

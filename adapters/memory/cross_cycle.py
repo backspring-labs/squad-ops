@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 from collections.abc import Sequence
+from datetime import datetime
 from typing import Any
 
 from squadops.memory.annotation import Annotation
@@ -15,6 +16,7 @@ from squadops.memory.exposures import Exposure
 from squadops.memory.lessons import Approval, PatternRevision, Snapshot, UnitKind
 from squadops.memory.observations import Observation, ObservationSource
 from squadops.memory.project_instructions import units_pinning
+from squadops.memory.records import PinnedInstruction
 from squadops.ports.memory.cross_cycle import (
     CrossCycleMemoryStorePort,
     RecordIncompatible,
@@ -36,7 +38,10 @@ class InMemoryCrossCycleMemoryStore(CrossCycleMemoryStorePort):
         self._revisions: dict[str, PatternRevision] = {}
         self._approvals: dict[str, Approval] = {}
         self._snapshots: dict[tuple[str, str], Snapshot] = {}
-        self._cycle_bindings: dict[str, CycleBinding] = {}
+        #: cycle -> record -> (its binding, the unit's kind and id, when it was bound)
+        self._cycle_bindings: dict[
+            str, dict[str, tuple[PinnedInstruction, str, str, datetime]]
+        ] = {}
         self._exposures: dict[str, Exposure] = {}
         self._chat_exposures: dict[tuple[str, str], ChatExposure] = {}
         self._assessments: dict[str, Assessment] = {}
@@ -119,11 +124,28 @@ class InMemoryCrossCycleMemoryStore(CrossCycleMemoryStorePort):
     async def get_snapshot(self, unit_kind: UnitKind, unit_id: str) -> Snapshot | None:
         return self._snapshots.get((unit_kind.value, unit_id))
 
-    async def record_cycle_binding(self, binding: CycleBinding) -> None:
-        self._cycle_bindings[binding.cycle_id] = binding
+    async def record_cycle_bindings(
+        self,
+        cycle_id: str,
+        unit_kind: str,
+        unit_id: str,
+        entries: Sequence[PinnedInstruction],
+        bound_at: datetime,
+    ) -> None:
+        held = self._cycle_bindings.setdefault(cycle_id, {})
+        for entry in entries:
+            prior = held.get(entry.record_id)
+            if prior is None or prior[0].revision <= entry.revision:
+                held[entry.record_id] = (entry, unit_kind, unit_id, bound_at)
 
     async def get_cycle_binding(self, cycle_id: str) -> CycleBinding | None:
-        return self._cycle_bindings.get(cycle_id)
+        held = self._cycle_bindings.get(cycle_id)
+        if not held:
+            return None
+        rows = sorted(held.values(), key=lambda r: r[0].record_id)
+        return CycleBinding(
+            cycle_id, rows[0][1], rows[0][2], tuple(r[0] for r in rows), max(r[3] for r in rows)
+        )
 
     async def rebind_snapshot(self, snapshot: Snapshot, *, after: int) -> None:
         key = (snapshot.unit_kind.value, snapshot.unit_id)
@@ -382,31 +404,50 @@ class PostgresCrossCycleMemoryStore(CrossCycleMemoryStorePort):
         except (KeyError, TypeError, ValueError) as e:
             raise RecordIncompatible(f"{unit_kind.value} {unit_id}'s snapshot: {e!r}") from e
 
-    async def record_cycle_binding(self, binding: CycleBinding) -> None:
+    async def record_cycle_bindings(
+        self,
+        cycle_id: str,
+        unit_kind: str,
+        unit_id: str,
+        entries: Sequence[PinnedInstruction],
+        bound_at: datetime,
+    ) -> None:
+        # One statement per entry: it lands only on the held revision or a newer one.
         async with self._pool.acquire() as conn:
-            await conn.execute(
-                "INSERT INTO memory_cycle_bindings (cycle_id, unit_kind, unit_id, bound_at, "
-                "binding_body) VALUES ($1, $2, $3, $4, $5) ON CONFLICT (cycle_id) DO UPDATE SET "
-                "unit_kind = EXCLUDED.unit_kind, unit_id = EXCLUDED.unit_id, "
-                "bound_at = EXCLUDED.bound_at, binding_body = EXCLUDED.binding_body",
-                binding.cycle_id,
-                binding.unit_kind,
-                binding.unit_id,
-                binding.bound_at,
-                binding.to_dict(),
-            )
+            for entry in entries:
+                await conn.execute(
+                    "INSERT INTO memory_cycle_bindings (cycle_id, record_id, revision, unit_kind, "
+                    "unit_id, bound_at, entry_body) VALUES ($1, $2, $3, $4, $5, $6, $7) "
+                    "ON CONFLICT (cycle_id, record_id) DO UPDATE SET revision = EXCLUDED.revision, "
+                    "unit_kind = EXCLUDED.unit_kind, unit_id = EXCLUDED.unit_id, "
+                    "bound_at = EXCLUDED.bound_at, entry_body = EXCLUDED.entry_body "
+                    "WHERE memory_cycle_bindings.revision <= EXCLUDED.revision",
+                    cycle_id,
+                    entry.record_id,
+                    entry.revision,
+                    unit_kind,
+                    unit_id,
+                    bound_at,
+                    entry.to_dict(),
+                )
 
     async def get_cycle_binding(self, cycle_id: str) -> CycleBinding | None:
         async with self._pool.acquire() as conn:
-            body = await conn.fetchval(
-                "SELECT binding_body FROM memory_cycle_bindings WHERE cycle_id = $1", cycle_id
+            rows = await conn.fetch(
+                "SELECT unit_kind, unit_id, bound_at, entry_body FROM memory_cycle_bindings "
+                "WHERE cycle_id = $1 ORDER BY record_id",
+                cycle_id,
             )
-        if body is None:
+        if not rows:
             return None
         try:
-            return CycleBinding.from_dict(body)
+            entries = tuple(PinnedInstruction.from_dict(r["entry_body"]) for r in rows)
         except (KeyError, TypeError, ValueError) as e:
             raise RecordIncompatible(f"cycle {cycle_id}'s binding: {e!r}") from e
+        return CycleBinding(
+            cycle_id, rows[0]["unit_kind"], rows[0]["unit_id"], entries,
+            max(r["bound_at"] for r in rows),
+        )  # fmt: skip
 
     async def rebind_snapshot(self, snapshot: Snapshot, *, after: int) -> None:
         # One statement, so two re-bindings read from the same snapshot can't both land.

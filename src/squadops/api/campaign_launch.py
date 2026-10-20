@@ -19,6 +19,7 @@ from __future__ import annotations
 import asyncio
 import logging
 from datetime import UTC, datetime
+from typing import Any
 
 import pydantic
 
@@ -37,13 +38,7 @@ from squadops.campaigns.models import (
 )
 from squadops.cycles.models import Cycle, CycleError, CycleStatus, Run, RunInitiator, RunStatus
 from squadops.events.types import EventType
-from squadops.memory.cycle_bindings import (
-    CycleBinding,
-    instructions_bound_for,
-    missing_from,
-    names_current,
-    replacing,
-)
+from squadops.memory.cycle_bindings import instructions_bound_for, missing_from, names_current
 from squadops.memory.lessons import UnitKind
 from squadops.memory.pinning import cycle_binding
 from squadops.memory.records import RecordRefused
@@ -153,14 +148,12 @@ class CampaignLaunchService:
         instructions = await instructions_bound_for(
             snapshot.instructions, self._creation.reference_resolvers or {}, cycle_binding(cycle)
         )
-        await store.record_cycle_binding(
-            CycleBinding(
-                cycle.cycle_id,
-                UnitKind.CAMPAIGN.value,
-                campaign.campaign_id,
-                instructions,
-                datetime.now(UTC),
-            )
+        await store.record_cycle_bindings(
+            cycle.cycle_id,
+            UnitKind.CAMPAIGN.value,
+            campaign.campaign_id,
+            instructions,
+            datetime.now(UTC),
         )
 
     async def _carry_instructions(self, intent: LaunchIntent, cycle: Cycle) -> None:
@@ -237,56 +230,64 @@ class CampaignLaunchService:
                 run = await self._start_first_run(cycle_id)
                 if run is not None:
                     started.append(run)
-            try:
-                await self._reconcile_bindings()
-            except Exception:
-                logger.exception("cycle_binding_reconcile_failed")
             return started
 
-    async def _reconcile_bindings(self) -> None:
-        """§5ad: each running cycle of a live campaign holds a binding for every pinned instruction
-        naming ``@current``. One it lacks is filled, never one it holds changed, since a dispatch
-        may have been handed it. A cycle lacks one when a re-binding couldn't reach it, raced its
-        launch, or raced another re-binding. Until filled, a required reference holds its task. A
-        cycle that can't be filled now is logged and tried at the next drain."""
+    async def reconcile_bindings(self) -> list[str]:
+        """§5ad, the sweep's (every interval, beside the ruling bounds): each running cycle of a live
+        campaign holds a binding for every pinned instruction naming ``@current``. One it lacks is
+        filled. A re-binding couldn't reach it, raced its launch, or raced another re-binding. An
+        entry it holds is never replaced by an older revision, since the store keeps the newer one.
+        Until filled, a required reference holds its task. Each campaign and each cycle is apart: a
+        snapshot or a cycle that can't be read is logged, and the rest are filled. Returns the
+        cycles filled."""
         store = self._creation.memory_store
         if store is None:
-            return
-        cycles = self._creation.cycle_registry
-        resolvers = self._creation.reference_resolvers or {}
+            return []
+        filled: list[str] = []
         for project in await self._creation.project_registry.list_projects():
             for campaign in await self._campaigns.list_campaigns(project.project_id):
                 if campaign.state is CampaignState.COMPLETED:
                     continue
-                snapshot = await store.get_snapshot(UnitKind.CAMPAIGN, campaign.campaign_id)
-                if snapshot is None or not names_current(snapshot.instructions):
-                    continue
-                for intent in await self._campaigns.launch_intents(campaign.campaign_id):
-                    if intent.state is not LaunchIntentState.LAUNCHED or not intent.cycle_id:
-                        continue
-                    try:
-                        await self._fill_binding(
-                            store, cycles, resolvers, snapshot, intent.cycle_id
-                        )
-                    except Exception:
-                        logger.warning(
-                            "cycle_binding_fill_failed cycle=%s", intent.cycle_id, exc_info=True
-                        )
+                try:
+                    filled += await self._reconcile_campaign(store, campaign.campaign_id)
+                except Exception:
+                    logger.warning(
+                        "cycle_binding_reconcile_failed campaign=%s",
+                        campaign.campaign_id,
+                        exc_info=True,
+                    )
+        return filled
 
-    async def _fill_binding(self, store, cycles, resolvers, snapshot, cycle_id: str) -> None:
+    async def _reconcile_campaign(self, store: Any, campaign_id: str) -> list[str]:
+        snapshot = await store.get_snapshot(UnitKind.CAMPAIGN, campaign_id)
+        if snapshot is None or not names_current(snapshot.instructions):
+            return []
+        filled = []
+        for intent in await self._campaigns.launch_intents(campaign_id):
+            if intent.state is not LaunchIntentState.LAUNCHED or not intent.cycle_id:
+                continue
+            try:
+                if await self._fill_binding(store, snapshot, intent.cycle_id):
+                    filled.append(intent.cycle_id)
+            except Exception:
+                logger.warning("cycle_binding_fill_failed cycle=%s", intent.cycle_id, exc_info=True)
+        return filled
+
+    async def _fill_binding(self, store: Any, snapshot: Any, cycle_id: str) -> bool:
+        missing = missing_from(await store.get_cycle_binding(cycle_id), snapshot.instructions)
+        if not missing:
+            return False
+        cycles = self._creation.cycle_registry
         cycle = await cycles.get_cycle(cycle_id)
         if cycle_status_of(cycle, await cycles.list_runs(cycle_id)) in _ENDED:
-            return
-        held = await store.get_cycle_binding(cycle_id)
-        missing = missing_from(held, snapshot.instructions)
-        if not missing:
-            return
-        now = datetime.now(UTC)
-        bound = await instructions_bound_for(missing, resolvers, cycle_binding(cycle))
-        base = held or CycleBinding(cycle_id, UnitKind.CAMPAIGN.value, snapshot.unit_id, (), now)
-        await store.record_cycle_binding(
-            replacing(base, {p.record_id for p in missing}, bound, at=now)
+            return False
+        bound = await instructions_bound_for(
+            missing, self._creation.reference_resolvers or {}, cycle_binding(cycle)
         )
+        await store.record_cycle_bindings(
+            cycle_id, UnitKind.CAMPAIGN.value, snapshot.unit_id, bound, datetime.now(UTC)
+        )
+        return True
 
     async def retry_blocked(self) -> list:
         """§9.3 (#1802): each blocked campaign whose attempt is due reads the box again; one

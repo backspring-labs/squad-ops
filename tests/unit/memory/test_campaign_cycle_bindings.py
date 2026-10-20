@@ -262,34 +262,39 @@ async def test_rebinding_one_record_keeps_the_cycles_binding_of_another():
     assert sorted((p.record_id, p.revision) for p in held) == sorted([(spec_id, 2), (notes_id, 2)])
 
 
-async def test_a_rebinding_whose_cycles_cant_be_read_is_still_recorded_and_answered():
-    """The second read of #2570. Bug caught: the campaign's launches unreadable after the
-    snapshot was re-bound, answered 500 with no control-log row, so the intervention is invisible
-    to the ledger and a retry is refused as already bound."""
+@pytest.mark.parametrize("fault", ["cycles-unread", "resolver-fault"])
+async def test_a_rebinding_its_running_cycles_cant_bind_is_refused_with_nothing_written(fault):
+    """The second and third reads of #2570. Bugs caught: the snapshot re-bound and then the cycles'
+    bindings failed, answered 500 with no control-log row, invisible to the ledger and refused on
+    retry as already bound; or a running cycle left holding the reference the re-binding was for."""
     from squadops.campaigns.models import ControlOperation
 
-    api, [record_id], _cycles = await _campaign_world(REF)
+    api, [record_id], (running, _paused, _ended) = await _campaign_world(REF)
     _revise(api, record_id, REF, "Read the spec, then its notes.")
+    if fault == "cycles-unread":
 
-    async def unreadable(_campaign_id):
-        raise TimeoutError("the campaign registry did not answer")
+        async def unreadable(_campaign_id):
+            raise TimeoutError("the campaign registry did not answer")
 
-    api.campaigns.launch_intents = unreadable
+        api.campaigns.launch_intents = unreadable
+    else:
+        api.client.app.state.reference_resolvers = {"fake": _Faulting()}
 
-    applied = api.rebind(record_id, kind="campaign", unit_id=CID, why="the spec moved")
+    refused = api.rebind(record_id, kind="campaign", unit_id=CID, why="the spec moved")
 
-    assert applied.status_code == 201, applied.text
-    rows = [
-        e for e in await api.campaigns.control_log(CID) if e.operation is ControlOperation.REBIND
-    ]
-    assert [r.entry_id for r in rows] == [applied.json()["control_log_entry_id"]]
+    assert refused.status_code == 503, refused.text
+    assert refused.json()["detail"]["error"]["code"] == "CYCLES_UNBOUND"
+    snapshot = await api.store.get_snapshot(UnitKind.CAMPAIGN, CID)
+    assert (len(snapshot.rebindings), snapshot.instructions[0].revision) == (0, 1)
+    assert [e for e in await api.campaigns.control_log(CID)
+            if e.operation is ControlOperation.REBIND] == []  # fmt: skip
+    assert await api.store.get_cycle_binding(running.cycle_id) is None
 
 
 async def test_a_binding_of_an_earlier_revision_is_never_handed_for_the_pinned_one():
     """§5ad with §5v. Bug caught: a cycle's binding matched by record alone. After a re-binding
     that couldn't reach this cycle, the cycle would be handed the replaced revision's text, bound,
     under the pin that replaced it, rather than holding."""
-    from squadops.memory.cycle_bindings import CycleBinding
     from squadops.memory.records import PinnedInstruction, Revision, Source, revised
 
     store, records = InMemoryCrossCycleMemoryStore(), InMemoryMemoryRecords()
@@ -308,9 +313,7 @@ async def test_a_binding_of_an_earlier_revision_is_never_handed_for_the_pinned_o
         "mrec_ref", 1, original.current.body, original.current.applicability,
         (Reference("fake:doc:spec@cyc_stale0000", True, digest="sha256:old"),),
     )  # fmt: skip
-    await store.record_cycle_binding(
-        CycleBinding("cyc_stale0000", UnitKind.CAMPAIGN.value, CID, (stale,), T0)
-    )
+    await store.record_cycle_bindings("cyc_stale0000", UnitKind.CAMPAIGN.value, CID, (stale,), T0)
 
     with pytest.raises(TaskInstructionsUnavailable, match=f"required reference {REF}"):
         await _handed(store, records, "cyc_stale0000")
@@ -323,10 +326,12 @@ async def _pinned_campaign_as_is(store, records):
     )  # fmt: skip
 
 
-async def test_a_drain_fills_a_cycle_a_rebinding_could_not_reach(world):  # noqa: F811
-    """The second read of #2570. Bug caught: a cycle whose re-binding failed, or raced its launch,
-    left holding its required reference for the rest of its life, since re-binding the same
-    revision again is refused."""
+async def test_the_sweep_fills_a_cycle_a_rebinding_could_not_reach(world):  # noqa: F811
+    """The second and third reads of #2570, entered at the runtime's own sweep
+    (``main._sweep_campaigns``). Bugs caught: a cycle whose re-binding couldn't be stored, or raced
+    its launch, left holding its required reference for the rest of its life, since re-binding the
+    same revision again is refused; a fill that waits for a drain, which the cycle's run may never
+    see before it ends."""
     from squadops.memory.rebinding import rebound
     from squadops.memory.records import Revision, Source, pinned_of, revised
 
@@ -353,7 +358,7 @@ async def test_a_drain_fills_a_cycle_a_rebinding_could_not_reach(world):  # noqa
 
     with pytest.raises(TaskInstructionsUnavailable, match=f"required reference {REF}"):
         await _handed(store, records, cycle_id)
-    await launcher.drain()
+    await _one_sweep(launcher)
 
     assert await _handed(store, records, cycle_id) == [
         {"ref": f"fake:doc:spec@{cycle_id}", "required": True, "digest": f"sha256:{cycle_id}"}
@@ -403,3 +408,99 @@ async def test_an_unreadable_snapshot_refuses_the_launch_not_every_launch_behind
 
     with pytest.raises(LaunchRefused, match="snapshot can't be read"):
         await launcher._build_cycle(intent)
+
+
+async def _one_sweep(launcher) -> None:
+    """One pass of the runtime's campaign sweep, with this launcher (``main._sweep_campaigns``)."""
+    import asyncio
+    from types import SimpleNamespace
+    from unittest.mock import AsyncMock, patch
+
+    from squadops.api.runtime import main
+
+    launcher.retry_blocked = AsyncMock(return_value=[])
+    progress = SimpleNamespace(
+        sweep_ruling_bounds=AsyncMock(), rehear_ended=AsyncMock(return_value=[])
+    )
+    with (
+        patch.object(
+            main.asyncio, "sleep", AsyncMock(side_effect=[None, asyncio.CancelledError()])
+        ),
+        pytest.raises(asyncio.CancelledError),
+    ):
+        await main._sweep_campaigns(
+            SimpleNamespace(campaign_launch=launcher, campaign_progress=progress)
+        )
+
+
+async def test_the_sweep_fills_each_campaign_and_cycle_apart_and_never_an_ended_one(world):  # noqa: F811
+    """The third read of #2570. Bugs caught: one snapshot or one cycle that can't be read stopping
+    the fill for every campaign or cycle after it; a cancelled cycle filled."""
+    from types import SimpleNamespace
+
+    from squadops.campaigns.models import LaunchIntentState
+
+    store, records = _UnreadableFor({"cmp_broken0000"}), InMemoryMemoryRecords()
+    await _pinned_campaign(store, records)
+    world.start()
+    launcher = _launcher(world, records, store)
+    cycles = []
+    for cycle_id in ("cyc_unreadabl", "cyc_fillable0", "cyc_cancelld0"):
+        cycle = dataclasses.replace(_framing_cycle(), cycle_id=cycle_id, campaign_id=CID)
+        await world.cycles.create_cycle(cycle)
+        cycles.append(cycle_id)
+    await world.cycles.cancel_cycle("cyc_cancelld0")
+    store.unreadable_cycles = {"cyc_unreadabl"}
+    broken = SimpleNamespace(campaign_id="cmp_broken0000", state=None)
+    listed = [broken, *await world.campaigns.list_campaigns("group_run")]
+
+    async def list_campaigns(_project_id):
+        return listed
+
+    async def launch_intents(_campaign_id):
+        return [SimpleNamespace(state=LaunchIntentState.LAUNCHED, cycle_id=c) for c in cycles]
+
+    world.campaigns.list_campaigns, world.campaigns.launch_intents = list_campaigns, launch_intents
+
+    filled = await launcher.reconcile_bindings()
+
+    assert filled == ["cyc_fillable0"]
+    assert await store.get_cycle_binding("cyc_cancelld0") is None
+
+
+class _UnreadableFor(InMemoryCrossCycleMemoryStore):
+    """A store whose snapshot of some campaigns, and binding of some cycles, can't be read."""
+
+    def __init__(self, campaigns) -> None:
+        super().__init__()
+        self.unreadable_campaigns, self.unreadable_cycles = set(campaigns), set()
+
+    async def get_snapshot(self, unit_kind, unit_id):
+        if unit_id in self.unreadable_campaigns:
+            raise TimeoutError("the snapshot did not answer")
+        return await super().get_snapshot(unit_kind, unit_id)
+
+    async def get_cycle_binding(self, cycle_id):
+        if cycle_id in self.unreadable_cycles:
+            raise TimeoutError("the binding did not answer")
+        return await super().get_cycle_binding(cycle_id)
+
+
+async def test_a_stale_write_never_replaces_a_newer_revision():
+    """The third read of #2570. Bug caught: a writer that read the snapshot before a re-binding
+    (the sweep, or a second re-binding) storing the older revision over the newer one the
+    re-binding just stored, so the cycle reads the re-bound record from the campaign's pin and
+    holds."""
+    from squadops.memory.records import InstructionApplicability, PinnedInstruction
+
+    where = InstructionApplicability((DESIGN,), ("*",), ("*",))
+    store = InMemoryCrossCycleMemoryStore()
+
+    def entry(revision):
+        return PinnedInstruction("mrec_ref", revision, f"r{revision}", where,
+                                 (Reference(f"fake:doc:spec@{revision}", True, digest="d"),))  # fmt: skip
+
+    await store.record_cycle_bindings("cyc_x", "campaign", CID, (entry(3),), T0)
+    await store.record_cycle_bindings("cyc_x", "campaign", CID, (entry(2),), T0)
+
+    assert [p.revision for p in (await store.get_cycle_binding("cyc_x")).instructions] == [3]
