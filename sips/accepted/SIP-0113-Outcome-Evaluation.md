@@ -1025,7 +1025,17 @@ names the entity exactly resolves as before.
 ### 10j. Lighthouse and axe on a seeded instance, parameterised pages included (proposed 2026-10-20, §4.2, §10f; #2562; queued for after the window by the owner)
 
 **Status: proposed, not built.** The owner, 2026-10-20, answering the proposal to draft it: "yes, draft it and queue it
-for after the window." **The design review is the owner's,** on #2562, after the window and before any of it is built.
+for after the window."
+
+**The design review is the supervisor's** (the owner, 2026-10-20: "Approve your recommendations"). It happens on #2562,
+after the window and before any of it is built, with a fresh reviewer that saw none of the drafting. D4 and every quality
+gate stay the owner's. The answers the review starts from, the supervisor's recommendation the owner approved:
+- accept the second instance if it adds two minutes or less per evaluation, measured when built;
+- seed a run at its capacity as well;
+- keep both readings for one series;
+- use route rendering's mapping (it is in `src/` already, carries #2084's fix, and reads an id from its create
+  response);
+- write the window's seeded re-measures as records of their own, so the deltas read them.
 The window runs on §10f's reading as it stands. Its deploy is frozen (G7), and a measure changed mid-series is a
 different measure.
 
@@ -1135,7 +1145,19 @@ is re-measured with the seeded reading: each campaign's calibration and each inc
 
 **Status: proposed, not built.** The owner, 2026-10-20, answering the proposal to draft the browser steps as §10j's
 companion: "yes, draft it and queue it for after the window." These are the same words as §10j's answer, given to its
-own question. **The design review is the owner's,** on #2564, after the window and before any of it is built.
+own question.
+
+**The design review is the supervisor's** (the owner, 2026-10-20: "Approve your recommendations"). It happens on #2564,
+after the window and before any of it is built, with a fresh reviewer that saw none of the drafting. D4 and every quality
+gate stay the owner's. The answers the review starts from, the supervisor's recommendation the owner approved:
+- find by role and names only;
+- read a control not found as `surface_absent`, but report each delivery's not-found rate beside its results, so it
+  can't hide a job (§10c's finding);
+- set the wait bounds from measurement;
+- revision 4 gives page scenarios for capacity's indicator, the list's order, and joining from the page;
+- keep a failure's evidence with the evaluation record for the line, readable from the owner's console and CLI only;
+- report every rate across revisions with its count;
+- the sandbox's runner coordinates a mixed scenario.
 
 This is the part of phase 1's runner §10c names as still to build: "the browser runner in the evaluator's image (A2),
 for `page` surfaces". It moves from #2414 to #2564, and #2414 keeps the declared start at the hook (E.4.2). The window

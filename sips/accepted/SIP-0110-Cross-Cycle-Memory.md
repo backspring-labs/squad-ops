@@ -83,7 +83,7 @@ re-places it.
 | entry points: the context-assembly port, inert, at the four seams (§A.3.6) | **shipped** | 2.3.0, #2257 (closes #2176; §5j records where it departs from §A.3.6's text) |
 | entry points: the typed records (notes, preferences, project and task instructions), permissions by kind, provenance (§A.3.2–§A.3.4) | **shipped** (§5l) | 2.4.0, PR #2508, issue #2177 |
 | entry points: task instructions, with the work target, retries, references bound with the cycle, binding holds and emergency withdrawal (§A.3.5–§A.3.8) | **placed** | 2.4.0, #2178: stage 1 (the records reach the tasks they name, binding, the task held when incomplete) shipped in PR #2513 (§5m), stage 2's interventions after admission with `squadops instructions` in PR #2549 (§5w), and `carries_into: continuations` with the increment gate's structured `task_instructions` field in PR #2556 (§5aa), and a task instruction's `@current` bound with its cycle (T16's task part) in the PR that wrote this row (§5ab); the hold and its release, and emergency withdrawal after dispatch remain |
-| entry points: project instructions in the snapshot with references bound, re-binding, the effective lesson budget, the comparison arms and disclosure (§A.3.6, §A.3.7) | **placed** | 2.4.0, #2179: stage 1 (pinned at admission, binding on the tasks they apply to, the lesson budget after them) shipped in PR #2515 (§5n), stage 2's effective lesson budget (T17) in PR #2526 (§5r), the `memory_context: none` arm with the lesson-text diagnostic in PR #2528 (§5s), a counted roll's pinned instruction set in PR #2533 (§5t), and a project instruction's emergency withdrawal in PR #2544 (§5u), re-binding a running unit's project instruction in PR #2546 (§5v), and `@current` bound at admission, the project part of T16, in PR #2555 (§5z), with the write-time refusal of a reference no unit of its project can bind in the PR that wrote this row (§5ac); re-binding a reference's revision, reading a reference's content at dispatch (the MacBook lane, with the hold), and a campaign's repository references (§5z) remain |
+| entry points: project instructions in the snapshot with references bound, re-binding, the effective lesson budget, the comparison arms and disclosure (§A.3.6, §A.3.7) | **placed** | 2.4.0, #2179: stage 1 (pinned at admission, binding on the tasks they apply to, the lesson budget after them) shipped in PR #2515 (§5n), stage 2's effective lesson budget (T17) in PR #2526 (§5r), the `memory_context: none` arm with the lesson-text diagnostic in PR #2528 (§5s), a counted roll's pinned instruction set in PR #2533 (§5t), and a project instruction's emergency withdrawal in PR #2544 (§5u), re-binding a running unit's project instruction in PR #2546 (§5v), and `@current` bound at admission, the project part of T16, in PR #2555 (§5z), with the write-time refusal of a reference no unit of its project can bind in the PR that wrote this row (§5ac); re-binding a reference's revision, reading a reference's content at dispatch (the MacBook lane, with the hold), and a campaign's repository references (§5z; ruled by the owner 2026-10-20, §5ad: bound per cycle against the campaign's snapshot, to build) remain |
 | entry points: chat on the substrate, with capture confirmed, chat exposures, server-side project binding and provenance authorized (§A.3.5) | **shipped** | 2.4.0, issue #2180: stage A (the binding, each turn's context and exposure, confirmed capture of notes and preferences, authorized provenance, Q29's deletion) in PR #2517, stage B's project-instruction capture in PR #2525 (§5o), and its task-instruction capture in the PR that wrote this row (§5x) |
 | entry points: lesson inspection from chat; a conversational claim never becomes a lesson (§A.3.5) | **shipped** | 2.4.0, PR #2518, issue #2181 (§5p) |
 | entry points: the console's memory record view (§A.3.11) | **placed** | 2.4.0, #2182: the view and its uses route shipped in the PR that wrote this row (§5q); the page's capture test remains, live with #2183 |
@@ -2742,6 +2742,44 @@ That gave a gap, found in the Spark lane's G4 review of #2565:
 
   A fifth, which checked only project instructions, survived. It was redundant, since a task instruction is bound at
   write anyway, so the check now covers every record and the condition is gone.
+
+## 5ad. A campaign's repository references, bound per cycle against its snapshot: the owner's ruling (2026-10-20, #2179 T16; resolves §5z's conflict with SIP-0112 §B.5.1)
+
+**The owner, 2026-10-20: "Approve your recommendations."** That answered the supervisor's recommendation, given the same
+day, on the conflict §5z names. **Ruled, not yet built.**
+
+**The conflict (§5z).**
+- SIP-0112 §B.5.1 binds a Campaign's repository reference "when it is admitted … at the commit the unit's source
+  context pins".
+- A Campaign has no source context of its own. Each of its cycles pins one when `prepare_cycle` builds it, after the
+  campaign's snapshot was taken at its start.
+- So a campaign's `repo:` references were left unbound, and a required one would hold every task it applies to.
+
+The two ways out §5z named both fail:
+- **A campaign-level source pin** binds every cycle's instructions to the campaign's starting commit, while each
+  increment's code moves on. The instructions and the code they describe drift apart.
+- **Plain per-cycle binding** gives up the shared snapshot, which is what keeps a campaign's cycles comparable.
+
+**The ruling: per cycle, against the shared snapshot.**
+- **The campaign's snapshot keeps fixing which instruction revisions are in force,** shared by every cycle, as today
+  (§0.7, §5t).
+- **Each cycle binds those instructions' `@current` references at its own pinned source commit** (`cycle_binding`, its
+  `source_context`), when the campaign launches it. That binding is recorded with the cycle, and every dispatch of the
+  cycle reads it. It is never bound at dispatch.
+- **So the instruction set is comparable across the campaign,** and the files it points at are the ones the cycle's
+  code comes from. Each binding names its commit, so two cycles bound at different commits read as such, which is §5t's
+  rule for a counted roll.
+- **A reference a cycle can't bind** is handled as at admission (§5z): a required one holds the tasks it applies to, and
+  an optional one is omitted and disclosed.
+- **A standalone cycle is unchanged.** It is its own unit, and its pin already binds at its source commit (§5z).
+
+**Who does what:**
+- **The binding side** (the launcher's per-cycle binding, its record, and the composer reading it) is the supervisor's,
+  on #2179.
+- **SIP-0112 §B.5.1 records the same ruling,** in the MacBook lane's #2484, which edits that section.
+
+**When it matters:** only once a campaign runs over a Project with a source repository, starting with the shared
+demonstration (D13). A sample application has no repository, so §5ac refuses its `repo:` references at write.
 
 ## 6. Mode neutrality: cycle, duty, and ambient utilization
 
