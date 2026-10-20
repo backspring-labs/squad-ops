@@ -117,9 +117,10 @@ class CrossCycleMemoryStorePort(ABC):
 
     @abstractmethod
     async def rebind_snapshot(self, snapshot: Snapshot, *, after: int) -> None:
-        """Store ``snapshot``, a re-binding of its unit's, if the stored one still carries ``after``
-        re-bindings (Appendix A §3.7; #2179). Raises :class:`SnapshotMoved` when it doesn't, and
-        ``KeyError`` for a unit that pinned none."""
+        """Store ``snapshot`` over its unit's, if the stored one still carries ``after`` re-bindings:
+        a re-binding (Appendix A §3.7; #2179), or the admission's own correction before anything
+        dispatched (#2545). Raises :class:`SnapshotMoved` when it doesn't, and ``KeyError`` for a
+        unit that pinned none."""
 
     @abstractmethod
     def dispatch_turn(

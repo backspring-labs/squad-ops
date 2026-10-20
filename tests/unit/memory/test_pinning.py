@@ -144,3 +144,108 @@ def test_the_declaration_is_one_of_two_words_and_anything_else_is_refused(config
             memory_disabled(config)
     else:
         assert memory_disabled(config) is disabled
+
+
+class _WithdrawnOnceRead:
+    """A records store where a withdrawal lands just after the pin's first read (#2545's race)."""
+
+    def __init__(self, inner, record_id: str) -> None:
+        self._inner, self._id, self.reads = inner, record_id, 0
+
+    async def list_project(self, project_id: str):
+        self.reads += 1
+        held = await self._inner.list_project(project_id)
+        if self.reads == 1:
+            from squadops.memory.records import withdrawn
+
+            record = await self._inner.get(self._id)
+            gone = withdrawn(record, by="ada", at=T0, why="harmful")
+            await self._inner.append_status(self._id, gone.status_changes[-1])
+        return held
+
+
+class _RevokedOnceRead(InMemoryCrossCycleMemoryStore):
+    """A lesson store where the approval is revoked just after the pin's first read of them."""
+
+    reads = 0
+
+    async def list_approvals(self, project_id: str):
+        self.reads += 1
+        held = await super().list_approvals(project_id)
+        if self.reads == 1:
+            for a in held:
+                await self.record_revocation(revoke(a, by="owner", reason="harm", now=T0))
+        return held
+
+
+async def test_an_instruction_withdrawn_while_the_unit_is_pinned_is_not_held_by_it():
+    """#2545, through ``pin_unit``. Bug caught: a withdrawal answered between the pin's read and
+    its write found no snapshot, told the operator later units pin without it, and the unit being
+    admitted pinned it anyway, unnamed."""
+    from adapters.memory.records import InMemoryMemoryRecords
+    from tests.unit.memory.test_project_instructions import _instruction
+
+    store, inner = InMemoryCrossCycleMemoryStore(), InMemoryMemoryRecords()
+    await inner.create(_instruction("mrec_w", "qa.test"))
+
+    pinned = await pin_unit(
+        store, unit_kind=UnitKind.CYCLE, unit_id="cyc_x", project_id="group_run", pinned_at=T0,
+        disabled=False, records=_WithdrawnOnceRead(inner, "mrec_w"),
+    )  # fmt: skip
+
+    assert pinned.instructions == ()
+    assert (await store.get_snapshot(UnitKind.CYCLE, "cyc_x")).instructions == ()
+    assert await store.list_snapshots_pinning("mrec_w") == []
+
+
+async def test_a_lesson_revoked_while_the_unit_is_pinned_is_not_held_by_it():
+    """The same race for a revocation (#2545): the unit being admitted must not hold a lesson
+    whose revocation found no snapshot to name."""
+    store = _RevokedOnceRead()
+    rev = _revision("criterion_already_satisfied")
+    await store.record_revision(rev)
+    approval = _approve(rev, at=T0 - timedelta(hours=1))
+    await store.record_approval(approval)
+
+    pinned = await pin_unit(
+        store, unit_kind=UnitKind.CAMPAIGN, unit_id="cmp_x", project_id="group_run",
+        pinned_at=T0, disabled=False,
+    )  # fmt: skip
+
+    assert pinned.entries == ()
+    assert await store.list_snapshots_holding(approval.approval_id) == []
+
+
+async def test_a_pin_with_no_removal_is_written_once_and_a_settle_read_that_fails_keeps_it():
+    """Bugs caught: every pin rewritten on the settle read; a settle read that fails costing the
+    unit its snapshot."""
+    from adapters.memory.records import InMemoryMemoryRecords
+    from tests.unit.memory.test_project_instructions import _instruction
+
+    class _FailsSecondRead(InMemoryMemoryRecords):
+        reads = 0
+
+        async def list_project(self, project_id: str):
+            self.reads += 1
+            if self.reads > 1:
+                raise ConnectionError("the pool is gone")
+            return await super().list_project(project_id)
+
+    class _CountsRebinds(InMemoryCrossCycleMemoryStore):
+        writes = 0
+
+        async def rebind_snapshot(self, snapshot, *, after):
+            self.writes += 1
+            await super().rebind_snapshot(snapshot, after=after)
+
+    for records in (InMemoryMemoryRecords(), _FailsSecondRead()):
+        await records.create(_instruction("mrec_k", "qa.test"))
+        store = _CountsRebinds()
+
+        pinned = await pin_unit(
+            store, unit_kind=UnitKind.CYCLE, unit_id="cyc_y", project_id="group_run",
+            pinned_at=T0, disabled=False, records=records,
+        )  # fmt: skip
+
+        assert [p.record_id for p in pinned.instructions] == ["mrec_k"]
+        assert store.writes == 0
