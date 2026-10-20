@@ -62,6 +62,7 @@ from squadops.memory.task_instructions import (
     TaskInstructionsUnavailable,
     applicable,
     handed,
+    interventions,
     section_of,
     unresolved_reason,
 )
@@ -494,7 +495,10 @@ class LessonContextAssembly(ContextAssemblyPort):
                 recalled=bundle.recalled,
                 recorded_at=self._now,
                 attempt=task.attempt,
-                task_instructions=_section_record(bundle.section(SectionKind.TASK_INSTRUCTIONS)),
+                task_instructions=_section_record(
+                    bundle.section(SectionKind.TASK_INSTRUCTIONS),
+                    marked=interventions(bundle.task_instructions),
+                ),
                 project_instructions=_section_record(
                     bundle.section(SectionKind.PROJECT_INSTRUCTIONS)
                 ),
@@ -502,10 +506,10 @@ class LessonContextAssembly(ContextAssemblyPort):
         )
 
 
-def _section_record(section: Section | None) -> dict | None:
+def _section_record(section: Section | None, *, marked: Sequence[str] = ()) -> dict | None:
     """A binding section as its exposure keeps it: the disposition, each revision supplied, and
-    each that couldn't be with why. ``None`` for no section, so an exposure with no instructions
-    read is what it was before #2178."""
+    each that couldn't be with why, and the interventions among them (§3.5). ``None`` for no
+    section, so an exposure with no instructions read is what it was before #2178."""
     if section is None or section.disposition is Disposition.NONE_ELIGIBLE:
         return None
     return {
@@ -515,4 +519,6 @@ def _section_record(section: Section | None) -> dict | None:
             {"record_id": r.record_id, "revision": r.revision, "why": why}
             for r, why in section.unresolved
         ],
+        # Only when one was handed, so every other exposure is recorded as it was.
+        **({"interventions": list(marked)} if marked else {}),
     }

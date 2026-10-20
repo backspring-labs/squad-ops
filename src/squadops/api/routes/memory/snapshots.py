@@ -16,7 +16,6 @@ unit (§5u). A campaign's re-binding is a row in its control log, which the inte
 
 from __future__ import annotations
 
-import logging
 from datetime import UTC, datetime
 from typing import Any
 
@@ -29,8 +28,8 @@ from squadops.api.memory_schemas import (
     SnapshotBindingResponse,
 )
 from squadops.api.middleware.auth import require_scopes
-from squadops.api.routes.campaigns.campaigns import actor_from
 from squadops.api.routes.cycles.mapping import cycle_status_of
+from squadops.api.routes.memory.interventions import record_on_control_log
 from squadops.api.runtime.deps import (
     get_campaign_registry,
     get_cycle_registry,
@@ -38,12 +37,7 @@ from squadops.api.runtime.deps import (
     get_memory_store,
 )
 from squadops.auth.models import Identity, Scope, scopes_for_roles
-from squadops.campaigns.models import (
-    CampaignNotFoundError,
-    CampaignState,
-    CampaignTransition,
-    ControlOperation,
-)
+from squadops.campaigns.models import CampaignNotFoundError, CampaignState, ControlOperation
 from squadops.cycles.models import CycleNotFoundError, CycleStatus
 from squadops.memory.lessons import Snapshot, UnitKind
 from squadops.memory.rebinding import RebindRefused, rebound, runs_handed
@@ -51,7 +45,6 @@ from squadops.memory.records import Rebinding
 from squadops.ports.memory.cross_cycle import RecordIncompatible, SnapshotMoved
 
 router = APIRouter(prefix="/api/v1/projects/{project_id}/snapshots", tags=["memory"])
-logger = logging.getLogger(__name__)
 
 #: A unit in one of these has no dispatch ahead of it, so nothing is re-bound.
 _ENDED_CYCLE = frozenset({CycleStatus.COMPLETED, CycleStatus.CANCELLED})
@@ -205,17 +198,14 @@ async def rebind_unit(
 async def _record_on_control_log(
     request: Request, identity: Identity, snapshot: Snapshot, rebinding: Rebinding
 ) -> str | None:
-    """The campaign's control-log row, or ``None`` when it couldn't be written: the re-binding
-    stands either way, and the answer says the row is missing."""
-    actor, role = actor_from(identity)
     replacement = rebinding.replacement
-    transition = CampaignTransition(
+    return await record_on_control_log(
+        request,
+        identity,
+        snapshot.unit_id,
         operation=ControlOperation.REBIND,
-        actor=actor,
-        actor_role=role,
         reason=rebinding.why,
         idempotency_key=f"rebind:{snapshot.snapshot_id}:{len(snapshot.rebindings)}",
-        next_state=None,
         target=rebinding.record_id,
         binding={
             "snapshot_id": snapshot.snapshot_id,
@@ -224,12 +214,6 @@ async def _record_on_control_log(
             "replacement_revision": replacement.revision if replacement else None,
         },
     )
-    try:
-        result = await get_campaign_registry(request).transition(snapshot.unit_id, transition)
-    except Exception:  # noqa: BLE001 — a missing row is said, never implied
-        logger.warning("memory_rebind_not_logged campaign=%s", snapshot.unit_id, exc_info=True)
-        return None
-    return result.entry.entry_id
 
 
 def _next(kind: UnitKind, r: Rebinding, entry_id: str | None) -> str:

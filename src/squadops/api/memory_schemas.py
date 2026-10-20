@@ -407,6 +407,9 @@ class MemoryRecordResponse(BaseModel):
     current: MemoryRecordRevisionResponse
     revisions: list[MemoryRecordRevisionResponse]
     status_changes: list[dict[str, Any]]
+    #: A campaign cycle's task instruction changed after admission: its row in the campaign's
+    #: control log (§3.5), or ``None`` when the row couldn't be written. ``None`` for any other.
+    control_log_entry_id: str | None = None
 
 
 class MemoryRecordWithdrawalResponse(MemoryRecordResponse):

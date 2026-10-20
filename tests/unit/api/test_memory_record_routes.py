@@ -17,6 +17,7 @@ from fastapi.testclient import TestClient
 from starlette.middleware.base import BaseHTTPMiddleware
 
 from adapters.auth.keycloak.authz_adapter import KeycloakAuthzAdapter
+from adapters.memory.cross_cycle import InMemoryCrossCycleMemoryStore
 from adapters.memory.records import InMemoryMemoryRecords
 from squadops.api.routes.memory import memory_records_router
 from squadops.auth.models import Identity, IdentityType, Role, scopes_for_roles
@@ -71,6 +72,8 @@ def world():
             app.add_middleware(InjectIdentity)
             app.include_router(memory_records_router)
             app.state.memory_records = InMemoryMemoryRecords()
+            # A task instruction written here is checked against its cycle's dispatches (#2178).
+            app.state.memory_store = InMemoryCrossCycleMemoryStore()
             app.state.cycle_registry = _Cycles()
             app.state.authz_port = KeycloakAuthzAdapter()
             self.client = TestClient(app)

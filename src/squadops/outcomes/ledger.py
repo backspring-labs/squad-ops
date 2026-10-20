@@ -90,6 +90,7 @@ _ACTED = frozenset(
         ControlOperation.CLASSIFY,
         ControlOperation.ESCALATION_ANSWERED,
         ControlOperation.REBIND,
+        ControlOperation.INSTRUCT,
     }
 )
 #: A ruling that returns a proposal intervenes. An approval is the gate as designed.
