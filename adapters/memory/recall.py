@@ -12,6 +12,7 @@ from __future__ import annotations
 import logging
 from typing import Any
 
+from squadops.memory.cycle_bindings import as_bound_for, names_current
 from squadops.memory.exposures import Exposure
 from squadops.memory.lessons import RecallDisposition, Recalled, recall
 from squadops.memory.project_instructions import PinUnknown, none_could_be_pinned
@@ -42,7 +43,7 @@ class SnapshotRecall(FailurePatternRecallPort):
         self._attempts = attempts
 
     async def pinned_instructions(
-        self, unit_kind: UnitKind, unit_id: str, project_id: str
+        self, unit_kind: UnitKind, unit_id: str, project_id: str, *, cycle_id: str | None = None
     ) -> tuple[PinnedInstruction, ...]:
         try:
             snapshot = await self._snapshot_for_instructions(unit_kind, unit_id)
@@ -50,7 +51,12 @@ class SnapshotRecall(FailurePatternRecallPort):
             why = f"the unit's snapshot could not be read ({e})"
         else:
             if snapshot is not None and snapshot.instructions_unread is None:
-                return snapshot.instructions
+                pinned = snapshot.instructions
+                if unit_kind is UnitKind.CAMPAIGN and cycle_id and names_current(pinned):
+                    # §5ad: the cycle's own bindings, read only where they can differ. One that
+                    # can't be read raises, and the task holds rather than reading it unbound.
+                    return as_bound_for(pinned, await self._store.get_cycle_binding(cycle_id))
+                return pinned
             why = (
                 snapshot.instructions_unread
                 if snapshot is not None

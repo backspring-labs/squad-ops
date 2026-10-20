@@ -120,7 +120,7 @@ class NoOpFailurePatternRecall(FailurePatternRecallPort):
         """A composition with no memory store has no records, so no task instructions."""
         return []
 
-    async def pinned_instructions(self, unit_kind, unit_id, project_id) -> tuple:
+    async def pinned_instructions(self, unit_kind, unit_id, project_id, *, cycle_id=None) -> tuple:
         """No store, so no snapshot pinned any instruction."""
         return ()
 

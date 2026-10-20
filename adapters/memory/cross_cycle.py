@@ -10,6 +10,7 @@ from squadops.memory.annotation import Annotation
 from squadops.memory.approval import units_holding
 from squadops.memory.assessment import Assessment
 from squadops.memory.chat import ChatExposure
+from squadops.memory.cycle_bindings import CycleBinding
 from squadops.memory.exposures import Exposure
 from squadops.memory.lessons import Approval, PatternRevision, Snapshot, UnitKind
 from squadops.memory.observations import Observation, ObservationSource
@@ -35,6 +36,7 @@ class InMemoryCrossCycleMemoryStore(CrossCycleMemoryStorePort):
         self._revisions: dict[str, PatternRevision] = {}
         self._approvals: dict[str, Approval] = {}
         self._snapshots: dict[tuple[str, str], Snapshot] = {}
+        self._cycle_bindings: dict[str, CycleBinding] = {}
         self._exposures: dict[str, Exposure] = {}
         self._chat_exposures: dict[tuple[str, str], ChatExposure] = {}
         self._assessments: dict[str, Assessment] = {}
@@ -116,6 +118,12 @@ class InMemoryCrossCycleMemoryStore(CrossCycleMemoryStorePort):
 
     async def get_snapshot(self, unit_kind: UnitKind, unit_id: str) -> Snapshot | None:
         return self._snapshots.get((unit_kind.value, unit_id))
+
+    async def record_cycle_binding(self, binding: CycleBinding) -> None:
+        self._cycle_bindings[binding.cycle_id] = binding
+
+    async def get_cycle_binding(self, cycle_id: str) -> CycleBinding | None:
+        return self._cycle_bindings.get(cycle_id)
 
     async def rebind_snapshot(self, snapshot: Snapshot, *, after: int) -> None:
         key = (snapshot.unit_kind.value, snapshot.unit_id)
@@ -373,6 +381,32 @@ class PostgresCrossCycleMemoryStore(CrossCycleMemoryStorePort):
             return Snapshot.from_dict(body)
         except (KeyError, TypeError, ValueError) as e:
             raise RecordIncompatible(f"{unit_kind.value} {unit_id}'s snapshot: {e!r}") from e
+
+    async def record_cycle_binding(self, binding: CycleBinding) -> None:
+        async with self._pool.acquire() as conn:
+            await conn.execute(
+                "INSERT INTO memory_cycle_bindings (cycle_id, unit_kind, unit_id, bound_at, "
+                "binding_body) VALUES ($1, $2, $3, $4, $5) ON CONFLICT (cycle_id) DO UPDATE SET "
+                "unit_kind = EXCLUDED.unit_kind, unit_id = EXCLUDED.unit_id, "
+                "bound_at = EXCLUDED.bound_at, binding_body = EXCLUDED.binding_body",
+                binding.cycle_id,
+                binding.unit_kind,
+                binding.unit_id,
+                binding.bound_at,
+                binding.to_dict(),
+            )
+
+    async def get_cycle_binding(self, cycle_id: str) -> CycleBinding | None:
+        async with self._pool.acquire() as conn:
+            body = await conn.fetchval(
+                "SELECT binding_body FROM memory_cycle_bindings WHERE cycle_id = $1", cycle_id
+            )
+        if body is None:
+            return None
+        try:
+            return CycleBinding.from_dict(body)
+        except (KeyError, TypeError, ValueError) as e:
+            raise RecordIncompatible(f"cycle {cycle_id}'s binding: {e!r}") from e
 
     async def rebind_snapshot(self, snapshot: Snapshot, *, after: int) -> None:
         # One statement, so two re-bindings read from the same snapshot can't both land.

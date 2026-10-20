@@ -27,6 +27,7 @@ from squadops.api.routes.cycles.cycles import CreationPorts, first_run, prepare_
 from squadops.api.routes.cycles.errors import cycle_error_envelope
 from squadops.campaigns.launcher import BoxVerdict, CampaignLauncher, LaunchRefused, unblocked
 from squadops.campaigns.models import (
+    Campaign,
     CampaignState,
     ControlOperation,
     CycleKind,
@@ -35,6 +36,8 @@ from squadops.campaigns.models import (
 )
 from squadops.cycles.models import Cycle, CycleError, Run, RunInitiator, RunStatus
 from squadops.events.types import EventType
+from squadops.memory.cycle_bindings import CycleBinding, instructions_bound_for, names_current
+from squadops.memory.lessons import UnitKind
 from squadops.memory.pinning import cycle_binding
 from squadops.memory.records import RecordRefused
 from squadops.memory.reference_binding import bound_for_cycle
@@ -113,7 +116,33 @@ class CampaignLaunchService:
             for record in prepared.instructions:
                 await records.create(record)
         await self._carry_instructions(intent, prepared.cycle)
+        await self._bind_for_cycle(campaign, prepared.cycle)
         return prepared.cycle
+
+    async def _bind_for_cycle(self, campaign: Campaign, cycle: Cycle) -> None:
+        """SIP-0110 §5ad (the owner's ruling of 2026-10-20): the campaign's snapshot fixes which
+        instruction revisions are in force, and this cycle binds their ``@current`` references at
+        its own pinned source commit, now, as its launch. Every dispatch of the cycle reads what is
+        recorded here. A store that can't be read or written is a fault the next drain repeats:
+        the cycle never launches reading a binding it doesn't have."""
+        store = self._creation.memory_store
+        if store is None:
+            return  # no snapshot is pinned without a store, so nothing to bind
+        snapshot = await store.get_snapshot(UnitKind.CAMPAIGN, campaign.campaign_id)
+        if snapshot is None or not names_current(snapshot.instructions):
+            return
+        instructions = await instructions_bound_for(
+            snapshot.instructions, self._creation.reference_resolvers or {}, cycle_binding(cycle)
+        )
+        await store.record_cycle_binding(
+            CycleBinding(
+                cycle.cycle_id,
+                UnitKind.CAMPAIGN.value,
+                campaign.campaign_id,
+                instructions,
+                datetime.now(UTC),
+            )
+        )
 
     async def _carry_instructions(self, intent: LaunchIntent, cycle: Cycle) -> None:
         """A repair or a retry continues a cycle (§10a), and carries into it each of that cycle's

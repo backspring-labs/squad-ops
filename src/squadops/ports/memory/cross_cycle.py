@@ -16,6 +16,7 @@ from collections.abc import Sequence
 from squadops.memory.annotation import Annotation
 from squadops.memory.assessment import Assessment
 from squadops.memory.chat import ChatExposure
+from squadops.memory.cycle_bindings import CycleBinding
 from squadops.memory.exposures import Exposure
 from squadops.memory.lessons import Approval, PatternRevision, Snapshot, UnitKind
 from squadops.memory.observations import Observation, ObservationSource
@@ -90,6 +91,16 @@ class CrossCycleMemoryStorePort(ABC):
     async def get_snapshot(self, unit_kind: UnitKind, unit_id: str) -> Snapshot | None:
         """The snapshot a unit pinned, or ``None`` for a unit that has not. Raises
         :class:`RecordIncompatible` for a stored pin this code cannot read."""
+
+    @abstractmethod
+    async def record_cycle_binding(self, binding: CycleBinding) -> None:
+        """Store a campaign cycle's own bindings of its campaign's pinned instructions (SIP-0110
+        §5ad), replacing any it held: a re-binding of the campaign rebinds its running cycles."""
+
+    @abstractmethod
+    async def get_cycle_binding(self, cycle_id: str) -> CycleBinding | None:
+        """A campaign cycle's bindings, or ``None`` for a cycle that recorded none. Raises
+        :class:`RecordIncompatible` for a stored binding this code cannot read."""
 
     @abstractmethod
     async def rebind_snapshot(self, snapshot: Snapshot, *, after: int) -> None:

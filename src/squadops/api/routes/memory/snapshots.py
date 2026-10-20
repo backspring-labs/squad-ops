@@ -16,6 +16,7 @@ unit (§5u). A campaign's re-binding is a row in its control log, which the inte
 
 from __future__ import annotations
 
+import logging
 from datetime import UTC, datetime
 from typing import Any
 
@@ -38,15 +39,23 @@ from squadops.api.runtime.deps import (
     get_reference_resolvers,
 )
 from squadops.auth.models import Identity, Scope, scopes_for_roles
-from squadops.campaigns.models import CampaignNotFoundError, CampaignState, ControlOperation
+from squadops.campaigns.models import (
+    CampaignNotFoundError,
+    CampaignState,
+    ControlOperation,
+    LaunchIntentState,
+)
 from squadops.cycles.models import CycleNotFoundError, CycleStatus
+from squadops.memory.cycle_bindings import CycleBinding, instructions_bound_for, replacing
 from squadops.memory.lessons import Snapshot, UnitKind
-from squadops.memory.pinning import source_commit_of
+from squadops.memory.pinning import cycle_binding, source_commit_of
 from squadops.memory.rebinding import RebindRefused, rebound, runs_handed
 from squadops.memory.records import Rebinding, RecordStatus, pinned_of
 from squadops.memory.reference_binding import bound_instruction
 from squadops.memory.references import BindingContext
 from squadops.ports.memory.cross_cycle import RecordIncompatible, SnapshotMoved
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/v1/projects/{project_id}/snapshots", tags=["memory"])
 
@@ -199,6 +208,7 @@ async def rebind_unit(
     rebinding = updated.rebindings[-1]
     entry_id = None
     if kind is UnitKind.CAMPAIGN:
+        await _rebind_running_cycles(request, unit_id, record.record_id, replacement, now)
         entry_id = await _record_on_control_log(request, identity, updated, rebinding)
     return RebindResponse.model_validate(
         {
@@ -208,6 +218,41 @@ async def rebind_unit(
             "next": _next(kind, rebinding, entry_id),
         }
     )
+
+
+async def _rebind_running_cycles(
+    request: Request, campaign_id: str, record_id: str, replacement: Any, now: datetime
+) -> None:
+    """§5ad: a campaign's re-bound revision reaches its running cycles as each binds it, at the
+    commit that cycle pins. Its later cycles bind it at their launch. A cycle that can't be
+    rebound is logged and keeps reading the new revision as the campaign's pin holds it, with any
+    ``@current`` reference unbound, so a required one holds its tasks rather than reading a
+    revision the re-binding replaced."""
+    store = get_memory_store(request)
+    cycles = get_cycle_registry(request)
+    resolvers = get_reference_resolvers(request)
+    intents = await get_campaign_registry(request).launch_intents(campaign_id)
+    for cycle_id in [
+        i.cycle_id for i in intents if i.state is LaunchIntentState.LAUNCHED and i.cycle_id
+    ]:
+        try:
+            if await cycles.get_cycle_end(cycle_id) is not None:
+                continue
+            cycle = await cycles.get_cycle(cycle_id)
+            bound = (
+                await instructions_bound_for((replacement,), resolvers, cycle_binding(cycle))
+                if replacement is not None
+                else ()
+            )
+            held = await store.get_cycle_binding(cycle_id)
+            if held is None and not bound:
+                continue  # the cycle reads the campaign's pin, which now holds the revision
+            base = held or CycleBinding(cycle_id, UnitKind.CAMPAIGN.value, campaign_id, (), now)
+            await store.record_cycle_binding(replacing(base, record_id, bound))
+        except Exception:  # noqa: BLE001 — the snapshot is re-bound; this cycle holds instead
+            logger.warning(
+                "cycle_rebinding_failed cycle=%s record=%s", cycle_id, record_id, exc_info=True
+            )
 
 
 async def _record_on_control_log(
