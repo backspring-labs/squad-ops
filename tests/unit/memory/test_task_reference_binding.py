@@ -123,3 +123,53 @@ def test_a_bound_reference_survives_its_revision_stored_as_a_document():
     )  # fmt: skip
 
     assert revision_from_document(revision_document(revision)).references == revision.references
+
+
+async def test_a_revision_echoing_the_references_a_read_returned_binds_them_again():
+    """The second read of the task part. Bug caught: a revision built from a GET's references
+    (bound, with ``digest`` and ``written``) stored as a plain revision, so its dispatch is handed
+    no digest, its exposure lists nothing bound, and a continuation never binds it again."""
+    world, resolver = _world()
+    cycle = await world.admit_cycle()
+    record_id = _instruct(world, cycle.cycle_id).json()["record_id"]
+    read = world.client.get(f"{RECORDS}/{record_id}").json()["revisions"][-1]["references"]
+    resolver.revision = "r2"
+
+    revised = world.client.post(
+        f"{RECORDS}/{record_id}/revisions",
+        json={"body": "Follow the spec.", "references": read,
+              "target": {"cycle_id": cycle.cycle_id, "task_types": [DESIGN]}},
+    )  # fmt: skip
+    mismatched = world.client.post(
+        f"{RECORDS}/{record_id}/revisions",
+        json={"body": "Follow the spec.",
+              "references": [{**read[0], "written": "fake:doc:other@current"}],
+              "target": {"cycle_id": cycle.cycle_id, "task_types": [DESIGN]}},
+    )  # fmt: skip
+    handed, _ = await _dispatch(world, cycle, "run_ref000001")
+
+    assert revised.status_code == 201, revised.text
+    assert handed == [{"ref": "fake:doc:spec@r2", "required": True, "digest": "sha256:r2"}]
+    assert mismatched.status_code == 422
+
+
+async def test_an_instruction_for_a_dispatched_task_is_refused_as_such_before_any_binding():
+    """The second read of the task part. Bug caught: the reference bound first, so a resolver
+    that is down turns ``409 TASK_DISPATCHED`` into a server error, and one that refuses turns it
+    into a 422 about the reference."""
+    world, _ = _world()
+    world.client.app.state.reference_resolvers = {"fake": _Crashing()}
+    cycle = await world.admit_cycle()
+    await _dispatch_plain(world, cycle)
+
+    response = _instruct(world, cycle.cycle_id)
+
+    assert response.status_code == 409, response.text
+    assert response.json()["detail"]["error"]["code"] == "TASK_DISPATCHED"
+
+
+async def _dispatch_plain(world: _World, cycle) -> None:
+    await supply_lessons(
+        _plan(cycle), recall=SnapshotRecall(world.store, records=world.records),
+        unit=unit_of(cycle), stack="fullstack_fastapi_react", run_id="run_ref000000", now=NOW,
+    )  # fmt: skip

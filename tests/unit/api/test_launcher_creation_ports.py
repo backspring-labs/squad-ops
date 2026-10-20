@@ -14,6 +14,8 @@ import ast
 import dataclasses
 from pathlib import Path
 
+import pytest
+
 from squadops.api.routes.cycles.cycles import CreationPorts
 from squadops.api.runtime import main as runtime_main
 
@@ -26,14 +28,32 @@ def _creation_ports_calls(source: str) -> list[ast.Call]:
     ]
 
 
+def _gaps(call: ast.Call) -> set[str]:
+    """The ports the call leaves out, or passes as a literal (``{}``, ``None``), which is the
+    same port left empty."""
+    passed = {k.arg: k.value for k in call.keywords}
+    literal = (ast.Constant, ast.Dict, ast.List, ast.Tuple, ast.Set)
+    return {f.name for f in dataclasses.fields(CreationPorts)
+            if f.name not in passed or isinstance(passed[f.name], literal)}  # fmt: skip
+
+
 def test_the_launcher_is_given_every_port_a_cycle_is_created_with():
     [call] = _creation_ports_calls(Path(runtime_main.__file__).read_text(encoding="utf-8"))
 
-    assert {k.arg for k in call.keywords} == {f.name for f in dataclasses.fields(CreationPorts)}
+    assert _gaps(call) == set()
 
 
-def test_a_call_leaving_a_port_out_is_told_apart():
-    """The edge: the reading this guard relies on, against a call that leaves a port out."""
-    [call] = _creation_ports_calls("CreationPorts(project_registry=a, squad_profile=b)")
+@pytest.mark.parametrize(
+    ("source", "gap"),
+    [
+        ("CreationPorts(project_registry=a, squad_profile=b)", "memory_records"),
+        ("CreationPorts(project_registry=a, reference_resolvers={})", "reference_resolvers"),
+    ],
+    ids=["a-port-left-out", "a-port-passed-empty"],
+)
+def test_a_call_leaving_a_port_out_or_empty_is_told_apart(source, gap):
+    """The edge: the reading this guard relies on. The second read of the task part: the
+    composition root passing ``reference_resolvers={}`` passed a guard that read names only."""
+    [call] = _creation_ports_calls(source)
 
-    assert {k.arg for k in call.keywords} != {f.name for f in dataclasses.fields(CreationPorts)}
+    assert gap in _gaps(call)

@@ -156,7 +156,18 @@ def reference_of(doc: Mapping[str, Any]) -> Reference:
             f"{ref or 'a reference'} is stored as a reference, never a copy: to change what it says, "
             f"use {path}"
         )
-    return Reference(str(doc.get("ref", "")), bool(doc.get("required", False)))
+    ref, written = str(doc.get("ref", "")), doc.get("written")
+    if written:
+        # A reference as a read returns a bound one (T16): what was written is bound again where
+        # it is written now, never kept at the revision another write bound. Its digest is the
+        # binding's, so a submitted one is never taken.
+        if not is_current(str(written)) or str(written).rsplit("@", 1)[0] != ref.rsplit("@", 1)[0]:
+            raise RecordRefused(
+                f"{written!r} is not {ref!r} written @current: a reference's written form is the "
+                "same record at @current"
+            )
+        ref = str(written)
+    return Reference(ref, bool(doc.get("required", False)))
 
 
 @dataclass(frozen=True)

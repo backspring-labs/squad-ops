@@ -2602,8 +2602,16 @@ recorded intervention", with the revision "recorded … in the cycle's inputs". 
     admission records its own binding" (§A.3.7).
 - **The unit is the cycle,** at the commit its own source context pins (`cycle_binding`). A campaign's cycle pins its
   own, so a task instruction's repository reference can bind there, unlike a campaign's project instruction (§5z).
+  `Cycle.source_context` arrives with #2484, so until then the commit is `None` for every cycle.
 - **Never stored as `@current`.** The record model refuses a task instruction whose reference still names `@current`,
   so a write path that forgot to bind can't store one. A revision document keeps `digest` and `written`.
+- **Bound after the refusals that read no reference.** The records route refuses a lesson for the control and a
+  dispatched task first, and so does the gate, so neither answer depends on a resolver.
+- **A repeated ruling binds nothing again.** The gate's record ids come from what was written (§5aa), so the ones its
+  applied attempt stored are found first and replayed as they stand. Only the rest are checked and bound.
+- **A reference echoed from a read is bound again.** One submitted with `written` (as a read returns it) binds what
+  was written, where it is written now. The submitted `digest` is never taken, and a `written` that isn't the same
+  record at `@current` is refused.
 - **Every dispatch reads the bound revision:**
   - the first, a re-dispatched attempt, a re-take and a repair;
   - the handed input carries the bound `ref` with its `digest`;
@@ -2618,15 +2626,32 @@ recorded intervention", with the revision "recorded … in the cycle's inputs". 
 **Where it narrows §A.3.6 and §A.3.7, and why:**
 - **A reference that won't bind is refused at write, required or optional,** naming each one and why (`422`). Its
   writer is there to name the revision or drop it, which is earlier and plainer than §3.6's hold at dispatch.
-  - For a create request, that refusal leaves no cycle. For a campaign's continuation, it is `LaunchRefused`, so the
-    campaign escalates and the supervisor withdraws or revises the instruction.
-  - An optional reference is not omitted and disclosed, as a project instruction's is at admission (§5z). A unit's
-    admission must not fail for one reference, but a single instruction's write can.
+  - For a create request, that refusal leaves no cycle. For a campaign's launch, its own request's or a carried
+    instruction's, it is `LaunchRefused`, so the campaign escalates and the supervisor withdraws or revises the
+    instruction.
+  - An optional reference is not omitted and disclosed, as a project instruction's is (§5z). A project instruction's
+    pin admits a unit under every instruction in force, which no one writing it can fix at that moment. A task
+    instruction is written for one cycle by someone who can.
 - **A resolver that fails otherwise is a fault, not a refusal.** It propagates, so the write is answered as a server
   failure and nothing is stored, never as the writer's mistake.
 - **No resolver is registered on main** (§5z), so on main every task instruction's `@current` is refused for want of
-  one: "no resolver binds the … family". The repository family arrives with #2484.
+  one. The create route and the gate say "no resolver binds the … family". The records route says "no resolver binds
+  @current for …", from its earlier check for any instruction (§5z). The repository family arrives with #2484.
 - **Reading the content at dispatch, and the hold,** remain the MacBook lane's, with #2178's hold (§5z).
+
+**The second reader** (a fresh agent) found four things, each fixed and tested:
+- **A repeated ruling bound its instructions again before seeing they were stored.** A resolver that had since
+  refused answered the repeat 422, and one that was down answered 500, so a ruling whose first attempt stopped after
+  its row could never record its gate decision.
+- **A revision echoing a read's references stored them unbound,** losing the digest and what was written.
+- **Binding ran before the refusals,** so a dispatched task's `409` could become a server error or a 422 about the
+  reference.
+- **Gaps:**
+  - the record model's own check had no test of its own;
+  - the composition-root guard read keyword names only, so `reference_resolvers={}` passed;
+  - a launch with its own `@current` was untested;
+  - this section didn't say the commit is `None` until #2484, gave one route's refusal text for all three, and gave
+    a rationale that contradicted the continuation's refusal.
 
 **Evidence:**
 - **The create route** (`tests/unit/cycles/test_api_cycles.py`):
@@ -2640,14 +2665,29 @@ recorded intervention", with the revision "recorded … in the cycle's inputs". 
     it;
   - a revision before dispatch binds again;
   - a resolver that times out raises, and nothing is stored;
+  - a revision echoing a read's references binds them again, and a mismatched `written` is refused;
+  - an instruction for a dispatched task is `409 TASK_DISPATCHED` with the resolver down;
   - a revision document keeps the digest and what was written.
+- **The record model** (`tests/unit/memory/test_task_instructions.py`): `@current` is refused unbound, both through
+  `admitted` and by `new_record` itself.
 - **The records route:** the stage-1 test that held `@current` refused on a task instruction
   (`test_at_current_is_written_only_where_a_resolver_will_bind_it`) now holds the rule that replaced it: bound with
   its cycle when a resolver binds the family, refused when none does.
-- **The gate:** an approval's `@current` is bound for the ruled cycle.
+- **The gate:** an approval's `@current` is bound for the ruled cycle, and a repeat replays with its resolver
+  refusing or down.
+- **A campaign's launch** (`tests/unit/api/test_launch_instructions.py`): its own request's `@current` is bound with
+  its cycle, or the launch refused with nothing stored.
+- **The composition root** (`tests/unit/api/test_launcher_creation_ports.py`): every port is passed, and none as a
+  literal.
 - **The carry:** the copy binds again for the continuation, with the new revision and what was written, and is
   `LaunchRefused` when it won't bind.
-- **Eleven mutants, each caught:**
+- **Seventeen mutants, each caught:**
+  - the gate binding the instructions its first attempt stored;
+  - a submitted `written` ignored;
+  - the record model's check removed;
+  - the composition root passing `{}`;
+  - a launch ignoring its resolvers;
+  - the refusals moved after binding;
   - the route not binding;
   - the create path given no resolvers;
   - `of_request` dropping them;

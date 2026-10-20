@@ -193,3 +193,28 @@ async def test_an_approvals_current_reference_is_bound_with_the_ruled_cycle(worl
         ("fake:doc:spec@r1", "sha256:r1")
     ]
     assert [(c.unit_kind, c.unit_id) for c in resolver.seen] == [("cycle", "cyc_inc")]
+
+
+@pytest.mark.parametrize("resolver_now", ["refusing", "down"])
+async def test_a_repeated_ruling_replays_whatever_its_resolver_says_now(world, resolver_now):  # noqa: F811
+    """§12a, T16, the second read of the task part. Bug caught: a repeat of an applied ruling
+    binding its instructions again before seeing they are stored, so a resolver that now refuses,
+    or is down, answers the repeat 422 or 500: a ruling whose first attempt stopped after its row
+    could then never record its gate decision."""
+    from tests.unit.memory.test_reference_binding import _Crashing, _Resolver
+
+    records = _with_records(world)
+    resolver = _Resolver()
+    world.client.app.state.reference_resolvers = {"fake": resolver}
+    given = {**INSTRUCTION, "references": [{"ref": "fake:doc:spec@current", "required": True}]}
+    world.rule(task_instructions=[given])
+    if resolver_now == "refusing":
+        resolver.refuse = "the document was deleted"
+    else:
+        world.client.app.state.reference_resolvers = {"fake": _Crashing()}
+
+    again = world.rule(task_instructions=[given])
+
+    assert again.status_code == 200, again.text
+    [record] = await records.list_project("group_run")
+    assert record.current.references[0].ref == "fake:doc:spec@r1"
