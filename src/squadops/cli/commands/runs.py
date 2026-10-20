@@ -8,6 +8,7 @@ import dataclasses
 import uuid
 from datetime import datetime
 from pathlib import Path
+from typing import Any
 from urllib.parse import quote
 
 import typer
@@ -304,7 +305,7 @@ def gate_decision(
     else:
         decision = "returned_for_revision"
 
-    body = {"decision": decision}
+    body: dict[str, Any] = {"decision": decision}
     # #812: only sent when declared. Omitted → the API uses the token's own identity type,
     # which is the truthful default for a person and the known gap for an undeclared agent.
     if as_agent:
