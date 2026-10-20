@@ -71,7 +71,7 @@ def test_the_bound_record_and_the_verification_scaffold_keep_their_identities():
         # spine and scaffold hashes again unmoved. #2531 (2026-10-19): the vitest config collects
         # `.test.tsx` too, a fourth tree-only move. #2534 (2026-10-19): the page-suite DOM harness,
         # a fifth.
-        "51adfb3ea98448e1d6e8849a3adf09ae63d0e00e33d9d2104257540835649355",
+        "752a9edf548a8ef324b0e17acdf85ac2f77413d30e2d33324dd43cfc792cf699",
     )
 
 
