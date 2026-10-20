@@ -56,11 +56,17 @@ class TestTheStackDeclaresItsClientFromTheBytesItFreezes:
         assert surface.error_envelope_key == "error"
         assert surface.default_export is None
 
-    def test_a_stack_with_no_declared_client_is_not_judged(self):
-        """The stack seam's whole point. Next.js declares no client of this shape, so the
-        check has nothing to compare against and must skip rather than invent a rule. Bug
-        caught: stack #1's client leaking into a stack that never had one."""
-        assert client_surface_for("nextjs_ts") is None
+    def test_each_stack_is_judged_by_its_own_client_and_an_unknown_one_by_none(self):
+        """The stack seam's whole point. Next.js declares its own frozen client since its page
+        suites mock beneath it (#2534): ``lib/api.ts``, unprefixed. Bug caught: stack #1's
+        client (``frontend/src/api.js``, prefixed ``/api``) leaking into Next.js, or a stack
+        that declares none judged against an invented rule."""
+        nextjs = client_surface_for("nextjs_ts")
+        react = client_surface_for("fullstack_fastapi_react")
+
+        assert (nextjs.path, nextjs.path_prefix) == ("lib/api.ts", "")
+        assert (react.path, react.path_prefix) == ("frontend/src/api.js", "/api")
+        assert client_surface_for("unknown_stack") is None
 
 
 class TestRealEmissions:

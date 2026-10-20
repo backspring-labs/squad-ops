@@ -1415,3 +1415,11 @@ checks:
       run = Entity(name="Run", fields=(ManifestField("id", "string"), ManifestField("capacity", "number", required=False)))
       print(_contract_lines(Endpoint(method="GET", path="/api/runs/{run_id}", response="Run"), {}, entities={"Run": run}))
     expect: "['    // response Run: id; optional capacity']"
+  - id: "nextjs-client-surface"
+    what: a Next.js qa task is shown the frozen client its page suites mock, unprefixed paths and all
+    container: squadops-runtime-api
+    code: |
+      from squadops.stacks.scaffold import client_surface_for
+      s = client_surface_for("nextjs_ts")
+      print(s.path, repr(s.path_prefix), s.error_envelope_key)
+    expect: "lib/api.ts '' error"

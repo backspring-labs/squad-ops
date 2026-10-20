@@ -61,7 +61,11 @@ from squadops.stacks.stack_fastapi_react import (
     store_brief_lines as _store_brief_lines_fastapi_react,
 )
 from squadops.stacks.stack_nextjs_ts import APP_INVOCATION as _APP_INVOCATION_NEXTJS_TS
+from squadops.stacks.stack_nextjs_ts import CLIENT_SURFACE as _CLIENT_SURFACE_NEXTJS_TS
 from squadops.stacks.stack_nextjs_ts import STACK_NAME as _NEXTJS_TS_NAME
+from squadops.stacks.stack_nextjs_ts import (
+    client_surface_lines_nextjs_ts as _client_surface_lines_nextjs_ts,
+)
 from squadops.stacks.stack_nextjs_ts import expand_nextjs_ts as _expand_nextjs_ts
 from squadops.stacks.stack_nextjs_ts import (
     fill_slots_nextjs_ts as _fill_slots_nextjs_ts,
@@ -1974,6 +1978,9 @@ _STACKS: dict[str, ScaffoldStack] = {
         # #1973 (SIP-0109 §24p): its pages are read from the app ``next start`` serves.
         render_profile="next_start",
         app_invocation=_APP_INVOCATION_NEXTJS_TS,
+        # #2534's page suites mock or stub beneath the frozen client, so its author is shown it.
+        client_surface_lines=_client_surface_lines_nextjs_ts,
+        client_surface=_CLIENT_SURFACE_NEXTJS_TS,
         development_profile=_NEXTJS_TS_NAME,
         # SIP-0104: the first (and so far only) stack with a deterministic test scaffold.
         # Stack #1 deliberately does not declare one — opt-in is explicit, never inherited.

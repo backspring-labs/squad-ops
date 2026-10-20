@@ -37,6 +37,7 @@ from typing import TYPE_CHECKING, Any
 
 from squadops.stacks.app_invocation import JS_MODULE_LOAD, AppInvocation
 from squadops.stacks.baseline_stylesheet import BASELINE_CSS
+from squadops.stacks.client_surface import KIND_FUNCTION, ClientExport, ClientSurface
 from squadops.stacks.rendered_packaging import render_packaging
 from squadops.stacks.route_paths import path_segments
 from squadops.stacks.success_status import success_status_for
@@ -766,6 +767,37 @@ def expand_nextjs_ts(manifest: InterfaceManifest) -> list[dict[str, str]]:
     for route in getattr(manifest.frontend, "routes", ()) or ():
         files.append({"name": _page_path(route), "content": _page_stub(route)})
     return files
+
+
+#: The frozen ``lib/api.ts`` client's call surface (#668), as the registry carries it and the
+#: ``client_mock_surface`` check judges by. Declared here rather than read off the template, which is
+#: TypeScript (``api<T>(path: string, init?: RequestInit)``); a test holds the two together. Its page
+#: suites mock or stub beneath it since they render pages in a DOM (#2534): the 2.4 Next.js shakeout's
+#: round 6 mocked it with React's prefix-less paths (``/runs``), which this client never receives, so
+#: every page call missed the mock and no page rendered its data.
+CLIENT_SURFACE = ClientSurface(
+    path="lib/api.ts",
+    # Suites import it by the stack's alias, or relatively from __tests__/ and its subdirectories.
+    module_specifier=r"(?:@/|(?:\.\./)+)lib/api(?:\.ts)?",
+    exports=(ClientExport("api", KIND_FUNCTION, ("path", "init")),),
+    path_prefix="",
+    error_envelope_key="error",
+    default_export=None,
+)
+
+
+def client_surface_lines_nextjs_ts(manifest: InterfaceManifest) -> list[str]:
+    """The frozen client's call surface as the page suite's author reads it (#668), one line per
+    export, from ``CLIENT_SURFACE``; the prose around them is the appendix asset's."""
+    del manifest
+    return [
+        f"`{export.name}(path, init?)` exported from `{CLIENT_SURFACE.path}` (import it as "
+        "`@/lib/api`) — fetches the path it is given verbatim, with no prefix, so a page calls it "
+        "with the endpoint's full declared path (`/api/runs`, `/api/runs/{run_id}/join`); sends "
+        "JSON headers, returns the parsed JSON body, and on a non-2xx response throws an `Error` "
+        f"whose message is the `{CLIENT_SURFACE.error_envelope_key}.code` of the body's envelope"
+        for export in CLIENT_SURFACE.call_exports
+    ]
 
 
 def endpoint_owners_nextjs_ts(manifest: InterfaceManifest) -> dict[str, list[str]]:
