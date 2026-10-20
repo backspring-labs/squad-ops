@@ -703,11 +703,11 @@ def _contract_lines(
     listed = response.startswith("list[") and response.endswith("]")
     entity = entities.get(response[5:-1] if listed else response)
     if entity is not None:
-        required = [f.name for f in entity.fields if f.required]
-        optional = [f.name for f in entity.fields if not f.required]
-        rest = f"; optional {', '.join(optional)}" if optional else ""
+        always = [f.name for f in entity.fields if f.required]
+        sometimes = [f.name for f in entity.fields if not f.required]
+        rest = f"; optional {', '.join(sometimes)}" if sometimes else ""
         lines.append(
-            f"    // response {response}: {', '.join(required) or 'no required field'}{rest}"
+            f"    // response {response}: {', '.join(always) or 'no required field'}{rest}"
         )
     if ep.errors:
         lines.append(f"    // errors: {', '.join(ep.errors)}")
