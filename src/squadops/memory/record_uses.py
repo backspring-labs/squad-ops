@@ -23,6 +23,7 @@ from typing import Any
 from squadops.memory.chat import ChatExposure
 from squadops.memory.context import Disposition
 from squadops.memory.exposures import Exposure
+from squadops.memory.records import MemoryRecord, RecordStatus
 
 #: The exposure fields a record is handed through (#2178, #2179): a task's binding sections.
 INSTRUCTION_SECTIONS = ("task_instructions", "project_instructions")
@@ -61,6 +62,48 @@ class ChatUse:
     revision: str
     disposition: str
     assembled_at: datetime
+
+
+@dataclass(frozen=True)
+class WithdrawnUse:
+    """An instruction an exposure was handed whose record is withdrawn now (§A.3.8)."""
+
+    record_id: str
+    revision: str
+    section: str
+    withdrawn_by: str
+    withdrawn_at: datetime
+    why: str
+
+
+def handed_instructions(exposure: Exposure) -> bool:
+    """Whether a binding section handed ``exposure`` any instruction."""
+    return any((getattr(exposure, s, None) or {}).get("supplied") for s in INSTRUCTION_SECTIONS)
+
+
+def withdrawn_uses(exposure: Exposure, records: Mapping[str, MemoryRecord]) -> list[WithdrawnUse]:
+    """The instructions ``exposure`` was handed whose records are withdrawn now, in section order.
+    The exposure keeps what it used, and the mark is read beside it: correcting or withdrawing a
+    record never rewrites an exposure (§A.3.8, "what a person sees")."""
+    marked = []
+    for section in INSTRUCTION_SECTIONS:
+        held = getattr(exposure, section, None) or {}
+        for entry in held.get("supplied") or ():
+            record = records.get(str(entry.get("record_id")))
+            if record is None or record.status != RecordStatus.WITHDRAWN:
+                continue
+            change = record.status_changes[-1]
+            marked.append(
+                WithdrawnUse(
+                    record_id=record.record_id,
+                    revision=str(entry.get("revision", "")),
+                    section=section,
+                    withdrawn_by=change.by,
+                    withdrawn_at=change.at,
+                    why=change.why,
+                )
+            )
+    return marked
 
 
 def _named(entries: Iterable[Mapping[str, Any]] | None, record_id: str) -> Mapping[str, Any] | None:

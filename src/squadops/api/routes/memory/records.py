@@ -14,8 +14,10 @@ may read (``memory:read``) and the caller's own private ones. Unbound, only the 
 withdrawn record is never retrieved, though its history is kept. A record the caller may not read
 answers 404, never saying whether it exists.
 
-Nothing here reaches a task yet: task instructions are bound to dispatch in #2178, and project
-instructions to a unit's snapshot in #2179.
+A task instruction reaches the dispatches its target selects (#2178), and a project instruction the
+units admitted after it is confirmed, through their snapshots (#2179). A unit already admitted keeps
+the revision it pinned, so a project instruction's withdrawal answers with the units holding it: its
+emergency withdrawal (§A.3.8), the way a lesson's revocation names them (SIP-0110 §0.7).
 
 A record captured in chat is written there (#2180), never here: its source is the chat turn, which only
 chat can vouch for. Its link opens that one turn, and only for the session's owner (T15).
@@ -42,9 +44,11 @@ from squadops.api.memory_schemas import (
     MemoryRecordTaskUse,
     MemoryRecordUsesResponse,
     MemoryRecordWithdrawalRequest,
+    MemoryRecordWithdrawalResponse,
 )
 from squadops.api.middleware.auth import require_scopes
 from squadops.api.routes.memory.applicability import refuse_unmatched
+from squadops.api.routes.memory.held_units import next_step, running_and_finished, unit_of
 from squadops.api.runtime.deps import (
     get_campaign_registry,
     get_cycle_registry,
@@ -449,8 +453,11 @@ async def withdraw_memory_record(
     record_id: str,
     body: MemoryRecordWithdrawalRequest,
     identity: Identity | None = Depends(require_scopes()),
-) -> MemoryRecordResponse:
-    """A withdrawal: the record is no longer retrieved, and every revision is kept (§A.3.8)."""
+) -> MemoryRecordWithdrawalResponse:
+    """A withdrawal: the record is no longer retrieved, and every revision is kept (§A.3.8). A
+    project instruction's answers with the units whose snapshot pinned it, as a lesson's revocation
+    does: units admitted from now pin without it, and those named keep it until their work is
+    halted or restarted under a new snapshot (its emergency withdrawal, SIP-0110 §0.7)."""
     actor, scopes = _who(identity)
     record = await _readable(request, record_id, actor, scopes)
     target: Any = record.current.target
@@ -466,4 +473,41 @@ async def withdraw_memory_record(
         raise http_error(403, "FORBIDDEN", str(e)) from e
     except RecordRefused as e:
         raise http_error(422, "VALIDATION_ERROR", str(e)) from e
-    return _response(updated, actor, await _deleted_sessions(request, [updated]))
+    shown = _response(updated, actor, await _deleted_sessions(request, [updated]))
+    held: dict[str, Any] = {}
+    if record.kind == RecordKind.INSTRUCTION and record.scope == RecordScope.PROJECT:
+        held = await _units_pinning(request, record_id)
+    return MemoryRecordWithdrawalResponse(**shown.model_dump(), **held)
+
+
+#: The rule a project instruction's emergency withdrawal follows.
+_WITHDRAWAL_RULE = "SIP-0110 §0.7, Appendix A §3.8"
+
+
+async def _units_pinning(request: Request, record_id: str) -> dict[str, Any]:
+    """The units whose snapshot pinned the instruction, running then finished, and the next step;
+    or, when the snapshots can't be read, no lists and a next step that says so. The withdrawal
+    stands either way: the record's store took it."""
+    store = get_memory_store(request)
+    try:
+        if store is None:
+            raise LookupError("the memory store is not configured")
+        live, finished = await running_and_finished(
+            request, await store.list_snapshots_pinning(record_id)
+        )
+    except Exception:  # noqa: BLE001 — an unknown holder is named, never read as none
+        logger.warning("memory_withdrawal_units_unread record=%s", record_id, exc_info=True)
+        return {
+            "units_holding_it": None,
+            "finished_units_holding_it": None,
+            "next": (
+                "units admitted from now pin without it. The snapshots couldn't be read, so "
+                "the units already holding it are unknown: find them before relying on any unit "
+                f"admitted while it was in force ({_WITHDRAWAL_RULE})."
+            ),
+        }
+    return {
+        "units_holding_it": [unit_of(s) for s in live],
+        "finished_units_holding_it": [unit_of(s) for s in finished],
+        "next": next_step(live, finished, rule=_WITHDRAWAL_RULE),
+    }
