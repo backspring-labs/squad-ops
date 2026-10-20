@@ -35,7 +35,7 @@ import re
 from collections.abc import Collection, Mapping
 from typing import TYPE_CHECKING, Any
 
-from squadops.stacks.app_invocation import JS_MODULE_LOAD, AppInvocation
+from squadops.stacks.app_invocation import JS_MODULE_LOAD, NETWORK_SEAM_FETCH_STUB, AppInvocation
 from squadops.stacks.baseline_stylesheet import BASELINE_CSS
 from squadops.stacks.client_surface import KIND_FUNCTION, ClientExport, ClientSurface
 from squadops.stacks.rendered_packaging import render_packaging
@@ -48,19 +48,35 @@ if TYPE_CHECKING:  # pragma: no cover - annotations only, avoids a scaffold impo
 STACK_NAME = "nextjs_ts"
 
 #: #1126: how a suite on this stack invokes the application. Under the in-process model
-#: (#877) a suite reaches the app by loading its ``app/api/`` route handler — an import
+#: (#877) an API suite reaches the app by loading its ``app/api/`` route handler — an import
 #: statement, a ``require``, or a dynamic ``import(`` (``JS_MODULE_LOAD``, #1533), never a
-#: ``vi.mock('@/app/api/...')`` string. An API suite calls the handler directly; a page suite
-#: (#2534) stubs ``fetch`` and routes it to an imported handler, so it still invokes the app.
-#: Mocking the route module under test is unconditionally self-mocking. These three patterns used to live in the shared
+#: ``vi.mock('@/app/api/...')`` string — and calls it directly. A page suite (#2534) reaches it
+#: by rendering a real ``app/**/page`` module or a ``components/`` component, as stack #1's
+#: suites render ``App`` or a view: the network is a seam UNDER the page, so a ``fetch`` stub
+#: or a mock of the frozen ``@/lib/api`` client is legitimate beneath a rendered page and
+#: self-mocking when nothing is rendered. A page criterion about structure fetches nothing,
+#: so requiring a handler import refused a correct page test (#2547). Mocking a route module
+#: or a page module itself is mocking the subject. These patterns used to live in the shared
 #: detector as if they were every stack's; they are this stack's.
 APP_INVOCATION = AppInvocation(
-    invocation_import=JS_MODULE_LOAD + r"""['"`][^'"`]*app/api/""",
-    subject_mock=r"""(?:vi|jest)\s*\.\s*mock\s*\(\s*['"`][^'"`]*app/api/""",
+    invocation_import=(
+        JS_MODULE_LOAD
+        + r"""['"`][^'"`]*(?:app/api/|app/(?:[^'"`]*/)?page(?:\.tsx?)?['"`]|components/)"""
+    ),
+    subject_mock=(
+        r"""(?:vi|jest)\s*\.\s*mock\s*\(\s*['"`][^'"`]*"""
+        r"""(?:app/api/|app/(?:[^'"`]*/)?page(?:\.tsx?)?['"`])"""
+    ),
+    network_seam_mock=(
+        NETWORK_SEAM_FETCH_STUB
+        + r"""    | (?:vi|jest)\s*\.\s*mock\s*\(\s*['"`][^'"`]*lib/api(?:\.tsx?)?['"`]"""
+    ),
     invocation_description=(
         "an import of an `app/api/**/route` handler module, called directly with a "
-        "`new Request(...)` — the in-process model; `@/lib/api` is the browser client and "
-        "reaches no server under vitest"
+        "`new Request(...)` — the in-process model — or, for a page, rendering the real "
+        "`app/**/page` (or a `components/` component) with `fetch` or the frozen `@/lib/api` "
+        "client stubbed beneath it; `@/lib/api` alone is the browser client and reaches no "
+        "server under vitest"
     ),
 )
 

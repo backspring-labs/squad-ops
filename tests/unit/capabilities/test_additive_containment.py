@@ -15,6 +15,7 @@ import pytest
 from squadops.capabilities.additive_containment import (
     RULE_LIVE_SERVER_FETCH,
     RULE_NO_APPLICATION_INVOCATION,
+    RULE_SUBJECT_MOCKED,
     assess_additive_suite,
     containment_findings,
 )
@@ -245,3 +246,85 @@ class TestReplays:
     def test_the_accepted_rolls_suites_pass(self, name, invocation):
         content = (_REPLAYS / name).read_text(encoding="utf-8")
         assert _rules(name, content, invocation) == []
+
+
+#: The first T4 suite of the 2.4 Next.js shakeout's round 8 (cyc_dfab1ca2b0b8, 12:29Z), as the qa
+#: author wrote it: a page criterion about the create form's inputs, rendered and asserted.
+_PAGE_SUITE = """import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
+import { render, screen } from '@testing-library/react'
+
+import CreateRunView from '@/app/runs/new/page'
+
+const fetchSpy = vi.fn()
+beforeEach(() => { fetchSpy.mockReset(); vi.stubGlobal('fetch', fetchSpy) })
+afterEach(() => { vi.unstubAllGlobals() })
+
+describe('T4: CreateRunView capacity input', () => {
+  it('renders an optional numeric capacity input with min=1', async () => {
+    render(<CreateRunView />)
+    const capacityInput = await screen.findByTestId('create-run-capacity')
+    expect(capacityInput).toHaveAttribute('type', 'number')
+  })
+})
+"""
+
+
+@pytest.mark.parametrize(
+    "content",
+    [
+        _PAGE_SUITE,
+        "vi.mock('@/lib/api', () => ({ api: vi.fn() }))\n"
+        "import CreateRunView from '@/app/runs/new/page'\nit('x', () => {})\n",
+        "import Home from '@/app/page'\nit('x', () => {})\n",
+        "import { RunCard } from '@/components/RunCard'\nit('x', () => {})\n",
+    ],
+    ids=["round-8-T4", "client-mocked-beneath-a-page", "root-page", "component"],
+)
+def test_a_page_suite_rendering_a_real_page_invokes_the_application(content):
+    """#2547: the 2.4 Next.js shakeout's round 8. T4's first suite rendered the real create page
+    and asserted its capacity input, a correct page test; the rule counted only an `app/api/`
+    import, so it was refused twice and the run spent its correction rounds bending the test.
+    Stack #1 already counts rendering `App` or a view; a fetch stub or a mock of the frozen client
+    beneath a rendered page is the network seam, not the subject."""
+    assert _rules("__tests__/criteria/T4.test.tsx", content) == []
+
+
+@pytest.mark.parametrize(
+    ("content", "rules"),
+    [
+        (
+            "vi.mock('@/app/runs/new/page', () => ({ default: () => null }))\n"
+            "import CreateRunView from '@/app/runs/new/page'\nit('x', () => {})\n",
+            [RULE_SUBJECT_MOCKED],
+        ),
+        (
+            "vi.mock('@/lib/api', () => ({ api: vi.fn() }))\nimport { api } from '@/lib/api'\n"
+            "it('x', () => {})\n",
+            [RULE_NO_APPLICATION_INVOCATION],
+        ),
+    ],
+    ids=["the-page-mocked", "the-client-mocked-with-nothing-rendered"],
+)
+def test_widening_to_pages_still_refuses_a_mocked_page_and_a_bare_client(content, rules):
+    """The over-acceptance guard for #2547: mocking the page under test is mocking the subject,
+    and a mock of the browser client with nothing rendered asserts only against itself."""
+    assert _rules("__tests__/criteria/T4.test.tsx", content) == rules
+
+
+async def test_the_qa_handlers_containment_row_passes_round_8s_page_suite():
+    """Wiring (#2547, anti-pattern 6a): the refusal came from the qa handler's typed-acceptance
+    seam, with the stack from the cycle's config, so the test enters there."""
+    from squadops.capabilities.handlers.cycle.qa_test import QATestHandler
+
+    checks: list[dict] = []
+    await QATestHandler()._evaluate_typed_acceptance(
+        {"acceptance_criteria": [], "resolved_config": {"build_profile": "nextjs_ts"}},
+        [{"name": "__tests__/criteria/T4.test.tsx", "type": "test", "content": _PAGE_SUITE}],
+        checks,
+        [],
+        {},
+    )
+    rows = [c for c in checks if c["check"] == "acceptance:additive_containment"]
+    assert [(r["params"]["file"], r["status"]) for r in rows] == [
+        ("__tests__/criteria/T4.test.tsx", "passed")
+    ]
