@@ -1120,6 +1120,14 @@ runner in the evaluator's image (A2), for `page` surfaces". It moves from #2414 
 start at the hook (E.4.2). The window runs without it. Its suite (revision 3) has no page scenario, and the suite and
 the measure are frozen inside it (G7).
 
+**The driver is decided; the rest is for the design review.** The owner passed on a review the same day, whose decision
+reads: "Adopt Claude's recommendation to implement browser scenario evaluation using the existing Puppeteer dependency
+rather than introducing Playwright at this stage." The review also asked for the following, each folded in below:
+- evidence captured with every result;
+- the driver kept behind an adapter;
+- scenarios that measure completed user outcomes, not interactions;
+- comparability that survives a suite revision.
+
 **What's missing.** §4.1 names browser pages as a surface kind, and A2 and A3 put the browser in the evaluator's image,
 receiving a run's steps on its input. The vocabulary reserves `visit`, `click`, `fill` and `page`, but each is
 `blocked_unverified`, `browser_unavailable` (`squadops.scenarios.steps`).
@@ -1140,6 +1148,7 @@ receiving a run's steps on its input. The vocabulary reserves `visit`, `click`, 
 | `{"check": "text", "step": 4, "pattern": "2\\s*/\\s*5"}` | the page after that step shows text matching the pattern |
 | `{"check": "count", "step": 4, "target": {"role": "listitem"}, "equals": 2}` | so many elements match |
 | `{"check": "order", "step": 4, "target": {"role": "listitem"}, "patterns": ["Nov", "Dec"]}` | elements matching each pattern appear in this order |
+| `{"check": "absent", "step": 4, "pattern": "error\|went wrong"}` | the page after that step shows no text matching the pattern: a failure condition the scenario names |
 
 - **Elements are found the way a user finds them:** by role, accessible name and visible text.
   - A step names its candidate names, as a scenario names its fields' candidates (§10i), and the first one found is
@@ -1147,6 +1156,20 @@ receiving a run's steps on its input. The vocabulary reserves `visit`, `click`, 
   - **Never by the delivery's test ids.** §4.1 rules a Project's manifest never a scenario's source, and a test id is
     the squad's own naming. A step that finds controls by accessible name also reads what axe measures, so an
     unlabelled control is visible to both.
+- **Outcomes, not interactions.** A page scenario completes a user's job and checks what it left behind. For example:
+  create a run, join it from its page, and then, on a fresh load of the page or over HTTP, read the joined count back.
+  - A scenario whose checks only say that a page rendered, or that a control could be clicked, isn't one. That is
+    route rendering's job (SIP-0109 §8.3).
+  - **Each scenario states:**
+    - its preconditions, as its own setup steps, held out with the rest, so every run starts from the same known
+      state;
+    - its user actions;
+    - the outcomes it expects;
+    - the failure conditions it rules out (`absent`);
+    - the evidence it keeps (below).
+  - **Where its criteria come from:** the campaign's pinned suite is its outcome contract (§10a). It is written and
+    approved outside the squad before the campaign starts (§4.1), never after an implementation by the role that built
+    it.
 - **When a step can't act:**
   - a control none of the step's names finds is `blocked_unverified`, `surface_absent`, never failed. It is the
     page's version of an endpoint the delivery doesn't declare;
@@ -1156,16 +1179,34 @@ receiving a run's steps on its input. The vocabulary reserves `visit`, `click`, 
 - **Each scenario gets a fresh browser context,** with no cookies or storage carried from the one before, on the
   instance the scenarios share as today. Each sets up its own data in its own steps (§4.1). §10j's seed is not used.
 - **The driver** is Puppeteer, which the evaluator's image already pins (`puppeteer-core`) for Lighthouse and axe,
-  with the image's Chromium.
+  with the image's Chromium. It sits behind a small driver interface inside the evaluator: load a path, find by role
+  and name, fill, click, read text, capture evidence. So a change of driver changes one module and the image's tag,
+  and nothing in the vocabulary or the runner.
   - **No second driver or browser bundle in an audited image.** Steps are the suite's vocabulary and the runner
     executes them, so the driver is the runner's implementation.
-  - **Playwright** is the alternative if Puppeteer's waits prove flaky (prediction B2). That would be a new evaluator
-    tag, so no two readings mix drivers.
-- **Held out as the HTTP steps are.** Steps reach the browser on its input only (A3), never on a mounted path, and no
-  squad role sees them. Prediction 2's sweep covers their values as well.
+  - **Playwright** is reconsidered only on a measured limitation: flake that B2 reads, waits that need its
+    auto-waiting, or a browser a product needs that Chromium isn't. That would be a new evaluator tag, so no two
+    readings mix drivers.
+- **Evidence with every result.**
+  - **Every scenario:** each step's timing.
+  - **A failed or blocked step:** a screenshot of the page, the accessibility tree around the target, the page's
+    console errors and its failed requests.
+  - **Where it's kept:** with the evaluation record, in the scenario store's own tables behind its port (§4.1), never
+    in the artifact vault, where squad tasks' inputs come from.
+- **Held out as the HTTP steps are, evidence included.** Steps reach the browser on its input only (A3), never on a
+  mounted path, and no squad role sees them. A screenshot of a filled form shows a step's values, so the evidence is
+  held out like the steps. Prediction 2's sweep covers both.
 - **A suite revision with page scenarios** is drafted by the supervisor, read by an independent reviewer, and
-  approved as revision 3 was (D2, #2464). A suite is content-addressed, so it starts a new series. No reading of
-  revision 3 is compared with one of revision 4.
+  approved as revision 3 was (D2, #2464). It keeps revision 3's scenarios unchanged and adds the page scenarios.
+- **Comparability survives the revision, per scenario.** Each scenario is content-addressed on its own (§4.1), so
+  one that is unchanged between revisions keeps its version, and its results continue their series.
+  - **Readings across revisions:** contribution, rates and the package compare only the scenario versions both
+    readings share, and report the new ones apart, with their own series.
+  - **A changed scenario is a methodology break for that scenario only,** named in the record. It is never averaged
+    into the shared set.
+  - **Today:** contribution refuses any two readings of different suites (`squadops.outcomes.contribution`,
+    `_comparable`). That refusal becomes a comparison of the shared scenario versions, with the rest listed.
+  - **Within a window, its own rule stands:** one suite, frozen (the 2.4 pre-registration §7).
 - **Unchanged:**
   - the squad's own qa tests, which add no browser framework;
   - route rendering (SIP-0109 §8.3), the framework's own check that each declared route renders;
@@ -1187,3 +1228,9 @@ receiving a run's steps on its input. The vocabulary reserves `visit`, `click`, 
 3. **The bound on each wait,** measured when built on both stacks' pages, and the browser's cost per evaluation.
 4. **Which outcomes revision 4's page scenarios state:** at least capacity's indicator and the list's order, the two
    increments the shakeout's HTTP-only suite couldn't see on a page.
+5. **The evidence's size and how long it's kept,** and who may read it: the owner's console and CLI, never a squad
+   identity.
+6. **The per-scenario comparison's rules:**
+   - how a rate is reported when the shared set is small;
+   - whether a scenario whose surfaces changed but whose steps didn't is the same scenario. Its content hash says
+     it isn't.
