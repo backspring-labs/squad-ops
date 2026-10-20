@@ -1201,6 +1201,11 @@ class CampaignProgress:
             # The failed cycle's candidate is the repair's starting tree (``starting_tree_refs``).
             block = {**block, "repair_of": cycle.cycle_id}
             plan_refs = [*plan_refs, *([plan] if plan not in plan_refs else [])]
+        elif kind is CycleKind.RETRY:
+            # A retry starts a fresh candidate on the accepted tree. A retry of a repair would
+            # otherwise keep the repair's ``repair_of``, and start from the failed candidate the
+            # repair was continuing (#2558). Its plan is already left out (``_bound_seeds``).
+            block = {k: v for k, v in block.items() if k != "repair_of"}
         # #1692: the failed cycle's record, from its typed assessment and its runs' stored
         # verification summaries, for its successor.
         brief = await self._prior_cycle_brief(cycle, latest)
