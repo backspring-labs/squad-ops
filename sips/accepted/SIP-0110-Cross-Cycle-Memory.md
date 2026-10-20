@@ -2371,6 +2371,8 @@ lesson-effectiveness control.
   - Project Lifecycle Management supplies the repository family (`repo:file:<path>@current`, bound at
     `source_context.development_baseline_commit`). It raises this port's `ReferenceUnresolved`, and refuses a project
     with no source context rather than binding to a default (agreed with the MacBook lane, 2026-10-20).
+  - **`Cycle.source_context` isn't on main yet.** It arrives with #2484, so on main every unit binds with
+    `source_commit=None`. The pin reads the field through `getattr` until then.
 - **Written:**
   - A project instruction may name `@current`, but only for a family a resolver binds. Any other family is refused at
     write (`unbindable`), since nothing could ever bind it.
@@ -2379,10 +2381,15 @@ lesson-effectiveness control.
   rewrites the reference to the revision and keeps the content's digest. Every task of the unit, every re-dispatch,
   and both arms of a comparison admitted together carry that revision, however the target moves after. A unit admitted
   later binds the revision current then. It is never resolved at dispatch.
-- **Unbound:** a reference that won't bind is kept on the pin with why (`unbound`).
+- **Unbound:** a reference that won't bind is kept on the pin with why (`unbound`). That covers a resolver that
+  raises anything, not only `ReferenceUnresolved`: one failing family never makes the unit's instructions unread.
   - A required one leaves the instruction's binding section incomplete, so the task it applies to is held, naming the
     reference (§3.6).
-  - An optional one is handed as written, and its task runs.
+  - An optional one is omitted from what the task is handed and disclosed: in the handed input's `unbound`, and the
+    exposure's `omitted_references`. Its task runs.
+- **Re-binding (§5v) binds too.** The new revision's `@current` references are bound for the unit before it replaces
+  the old one, so a re-binding never stores `@current` verbatim. Nor does it release a hold by dropping an unbound
+  reference: one still unbound keeps holding.
 - **Disclosed:**
   - The handed input carries each bound reference with its digest.
   - The exposure lists them (`bound_references`).
@@ -2392,14 +2399,24 @@ lesson-effectiveness control.
 - **Reading a reference's content into the prompt at dispatch** isn't built. It belongs to the composer and the hold,
   and the MacBook lane builds it with #2178's hold. T16 itself needs only the binding and the bound revision in the
   snapshot and the exposure.
-- **A campaign's repository references can't bind yet.** A campaign pins its snapshot at admission, before any of its
-  cycles exists. A campaign has no source context of its own: each cycle pins one when it is prepared (the MacBook
-  lane, 2026-10-20). So the campaign's pin has no commit, and the repository family refuses. A required one holds its
-  tasks. This needs either a campaign-level source pin or binding per cycle, which conflicts with one shared snapshot.
-  It is recorded for the owner's ruling, not decided here.
+- **A campaign's repository references can't bind yet, and this conflicts with SIP-0112 §B.5.1.** That section binds a
+  Campaign's repository reference "when it is admitted … at the commit the unit's source context pins". A campaign
+  pins its snapshot at admission, before any of its cycles exists, and it has no source context of its own: each
+  cycle pins one when it is prepared (the MacBook lane, 2026-10-20). So the campaign's pin has no commit, the
+  repository family refuses, and a required reference holds its tasks.
+  - The ways out are a campaign-level source pin, or binding per cycle, which conflicts with one shared snapshot.
+  - The conflict is named here and in `sips/PORTFOLIO.md`'s intake log. SIP-0112 names it in #2484, which edits that
+    section. It awaits the owner's ruling and is not decided here.
 - **Re-binding a reference's bound revision** (§3.7) still waits. §5v's re-binding replaces an instruction's revision
   only.
 - **T16's task part:** binding a task instruction's `@current` with its cycle's inputs.
+
+**The second reader** (a fresh agent) found five things, each fixed or named above:
+- re-binding stored `@current` verbatim and silently released a hold (verified by running);
+- any resolver exception other than `ReferenceUnresolved` held the whole unit for good;
+- an optional unbound reference was handed unmarked;
+- the routes' resolver wiring had no test (a dropped keyword passed 1,468 tests);
+- §5z overstated `source_context` on main, and didn't name the conflict with SIP-0112.
 
 **Evidence:**
 - `tests/unit/memory/test_reference_binding.py` enters through `pin_unit`, `pin_standalone_cycle`, `pin_campaign` and
@@ -2415,11 +2432,22 @@ lesson-effectiveness control.
 - **Driver:** a bound reference is part of the pinned set.
 - **The test that held stage 1's staging rule** (`@current` refused outright) now holds the rule that replaced it:
   never pinned verbatim.
-- **Four mutants, each caught:**
+- **The fixes' tests:**
+  - a resolver that times out leaves one reference unbound, not the unit unread;
+  - an optional unbound reference is omitted and disclosed;
+  - the stored snapshot keeps digest and `unbound`;
+  - a re-binding to a revision naming `@current` binds it, `@r2` with its digest, and `rebound` refuses one with no
+    binding given;
+  - the create route and the campaign start each hand the pin its resolvers.
+- **Eight mutants, each caught:**
   - the pin not binding;
   - an unbound required reference ignored;
   - the source commit dropped;
-  - the exposure not naming the bound reference.
+  - the exposure not naming the bound reference;
+  - the re-binding route not binding;
+  - the create route dropping its resolvers;
+  - the campaign start dropping its resolvers;
+  - an optional unbound reference handed.
 
 ## 6. Mode neutrality: cycle, duty, and ambient utilization
 

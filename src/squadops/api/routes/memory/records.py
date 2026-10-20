@@ -260,13 +260,13 @@ async def create_memory_record(
     kind and scope need, and (422) when the record breaks §A.3.2's rules."""
     actor, scopes = _who(identity)
     revision = _revision(body, actor=actor, kind=body.kind, now=datetime.now(UTC))
-    _refuse_unbindable(request, revision)
     cycle = await target_cycle(request, body.scope, body.project_id, revision.target)
     try:
         authorize_write(
             body.kind, body.scope, actor_id=actor, actor_scopes=scopes, owner_id=actor,
             campaign_cycle=of_campaign(cycle),
         )  # fmt: skip
+        _refuse_unbindable(request, revision)
         record = new_record(
             record_id=f"mrec_{uuid.uuid4().hex[:16]}",
             kind=body.kind,
@@ -451,13 +451,13 @@ async def revise_memory_record(
     actor, scopes = _who(identity)
     record = await _readable(request, record_id, actor, scopes)
     revision = _revision(body, actor=actor, kind=record.kind, now=datetime.now(UTC))
-    _refuse_unbindable(request, revision)
     cycle = await target_cycle(request, record.scope, record.project_id, revision.target)
     try:
         authorize_write(
             record.kind, record.scope, actor_id=actor, actor_scopes=scopes,
             owner_id=record.owner_id, campaign_cycle=of_campaign(cycle),
         )  # fmt: skip
+        _refuse_unbindable(request, revision)
         updated = revised(record, revision)
         if cycle is not None:
             # §3.8: a task instruction is corrected before its task dispatches, or not at all: the
