@@ -186,3 +186,29 @@ def test_an_applicability_naming_what_no_dispatch_carries_is_refused(world, appl
     assert refused.status_code == 422
     assert named in refused.json()["detail"]["error"]["message"]
     assert fitting.status_code == 201, fitting.text
+
+
+@pytest.mark.parametrize(
+    ("resolvers", "scope", "status"),
+    [((), "project", 422), (("fake",), "project", 201), (("fake",), "task", 422)],
+    ids=["no-resolver-for-the-family", "a-resolver-binds-it", "a-task-instructions-at-current"],
+)
+def test_at_current_is_written_only_where_a_resolver_will_bind_it(world, resolvers, scope, status):
+    """#2179 T16. Bugs caught: ``@current`` accepted for a family nothing binds, so every task the
+    instruction applies to is held at its first dispatch; ``@current`` on a task instruction,
+    whose binding with its cycle's inputs is not built."""
+    world.client.app.state.reference_resolvers = {f: object() for f in resolvers}
+    body = {
+        "kind": "instruction",
+        "scope": scope,
+        "project_id": "group_run",
+        "references": [{"ref": "fake:doc:spec@current", "required": True}],
+    }
+    if scope == "project":
+        body["applicability"] = ANYWHERE
+    else:
+        body["target"] = {"cycle_id": "cyc_solo", "task_types": ["qa.test"]}
+
+    response = world.as_("ada", Role.ADMIN).create(**body)
+
+    assert response.status_code == status, response.text

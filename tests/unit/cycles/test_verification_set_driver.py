@@ -7329,8 +7329,17 @@ class TestACountedRollRecordsTheInstructionsItPinned:
             ({"disabled": True}, []),
             ({"instructions_unread": "the records could not be read"}, None),
             (None, None),
+            (
+                {"instructions": [{"record_id": "mrec_a", "revision": 1, "references": [
+                    {"ref": "repo:file:CONTRIBUTING.md@" + "c" * 40, "required": True,
+                     "digest": "sha256:x"},
+                    {"ref": "manifest:decision:join@3", "required": False},
+                ]}]},
+                [{"record_id": "mrec_a", "revision": 1,
+                  "references": ["repo:file:CONTRIBUTING.md@" + "c" * 40]}],
+            ),
         ],
-        ids=["two-pinned-sorted", "none-pinned", "unread", "no-snapshot"],
+        ids=["two-pinned-sorted", "none-pinned", "unread", "no-snapshot", "a-bound-reference"],
     )  # fmt: skip
     def test_the_pinned_set_is_read_from_the_cycles_snapshot(
         self, driver, monkeypatch, body, pinned
