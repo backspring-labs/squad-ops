@@ -1399,3 +1399,10 @@ checks:
       from squadops.stacks.development_profiles import get_development_profile
       print("runs in a DOM with Testing Library" in get_development_profile("nextjs_ts").test_prompt_supplement)
     expect: "True"
+  - id: "retake-after-patch"
+    what: a qa re-take a repair then patched is judged by the patch's own identity, not the re-take's
+    container: squadops-runtime-api
+    code: |
+      from squadops.cycles.patch_verification import RETAKE_EVALUATED_REVISION_KEY, retake_identity_mismatch
+      print(retake_identity_mismatch({RETAKE_EVALUATED_REVISION_KEY: "a", "validation_result": {"persisted_revision_id": "b"}}, []))
+    expect: "None"

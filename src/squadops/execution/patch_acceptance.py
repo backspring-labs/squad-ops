@@ -49,6 +49,7 @@ from squadops.cycles.patch_verification import (
     FILE_ABSENT_REASONS,
     PATCH_PASSED,
     PATCH_UNVERIFIABLE,
+    RETAKE_EVALUATED_REVISION_KEY,
     STRUCTURALLY_UNEVALUABLE_REASONS,
     candidate_revision_id,
     overlay_artifacts,
@@ -1096,6 +1097,9 @@ class PatchAcceptance:
         corrected_outputs = retest.corrected_outputs
         retest_rows = retest.rows
         corrected_outputs["artifacts"] = patched_artifacts
+        # The failed attempt may have been a re-take, whose outputs name the set it evaluated. The
+        # patch replaced that set, so its identity is the candidate's below, not the re-take's.
+        corrected_outputs.pop(RETAKE_EVALUATED_REVISION_KEY, None)
         prior_validation = corrected_outputs.get("validation_result")
         corrected_outputs["validation_result"] = {
             **(prior_validation if isinstance(prior_validation, dict) else {}),
