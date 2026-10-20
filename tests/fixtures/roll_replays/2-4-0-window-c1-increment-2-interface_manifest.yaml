@@ -1,0 +1,198 @@
+version: 1
+kind: interface_manifest
+project_id: group_run
+source_prd: 'PRD: group_run (1-Hour Cycle MVP+) v0.5'
+stack: fullstack_fastapi_react
+scope: "Core MVP for group run coordination \u2014 create, list, and view run events;\
+  \ join and leave by participant name; duplicate-name prevention; input validation.\
+  \ Deliberately excludes: capacity limits, datetime sorting, authentication, persistent\
+  \ storage, external APIs, real-time features, UI component libraries, and all Expansion\
+  \ Tier 2/3 items."
+entities:
+- name: Run
+  fields:
+  - name: id
+    type: string
+    required: true
+    generated: true
+  - name: title
+    type: string
+    required: true
+  - name: datetime
+    type: string
+    required: true
+  - name: meeting_location
+    type: string
+    required: true
+  - name: distance
+    type: string
+    required: false
+  - name: pace_target
+    type: string
+    required: false
+  - name: route_notes
+    type: string
+    required: false
+  - name: capacity
+    type: integer
+    required: false
+  - name: participants
+    type: list[Participant]
+    required: true
+    default: []
+- name: Participant
+  fields:
+  - name: name
+    type: string
+    required: true
+api:
+  base_path: /api
+  request_shapes:
+    RunCreate:
+      required:
+      - title
+      - datetime
+      - meeting_location
+      optional:
+      - distance
+      - pace_target
+      - route_notes
+      - capacity
+    JoinRequest:
+      required:
+      - name
+    LeaveRequest:
+      required:
+      - name
+  endpoints:
+  - method: POST
+    path: /runs
+    summary: create a group run event
+    request: RunCreate
+    response: Run
+    success_status: 201
+    errors:
+    - validation_error
+  - method: GET
+    path: /runs
+    summary: list all group runs in ascending datetime order
+    response: list[Run]
+    order:
+      field: datetime
+      direction: asc
+  - method: GET
+    path: /runs/{run_id}
+    summary: retrieve a single run with its participants
+    response: Run
+    errors:
+    - run_not_found
+  - method: POST
+    path: /runs/{run_id}/join
+    summary: join a run by participant name
+    request: JoinRequest
+    response: Run
+    errors:
+    - run_not_found
+    - duplicate_participant
+    - capacity_reached
+    - validation_error
+  - method: POST
+    path: /runs/{run_id}/leave
+    summary: leave a run by participant name
+    request: LeaveRequest
+    response: Run
+    errors:
+    - run_not_found
+    - participant_not_found
+    - validation_error
+  error_contract:
+    shape: '{"error": {"code": "...", "message": "..."}}'
+    codes:
+      validation_error:
+        http: 422
+      run_not_found:
+        http: 404
+      participant_not_found:
+        http: 404
+      duplicate_participant:
+        http: 409
+      capacity_reached:
+        http: 409
+        message: This run has reached its capacity.
+frontend:
+  framework: react_vite
+  routes:
+  - path: /
+    view: RunList
+    purpose: list all runs (title, datetime, location, participant count); empty-state
+      message; link to create
+    testids:
+    - run-list-view
+    - run-list
+    - run-row
+    - create-run-link
+    - empty-state-message
+  - path: /create
+    view: RunCreate
+    purpose: form to create a new group run event with required and optional fields
+    testids:
+    - run-create-view
+    - run-create-form
+    - run-create-title
+    - run-create-datetime
+    - run-create-meeting-location
+    - run-create-distance
+    - run-create-pace-target
+    - run-create-route-notes
+    - run-create-capacity
+    - run-create-submit
+    - run-create-error
+  - path: /runs/:run_id
+    view: RunDetail
+    purpose: full run details, participant list, join form, leave form; not-found
+      state for unknown id
+    testids:
+    - run-detail-view
+    - run-title
+    - run-datetime
+    - run-meeting-location
+    - run-distance
+    - run-pace-target
+    - run-route-notes
+    - capacity-status
+    - participant-list
+    - participant-name
+    - join-form
+    - join-name-input
+    - join-submit
+    - leave-form
+    - leave-name-input
+    - leave-submit
+    - error-message
+    - not-found-message
+persistence: in_memory
+decisions:
+- id: participant-name-uniqueness
+  choice: case-insensitive, whitespace-trimmed uniqueness per run
+  warrant: "PRD \xA75.4 \u2014 'default recommendation: case-insensitive uniqueness';\
+    \ display preserves original casing"
+- id: leave-nonexistent-participant
+  choice: POST /runs/{run_id}/leave returns 404 with code PARTICIPANT_NOT_FOUND when
+    the name is not on the run
+  warrant: "PRD \xA75.5 \u2014 'If participant name does not exist on the run, backend\
+    \ returns clear error (or no-op with clear response; choose one and document)';\
+    \ chose 404 error for testability and unambiguous UI display"
+- id: run-list-ordering
+  choice: insertion order (no explicit sort)
+  warrant: "PRD \xA75.2 does not specify an ordering; Expansion Tier 1 item 2 (datetime\
+    \ lexical sort) is pre-approved but outside core scope"
+- id: id-generation
+  choice: server-generated UUIDv4 hex string (32 characters, no dashes)
+  warrant: "PRD \xA75.1 \u2014 'Successful create returns created run with generated\
+    \ id'; no user-supplied identifiers in the product model"
+provenance:
+  mode: authored
+  cycle_id: cyc_4145fa7e4b4a
+  task_id: task-run_5e9fdea8-003-development.author_manifest
+  attempts: 1
+  revisions: []

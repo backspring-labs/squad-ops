@@ -63,7 +63,7 @@ from squadops.cycles.source_termination import (
     check_termination,
 )
 from squadops.stacks.client_surface import ClientSurface
-from squadops.stacks.scaffold import app_invocation_for
+from squadops.stacks.scaffold import app_invocation_for, names_entry_module
 
 logger = logging.getLogger(__name__)
 
@@ -1651,7 +1651,7 @@ def _harness_boundary_violations(
     ``importlib.import_module``), or directly constructing the app test client."""
 
     def _is_entry(mod: str) -> bool:
-        return any(mod == m or mod.startswith(m + ".") for m in entry_modules)
+        return names_entry_module(mod, entry_modules)
 
     viols: set[str] = set()
     for node in ast.walk(tree):
