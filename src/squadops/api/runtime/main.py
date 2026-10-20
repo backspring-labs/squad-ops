@@ -431,7 +431,7 @@ async def _init_cycle_subsystem(state, config, pool) -> None:
     # ``repo:file:<path>@current`` reference at the commit its unit's source context pins.
     from adapters.tools.factory import create_repository_reference_resolver
 
-    resolver = create_repository_reference_resolver(state.source_repository)
+    resolver = create_repository_reference_resolver(state.source_repository, project_registry)
     state.reference_resolvers.register(resolver)
     # E.4.3: a review_request contribution's forge, and each Project's token for it.
     from adapters.tools.factory import create_review_requests

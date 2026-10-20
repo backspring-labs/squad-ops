@@ -24,7 +24,7 @@ from adapters.memory.records import InMemoryMemoryRecords
 from adapters.tools.factory import create_repository_reference_resolver
 from adapters.tools.git_source import GitSourceRepository
 from adapters.tools.repository_references import REPOSITORY_FAMILY, RepositoryReferenceResolver
-from squadops.cycles.models import Project
+from squadops.cycles.models import Project, ProjectNotFoundError
 from squadops.memory.pinning import pin_standalone_cycle
 from squadops.memory.records import Reference
 from squadops.ports.memory.references import BindingContext, BoundReference, ReferenceUnresolved
@@ -269,7 +269,7 @@ async def test_a_repository_reference_binds_the_pinned_commit_never_the_branch_h
     await clones.sync("prj-tally", str(repo.path), "refs/heads/main")
     _commit(repo.path, {"CONTRIBUTING.md": "changed upstream\n"}, "outside")
     await clones.sync("prj-tally", str(repo.path), "refs/heads/main")
-    resolver = RepositoryReferenceResolver(clones)
+    resolver = RepositoryReferenceResolver(clones, _registry)
     pinned = BindingContext("prj-tally", "cycle", "cyc_1", repo.second_commit)
     [discovered] = recorded("development_configuration", "valid")["configuration"][
         "instruction_sources"
@@ -316,7 +316,7 @@ async def test_a_standalone_cycle_pins_a_project_instruction_at_its_source_conte
 
     snapshot = await pin_standalone_cycle(
         store, cycle, now=T0, records=records,
-        resolvers={REPOSITORY_FAMILY: create_repository_reference_resolver(clones)},
+        resolvers={REPOSITORY_FAMILY: create_repository_reference_resolver(clones, _registry)},
     )  # fmt: skip
 
     [pinned] = snapshot.instructions
@@ -326,3 +326,28 @@ async def test_a_standalone_cycle_pins_a_project_instruction_at_its_source_conte
     ]
     [(unbound, why)] = pinned.unbound
     assert unbound == "repo:file:assets/mark.png@current" and "not text" in why
+
+
+@pytest.mark.parametrize(
+    ("project_id", "why"),
+    [("prj-tally", None), ("group_run", "it is a sample application, with no source repository"),
+     ("prj-nowhere", "no Project prj-nowhere is registered")],
+    ids=["an-external-product-not-yet-cloned", "a-sample-application", "an-unknown-project"],
+)  # fmt: skip
+async def test_the_family_binds_nothing_only_where_there_is_no_repository(world, project_id, why):
+    """SIP-0110 §5ac, which the records ask at write. Bugs caught: an instruction for a sample
+    application accepted, so every unit pins it unbound and a required one holds every task it
+    applies to; a registered external product refused because its clone doesn't exist yet."""
+    _repo, clones, registry = world  # never synced: no clone on disk
+    sample = dataclasses.replace(registry.project, project_id="group_run", source=None)
+
+    class _Projects:
+        async def get_project(self, pid):
+            held = {"prj-tally": registry.project, "group_run": sample}
+            if pid not in held:
+                raise ProjectNotFoundError(pid)
+            return held[pid]
+
+    resolver = create_repository_reference_resolver(clones, _Projects())
+
+    assert await resolver.binds_nothing_for(project_id) == why

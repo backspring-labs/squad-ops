@@ -17,6 +17,7 @@ import hashlib
 import re
 from typing import Any
 
+from squadops.cycles.models import ProjectNotFoundError
 from squadops.ports.memory.references import (
     BindingContext,
     BoundReference,
@@ -50,12 +51,26 @@ def _path_of(ref: str) -> str:
 
 
 class RepositoryReferenceResolver(ReferenceResolverPort):
-    """Binds and reads a product file through the managed clone (``SourceRepositoryPort``)."""
+    """Binds and reads a product file through the managed clone (``SourceRepositoryPort``), and
+    answers from the Project registry whether a project has a repository to bind in at all."""
 
     family = REPOSITORY_FAMILY
 
-    def __init__(self, repository: Any) -> None:
+    def __init__(self, repository: Any, projects: Any) -> None:
         self._repository = repository
+        self._projects = projects
+
+    async def binds_nothing_for(self, project_id: str) -> str | None:
+        """SIP-0110 §5ac: a sample application has no repository, so no unit of it binds a
+        repository reference. Read from the registry, never from whether a clone exists yet: a
+        registered external Project that hasn't been validated has no clone, but a repository."""
+        try:
+            project = await self._projects.get_project(project_id)
+        except ProjectNotFoundError:
+            return f"no Project {project_id} is registered"
+        if project.source is None:
+            return "it is a sample application, with no source repository"
+        return None
 
     async def bind(self, ref: str, ctx: BindingContext) -> BoundReference:
         path = _path_of(ref)

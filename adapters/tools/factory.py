@@ -28,6 +28,7 @@ from squadops.tools.security import PathSecurityPolicy
 if TYPE_CHECKING:
     from squadops.core.secret_manager import SecretManager
 
+    from squadops.ports.cycles.project_registry import ProjectRegistryPort
     from squadops.ports.memory.references import ReferenceResolverPort
     from squadops.ports.projects.review_request import ReviewRequestPort
     from squadops.ports.projects.source_repository import SourceRepositoryPort
@@ -160,13 +161,14 @@ def create_source_repository(
 
 
 def create_repository_reference_resolver(
-    repository: SourceRepositoryPort,
+    repository: SourceRepositoryPort, projects: ProjectRegistryPort
 ) -> ReferenceResolverPort:
     """The repository family's reference resolver (SIP-0112 contract 6, #2179 T16): a
-    ``repo:file:<path>@current`` reference bound at its unit's pinned commit, through ``repository``."""
+    ``repo:file:<path>@current`` reference bound at its unit's pinned commit, through ``repository``,
+    for a project ``projects`` records with a source."""
     from adapters.tools.repository_references import RepositoryReferenceResolver
 
-    return RepositoryReferenceResolver(repository)
+    return RepositoryReferenceResolver(repository, projects)
 
 
 def create_review_requests() -> ReviewRequestPort:

@@ -1461,7 +1461,7 @@ checks:
       import asyncio
       from adapters.tools.factory import create_repository_reference_resolver
       from squadops.ports.memory.references import BindingContext, ReferenceUnresolved
-      resolver = create_repository_reference_resolver(None)
+      resolver = create_repository_reference_resolver(None, None)
       try:
           asyncio.run(resolver.bind("repo:file:AGENTS.md@current", BindingContext("p", "campaign", "c")))
       except ReferenceUnresolved as e:
