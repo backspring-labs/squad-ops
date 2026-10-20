@@ -545,8 +545,8 @@ async def create_cycle(
     snapshot_hash = cycle.squad_profile_snapshot_ref
     config_hash = run.resolved_config_hash
     # #2178: the cycle's task instructions, checked by prepare_cycle before anything is stored.
-    instructions = prepared.instructions
-    if instructions and ports.memory_records is None:
+    instructions, records = prepared.instructions, ports.memory_records
+    if instructions and records is None:
         raise http_error(503, "MEMORY_RECORDS_UNAVAILABLE", "no store holds task instructions")
 
     # Persist atomically (T17)
@@ -554,8 +554,9 @@ async def create_cycle(
     await ports.cycle_registry.create_run(run)
     await _pin_memory(request, cycle)
     # Before the run is enqueued, so its provisioning reads them.
-    for record in instructions:
-        await ports.memory_records.create(record)
+    if records is not None:
+        for record in instructions:
+            await records.create(record)
 
     # SIP-0077: cycle.created
 
