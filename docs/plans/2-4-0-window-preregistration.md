@@ -58,9 +58,10 @@ with memory observing and no lesson approved, so memory supplies nothing (the 2.
      after the window, as condition 3 allows.
    - **#316's rename** lands after the window, as decided above.
 4. **The shakeout loop's exit rule holds.**
-   - **The loop:** ten Next.js rounds and one FastAPI campaign, across seven deploys.
-   - **What it found and fixed:** nine seam findings, #2511 and #2512, #2522, #2531, #2534, #2536, #2538, #2540,
-     #2542 and #2547, each fixed by its PR and the deploy rebuilt.
+   - **The loop:** ten Next.js rounds and one FastAPI campaign, across nine deploys.
+   - **What it found and fixed:** ten seam findings, fixed by nine PRs: #2511 and #2512, #2522, #2531, #2534, #2536, #2538, #2540,
+     #2542 and #2547. Each was fixed by its PR (#2514, #2523, #2532, #2535, #2537, #2539, #2541, #2543, #2548), and the
+     deploy rebuilt.
    - **On the final deploy:**
      - **round 9** (Next.js, `cmp_51011c06ed90`) had no new seam finding, but its calibration ended as #2306's known
        `plan_defect` before any increment ran;
@@ -235,9 +236,14 @@ runtime, because the window runs the deploy. For a reader comparing the two:
 
   No window campaign gives a task instruction or names `@current`, and no resolver is registered on the deploy.
 - **#2556** adds `carries_into` and the increment gate's `task_instructions`, neither of which a window ruling uses (§2's
-  rule names none). It also adds a `continues` key to a repair's or a retry's `campaign_proposal` block. That key is read
-  by name only, never hashed or compared.
+  rule names none). It also adds a `continues` key to a repair's or a retry's `campaign_proposal` block. That key enters
+  the repair's or retry's config hash (its `execution_overrides`, as `repair_of` and `prior_cycle` already do), and no
+  window rule reads it.
 - **#2563** is documentation.
+- **The verification-set driver** (`scripts/dev/verification_set_driver.py`, run from the checkout, not the deploy) also
+  changed in #2555 and #2556: its pinned instruction set, and its count of after-admission instructions, which now leaves
+  out `gate_decision`. The window doesn't use it. Its intervention ledger is read with `aor_reading.py`, and no window
+  campaign gives instructions.
 
 ## 9. Declared before launch: what the window's evidence does not cover, and what it is expected to show
 
