@@ -91,11 +91,29 @@ def handed(pinned: list[PinnedInstruction]) -> dict[str, Any] | None:
                 "record_id": p.record_id,
                 "revision": p.revision,
                 "text": p.text,
-                "references": [r.to_dict() for r in p.references],
+                # §3.6: an optional reference admission couldn't bind is omitted whole and
+                # disclosed, never handed as written (the second read of T16); a required one
+                # holds the task before it is handed anything.
+                "references": [r.to_dict() for r in p.references if r.ref not in dict(p.unbound)],
+                **(
+                    {"unbound": [{"ref": ref, "why": why} for ref, why in p.unbound]}
+                    if p.unbound
+                    else {}
+                ),
             }
             for p in pinned
         ]
     }
+
+
+def unbound_references(handed_input: Mapping[str, Any] | None) -> list[dict[str, Any]]:
+    """Each reference a task was handed without, because admission couldn't bind it: the
+    instruction, the reference and why (§3.6). Only an optional one reaches a task this way."""
+    return [
+        {"record_id": i["record_id"], "ref": u["ref"], "why": u["why"]}
+        for i in (handed_input or {}).get("instructions", ())
+        for u in i.get("unbound") or ()
+    ]
 
 
 def bound_references(handed_input: Mapping[str, Any] | None) -> list[dict[str, Any]]:

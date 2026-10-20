@@ -1051,6 +1051,43 @@ class TestCreatePinsTheMemorySnapshot:
         carried = [e.revision.revision_id for e in snapshot.entries]
         assert carried == ([] if disabled else [lesson.revision_id])
 
+    async def test_the_create_route_binds_an_instructions_current_reference_at_the_pin(
+        self, client, store
+    ):
+        """#2179 T16, wired (the second read): the route hands the pin its resolvers. Bug caught:
+        the kwarg dropped, so with ``resolvers or {}`` every required ``@current`` reference
+        holds its tasks, while every unit test of the pin itself passes."""
+        from adapters.memory.records import InMemoryMemoryRecords
+        from squadops.memory.lessons import UnitKind
+        from squadops.memory.records import (
+            InstructionApplicability,
+            Reference,
+            Revision,
+            Source,
+            new_record,
+        )
+        from tests.unit.memory.test_reference_binding import _Resolver
+
+        records, resolver = InMemoryMemoryRecords(), _Resolver()
+        client.app.state.memory_records = records
+        client.app.state.reference_resolvers = {"fake": resolver}
+        await records.create(new_record(
+            record_id="mrec_wired", kind="instruction", scope="project", project_id="hello_squad",
+            owner_id="ada",
+            revision=Revision(
+                number=1, body="Read the spec.", author="ada", created_at=NOW,
+                source=Source("api_call"), confirmed_by="ada",
+                applicability=InstructionApplicability(("*",), ("*",), ("*",)),
+                references=(Reference("fake:doc:spec@current", True),),
+            ),
+        ))  # fmt: skip
+
+        resp = client.post(self._URL, json=self._REQUEST)
+
+        snapshot = await store.get_snapshot(UnitKind.CYCLE, resp.json()["cycle_id"])
+        assert resp.status_code == 201
+        assert [r.ref for r in snapshot.instructions[0].references] == ["fake:doc:spec@r1"]
+
     def test_an_unknown_declaration_is_refused_before_the_cycle_exists(
         self, client, store, mock_cycle_registry
     ):

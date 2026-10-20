@@ -14,6 +14,7 @@ listed.
 
 from __future__ import annotations
 
+import logging
 from collections.abc import Mapping
 from dataclasses import replace
 from typing import TYPE_CHECKING
@@ -23,6 +24,8 @@ from squadops.memory.references import BindingContext, ReferenceUnresolved
 
 if TYPE_CHECKING:
     from squadops.ports.memory.references import ReferenceResolverPort
+
+logger = logging.getLogger(__name__)
 
 
 async def bound_instruction(
@@ -45,6 +48,18 @@ async def bound_instruction(
             bound = await resolver.bind(reference.ref, ctx)
         except ReferenceUnresolved as e:
             unbound.append((reference.ref, str(e)))
+            references.append(reference)
+            continue
+        except Exception as e:  # noqa: BLE001 — a resolver that fails leaves this one unbound
+            # Not the unit's other instructions, nor its lessons: one reference that couldn't be
+            # bound holds what it applies to, and only if it is required (the second read).
+            logger.warning(
+                "reference_bind_failed ref=%s unit=%s:%s", reference.ref, ctx.unit_kind,
+                ctx.unit_id, exc_info=True,
+            )  # fmt: skip
+            unbound.append(
+                (reference.ref, f"the {reference.family} resolver failed: {type(e).__name__}")
+            )
             references.append(reference)
             continue
         references.append(Reference(bound.ref, reference.required, digest=bound.digest))

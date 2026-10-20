@@ -56,6 +56,7 @@ from squadops.memory.project_instructions import (
     PROJECT_INSTRUCTIONS_INPUT,
     PinUnknown,
     bound_references,
+    unbound_references,
 )
 from squadops.memory.project_instructions import applicable as project_applicable
 from squadops.memory.project_instructions import handed as project_handed
@@ -506,13 +507,18 @@ class LessonContextAssembly(ContextAssemblyPort):
                 project_instructions=_section_record(
                     bundle.section(SectionKind.PROJECT_INSTRUCTIONS),
                     bound=bound_references(bundle.project_instructions),
+                    omitted=unbound_references(bundle.project_instructions),
                 ),
             )
         )
 
 
 def _section_record(
-    section: Section | None, *, marked: Sequence[str] = (), bound: Sequence[dict] = ()
+    section: Section | None,
+    *,
+    marked: Sequence[str] = (),
+    bound: Sequence[dict] = (),
+    omitted: Sequence[dict] = (),
 ) -> dict | None:
     """A binding section as its exposure keeps it: the disposition, each revision supplied, and
     each that couldn't be with why, the interventions among them (§3.5), and each reference a
@@ -530,4 +536,5 @@ def _section_record(
         # Only when one was handed, so every other exposure is recorded as it was.
         **({"interventions": list(marked)} if marked else {}),
         **({"bound_references": list(bound)} if bound else {}),
+        **({"omitted_references": list(omitted)} if omitted else {}),
     }

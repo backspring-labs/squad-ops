@@ -11,7 +11,6 @@ half-bound instead of holding it; the resolver not told the commit the unit's so
 
 from __future__ import annotations
 
-import dataclasses
 from types import SimpleNamespace
 
 import pytest
@@ -106,22 +105,70 @@ async def test_a_unit_keeps_the_revision_bound_at_admission_and_a_later_unit_bin
     assert later.instructions[0].references[0].ref == "fake:doc:spec@r2"
 
 
-async def test_a_required_reference_that_wont_bind_holds_its_task_and_an_optional_one_runs():
+@pytest.mark.parametrize("required", [True, False], ids=["required", "optional"])
+async def test_a_reference_that_wont_bind_holds_its_task_if_required_and_is_omitted_if_not(
+    required,
+):
     """§3.6. Bugs caught: a required reference that couldn't be bound handed to the task as written,
-    so it runs without what it was required to read; an optional one holding the task."""
-    for required in (True, False):
-        store, records, resolver = await _world(required=required)
-        resolver.refuse = "no file at that commit"
-        cycle = _framing_cycle()
-        pinned = await _admit(store, records, resolver, cycle.cycle_id)
+    so it runs without what it was required to read; an optional one holding the task, or handed
+    as ``@current`` as if bound rather than omitted and disclosed (the second read)."""
+    store, records, resolver = await _world(required=required)
+    resolver.refuse = "no file at that commit"
+    cycle = _framing_cycle()
+    pinned = await _admit(store, records, resolver, cycle.cycle_id)
 
-        assert pinned.instructions[0].unbound == ((REF, "no file at that commit"),)
-        if required:
-            with pytest.raises(TaskInstructionsUnavailable, match=f"required reference {REF}"):
-                await _handed(store, records, cycle)
-        else:
-            handed, _ = await _handed(store, records, cycle)
-            assert handed == [{"ref": REF, "required": False}]
+    assert pinned.instructions[0].unbound == ((REF, "no file at that commit"),)
+    if required:
+        with pytest.raises(TaskInstructionsUnavailable, match=f"required reference {REF}"):
+            await _handed(store, records, cycle)
+    else:
+        handed, exposure = await _handed(store, records, cycle)
+        assert handed == []
+        assert exposure.project_instructions["omitted_references"] == [
+            {"record_id": "mrec_ref", "ref": REF, "why": "no file at that commit"}
+        ]
+
+
+class _Crashing(_Resolver):
+    async def bind(self, ref, ctx):
+        raise TimeoutError("the repository did not answer")
+
+
+async def test_a_resolver_that_fails_leaves_its_reference_unbound_not_the_unit_unread():
+    """The second read. Bug caught: a timeout in one family's resolver read as the records being
+    unreadable, holding every task of the unit for good, its lessons and other instructions too."""
+    store, records = InMemoryCrossCycleMemoryStore(), InMemoryMemoryRecords()
+    await records.create(_instruction("mrec_ref", DESIGN, references=(Reference(REF, False),)))
+    await records.create(_instruction("mrec_plain", DESIGN, text="Keep the join idempotent."))
+
+    pinned = await pin_unit(
+        store, unit_kind=UnitKind.CYCLE, unit_id="cyc_x", project_id="group_run", pinned_at=T0,
+        disabled=False, records=records, resolvers={"fake": _Crashing()},
+    )  # fmt: skip
+
+    assert pinned.instructions_unread is None
+    assert [p.record_id for p in pinned.instructions] == ["mrec_ref", "mrec_plain"]
+    assert pinned.instructions[0].unbound == ((REF, "the fake resolver failed: TimeoutError"),)
+
+
+async def test_a_bound_reference_survives_the_stored_snapshot():
+    """Bug caught: the digest or the unbound list dropped when a snapshot is read back, so a
+    restart hands what admission didn't bind, or names no revision."""
+    from squadops.memory.lessons import Snapshot
+
+    store, records, resolver = await _world()
+    await records.create(
+        _instruction("mrec_opt", DESIGN, references=(Reference("other:doc:x@current", False),))
+    )
+    pinned = await _admit(store, records, resolver, "cyc_rt")
+
+    again = Snapshot.from_dict(pinned.to_dict())
+
+    assert again.instructions == pinned.instructions
+    assert again.instructions[0].references[0].digest == "sha256:r1"
+    assert again.instructions[1].unbound == (
+        ("other:doc:x@current", "no resolver binds the other family"),
+    )
 
 
 class _Sourced:
@@ -154,13 +201,3 @@ async def test_the_resolver_is_given_the_commit_the_units_source_pins():
     assert [(c.unit_kind, c.source_commit) for c in resolver.seen] == [
         ("cycle", commit), ("campaign", None),
     ]  # fmt: skip
-
-
-async def test_a_pin_with_no_resolver_for_the_family_keeps_the_reference_unbound():
-    store, records, resolver = await _world()
-    pinned = await pin_unit(
-        store, unit_kind=UnitKind.CYCLE, unit_id=dataclasses.replace(_framing_cycle()).cycle_id,
-        project_id="group_run", pinned_at=T0, disabled=False, records=records, resolvers={},
-    )  # fmt: skip
-
-    assert pinned.instructions[0].held_by == [(REF, "no resolver binds the fake family")]
