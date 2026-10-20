@@ -29,7 +29,11 @@ from squadops.tasks.task_types import TaskType
 if TYPE_CHECKING:
     from squadops.capabilities.handlers.context import ExecutionContext
 
-from squadops.capabilities.handlers.cycle.base import SelfEvalFollowup, _CycleTaskHandler
+from squadops.capabilities.handlers.cycle.base import (
+    SelfEvalFollowup,
+    _CycleTaskHandler,
+    build_context_errors,
+)
 from squadops.capabilities.handlers.cycle.validation import (
     ValidationResult,
     _classify_file,
@@ -68,9 +72,7 @@ class DevelopmentDevelopHandler(_CycleTaskHandler):
 
     def validate_inputs(self, inputs: dict[str, Any], contract=None) -> list[str]:
         errors = super().validate_inputs(inputs, contract)
-        # Build handlers require artifact_contents or artifact_vault for plan data
-        if "artifact_contents" not in inputs and "artifact_vault" not in inputs:
-            errors.append("'artifact_contents' or 'artifact_vault' is required for build tasks")
+        errors.extend(build_context_errors(inputs, "build tasks"))
         return errors
 
     async def _validate_output(

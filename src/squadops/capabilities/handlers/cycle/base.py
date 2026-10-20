@@ -175,6 +175,18 @@ def failing_check_lines(checks: Any) -> list[str]:
     return lines
 
 
+def build_context_errors(inputs: dict[str, Any], task_kind: str) -> list[str]:
+    """A build task needs something to build on: the upstream documents the executor resolved
+    (D3), the vault to read them from, or (SIP-0112 E.4.3) a source-backed run's bounded view of
+    the product's repository. A source-backed run from an operator's plan has no framing
+    documents, so the view is the whole of its context."""
+    if any(key in inputs for key in ("artifact_contents", "artifact_vault", "source_repository")):
+        return []
+    return [
+        f"'artifact_contents', 'artifact_vault' or 'source_repository' is required for {task_kind}"
+    ]
+
+
 class SelfEvalFollowup:
     """What a self-evaluation follow-up emission means to the handler that asked for it (#1444).
 

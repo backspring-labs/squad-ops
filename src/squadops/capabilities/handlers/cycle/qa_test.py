@@ -70,7 +70,11 @@ from squadops.capabilities.anchored_edits import (
 )
 from squadops.capabilities.context_assembly import RETAKE_CURRENT_FILES_KEY, scaffold_shell_paths
 from squadops.capabilities.delivered_lint import LINT_READING_VERSION, lint_delivered
-from squadops.capabilities.handlers.cycle.base import SelfEvalFollowup, _CycleTaskHandler
+from squadops.capabilities.handlers.cycle.base import (
+    SelfEvalFollowup,
+    _CycleTaskHandler,
+    build_context_errors,
+)
 from squadops.capabilities.handlers.cycle.fill_mode_brief import (
     render_fill_mode_section,
     render_self_eval_fill_section,
@@ -591,8 +595,7 @@ class QATestHandler(_CycleTaskHandler):
 
     def validate_inputs(self, inputs: dict[str, Any], contract=None) -> list[str]:
         errors = super().validate_inputs(inputs, contract)
-        if "artifact_contents" not in inputs and "artifact_vault" not in inputs:
-            errors.append("'artifact_contents' or 'artifact_vault' is required for build tasks")
+        errors.extend(build_context_errors(inputs, "build tasks"))
         return errors
 
     async def _validate_output(

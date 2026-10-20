@@ -17,6 +17,8 @@ Bugs caught:
   touch (README.md, the binary asset);
 - the developer never shown the file its task changes, or shown the checkout's copy after the
   squad already changed it;
+- a task from an operator's plan, with no framing documents, refused before any model call for
+  want of them (cyc_50354cfc8dbb, live);
 - the delivered tree losing every file the squad didn't touch.
 """
 
@@ -35,6 +37,8 @@ import pytest
 from adapters.noop.ports import NoOpFailurePatternRecall
 from adapters.tools.git_source import GitSourceRepository
 from squadops.campaigns.evaluator_trees import FileTree
+from squadops.capabilities.handlers.cycle.develop import DevelopmentDevelopHandler
+from squadops.capabilities.handlers.cycle.qa_test import QATestHandler
 from squadops.cycles.delivered_tree import StoredArtifact, delivered_files
 from squadops.cycles.models import ArtifactRef, Cycle, Project, Run, TaskFlowPolicy
 from squadops.cycles.run_ledger import RunLedger
@@ -288,6 +292,30 @@ async def test_the_developer_sees_the_files_its_task_names_as_they_are_now(world
         if vault.stored[i][0].artifact_type in ("source", "test", "config")
     }
     assert set(delivered) == workspace and "README.md" not in delivered
+
+
+async def test_a_task_from_an_operators_plan_is_not_refused_for_want_of_framing(world):
+    """A source-backed run from an operator's plan has no framing documents, so dispatch resolves
+    no ``artifact_contents``. The handlers refused such a task before any model call, then twice
+    more through correction (cyc_50354cfc8dbb). Its context is the repository view."""
+    _, vault, executor, cycle, run = world
+    seeded = await _seed(executor, cycle, run)
+    stored = [(i, vault.stored[i][0]) for i in seeded]
+
+    envelope = await executor._enrich_envelope(
+        _envelope(cycle, ["tally/__main__.py"]), {}, list(seeded), stored
+    )
+    # the plan's task carries the PRD; enrichment adds the view and nothing from framing
+    inputs = {**envelope.inputs, "prd": "add --json"}
+
+    assert "artifact_contents" not in inputs and "source_repository" in inputs
+    assert DevelopmentDevelopHandler().validate_inputs(inputs) == []
+    assert QATestHandler().validate_inputs(inputs) == []
+    # without the view there is nothing to build on, and the refusal says what would do
+    bare = {k: v for k, v in inputs.items() if k != "source_repository"}
+    assert DevelopmentDevelopHandler().validate_inputs(bare) == [
+        "'artifact_contents', 'artifact_vault' or 'source_repository' is required for build tasks"
+    ]
 
 
 async def test_a_run_with_no_pinned_source_is_unchanged(world):
