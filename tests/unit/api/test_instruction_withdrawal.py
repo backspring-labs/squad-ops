@@ -100,7 +100,7 @@ async def test_a_withdrawal_names_the_units_that_pinned_it_and_later_units_pin_w
     assert [u["unit_id"] for u in body["units_holding_it"]] == ["cmp_live"]
     assert [u["unit_id"] for u in body["finished_units_holding_it"]] == ["cyc_done"]
     assert "halt or restart" in body["next"] and "Appendix A §3.8" in body["next"]
-    assert "a new run of the same unit reads the same snapshot" in body["next"]
+    assert "a new cycle of a campaign, reads the same snapshot" in body["next"]
     assert after.instructions == ()
 
 
@@ -125,6 +125,23 @@ async def test_a_withdrawal_whose_snapshots_cant_be_read_says_the_holders_are_un
     assert (body["units_holding_it"], body["finished_units_holding_it"]) == (None, None)
     assert "unknown" in body["next"] and "pool is gone" not in body["next"]
     assert (await world.records.get(record_id)).status == "withdrawn"
+
+
+async def test_a_notes_withdrawal_reads_no_snapshot_and_names_no_unit():
+    """Bug caught: a note's withdrawal answering "no unit holds it", or "holders unknown" when
+    the snapshot store is down, though no kind but a project instruction is ever pinned."""
+    world = _World()
+    world.app.state.memory_store = _Unreadable()
+    note = world.client.post(
+        RECORDS, json={"kind": "note", "scope": "project", "project_id": "group_run", "body": "x"}
+    ).json()["record_id"]
+
+    body = world.withdraw(note).json()
+
+    assert body["status"] == "withdrawn"
+    assert (body["units_holding_it"], body["finished_units_holding_it"], body["next"]) == (
+        [], [], None,
+    )  # fmt: skip
 
 
 async def test_an_exposure_that_used_a_withdrawn_instruction_is_marked_and_kept_as_recorded():

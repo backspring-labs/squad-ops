@@ -76,15 +76,30 @@ class WithdrawnUse:
     why: str
 
 
+def _incomplete(exposure: Exposure) -> list[str]:
+    """The binding sections that couldn't be completed. Any one holds the task undispatched (§3.6:
+    the bundle is held), so nothing in its sections reached the model."""
+    return [
+        name
+        for name in INSTRUCTION_SECTIONS
+        if (getattr(exposure, name, None) or {}).get("disposition") == Disposition.INCOMPLETE.value
+    ]
+
+
 def handed_instructions(exposure: Exposure) -> bool:
-    """Whether a binding section handed ``exposure`` any instruction."""
-    return any((getattr(exposure, s, None) or {}).get("supplied") for s in INSTRUCTION_SECTIONS)
+    """Whether a binding section handed ``exposure`` an instruction that reached the model: a held
+    task was handed none."""
+    return not _incomplete(exposure) and any(
+        (getattr(exposure, s, None) or {}).get("supplied") for s in INSTRUCTION_SECTIONS
+    )
 
 
 def withdrawn_uses(exposure: Exposure, records: Mapping[str, MemoryRecord]) -> list[WithdrawnUse]:
     """The instructions ``exposure`` was handed whose records are withdrawn now, in section order.
     The exposure keeps what it used, and the mark is read beside it: correcting or withdrawing a
-    record never rewrites an exposure (§A.3.8, "what a person sees")."""
+    record never rewrites an exposure (§A.3.8, "what a person sees"). A held task used none."""
+    if _incomplete(exposure):
+        return []
     marked = []
     for section in INSTRUCTION_SECTIONS:
         held = getattr(exposure, section, None) or {}
@@ -117,11 +132,7 @@ def task_uses(record_id: str, exposures: Iterable[Exposure]) -> list[TaskUse]:
     uses = []
     for exposure in exposures:
         sections = {name: getattr(exposure, name, None) for name in INSTRUCTION_SECTIONS}
-        incomplete = [
-            name
-            for name, held in sections.items()
-            if held and held.get("disposition") == Disposition.INCOMPLETE.value
-        ]
+        incomplete = _incomplete(exposure)
         for section, held in sections.items():
             if not held:
                 continue

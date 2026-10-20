@@ -48,7 +48,7 @@ from squadops.api.memory_schemas import (
 )
 from squadops.api.middleware.auth import require_scopes
 from squadops.api.routes.memory.applicability import refuse_unmatched
-from squadops.api.routes.memory.held_units import next_step, running_and_finished, unit_of
+from squadops.api.routes.memory.held_units import next_step, running_and_finished, unit_row
 from squadops.api.runtime.deps import (
     get_campaign_registry,
     get_cycle_registry,
@@ -507,7 +507,7 @@ async def _units_pinning(request: Request, record_id: str) -> dict[str, Any]:
             ),
         }
     return {
-        "units_holding_it": [unit_of(s) for s in live],
-        "finished_units_holding_it": [unit_of(s) for s in finished],
+        "units_holding_it": [unit_row(s) for s in live],
+        "finished_units_holding_it": [unit_row(s) for s in finished],
         "next": next_step(live, finished, rule=_WITHDRAWAL_RULE),
     }

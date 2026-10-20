@@ -44,7 +44,7 @@ from squadops.api.memory_schemas import (
     SuppliedTogetherResponse,
 )
 from squadops.api.middleware.auth import require_scopes
-from squadops.api.routes.memory.held_units import next_step, running_and_finished, unit_of
+from squadops.api.routes.memory.held_units import next_step, running_and_finished, unit_row
 from squadops.api.runtime.deps import get_memory_records, get_memory_store
 from squadops.auth.models import Identity, Scope
 from squadops.memory.annotation import (
@@ -281,8 +281,8 @@ async def revoke_lesson(
     return RevocationResponse.model_validate(
         {
             "approval": revoked.to_dict(),
-            "units_holding_it": [unit_of(s) for s in live],
-            "finished_units_holding_it": [unit_of(s) for s in finished],
+            "units_holding_it": [unit_row(s) for s in live],
+            "finished_units_holding_it": [unit_row(s) for s in finished],
             "next": next_step(live, finished, rule="SIP-0110 §0.7"),
         }
     )

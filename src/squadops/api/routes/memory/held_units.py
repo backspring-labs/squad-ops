@@ -50,7 +50,7 @@ async def running_and_finished(
     return live, finished
 
 
-def unit_of(s: Snapshot) -> dict[str, Any]:
+def unit_row(s: Snapshot) -> dict[str, Any]:
     return {
         "unit_kind": s.unit_kind.value,
         "unit_id": s.unit_id,
@@ -65,8 +65,9 @@ def next_step(live: list[Snapshot], finished: list[Snapshot], *, rule: str) -> s
         return (
             "units admitted from now pin without it. Each unit named here keeps it while it runs: "
             "halt or restart its work under a new snapshot, and set its measurements apart "
-            f"({rule}). A unit pins once, so a new run of the same unit reads the same snapshot: "
-            "the restart is a new cycle or campaign."
+            f"({rule}). A unit pins once: a new run of a standalone cycle, or a new cycle of a "
+            "campaign, reads the same snapshot, so the restart is a new standalone cycle or a new "
+            "campaign."
         )
     if finished:
         return (
