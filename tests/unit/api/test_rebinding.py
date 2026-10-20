@@ -5,9 +5,8 @@ over the in-memory stores and registries. Each unit is pinned by the caller admi
 
 What bugs would these catch? A re-binding stored but never read, so the next dispatch is handed the
 revision it replaced; one reaching a unit it wasn't made on; a re-binding by someone holding only
-one of its two permissions; a running run's later tasks carried across a changed binding; a run
-handed the replaced revision resumed from its checkpoint; a campaign's re-binding the intervention
-ledger never sees.
+one of its two permissions; a unit re-bound in place though its later work would build on work done
+under the replaced revision; a campaign's re-binding the intervention ledger never sees.
 """
 
 from __future__ import annotations
@@ -26,13 +25,10 @@ from adapters.cycles.memory_cycle_registry import MemoryCycleRegistry
 from adapters.memory.cross_cycle import InMemoryCrossCycleMemoryStore
 from adapters.memory.recall import SnapshotRecall
 from adapters.memory.records import InMemoryMemoryRecords
-from squadops.api.error_handlers import register_domain_error_handlers
-from squadops.api.routes.cycles import runs_router
 from squadops.api.routes.memory import memory_records_router, memory_snapshots_router
 from squadops.auth.models import Identity, IdentityType, Role, Scope
 from squadops.campaigns.models import ControlOperation
 from squadops.capabilities.lesson_supply import supply_lessons, unit_of
-from squadops.cycles.checkpoint import RunCheckpoint
 from squadops.cycles.models import Run, RunStatus
 from squadops.memory.pinning import pin_campaign, pin_standalone_cycle
 from squadops.memory.project_instructions import PROJECT_INSTRUCTIONS_INPUT
@@ -68,8 +64,6 @@ class _World:
         app.add_middleware(InjectIdentity)
         app.include_router(memory_records_router)
         app.include_router(memory_snapshots_router)
-        app.include_router(runs_router)
-        register_domain_error_handlers(app)
         app.state.memory_store = self.store
         app.state.memory_records = self.records
         app.state.cycle_registry = self.cycles
@@ -138,7 +132,7 @@ async def test_a_rebinding_reaches_the_units_next_dispatch_and_no_other_unit():
     assert (r["replaced"]["revision"], r["replacement"]["revision"], r["why"]) == (
         1, 2, "the old text was ambiguous",
     )  # fmt: skip
-    assert "measurements are set apart" in response.json()["next"]
+    assert "Set its measurements apart from the first task this affects" in response.json()["next"]
 
 
 def _scoped(*scopes: str) -> Identity:
@@ -172,33 +166,29 @@ async def test_a_rebinding_needs_the_records_permission_and_the_units_authority(
     assert len(stored.rebindings) == (1 if status == 201 else 0)
 
 
-async def test_a_running_run_handed_the_revision_holds_the_rebinding_until_it_ends():
-    """§3.7's restart path. Bugs caught: a running run re-bound mid-way, its later tasks building on
-    work done under the replaced revision; once it ended, the run resumed from its checkpoint."""
+@pytest.mark.parametrize("status", [RunStatus.RUNNING, RunStatus.FAILED])
+async def test_a_unit_whose_dispatch_was_handed_the_revision_is_never_rebound_in_place(status):
+    """§3.7's forward path is for a unit none of whose dispatches had the replaced revision. Bugs
+    caught: a running run re-bound mid-way, its later tasks building on work done under the old
+    revision; an ended run's output (a framing plan, an accepted tree) carried into work under the
+    new one, the second reader's finding on the first draft."""
     world = _World()
     record_id = world.instruct()
     cycle = await world.admit_cycle()
     await world.run(cycle, "run_recall0001", RunStatus.RUNNING)
     await world.dispatch(cycle)
+    if status is RunStatus.FAILED:
+        await world.cycles.update_run_status("run_recall0001", RunStatus.FAILED)
     world.revise(record_id, "revised")
 
     refused = world.rebind(record_id)
-    await world.cycles.update_run_status("run_recall0001", RunStatus.FAILED)
-    await world.cycles.save_checkpoint(
-        RunCheckpoint("run_recall0001", 1, ("t_design",), {}, (), (), NOW)
-    )
-    applied = world.rebind(record_id)
-    resumed = world.client.post(
-        "/api/v1/projects/group_run/cycles/cyc_recall/runs/run_recall0001/resume"
-    )
 
     assert refused.status_code == 409
-    assert refused.json()["detail"]["error"]["code"] == "RESTART_REQUIRED"
-    assert "run_recall0001" in refused.json()["detail"]["error"]["message"]
-    assert applied.status_code == 201, applied.text
-    assert applied.json()["rebinding"]["received_by"] == ["run_recall0001"]
-    assert resumed.status_code == 409
-    assert "re-bound off" in resumed.text
+    error = refused.json()["detail"]["error"]
+    assert error["code"] == "RESTART_REQUIRED"
+    assert "run_recall0001" in error["message"] and "new standalone cycle" in error["message"]
+    stored = await world.store.get_snapshot(*unit_of(cycle))
+    assert stored.rebindings == () and [p.revision for p in stored.instructions] == [1]
 
 
 async def test_a_withdrawn_instruction_is_rebound_off_and_no_longer_handed():

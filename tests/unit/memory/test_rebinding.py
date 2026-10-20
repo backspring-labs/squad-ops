@@ -16,7 +16,7 @@ import pytest
 from adapters.memory.cross_cycle import InMemoryCrossCycleMemoryStore
 from adapters.memory.records import InMemoryMemoryRecords
 from squadops.memory.lessons import Snapshot, UnitKind
-from squadops.memory.rebinding import RebindRefused, rebinding_naming, rebound, runs_handed
+from squadops.memory.rebinding import RebindRefused, rebound, runs_handed
 from squadops.memory.records import revised, withdrawn
 from squadops.ports.memory.cross_cycle import SnapshotMoved
 from tests.unit.memory.test_indicators import _exposure
@@ -103,10 +103,5 @@ async def test_only_the_units_own_dispatches_of_the_bound_revision_decide_the_pa
     stale = replace(mine, run_id="run_stale", project_instructions=other_revision)
 
     runs = runs_handed(snapshot, "mrec_a", [mine, theirs, stale, mine])
-    after = rebound(
-        snapshot, _revision_two(record), by="ada", at=T0, why="x", received_by=["run_mine"]
-    )
 
     assert runs == [(mine.cycle_id, "run_mine")]
-    assert rebinding_naming(after, "run_mine") is after.rebindings[0]
-    assert rebinding_naming(after, "run_theirs") is None

@@ -5998,15 +5998,17 @@ def snapshot_rebindings(cycle_id: str) -> list[dict]:
 def instruction_set_change(cfg: SetConfig, pinned: list[dict] | None) -> dict | None:
     """§3.7: a counted roll whose pinned instruction set differs from the set's previous counted
     roll's has changed a listed input (SIP-0110 §0.12), so it is flagged and the yardstick never
-    moves unannounced. The previous roll is the latest ``roll-*`` record that read its set.
-    ``None`` when this one agrees with it, or no counted roll came before."""
+    moves unannounced. The previous roll is the latest ``roll-*`` record that read its set and
+    wasn't re-bound: a re-bound roll isn't counted, and its set is the one it ended on, so taking
+    it as the baseline would carry the re-binding into the yardstick unannounced (§5v). ``None``
+    when this one agrees with it, or no counted roll came before."""
     earlier = []
     for path in cfg.records_path.glob("roll-*.json"):
         try:
             rec = json.loads(path.read_text())
         except (OSError, ValueError):
             continue
-        if "pinned_instructions" in rec:
+        if "pinned_instructions" in rec and not rec.get("rebindings"):
             earlier.append(
                 (str(rec.get("launched_at") or ""), path.name, rec["pinned_instructions"])
             )

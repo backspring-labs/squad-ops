@@ -120,7 +120,7 @@ class InMemoryCrossCycleMemoryStore(CrossCycleMemoryStorePort):
     async def rebind_snapshot(self, snapshot: Snapshot, *, after: int) -> None:
         key = (snapshot.unit_kind.value, snapshot.unit_id)
         held = self._snapshots[key]
-        if len(held.rebindings) != after:
+        if held.snapshot_id != snapshot.snapshot_id or len(held.rebindings) != after:
             raise SnapshotMoved(f"{key[0]} {key[1]} was re-bound since it was read")
         self._snapshots[key] = snapshot
 

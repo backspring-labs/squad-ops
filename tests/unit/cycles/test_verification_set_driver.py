@@ -7445,6 +7445,29 @@ class TestACountedRollRecordsTheInstructionsItPinned:
         ]  # fmt: skip
         assert captured["pinned_instructions"] == [{"record_id": "mrec_a", "revision": 2}]
 
+    def test_a_rebound_roll_is_never_the_baseline_a_later_roll_is_compared_with(
+        self, driver, tmp_path, monkeypatch
+    ):
+        """The second reader's finding: roll 2 pinned r1 and was re-bound to r2, so its record's
+        set reads r2; roll 3 pins r2 and, compared with roll 2, reads as unchanged, though the
+        counted yardstick moved from r1. Bug caught: the re-bound roll taken as the baseline."""
+        import json
+
+        cfg = self._cfg(driver, tmp_path, monkeypatch)
+        r1, r2 = [{"record_id": "mrec_a", "revision": 1}], [{"record_id": "mrec_a", "revision": 2}]
+        (cfg.records_path / "roll-01-a.json").write_text(
+            json.dumps({"launched_at": "2026-10-18", "pinned_instructions": r1})
+        )
+        (cfg.records_path / "roll-02-b.json").write_text(
+            json.dumps(
+                {"launched_at": "2026-10-19", "pinned_instructions": r2, "rebindings": [{"x": 1}]}
+            )
+        )
+
+        change = driver.instruction_set_change(cfg, r2)
+
+        assert change == {"previous_record": "roll-01-a.json", "previous": r1, "now": r2}
+
     def test_the_headline_names_each_rebinding_and_an_unbound_roll_says_nothing(
         self, driver, tmp_path
     ):

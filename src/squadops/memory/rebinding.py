@@ -5,10 +5,11 @@ pinned binding causes (§3.6). A new revision of a project instruction reaches u
 and a running unit keeps the revision it pinned until it is re-bound: the record's current revision
 replaces it, or nothing does when the record is withdrawn.
 
-It goes **forward** when no run still running was handed the replaced revision: the unit's next
-dispatch binds the new one. A run that ended after being handed it is history, kept and never
-reused. When a running run was handed it, the run is halted first and the work restarts from a new
-run (§3.8's path), so nothing built under the old binding carries into the new one.
+It goes **forward** only when no dispatch of the unit was handed the replaced revision: the unit's
+next dispatch binds the new one, and nothing it builds on was made under the old. When one was, a
+later task would build on that work, which §3.7 sends down the restart path: halt, re-bind, restart
+from the earliest affected task, and keep the history without reusing it. That path isn't built, so
+such a unit is refused, and its work restarts as a new unit (§5u).
 
 Pure: the routes read the stores and the registries, and these rules decide.
 """
@@ -42,11 +43,9 @@ def rebound(
     by: str,
     at: datetime,
     why: str,
-    received_by: Iterable[str] = (),
 ) -> Snapshot:
     """``snapshot`` with ``record``'s bound revision replaced by its current one, or removed when the
-    record is withdrawn, and the re-binding recorded. ``received_by`` names the ended runs that were
-    handed the replaced revision."""
+    record is withdrawn, and the re-binding recorded."""
     unit = f"{snapshot.unit_kind.value} {snapshot.unit_id}"
     if record.kind != RecordKind.INSTRUCTION or record.scope != RecordScope.PROJECT:
         raise RebindRefused(f"{record.record_id} is not a project instruction: no unit binds it")
@@ -80,7 +79,6 @@ def rebound(
         by=by,
         at=at,
         why=why,
-        received_by=tuple(received_by),
     )
     return replace(
         snapshot, instructions=instructions, rebindings=(*snapshot.rebindings, rebinding)
@@ -91,8 +89,9 @@ def runs_handed(
     snapshot: Snapshot, record_id: str, exposures: Iterable[Exposure]
 ) -> list[tuple[str, str]]:
     """Each ``(cycle_id, run_id)`` of the unit whose dispatch was handed the revision of
-    ``record_id`` the unit binds now, in the order first seen. These decide the path: a run still
-    running is halted before the unit is re-bound, and an ended one is history."""
+    ``record_id`` the unit binds now, in the order first seen. Any one sends the re-binding down the
+    restart path: the unit's later work would build on what it made. Read from the exposures, so a
+    dispatch whose exposure wasn't recorded isn't seen (§5v)."""
     held = next((p for p in snapshot.instructions if p.record_id == record_id), None)
     if held is None:
         return []
@@ -110,12 +109,3 @@ def runs_handed(
         ):
             runs.append((e.cycle_id, e.run_id))
     return runs
-
-
-def rebinding_naming(snapshot: Snapshot | None, run_id: str) -> Rebinding | None:
-    """The re-binding that names ``run_id`` among the runs handed the revision it replaced, or
-    ``None``. Such a run is history: resuming it would carry work done under the replaced revision
-    into the re-bound unit, which the restart path never reuses (§3.7, §3.8)."""
-    if snapshot is None:
-        return None
-    return next((r for r in snapshot.rebindings if run_id in r.received_by), None)

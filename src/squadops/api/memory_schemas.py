@@ -433,7 +433,7 @@ class PinnedInstructionResponse(BaseModel):
 
 class RebindingResponse(BaseModel):
     """One re-binding: the revision replaced, its replacement (``None``: withdrawn), who, when and
-    why, and the ended runs that had been handed the replaced revision."""
+    why."""
 
     record_id: str
     replaced: PinnedInstructionResponse
@@ -441,7 +441,6 @@ class RebindingResponse(BaseModel):
     by: str
     at: str
     why: str
-    received_by: list[str]
 
 
 class SnapshotBindingResponse(BaseModel):

@@ -2129,14 +2129,16 @@ moved.
 
 ## 5v. Re-binding a running unit, as built (2026-10-20, #2179 stage 2; the supervisor, under the owner's grant of 2026-10-19)
 
-**What shipped:** §A.3.7's re-binding of a project instruction's pinned revision, on its forward path, with the
-restart path's guard.
+**What shipped:** §A.3.7's re-binding of a project instruction's pinned revision, on its forward path.
 - **The route.** `POST /api/v1/projects/{p}/snapshots/{cycle|campaign}/{id}/rebindings` (`record_id`, `why`). The
   CLI is `squadops snapshots rebind`, and `GET …/snapshots/{kind}/{id}` (`squadops snapshots show`) reads what the unit
   binds now.
 - **What it replaces.** The unit's bound revision of the record gives way to the record's current revision. When the
   record is withdrawn, the revision is removed.
-- **What it refuses:**
+- **Forward only.** A re-binding goes forward when no dispatch of the unit was handed the replaced revision, so nothing
+  the unit builds on was made under it. When one was, running or ended, the route refuses (`RESTART_REQUIRED`) and
+  names the runs.
+- **What else it refuses:**
   - an instruction the unit didn't pin (one confirmed after admission reaches the units admitted after it);
   - the revision the unit already binds;
   - a campaign's cycle, which binds its campaign's snapshot, so the campaign is named instead;
@@ -2145,54 +2147,67 @@ restart path's guard.
 - **Who.** Both `memory:instruct` and the unit's authority are needed: `cycles:write` for a standalone cycle,
   `campaigns:supervise` for a campaign. Either alone is refused.
 - **The snapshot keeps the history.** `instructions` is what the unit binds now, and `rebindings` lists each
-  re-binding: the revision replaced, its replacement, who, when, why, and the runs that had been handed the replaced
-  revision. Recall, the withdrawal's holder query (§5u) and the driver's pinned set (§5t) read the current binding with
-  no change of their own. The store's write is a compare-and-swap on the number of re-bindings, so two re-bindings read
-  from one snapshot can't both land.
-- **Forward, and the restart path's guard.** If a run still running was handed the replaced revision, the route
-  refuses (`RESTART_REQUIRED`) and names the run, which is halted first. Once it has ended, the re-binding goes forward
-  and names it among the runs handed the old revision. Resuming such a run from its checkpoint is refused: the
-  checkpoint carries work done under the replaced revision, and §3.8's restart keeps history without reusing it. A new
-  run starts under the new binding.
-- **Recorded, and measured apart.**
+  re-binding: the revision replaced, its replacement, who, when and why. Recall, the withdrawal's holder query (§5u) and
+  the driver's pinned set (§5t) read the current binding with no change of their own. The store's write is a
+  compare-and-swap on the snapshot's id and its number of re-bindings, so two re-bindings read from one snapshot can't
+  both land.
+- **Recorded:**
   - A campaign's re-binding is a control-log row (`rebind`, record-only; migration `1790`). The intervention ledger
     reads it as an intervention (SIP-0113 §4.3), so a window reports it.
-  - The answer says the unit's measurements are set apart from the re-binding's time.
-  - The verification-set driver records a cycle's re-bindings. A roll re-bound while it ran is headlined as not
-    counted, since a counted roll refuses every intervention.
+  - When the row can't be written, the answer says so and names the ledger's declared entry
+    (`POST /api/v1/intervention-ledgers/{campaign_id}/declared`), the path for an intervention no row records.
+  - The verification-set driver records a cycle's re-bindings, and headlines a roll re-bound while it ran as not
+    counted. A re-bound roll is never the baseline a later roll's instruction set is compared with.
 
 **Where it narrows §A.3.7, and why:**
+- **The restart path isn't built, so it is refused.** §A.3.7's restart is: halt at the next task boundary, re-bind,
+  restart from the earliest affected task, and keep the history without reusing it. A first draft let a unit whose
+  runs had ended go forward, and the second reader found that its later work would build on theirs. One example is an
+  implementation run fed a framing plan designed under the old revision. Until the restart path exists, such a unit's
+  work restarts as a new standalone cycle or campaign (§5u), which binds the record's current revision.
 - **A project instruction's revision only.** Re-binding a reference's bound revision waits for references to be bound
   (T16, after #2484). Re-binding the unit's total budget, which is the owner's, waits for a budget the snapshot holds.
-- **A standalone cycle's re-binding is recorded on its snapshot, not on a run.**
-  - The cycle has no record of interventions yet. That record is #2178's stage 2 (`squadops instructions add`).
-  - Until then, the snapshot names the runs handed the old revision, and each later exposure names the revision it was
-    handed.
-- **The halt is the operator's.** As with §5u, the route names the run to halt and refuses until it has ended, rather
-  than stopping it at a task boundary.
 - **A held task's release is a new run.** A hold still fails the run's provisioning (§5n). So the release §A.3.7
-  describes is: re-bind the unit, then start a new run, which binds the new revision from its first task.
+  describes is: re-bind the unit, then start a new run. That goes forward when the held revision reached no earlier
+  dispatch, which is the case when it applies only to the task it held.
+- **Measurement.** For a campaign, the control-log row is what sets the measurement apart. For a standalone cycle,
+  only the driver reads `rebindings`, so the answer tells the operator to set the cycle's measurements apart from the
+  first task the re-binding affects.
+- **What the check can't see:**
+  - **A dispatch whose exposure wasn't recorded.** `disclose` logs a failed write and the task still dispatches.
+  - **A dispatch that lands between the route's read of the exposures and its write.** This is the same kind of window
+    as #2545's, and is added to it.
+
+  Both were named by the second reader, by reading.
 - **The driver can't refuse a re-binding made through the API.** It can't know in advance that a cycle is a counted
-  roll, so it records the re-binding and headlines the roll as not counted.
+  roll, so it records the re-binding, headlines the roll as not counted, and leaves it out of the baseline.
 
 **Evidence:**
 - **The route tests** (`tests/unit/api/test_rebinding.py`) are wired from `pin_standalone_cycle`, `pin_campaign` and
   `supply_lessons`:
   - the next dispatch is handed the new revision and another unit keeps the old;
   - each of the two permissions is required;
-  - a running run holds the re-binding, and once it has failed the re-binding goes forward and resuming it is refused;
+  - a unit whose running or failed run was handed the revision is refused and keeps it;
   - a withdrawn record is re-bound off;
   - a campaign's row is read as an intervention;
   - five refusals store nothing.
 - **The domain tests** (`tests/unit/memory/test_rebinding.py`) cover the order kept on replacement, the round-trip and
   compare-and-swap, and that only the unit's own dispatches of the bound revision decide the path.
 - **The Postgres test** checks the compare-and-swap against the table.
-- **The driver test** enters at `_run_cycle`.
-- **Mutants, each caught (eleven):**
+- **The driver tests** enter at `_run_cycle`, and check the baseline that skips a re-bound roll.
+- **The second reader** (a fresh agent) read the first draft and found:
+  - the restart path's reuse;
+  - the unseen dispatches;
+  - the baseline;
+  - the missing ledger path;
+  - the measurement claim;
+  - the in-memory store not checking the snapshot's id.
+
+  Each is fixed or named above.
+- **Mutants of the first draft, each caught (ten):**
   - the store's write dropped;
   - the unit's authority unchecked;
-  - a running run ignored;
-  - the resume guard off;
+  - a handed run ignored;
   - no control-log row;
   - an ended unit re-bound;
   - the ledger ignoring `rebind`;

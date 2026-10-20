@@ -461,9 +461,8 @@ class PinnedInstruction:
 class Rebinding:
     """One re-binding of a running unit (Appendix A §3.7; #2179): the project instruction's revision
     the unit bound, replaced by the record's current revision, or by nothing when the record is
-    withdrawn. An intervention, recorded with who, when and why, and the runs that had received the
-    replaced revision: their history is kept and never reused, and their measurements are set
-    apart. The snapshot keeps every re-binding, so what the unit bound at admission is still read."""
+    withdrawn. An intervention, recorded with who, when and why. The snapshot keeps every
+    re-binding, so what the unit bound at admission is still read."""
 
     record_id: str
     replaced: PinnedInstruction
@@ -471,7 +470,6 @@ class Rebinding:
     by: str
     at: datetime
     why: str
-    received_by: tuple[str, ...] = ()
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -481,7 +479,6 @@ class Rebinding:
             "by": self.by,
             "at": self.at.isoformat(),
             "why": self.why,
-            "received_by": list(self.received_by),
         }
 
     @classmethod
@@ -494,7 +491,6 @@ class Rebinding:
             by=str(data["by"]),
             at=datetime.fromisoformat(str(data["at"])),
             why=str(data["why"]),
-            received_by=tuple(str(r) for r in data.get("received_by") or ()),
         )
 
 

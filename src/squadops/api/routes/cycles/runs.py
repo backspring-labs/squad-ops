@@ -23,7 +23,6 @@ from squadops.api.runtime.deps import (
     get_cycle_event_bus,
     get_cycle_registry,
     get_flow_executor,
-    get_memory_store,
 )
 from squadops.auth.models import Identity, Scope
 from squadops.campaigns.gate import INCREMENT_RULING_GATE, ruling_transition
@@ -49,8 +48,6 @@ from squadops.cycles.models import (
     validate_workload_type,
 )
 from squadops.events.types import EventType
-from squadops.memory.lessons import UnitKind
-from squadops.memory.rebinding import rebinding_naming
 from squadops.ports.cycles.artifact_vault import ArtifactVaultPort
 
 logger = logging.getLogger(__name__)
@@ -419,11 +416,6 @@ async def resume_run(
     if cycle_status in (CycleStatus.COMPLETED, CycleStatus.CANCELLED):
         raise RunTerminalError(f"Cannot resume run — parent cycle is {cycle_status.value}")
 
-    # 4b. A run handed a revision its unit was since re-bound off is history: its checkpoint
-    #     carries work done under the replaced revision (SIP-0110 Appendix A §3.7; #2179).
-    if latest_cp is not None:
-        await _refuse_rebound_history(request, cycle, run_id)
-
     # 5. Transition to running
     updated = await registry.update_run_status(run_id, RunStatus.RUNNING)
 
@@ -459,35 +451,6 @@ async def resume_run(
     )
 
     return run_to_response(updated)
-
-
-async def _refuse_rebound_history(request: Request, cycle: Cycle, run_id: str) -> None:
-    """Refuse to resume a run whose unit was re-bound off a revision the run was handed. A
-    snapshot that can't be read refuses too, naming why: whether the run is history is unknown."""
-    store = get_memory_store(request)
-    if store is None:
-        return
-    kind, unit_id = (
-        (UnitKind.CAMPAIGN, cycle.campaign_id)
-        if cycle.campaign_id
-        else (UnitKind.CYCLE, cycle.cycle_id)
-    )
-    try:
-        snapshot = await store.get_snapshot(kind, unit_id)
-    except Exception as e:  # noqa: BLE001 — unknown is refused, never resumed
-        logger.warning("resume_snapshot_unread run=%s", run_id, exc_info=True)
-        raise RunTerminalError(
-            f"Cannot resume run — {kind.value} {unit_id}'s snapshot can't be read, so whether a "
-            "re-binding made this run history is unknown; resume it once it can be read"
-        ) from e
-    rebinding = rebinding_naming(snapshot, run_id)
-    if rebinding is not None:
-        raise RunTerminalError(
-            f"Cannot resume run — it was handed revision {rebinding.replaced.revision} of "
-            f"{rebinding.record_id}, which {kind.value} {unit_id} was re-bound off at "
-            f"{rebinding.at.isoformat()}. Its checkpoint carries work done under that revision: "
-            "start a new run (SIP-0110 Appendix A §3.7)"
-        )
 
 
 @router.get("/{run_id}/checkpoints", dependencies=[Depends(require_scopes(Scope.CYCLES_READ))])

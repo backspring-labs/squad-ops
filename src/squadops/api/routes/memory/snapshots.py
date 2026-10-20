@@ -7,10 +7,11 @@ re-binding (SIP-0110 Appendix A §3.7; #2179 stage 2).
   cycle, ``campaigns:supervise`` for a campaign): replace a bound project instruction's revision
   with the record's current one, or remove it when the record is withdrawn.
 
-A re-binding goes forward: the unit's next dispatch binds the new revision. A run still running
-that was handed the replaced revision is halted first, so the route refuses until it has ended. An
-ended one is history: it is named, never resumed, and its measurements are set apart. A campaign's
-re-binding is a row in its control log, which the intervention ledger reads (SIP-0113 §4.3).
+A re-binding goes forward: the unit's next dispatch binds the new revision. It is refused for a
+unit any of whose dispatches was handed the replaced revision, since its later work would build on
+work done under it: that is §3.7's restart path, which isn't built, so the work restarts as a new
+unit (§5u). A campaign's re-binding is a row in its control log, which the intervention ledger reads
+(SIP-0113 §4.3).
 """
 
 from __future__ import annotations
@@ -43,8 +44,7 @@ from squadops.campaigns.models import (
     CampaignTransition,
     ControlOperation,
 )
-from squadops.cycles.lifecycle import TERMINAL_STATES
-from squadops.cycles.models import CycleNotFoundError, CycleStatus, RunStatus
+from squadops.cycles.models import CycleNotFoundError, CycleStatus
 from squadops.memory.lessons import Snapshot, UnitKind
 from squadops.memory.rebinding import RebindRefused, rebound, runs_handed
 from squadops.memory.records import Rebinding
@@ -138,21 +138,6 @@ async def _ended(request: Request, kind: UnitKind, unit: Any) -> bool:
     return cycle_status_of(unit, await cycles.list_runs(unit.cycle_id)) in _ENDED_CYCLE
 
 
-async def _still_running(request: Request, runs: list[tuple[str, str]]) -> list[str]:
-    """The runs that haven't ended. A run that can't be read counts as running: a re-binding
-    would rather wait for one run too many than carry a run's work across a changed binding."""
-    cycles = get_cycle_registry(request)
-    running = []
-    for _, run_id in runs:
-        try:
-            ended = RunStatus((await cycles.get_run(run_id)).status) in TERMINAL_STATES
-        except Exception:  # noqa: BLE001 — unreadable counts as running
-            ended = False
-        if not ended:
-            running.append(run_id)
-    return running
-
-
 @router.post("/{unit_kind}/{unit_id}/rebindings", status_code=201)
 async def rebind_unit(
     request: Request,
@@ -185,22 +170,19 @@ async def rebind_unit(
         raise http_error(404, "NOT_FOUND", f"no record {body.record_id} in {project_id}")
     store = get_memory_store(request)
     handed = runs_handed(snapshot, body.record_id, await store.list_project_exposures(project_id))
-    running = await _still_running(request, handed)
-    if running:
-        one = len(running) == 1
+    if handed:
+        runs = ", ".join(sorted({run_id for _, run_id in handed}))
         raise http_error(
             409,
             "RESTART_REQUIRED",
-            f"{', '.join(running)} {'was' if one else 'were'} handed the revision being replaced "
-            f"and {'is' if one else 'are'} still running: halt {'it' if one else 'them'} first, "
-            "and the next run restarts under the new binding (SIP-0110 Appendix A §3.7, §3.8)",
+            f"{runs} dispatched with the revision being replaced, so the {kind.value}'s later work "
+            "would build on work done under it. Forward re-binding is for a unit none of whose "
+            "dispatches had it; restart the work as a new standalone cycle or campaign, which "
+            "binds the record's current revision (SIP-0110 Appendix A §3.7, §5u)",
         )
     now = datetime.now(UTC)
     try:
-        updated = rebound(
-            snapshot, record, by=identity.user_id, at=now, why=body.why,
-            received_by=[run_id for _, run_id in handed],
-        )  # fmt: skip
+        updated = rebound(snapshot, record, by=identity.user_id, at=now, why=body.why)
         await store.rebind_snapshot(updated, after=len(snapshot.rebindings))
     except RebindRefused as e:
         raise http_error(422, "VALIDATION_ERROR", str(e)) from e
@@ -240,7 +222,6 @@ async def _record_on_control_log(
             "record_id": rebinding.record_id,
             "replaced_revision": rebinding.replaced.revision,
             "replacement_revision": replacement.revision if replacement else None,
-            "received_by": list(rebinding.received_by),
         },
     )
     try:
@@ -258,17 +239,12 @@ def _next(kind: UnitKind, r: Rebinding, entry_id: str | None) -> str:
         else f"no revision of {r.record_id}, withdrawn"
     )
     said = [
-        f"the {kind.value}'s later dispatches bind {bound}. Its measurements are set apart from "
-        f"{r.at.isoformat()}: the re-binding changed a listed input (SIP-0110 §0.12)."
+        f"the {kind.value}'s dispatches from now bind {bound}. Set its measurements apart from the "
+        "first task this affects: the re-binding changed a listed input (SIP-0110 §0.12)."
     ]
-    if r.received_by:
-        said.append(
-            f"{', '.join(r.received_by)} had been handed revision {r.replaced.revision}: their "
-            "history is kept and never resumed, so the work goes on in a new run."
-        )
     if kind is UnitKind.CAMPAIGN and entry_id is None:
         said.append(
-            "The campaign's control log couldn't record it: until a row is written, the "
-            "intervention ledger doesn't see this re-binding."
+            "The campaign's control log couldn't record it, so the intervention ledger can't see "
+            "it: declare it there (POST /api/v1/intervention-ledgers/{campaign_id}/declared)."
         )
     return " ".join(said)
