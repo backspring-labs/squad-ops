@@ -83,6 +83,7 @@ from squadops.memory.records import (
     SourceKind,
     TaskTarget,
     authorize_write,
+    is_current,
     new_record,
     reference_of,
     revised,
@@ -126,15 +127,37 @@ async def _bound_with_cycle(request: Request, cycle: Any, revision: Revision) ->
     return dataclasses.replace(revision, references=with_bindings(revision.references, bound))
 
 
-def _refuse_unbindable(request: Request, revision: Revision) -> None:
+async def _refuse_unbindable(request: Request, revision: Revision, project_id: str | None) -> None:
     """Refuse (422) an ``@current`` reference no registered resolver can bind (#2179 T16): it
-    could never be bound at a unit's admission, so every task it applied to would be held."""
-    unbound = unbindable(revision, get_reference_resolvers(request).keys())
+    could never be bound at a unit's admission, so every task it applied to would be held. One
+    whose family binds nothing for the record's project is refused too, naming why (§5ac)."""
+    resolvers = get_reference_resolvers(request)
+    unbound = unbindable(revision, resolvers.keys())
     if unbound:
         raise http_error(
             422,
             "VALIDATION_ERROR",
             f"no resolver binds @current for {', '.join(unbound)}: name the revision it means",
+        )
+    if not project_id:
+        return
+    refused = []
+    for reference in revision.references:
+        if not is_current(reference.ref):
+            continue
+        try:
+            why = await resolvers[reference.family].binds_nothing_for(project_id)
+        except Exception:  # noqa: BLE001 — an early refusal only; admission still binds or holds
+            logger.warning("reference_family_unread ref=%s", reference.ref, exc_info=True)
+            continue
+        if why:
+            refused.append(f"{reference.ref} ({why})")
+    if refused:
+        raise http_error(
+            422,
+            "VALIDATION_ERROR",
+            f"no unit of {project_id} can bind {'; '.join(refused)}: the reference can't apply to "
+            "this project",
         )
 
 
@@ -285,7 +308,7 @@ async def create_memory_record(
             body.kind, body.scope, actor_id=actor, actor_scopes=scopes, owner_id=actor,
             campaign_cycle=of_campaign(cycle),
         )  # fmt: skip
-        _refuse_unbindable(request, revision)
+        await _refuse_unbindable(request, revision, body.project_id)
         if cycle is not None:
             # §3.5: a task instruction written here comes after its cycle's admission. Refused
             # before its references are bound, which neither refusal reads (T16).
@@ -478,7 +501,7 @@ async def revise_memory_record(
             record.kind, record.scope, actor_id=actor, actor_scopes=scopes,
             owner_id=record.owner_id, campaign_cycle=of_campaign(cycle),
         )  # fmt: skip
-        _refuse_unbindable(request, revision)
+        await _refuse_unbindable(request, revision, record.project_id)
         if cycle is not None:
             # §3.8: a task instruction is corrected before its task dispatches, or not at all: the
             # types it drops are checked as well as those it names (the second read of #2178).

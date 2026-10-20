@@ -226,3 +226,63 @@ def test_at_current_is_written_only_where_a_resolver_will_bind_it(
     assert response.status_code == status, response.text
     if stored:
         assert response.json()["revisions"][-1]["references"] == [stored]
+
+
+class _BindsNothingFor:
+    """A family that binds nothing for one project, as the repository family binds nothing for a
+    Project with no source repository; and, as ``fails``, one whose answer can't be read."""
+
+    def __init__(self, project: str | None = None, fails: bool = False) -> None:
+        self.project, self.fails = project, fails
+
+    async def binds_nothing_for(self, project_id: str) -> str | None:
+        if self.fails:
+            raise TimeoutError("the repository did not answer")
+        return "it has no source repository" if project_id == self.project else None
+
+
+@pytest.mark.parametrize(
+    ("family", "status"),
+    [(_BindsNothingFor("group_run"), 422), (_BindsNothingFor("prj-other"), 201),
+     (_BindsNothingFor(fails=True), 201)],
+    ids=["a-project-the-family-binds-nothing-for", "a-project-it-may-bind-for", "an-unread-answer"],
+)  # fmt: skip
+def test_a_project_instruction_names_only_what_some_unit_of_its_project_can_bind(
+    world, family, status
+):
+    """SIP-0110 §5ac, contract 6. Bugs caught: a project instruction naming ``repo:file:…@current``
+    accepted for a Project with no source repository, where every unit pins it unbound and a
+    required one holds every task it applies to; the write refused for a project the family may
+    bind for; an unread answer refusing a write the admission would bind or hold anyway."""
+    world.client.app.state.reference_resolvers = {"repo": family}
+    body = {
+        "kind": "instruction", "scope": "project", "project_id": "group_run",
+        "applicability": ANYWHERE,
+        "references": [{"ref": "repo:file:CONTRIBUTING.md@current", "required": True}],
+    }  # fmt: skip
+
+    response = world.as_("ada", Role.ADMIN).create(**body)
+
+    assert response.status_code == status, response.text
+    if status == 422:
+        assert "it has no source repository" in response.json()["detail"]["error"]["message"]
+
+
+def test_a_revision_naming_what_no_unit_of_its_project_can_bind_is_refused(world):
+    """§5ac, the revise path. Bug caught: a project instruction created plain, then revised to name
+    a reference its project's units can never bind, past the check its creation meets."""
+    world.client.app.state.reference_resolvers = {"repo": _BindsNothingFor("group_run")}
+    body = {"kind": "instruction", "scope": "project", "project_id": "group_run",
+            "applicability": ANYWHERE}  # fmt: skip
+    created = world.as_("ada", Role.ADMIN).create(**body)
+    rid = created.json()["record_id"]
+
+    revised = world.client.post(
+        f"{URL}/{rid}/revisions",
+        json={"body": "Follow CONTRIBUTING.", "applicability": ANYWHERE,
+              "references": [{"ref": "repo:file:CONTRIBUTING.md@current", "required": True}]},
+    )  # fmt: skip
+
+    assert created.status_code == 201, created.text
+    assert revised.status_code == 422, revised.text
+    assert "it has no source repository" in revised.json()["detail"]["error"]["message"]

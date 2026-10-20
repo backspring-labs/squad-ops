@@ -80,6 +80,7 @@ _REFERENCE = re.compile(r"^[a-z][a-z_]*(:[a-z][a-z_]*)+:[^@\s]+@[^@\s]+$")
 CHANGE_PATHS: Mapping[str, str] = {
     "manifest": "the manifest's operator edit (SIP-0103 §5c.5)",
     "decision": "a decision record (#950)",
+    "repo": "a commit to the product's repository (SIP-0112)",
 }
 _ANY = "*"
 

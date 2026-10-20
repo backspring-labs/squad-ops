@@ -83,7 +83,7 @@ re-places it.
 | entry points: the context-assembly port, inert, at the four seams (§A.3.6) | **shipped** | 2.3.0, #2257 (closes #2176; §5j records where it departs from §A.3.6's text) |
 | entry points: the typed records (notes, preferences, project and task instructions), permissions by kind, provenance (§A.3.2–§A.3.4) | **shipped** (§5l) | 2.4.0, PR #2508, issue #2177 |
 | entry points: task instructions, with the work target, retries, references bound with the cycle, binding holds and emergency withdrawal (§A.3.5–§A.3.8) | **placed** | 2.4.0, #2178: stage 1 (the records reach the tasks they name, binding, the task held when incomplete) shipped in PR #2513 (§5m), stage 2's interventions after admission with `squadops instructions` in PR #2549 (§5w), and `carries_into: continuations` with the increment gate's structured `task_instructions` field in PR #2556 (§5aa), and a task instruction's `@current` bound with its cycle (T16's task part) in the PR that wrote this row (§5ab); the hold and its release, and emergency withdrawal after dispatch remain |
-| entry points: project instructions in the snapshot with references bound, re-binding, the effective lesson budget, the comparison arms and disclosure (§A.3.6, §A.3.7) | **placed** | 2.4.0, #2179: stage 1 (pinned at admission, binding on the tasks they apply to, the lesson budget after them) shipped in PR #2515 (§5n), stage 2's effective lesson budget (T17) in PR #2526 (§5r), the `memory_context: none` arm with the lesson-text diagnostic in PR #2528 (§5s), a counted roll's pinned instruction set in PR #2533 (§5t), and a project instruction's emergency withdrawal in PR #2544 (§5u), re-binding a running unit's project instruction in PR #2546 (§5v), and `@current` bound at admission, the project part of T16, in PR #2555 (§5z); re-binding a reference's revision, reading a reference's content at dispatch (the MacBook lane, with the hold), and a campaign's repository references (§5z) remain |
+| entry points: project instructions in the snapshot with references bound, re-binding, the effective lesson budget, the comparison arms and disclosure (§A.3.6, §A.3.7) | **placed** | 2.4.0, #2179: stage 1 (pinned at admission, binding on the tasks they apply to, the lesson budget after them) shipped in PR #2515 (§5n), stage 2's effective lesson budget (T17) in PR #2526 (§5r), the `memory_context: none` arm with the lesson-text diagnostic in PR #2528 (§5s), a counted roll's pinned instruction set in PR #2533 (§5t), and a project instruction's emergency withdrawal in PR #2544 (§5u), re-binding a running unit's project instruction in PR #2546 (§5v), and `@current` bound at admission, the project part of T16, in PR #2555 (§5z), with the write-time refusal of a reference no unit of its project can bind in the PR that wrote this row (§5ac); re-binding a reference's revision, reading a reference's content at dispatch (the MacBook lane, with the hold), and a campaign's repository references (§5z) remain |
 | entry points: chat on the substrate, with capture confirmed, chat exposures, server-side project binding and provenance authorized (§A.3.5) | **shipped** | 2.4.0, issue #2180: stage A (the binding, each turn's context and exposure, confirmed capture of notes and preferences, authorized provenance, Q29's deletion) in PR #2517, stage B's project-instruction capture in PR #2525 (§5o), and its task-instruction capture in the PR that wrote this row (§5x) |
 | entry points: lesson inspection from chat; a conversational claim never becomes a lesson (§A.3.5) | **shipped** | 2.4.0, PR #2518, issue #2181 (§5p) |
 | entry points: the console's memory record view (§A.3.11) | **placed** | 2.4.0, #2182: the view and its uses route shipped in the PR that wrote this row (§5q); the page's capture test remains, live with #2183 |
@@ -2699,6 +2699,49 @@ recorded intervention", with the revision "recorded … in the cycle's inputs". 
   - the gate not binding;
   - the document dropping `written`;
   - a resolver's crash read as a refusal.
+
+## 5ac. A reference no unit of its project can bind, refused at write, as built (2026-10-20, #2179 T16; the supervisor, under the owner's grant of 2026-10-19; contract 6, the MacBook lane's G4)
+
+**Why.** The resolver port (§5z) refuses an `@current` reference at write only when no resolver binds its family. The
+repository family (SIP-0112 contract 6, the MacBook lane's #2565) binds at the commit a unit's source context pins.
+That gave a gap, found in the Spark lane's G4 review of #2565:
+- A Project with no source repository, such as a sample application, pins no commit.
+- So a project instruction naming `repo:file:…@current` there was accepted, and then pinned unbound by every unit. A
+  required one would hold every task it applies to (§3.6).
+- A task instruction met no such gap: it is bound as it is written (§5ab), which refuses it there.
+
+**What shipped:**
+- **The port gains an optional method,** `binds_nothing_for(project_id) -> str | None`: why the family can bind no
+  reference for any unit of the project, or `None` when it may. It isn't abstract, so a resolver without it answers
+  `None`, and every existing resolver is unchanged.
+  - **The repository family's adapter answers from the Project registry,** not from whether a clone exists yet. That
+    is the MacBook lane's, in #2565, agreed in the G4 exchange (2026-10-20):
+    - "it is a sample application, with no source repository" for a Project with no source;
+    - "no Project <id> is registered" for an unknown one.
+
+    A registered external Project that hasn't been validated yet has a repository, so its references may bind.
+- **The records route asks it at write,** for every `@current` reference whose family has a resolver, on a creation
+  and a revision. A family that binds nothing for the record's project is refused (`422`). The refusal names the
+  reference and why, and says the reference can't apply to this project: no revision of it would bind either.
+  - **An answer that can't be read is logged and doesn't refuse.** This is an early refusal only: a unit's admission
+    still binds the reference, or keeps it unbound with why (§5z).
+- **`CHANGE_PATHS` gains the repository family.** A reference sent with its content is refused naming "a commit to the
+  product's repository", not "the record's own owner".
+
+**Evidence** (`tests/unit/api/test_memory_record_routes.py`):
+- **A creation:**
+  - for a project the family binds nothing for, it is refused, naming why;
+  - for a project it may bind for, it is accepted;
+  - with an answer that can't be read, it is accepted.
+- **A revision** adding such a reference to a plain instruction is refused.
+- **Four mutants, each caught:**
+  - the family's answer ignored;
+  - an unread answer refusing;
+  - the create path unchecked;
+  - the revise path unchecked.
+
+  A fifth, which checked only project instructions, survived. It was redundant, since a task instruction is bound at
+  write anyway, so the check now covers every record and the condition is gone.
 
 ## 6. Mode neutrality: cycle, duty, and ambient utilization
 
