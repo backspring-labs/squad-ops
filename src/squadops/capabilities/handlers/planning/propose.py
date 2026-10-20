@@ -16,13 +16,7 @@ from squadops.capabilities.handlers.base import (
     HandlerEvidence,
     HandlerResult,
 )
-from squadops.capabilities.handlers.cross_cycle_lessons import cross_cycle_lessons_section
-from squadops.capabilities.handlers.prior_cycle import prior_cycle_section
-from squadops.capabilities.handlers.source_repository import source_repository_section
-from squadops.capabilities.handlers.task_instructions import (
-    project_instructions_section,
-    task_instructions_section,
-)
+from squadops.capabilities.handlers.context_sections import context_sections
 from squadops.cycles.acceptance_check_spec import render_typed_acceptance_vocabulary
 from squadops.tasks.task_types import TaskType
 
@@ -291,25 +285,9 @@ class _ProposeBaseHandler(_PlanningTaskHandler):
         rejection_section = await self._rejection_context_section(renderer, inputs)
         if rejection_section:
             variables["rejection_context_section"] = rejection_section
-        # #1692: a retry's proposers are shown the failed cycle it recovers from.
-        prior = await prior_cycle_section(renderer, inputs)
-        if prior:
-            variables["prior_cycle_section"] = prior
-        # SIP-0112 E.4.3: a source-backed run is shown the product it changes.
-        repository = await source_repository_section(renderer, inputs)
-        if repository:
-            variables["source_repository_section"] = repository
-        # SIP-0110 Appendix A §3.6 (#2178): this task's instructions, before the lessons.
-        instructions = await task_instructions_section(renderer, inputs)
-        if instructions:
-            variables["task_instructions_section"] = instructions
-        project = await project_instructions_section(renderer, inputs)
-        if project:
-            variables["project_instructions_section"] = project
-        # SIP-0110 §0.9: the lessons approved for this task, in a slot of their own.
-        lessons = await cross_cycle_lessons_section(renderer, inputs)
-        if lessons:
-            variables["cross_cycle_lessons_section"] = lessons
+        # The shared context slots: the prior cycle, the product, the instructions and the
+        # lessons (context_sections).
+        variables.update(await context_sections(renderer, inputs))
         rendered = await renderer.render(self._request_template_id, variables)
         user_prompt = rendered.content
 
