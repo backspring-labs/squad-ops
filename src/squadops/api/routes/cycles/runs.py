@@ -260,9 +260,9 @@ async def _ruling_instructions(
 ) -> tuple:
     """The approval's task instructions as records of the ruled cycle (SIP-0110 Appendix A §3.5;
     #2178), checked before the ruling's row is written. Their source is the gate's decision, so
-    they are the cycle's admitted inputs, never interventions. Their ids come from the ruling's
-    retry key and what each says, so a repeated ruling replays its row, and one repeating the key
-    with other instructions conflicts with it rather than keeping the first silently."""
+    they are the cycle's admitted inputs, never interventions. Their ids come from the cycle, the
+    ruling's retry key and what each says, so a repeated ruling replays its row, and one repeating
+    the key with other instructions conflicts with it rather than keeping the first silently."""
     if not body.task_instructions:
         return ()
     if body.decision not in _INSTRUCTING:
@@ -285,20 +285,27 @@ async def _ruling_instructions(
     except RecordRefused as e:
         raise ValidationError(str(e)) from e
     records = tuple(
-        dataclasses.replace(r, record_id=_ruling_record_id(body.idempotency_key or "", n, given))
+        dataclasses.replace(
+            r, record_id=_ruling_record_id(cycle.cycle_id, body.idempotency_key or "", n, given)
+        )
         for n, (r, given) in enumerate(zip(built, body.task_instructions, strict=True))
     )
     # deferred (cycle): api.routes.memory.interventions loads api.routes.campaigns, which loads this
     from squadops.api.routes.memory.interventions import refuse_dispatched
 
+    store = get_memory_records(request)
     for r in records:
-        await refuse_dispatched(request, cycle, r.current.target)
+        # One already stored was stored by this ruling's applied attempt, which a repeat replays:
+        # its framing may have dispatched since, and the replay is answered as the ruling was.
+        if await store.get(r.record_id) is None:
+            await refuse_dispatched(request, cycle, r.current.target)
     return records
 
 
-def _ruling_record_id(key: str, n: int, given: TaskInstructionDTO) -> str:
+def _ruling_record_id(cycle_id: str, key: str, n: int, given: TaskInstructionDTO) -> str:
+    # The cycle too: a retry key is unique within a campaign, and a record id in the whole store.
     content = given.model_dump_json()
-    return "mrec_" + hashlib.sha256(f"{key}|{n}|{content}".encode()).hexdigest()[:16]
+    return "mrec_" + hashlib.sha256(f"{cycle_id}|{key}|{n}|{content}".encode()).hexdigest()[:16]
 
 
 async def _store_ruling_instructions(request: Request, records: tuple) -> None:

@@ -312,7 +312,13 @@ def carried(
                     created_at=now,
                     source=Source(
                         SourceKind.CYCLE_REQUEST,
-                        {"cycle_id": to_cycle, CARRIED_FROM: record.record_id},
+                        {
+                            "cycle_id": to_cycle,
+                            CARRIED_FROM: record.record_id,
+                            # A lesson it applies stays its provenance. The continuation is the
+                            # campaign's, under the snapshot the original was checked against.
+                            **({LESSON_CITED: cited} if (cited := cited_lesson(current)) else {}),
+                        },
                     ),
                     confirmed_by=current.confirmed_by,
                     target=TaskTarget(

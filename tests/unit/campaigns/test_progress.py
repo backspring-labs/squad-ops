@@ -1246,6 +1246,9 @@ async def test_an_owners_retry_carries_the_brief_and_is_never_blocked_by_it(
 
     block = transition.launch.cycle_request["body"]["execution_overrides"]["campaign_proposal"]
     assert transition.launch.cycle_kind is CycleKind.RETRY
+    # SIP-0110 §3.7 (#2178): the owner's word's row names no cycle, so the request does, read
+    # or not, for the carried task instructions.
+    assert block["continues"] == "cyc_inc"
     expected = "cyc_inc" if records == "read" else None
     assert (block.get("prior_cycle") or {}).get("cycle_id") == expected
 
@@ -1322,6 +1325,7 @@ async def test_a_rejected_increment_is_repaired_from_its_own_candidate_under_its
     assert (await w.campaigns.get_campaign(CID)).state is CampaignState.REPAIRING
     assert repair.cycle_kind is CycleKind.REPAIR
     assert overrides["campaign_proposal"]["repair_of"] == "cyc_inc"
+    assert overrides["campaign_proposal"]["continues"] == "cyc_inc"  # SIP-0110 §3.7's carry
     assert overrides["campaign_proposal"]["prior_cycle"]["cycle_id"] == "cyc_inc"
     assert overrides["plan_artifact_refs"] == ["art_candidate", "art_cr", "art_plan"]
     assert [w["type"] for w in overrides["workload_sequence"]] == ["implementation"]

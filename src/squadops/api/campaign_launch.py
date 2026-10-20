@@ -109,21 +109,14 @@ class CampaignLaunchService:
     async def _carry_instructions(self, intent: LaunchIntent, cycle: Cycle) -> None:
         """A repair or a retry continues a cycle (§10a), and carries into it each of that cycle's
         task instructions given with ``carries_into: continuations``, as its own admitted record
-        linked to the original (SIP-0110 Appendix A §3.7; #2178). The continued cycle is the one
-        the deciding row names. A read that fails is a fault the next drain repeats: a binding
-        input is never dropped."""
+        linked to the original (SIP-0110 Appendix A §3.7; #2178). A read that fails is a fault the
+        next drain repeats: a binding input is never dropped."""
         if intent.cycle_kind not in _CONTINUING:
             return
         records = self._creation.memory_records
         if records is None:
             return  # no store holds instructions, so the continued cycle has none to carry
-        log = await self._campaigns.control_log(intent.campaign_id)
-        decided = next((e for e in log if e.entry_id == intent.decision_entry_id), None)
-        continued = (decided.binding or {}).get("cycle_id") if decided else None
-        if not continued:
-            raise RuntimeError(
-                f"launch {intent.launch_id}: its deciding row names no cycle it continues"
-            )
+        continued = await self._continued_cycle(intent)
         for copy in carried(
             await records.list_project(cycle.project_id),
             from_cycle=str(continued),
@@ -132,6 +125,26 @@ class CampaignLaunchService:
             now=datetime.now(UTC),
         ):
             await records.create(copy)
+
+    async def _continued_cycle(self, intent: LaunchIntent) -> str:
+        """The cycle a repair or a retry continues: the one its request names (``continues``, or a
+        repair's ``repair_of``), else the deciding row's, for an intent written before the request
+        named it. Naming none is refused, so the campaign escalates: it is deterministic, and as a
+        fault every drain would repeat it, holding every intent queued behind it."""
+        overrides = intent.cycle_request.get("body", {}).get("execution_overrides") or {}
+        block = overrides.get("campaign_proposal") or {}
+        named = block.get("continues") or block.get("repair_of")
+        if named:
+            return str(named)
+        log = await self._campaigns.control_log(intent.campaign_id)
+        decided = next((e for e in log if e.entry_id == intent.decision_entry_id), None)
+        named = (decided.binding or {}).get("cycle_id") if decided else None
+        if not named:
+            raise LaunchRefused(
+                f"VALIDATION_ERROR: the {intent.cycle_kind.value} names no cycle it continues, so "
+                "the task instructions given to carry into it can't be found"
+            )
+        return str(named)
 
     async def drain(self) -> list[Run]:
         """Launch every pending intent, then start every launched cycle's first run that has
