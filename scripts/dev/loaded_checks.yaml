@@ -1423,3 +1423,10 @@ checks:
       s = client_surface_for("nextjs_ts")
       print(s.path, repr(s.path_prefix), s.error_envelope_key)
     expect: "lib/api.ts '' error"
+  - id: "scenario-entity-resolution"
+    what: a scenario's Run concepts resolve on a delivery that names its run RunEvent, as the 2.4 Next.js shakeout's round 7 did
+    container: squadops-runtime-api
+    code: |
+      from squadops.scenarios.fields import resolve
+      print(resolve({"json": {"@Run:location": "x"}}, {"Run:location": ["meeting_location", "meetingLocation"]}, {"RunEvent": {"meetingLocation"}}))
+    expect: "{'json': {'meetingLocation': 'x'}}"

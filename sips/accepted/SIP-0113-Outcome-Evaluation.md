@@ -995,3 +995,27 @@ carry fields a scenario can't know.
 - A body that isn't a list matches nothing.
 - A `where` that names no field is a check the runner can't read: `blocked_unverified`, `no_runner`. An empty
   condition would otherwise hold vacuously.
+
+### 10i. A scenario's entity resolves on the entities the delivery names itself (2026-10-20, §4.1; #2464; the supervisor, under the owner's grant of 2026-10-19)
+
+**What was wrong:** §10c resolves each concept (`Run:location`) against the delivery's own manifest, by its entity name.
+A delivery names its entities itself. The 2.4 Next.js shakeout's round 7 named its run `RunEvent`, beside a
+`RunSummary`. So `Run:location` found no entity, and went out under the scenario's first name, `meeting_location`, to
+an app that declares `meetingLocation`.
+- **Every create was refused.**
+- **On the calibration and on the first increment,** 12 applicable scenarios failed at step 1 in 0.01 s, each with 1
+  passed and 12 blocked as `surface_absent`.
+- **The app was up.** Lighthouse and axe measured its pages in the same evaluation.
+
+**What changed:** an entity the delivery doesn't name is read from the delivery's entities whose names contain it, and
+failing those, from every entity it declares. The first of the scenario's names found there is sent. A delivery that
+names the entity exactly resolves as before.
+
+**Evidence:**
+- Re-resolved against round 7's stored suite and delivered manifest, `Run:location` now goes out as `meetingLocation`
+  in all 25 scenarios.
+- `test_a_concept_resolves_on_the_entity_the_delivery_named_itself` covers four namings: `RunEvent` as round 7 had it,
+  an exact entity winning, an unrelated name, and none declared.
+- The wiring test enters at `evaluate_cycle`, now with the reference manifest's own `RunEvent` as well as `Run`. Before,
+  it renamed the reference to `Run`, on the premise that every delivered manifest says `Run`, which round 7 disproved.
+- With the lookup back to the exact name only, both fail.
