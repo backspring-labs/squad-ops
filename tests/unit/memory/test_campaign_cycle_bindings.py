@@ -524,7 +524,9 @@ async def test_a_rebinding_holds_launches_and_stores_each_cycles_entry_before_it
 
     api, [record_id], (running, _paused, _ended) = await _campaign_world(REF)
     at_launch = await instructions_bound_for(
-        (pinned_of(await api.records.get(record_id)),), {"fake": _PerCycle()}, cycle_binding(running)
+        (pinned_of(await api.records.get(record_id)),),
+        {"fake": _PerCycle()},
+        cycle_binding(running),
     )
     await api.store.record_cycle_bindings(running.cycle_id, "campaign", CID, at_launch, T0)
     _revise(api, record_id, REF, "Read the spec, then its notes.")
