@@ -1353,7 +1353,7 @@ checks:
       from squadops.stacks.stack_nextjs_ts import _contract_lines
       from squadops.stacks.scaffold import Endpoint, RequestShape
       ep = Endpoint(method="POST", path="/api/runs/{run_id}/join", request="JoinInput", errors=("run_not_found", "capacity_reached"))
-      print(_contract_lines(ep, {"JoinInput": RequestShape(name="JoinInput", required=("name",))}))
+      print(_contract_lines(ep, {"JoinInput": RequestShape(name="JoinInput", required=("name",))}, entities={}))
     expect: "['    // request JoinInput: name', '    // errors: run_not_found, capacity_reached']"
   - id: "2522-route-contract-dev"
     what: the dev's scaffold states each Next.js route handler's request fields and errors
@@ -1361,7 +1361,7 @@ checks:
     code: |
       from squadops.stacks.stack_nextjs_ts import _contract_lines
       from squadops.stacks.scaffold import Endpoint
-      print(_contract_lines(Endpoint(method="GET", path="/api/runs/{run_id}", errors=("run_not_found",)), {}))
+      print(_contract_lines(Endpoint(method="GET", path="/api/runs/{run_id}", errors=("run_not_found",)), {}, entities={}))
     expect: "['    // errors: run_not_found']"
   - id: "2179-context-none"
     what: a cycle declaring memory_context none is admitted, and recalls apart from memory disabled
@@ -1406,3 +1406,12 @@ checks:
       from squadops.cycles.patch_verification import RETAKE_EVALUATED_REVISION_KEY, retake_identity_mismatch
       print(retake_identity_mismatch({RETAKE_EVALUATED_REVISION_KEY: "a", "validation_result": {"persisted_revision_id": "b"}}, []))
     expect: "None"
+  - id: "route-response-fields"
+    what: a Next.js route handler states its response entity's fields, so an increment adding one has the route in its footprint
+    container: squadops-runtime-api
+    code: |
+      from squadops.stacks.stack_nextjs_ts import _contract_lines
+      from squadops.stacks.scaffold import Endpoint, Entity, ManifestField
+      run = Entity(name="Run", fields=(ManifestField("id", "string"), ManifestField("capacity", "number", required=False)))
+      print(_contract_lines(Endpoint(method="GET", path="/api/runs/{run_id}", response="Run"), {}, entities={"Run": run}))
+    expect: "['    // response Run: id; optional capacity']"
