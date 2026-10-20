@@ -84,7 +84,7 @@ re-places it.
 | entry points: the typed records (notes, preferences, project and task instructions), permissions by kind, provenance (§A.3.2–§A.3.4) | **shipped** (§5l) | 2.4.0, PR #2508, issue #2177 |
 | entry points: task instructions, with the work target, retries, references bound with the cycle, binding holds and emergency withdrawal (§A.3.5–§A.3.8) | **placed** | 2.4.0, #2178: stage 1 (the records reach the tasks they name, binding, the task held when incomplete) shipped in PR #2513 (§5m), and stage 2's interventions after admission with `squadops instructions` in the PR that wrote this row (§5w); the hold and its release, emergency withdrawal after dispatch, `@current`, `carries_into` and the gate's structured field remain |
 | entry points: project instructions in the snapshot with references bound, re-binding, the effective lesson budget, the comparison arms and disclosure (§A.3.6, §A.3.7) | **placed** | 2.4.0, #2179: stage 1 (pinned at admission, binding on the tasks they apply to, the lesson budget after them) shipped in PR #2515 (§5n), stage 2's effective lesson budget (T17) in PR #2526 (§5r), the `memory_context: none` arm with the lesson-text diagnostic in PR #2528 (§5s), a counted roll's pinned instruction set in PR #2533 (§5t), and a project instruction's emergency withdrawal in PR #2544 (§5u), and re-binding a running unit's project instruction in the PR that wrote this row (§5v); `@current` bound at admission (T16, after #2484) remains, with re-binding a reference's revision once references are bound |
-| entry points: chat on the substrate, with capture confirmed, chat exposures, server-side project binding and provenance authorized (§A.3.5) | **placed** | 2.4.0, #2180: stage A (the binding, each turn's context and exposure, confirmed capture of notes and preferences, authorized provenance, Q29's deletion) shipped in PR #2517, stage B's project-instruction capture in PR #2525 (§5o), and its task-instruction capture in the PR that wrote this row (§5x) |
+| entry points: chat on the substrate, with capture confirmed, chat exposures, server-side project binding and provenance authorized (§A.3.5) | **shipped** | 2.4.0, issue #2180: stage A (the binding, each turn's context and exposure, confirmed capture of notes and preferences, authorized provenance, Q29's deletion) in PR #2517, stage B's project-instruction capture in PR #2525 (§5o), and its task-instruction capture in the PR that wrote this row (§5x) |
 | entry points: lesson inspection from chat; a conversational claim never becomes a lesson (§A.3.5) | **shipped** | 2.4.0, PR #2518, issue #2181 (§5p) |
 | entry points: the console's memory record view (§A.3.11) | **placed** | 2.4.0, #2182: the view and its uses route shipped in the PR that wrote this row (§5q); the page's capture test remains, live with #2183 |
 | entry points: the acceptance matrix, T1–T17, live on a deploy (§A.5) | **placed** | 2.4.0, #2183 |
@@ -2298,8 +2298,8 @@ moved.
 lesson-effectiveness control.
 - **The agent proposes one** (`"kind": "instruction", "scope": "task"`), with a `target`: the cycle by its id, and the
   task types.
-  - A cycle it didn't name, or named malformed, stays blank on the card, for the person to fill.
-  - A target is never guessed: an instruction for the wrong cycle would bind that cycle's work.
+  - The card keeps the cycle only when the person's own message named it. Otherwise it stays blank for the person to
+    fill. The agent may repeat a cycle, never pick one: an instruction for the wrong cycle would bind that cycle's work.
   - A proposal scoped to a task stays a task instruction, and is never widened into a project one.
   - The managed fragment `request.chat_memory_context` (version 4) shows the shape.
 - **The card offers it** on a bound session to a person holding `cycles:write` or `campaigns:supervise`, with the cycle
@@ -2310,12 +2310,17 @@ lesson-effectiveness control.
   - the selected types must be authoring tasks;
   - the cycle's authority is checked: an operator can't direct a campaign's cycle;
   - it is refused once a selected task has dispatched (`409`, said as itself and never swallowed into "not saved");
-  - a campaign's cycle gets an `instruct` control-log row.
+  - a campaign's cycle gets an `instruct` control-log row, and the capture answers with its id
+    (`control_log_entry_id`), as the records API does. When the row couldn't be written, the reply says to declare it.
 
   Its source is the chat turn, and it reaches its tasks marked as an intervention (§5w).
 - **"Apply lesson X to this task":**
   - The proposal may name the lesson revision (`"lesson": "pat_…@n"`). The capture keeps it as the record's provenance
     (`source.ids.lesson_revision`).
+  - A citation the agent gave malformed, such as a pattern with no revision, is kept on the card and refused at confirm
+    (`422`). Dropping it would drop the check it carries.
+  - A project instruction never carries one (`422`, in the records rules). A lesson reaches a project's tasks through
+    the owner's approval (§0.6). A standing instruction is pinned by every unit, the lessons-disabled control included.
   - It is refused for a cycle whose unit declares lessons disabled, the lesson-effectiveness control (§3.7's
     structural guarantee). It is refused too when the unit's snapshot can't be read, since whether it is the control is
     then unknown.
@@ -2341,6 +2346,18 @@ lesson-effectiveness control.
 - The two tests that held the staging ("a task instruction waits for #2178") now hold the rule that replaced it.
 - The console card builds clean (vite, the plugin's lock file). It has no test harness of its own: the API side
   carries the tests.
+- **The fragment** grows from 564 to 817 tokens by recall's estimator (`_tokens`). It has two shown examples: the
+  task instruction, and the one applying a lesson.
+- **The second reader** (a fresh agent) found, each fixed above:
+  - three lesson rules with no test, whose mutants survived: the records API's rule, an unreadable snapshot, and a
+    campaign's cycle judged by its campaign's snapshot;
+  - chat dropping the control-log row's id;
+  - the agent's cycle pre-filled though the person never named it;
+  - a malformed citation dropped with its check;
+  - a project instruction able to carry a lesson.
+
+  Six mutants are now each caught: those three, the agent's cycle kept, the row's id dropped, and a project
+  instruction carrying a lesson.
 
 ## 6. Mode neutrality: cycle, duty, and ambient utilization
 
