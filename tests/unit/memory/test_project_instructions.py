@@ -255,7 +255,9 @@ async def test_an_at_current_reference_is_never_pinned_verbatim():
     assert unbindable(record.current, families=()) == ["manifest:decision:join@current"]
     assert unbindable(record.current, families=("manifest",)) == []
     [p] = pinned.instructions
-    assert p.held_by == [("manifest:decision:join@current", "no resolver binds the manifest family")]
+    assert p.held_by == [
+        ("manifest:decision:join@current", "no resolver binds the manifest family")
+    ]
 
 
 @pytest.mark.parametrize(
