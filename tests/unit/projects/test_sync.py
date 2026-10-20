@@ -21,11 +21,11 @@ import pytest
 
 from adapters.memory.cross_cycle import InMemoryCrossCycleMemoryStore
 from adapters.memory.records import InMemoryMemoryRecords
+from adapters.tools.factory import create_repository_reference_resolver
 from adapters.tools.git_source import GitSourceRepository
 from adapters.tools.repository_references import REPOSITORY_FAMILY, RepositoryReferenceResolver
 from squadops.cycles.models import Project
-from squadops.memory.lessons import UnitKind
-from squadops.memory.pinning import pin_unit
+from squadops.memory.pinning import pin_standalone_cycle
 from squadops.memory.records import Reference
 from squadops.ports.memory.references import BindingContext, BoundReference, ReferenceUnresolved
 from squadops.ports.projects.review_request import ReviewRequestState
@@ -42,8 +42,10 @@ from squadops.projects.drift import (
 )
 from squadops.projects.models import ProjectSource
 from squadops.projects.registration import LocatorPolicy
+from squadops.projects.source_context import parse_source_context
 from squadops.projects.sync import sync_project
 from tests.fixtures.shared_contract.repository import build_repository, recorded, tracked_files
+from tests.unit.cycles.test_failure_recall import _framing_cycle
 from tests.unit.memory.test_project_instructions import DESIGN, T0, _instruction
 
 ENV = {
@@ -290,27 +292,37 @@ async def test_a_repository_reference_binds_the_pinned_commit_never_the_branch_h
         )
 
 
-async def test_admission_pins_a_project_instruction_at_the_units_source_commit(world):
-    """The wiring: SIP-0110's admission (``pin_unit``), with this resolver registered for ``repo``,
-    as the runtime registers it. Bug caught: the unit's source commit not reaching the resolver, so
-    the snapshot binds another commit, or none."""
+async def test_a_standalone_cycle_pins_a_project_instruction_at_its_source_context(world):
+    """The wiring, entered where a standalone cycle is admitted (``pin_standalone_cycle``), with a
+    real ``Cycle`` carrying its pinned source context and this resolver registered for ``repo``, as
+    the runtime registers it. Bugs caught: the cycle's source commit not reaching the resolver, so
+    the snapshot binds another commit, or none; a non-text file bound and refused only at read."""
     repo, clones, _registry = world
     await clones.sync("prj-tally", str(repo.path), "refs/heads/main")
     _commit(repo.path, {"CONTRIBUTING.md": "changed upstream\n"}, "outside")
     await clones.sync("prj-tally", str(repo.path), "refs/heads/main")
     store, records = InMemoryCrossCycleMemoryStore(), InMemoryMemoryRecords()
-    instruction = _instruction(
-        "mrec_contrib", DESIGN, references=(Reference("repo:file:CONTRIBUTING.md@current", True),)
+    references = (
+        Reference("repo:file:CONTRIBUTING.md@current", True),
+        Reference("repo:file:assets/mark.png@current", False),
     )
+    instruction = _instruction("mrec_contrib", DESIGN, references=references)
     await records.create(dataclasses.replace(instruction, project_id="prj-tally"))
+    context = parse_source_context(recorded("project_source_context", "valid"))
+    pinned_source = dataclasses.replace(
+        context, project_id="prj-tally", development_baseline_commit=repo.second_commit
+    )
+    cycle = _framing_cycle(project_id="prj-tally", source_context=pinned_source)
 
-    snapshot = await pin_unit(
-        store, unit_kind=UnitKind.CYCLE, unit_id="cyc_1", project_id="prj-tally", pinned_at=T0,
-        disabled=False, records=records,
-        resolvers={REPOSITORY_FAMILY: RepositoryReferenceResolver(clones)},
-        source_commit=repo.second_commit,
+    snapshot = await pin_standalone_cycle(
+        store, cycle, now=T0, records=records,
+        resolvers={REPOSITORY_FAMILY: create_repository_reference_resolver(clones)},
     )  # fmt: skip
 
     [pinned] = snapshot.instructions
-    assert [r.ref for r in pinned.references] == [f"repo:file:CONTRIBUTING.md@{repo.second_commit}"]
-    assert pinned.unbound == ()
+    assert [r.ref for r in pinned.references] == [
+        f"repo:file:CONTRIBUTING.md@{repo.second_commit}",
+        "repo:file:assets/mark.png@current",
+    ]
+    [(unbound, why)] = pinned.unbound
+    assert unbound == "repo:file:assets/mark.png@current" and "not text" in why

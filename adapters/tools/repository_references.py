@@ -6,7 +6,9 @@ through one resolver per family (``squadops.ports.memory.references``, #2179 T16
 repository family's. ``repo:file:<path>@current`` binds to ``repo:file:<path>@<commit>``, at the
 commit the unit's source context pins, never at the branch's head. That way a unit's instructions
 and the commands they describe come from the same commit. The content's digest is recorded with the
-binding, and a read at the bound commit whose content no longer matches it is refused.
+binding, and a read at the bound commit whose content no longer matches it is refused. A reference
+names a text file: one that isn't text is refused when it's bound, not first when it's read. A path
+with whitespace can't be referenced, since the records refuse whitespace in a reference.
 """
 
 from __future__ import annotations
@@ -31,6 +33,13 @@ _FILE = re.compile(r"^repo:file:(?P<path>[^@]+)@(?P<revision>[^@]+)$")
 
 def _digest(content: bytes) -> str:
     return f"sha256:{hashlib.sha256(content).hexdigest()}"
+
+
+def _text(ref: str, content: bytes) -> str:
+    try:
+        return content.decode()
+    except UnicodeDecodeError as e:
+        raise ReferenceUnresolved(f"{ref}: not text ({e.reason})") from e
 
 
 def _path_of(ref: str) -> str:
@@ -58,6 +67,7 @@ class RepositoryReferenceResolver(ReferenceResolverPort):
             )
         commit = ctx.source_commit
         content = await self._file(ctx, commit, path)
+        _text(ref, content)
         return BoundReference(f"repo:file:{path}@{commit}", commit, _digest(content))
 
     async def read(self, bound: BoundReference, ctx: BindingContext) -> str:
@@ -68,10 +78,7 @@ class RepositoryReferenceResolver(ReferenceResolverPort):
                 f"{bound.ref}: the content at {bound.revision[:12]} no longer matches the digest "
                 f"bound ({bound.digest})"
             )
-        try:
-            return content.decode()
-        except UnicodeDecodeError as e:
-            raise ReferenceUnresolved(f"{bound.ref}: not text ({e.reason})") from e
+        return _text(bound.ref, content)
 
     async def _file(self, ctx: BindingContext, commit: str, path: str) -> bytes:
         try:
