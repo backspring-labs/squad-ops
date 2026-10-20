@@ -181,6 +181,7 @@ _STATE_SLOTS = (
     "campaign_sweep_task",  # SIP-0109 §9.2 (§24ae): the ruling-bound sweep; cancelled on shutdown
     "memory_store",  # SIP-0110 (D13): Cross-Cycle Memory's store, beside the cycle registry
     "memory_records",  # SIP-0110 Appendix A (#2177): notes, preferences and instructions
+    "reference_resolvers",  # SIP-0110 Appendix A §3.7 (#2179 T16): @current, bound at admission
     "memory_reconcile_task",  # SIP-0110 §0.3: the observation passes; cancelled on shutdown
 )
 
@@ -857,6 +858,10 @@ def _init_memory(state, config, pool) -> None:
     state.memory_records = create_memory_records(
         provider, **({"pool": pool} if provider == "postgres" else {})
     )
+    # #2179 T16: the resolvers that bind an instruction's ``@current`` references at admission, by
+    # family. None is registered yet: Project Lifecycle Management registers the repository family
+    # (SIP-0112 §B.5.1, contract 6), and until then ``@current`` is refused at write.
+    state.reference_resolvers = {}
 
 
 #: How often the memory reconciliation passes run (SIP-0110 §0.3). Observations feed lessons the

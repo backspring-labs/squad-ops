@@ -10,10 +10,10 @@ Pure: the snapshot holds the pinned revisions, and these rules decide what a dis
 
 from __future__ import annotations
 
-from collections.abc import Iterable
+from collections.abc import Iterable, Mapping
 from typing import Any
 
-from squadops.memory.context import RecordRef, Section, SectionKind
+from squadops.memory.context import Disposition, Need, RecordRef, Section, SectionKind
 from squadops.memory.lessons import Snapshot
 from squadops.memory.records import MemoryRecord, PinnedInstruction, RecordKind, RecordScope
 from squadops.memory.task_instructions import binding_section
@@ -57,7 +57,22 @@ def applicable(
 
 def section_of(pinned: list[PinnedInstruction], *, budget: int, framing: int = 0) -> Section:
     """The project instructions' binding section, within what the task instructions left, measured
-    with its framing."""
+    with its framing. An instruction whose required reference admission couldn't bind leaves it
+    incomplete, naming the reference: the task is held, never handed it half-bound (§3.6, T16)."""
+    held = [(p, ref, why) for p in pinned for ref, why in p.held_by]
+    if held:
+        return Section(
+            SectionKind.PROJECT_INSTRUCTIONS,
+            Need.BINDING,
+            Disposition.INCOMPLETE,
+            unresolved=tuple(
+                (
+                    RecordRef(p.record_id, str(p.revision)),
+                    f"required reference {ref} unbound: {why}",
+                )
+                for p, ref, why in held
+            ),
+        )
     return binding_section(
         SectionKind.PROJECT_INSTRUCTIONS,
         [(RecordRef(p.record_id, str(p.revision)), p.text) for p in pinned],
@@ -76,8 +91,20 @@ def handed(pinned: list[PinnedInstruction]) -> dict[str, Any] | None:
                 "record_id": p.record_id,
                 "revision": p.revision,
                 "text": p.text,
-                "references": [{"ref": r.ref, "required": r.required} for r in p.references],
+                "references": [r.to_dict() for r in p.references],
             }
             for p in pinned
         ]
     }
+
+
+def bound_references(handed_input: Mapping[str, Any] | None) -> list[dict[str, Any]]:
+    """Each reference a unit's admission bound, as a task was handed it: the instruction, the bound
+    reference and its digest (§3.7, T16). A reference written with its revision has no digest and
+    isn't listed: its exposure already names the revision as written."""
+    return [
+        {"record_id": i["record_id"], "ref": r["ref"], "digest": r["digest"]}
+        for i in (handed_input or {}).get("instructions", ())
+        for r in i.get("references") or ()
+        if r.get("digest")
+    ]

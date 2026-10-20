@@ -61,6 +61,7 @@ from squadops.api.runtime.deps import (
     get_cycle_registry,
     get_memory_records,
     get_memory_store,
+    get_reference_resolvers,
 )
 from squadops.auth.models import Identity, scopes_for_roles
 from squadops.comms.models import SessionNotFoundError
@@ -85,6 +86,7 @@ from squadops.memory.records import (
     revised,
     revision_document,
     shown_source,
+    unbindable,
     visible,
     withdrawn,
 )
@@ -107,6 +109,18 @@ def _who(identity: Identity | None) -> tuple[str, frozenset[str]]:
     if identity is None:
         raise http_error(401, "UNAUTHENTICATED", "a memory record names who wrote it")
     return identity.user_id, frozenset(identity.scopes) | scopes_for_roles(identity.roles)
+
+
+def _refuse_unbindable(request: Request, revision: Revision) -> None:
+    """Refuse (422) an ``@current`` reference no registered resolver can bind (#2179 T16): it
+    could never be bound at a unit's admission, so every task it applied to would be held."""
+    unbound = unbindable(revision, get_reference_resolvers(request).keys())
+    if unbound:
+        raise http_error(
+            422,
+            "VALIDATION_ERROR",
+            f"no resolver binds @current for {', '.join(unbound)}: name the revision it means",
+        )
 
 
 #: Sources only their own route writes (the cycle's create request; a gate's decision): never
@@ -246,6 +260,7 @@ async def create_memory_record(
     kind and scope need, and (422) when the record breaks §A.3.2's rules."""
     actor, scopes = _who(identity)
     revision = _revision(body, actor=actor, kind=body.kind, now=datetime.now(UTC))
+    _refuse_unbindable(request, revision)
     cycle = await target_cycle(request, body.scope, body.project_id, revision.target)
     try:
         authorize_write(
@@ -436,6 +451,7 @@ async def revise_memory_record(
     actor, scopes = _who(identity)
     record = await _readable(request, record_id, actor, scopes)
     revision = _revision(body, actor=actor, kind=record.kind, now=datetime.now(UTC))
+    _refuse_unbindable(request, revision)
     cycle = await target_cycle(request, record.scope, record.project_id, revision.target)
     try:
         authorize_write(

@@ -189,6 +189,13 @@ def get_memory_records(request: Request):
     return _slot(request, "memory_records")
 
 
+def get_reference_resolvers(request: Request) -> dict:
+    """SIP-0110 Appendix A §3.7 (#2179 T16): the reference resolvers by family, which bind an
+    instruction's ``@current`` references at its unit's admission (``main._init_memory``). Empty
+    when none is registered, so ``@current`` is refused for every family."""
+    return _slot(request, "reference_resolvers") or {}
+
+
 def get_artifact_vault(request: Request) -> ArtifactVaultPort:
     """Return the ArtifactVaultPort (T14: never None at call sites)."""
     return _required(request, "artifact_vault", "ArtifactVaultPort")

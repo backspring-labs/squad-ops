@@ -237,18 +237,25 @@ async def test_the_author_shows_the_task_then_the_project_instructions_then_the_
     assert "1. This project: name each run by its route." in shown
 
 
-def test_a_project_instruction_naming_its_reference_at_current_is_refused():
-    """The second read of PR #2515. Bug caught: ``@current`` pinned verbatim into a snapshot,
-    where stage 2 can never bind it after the fact (§3.7: resolved once, when bound)."""
-    from squadops.memory.records import RecordRefused, Reference
+async def test_an_at_current_reference_is_never_pinned_verbatim():
+    """The second read of PR #2515, as T16 builds it (#2179). Bug caught: ``@current`` pinned
+    verbatim into a snapshot, where nothing can bind it after the fact (§3.7: resolved once, when
+    bound). A family no resolver binds is refused at write (``unbindable``); one the pin can't bind
+    is kept on the pin as unbound, which holds a task it applies to (§3.6)."""
+    from squadops.memory.records import Reference, unbindable
 
-    with pytest.raises(RecordRefused, match="project instruction's reference names its revision"):
-        _instruction(
-            "mrec_cur", DESIGN, references=(Reference("manifest:decision:join@current", True),)
-        )
-    assert _instruction(
-        "mrec_rev", DESIGN, references=(Reference("manifest:decision:join@3", True),)
+    record = _instruction(
+        "mrec_cur", DESIGN, references=(Reference("manifest:decision:join@current", True),)
     )
+    store, records = InMemoryCrossCycleMemoryStore(), InMemoryMemoryRecords()
+    await records.create(record)
+
+    pinned = await _admit(store, records)
+
+    assert unbindable(record.current, families=()) == ["manifest:decision:join@current"]
+    assert unbindable(record.current, families=("manifest",)) == []
+    [p] = pinned.instructions
+    assert p.held_by == [("manifest:decision:join@current", "no resolver binds the manifest family")]
 
 
 @pytest.mark.parametrize(

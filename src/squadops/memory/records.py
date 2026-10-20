@@ -104,6 +104,9 @@ class Reference:
 
     ref: str
     required: bool
+    #: The content's digest at the bound revision, when the reference was written ``@current`` and
+    #: a unit's admission bound it (§3.7; #2179 T16). ``None`` for one written with its revision.
+    digest: str | None = None
 
     def __post_init__(self) -> None:
         if not _REFERENCE.match(self.ref):
@@ -115,6 +118,28 @@ class Reference:
     @property
     def family(self) -> str:
         return self.ref.split(":", 1)[0]
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "ref": self.ref,
+            "required": self.required,
+            **({"digest": self.digest} if self.digest else {}),
+        }
+
+
+#: The revision a reference means when it is the one current at the instruction's binding (§3.7).
+CURRENT = "current"
+
+
+def is_current(ref: str) -> bool:
+    """Whether ``ref`` is written ``@current``: bound when its unit is admitted, never at dispatch."""
+    return ref.rsplit("@", 1)[-1] == CURRENT
+
+
+def unbindable(revision: Revision, families: Collection[str]) -> list[str]:
+    """The ``@current`` references of ``revision`` no registered resolver can bind: their family
+    has none. The records refuse such an instruction, since nothing could ever bind it."""
+    return [r.ref for r in revision.references if is_current(r.ref) and r.family not in families]
 
 
 def reference_of(doc: Mapping[str, Any]) -> Reference:
@@ -336,13 +361,12 @@ def _check_revision(kind: str, scope: str, revision: Revision) -> None:
             )
         if scope == RecordScope.TASK and revision.target is None:
             raise RecordRefused("a task instruction names its target cycle and its tasks")
-        if any(r.ref.endswith("@current") for r in revision.references):
-            # #2178, #2179: an instruction's references are bound to a concrete revision when the
-            # unit binds them (§3.7): a task instruction's with its cycle's inputs, a project
-            # instruction's in the snapshot that pins it. Resolving ``@current`` at that binding is
-            # each one's second stage; a pin that kept it unresolved could never be bound after.
+        if scope == RecordScope.TASK and any(is_current(r.ref) for r in revision.references):
+            # #2178: a task instruction's references are bound with its cycle's inputs (§3.7);
+            # binding ``@current`` there is the task part of T16, not built. A project
+            # instruction's is bound in the snapshot that pins it (#2179 T16).
             raise RecordRefused(
-                f"a {scope} instruction's reference names its revision; @current isn't bound yet"
+                "a task instruction's reference names its revision; @current isn't bound yet"
             )
         if revision.confirmed_by is None:
             raise RecordRefused("an instruction binds the work, so it is confirmed")
@@ -447,6 +471,15 @@ class PinnedInstruction:
     text: str
     applicability: InstructionApplicability
     references: tuple[Reference, ...] = ()
+    #: Each ``@current`` reference admission couldn't bind, with why (§3.6; #2179 T16). A required
+    #: one leaves the instruction's binding section incomplete, so its task is held.
+    unbound: tuple[tuple[str, str], ...] = ()
+
+    @property
+    def held_by(self) -> list[tuple[str, str]]:
+        """The required references left unbound: what holds a task this instruction applies to."""
+        required = {r.ref for r in self.references if r.required}
+        return [(ref, why) for ref, why in self.unbound if ref in required]
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -458,7 +491,13 @@ class PinnedInstruction:
                 "roles": list(self.applicability.roles),
                 "stacks": list(self.applicability.stacks),
             },
-            "references": [{"ref": r.ref, "required": r.required} for r in self.references],
+            "references": [r.to_dict() for r in self.references],
+            # Only when one is, so a pin with every reference bound is stored as before T16.
+            **(
+                {"unbound": [{"ref": ref, "why": why} for ref, why in self.unbound]}
+                if self.unbound
+                else {}
+            ),
         }
 
     @classmethod
@@ -472,8 +511,10 @@ class PinnedInstruction:
                 tuple(a["task_types"]), tuple(a["roles"]), tuple(a["stacks"])
             ),
             references=tuple(
-                Reference(r["ref"], bool(r["required"])) for r in data.get("references", [])
+                Reference(r["ref"], bool(r["required"]), digest=r.get("digest"))
+                for r in data.get("references", [])
             ),
+            unbound=tuple((str(u["ref"]), str(u["why"])) for u in data.get("unbound") or ()),
         )
 
 

@@ -61,6 +61,7 @@ from squadops.api.runtime.deps import (
     get_cycle_registry,
     get_memory_records,
     get_memory_store,
+    get_reference_resolvers,
     get_scenario_store,
 )
 from squadops.auth.models import Identity, Role, Scope
@@ -367,7 +368,11 @@ async def _pin_memory(request: Request, campaign) -> None:
         return
     try:
         await pin_campaign(
-            store, campaign, now=datetime.now(UTC), records=get_memory_records(request)
+            store,
+            campaign,
+            now=datetime.now(UTC),
+            records=get_memory_records(request),
+            resolvers=get_reference_resolvers(request),
         )
     except Exception:
         logger.warning(
