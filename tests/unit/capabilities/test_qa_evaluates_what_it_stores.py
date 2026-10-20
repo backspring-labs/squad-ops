@@ -141,6 +141,23 @@ def test_a_stored_set_that_is_not_the_evaluated_one_is_named():
     assert retake_identity_mismatch({}, stored) is None
 
 
+def test_a_re_take_an_accepted_patch_replaced_is_judged_by_the_patch_not_the_re_take():
+    """The 2.4 Next.js shakeout's round 4 (``run_4809753cdacd``). Bug caught: a re-take a repair
+    then patched judged against the re-take's evaluated set, which the patch replaced, so a
+    verified, passing repair failed the run. The patch's own identity governs (the §5.5 guard),
+    and without one the re-take's mismatch is still named."""
+    evaluated = [{"name": "backend/tests/test_runs.py", "content": _SUITE}]
+    patched = [{"name": "backend/tests/test_runs.py", "content": _SUITE + "# repaired\n"}]
+    outputs = {
+        RETAKE_EVALUATED_REVISION_KEY: candidate_revision_id(None, evaluated),
+        "validation_result": {"persisted_revision_id": candidate_revision_id(None, patched)},
+    }
+
+    assert retake_identity_mismatch(outputs, patched) is None
+    del outputs["validation_result"]
+    assert retake_identity_mismatch(outputs, patched) is not None
+
+
 async def test_the_transaction_is_the_re_take_plus_the_pass_each_part_named(monkeypatch):
     """#1727 (the owner's ruling): a re-take whose edit leaves a file missing is completed by a
     self-evaluation pass, and the record names both parts: the edit, and what the pass added.
