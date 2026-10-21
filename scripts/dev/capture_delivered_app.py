@@ -66,6 +66,7 @@ from pathlib import Path
 import yaml
 
 from squadops.campaigns.increment_tree import ACCEPTED_TREE_ARTIFACT_TYPE
+from squadops.campaigns.seed_plan import SeedRefused, body_for, norm_route, under_base
 from squadops.cycles.delivered_tree import StoredArtifact, delivered_files
 from squadops.sandbox.environment import SANDBOX_ENV_IMAGE
 
@@ -297,9 +298,10 @@ def load_manifest(project: str, cycle: str, plan_refs: list[str] | None = None) 
     return yaml.safe_load(seeded.read_text()) or {}
 
 
-def _norm(path: str) -> str:
-    """``/runs/{run_id}``, ``/runs/:run_id`` and ``/runs/{id}`` are one route."""
-    return re.sub(r"\{[^}/]+\}|:[A-Za-z_][A-Za-z0-9_]*", "{id}", path)
+#: The seeded quality reading's rules (SIP-0113 §10n ruling 2): one route normalisation, one way a
+#: seed is placed under a base and one way its values go under a shape's names.
+_norm = norm_route
+_under_base = under_base
 
 
 def _endpoints(manifest: dict) -> dict[str, dict]:
@@ -326,37 +328,13 @@ def _body(
     record: dict, shape: dict, aliases: dict[str, list[str]], where: str
 ) -> tuple[dict, set[str]]:
     """The record's values under the SHAPE's field names, via the seed's aliases, and the
-    record keys that carried over."""
-    body: dict = {}
-    used: set[str] = set()
-    for name in [*(shape.get("required") or []), *(shape.get("optional") or [])]:
-        key = next(
-            (k for k in record if k == name or name in (aliases.get(k) or [])),
-            None,
+    record keys that carried over. A required field with no value refuses the capture."""
+    try:
+        return body_for(
+            record, shape.get("required") or [], shape.get("optional") or [], aliases, where
         )
-        if key is not None:
-            body[name] = record[key]
-            used.add(key)
-        elif name in (shape.get("required") or []):
-            raise SystemExit(
-                f"{where}: the manifest requires {name!r} and the seed has no value for it "
-                f"(record keys {sorted(record)}, aliases {aliases})"
-            )
-    return body, used
-
-
-def _under_base(candidates: list[str], base: str) -> list[str]:
-    """The seed names endpoints without a base path (``POST /runs``); an interface declares its
-    endpoints under one (``base_path: /api``, so ``POST /api/runs``). Each candidate is also tried
-    under the base, the form the app's own client uses — the 1.8.2 cut found the committed seed
-    matching nothing on an app behind ``/api``."""
-    if not base:
-        return candidates
-    under = []
-    for c in candidates:
-        method, _, path = c.partition(" ")
-        under.append(c if path == base or path.startswith(base + "/") else f"{method} {base}{path}")
-    return list(dict.fromkeys(candidates + under))
+    except SeedRefused as e:
+        raise SystemExit(str(e)) from None
 
 
 def plan_seed(manifest: dict, seed: dict) -> tuple[list[dict], list[str]]:

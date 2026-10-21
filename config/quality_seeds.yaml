@@ -1,0 +1,4 @@
+# The seeded quality reading's seed file per Project (SIP-0113 §10j, §10n ruling 6): Outcome Evaluation's own, declared
+# here, never derived from a Project's layout. A sample application with no entry reads `not measured`, `no_seed`; a
+# repository-backed Project is `not applicable` (§10j).
+group_run: examples/03_group_run/quality_seed.json
