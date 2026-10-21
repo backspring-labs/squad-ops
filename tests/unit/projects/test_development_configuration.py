@@ -189,3 +189,24 @@ def test_the_repositorys_instruction_sources_are_found_with_their_digests(tmp_pa
         parse_configuration(recorded("development_configuration", "valid")).instruction_sources
     )
     assert discover_instruction_sources({"README.md": b"x"}, repo.second_commit) == ()
+
+
+def test_a_checks_findings_reader_round_trips_and_one_that_doesnt_exist_is_refused():
+    """#2609. Bugs caught: a declared reader dropped on its way to the record, so a check that
+    already fails is read whole and a regression inside it passes; a misspelt reader stored and
+    sent to the sandbox, which refuses the check at run time instead of at configure."""
+    doc = copy.deepcopy(recorded("development_configuration", "valid"))
+    checks = doc["configuration"]["technical"]["commands"]["checks"]
+    [parse] = [c for c in checks if c["id"] == "parse"]
+    parse["findings"] = "lines"
+
+    configuration = parse_configuration(doc)
+
+    assert configuration.to_document() == doc
+    assert {c.id: c.findings for c in configuration.commands.checks}["parse"] == "lines"
+    assert {c.id: c.findings for c in configuration.commands.checks}["ledger"] is None
+    parse["findings"] = "eslint"
+    with pytest.raises(ConfigurationInvalid) as refused:
+        parse_configuration(doc)
+    assert refused.value.field.endswith(".findings")
+    assert "eslint" in str(refused.value)

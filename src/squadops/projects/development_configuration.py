@@ -29,6 +29,8 @@ from pathlib import PurePosixPath
 from typing import Any
 from urllib.parse import urlsplit
 
+from squadops.sandbox.findings import READERS
+
 API_VERSION = "squadops.project-development-configuration/v1"
 _API_MAJOR = re.compile(r"^squadops\.project-development-configuration/v(\d+)$")
 
@@ -73,6 +75,10 @@ class Check:
     id: str
     argv: tuple[str, ...]
     requires_environment: tuple[str, ...] = ()
+    #: #2609: the reader its output is read with, finding by finding, so a check that fails at the
+    #: baseline can still show a regression (``squadops.sandbox.findings.READERS``). ``None``: the
+    #: check is read whole, by its result alone.
+    findings: str | None = None
 
 
 @dataclass(frozen=True)
@@ -211,7 +217,12 @@ def _check(doc: Any, at: str) -> Check:
         raise ConfigurationInvalid(
             f"{at}.requires_environment", "a list of environment variable names"
         )
-    return Check(check_id, _argv(doc.get("argv"), f"{at}.argv"), tuple(needs))
+    reader = doc.get("findings")
+    if reader is not None and reader not in READERS:
+        raise ConfigurationInvalid(
+            f"{at}.findings", f"{reader!r} is not a findings reader ({', '.join(READERS)})"
+        )
+    return Check(check_id, _argv(doc.get("argv"), f"{at}.argv"), tuple(needs), reader)
 
 
 def _start(doc: Any, at: str) -> StartDeclaration:
@@ -400,6 +411,7 @@ def _commands_document(commands: Commands) -> dict[str, Any]:
                     if c.requires_environment
                     else {}
                 ),
+                **({"findings": c.findings} if c.findings else {}),
             }
             for c in commands.checks
         ],

@@ -131,6 +131,7 @@ async def run_checks(
             command=check.argv,
             working_dir=commands.working_directory,
             setup=commands.check_setup,
+            findings_reader=check.findings,
         )
         environment = environment or {
             "image": run.image_identity or "unknown",

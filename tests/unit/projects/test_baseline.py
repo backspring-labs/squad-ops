@@ -1,5 +1,6 @@
 """The inherited baseline's vocabulary and record (SIP-0112 FR-20, §8.3.1; E.4.2)."""
 
+from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
@@ -21,6 +22,7 @@ from squadops.projects.baseline import (
 )
 from squadops.projects.development_configuration import Check
 from squadops.projects.verification import SourceVerification
+from squadops.sandbox.findings import FindingsReading, read
 from tests.fixtures.shared_contract.repository import recorded
 
 CHECK = Check("unit", ("python3", "-m", "unittest"))
@@ -152,3 +154,127 @@ def test_2_4s_acceptance_policy(results, verdict):
     )
 
     assert verification.verdict == verdict
+
+
+FINDINGS = Path(__file__).resolve().parents[2] / "fixtures" / "findings"
+
+
+def _ruff(name: str) -> FindingsReading:
+    return read("ruff", (FINDINGS / name).read_text(), "", 1)
+
+
+def _lint(reading: FindingsReading | None) -> CheckResult:
+    return CheckResult("lint", FAIL, findings=reading)
+
+
+@pytest.mark.parametrize(
+    ("before", "after", "attribution", "read"),
+    [
+        (
+            _ruff("continuum-ba8fa68b-ruff-concise.txt"),
+            _ruff("continuum-0c814a7c-ruff-concise.txt"),
+            INTRODUCED,
+            {"I001 src/continuum/cli.py", "E501 tests/test_cli_inspect_version.py",
+             "F401 tests/test_cli_inspect_version.py"},
+        ),
+        (
+            _ruff("continuum-43369054-ruff-concise.txt"),
+            _ruff("continuum-2f6b3baa-ruff-concise.txt"),
+            INHERITED,
+            set(),
+        ),
+        (
+            _ruff("continuum-ba8fa68b-ruff-concise.txt"),
+            read("ruff", "ruff failed\n", "", 2),
+            UNVERIFIED_ATTRIBUTION,
+            "the candidate is unreadable",
+        ),
+        (
+            read("lines", "x\n", "", 1),
+            _ruff("continuum-ba8fa68b-ruff-concise.txt"),
+            UNVERIFIED_ATTRIBUTION,
+            "read by ruff v1, and its baseline by lines v1",
+        ),
+        (None, _ruff("continuum-ba8fa68b-ruff-concise.txt"), INHERITED, "baseline has no findings"),
+        (None, None, INHERITED, "the check declares no findings reader"),
+    ],
+    ids=[
+        "stage-6-three-grew",
+        "stage-3-none-grew",
+        "candidate-unreadable",
+        "another-reader",
+        "baseline-before-v2",
+        "no-reader-ir-9",
+    ],
+)  # fmt: skip
+def test_a_check_failing_on_both_sides_is_read_by_its_findings(before, after, attribution, read):
+    """#2609 (SIP-0112 H.5; IR-9 for both cases). Bugs caught: stage 6's three new lint findings
+    read as inherited; stage 3's unchanged findings read as a regression; an unreadable or
+    incomparable reading read as clean, or as inherited; a baseline from before v2, or a check
+    with no reader, read by findings rather than whole, with the reason said."""
+    got = attribute(_lint(after), _lint(before))
+
+    assert (got.result, got.attribution) == (FAIL, attribution)
+    if isinstance(read, set):
+        assert set(got.read.get("grown", {})) == read
+        assert got.read["by"] == "findings"
+    else:
+        assert read in got.read["reason"]
+
+
+def test_a_regression_inside_a_failing_check_blocks_and_names_its_findings():
+    """#2609. Bug caught: stage 6's change accepted (the 2.4 demonstration's finding), or refused
+    without saying which findings it added."""
+    lint = attribute(
+        _lint(_ruff("continuum-0c814a7c-ruff-concise.txt")),
+        _lint(_ruff("continuum-ba8fa68b-ruff-concise.txt")),
+    )
+    verification = SourceVerification(
+        project_id="prj-z-continuum", cycle_id="c", run_id="r", baseline_commit="b" * 40,
+        development_configuration_revision=2, candidate_revision_id="x",
+        candidate_tree_identity="t", changed_paths=("src/continuum/cli.py",), environment={},
+        checks=(CheckResult("tests", PASS), lint),
+    )  # fmt: skip
+
+    assert verification.verdict == "regressed"
+    assert verification.summary().startswith("regressed: lint gained findings")
+    assert "I001 src/continuum/cli.py" in verification.summary()
+    assert verification.to_document()["acceptance_policy"] == "no-introduced-regression/v2"
+
+
+def test_a_baselines_readings_are_stored_and_read_back():
+    """Bug caught: a check's reading lost between the capture and the comparison, so every
+    candidate is read whole."""
+    reading = _ruff("continuum-ba8fa68b-ruff-concise.txt")
+    doc = {**recorded("inherited_baseline", "valid")}
+    doc["checks"] = [*doc["checks"], CheckResult("lint", FAIL, findings=reading).to_document()]
+
+    [lint] = [c for c in parse_baseline(doc).checks if c.id == "lint"]
+
+    assert lint.findings == reading
+
+
+def test_a_declared_reader_whose_run_brought_back_no_reading_is_never_read_whole():
+    """The Spark lane's G4 on #2630. Bug caught: a check that declares a reader, run by a sandbox
+    that returned no reading (one from before #2623, or a stand-in), read as a check with no
+    reader, so a regression inside it passes as inherited."""
+    declared = Check("lint", ("ruff", "check"), findings="ruff")
+    run = _run(exit_code=1, findings=None)
+
+    candidate = result_of(declared, run)
+    got = attribute(candidate, _lint(_ruff("continuum-ba8fa68b-ruff-concise.txt")))
+
+    assert candidate.findings.readable is False
+    assert got.attribution == UNVERIFIED_ATTRIBUTION
+    assert "returned no reading" in got.read["reason"]
+
+
+def test_a_stored_reading_that_cant_be_read_refuses_the_baseline_naming_its_check():
+    doc = {**recorded("inherited_baseline", "valid")}
+    doc["checks"] = [
+        *doc["checks"],
+        {"id": "lint", "result": FAIL, "findings": {"reader": "eslint"}},
+    ]
+
+    with pytest.raises(BaselineInvalid, match="check 'lint'"):
+        parse_baseline(doc)

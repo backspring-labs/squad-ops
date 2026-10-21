@@ -21,6 +21,7 @@ from typing import Any
 from squadops.projects.baseline import (
     FAIL,
     INHERITED,
+    INTRODUCED,
     PASS,
     CheckResult,
     InheritedBaseline,
@@ -28,7 +29,9 @@ from squadops.projects.baseline import (
 )
 
 SOURCE_VERIFICATION_SCHEMA = "source-verification/v1"
-ACCEPTANCE_POLICY = "no-introduced-regression/v1"
+#: v2 (#2609): a check failing on both sides is compared finding by finding when it declares a
+#: reader, so a change that adds findings to an already-failing check is a regression.
+ACCEPTANCE_POLICY = "no-introduced-regression/v2"
 ACCEPTED, REGRESSED, UNVERIFIED_CANDIDATE = "accepted", "regressed", "unverified"
 
 
@@ -61,7 +64,9 @@ class SourceVerification:
     def summary(self) -> str:
         """One line a reader can act on: the verdict, and the checks that decided it."""
         if self.verdict == REGRESSED:
-            return f"regressed: {', '.join(self.blocking)} failed where the baseline did not"
+            return "regressed: " + "; ".join(
+                _why_blocking(c) for c in self.checks if c.id in self.blocking
+            )
         inherited = [c.id for c in self.checks if c.result == FAIL]
         passed = [c.id for c in self.checks if c.result == PASS]
         if self.verdict == UNVERIFIED_CANDIDATE:
@@ -87,6 +92,17 @@ class SourceVerification:
             "checks": [c.to_document() for c in self.checks],
             "evidence": {c.id: dict(c.evidence) for c in self.checks if c.evidence},
         }
+
+
+def _why_blocking(check: CheckResult) -> str:
+    """One blocking check, said as what a reader acts on (#2609)."""
+    read = check.read or {}
+    if read.get("grown"):
+        found = ", ".join(read["grown"])
+        return f"{check.id} gained findings the baseline didn't have ({found})"
+    if check.attribution != INTRODUCED:
+        return f"{check.id} couldn't be compared with its baseline ({read.get('reason', 'no reading')})"
+    return f"{check.id} failed where the baseline did not"
 
 
 def attributed(

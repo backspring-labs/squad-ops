@@ -1794,6 +1794,12 @@ preventing squad ops from working on it", and then "go with 2.5, write up the am
      an unattended Campaign on the product owner's review.
    - **Each increment is a source-backed cycle,** verified by the product's checks and contributed through the
      campaign branch, as above.
+   - **Contract 1's pin, for an increment.** `prepare_cycle` pins a repository-backed Campaign increment's source
+     context at the campaign branch's head (SIP-0109 §24bv point 3), never the Project's
+     `development_baseline_commit`. Its inherited-baseline check reads the previous accepted increment's verification
+     there, or the calibration record's baseline for the first. H.2's gate keeps reading the Project's baseline,
+     since a sync's drift is upstream's against the Project, and §24bv point 4 reconciles it before the branch
+     rebases.
 
 **What stays:**
 - A sample application's Campaigns are unchanged, and the counted pair holds (IR-10).
@@ -1825,4 +1831,75 @@ lane's G4 (on #2624) added:
 - blocking against disclosed gaps;
 - toolchain gaps read from the baseline's evidence;
 - the resolution-parity test.
+
+## H.5 A check failing on both sides is compared finding by finding when it declares a reader (2026-10-21; #2609)
+
+**What was found.** In the brownfield demonstration's stage 6 (#2611), the candidate added three ruff findings to
+`lint`, which already failed at the baseline: 59 findings before, 62 after. The acceptance policy reads a check only
+by its result, so the change read FAIL on both sides, `inherited`, and was accepted (#2609). On an unfamiliar product,
+an already-failing lint or type check is the common case. A contribution could make one worse, change by change, with
+every record saying `inherited`.
+
+**What changed:**
+1. **A check may declare a findings reader** in the Development Configuration (`findings: <reader>`), from a closed
+   set (`squadops.sandbox.findings.READERS`), each reader versioned. `configure` refuses an unknown reader, naming the
+   field.
+
+   | reader | a finding's key | readable when |
+   |---|---|---|
+   | `ruff` | `"<code> <path>"`, never the line, in either output format, with syntax errors keyed `invalid-syntax` | exit 0 (none), or exit 1 with its rows adding up to its own "Found N errors." |
+   | `pytest` | `"FAILED <node>"` or `"ERROR <node>"` | exit 0 or 1, with its rows adding up to its summary, which also gives the tests it ran |
+   | `lines` | each non-empty output line, digits replaced | exit 0 (none), or any other exit with a line to read |
+
+   Anything else is unreadable, with its reason: a tool error, a collection error, rows short of a summary, or more
+   than 10,000 distinct keys. An unreadable run is never read as clean, since a run that broke would otherwise erase
+   the baseline's failures as an improvement.
+2. **The sandbox applies the reader** to the check's whole stdout and stderr, before their tails are cut (X-3a, #2623;
+   the tail was 4,000 characters, and continuum's ruff output alone was 35,921). A named reader always answers: a
+   command that never ran to an exit (a setup step stopped it, a timeout, not found, no daemon) reads as unreadable,
+   with why. Each tail now says whether it was cut (#2622).
+3. **The inherited baseline stores each check's reading,** additive in `inherited-baseline/v1`'s check rows. Baseline
+   and candidate are read by one reader at one version, through the same `run_checks`.
+4. **The acceptance policy is `no-introduced-regression/v2`.** For a FAIL on both sides, when the check declares a
+   reader and both runs were read:
+   - **a finding key whose count grew** makes the check `introduced/regressed`. It blocks, and the verification names
+     the keys;
+   - **readings that can't be compared** (another reader or version, an unreadable side, or a pytest run that ran fewer
+     tests than its baseline) make it `unverified attribution`, which blocks;
+   - **otherwise** it is `inherited`.
+
+   A check with no reader, or a baseline captured before v2 (`baseline has no findings`), is read whole, as v1 read
+   it. Its row says so (`read: whole`, with the reason). A v1 verification stays readable as it was.
+5. **§8.3.1's rule** "an inherited `FAIL` is never an introduced regression" now reads: "…unless its check declares a
+   findings reader and a finding key's count grew".
+
+**IR-9, restated for both cases:**
+- **A check with no reader:** as written. The shared fixture's inherited failure stays reader-less, and stays `FAIL`,
+  `inherited`.
+- **A check with a reader:**
+  - a key grew: `introduced/regressed`;
+  - none grew: `inherited`;
+  - a run that broke: `unverified attribution`.
+
+**Blind spots, named:**
+- a file renamed or moved makes its findings new keys, so the check blocks (conservative);
+- a finding swapped for another of the same key, in the same file, is masked;
+- a failure newly skipped or xfailed reads as removed: "no longer failing", not an improvement;
+- deleted tests leave pytest's readings incomparable (fewer ran), so the check blocks.
+
+**The evidence:**
+- **The readers, on real output** (`tests/unit/sandbox/test_findings_readers.py`, #2620):
+  - continuum's 59 findings at `ba8fa68b` read the same in both ruff formats;
+  - stage 6's candidate `0c814a7c` grows exactly `I001 src/continuum/cli.py`, `E501` and `F401` in the new test;
+  - stage 3's `2f6b3baa` grows none;
+  - a collection error and a ruff tool error read unreadable.
+- **The sandbox** (#2623) reads the whole output past the tail, on the same continuum output.
+- **The attribution table** (`tests/unit/projects/test_baseline.py`) runs on those readings, and stage 6's
+  verification is `regressed: lint gained findings…`.
+- **The wiring test** (`tests/unit/projects/test_workspaces.py`) enters at `capture_inherited_baseline`, then
+  `run_checks` and `attributed`. The shared fixture's `parse` is read by `lines`, and a candidate that adds a second
+  failure inside it is `introduced/regressed`, while the reader-less checks are untouched.
+
+**Who ruled:** the MacBook lane, under the owner's delegation of 2026-10-18. The Spark lane's G4 is on #2609 (the
+design, issuecomment-6326651632), on X-3a's shape (a), on #2620 and on #2623.
 
