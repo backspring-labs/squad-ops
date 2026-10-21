@@ -282,8 +282,11 @@ class GitSourceRepository(SourceRepositoryPort):
         commit = self._fast_import(
             clone, _INITIAL_REF, None, files, executable, message, committed_at
         )
-        held = self._git(clone, "for-each-ref", "--format=%(objectname)", ref, step="resolve")
-        held = held.decode().strip()
+        held = (
+            self._git(clone, "for-each-ref", "--format=%(objectname)", ref, step="resolve")
+            .decode()
+            .strip()
+        )
         if held == commit:
             return commit  # a retry of this request, whose push landed
         if held:
