@@ -14,6 +14,8 @@ when the row is written: a row that can't be written is said, never implied.
 from __future__ import annotations
 
 import logging
+from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
 from typing import Any
 
 from fastapi import Request
@@ -25,6 +27,8 @@ from squadops.auth.models import Identity
 from squadops.campaigns.models import CampaignTransition, ControlOperation
 from squadops.capabilities.context_assembly import authoring_seam_of
 from squadops.capabilities.lesson_supply import unit_of
+from squadops.memory.dispatch_turns import DispatchTurnUnavailable
+from squadops.memory.lessons import UnitKind
 from squadops.memory.records import MemoryRecord, RecordRefused, RecordScope
 from squadops.memory.task_instructions import (
     cited_lesson,
@@ -95,6 +99,31 @@ async def target_cycle(request: Request, scope: str, project_id: str | None, tar
 
 def of_campaign(cycle: Any) -> bool:
     return bool(getattr(cycle, "campaign_id", None))
+
+
+@asynccontextmanager
+async def dispatch_turn(request: Request, unit: tuple[UnitKind, str] | None) -> AsyncIterator[None]:
+    """#2545: ``unit``'s dispatch turn, held by a change to what its dispatches are handed from its
+    check of their exposures to its write, so no dispatch composes between the two. Nothing is held
+    for no unit (a record no cycle's dispatch reads), or with no store, whose check refuses. A turn
+    that isn't given answers 503, with nothing written."""
+    store = get_memory_store(request)
+    if unit is None or store is None:
+        yield
+        return
+    try:
+        async with store.dispatch_turn(*unit):
+            yield
+    except DispatchTurnUnavailable as e:
+        raise http_error(
+            503, "DISPATCH_TURN_UNAVAILABLE", f"{e}; nothing was written, so it can be sent again"
+        ) from e
+
+
+def turn_of(cycle: Any) -> tuple[UnitKind, str] | None:
+    """The unit whose dispatches a task instruction for ``cycle`` reaches: its campaign's, or its
+    own. ``None`` for a record with no cycle."""
+    return unit_of(cycle) if cycle is not None else None
 
 
 async def refuse_dispatched(request: Request, cycle: Any, target: Any) -> None:

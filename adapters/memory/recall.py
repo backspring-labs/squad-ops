@@ -10,6 +10,7 @@ eligible, and neither stops the task: memory is beside execution (§0.3).
 from __future__ import annotations
 
 import logging
+from contextlib import AbstractAsyncContextManager
 from typing import Any
 
 from squadops.memory.cycle_bindings import as_bound_for, names_current
@@ -41,6 +42,9 @@ class SnapshotRecall(FailurePatternRecallPort):
         #: (``create_failure_recall``); a unit test of the lessons alone may hold none.
         self._records = records
         self._attempts = attempts
+
+    def dispatch_turn(self, unit_kind: UnitKind, unit_id: str) -> AbstractAsyncContextManager[None]:
+        return self._store.dispatch_turn(unit_kind, unit_id)
 
     async def pinned_instructions(
         self, unit_kind: UnitKind, unit_id: str, project_id: str, *, cycle_id: str | None = None

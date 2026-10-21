@@ -34,11 +34,13 @@ from squadops.api.routes.chat.dtos import (
 from squadops.api.routes.chat.errors import handle_chat_error
 from squadops.api.routes.memory.applicability import refuse_unmatched
 from squadops.api.routes.memory.interventions import (
+    dispatch_turn,
     log_intervention,
     of_campaign,
     refuse_dispatched,
     refuse_lesson_for_control,
     target_cycle,
+    turn_of,
 )
 from squadops.api.runtime.deps import get_memory_records, get_memory_store, get_project_registry
 from squadops.auth.models import Scope, scopes_for_roles
@@ -437,10 +439,12 @@ async def confirm_capture(
                 target=target,
             ),
         )
-        if cycle is not None:
-            await refuse_lesson_for_control(request, cycle, record.current)
-            await refuse_dispatched(request, cycle, target)
-        await records.create(record)
+        # #2545: from the dispatched check to the write, no dispatch of the cycle composes.
+        async with dispatch_turn(request, turn_of(cycle)):
+            if cycle is not None:
+                await refuse_lesson_for_control(request, cycle, record.current)
+                await refuse_dispatched(request, cycle, target)
+            await records.create(record)
     except NotPermitted as e:
         raise http_error(403, "FORBIDDEN", str(e)) from e
     except RecordRefused as e:

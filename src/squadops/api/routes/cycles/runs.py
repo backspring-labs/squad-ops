@@ -369,24 +369,30 @@ async def _rule_increment(
     if not cycle.campaign_id:
         raise ValidationError(f"cycle {cycle_id} belongs to no campaign")
     actor, role = actor_from(identity)
-    instructions = await _ruling_instructions(request, cycle, run_id, body, actor)
-    try:
-        transition = ruling_transition(
-            GateDecisionValue(body.decision),
-            ProposalBinding(**body.binding.model_dump()),
-            run_id=run_id,
-            actor=actor,
-            actor_role=role,
-            reason=reason,
-            idempotency_key=body.idempotency_key,
-            classification=body.classification,
-            classification_rationale=body.classification_rationale,
-            instruction_ids=tuple(r.record_id for r in instructions),
-        )
-    except ValueError as e:  # §24bi: a return names what went wrong, or it is refused
-        raise ValidationError(str(e)) from e
-    await apply_control(request, cycle.campaign_id, transition, identity)
-    await _store_ruling_instructions(request, instructions)
+    # deferred (cycle): as _ruling_instructions' own import
+    from squadops.api.routes.memory.interventions import dispatch_turn, turn_of
+
+    # #2545: the ruling's task instructions are checked against the cycle's dispatches and stored
+    # in the unit's dispatch turn, so none of its dispatches composes between the two.
+    async with dispatch_turn(request, turn_of(cycle) if body.task_instructions else None):
+        instructions = await _ruling_instructions(request, cycle, run_id, body, actor)
+        try:
+            transition = ruling_transition(
+                GateDecisionValue(body.decision),
+                ProposalBinding(**body.binding.model_dump()),
+                run_id=run_id,
+                actor=actor,
+                actor_role=role,
+                reason=reason,
+                idempotency_key=body.idempotency_key,
+                classification=body.classification,
+                classification_rationale=body.classification_rationale,
+                instruction_ids=tuple(r.record_id for r in instructions),
+            )
+        except ValueError as e:  # §24bi: a return names what went wrong, or it is refused
+            raise ValidationError(str(e)) from e
+        await apply_control(request, cycle.campaign_id, transition, identity)
+        await _store_ruling_instructions(request, instructions)
     run = await registry.get_run(run_id)
     return not any(d.gate_name == INCREMENT_RULING_GATE for d in run.gate_decisions)
 

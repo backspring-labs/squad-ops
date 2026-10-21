@@ -14,6 +14,7 @@ Part of SIP-0066 Phase 2.
 from __future__ import annotations
 
 from collections.abc import AsyncIterator, Sequence
+from contextlib import AbstractAsyncContextManager, nullcontext
 from pathlib import Path
 from typing import Any
 from uuid import uuid4
@@ -123,6 +124,10 @@ class NoOpFailurePatternRecall(FailurePatternRecallPort):
     async def pinned_instructions(self, unit_kind, unit_id, project_id, *, cycle_id=None) -> tuple:
         """No store, so no snapshot pinned any instruction."""
         return ()
+
+    def dispatch_turn(self, unit_kind, unit_id) -> AbstractAsyncContextManager[None]:
+        """No store, so nothing changes what a dispatch is handed, and there is nothing to order."""
+        return nullcontext()
 
 
 class NoOpPromptService(PromptService):

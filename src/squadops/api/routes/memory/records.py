@@ -51,11 +51,13 @@ from squadops.api.middleware.auth import require_scopes
 from squadops.api.routes.memory.applicability import refuse_unmatched
 from squadops.api.routes.memory.held_units import next_step, running_and_finished, unit_row
 from squadops.api.routes.memory.interventions import (
+    dispatch_turn,
     log_intervention,
     of_campaign,
     refuse_dispatched,
     refuse_lesson_for_control,
     target_cycle,
+    turn_of,
 )
 from squadops.api.runtime.deps import (
     get_campaign_registry,
@@ -309,21 +311,23 @@ async def create_memory_record(
             campaign_cycle=of_campaign(cycle),
         )  # fmt: skip
         await _refuse_unbindable(request, revision, body.project_id)
-        if cycle is not None:
-            # §3.5: a task instruction written here comes after its cycle's admission. Refused
-            # before its references are bound, which neither refusal reads (T16).
-            await refuse_lesson_for_control(request, cycle, revision)
-            await refuse_dispatched(request, cycle, revision.target)
-        revision = await _bound_with_cycle(request, cycle, revision)
-        record = new_record(
-            record_id=f"mrec_{uuid.uuid4().hex[:16]}",
-            kind=body.kind,
-            scope=body.scope,
-            project_id=body.project_id,
-            owner_id=actor,
-            revision=revision,
-        )
-        await _store(request).create(record)
+        # #2545: from the dispatched check to the write, no dispatch of the cycle composes.
+        async with dispatch_turn(request, turn_of(cycle)):
+            if cycle is not None:
+                # §3.5: a task instruction written here comes after its cycle's admission. Refused
+                # before its references are bound, which neither refusal reads (T16).
+                await refuse_lesson_for_control(request, cycle, revision)
+                await refuse_dispatched(request, cycle, revision.target)
+            revision = await _bound_with_cycle(request, cycle, revision)
+            record = new_record(
+                record_id=f"mrec_{uuid.uuid4().hex[:16]}",
+                kind=body.kind,
+                scope=body.scope,
+                project_id=body.project_id,
+                owner_id=actor,
+                revision=revision,
+            )
+            await _store(request).create(record)
     except NotPermitted as e:
         raise http_error(403, "FORBIDDEN", str(e)) from e
     except RecordRefused as e:
@@ -502,18 +506,21 @@ async def revise_memory_record(
             owner_id=record.owner_id, campaign_cycle=of_campaign(cycle),
         )  # fmt: skip
         await _refuse_unbindable(request, revision, record.project_id)
-        if cycle is not None:
-            # §3.8: a task instruction is corrected before its task dispatches, or not at all: the
-            # types it drops are checked as well as those it names (the second read of #2178).
-            # Refused before its references are bound, which neither refusal reads (T16).
-            before = record.current.target.task_types if record.current.target else ()
-            after = revision.target.task_types if revision.target else ()
-            together = tuple(dict.fromkeys((*before, *after)))
-            await refuse_lesson_for_control(request, cycle, revision)
-            await refuse_dispatched(request, cycle, TaskTarget(cycle.cycle_id, together))
-        revision = await _bound_with_cycle(request, cycle, revision)
-        updated = revised(record, revision)
-        await _store(request).append_revision(record_id, updated.current)
+        # #2545: from the dispatched check to the write, no dispatch of the cycle composes.
+        async with dispatch_turn(request, turn_of(cycle)):
+            if cycle is not None:
+                # §3.8: a task instruction is corrected before its task dispatches, or not at all:
+                # the types it drops are checked as well as those it names (the second read of
+                # #2178). Refused before its references are bound, which neither refusal reads
+                # (T16).
+                before = record.current.target.task_types if record.current.target else ()
+                after = revision.target.task_types if revision.target else ()
+                together = tuple(dict.fromkeys((*before, *after)))
+                await refuse_lesson_for_control(request, cycle, revision)
+                await refuse_dispatched(request, cycle, TaskTarget(cycle.cycle_id, together))
+            revision = await _bound_with_cycle(request, cycle, revision)
+            updated = revised(record, revision)
+            await _store(request).append_revision(record_id, updated.current)
     except NotPermitted as e:
         raise http_error(403, "FORBIDDEN", str(e)) from e
     except RecordRefused as e:

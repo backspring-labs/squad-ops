@@ -10,19 +10,24 @@ instruction admitted at the gate marked as an intervention.
 
 from __future__ import annotations
 
+import asyncio
 from datetime import UTC, datetime
 
+import httpx
 import pytest
 
 from adapters.memory.cross_cycle import InMemoryCrossCycleMemoryStore
 from adapters.memory.records import InMemoryMemoryRecords
 from squadops.api.cycle_schemas import TaskInstructionDTO
 from squadops.api.routes.cycles.runs import _ruling_record_id
+from squadops.api.routes.memory.interventions import turn_of
+from squadops.campaigns.gate import INCREMENT_RULING_GATE
 from squadops.campaigns.models import ControlOperation
 from squadops.memory.exposures import Exposure
 from squadops.memory.recall import RecallQuery
 from squadops.memory.task_instructions import is_intervention
-from tests.unit.api.test_increment_gate_route import CID, world  # noqa: F401
+from tests.unit.api.test_dispatch_turns import _dispatching, _still_waiting
+from tests.unit.api.test_increment_gate_route import BINDING, CID, world  # noqa: F401
 
 pytestmark = pytest.mark.auth
 
@@ -218,3 +223,41 @@ async def test_a_repeated_ruling_replays_whatever_its_resolver_says_now(world, r
     assert again.status_code == 200, again.text
     [record] = await records.list_project("group_run")
     assert record.current.references[0].ref == "fake:doc:spec@r1"
+
+
+async def test_an_approvals_instructions_wait_for_a_dispatch_being_composed(world):  # noqa: F811
+    """#2545. Bug caught: the ruling's dispatched check run while the cycle's dispatch is between
+    reading its instructions and disclosing them, so the approval stores an instruction for a task
+    that dispatched without it, as an admitted input."""
+    records = _with_records(world)
+    store = world.client.app.state.memory_store
+    entered, release = asyncio.Event(), asyncio.Event()
+    exposure = Exposure(
+        run_id="run_impl", task_id="t_dev", cycle_id="cyc_inc", agent_id="neo",
+        seam="build_authoring",
+        query=RecallQuery(project_id="group_run", task_type="development.develop"),
+        recalled={}, recorded_at=datetime.now(UTC),
+    )  # fmt: skip
+    unit = turn_of(await world.cycles.get_cycle("cyc_inc"))
+    dispatching = asyncio.create_task(_dispatching(store, unit, exposure, entered, release))
+    await entered.wait()
+    body = {"decision": "approved", "notes": "the footprint stays inside the create view",
+            "binding": BINDING, "idempotency_key": "rule-1", "task_instructions": [INSTRUCTION]}  # fmt: skip
+    transport = httpx.ASGITransport(app=world.client.app)
+    async with httpx.AsyncClient(transport=transport, base_url="http://t") as client:
+        ruling = asyncio.create_task(
+            client.post(
+                f"/api/v1/projects/group_run/cycles/cyc_inc/runs/run_prop/gates/{INCREMENT_RULING_GATE}",
+                json=body,
+            )
+        )
+        waited = await _still_waiting(ruling)
+        release.set()
+        await dispatching
+        response = await ruling
+
+    assert waited
+    assert response.status_code == 409, response.text
+    assert response.json()["detail"]["error"]["code"] == "TASK_DISPATCHED"
+    assert await records.list_project("group_run") == []
+    assert await _rule_rows(world) == []
