@@ -25,6 +25,7 @@ from datetime import UTC, datetime
 from typing import Any
 
 from squadops.auth.models import Role
+from squadops.campaigns import binding_hold
 from squadops.campaigns.acceptance import DiscriminationReason, Held
 from squadops.campaigns.change_request import ChangeRequest, load_stored_change_request
 from squadops.campaigns.continuation import (
@@ -39,6 +40,7 @@ from squadops.campaigns.continuation import (
 )
 from squadops.campaigns.escalation import (
     PARK_REASON,
+    EscalationKind,
     EscalationState,
     RunAtGate,
     closing_transitions,
@@ -144,15 +146,28 @@ _RUNNING_STATES = frozenset(
 )
 
 
-def cycle_ending(stopped_because: CycleStopReason, last_run: Run, *, parked: bool) -> CycleEnding:
+def cycle_ending(
+    stopped_because: CycleStopReason,
+    last_run: Run,
+    *,
+    parked: bool,
+    held: binding_hold.HoldClass | None = None,
+) -> CycleEnding:
     """How the cycle ended, for the decision. The increment gate's rejection — and a proposal
     whose revisions were spent, which §9.5 counts as rejected — is ``rejected_at_gate``; a
     proposal run that failed, or whose proposal the increment gate failed to submit (#2213), is
     ``proposal_failed``; a plan gate whose escalation expired, its run cancelled for it, is
-    ``parked`` (§24bj; ``parked`` is read from the control log by ``escalation.parked_run``);
-    everything else reached its assessment."""
+    ``parked`` (§24bj; ``parked`` is read from the control log by ``escalation.parked_run``); a run
+    whose binding hold expired, cancelled for it, is ``held_store`` or ``held_input`` by the hold's
+    cause class (§24bw; ``binding_hold.held_expiry``); everything else reached its assessment."""
     if parked and last_run.status == RunStatus.CANCELLED.value:
         return CycleEnding.PARKED
+    if held is not None and last_run.status == RunStatus.CANCELLED.value:
+        return (
+            CycleEnding.HELD_STORE
+            if held is binding_hold.HoldClass.STORE
+            else CycleEnding.HELD_INPUT
+        )
     if last_run.workload_type == WorkloadType.PROPOSAL:
         if stopped_because in (CycleStopReason.GATE_REJECTED, CycleStopReason.REVISION_UNAVAILABLE):
             return CycleEnding.REJECTED_AT_GATE
@@ -547,7 +562,12 @@ class CampaignProgress:
             return None
 
         latest = await self._assess(cycle.cycle_id)
-        ending = cycle_ending(stopped_because, last_run, parked=parked_run(log, last_run.run_id))
+        ending = cycle_ending(
+            stopped_because,
+            last_run,
+            parked=parked_run(log, last_run.run_id),
+            held=binding_hold.held_expiry(log, last_run.run_id),
+        )
         if ending is CycleEnding.ASSESSED:
             await self._outcome_evaluated(cycle)
         kind = CycleKind(cycle.kind)
@@ -773,11 +793,13 @@ class CampaignProgress:
 
     async def _end_escalations(self, campaign: Campaign) -> list[ControlLogEntry]:
         log = await self._campaigns.control_log(campaign.campaign_id)
-        pending = [
-            e for e in escalations(log, campaign.state) if e.state is EscalationState.PENDING
-        ]
+        open_ = [e for e in escalations(log, campaign.state) if e.state is EscalationState.PENDING]
+        written = await self._end_binding_holds(
+            campaign, log, [e for e in open_ if e.kind is EscalationKind.BINDING_HOLD]
+        )
+        pending = [e for e in open_ if e.kind is EscalationKind.PLAN_REVIEW]
         if not pending:
-            return []
+            return written
         waiting = await self._waiting_gate(campaign)
         runs = {}
         for esc in pending:
@@ -787,7 +809,6 @@ class CampaignProgress:
                 and (waiting.run_id, waiting.gate_name) == (esc.run_id, esc.gate_name),
                 decided_by=_person_decision(run, esc.gate_name),
             )
-        written = []
         for transition in closing_transitions(campaign, log, runs, self._clock()):
             try:
                 result = await self._campaigns.transition(campaign.campaign_id, transition)
@@ -803,6 +824,66 @@ class CampaignProgress:
             if transition.binding["state"] == EscalationState.EXPIRED:
                 await self._park(transition.target)
         return written
+
+    async def _end_binding_holds(
+        self, campaign: Campaign, log: list[ControlLogEntry], pending: list
+    ) -> list[ControlLogEntry]:
+        """§24bw: each pending binding hold of the campaign, read against its run's hold record
+        (SIP-0110 §A.3.6, ``Run.binding_holds``): resolved when re-supply released it, superseded
+        when the run stopped being held without it, expired when the ruling bound passed. An
+        expiry cancels the run and records the release, so the cycle ends by the hold's cause,
+        never parked."""
+        if not pending:
+            return []
+        holds = {}
+        for esc in pending:
+            run = await self._cycles.get_run(esc.run_id)
+            hold = next((h for h in run.binding_holds if h.hold_id == esc.hold_id), None)
+            if hold is None:
+                continue
+            holds[esc.hold_id] = binding_hold.HoldAtRun(
+                held=run.status == RunStatus.PAUSED.value and hold.released_at is None,
+                released_cause=hold.cause,
+            )
+        written = []
+        for transition in binding_hold.closing_transitions(campaign, log, holds, self._clock()):
+            try:
+                result = await self._campaigns.transition(campaign.campaign_id, transition)
+            except ControlOperationRefused as refused:
+                logger.info(
+                    "campaign_binding_hold_close_refused",
+                    extra={"campaign_id": campaign.campaign_id, "refusal": refused.entry.refusal},
+                )
+                continue
+            if result.replayed:
+                continue
+            written.append(result.entry)
+            if transition.binding["state"] == EscalationState.EXPIRED:
+                await self._end_held(transition.target, next(
+                    e.hold_id for e in pending
+                    if e.escalation_id == transition.binding["escalation_id"]
+                ))  # fmt: skip
+        return written
+
+    async def _end_held(self, run_id: str | None, hold_id: str | None) -> None:
+        """Record the expired hold's release, then cancel its run with the reason: the executor's
+        poll sees the cancellation, and the cycle ends by the hold's cause class. The release is
+        the registry's compare-and-set, so a re-supply that landed since the sweep read the run
+        wins: the run goes on, and the expiry stands in the record beside it, as a plan gate's
+        late decision does (§24bk)."""
+        assert run_id is not None and hold_id is not None
+        landed = await self._cycles.release_binding_hold(
+            run_id, hold_id, released_at=self._clock(), cause=binding_hold.EXPIRED_CAUSE
+        )
+        if not landed:
+            logger.info("campaign_binding_hold_released_first", extra={"run_id": run_id})
+            return
+        try:
+            await self._cycles.update_run_status(
+                run_id, RunStatus.CANCELLED, failure_reason=binding_hold.HOLD_EXPIRED_REASON
+            )
+        except IllegalStateTransitionError:
+            logger.info("campaign_binding_hold_run_already_ended", extra={"run_id": run_id})
 
     async def _park(self, run_id: str | None) -> None:
         """Cancel the expired escalation's run, so its gate's poll ends and the cycle ends parked.

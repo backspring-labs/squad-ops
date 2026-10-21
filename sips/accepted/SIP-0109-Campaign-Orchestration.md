@@ -132,6 +132,7 @@ Kept by the rule in CLAUDE.md ("SIP System"): one row per part, updated in the P
 | a campaign declares its stack, and every cycle it launches carries it (§24bs) | **shipped** | 2.4.0, PR #2446, issue #2443 |
 | a fresh proposal is shown each proposal its campaign never approved, with the ruling's reason (§24bu) | **shipped** | 2.4.0, PR #2598, issue #2593 |
 | a Campaign on a repository-backed Project: calibration as a record, increments on a campaign branch, proposals from the product's tree (§24bv; SIP-0112 H.4) | **placed** | 2.5.0, #2619 |
+| a Campaign cycle held on its instruction bindings escalates as `binding_hold`, released by re-supply and never parked (§24bw; SIP-0110 §A.3.6) | **shipped** | 2.4.0, the PR that wrote this row (#2178's Campaign half) |
 
 **What closes this SIP:** Its 2.1.0 rows closing, #1710's remainder ruled, and #1708's remainder shipped in 2.2.0 or ruled out of scope. §24at, the consolidated status at the v2.0.0 cut, replaces the 2.0 plan's §5a as the permanent record. Promotion follows at the sweep after the last placed row closes.
 
@@ -3771,3 +3772,93 @@ its initialization (H.1). Everything below applies to it and to nothing else.
 wrote this, as H.4's boundary assigns it. The proposals in points 1 and 4 (refusing the start; `upstream_moved` not
 counted) and the requirements source in point 5 are the supervisor's, for the owner's review and the MacBook lane's
 G4.
+
+### 24bw. A Campaign cycle held on its instruction bindings escalates as its own kind, released by re-supply and never parked (2026-10-21, §10 rows 10, 11, 14 and 15, §24bj, §24bk, §24bp; SIP-0110 §A.3.6, #2178; the supervisor's design, for the owner)
+
+**What it's for.** SIP-0110 §A.3.6's hold (#2178, the MacBook lane's) replaces §5m's failed run. A run whose task
+instructions can't be bound, at provisioning or at a re-dispatch, is held, not failed. It's released when the binding
+is complete:
+- the store answered;
+- a §5w intervention revised, narrowed or withdrawn the instruction;
+- or a §5v re-binding replaced the revision.
+
+A standalone cycle holds until it's released or cancelled. A Campaign's cycle needs the owner to see it, and an end,
+which is this SIP's. The MacBook lane asked whether a held plan gate's path fits.
+
+**It fits in part.** The queue, the bound and where it's seen fit. Its answer and its expiry don't. So a binding hold
+is its own escalation kind, `binding_hold`, in the same queue.
+
+**What it shares with a plan gate's escalation (§24bk):**
+- **The control log is the queue.** An `escalation_opened` row is keyed by the hold's identity, and one
+  `escalation_closed` row is its only ending, compare-and-set as today.
+- **The bound is the Campaign's `ruling_bound_s`,** read by the same sweep.
+- **It's listed where a plan gate's is:** `campaigns escalations`, the digest and the package. The owner sees a held
+  cycle where a held gate shows.
+
+**What is its own:**
+- **The identity** is the campaign, cycle, run and held task, plus the unresolved records, each as its id and revision.
+  A different set of unresolved records is a different hold.
+- **The opening row's binding** names each unresolved record, the reason it couldn't be bound, and its kind, as the
+  composer sets it (never parsed from the reason). The hold's cause class is `store` if any record's is, since nothing
+  else can be judged then, and `input` otherwise:
+  - **`store`:** the memory store didn't answer;
+  - **`input`:** a required reference that couldn't be bound at the cycle's commit, or an instruction withdrawn or
+    narrowed so nothing is left to bind.
+- **It's released, not answered.**
+  - The executor records the release on the run (`release_binding_hold(run_id, hold_id, released_at, cause)`, the
+    cycle registry's compare-and-set). The sweep reads it and closes the escalation `resolved`, with the release's
+    cause as its binding. So the executor writes a release and the sweep ends an escalation, each the only writer of
+    its own.
+  - `campaigns answer` on a `binding_hold` is refused (422): "released by re-supply, not by an answer".
+  - §24bl's late answer and §24bm's carrying never read one.
+- **Its expiry is by cause, and never a park.** A plan gate's expiry parks the cycle, and row 15 reads a park as
+  `abandon_and_propose`, counted as unaccepted (§24bp). A binding hold says nothing about the squad's work. So when
+  `ruling_bound_s` passes with the run still held, the sweep closes the escalation `expired`. It then records the
+  release as `expired` through the same compare-and-set, and only if that lands does it cancel the run
+  (`binding_hold_expired`). A re-supply that landed since the sweep read the run wins: the run goes on, and the expiry
+  stands in the record beside it, as a plan gate's late decision does (§24bk). The cycle then ends by the hold's cause
+  class:
+  - **`store`:** `CycleEnding.HELD_STORE`. Rows 10 and 11 apply: a retry while retries remain, then escalate.
+    Nothing is counted toward `max_unaccepted_increments`;
+  - **`input`:** `CycleEnding.HELD_INPUT`, read by **row 17** (new, numbered after row 16 so recorded rows keep their
+    numbers): `escalate`, naming the unresolved records, with nothing counted. The owner's re-binding or withdrawal,
+    then a resume, continues it.
+  - **A held calibration** that expires is still row 2: it wasn't accepted. Its rows name the hold.
+  - **Neither ending has a verdict** (`cycle_verdict` gives none to an unassessed ending), so a cancelled run's vacuous
+    `accepted` (#2303's shape) promotes nothing.
+
+  `CycleEnding.PARKED` stays a plan gate's alone, read from a plan-gate expiry only (`escalation.parked_run`), so row 15
+  never reads a binding hold.
+- **Superseded and cancelled read as today:** a run no longer held with no release recorded (an operator's cancel) is
+  `superseded`, and a hold still open when its Campaign completed reads `cancelled`.
+
+**The executor's one call on the Campaign side,** `campaigns.binding_hold.open_binding_hold(campaigns, cycle, run_id,
+hold, now)`, comes after it records the hold on the run. It writes the opening row for a Campaign cycle, and nothing for
+a standalone one. A restart that re-enters the hold finds it standing and writes nothing, so its bound runs from its
+first opening, as a gate's does.
+
+**The kinds, as listed:** `plan_review` (a row written before kinds existed reads as one) and `binding_hold`, with its
+cause class, on `GET /api/v1/campaigns/{id}/escalations` and in `campaigns escalations`. A hold's unresolved records
+stand where a plan gate's failed conditions do.
+
+**Seams it uses, never duplicates:**
+- **One binder.** A held Campaign cycle's re-supply fills its missing bindings through the launcher's `_fill_binding`
+  (`api/campaign_launch.py`, `cycle_bindings.missing_from`), at the cycle's own commit (SIP-0110 §5ad).
+- **The box lease.** A held run keeps the Campaign's lease, and the hold renews it as a waiting gate does. Otherwise a
+  `lease_expiry_s` below the bound would fail the run on renewal (§24ai's ceiling, one full lease since §24al).
+
+**What stays:** every row's predicate, the plan gate's escalation and its park, the late answer, and the standalone
+cycle's hold, which is SIP-0110's and has no escalation.
+
+**Evidence.** `tests/unit/campaigns/test_binding_hold_escalations.py` enters at `open_binding_hold`, at the sweep
+(`CampaignProgress.sweep_ruling_bounds`) and at the hearing (`cycle_ended`), with the run's hold record and the
+registry's release stood in for until #2178's run side lands. Its cases:
+- for each cause class, the bound respected, then expired, released, cancelled, and read by row 10 or row 17;
+- the park never read, and nothing promoted on a vacuous `accepted`;
+- a re-supply or re-binding closing `resolved`, and a cancel closing `superseded`, with the run left alone;
+- a re-supply that lands before the sweep's release winning;
+- a restart writing one row, and a standalone cycle writing none;
+- the answer refused.
+
+**Who ruled.** Proposed by the supervisor (the Spark lane) on #2178 (issuecomment-6327598642), and the MacBook lane
+agreed to the split and the hold record the same day. Not yet the owner's: it's for the owner's review.

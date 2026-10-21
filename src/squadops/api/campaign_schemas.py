@@ -160,7 +160,9 @@ class EscalationAnswerRequest(BaseModel):
 
 
 class EscalationResponse(BaseModel):
-    """One escalation of the plan-review tier, as the control log holds it (§24bj, §24bk)."""
+    """One escalation, as the control log holds it (§24bj, §24bk): a plan gate the tier couldn't
+    approve, or a cycle held on its instruction bindings (§24bw), whose unresolved records stand
+    in ``failed`` (the reference as ``condition``, its reason as ``reading``)."""
 
     escalation_id: str
     cycle_id: str
@@ -176,6 +178,9 @@ class EscalationResponse(BaseModel):
     answers: dict[str, str]
     answered_by: str | None
     answered_at: datetime | None
+    #: §24bw: ``plan_review`` or ``binding_hold``, and a hold's cause class (``store``, ``input``).
+    kind: str = "plan_review"
+    hold_class: str | None = None
 
 
 class AcceptedTreeDTO(BaseModel):

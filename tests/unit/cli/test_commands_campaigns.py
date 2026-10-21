@@ -413,11 +413,20 @@ def test_escalations_lists_each_ones_state_failed_conditions_and_late_answer(get
 
     assert result.exit_code == 0, result.output
     headers, rows = table.call_args.args
-    assert headers == ["Escalation", "State", "Run", "Failed", "Questions", "Late answer"]
+    assert headers == ["Escalation", "Kind", "State", "Run", "Failed", "Questions", "Late answer"]
     assert rows == [
-        ["esc_0123456789ab", "expired", "run_f", "no_open_question", "which order?", "—"],
+        [
+            "esc_0123456789ab",
+            "plan_review",
+            "expired",
+            "run_f",
+            "no_open_question",
+            "which order?",
+            "—",
+        ],
         [
             "esc_ba9876543210",
+            "plan_review",
             "expired",
             "run_g",
             "no_open_question",
