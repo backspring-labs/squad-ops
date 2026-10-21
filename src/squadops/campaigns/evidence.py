@@ -373,7 +373,9 @@ def _kb(size: int) -> str:
 
 def _accepted(doc: dict) -> list[str]:
     """Each promotion, with what it shipped: the criteria it froze (the change request's own
-    statements), and any it retired."""
+    statements), and any it retired. A promotion that froze a criterion without its statement
+    (an accepted repair's, before #2595) says so: the record is what it is, and a package that
+    refuses it is never written."""
     kinds = {cyc["cycle_id"]: cyc["kind"] for cyc in doc["cycles"]}
     lines = []
     for r in doc["control_log"]:
@@ -385,7 +387,7 @@ def _accepted(doc: dict) -> list[str]:
             f"{b.get('files', '?')} files"
         )
         lines += [
-            f"  - froze {f['criterion_id']}: {f['statement']}"
+            f"  - froze {f['criterion_id']}: {f.get('statement') or 'statement not recorded'}"
             for f in b.get("frozen_criteria") or ()
         ]
         if b.get("retired_criteria"):
