@@ -355,7 +355,7 @@ async def start_campaign(
     # SIP-0110 §0.7: the campaign pins its memory snapshot at admission, before its calibration
     # launches, so every proposal and cycle of it selects from one snapshot.
     await _pin_memory(request, result.campaign)
-    return _result(result, launched_cycles=await launch_pending(request, result))
+    return await _after_drain(request, result, await launch_pending(request, result))
 
 
 async def _pin_memory(request: Request, campaign) -> None:
@@ -577,7 +577,8 @@ async def resume_campaign(
             expected_state=CampaignState.ESCALATED,
         )
         result = await apply_control(request, campaign_id, transition, identity)
-        return _result(result, launched_cycles=await _retry_launch(request, launch_id, result))
+        launched = await _retry_launch(request, launch_id, result)
+        return await _after_drain(request, result, launched, launch_id=launch_id)
     if campaign.state is CampaignState.ESCALATED and named is None:
         if escalated_by_a_blocked_launch(campaign, log):
             # §9.3 (#1802): the launch it escalated over is still pending. The owner's word
@@ -611,7 +612,7 @@ async def resume_campaign(
         except CannotLaunch as e:
             raise HTTPException(422, _validation(str(e))) from e
         result = await apply_control(request, campaign_id, transition, identity)
-        return _result(result, launched_cycles=await launch_pending(request, result))
+        return await _after_drain(request, result, await launch_pending(request, result))
     paused_from = _paused_from(log)
     target = (
         paused_from if campaign.state is CampaignState.PAUSED and paused_from else campaign.state
@@ -1026,4 +1027,37 @@ def _result(
         replayed=result.replayed,
         cancelled_cycles=cancelled_cycles or [],
         launched_cycles=launched_cycles or [],
+    )
+
+
+async def _after_drain(
+    request: Request,
+    result: TransitionResult,
+    launched: list[str],
+    *,
+    launch_id: str | None = None,
+) -> ControlResultResponse:
+    """What an operation that launches left once its own drain ran (#2621). The drain may have
+    refused the launch and escalated the campaign, so the campaign is read again, and that
+    refusal's row is named beside the operation's own: the answer never reads as started while
+    the campaign waits on the owner. ``launch_id`` is the launch retried, else the row's own."""
+    registry = _registry(request)
+    campaign = await registry.get_campaign(result.campaign.campaign_id)
+    launch_id = launch_id or (result.intent.launch_id if result.intent is not None else None)
+    refused = None
+    if not launched and launch_id is not None:
+        log = await registry.control_log(campaign.campaign_id)
+        escalated = escalated_by_a_refused_launch(campaign, log)
+        if escalated is not None and escalated[1] == launch_id:
+            refused = [
+                e
+                for e in log
+                if e.operation is ControlOperation.LAUNCH_REFUSED and e.target == launch_id
+            ][-1]
+    return ControlResultResponse(
+        campaign=_campaign(campaign),
+        entry=_entry(result.entry),
+        replayed=result.replayed,
+        launched_cycles=launched,
+        refused_launch=_entry(refused) if refused is not None else None,
     )

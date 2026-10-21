@@ -59,6 +59,12 @@ def _show_result(ctx: typer.Context, data: dict, key: str) -> None:
         print_success(f"cancelled cycles: {', '.join(data['cancelled_cycles'])}")
     if data.get("launched_cycles"):
         print_success(f"launched cycles: {', '.join(data['launched_cycles'])}")
+    refused = data.get("refused_launch")
+    if refused:
+        # #2621: applied, and then its own launch refused: the campaign waits on the owner.
+        print_error(
+            f"launch refused, {campaign['campaign_id']} is {campaign['state']}: {refused['reason']}"
+        )
 
 
 @app.command("create")
