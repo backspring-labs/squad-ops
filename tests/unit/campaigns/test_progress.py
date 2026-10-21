@@ -737,9 +737,9 @@ def _evaluation(verdict: str) -> bytes:
     ).encode()
 
 
-def _capacity_request() -> bytes:
+def _capacity_request(prd_id: str = "capacity-limit") -> bytes:
     """The reference increment's change request (C1, ``POST /runs``), stored as the gate stores
-    an approved one."""
+    an approved one; its PRD section renamed when a second, different document is wanted."""
     from squadops.campaigns.change_request import (
         ProposalContext,
         stored_change_request,
@@ -747,8 +747,10 @@ def _capacity_request() -> bytes:
     )
 
     fixtures = Path(__file__).resolve().parents[2] / "fixtures" / "campaigns"
+    authored = yaml.safe_load((fixtures / "reference-capacity-change-request.yaml").read_text())
+    authored["prd_delta"][0]["id"] = prd_id
     request = validate_proposal(
-        yaml.safe_load((fixtures / "reference-capacity-change-request.yaml").read_text()),
+        authored,
         ProposalContext(
             "prop_cap",
             1,
@@ -1327,6 +1329,129 @@ async def test_an_abandoned_increments_record_reaches_the_next_proposal_and_no_o
     assert block["abandoned_increment"]["cycle_id"] == "cyc_inc"
     assert block["abandoned_increment"]["why_failed"][0]["check_id"] == "tests_pass"
     assert "prior_cycle" not in block
+
+
+_PRIORITY = "Priority order: an Expansion Tier 2 change while Tier 1 is incomplete."
+
+
+async def _rejected_at_the_gate(calibrating, stored):
+    """An accepted calibration, then an increment whose proposal run (``run_prop``, its own
+    change request among its artifacts) is rejected at the gate. A newer change request stored
+    under the cycle's other run is the decoy a lookup by cycle, or by type alone, would read.
+    Returns the world and the proposal run, before the cycle ends."""
+    import dataclasses as _dc
+
+    from squadops.campaigns.gate import ruling_transition, submission
+    from squadops.campaigns.models import ProposalBinding, SubmittedProposal
+    from squadops.cycles.models import GateDecisionValue
+
+    stored["art_cr"] = (
+        _dc.replace(
+            _ref("art_cr", "change_request.yaml", "change_request", 30),
+            cycle_id="cyc_inc",
+            run_id="run_prop",
+        ),
+        _capacity_request(),
+    )
+    stored["art_decoy"] = (
+        _dc.replace(
+            _ref("art_decoy", "change_request.yaml", "change_request", 40), cycle_id="cyc_inc"
+        ),
+        _capacity_request("not-the-ruled-request"),
+    )
+    w, run = await calibrating(RunVerdict.ACCEPTED)
+    await w.end("cyc_cal", run, CycleStopReason.SEQUENCE_COMPLETED)
+    accepted = (await w.campaigns.get_campaign(CID)).accepted.identity
+    await w.launched_cycle("increment", "cyc_inc", "proposal", "completed")
+    proposal_run = Run(
+        run_id="run_prop",
+        cycle_id="cyc_inc",
+        run_number=2,
+        status="completed",
+        initiated_by="system",
+        resolved_config_hash="cfg",
+        workload_type="proposal",
+        artifact_refs=("art_cr",),
+    )
+    await w.cycles.create_run(proposal_run)
+    binding = ProposalBinding("prop_cap", 1, "hash-1", accepted)
+    state = (await w.campaigns.get_campaign(CID)).state
+    await w.campaigns.transition(
+        CID, submission(state, SubmittedProposal(binding, "cyc_inc", "run_prop"))
+    )
+    await w.campaigns.transition(
+        CID,
+        ruling_transition(
+            GateDecisionValue.REJECTED,
+            binding,
+            run_id="run_prop",
+            actor="supervisor",
+            actor_role="campaign_supervisor",
+            reason=_PRIORITY,
+            idempotency_key="rule-1",
+            classification="unclassified",
+            classification_rationale="Priority order is none of the classes.",
+        ),
+    )
+    return w, proposal_run
+
+
+async def test_a_rejected_proposals_reason_reaches_the_fresh_proposal_after_it(calibrating, stored):
+    """#2593, the 2.4 window's campaign 4, entered at the completion hook as the rejected
+    proposal's cycle ends; row 6 launches a fresh proposal. Bugs caught: the fresh proposal told
+    nothing of the rejection (campaign 4 proposed one rejected change in four of its five
+    proposals); told the ruling without what was rejected; or shown another run's request (the
+    decoy), not the document the ruling bound to."""
+    w, proposal_run = await _rejected_at_the_gate(calibrating, stored)
+
+    await w.end("cyc_inc", proposal_run, CycleStopReason.GATE_REJECTED)
+
+    decision = (await w.campaigns.control_log(CID))[-1]
+    *_, fresh = await w.campaigns.launch_intents(CID)
+    block = fresh.cycle_request["body"]["execution_overrides"]["campaign_proposal"]
+    assert (decision.binding["row"], decision.binding["action"]) == (6, "propose")
+    [shown] = block["unapproved_proposals"]
+    assert {k: v for k, v in shown.items() if k not in ("prd_delta", "criteria")} == {
+        "proposal_id": "prop_cap",
+        "version": 1,
+        "decision": "rejected",
+        "reason": _PRIORITY,
+        "ruled_on_current_application": True,
+        "classification": "unclassified",
+        "classification_rationale": "Priority order is none of the classes.",
+    }
+    assert [(s["id"], s["op"]) for s in shown["prd_delta"]] == [("capacity-limit", "add")]
+    assert [c["id"] for c in shown["criteria"]] == ["C1", "C2", "C3"]
+
+
+async def test_a_ruled_request_whose_read_fails_launches_nothing_and_the_rehearing_shows_it(
+    calibrating, stored, monkeypatch
+):
+    """#2593, the launch's rule for its inputs (the 2.1 plan, ``_propose_launch``): a vault read
+    that fails raises, and the re-hearing retries. Bug caught: a proposal launched without what
+    the ruling rejected because one read failed, which no later launch would ever restore."""
+    w, proposal_run = await _rejected_at_the_gate(calibrating, stored)
+    reads = {"art_cr": 0}
+    real_retrieve = _Vault.retrieve
+
+    async def flaky(self, artifact_id):
+        if artifact_id == "art_cr":
+            reads["art_cr"] += 1
+            if reads["art_cr"] == 1:
+                raise OSError("the vault read failed once")
+        return await real_retrieve(self, artifact_id)
+
+    monkeypatch.setattr(_Vault, "retrieve", flaky)
+    launched_before = len(await w.campaigns.launch_intents(CID))
+
+    await w.end("cyc_inc", proposal_run, CycleStopReason.GATE_REJECTED)
+    after_failure = len(await w.campaigns.launch_intents(CID))
+    await w.progress.rehear_ended(["cyc_inc"])
+
+    *_, fresh = await w.campaigns.launch_intents(CID)
+    block = fresh.cycle_request["body"]["execution_overrides"]["campaign_proposal"]
+    assert after_failure == launched_before
+    assert [s["id"] for s in block["unapproved_proposals"][0]["prd_delta"]] == ["capacity-limit"]
 
 
 async def test_a_retry_of_a_repair_starts_from_the_accepted_tree(calibrating, stored, monkeypatch):

@@ -26,7 +26,7 @@ from typing import Any
 
 from squadops.auth.models import Role
 from squadops.campaigns.acceptance import DiscriminationReason, Held
-from squadops.campaigns.change_request import load_stored_change_request
+from squadops.campaigns.change_request import ChangeRequest, load_stored_change_request
 from squadops.campaigns.continuation import (
     CampaignCounters,
     ContinuationDecision,
@@ -63,6 +63,7 @@ from squadops.campaigns.increment_tree import (
     forwarded_change_request,
     increment_baseline,
     increment_seed,
+    proposal_change_request,
 )
 from squadops.campaigns.launch_requests import bound_launch, increment_launch
 from squadops.campaigns.models import (
@@ -84,6 +85,7 @@ from squadops.campaigns.proposed_behaviours import (
     QA_PROPOSED_BEHAVIOURS_ARTIFACT_TYPE,
     merged_entries,
 )
+from squadops.campaigns.unapproved_proposals import unapproved_proposal, unapproved_rulings
 from squadops.capabilities.handlers.fault_injection import seed as fault_seed
 from squadops.contracts.cycle_request_profiles import load_profile
 from squadops.cycles.contract_derivation import (
@@ -1410,16 +1412,36 @@ class CampaignProgress:
                 ]
             )
             baseline = resolve_late_answers(baseline, on_record)
-        frozen = frozen_criteria(await self._campaigns.control_log(campaign.campaign_id))
+        log = await self._campaigns.control_log(campaign.campaign_id)
+        frozen = frozen_criteria(log)
         # #1884: what the qa authors proposed instead of testing, in the accepted increment and
         # the one this proposal replaces.
         proposed = await self._qa_proposed_behaviours(
             [campaign.accepted.cycle_id, *([abandoned_cycle_id] if abandoned_cycle_id else [])]
         )
+        # #2593: each proposal the campaign never approved, with the ruling's reason. As with
+        # every input above, a read that fails raises and the re-hearing retries the launch: a
+        # proposal is never launched without them.
+        unapproved = [
+            unapproved_proposal(
+                entry,
+                await self._ruled_change_request(entry.target),
+                current_tree=campaign.accepted.identity,
+            )
+            for entry in unapproved_rulings(log)
+        ]
         try:
-            return increment_launch(campaign, baseline, frozen, abandoned, proposed)
+            return increment_launch(campaign, baseline, frozen, abandoned, proposed, unapproved)
         except FileNotFoundError as e:
             return f"the policy's proposal profile cannot be loaded: {e}"
+
+    async def _ruled_change_request(self, run_id: str | None) -> ChangeRequest | None:
+        """The change request a ruled proposal run stored (#2593), from the run's own artifacts:
+        the document the ruling bound to. ``None`` when the run stored none."""
+        if not run_id:
+            return None
+        document = await proposal_change_request(self._vault, await self._cycles.get_run(run_id))
+        return load_stored_change_request(document) if document is not None else None
 
     async def _accepted_manifest(self, cycle_id: str) -> str | None:
         """The interface manifest the accepted cycle ran against (#1902): one it stored (a

@@ -1,6 +1,6 @@
 ---
 template_id: request.strategy_propose_increment
-version: "13"
+version: "14"
 required_variables:
   - objective_statement
   - objective_measurement
@@ -10,6 +10,7 @@ required_variables:
 optional_variables:
   - frozen_conventions_section
   - supervisor_note_section
+  - unapproved_proposals_section
   - prd_section
   - abandoned_increment_section
   - qa_proposed_behaviours_section
@@ -54,6 +55,7 @@ criterion on it) or leave it out of the text.
 
 {{frozen_conventions_section}}
 {{supervisor_note_section}}
+{{unapproved_proposals_section}}
 {{abandoned_increment_section}}
 {{qa_proposed_behaviours_section}}
 {{prd_section}}{{task_instructions_section}}{{project_instructions_section}}{{cross_cycle_lessons_section}}

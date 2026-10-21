@@ -84,7 +84,7 @@ The revision history at the end has the earlier placements.
 
 ---
 
-## Delivery ledger (current as of 2026-10-18)
+## Delivery ledger (current as of 2026-10-21)
 
 Kept by the rule in CLAUDE.md ("SIP System"): one row per part, updated in the PR that ships or re-places it, read at each release cut. Built from the read-only SIP-portfolio audit of 2026-10-04; `sips/PORTFOLIO.md` indexes it.
 
@@ -130,6 +130,7 @@ Kept by the rule in CLAUDE.md ("SIP System"): one row per part, updated in the P
 | a return carries its classification, or `unclassified` with why (the 2.2 plan's D2) | **shipped** (§24bi) | 2.2.0, PR #2132 |
 | proposal-run retries bound failed proposal cycles in a row, and the failure past them pauses (§24bn) | **shipped** | 2.3.0, PR #2245, issue #2231 |
 | a campaign declares its stack, and every cycle it launches carries it (§24bs) | **shipped** | 2.4.0, PR #2446, issue #2443 |
+| a fresh proposal is shown each proposal its campaign never approved, with the ruling's reason (§24bu) | **shipped** | 2.4.0, PR #2598, issue #2593 |
 
 **What closes this SIP:** Its 2.1.0 rows closing, #1710's remainder ruled, and #1708's remainder shipped in 2.2.0 or ruled out of scope. §24at, the consolidated status at the v2.0.0 cut, replaces the 2.0 plan's §5a as the permanent record. Promotion follows at the sweep after the last placed row closes.
 
@@ -3565,3 +3566,54 @@ scenario suite the owner approved (SIP-0113 §4.1, the 2.4 plan's D2).
 **Who ruled it.** The owner accepted SIP-0113 with this placement (2026-10-17). The supervisor built it
 under the 2.4 grant (D11). It is a contract 2 field, so it carries the MacBook lane's review (G4). The
 draft rule, the projection order, the kept codes and the forbidden extras answer that review.
+
+### 24bu. A fresh proposal is shown each proposal its campaign never approved, with the ruling's reason (2026-10-21, §9.1, §9.2, §9.5, §10 rows 6, 7, 13 and 16, #2593; implementer's correction, for the owner)
+
+**What main did.** A revision is shown the supervisor's note and the version it revises (§9.2). A rejection ends its
+cycle instead (§9.5, `rejected_at_gate`), and row 6 launches a fresh proposal, built from the PRD, the accepted
+manifest, the objective and the frozen criteria. It carried no earlier ruling, so a rejection's reason reached the
+control log and the ledger, and never the squad.
+
+**The evidence.** The 2.4 measurement window's campaign 4 (`cmp_263d1e49aca8`, on `dep_19dfa94c0a0a`, 2026-10-21):
+- the proposer offered PRD Expansion Tier 2's per-participant leave button in four of its five proposals, with Tier 1
+  incomplete;
+- each was rejected on the window's priority-order condition, with the reason in its notes, and
+  `max_rejected_proposals_in_row` paused the campaign twice. The supervisor aborted it at the second pause;
+- the repeat is consistent with the gap, not proof of it: the PRD's own "only if Tier 1 is complete" was in front of
+  every proposal.
+
+**What changed.**
+- **Every fresh proposal's launch** (`_propose_launch`, rows 6, 7, 13 and 16) **carries `unapproved_proposals`:** each
+  proposal the campaign ruled on and never approved, by its last applied ruling, the ten most recent, in ruling order.
+  That covers a rejection, and a return whose revisions were spent. A proposal approved at any version is left out.
+- **Each entry carries:**
+  - the ruling's reason and its §24bi classification;
+  - what it proposed, its PRD sections and criteria, read from its proposal run's own change request (the document the
+    ruling bound to);
+  - whether it was ruled on the application the new proposal builds on, or on an earlier one. A change rejected for
+    priority may be built later, under another proposal.
+- **It's its own key,** read by the proposal alone, as row 13's `abandoned_increment` is (§24w). The proposal renders it
+  through `request.proposal_unapproved_proposals`, which tells the model to judge each reason against the manifest it is
+  shown, not the application it was ruled on.
+- **A read that fails raises,** and the re-hearing retries the launch, the launch's rule for its inputs (#1943's shape).
+- **Unchanged:** the ruling rule, the rows and their counters, and what a revision is shown. The issue's alternative,
+  returning a priority-order failure for revision so its note reaches the squad, changes the ruling rule, which is the
+  owner's.
+
+**The design choice.** #2593 left open whether the squad should see the supervisor's reasons, or only what was
+rejected. It sees the reasons, because a revision already does (§9.2), and the reason is what the proposer couldn't see.
+So a ruling's notes are now prompt content: they must stand alone, in the PRD's and the application's terms, and they
+never carry a held-out value. Campaign 4's notes cited the window's pre-registration, which the squad can't read.
+
+**Evidence.**
+- `tests/unit/campaigns/test_progress.py::test_a_rejected_proposals_reason_reaches_the_fresh_proposal_after_it` enters
+  at the completion hook as a rejected proposal's cycle ends. Row 6's launch carries the reason, the classification and
+  the ruled run's own request, not a newer decoy under the cycle's other run.
+- `test_a_ruled_request_whose_read_fails_launches_nothing_and_the_rehearing_shows_it`: a failed read launches nothing,
+  and the re-hearing launches with the entry.
+- `tests/unit/capabilities/test_strategy_propose_increment.py::test_a_fresh_proposal_is_shown_each_proposal_the_campaign_never_approved`
+  renders the section through the real handler.
+- Rendered on campaign 4's own records: 4 entries, a section of about 1,500 tokens on a prompt of about 7,400.
+
+**Who ruled it.** Not the owner yet. The supervisor built it under the owner's 2.4 grant of 2026-10-19, as a defect the
+window's campaign 4 found. It's for the owner's review.

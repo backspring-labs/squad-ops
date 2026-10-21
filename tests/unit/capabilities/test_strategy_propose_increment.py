@@ -157,6 +157,57 @@ async def test_a_proposal_after_an_abandoned_increment_is_shown_why_it_was_aband
     assert "abandoned" not in _prompts(first)[0]
 
 
+async def test_a_fresh_proposal_is_shown_each_proposal_the_campaign_never_approved():
+    """#2593, through the real render: the launch carries each unapproved proposal by its last
+    ruling, and the proposal shows the reason and what it proposed. Bugs caught: the block
+    carried and never rendered (a slot no handler fills, #1289's shape), a ruling shown
+    without its reason (the one thing the proposer couldn't see before), or a reason written on
+    two lines breaking out of its entry."""
+    unapproved = [
+        {
+            "proposal_id": "prop_waitlist",
+            "version": 1,
+            "decision": "rejected",
+            "reason": "Priority order: this is Expansion Tier 2\nwhile Tier 1 is incomplete.",
+            "ruled_on_current_application": True,
+            "classification": "unclassified",
+            "classification_rationale": "Priority order is none of the classes.",
+            "prd_delta": [
+                {"id": "run-waitlist", "op": "add", "text": "A full run keeps a waitlist."}
+            ],
+            "criteria": [{"id": "C1", "statement": "A join to a full run is waitlisted"}],
+        },
+        {
+            "proposal_id": "prop_badges",
+            "version": 2,
+            "decision": "returned_for_revision",
+            "reason": "The badge route names no criterion.",
+            "ruled_on_current_application": False,
+            "classification": "criteria_not_checkable",
+        },
+    ]
+    inputs = _inputs()
+    inputs["resolved_config"]["campaign_proposal"]["unapproved_proposals"] = unapproved
+    shown, first = _ctx(_fenced(_REFERENCE)), _ctx(_fenced(_REFERENCE))
+
+    await StrategyProposeIncrementHandler().handle(shown, inputs)
+    await StrategyProposeIncrementHandler().handle(first, _inputs())
+
+    [prompt] = _prompts(shown)
+    assert "### Proposals this campaign did not approve" in prompt
+    assert (
+        "- `prop_waitlist` version 1, rejected, ruled on the application as it is now. The "
+        "supervisor's reason: Priority order: this is Expansion Tier 2 while Tier 1 is incomplete.\n"
+        "  - classified `unclassified`: Priority order is none of the classes.\n"
+        "  - it proposed PRD section `run-waitlist` (add): A full run keeps a waitlist.\n"
+        "  - its criterion C1: A join to a full run is waitlisted\n"
+        "- `prop_badges` version 2, returned for revision and never approved, ruled on an "
+        "earlier application. The supervisor's reason: The badge route names no criterion.\n"
+        "  - classified `criteria_not_checkable`"
+    ) in prompt
+    assert "did not approve" not in _prompts(first)[0]
+
+
 async def test_the_proposal_is_shown_what_each_frozen_criterion_asserts():
     """#1938, through the real render. Bug caught: frozen criteria rendered as bare ids. Shakeout
     6's strategy role, told only "`T3`", re-proposed the date sort T3 had frozen one increment

@@ -41,6 +41,7 @@ from squadops.campaigns.gate import (
     binding_from_change_request,
     submission,
 )
+from squadops.campaigns.increment_tree import proposal_change_request
 from squadops.campaigns.models import (
     ControlOperationRefused,
     CycleKind,
@@ -93,14 +94,10 @@ class _TierReading:
 
 
 async def stored_change_request(vault: Any, run: Any) -> str | None:
-    """The change request a proposal run stored, or ``None`` when it stored none (SIP-0109 §9.1).
-    One lookup for the gate that submits it and the executor that refuses to complete a proposal
-    run without it (#2213)."""
-    for ref_id in tuple(run.artifact_refs or ()):
-        ref, content = await vault.retrieve(ref_id)
-        if ref.artifact_type == CHANGE_REQUEST_ARTIFACT_TYPE:
-            return content.decode("utf-8")
-    return None
+    """The change request a proposal run stored, or ``None`` when it stored none: the campaigns'
+    one lookup (``increment_tree.proposal_change_request``), named here for the gate and the
+    executor."""
+    return await proposal_change_request(vault, run)
 
 
 class GateOutcome(StrEnum):

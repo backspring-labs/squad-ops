@@ -32,6 +32,7 @@ from squadops.campaigns.change_request import (
 )
 from squadops.campaigns.prior_cycle import brief_lines
 from squadops.campaigns.proposed_behaviours import proposal_lines
+from squadops.campaigns.unapproved_proposals import unapproved_lines
 from squadops.capabilities.handlers._plan_authoring import retry_yaml_call
 from squadops.capabilities.handlers.base import HandlerEvidence, HandlerResult
 from squadops.capabilities.handlers.cross_cycle_lessons import cross_cycle_lessons_section
@@ -128,6 +129,15 @@ async def _context_sections(
             },
         )
         out["supervisor_note_section"] = section.content
+    unapproved = block.get("unapproved_proposals") or []
+    if unapproved:
+        # #2593: a fresh proposal is shown each proposal the campaign never approved, with the
+        # ruling's reason, as a revision is shown its note.
+        section = await renderer.render(
+            "request.proposal_unapproved_proposals",
+            {"unapproved_lines": unapproved_lines(unapproved)},
+        )
+        out["unapproved_proposals_section"] = section.content
     proposed = block.get("qa_proposed_behaviours") or []
     if proposed:
         # #1884: what the last increment's qa author proposed instead of testing.
