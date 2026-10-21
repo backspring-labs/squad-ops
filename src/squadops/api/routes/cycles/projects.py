@@ -119,6 +119,11 @@ async def validate_registered_project(
             repository=get_source_repository(request),
             actor=identity.user_id if identity is not None else "anonymous",
             idempotency_key=body.idempotency_key,
+            tokens=(
+                {project_id: body.token.get_secret_value()}
+                if body.token is not None
+                else get_review_request_tokens(request)
+            ),
         )
     except SourceUnavailable as e:
         raise http_error(502, "SOURCE_UNAVAILABLE", f"{e.reason}: {e}") from e

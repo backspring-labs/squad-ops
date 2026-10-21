@@ -53,7 +53,9 @@ async def sync_project(
     if baseline is None:
         raise SyncRefused(f"Project {project_id} has no development baseline: validate it first")
     source = project.source
-    upstream = await repository.sync(project_id, source.repo_uri, source.base_ref)
+    upstream = await repository.sync(
+        project_id, source.repo_uri, source.base_ref, token=tokens.get(project_id)
+    )
     drift = None
     if upstream != baseline:
         configuration = await registry.get_development_configuration(project_id)

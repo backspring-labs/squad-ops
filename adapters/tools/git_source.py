@@ -87,7 +87,9 @@ class GitSourceRepository(SourceRepositoryPort):
         self._timeout = timeout_seconds
         self._committer = f"{committer_name} <{committer_email}>"
 
-    async def sync(self, project_id: str, locator: str, ref: str) -> str:
+    async def sync(
+        self, project_id: str, locator: str, ref: str, *, token: str | None = None
+    ) -> str:
         try:
             check_locator(locator, self._policy)
         except LocatorRefused as e:
@@ -95,7 +97,11 @@ class GitSourceRepository(SourceRepositoryPort):
         if ref.startswith("-"):
             raise SourceUnavailable(f"{ref!r} is not a ref", reason="ref_refused")
         await asyncio.to_thread(self._refuse_internal_resolution, locator)
-        return await asyncio.to_thread(self._sync, self._clone_dir(project_id), locator, ref)
+        https = urlsplit(locator).scheme == "https"
+        return await asyncio.to_thread(
+            self._sync, self._clone_dir(project_id), locator, ref,
+            _authorization(token) if token and https else None,
+        )  # fmt: skip
 
     def _refuse_internal_resolution(self, locator: str) -> None:
         """#2459: a remote host whose addresses reach the deploy itself, unless allow-listed."""
@@ -272,7 +278,7 @@ class GitSourceRepository(SourceRepositoryPort):
         committed_at: int,
         config: Mapping[str, str] | None,
     ) -> str:
-        self._fetch(clone, locator)
+        self._fetch(clone, locator, config)
         commit = self._fast_import(
             clone, _INITIAL_REF, None, files, executable, message, committed_at
         )
@@ -333,16 +339,18 @@ class GitSourceRepository(SourceRepositoryPort):
             raise SourceUnavailable(f"{project_id!r} is not a Project ID", reason="bad_project")
         return self._cache_root / f"{project_id}.git"
 
-    def _sync(self, clone: Path, locator: str, ref: str) -> str:
-        self._fetch(clone, locator)
+    def _sync(self, clone: Path, locator: str, ref: str, config: Mapping[str, str] | None) -> str:
+        self._fetch(clone, locator, config)
         resolved = self._git(
             clone, "rev-parse", "--verify", "--quiet", "--end-of-options", f"{ref}^{{commit}}",
             step="resolve",
         )  # fmt: skip
         return resolved.decode().strip()
 
-    def _fetch(self, clone: Path, locator: str) -> None:
-        """The clone made, or brought up to date with the product's branches and tags."""
+    def _fetch(self, clone: Path, locator: str, config: Mapping[str, str] | None) -> None:
+        """The clone made, or brought up to date with the product's branches and tags. A token's
+        header is in ``config``, the environment of these git processes alone: the clone's own
+        configuration never holds it."""
         if clone.is_dir():
             self._git(clone, "remote", "set-url", "origin", "--", locator, step="fetch")
             # Branches and tags only, named: a mirror's own refspec (+refs/*:refs/*) would prune
@@ -350,6 +358,7 @@ class GitSourceRepository(SourceRepositoryPort):
             self._git(
                 clone, "fetch", "--prune", "--quiet", "origin",
                 "+refs/heads/*:refs/heads/*", "+refs/tags/*:refs/tags/*", step="fetch",
+                config=config,
             )  # fmt: skip
         else:
             self._cache_root.mkdir(parents=True, exist_ok=True)
@@ -364,6 +373,7 @@ class GitSourceRepository(SourceRepositoryPort):
                     locator,
                     str(staging / "clone"),
                     step="clone",
+                    config=config,
                 )
                 (staging / "clone").rename(clone)
             finally:

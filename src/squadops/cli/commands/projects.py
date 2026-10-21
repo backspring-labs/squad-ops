@@ -146,15 +146,23 @@ def import_project(
 def validate_project(
     ctx: typer.Context,
     project_id: str = typer.Argument(...),
+    token_from_gh: bool = typer.Option(
+        False,
+        "--token-from-gh",
+        help="Reach a private repository with your own GitHub access (`gh auth token`), once",
+    ),
     idempotency_key: str | None = typer.Option(None, "--idempotency-key"),
 ):
     """Reach a registered product's source (SIP-0112 E.4.2): READY at its base ref's commit, or
     FAILED_REGISTRATION with the reason. Run it again to retry a failed registration."""
     fmt = ctx.obj.get("format", "table") if ctx.obj else "table"
     key = idempotency_key or f"cli-{uuid.uuid4().hex}"
+    body = {"idempotency_key": key}
+    if token_from_gh:
+        body["token"] = _gh_token()
     try:
         client = _get_client(ctx)
-        data = client.post(f"/api/v1/projects/{project_id}/validate", json={"idempotency_key": key})
+        data = client.post(f"/api/v1/projects/{project_id}/validate", json=body)
         client.close()
     except CLIError as e:
         print_error(f"{e} (idempotency key {key})")

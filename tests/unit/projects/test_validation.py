@@ -52,7 +52,7 @@ class _Clone:
     def __init__(self, *, fails=None, symlinks=frozenset()):
         self.fails, self.symlinks, self.calls = fails, symlinks, []
 
-    async def sync(self, project_id, locator, ref):
+    async def sync(self, project_id, locator, ref, *, token=None):
         self.calls.append((project_id, locator, ref))
         if self.fails:
             raise self.fails

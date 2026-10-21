@@ -298,6 +298,9 @@ class ProjectValidationRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     idempotency_key: str = Field(min_length=1, max_length=200)
+    #: The owner's own forge token, for a private repository's fetch in this one act: never
+    #: stored, logged or returned. Absent, the deploy's token for the Project is used, if any.
+    token: SecretStr | None = Field(default=None, min_length=1, max_length=512)
 
 
 class DevelopmentConfigurationRequest(BaseModel):

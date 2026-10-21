@@ -294,3 +294,31 @@ async def test_a_push_carries_its_token_in_the_environment_never_an_argument(
                 "prj-tally", locator, ref="refs/squadops/cyc_1/run_1", branch=branch, token="t"
             )
     assert len(calls) == 1
+
+
+async def test_a_private_repositorys_fetch_carries_its_token_in_the_environment_alone(
+    product, clones, monkeypatch
+):
+    """A private product's validation and sync (E.4.2, E.4.4, E.4.6). Bugs caught: the token in an
+    argument, which any process listing shows; a header on the calls that don't reach the
+    product, where it has no use; a fetch with no token sending one anyway."""
+    await clones.sync("prj-tally", str(product.path), "refs/heads/main")
+    monkeypatch.setattr("socket.getaddrinfo", lambda *a, **k: [(2, 1, 6, "", ("140.82.112.3", 0))])
+    calls = []
+
+    def run(command, **kwargs):
+        calls.append((command, kwargs["env"]))
+        return subprocess.CompletedProcess(command, 0, b"a" * 40 + b"\n", b"")
+
+    monkeypatch.setattr("adapters.tools.git_source.subprocess.run", run)
+    locator = "https://github.com/owner/tally.git"
+    await clones.sync("prj-tally", locator, "refs/heads/main", token="github_pat_s3cr3t")
+    tokened = len(calls)
+    await clones.sync("prj-tally", locator, "refs/heads/main")
+
+    assert not any("s3cr3t" in arg for command, _ in calls for arg in command)
+    headed = [command for command, env in calls if "GIT_CONFIG_KEY_0" in env]
+    assert len(headed) == 1 and "fetch" in headed[0]  # the one tokened fetch, and nothing else
+    [env] = [env for command, env in calls[:tokened] if "fetch" in command]
+    header = base64.b64decode(env["GIT_CONFIG_VALUE_0"].removeprefix("Authorization: Basic "))
+    assert header == b"x-access-token:github_pat_s3cr3t"

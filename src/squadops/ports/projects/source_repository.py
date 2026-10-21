@@ -14,9 +14,12 @@ from squadops.projects.models import CheckoutTree
 
 class SourceRepositoryPort(ABC):
     @abstractmethod
-    async def sync(self, project_id: str, locator: str, ref: str) -> str:
+    async def sync(
+        self, project_id: str, locator: str, ref: str, *, token: str | None = None
+    ) -> str:
         """Clone the repository into the managed cache, or fetch it there, and return the commit
-        ``ref`` names now (40 hexadecimal characters).
+        ``ref`` names now (40 hexadecimal characters). ``token`` reaches a private repository
+        over https, for this fetch only: never stored, in the clone or anywhere else.
 
         Raises:
             SourceUnavailable: The repository or the ref could not be reached, with the reason.

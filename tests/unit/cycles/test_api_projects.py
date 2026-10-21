@@ -385,8 +385,22 @@ class TestValidateProject:
             "c" * 40,
         )
         wired.sync.assert_awaited_once_with(
-            "prj-tally", "https://code.example.invalid/tally.git", "refs/heads/main"
+            "prj-tally", "https://code.example.invalid/tally.git", "refs/heads/main", token=None
         )
+
+    def test_a_private_repository_is_reached_with_the_owners_token_for_this_act(
+        self, client, wired
+    ):
+        """E.4.6's private destination, and any private product. Bugs caught: the owner's token
+        not reaching the fetch, so a private repository can't be validated; the token returned."""
+        resp = client.post(
+            "/api/v1/projects/prj-tally/validate",
+            json={"idempotency_key": "v-3", "token": "owner-secret"},
+        )
+
+        assert resp.status_code == 200
+        assert wired.sync.await_args.kwargs["token"] == "owner-secret"
+        assert "owner-secret" not in resp.text
 
     def test_an_unreachable_source_is_recorded_and_answered_not_raised(self, client, wired):
         from squadops.projects.models import SourceUnavailable
