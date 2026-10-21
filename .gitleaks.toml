@@ -72,3 +72,10 @@ regexes = [
 [[allowlists]]
 description = "SIP-0061's redaction test (2026-02-07) carried a fake 20-char LangFuse public key; it matches neither deploy key"
 commits = ["a8c7350cad1927a72d6be0c2371d6ecfc8a825f9"]
+
+[[allowlists]]
+description = "the 2.4 window manifest's campaign definitions: each campaign file's path and its sha256 content hash, not a key (a `fastapi` filename reads as the generic rule's `api` keyword)"
+condition = "AND"
+paths = ['''^docs/plans/2-4-0-window-manifest\.json$''']
+regexTarget = "line"
+regexes = ['''^\s*"definitions": "(?:[A-Za-z0-9_./-]+\.yaml: [0-9a-f]{64};)+",?\s*$''']
