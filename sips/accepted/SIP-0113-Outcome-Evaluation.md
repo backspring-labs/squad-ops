@@ -1401,9 +1401,9 @@ says how it is built instead.
    - the id read from each create's own response.
 
    The release screenshots' seed gives its records, field aliases and member action (`_body`, `_pick`, `_norm`), which
-   move out of `scripts/dev/capture_delivered_app.py`. The pure planner sits beside `route_seeds` in
-   `campaigns.increment_tree`, never in `squadops.scenarios`, which `capabilities` may not import. The capture script
-   imports it.
+   move out of `scripts/dev/capture_delivered_app.py`. The pure planner is its own module in `campaigns`
+   (`campaigns.seed_plan`, beside `increment_tree.route_seeds`, whose rules it reuses), never in `squadops.scenarios`,
+   which `capabilities` may not import. The capture script imports it.
 3. **The seed names what each parameterised route is measured with.**
    - Each seed record carries a label.
    - The seed file maps each parameterised route to the labelled records whose ids fill it. For `group_run`,
