@@ -44,7 +44,11 @@ from squadops.cycles.models import ArtifactRef, Cycle, Project, Run, TaskFlowPol
 from squadops.cycles.run_ledger import RunLedger
 from squadops.execution.dispatched_flow_executor import DispatchedFlowExecutor, _ExecutionError
 from squadops.execution.run_provisioning import RunProvisioning
-from squadops.execution.source_delivery import SOURCE_PATCH_TYPE, SOURCE_VERIFICATION_TYPE
+from squadops.execution.source_delivery import (
+    SOURCE_PATCH_TYPE,
+    SOURCE_VERIFICATION_TYPE,
+    squad_changes,
+)
 from squadops.projects.baseline import parse_baseline
 from squadops.projects.checkout import CHECKOUT_MANIFEST_TYPE, SOURCE_CHECKOUT
 from squadops.projects.development_configuration import parse_configuration
@@ -480,6 +484,46 @@ async def test_a_resumed_runs_delivery_seeds_afresh_after_an_attempt_that_never_
     verifications = [json.loads(raw) for _ref, raw in _of_type(vault, SOURCE_VERIFICATION_TYPE)]
     assert [v["verdict"] for v in verifications] == ["accepted", "accepted"]
     assert len(_of_type(vault, SOURCE_PATCH_TYPE)) == 2
+
+
+@pytest.mark.parametrize(
+    ("path", "taken"),
+    [("docs/usage.md", True), ("docs/guides/setup.md", True), ("notes.md", False),
+     ("scratch/plan.md", False)],
+    ids=["beside-a-product-doc-two-levels-down", "in-a-product-directory", "new-at-the-root",
+         "in-a-directory-the-product-lacks"],
+)  # fmt: skip
+def test_a_new_document_is_the_products_where_the_product_has_its_directory(path, taken):
+    """The G4 of #2484's low 1. Bug caught: a new doc in an ancestor of a product file's
+    directory (docs/, where the product has docs/guides/a.md) left out as the squad's own."""
+    checkout = {"docs/guides/a.md": b"a\n", "app/main.py": b"x\n"}
+    ref = ArtifactRef(
+        artifact_id="art_doc000000001", project_id="prj-tally", cycle_id="cyc_1", run_id="run_1",
+        artifact_type="document", filename=path, content_hash="h", size_bytes=2,
+        media_type="text/markdown", created_at=datetime.now(UTC),
+        metadata={"producing_task_type": "development.develop"},
+    )  # fmt: skip
+
+    changes, left_out = squad_changes(
+        [(ref.artifact_id, ref)], {ref.artifact_id: b"# d\n"}, checkout
+    )
+
+    assert (list(changes), list(left_out)) == (([path], []) if taken else ([], [path]))
+
+
+async def test_a_failed_delivery_reports_its_own_error_when_the_release_fails_too(world):
+    """The G4 of #2484's low 2. Bug caught: the teardown's release, failing as well, raised over
+    the delivery's own error, so the run reports a cleanup failure and hides what went wrong."""
+    repo, vault, executor, cycle, run = world
+    report = tracked_files(repo.path, repo.second_commit)["tally/report.py"]
+    executor._sandbox.apply_workspace_patch = AsyncMock(side_effect=RuntimeError("patch broke"))
+    release = AsyncMock(side_effect=[None, OSError("sandbox gone")])
+    executor._sandbox.release_workspace = release
+
+    with pytest.raises(RuntimeError, match="patch broke"):
+        await _end_of_plan(executor, cycle, run, vault, {"tally/report.py": report + _SUMMARY_LINE})
+
+    assert release.await_count == 2  # before seeding, and at the teardown that failed
 
 
 async def test_a_change_that_breaks_a_passing_check_fails_the_run_and_is_never_captured(

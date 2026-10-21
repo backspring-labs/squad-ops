@@ -24,11 +24,14 @@ never part of the product.
 from __future__ import annotations
 
 import json
+import logging
 import posixpath
+import sys
 from collections.abc import Mapping
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from hashlib import sha256
+from pathlib import PurePosixPath
 from typing import Any
 from uuid import uuid4
 
@@ -50,6 +53,8 @@ from squadops.projects.workspaces import (
 )
 from squadops.sandbox.models import RevisionOrigin, WorkspaceRevision, content_bytes
 from squadops.tasks.task_types import authors_qa_suite, authors_source
+
+logger = logging.getLogger(__name__)
 
 SOURCE_VERIFICATION_TYPE = "source_verification"
 SOURCE_VERIFICATION_FILENAME = "source_verification.json"
@@ -77,7 +82,8 @@ def squad_changes(
     source or test author, where it differs from the checkout's. ``contents`` maps artifact ID
     to its bytes. Also the paths an author emitted that aren't the product's files, which the
     candidate leaves out and the verification record names."""
-    directories = {posixpath.dirname(path) for path in checkout} - {""}
+    directories = {str(parent) for path in checkout for parent in PurePosixPath(path).parents}
+    directories.discard(".")
     latest: dict[str, str] = {}
     left_out: set[str] = set()
     for art_id, ref in stored_artifacts:
@@ -275,7 +281,21 @@ async def deliver_source_change(
         )
         return SourceDelivery(verification, tuple(ids), captured_commit=new_commit)
     finally:
+        await _release(sandbox, workspace_id, raising=sys.exc_info()[0] is None)
+
+
+async def _release(sandbox: Any, workspace_id: str, *, raising: bool) -> None:
+    """A delivery's teardown. When the delivery itself failed, its error is the one a caller
+    needs, so a release that fails too is logged rather than raised over it."""
+    try:
         await sandbox.release_workspace(workspace_id)
+    except Exception:
+        if raising:
+            raise
+        logger.warning(
+            "delivery workspace %s not released after a failed delivery", workspace_id,
+            exc_info=True,
+        )  # fmt: skip
 
 
 async def _capture(
