@@ -46,16 +46,23 @@ IMAGES = [
     ),
 ]
 
+#: Answers ``image inspect`` as present only for the one tag a test puts on the box, so an inspect
+#: of any other name (the constant, an empty tag) reads as absent, as it would on a real box.
 _FAKE_DOCKER = """#!/usr/bin/env bash
 echo "$*" >> "$DOCKER_LOG"
-if [ "$1 $2" = "image inspect" ]; then exit "${INSPECT_RC:-1}"; fi
+if [ "$1 $2" = "image inspect" ]; then [ -n "$PRESENT_TAG" ] && [ "$3" = "$PRESENT_TAG" ]; exit $?; fi
 exit 0
 """
 
 
 def _run(
-    tmp_path: Path, script: str, *args: str, on_box: bool, python: str = sys.executable
+    tmp_path: Path,
+    script: str,
+    *args: str,
+    on_box: str | None,
+    python: str = sys.executable,
 ) -> tuple[subprocess.CompletedProcess, list]:
+    """``on_box``: the tag the stand-in ``docker`` holds, or ``None`` for an empty box."""
     bin_dir = tmp_path / "bin"
     bin_dir.mkdir(exist_ok=True)
     docker = bin_dir / "docker"
@@ -66,7 +73,7 @@ def _run(
         **os.environ,
         "PATH": f"{bin_dir}{os.pathsep}{os.environ['PATH']}",
         "DOCKER_LOG": str(log),
-        "INSPECT_RC": "0" if on_box else "1",
+        "PRESENT_TAG": on_box or "",
         "PYTHON": python,
     }
     done = subprocess.run(
@@ -96,13 +103,14 @@ def _tag(constant: str) -> str:
 def test_an_image_is_built_when_absent_and_rebuilt_only_by_hand(
     tmp_path, script, constant, dockerfile, context, args, on_box, built_with
 ):
-    done, calls = _run(tmp_path, script, *args, on_box=on_box)
+    done, calls = _run(tmp_path, script, *args, on_box=_tag(constant) if on_box else None)
 
     assert done.returncode == 0, done.stderr
     builds = [c for c in calls if c.startswith("build ")]
     if built_with is None:
         assert builds == []
         assert f"{_tag(constant)} is on the box" in done.stdout
+        assert f"image inspect {_tag(constant)}" in calls
     else:
         assert builds == [f"build {built_with}-t {_tag(constant)} -f {dockerfile} {context}"]
 
@@ -111,7 +119,7 @@ def test_a_constant_the_environment_doesnt_pin_is_refused_before_any_build(tmp_p
     """Bug caught: a misspelt constant building an image tagged with nothing, or with the shell's
     error text as its tag."""
     done, calls = _run(
-        tmp_path, "build_pinned_image.sh", "NO_SUCH_IMAGE", "Dockerfile", ".", on_box=False
+        tmp_path, "build_pinned_image.sh", "NO_SUCH_IMAGE", "Dockerfile", ".", on_box=None
     )
 
     assert done.returncode != 0
@@ -134,7 +142,7 @@ def test_the_tag_is_read_by_a_python_that_cant_import_the_package(
     )
     assert probe.returncode != 0, "the stand-in can import the package, so it proves nothing"
 
-    done, calls = _run(tmp_path, script, "--if-absent", on_box=False, python=str(isolated))
+    done, calls = _run(tmp_path, script, "--if-absent", on_box=None, python=str(isolated))
 
     assert done.returncode == 0, done.stderr
     assert calls[-1] == f"build -t {_tag(constant)} -f {dockerfile} {context}"
@@ -157,3 +165,22 @@ def test_the_deploy_builds_each_image_only_if_absent_after_the_sandbox_and_befor
         # A failed build fails the deploy, apart from the sandbox, which it doesn't hold.
         assert f'[ "${{{flag}:-0}}" = "1" ] && DEPLOY_FAILED=1' in text, script
         assert flag not in text[sandbox_build:started], script
+        # The failure names its fix, in its own banner.
+        banner = text.index(f'if [ "${{{flag}:-0}}" = "1" ]; then', record)
+        assert f"./scripts/dev/{script}" in text[banner : text.index("\nfi\n", banner)], script
+
+
+def test_no_tag_is_copied_outside_its_one_pinned_reference():
+    """Bug caught: a second copy of a pinned tag, which drifts the moment the tag moves
+    (``capture_delivered_app.py`` carried the environment image's from #1500 until #2582). Tests
+    carry their own made-up tags and are out of scope."""
+    pinned = ROOT / "src" / "squadops" / "sandbox" / "environment.py"
+    copies = [
+        str(path.relative_to(ROOT))
+        for base in ("src", "scripts", "adapters")
+        for path in sorted((ROOT / base).rglob("*"))
+        if path.suffix in {".py", ".sh"}
+        and path != pinned
+        and any(t in path.read_text(encoding="utf-8") for t in (_tag(c) for _, c, _, _ in IMAGES))
+    ]
+    assert copies == []
