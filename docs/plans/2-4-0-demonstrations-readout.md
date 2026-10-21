@@ -86,6 +86,29 @@ On the Spark's `dep_31fe124fd638` (framework `88e5bf7e`, 166 of 166 loaded check
 So stages 4 and 5 now hold as pre-registered. The Spark lane then reconciled the Project at `77cb6d66` (validate,
 configuration revision 3, baseline, a closing sync), so it isn't left held.
 
+## IR-2, live on the Mac
+
+**What it checks (§8.4):** one external Project at one pinned revision, launched standalone and through the Campaign
+launcher, reaches `prepare_cycle()` with the same typed source context and Development Configuration revision, and
+each unit pins a SIP-0110 snapshot under its own owner.
+
+**The setup:** `prj-shelfnote` on the Mac (`dep_cc31bd6fd406`), reconciled at `433f6c51`, configuration revision 3,
+baseline `boots`, `backend_tests` and `frontend_tests` all PASS.
+- **The standalone cycle:** `cyc_2c995f503391`.
+- **The Campaign:** `cmp_e616b0a78aa6`, uncounted, one cycle allowed (its definition is in the scratchpad, not
+  committed). Its calibration cycle is `cyc_95c8659ae6c5`, launched by `campaigns start`.
+
+**The result:**
+- **Both cycles' source contexts are identical,** read back from the API: `project-source-context/v1`, baseline
+  `433f6c51`, revision 3, record version 16, upstream `433f6c51`.
+- **Each unit pinned its own snapshot:** the standalone cycle `snp_ef0e4ef30fa9e74f`, and the Campaign
+  `snp_c00e517025eabfef`. The Campaign's cycle binds the Campaign's: asked for its own, the API answers that it
+  "binds the campaign's snapshot".
+- **Both runs then failed alike,** after preparation, at provisioning: "implementation plan required but absent".
+  No plan was given, since the check is preparation's, and the Campaign completed.
+
+So IR-2 passes.
+
 ## The findings
 
 | issue | what | where it stands |
@@ -105,8 +128,6 @@ A maintainer would ask for changes on z_continuum#2, and it is left open.
 ## What this doesn't cover
 
 - **The squad framing its own plan:** every plan here was the operator's.
-- **IR-2 live:** a Campaign launched on an external Project. The wiring test enters at both launch paths' shared
-  `prepare_cycle`, and the live runs were standalone cycles.
 - **IR-3:** a Campaign's admitted instruction binding under an outside instruction change. Stage 4's change was read
   by `sync`, and no Campaign was running.
 - **IR-7**, which waits on Outcome Evaluation's phase 1.
