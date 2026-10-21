@@ -231,7 +231,7 @@ class HttpExecutionSandbox(ExecutionSandboxPort):
     ) -> CommandResult:
         # #2586: the service bounds each setup step and the command apart, so the request waits
         # for all of them, with one bound sent so both sides use the same.
-        bound = timeout_seconds or self._command_timeout
+        bound = self._command_timeout if timeout_seconds is None else timeout_seconds
         payload = await self._operate(
             revision,
             OperationName.RUN_DECLARED_COMMAND,
