@@ -252,9 +252,13 @@ def plan(manifest: Any, seed: Mapping[str, Any], raw: bytes) -> SeedPlan:
         raise SeedRefused(
             "no record of the seed could be written: " + "; ".join(why for _, why in refused)
         )
+    pages, unfilled = _pages(
+        manifest, seed, {r.label for r in records}, {label for label, _ in refused}
+    )
     return SeedPlan(
         records=tuple(records),
-        **_pages(manifest, seed, {r.label for r in records}, {label for label, _ in refused}),
+        pages=pages,
+        unfilled=unfilled,
         refused=tuple(refused),
         notes=tuple(notes),
         seed_sha256=seed_sha256(raw),
@@ -263,7 +267,7 @@ def plan(manifest: Any, seed: Mapping[str, Any], raw: bytes) -> SeedPlan:
 
 def _pages(
     manifest: Any, seed: Mapping[str, Any], seeded: set[str], refused: set[str]
-) -> dict[str, tuple]:
+) -> tuple[tuple[SeededPage, ...], tuple[tuple[str, str], ...]]:
     named = {
         norm_route(route): list(labels) for route, labels in (seed.get("routes") or {}).items()
     }
@@ -287,7 +291,7 @@ def _pages(
             else:
                 why = SEED_REFUSED if label in refused else NO_SEED_VALUE
                 unfilled.append((f"{route}#{label}", why))
-    return {"pages": tuple(pages), "unfilled": tuple(unfilled)}
+    return tuple(pages), tuple(unfilled)
 
 
 def load(raw: bytes) -> Mapping[str, Any]:
