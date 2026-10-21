@@ -109,6 +109,8 @@ def result_of(check: Check, run: Any) -> CheckResult:
         "duration_seconds": run.duration_seconds,
         "stdout_tail": run.stdout_tail,
         "stderr_tail": run.stderr_tail,
+        "stdout_truncated": run.stdout_truncated,
+        "stderr_truncated": run.stderr_truncated,
     }
     if not run.ran:
         reason = f"not run: {run.unavailable_reason or 'the sandbox runs nothing'}"

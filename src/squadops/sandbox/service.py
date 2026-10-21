@@ -39,6 +39,7 @@ from squadops.sandbox.models import (
     TestRunResult,
     WorkspaceRevision,
     declared_argv,
+    declared_reader,
 )
 from squadops.sandbox.workspace import WorkspaceStore, working_directory
 
@@ -214,6 +215,7 @@ class SandboxService(ExecutionSandboxPort):
         working_dir: str = ".",
         setup: tuple[tuple[str, ...], ...] = (),
         timeout_seconds: float | None = None,
+        findings_reader: str | None = None,
     ) -> CommandResult:
         # Refused here, whether or not a backend runs it: a malformed declaration is the
         # caller's error, never an environment that could not run it.
@@ -222,6 +224,7 @@ class SandboxService(ExecutionSandboxPort):
         working_directory(working_dir)
         if timeout_seconds is not None and timeout_seconds <= 0:
             raise ValueError(f"timeout_seconds must be positive, got {timeout_seconds}")
+        declared_reader(findings_reader)
         backend = self._backend
 
         async def call() -> CommandResult:
@@ -232,6 +235,7 @@ class SandboxService(ExecutionSandboxPort):
                 working_dir=working_dir,
                 setup=setup,
                 timeout_seconds=timeout_seconds,
+                findings_reader=findings_reader,
             )
 
         result = await self._delegate(

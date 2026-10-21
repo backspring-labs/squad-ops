@@ -136,10 +136,11 @@ async def _op_declared_command(service: SandboxService, revision: WorkspaceRevis
             working_dir=params.get("working_dir", "."),
             setup=tuple(tuple(step) for step in params.get("setup", ())),
             timeout_seconds=params.get("timeout_seconds"),
+            findings_reader=params.get("findings_reader"),
         )
     except (TypeError, ValueError) as e:
         # A declaration the sandbox can't run as given is the caller's error: an empty argv,
-        # a non-string argument or a non-positive timeout.
+        # a non-string argument, a non-positive timeout or a findings reader it doesn't have.
         raise _error(400, "INVALID_COMMAND", str(e)) from e
 
 

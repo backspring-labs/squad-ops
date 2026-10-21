@@ -84,8 +84,9 @@ class _LocalBackend:
         self.store = store
 
     async def run_declared_command(
-        self, *, revision, command, working_dir=".", setup=(), timeout_seconds=None
-    ):
+        self, *, revision, command, working_dir=".", setup=(), timeout_seconds=None,
+        findings_reader=None,
+    ):  # fmt: skip
         with self.store.disposable_copy(revision.cycle_id, revision.revision_id) as copy:
             for step in setup:
                 await asyncio.to_thread(subprocess.run, list(step), cwd=copy, check=True)

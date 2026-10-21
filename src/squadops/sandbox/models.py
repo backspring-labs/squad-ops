@@ -20,6 +20,9 @@ import binascii
 import hashlib
 from collections.abc import Collection, Mapping
 from dataclasses import dataclass
+from typing import Any
+
+from squadops.sandbox.findings import READERS, FindingsReading, UnknownReader
 
 
 class RevisionOrigin:
@@ -344,14 +347,22 @@ class CommandOutcome:
 class CommandResult(OperationResult):
     """A declared command's run (X-3a, #2421). ``outcome`` says how it ended. Only ``exited``
     means the command itself ran to an exit status: ``exit_code`` 0 is a pass and anything else
-    a failure. ``failed_setup_step`` indexes the setup argv that stopped the run."""
+    a failure. ``failed_setup_step`` indexes the setup argv that stopped the run.
+
+    Each tail says whether it was cut from a longer output (#2622), so a stored tail never reads
+    as the whole of it. ``findings`` is the declared reader's reading of the command's whole
+    output (#2609, ``squadops.sandbox.findings.FindingsReading.as_dict()``), present exactly when
+    the request named a reader: unreadable, with why, when the command never ran to an exit."""
 
     command: tuple[str, ...] = ()
     outcome: str | None = None
     exit_code: int | None = None
     stdout_tail: str = ""
     stderr_tail: str = ""
+    stdout_truncated: bool = False
+    stderr_truncated: bool = False
     failed_setup_step: int | None = None
+    findings: dict[str, Any] | None = None
 
     def __post_init__(self) -> None:
         super().__post_init__()
@@ -368,3 +379,20 @@ def declared_argv(argv: tuple[str, ...] | list[str]) -> tuple[str, ...]:
     if isinstance(argv, str) or not argv or not all(isinstance(a, str) and a for a in argv):
         raise ValueError(f"a declared command is a non-empty argv of non-empty strings: {argv!r}")
     return tuple(argv)
+
+
+def declared_reader(reader: str | None) -> str | None:
+    """A declared command's findings reader (#2609): none, or one of ``READERS``. Anything else
+    is the declaration's error, refused before the command runs, never run unread."""
+    if reader is not None and (not isinstance(reader, str) or reader not in READERS):
+        raise UnknownReader(f"no findings reader {reader!r}; readers are {', '.join(READERS)}")
+    return reader
+
+
+def unread(reader: str | None, reason: str) -> dict[str, Any] | None:
+    """A named reader's reading of a command that never ran to an exit: unreadable, with why, so
+    a declared reader always answers and its absence never reads as no findings. ``None`` when
+    no reader was named."""
+    if reader is None:
+        return None
+    return FindingsReading(reader, READERS[reader], readable=False, reason=reason).as_dict()

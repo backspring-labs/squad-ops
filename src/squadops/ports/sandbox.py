@@ -134,9 +134,12 @@ class ExecutionSandboxPort(ABC):
         working_dir: str = ".",
         setup: tuple[tuple[str, ...], ...] = (),
         timeout_seconds: float | None = None,
+        findings_reader: str | None = None,
     ) -> CommandResult:
         """Run a product's own declared command, after its setup commands, against the
-        revision, in a disposable copy discarded afterwards (X-3a, #2421; SIP-0102 §11d)."""
+        revision, in a disposable copy discarded afterwards (X-3a, #2421; SIP-0102 §11d).
+        ``findings_reader``, one of ``squadops.sandbox.findings.READERS``, reads the command's
+        whole output into the result's ``findings`` (#2609); an unknown one is refused."""
         ...
 
     @abstractmethod

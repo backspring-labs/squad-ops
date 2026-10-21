@@ -44,8 +44,9 @@ class _LocalSandbox:
         return self.store.seed(workspace_id, files, origin=origin, executable=executable)
 
     async def run_declared_command(
-        self, *, revision, command, working_dir=".", setup=(), timeout_seconds=None
-    ):
+        self, *, revision, command, working_dir=".", setup=(), timeout_seconds=None,
+        findings_reader=None,
+    ):  # fmt: skip
         self.ran.append(tuple(command))
         with self.store.disposable_copy(revision.cycle_id, revision.revision_id) as copy:
             started = time.monotonic()
@@ -82,6 +83,8 @@ class _Run:
     image_identity: str
     environment_contract_id: str
     unavailable_reason: str | None
+    stdout_truncated: bool = False
+    stderr_truncated: bool = False
 
 
 class _Registry:
