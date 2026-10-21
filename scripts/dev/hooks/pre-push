@@ -1,0 +1,35 @@
+#!/usr/bin/env bash
+# Refuse a push that adds a held-out scenario step value (scripts/dev/heldout_text_scan.py).
+#
+# Opt-in, and only where the suite is: it runs when SQUADOPS_HELDOUT_SUITES names the suites
+# (colon-separated paths, outside every repository), and does nothing otherwise. Install it in a
+# checkout that holds the suite:
+#
+#   ln -s ../../scripts/dev/hooks/pre-push .git/hooks/pre-push
+#
+# Git hands the hook one line per ref: <local ref> <local sha> <remote ref> <remote sha>. A new
+# branch (the remote sha all zeros) is scanned from where it leaves origin/main.
+set -euo pipefail
+
+[ -n "${SQUADOPS_HELDOUT_SUITES:-}" ] || exit 0
+
+root="$(git rev-parse --show-toplevel)"
+python="${SQUADOPS_PYTHON:-$root/.venv/bin/python}"
+[ -x "$python" ] || python="$(git -C "$root" worktree list --porcelain | awk '/^worktree /{print $2; exit}')/.venv/bin/python"
+
+suites=()
+IFS=':' read -r -a paths <<< "$SQUADOPS_HELDOUT_SUITES"
+for p in "${paths[@]}"; do suites+=(--suite "$p"); done
+
+zero="0000000000000000000000000000000000000000"
+status=0
+while read -r local_ref local_sha remote_ref remote_sha; do
+  [ "$local_sha" = "$zero" ] && continue  # a deletion adds nothing
+  if [ "$remote_sha" = "$zero" ]; then range="origin/main...$local_sha"; else range="$remote_sha..$local_sha"; fi
+  if ! "$python" "$root/scripts/dev/heldout_text_scan.py" "${suites[@]}" --range "$range" >/dev/null; then
+    echo "pre-push: $local_ref adds a held-out step value, or the scan couldn't run." >&2
+    echo "  Rerun: $python scripts/dev/heldout_text_scan.py ${suites[*]} --range $range" >&2
+    status=1
+  fi
+done
+exit $status
