@@ -23,13 +23,16 @@ import pytest
 
 from adapters.tools.git_source import GitSourceRepository
 from squadops.cycles.models import Project, ProjectStateConflictError
+from squadops.projects.baseline import INTRODUCED, READ_FINDINGS
 from squadops.projects.development_configuration import parse_configuration
 from squadops.projects.models import ProjectLifecycleStatus, ProjectSource
 from squadops.projects.registration import LocatorPolicy
-from squadops.projects.workspaces import SandboxUnavailable, capture_inherited_baseline
-from squadops.sandbox.models import CommandOutcome
+from squadops.projects.verification import attributed
+from squadops.projects.workspaces import SandboxUnavailable, capture_inherited_baseline, run_checks
+from squadops.sandbox.findings import read
+from squadops.sandbox.models import CommandOutcome, RevisionOrigin
 from squadops.sandbox.workspace import WorkspaceStore
-from tests.fixtures.shared_contract.repository import build_repository, recorded
+from tests.fixtures.shared_contract.repository import build_repository, recorded, tracked_files
 
 
 class _LocalSandbox:
@@ -69,6 +72,12 @@ class _LocalSandbox:
             image_identity="python:3.12-slim",
             environment_contract_id="python3",
             unavailable_reason=None,
+            # As the sandbox's backend reads it (#2609): the whole output, by the named reader.
+            findings=(
+                read(findings_reader, done.stdout, done.stderr, done.returncode).as_dict()
+                if findings_reader
+                else None
+            ),
         )
 
 
@@ -85,6 +94,7 @@ class _Run:
     unavailable_reason: str | None
     stdout_truncated: bool = False
     stderr_truncated: bool = False
+    findings: dict | None = None
 
 
 class _Registry:
@@ -293,3 +303,45 @@ async def test_a_declared_runs_request_waits_for_every_step_the_service_bounds(
     assert waited["read"] == 4 * bound + 60.0 and waited["connect"] == 10.0  # 3 installs + check
     assert json.loads(body)["params"]["timeout_seconds"] == bound
     assert seeded["read"] == 30.0
+
+
+def _reading_parse_by_lines(configuration):
+    """The fixture's configuration, its inherited failure (``parse``) read finding by finding."""
+    checks = tuple(
+        dataclasses.replace(c, findings="lines") if c.id == "parse" else c
+        for c in configuration.commands.checks
+    )
+    return dataclasses.replace(
+        configuration, commands=dataclasses.replace(configuration.commands, checks=checks)
+    )
+
+
+async def test_a_change_that_adds_a_failure_inside_the_inherited_one_is_a_regression(world):
+    """#2609 (SIP-0112 H.5), entered where both sides are checked: ``capture_inherited_baseline``
+    for the baseline, then ``run_checks`` and ``attributed`` for the candidate, as source delivery
+    calls them. Bugs caught: a second failure inside the check that already failed (``parse``)
+    read as inherited; the baseline's reading not stored, so the candidate is read whole; a
+    reader-less check (IR-9's own case) read by findings."""
+    repo, registry, clones, sandbox = world
+    registry.configuration = _reading_parse_by_lines(registry.configuration)
+    baseline, _ = await _capture(registry, clones, sandbox)
+    files = tracked_files(repo.path, repo.second_commit)
+    files["tally/parse.py"] = files["tally/parse.py"].replace(
+        b"return name, int(amount)", b"return name, amount"
+    )
+    candidate = await sandbox.seed_workspace("candidate", files, origin=RevisionOrigin.GIT_CHECKOUT)
+
+    checks, _ = await run_checks(sandbox, candidate, registry.configuration.commands)
+    by_id = {c.id: c for c in attributed(checks, baseline)}
+
+    stored = {c["id"]: c for c in baseline.to_document()["checks"]}
+    assert stored["parse"]["findings"]["readable"] is True
+    assert "findings" not in stored["ledger"]
+    parse = by_id["parse"]
+    assert (parse.result, parse.attribution, parse.read["by"]) == (
+        "FAIL",
+        INTRODUCED,
+        READ_FINDINGS,
+    )
+    assert any("test_reads_a_plain_entry" in key for key in parse.read["grown"])
+    assert all(c.read is None for i, c in by_id.items() if i != "parse")

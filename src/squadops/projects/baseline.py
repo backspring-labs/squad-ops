@@ -23,6 +23,7 @@ from dataclasses import dataclass, field
 from typing import Any
 
 from squadops.projects.development_configuration import Check
+from squadops.sandbox.findings import FindingsReading, comparable, grown
 
 BASELINE_SCHEMA = "inherited-baseline/v1"
 _SCHEMA_MAJOR = re.compile(r"^inherited-baseline/v(\d+)$")
@@ -48,6 +49,11 @@ class BaselineInvalid(ValueError):
     pass
 
 
+#: #2609: how a check that fails on both sides was compared. ``findings``, finding by finding by
+#: its declared reader; ``whole``, by its result alone, with the reason.
+READ_FINDINGS, READ_WHOLE = "findings", "whole"
+
+
 @dataclass(frozen=True)
 class CheckResult:
     id: str
@@ -55,6 +61,10 @@ class CheckResult:
     attribution: str = INHERITED
     reason: str | None = None
     evidence: Mapping[str, Any] = field(default_factory=dict, compare=False)
+    #: #2609: the run's findings by its check's declared reader, or ``None`` for a check with none.
+    findings: FindingsReading | None = field(default=None, compare=False)
+    #: #2609: how its attribution was read, when the check fails on both sides (``read_as``).
+    read: Mapping[str, Any] | None = field(default=None, compare=False)
 
     def to_document(self) -> dict[str, Any]:
         return {
@@ -62,6 +72,8 @@ class CheckResult:
             "result": self.result,
             "attribution": self.attribution,
             **({"reason": self.reason} if self.reason else {}),
+            **({"findings": self.findings.as_dict()} if self.findings else {}),
+            **({"read": dict(self.read)} if self.read else {}),
         }
 
 
@@ -120,21 +132,28 @@ def result_of(check: Check, run: Any) -> CheckResult:
             check.id, UNVERIFIED, reason=_DID_NOT_RUN[run.outcome], evidence=evidence
         )
     verdict = PASS if run.exit_code == 0 else FAIL
-    return CheckResult(check.id, verdict, evidence=evidence)
+    findings = FindingsReading.from_dict(run.findings) if check.findings and run.findings else None
+    return CheckResult(check.id, verdict, evidence=evidence, findings=findings)
 
 
 def attribute(candidate: CheckResult, baseline: CheckResult | None) -> CheckResult:
     """A candidate's check, attributed against the inherited baseline's (FR-20). The result stays
     the candidate's own, and only the attribution compares:
-    - the same result as the baseline is inherited, a FAIL included: it was already there;
+    - the same result as the baseline is inherited: it was already there (a FAIL on both sides is
+      read as below);
     - a FAIL where the baseline passed is introduced, and a PASS where it failed is resolved;
     - an UNVERIFIED on either side, or a check the baseline never ran, is unverified
       attribution.
 
-    A check is compared as a whole, so a second failure inside a check that already failed
-    reads as inherited. Both runs' evidence is kept for a reader to look inside."""
+    A FAIL on both sides is compared finding by finding when its check declares a reader and both
+    runs were read (#2609, ``no-introduced-regression/v2``): a finding key whose count grew is
+    introduced; two readings that can't be compared (another reader or version, an unreadable run,
+    a pytest run that ran fewer tests) is unverified attribution; neither, inherited. Otherwise it
+    is compared as a whole, and says so (``read``)."""
     if candidate.result == UNVERIFIED or baseline is None or baseline.result == UNVERIFIED:
         attribution = UNVERIFIED_ATTRIBUTION
+    elif candidate.result == FAIL and baseline.result == FAIL:
+        return _failing_on_both_sides(candidate, baseline)
     elif candidate.result == baseline.result:
         attribution = INHERITED
     elif candidate.result == FAIL:
@@ -142,6 +161,28 @@ def attribute(candidate: CheckResult, baseline: CheckResult | None) -> CheckResu
     else:
         attribution = RESOLVED
     return dataclasses.replace(candidate, attribution=attribution)
+
+
+def _failing_on_both_sides(candidate: CheckResult, baseline: CheckResult) -> CheckResult:
+    """#2609: a check that fails at the baseline and again with the change."""
+    if candidate.findings is None:
+        whole = {"by": READ_WHOLE, "reason": "the check declares no findings reader"}
+        return dataclasses.replace(candidate, attribution=INHERITED, read=whole)
+    if baseline.findings is None:
+        whole = {"by": READ_WHOLE, "reason": "baseline has no findings"}
+        return dataclasses.replace(candidate, attribution=INHERITED, read=whole)
+    why = comparable(baseline.findings, candidate.findings)
+    if why is not None:
+        unread = {"by": READ_FINDINGS, "reason": why}
+        return dataclasses.replace(candidate, attribution=UNVERIFIED_ATTRIBUTION, read=unread)
+    grew = grown(baseline.findings, candidate.findings)
+    read = {
+        "by": READ_FINDINGS,
+        "reader": candidate.findings.reader,
+        "version": candidate.findings.version,
+        **({"grown": {k: list(v) for k, v in grew.items()}} if grew else {}),
+    }
+    return dataclasses.replace(candidate, attribution=INTRODUCED if grew else INHERITED, read=read)
 
 
 def parse_baseline(doc: Mapping[str, Any]) -> InheritedBaseline:
@@ -157,12 +198,14 @@ def parse_baseline(doc: Mapping[str, Any]) -> InheritedBaseline:
     for entry in doc["checks"]:
         if entry.get("result") not in RESULTS:
             raise BaselineInvalid(f"check {entry.get('id')!r}: result is one of {RESULTS}")
+        findings = entry.get("findings")
         checks.append(
             CheckResult(
                 entry["id"],
                 entry["result"],
                 entry.get("attribution", INHERITED),
                 entry.get("reason"),
+                findings=FindingsReading.from_dict(findings) if findings else None,
             )
         )
     return InheritedBaseline(
