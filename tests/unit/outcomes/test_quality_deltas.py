@@ -282,3 +282,60 @@ def test_two_records_with_no_seeded_reading_say_nothing_of_it():
     )
 
     assert not any("seeded" in what for what, _ in result.not_compared)
+
+
+# §10n ruling 1: re-measures compare with re-measures, of one series.
+
+
+def _remeasure(record: EvaluationRecord, *, provenance: str = "2.4 window, seeded", **readings):
+    from squadops.scenarios.evaluation import QualityRemeasure
+
+    return QualityRemeasure(
+        remeasure_id=f"rmq_{record.evaluated_tree_identity[:8]}",
+        evaluation_id=record.evaluation_id,
+        project_id=record.project_id,
+        campaign_id=record.campaign_id,
+        cycle_id=record.cycle_id,
+        evaluated_tree_identity=record.evaluated_tree_identity,
+        previous_accepted_tree_identity=record.previous_accepted_tree_identity,
+        provenance=provenance,
+        round=1,
+        measured_at=T0,
+        **readings,
+    )
+
+
+def test_two_re_measures_of_one_series_compare_seeded_with_seeded():
+    """Bug caught: a re-measure series that can't be read as deltas at all, so S2 can't be read."""
+    before = _remeasure(CALIBRATION, quality_seeded=_seeded(_detail(0.90, url="/runs/r-1")))
+    after = _remeasure(INCREMENT, quality_seeded=_seeded(_detail(0.85, url="/runs/r-7")))
+
+    result = quality_deltas(after, before, against=Against.PREVIOUS)
+
+    assert (
+        MeasureDelta("seeded:lighthouse:performance", "/runs/{id}#at_capacity", 0.90, 0.85)
+        in result.deltas
+    )
+
+
+@pytest.mark.parametrize(
+    ("current", "other", "why"),
+    [
+        (
+            lambda: _remeasure(INCREMENT),
+            lambda: CALIBRATION,
+            "re-measure compares with a re-measure",
+        ),
+        (
+            lambda: _remeasure(INCREMENT),
+            lambda: _remeasure(CALIBRATION, provenance="another series"),
+            "two series",
+        ),
+    ],
+    ids=["a-re-measure-against-an-evaluation", "two-series"],
+)
+def test_a_re_measure_against_anything_but_its_own_series_is_refused(current, other, why):
+    """§10n ruling 1. Bug caught: a re-measure on tonight's deploy read against the window's
+    evaluation, so the delta measures the deploys and reads as the increment's."""
+    with pytest.raises(NotComparable, match=why):
+        quality_deltas(current(), other(), against=Against.PREVIOUS)

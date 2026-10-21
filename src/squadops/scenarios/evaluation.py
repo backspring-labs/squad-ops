@@ -148,6 +148,39 @@ class EvaluationRecord:
         )
 
 
+@dataclass(frozen=True)
+class QualityRemeasure:
+    """One re-measure of an evaluated tree (§10j, §10n ruling 1): the quality readings only, taken
+    again later, on the deploy that takes them. Its own record, never an evaluation record: written
+    as one, a re-measure would become its cycle's latest and replace the real record (its scenario
+    results, its contribution) in every package rebuilt after. ``provenance`` names the series it
+    belongs to, ``round`` which of its re-measures it is, and ``evaluation_id`` what it re-measures."""
+
+    remeasure_id: str
+    evaluation_id: str
+    project_id: str
+    campaign_id: str | None
+    cycle_id: str
+    evaluated_tree_identity: str
+    previous_accepted_tree_identity: str | None
+    provenance: str
+    round: int
+    measured_at: datetime
+    quality: QualityReading | None = None
+    lint: LintReading | None = None
+    quality_seeded: QualityReading | None = None
+
+    def __post_init__(self) -> None:
+        if not self.provenance.strip():
+            raise EvaluationInvalid("a re-measure names the series it belongs to")
+        if self.round < 1:
+            raise EvaluationInvalid(f"a re-measure's round is 1 or more, not {self.round}")
+
+
+def new_remeasure_id() -> str:
+    return f"rmq_{uuid.uuid4().hex[:12]}"
+
+
 def new_evaluation_id() -> str:
     return f"evl_{uuid.uuid4().hex[:12]}"
 

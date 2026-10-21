@@ -11,7 +11,7 @@ from abc import ABC, abstractmethod
 from collections.abc import Collection, Mapping, Sequence
 from typing import TYPE_CHECKING, Any
 
-from squadops.scenarios.evaluation import EvaluationRecord
+from squadops.scenarios.evaluation import EvaluationRecord, QualityRemeasure
 from squadops.scenarios.models import CampaignSuitePin, SuiteRecord
 from squadops.scenarios.runner import DeclaredStart, TreeEvaluation
 
@@ -48,6 +48,15 @@ class ScenarioStorePort(ABC):
     @abstractmethod
     async def evaluations_for_cycle(self, cycle_id: str) -> list[EvaluationRecord]:
         """A cycle's evaluation runs, the earliest first: a cycle can be evaluated more than once."""
+
+    @abstractmethod
+    async def save_remeasure(self, remeasure: QualityRemeasure) -> None:
+        """Write one re-measure (§10j, §10n ruling 1), apart from every evaluation record. The
+        same evaluation, series and round again is refused: a series is written once."""
+
+    @abstractmethod
+    async def remeasures_for_cycle(self, cycle_id: str) -> list[QualityRemeasure]:
+        """The cycle's re-measures, by series, then round."""
 
 
 class ScenarioRunnerPort(ABC):
