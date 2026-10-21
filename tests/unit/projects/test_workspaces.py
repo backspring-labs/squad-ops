@@ -220,3 +220,69 @@ async def test_no_sandbox_client_records_nothing(world):
     with pytest.raises(SandboxUnavailable):
         await _capture(registry, clones, None)
     assert registry.baseline is None and registry.mappings == []
+
+
+@pytest.mark.parametrize("bound", [600.0, 120.0], ids=["the-default", "a-deploys-own"])
+async def test_a_declared_runs_request_waits_for_every_step_the_service_bounds(
+    world, tmp_path, bound
+):
+    """#2586, entered at ``capture_inherited_baseline``, the live caller, through the real client
+    to the real service and backend; only the container is a stand-in. Bugs caught:
+    - the request ending at the client's 30 s while the product's install still runs, so no
+      product with a real install can be baselined or have its change verified;
+    - the service bounding each step by another number than the one the client waited on;
+    - every other operation's 30 s lengthened with it."""
+    import json
+
+    import httpx
+
+    from adapters.sandbox.container_backend import ContainerBackend
+    from adapters.sandbox.http_client import HttpExecutionSandbox
+    from squadops.projects.development_configuration import parse_technical
+    from squadops.sandbox.api import create_app
+    from squadops.sandbox.evidence import OperationEvidenceJournal
+    from squadops.sandbox.service import SandboxService
+    from tests.unit.sandbox.test_container_backend import _WritingContainer
+
+    _repo, registry, clones, local = world
+    *_, commands = parse_technical(
+        {"project_type": "web_application", "target": "web",
+         "commands": {"install": [["python3", "-m", "venv", ".venv"],
+                                  [".venv/bin/pip", "install", "-r", "requirements.txt"],
+                                  ["npm", "--prefix", "frontend", "install"]],
+                      "checks": [{"id": "tests", "argv": [".venv/bin/python", "-m", "pytest"]}]}}
+    )  # fmt: skip
+    registry.configuration = dataclasses.replace(registry.configuration, commands=commands)
+    store = local.store
+    backend = ContainerBackend(
+        app_network=None, container=_WritingContainer(), store=store, image="sandbox:pinned",
+        operation_commands={},
+    )  # fmt: skip
+    app = create_app(
+        SandboxService(
+            store=store, journal=OperationEvidenceJournal(tmp_path / "cycles"), backend=backend
+        ),
+        service_token="tok",
+    )
+    seen: list = []
+
+    class _Recording(httpx.AsyncBaseTransport):
+        async def handle_async_request(self, request):
+            seen.append((request.url.path, request.extensions.get("timeout"), request.content))
+            return await httpx.ASGITransport(app=app).handle_async_request(request)
+
+    sandbox = HttpExecutionSandbox(
+        base_url="http://exec",
+        service_token="tok",
+        http_client_factory=lambda: httpx.AsyncClient(transport=_Recording(), timeout=30.0),
+        command_timeout_seconds=bound,
+    )
+
+    baseline, _ = await _capture(registry, clones, sandbox)
+
+    [(_, seeded, _)] = [s for s in seen if s[0].endswith("/seed")]
+    [(_, waited, body)] = [s for s in seen if s[0].endswith("/operations")]
+    assert [c.id for c in baseline.checks] == ["tests"]
+    assert waited["read"] == 4 * bound + 60.0 and waited["connect"] == 10.0  # 3 installs + check
+    assert json.loads(body)["params"]["timeout_seconds"] == bound
+    assert seeded["read"] == 30.0

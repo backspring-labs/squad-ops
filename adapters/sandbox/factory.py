@@ -97,7 +97,11 @@ def create_sandbox_client(config: SandboxClientConfig | None) -> ExecutionSandbo
         return None
     from adapters.sandbox.http_client import HttpExecutionSandbox
 
-    return HttpExecutionSandbox(base_url=config.service_url, service_token=config.service_token)
+    return HttpExecutionSandbox(
+        base_url=config.service_url,
+        service_token=config.service_token,
+        command_timeout_seconds=config.command_timeout_seconds,
+    )
 
 
 def create_scenario_runner(config: SandboxClientConfig | None) -> ScenarioRunnerPort | None:
