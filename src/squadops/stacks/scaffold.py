@@ -63,6 +63,7 @@ from squadops.stacks.stack_fastapi_react import (
 from squadops.stacks.stack_nextjs_ts import APP_INVOCATION as _APP_INVOCATION_NEXTJS_TS
 from squadops.stacks.stack_nextjs_ts import CLIENT_SURFACE as _CLIENT_SURFACE_NEXTJS_TS
 from squadops.stacks.stack_nextjs_ts import ROUTE_CALLER_IMPORT as _ROUTE_CALLER_IMPORT_NEXTJS_TS
+from squadops.stacks.stack_nextjs_ts import ROUTE_CALLER_PATH as _ROUTE_CALLER_PATH_NEXTJS_TS
 from squadops.stacks.stack_nextjs_ts import STACK_NAME as _NEXTJS_TS_NAME
 from squadops.stacks.stack_nextjs_ts import (
     client_surface_lines_nextjs_ts as _client_surface_lines_nextjs_ts,
@@ -1905,8 +1906,8 @@ class ScaffoldStack:
     #: collection (SIP-0109 §8.2). Empty for a stack whose test client already answers a missing
     #: route (stack #1's ``client`` fixture answers 404).
     criterion_route_harness: str = ""
-    #: How a criterion test imports the stack's frozen route caller, relative to the criterion's
-    #: own file: a verifier bundle carries only what its test imports relatively.
+    #: How a criterion test imports the stack's frozen route caller (#2577), which the stack
+    #: declares among its ``test_config_files`` so every criterion's bundle carries it.
     route_caller_import: str = ""
     #: SIP-0109 §8.3: how this stack's app is stood up so its pages can be read — a *name*
     #: in ``handlers.route_rendering``, like ``probe_profile``. Empty means its pages cannot
@@ -1977,7 +1978,8 @@ _STACKS: dict[str, ScaffoldStack] = {
         name=_NEXTJS_TS_NAME,
         expand=_expand_nextjs_ts,
         fill_slots=_fill_slots_nextjs_ts,
-        test_config_files=("vitest.config.ts", "vitest.setup.ts"),
+        # #2577: the frozen route caller rides every criterion's bundle, as the setup does.
+        test_config_files=("vitest.config.ts", "vitest.setup.ts", _ROUTE_CALLER_PATH_NEXTJS_TS),
         # Co-located `__tests__/` beside source, not a directory prefix at the tree root —
         # one of the three FastAPI-shaped assumptions S2 selected this stack to break. The
         # bare name is the declaration of that convention; `within_namespace` reads it as a

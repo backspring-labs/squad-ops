@@ -14,7 +14,7 @@ A route this change adds has no `route.ts` before the change. A test that import
 fails before any assertion runs, which never counts as the criterion failing, and the increment is
 refused however correct the build.
 
-So a criterion's test calls its route through the scaffold's `callRoute`, imported relatively, and
+So a criterion's test calls its route through the scaffold's `callRoute`, imported as shown, and
 never imports a route module:
 
 ```ts

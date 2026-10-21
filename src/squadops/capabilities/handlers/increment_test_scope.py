@@ -7,6 +7,8 @@ from __future__ import annotations
 
 from typing import Any
 
+from squadops.stacks.scaffold import criterion_route_harness_for, route_caller_import_for
+
 
 async def increment_test_scope_section(renderer: Any, inputs: dict[str, Any]) -> str:
     """The rule and the increment's criteria as an appendix, or ``""`` outside an increment.
@@ -18,7 +20,6 @@ async def increment_test_scope_section(renderer: Any, inputs: dict[str, Any]) ->
         return ""
     # deferred (cycle): campaigns.increment_tree loads this module
     from squadops.campaigns.increment_tree import test_scope_lines
-    from squadops.stacks.scaffold import criterion_route_harness_for, route_caller_import_for
 
     rendered = await renderer.render(
         "request.increment_test_scope_appendix", {"scope_lines": test_scope_lines(scope)}

@@ -173,7 +173,7 @@ _ADDED_ROUTE = (
 """,
 )
 _THROUGH_THE_CALLER = """import { describe, expect, it } from 'vitest'
-import { callRoute } from '../support/routes'
+import { callRoute } from '@/vitest.routes'
 
 describe('T1: importing runs', () => {
   it('answers 201 with how many it imported', async () => {

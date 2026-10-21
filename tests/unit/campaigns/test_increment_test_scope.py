@@ -150,7 +150,7 @@ async def test_an_endpoint_criterions_test_author_is_told_to_call_its_route_thro
     assert ("### How a criterion's test calls its route" in prompt) is told
     if told:
         assert "Each of these criteria is proven at an API route: C1, C2." in prompt
-        assert "import { callRoute } from '../support/routes'" in prompt
+        assert "import { callRoute } from '@/vitest.routes'" in prompt
 
 
 async def test_a_qa_test_outside_a_campaign_is_shown_none_of_it(monkeypatch):

@@ -366,12 +366,12 @@ describe('page test harness', () => {
 })
 """
 
-#: Where the scaffold's route caller lives, and how a criterion test (``__tests__/criteria/``)
-#: imports it. Relative, because a verifier bundle carries only the test-surface files its test
-#: imports relatively (``evaluator_trees._JS_IMPORT``), and the bundle is what runs on the
-#: accepted tree, which may predate this file.
-ROUTE_CALLER_PATH = "__tests__/support/routes.ts"
-ROUTE_CALLER_IMPORT = "../support/routes"
+#: Where the scaffold's route caller lives, and how a criterion test imports it. A test-config
+#: file beside ``vitest.setup.ts`` (``ScaffoldStack.test_config_files``), outside the qa
+#: namespace, which holds suites only: so every criterion's verifier bundle carries it, and the
+#: bundle is what runs on the accepted tree, which may predate this file (SIP-0109 §7.4).
+ROUTE_CALLER_PATH = "vitest.routes.ts"
+ROUTE_CALLER_IMPORT = "@/vitest.routes"
 
 #: Scaffold-owned route caller (frozen, #2577), the counterpart of stack #1's ``client`` fixture.
 #: A criterion's test runs on the accepted application, where it must fail, and on the change,
@@ -397,7 +397,7 @@ type Handler = (
   context: { params: Record<string, string> },
 ) => Response | Promise<Response>
 
-const APP = fileURLToPath(new URL('../../app', import.meta.url))
+const APP = fileURLToPath(new URL('./app', import.meta.url))
 
 function routes(dir: string, segments: string[] = []): string[][] {
   if (!existsSync(dir)) return []

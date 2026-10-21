@@ -222,32 +222,31 @@ def test_a_bundle_that_cannot_run_is_never_frozen():
         freeze_bundle("C8", broken, "frontend/src/__tests__/criteria/C8.test.jsx", SURFACE, ())
 
 
-@pytest.mark.parametrize(
-    ("specifier", "carried"),
-    [("{told}", True), ("@/__tests__/support/routes", False)],
-    ids=["the-import-the-author-is-told", "by-the-alias"],
-)
-def test_a_nextjs_route_criterions_bundle_carries_the_route_caller(specifier, carried):
+def test_a_nextjs_route_criterions_bundle_carries_the_route_caller():
     """#2577: an endpoint criterion's test on Next.js calls its route through the scaffold's
-    route caller, and the bundle is what runs on the accepted tree, which may predate the
-    caller. Bugs caught: the import the author is told not resolving to the emitted file (the
-    bundle refused, the criterion never run), or the caller left out of the bundle, so an older
-    accepted tree fails at collection again. The alias form is the control: a bundle carries
-    only what its test imports relatively, which is why the author is told the relative one."""
+    route caller, and its bundle is what runs on the accepted tree, which may predate the
+    caller. Bugs caught: the caller left out of the bundle, so an older accepted tree fails at
+    collection again; or the import the author is told naming some other file than the one the
+    scaffold emits."""
     from squadops.stacks.scaffold import criterion_test_path, expand, route_caller_import_for
     from squadops.stacks.stack_nextjs_ts import ROUTE_CALLER_PATH, STACK_NAME
     from tests.unit.capabilities._stack_fixtures import manifest_for_stack
 
+    told = route_caller_import_for(STACK_NAME)
     test_path = criterion_test_path(STACK_NAME, "T1", "endpoint")
-    imported = specifier.format(told=route_caller_import_for(STACK_NAME))
-    test = f"import {{ callRoute }} from '{imported}'\ncallRoute('GET', '/api/runs')\n"
+    test = f"import {{ callRoute }} from '{told}'\ncallRoute('GET', '/api/runs')\n"
     files = {f["name"]: f["content"] for f in expand(manifest_for_stack(STACK_NAME))}
-    candidate = FileTree.of({**files, test_path: test})
 
-    bundle = freeze_bundle("T1", candidate, test_path, TestSurface.for_stack(STACK_NAME), ())
+    bundle = freeze_bundle(
+        "T1",
+        FileTree.of({**files, test_path: test}),
+        test_path,
+        TestSurface.for_stack(STACK_NAME),
+        (),
+    )
 
-    assert (ROUTE_CALLER_PATH in set(bundle.files.paths())) is carried
-    assert test_path in set(bundle.files.paths())
+    assert {test_path, ROUTE_CALLER_PATH} <= set(bundle.files.paths())
+    assert told.removeprefix("@/") + ".ts" == ROUTE_CALLER_PATH
 
 
 def test_an_overlay_identity_moves_with_the_tests_and_the_accepted_tree_is_unchanged():
