@@ -1,0 +1,5 @@
+src/broken.py:3:7: invalid-syntax: Expected a parameter or the end of the parameter list
+src/broken.py:3:8: invalid-syntax: Expected `)`, found newline
+src/ok.py:1:8: F401 [*] `sys` imported but unused
+Found 3 errors.
+[*] 1 fixable with the `--fix` option.

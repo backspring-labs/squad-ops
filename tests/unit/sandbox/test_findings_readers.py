@@ -89,24 +89,20 @@ def test_a_pytest_run_keys_its_failures_and_errors_by_node_and_counts_what_it_ra
     ("reader", "stdout", "exit_code", "reason"),
     [
         ("ruff", _out("ruff-exit2-unknown-selector.txt"), 2, "ruff exited 2"),
-        ("ruff", "All checks passed!\n", 0, "ruff exited 0"),
         ("ruff", "src/a.py:1:1: F401 `os` imported but unused\nFound 2 errors.\n", 1, "found 2"),
         ("ruff", "something went wrong\n", 1, "no finding was read"),
         ("pytest", _out("pytest-collection-error.txt"), 2, "pytest exited 2"),
         ("pytest", "FAILED tests/t.py::test_a - boom\n", 1, "no summary"),
         ("pytest", "FAILED tests/t.py::test_a - boom\n2 failed in 0.1s\n", 1, "2 failing"),
-        ("lines", "error: x\n", 0, "exited 0"),
         ("lines", "\n\n", 3, "no output"),
     ],
     ids=[
         "ruff-tool-error",
-        "ruff-passed",
         "ruff-rows-short-of-its-summary",
         "ruff-failed-unread",
         "pytest-collection-error",
         "pytest-no-summary",
         "pytest-rows-short-of-its-summary",
-        "lines-passed",
         "lines-failed-silent",
     ],
 )
@@ -118,6 +114,30 @@ def test_a_run_the_reader_cant_account_for_is_unreadable_never_clean(
     assert not reading.readable
     assert reason in reading.reason
     assert reading.counts == {}
+
+
+@pytest.mark.parametrize("name", ["ruff-syntax-error-full.txt", "ruff-syntax-error-concise.txt"])
+def test_a_syntax_error_is_keyed_as_ruff_counts_it_never_left_unread(name):
+    """The Spark lane's G4 on #2620. Bug caught: ruff's syntax errors, which carry no rule code and
+    which its "Found" line counts, left unkeyed, so a candidate that breaks a file reads unreadable
+    rather than as the finding it added."""
+    reading = _ruff(name)
+
+    assert reading.readable
+    assert reading.counts == {"invalid-syntax src/broken.py": 2, "F401 src/ok.py": 1}
+
+
+@pytest.mark.parametrize(
+    ("reader", "stdout", "collected"),
+    [("ruff", "All checks passed!\n", None), ("pytest", "5 passed in 0.10s\n", 5),
+     ("lines", "", None)],
+    ids=["ruff", "pytest", "lines"],
+)  # fmt: skip
+def test_a_run_that_passed_reads_with_no_findings(reader, stdout, collected):
+    """Bug caught: a passing check's stored reading saying it was a tool error."""
+    reading = read(reader, stdout, "", 0)
+
+    assert (reading.readable, reading.counts, reading.collected) == (True, {}, collected)
 
 
 def test_more_distinct_findings_than_the_bound_is_unreadable_never_a_partial_count():
@@ -167,4 +187,7 @@ def test_a_reading_round_trips_and_one_with_an_undeclared_reader_is_refused():
         FindingsReading.from_dict({**reading.as_dict(), "reader": "eslint"})
     with pytest.raises(ValueError, match="positive integers"):
         FindingsReading.from_dict({**reading.as_dict(), "counts": {"FAILED x": 0}})
+    for bad in ("5", -1, True):
+        with pytest.raises(ValueError, match="collected"):
+            FindingsReading.from_dict({**reading.as_dict(), "collected": bad})
     assert set(READERS) == {"ruff", "pytest", "lines"}

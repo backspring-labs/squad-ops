@@ -30,8 +30,11 @@ READERS: Mapping[str, int] = {RUFF: 1, PYTEST: 1, LINES: 1}
 #: More distinct findings than this is unreadable, never a partial count.
 MAX_KEYS = 10_000
 
-_RUFF_CONCISE = re.compile(r"^(?P<path>\S.*?):\d+:\d+: (?P<code>[A-Z]+[0-9]+) ")
-_RUFF_FULL_HEAD = re.compile(r"^(?P<code>[A-Z]+[0-9]+) ")
+#: A rule code, or a syntax error, which ruff names without one (``invalid-syntax``; older ruff,
+#: ``E999`` or ``SyntaxError``) and counts in its "Found" line all the same.
+_RUFF_CODE = r"(?P<code>[A-Z]+[0-9]+|invalid-syntax|SyntaxError)"
+_RUFF_CONCISE = re.compile(rf"^(?P<path>\S.*?):\d+:\d+: {_RUFF_CODE}[: ]")
+_RUFF_FULL_HEAD = re.compile(rf"^{_RUFF_CODE}[: ]")
 _RUFF_FULL_AT = re.compile(r"^\s*--> (?P<path>.+?):\d+:\d+\s*$")
 _RUFF_FOUND = re.compile(r"^Found (\d+) errors?\.")
 _PYTEST_ROW = re.compile(r"^(?P<kind>FAILED|ERROR) (?P<node>\S.*?)(?: - .*)?$")
@@ -77,13 +80,18 @@ class FindingsReading:
         counts = doc.get("counts") or {}
         if not all(isinstance(k, str) and isinstance(v, int) and v > 0 for k, v in counts.items()):
             raise ValueError("a reading's counts are positive integers by key")
+        collected = doc.get("collected")
+        if collected is not None and (
+            isinstance(collected, bool) or not isinstance(collected, int) or collected < 0
+        ):
+            raise ValueError("a reading's collected tests are a count, or absent")
         return cls(
             reader=reader,
             version=int(doc["version"]),
             readable=bool(doc["readable"]),
             reason=doc.get("reason"),
             counts=dict(counts),
-            collected=doc.get("collected"),
+            collected=collected,
         )
 
 
@@ -107,10 +115,13 @@ def read(reader: str, stdout: str, stderr: str, exit_code: int | None) -> Findin
 
 
 def _read_ruff(stdout: str, exit_code: int | None):
-    """``ruff check``: readable at exit 1, its findings keyed ``"<code> <path>"``, in either output
-    format, adding up to its own "Found N errors." when it prints one."""
+    """``ruff check``: readable at exit 0 (nothing found) and exit 1, its findings keyed
+    ``"<code> <path>"``, in either output format, adding up to its own "Found N errors." when it
+    prints one. Exit 2 is a tool error."""
+    if exit_code == 0:
+        return {}, None, None
     if exit_code != 1:
-        return {}, f"ruff exited {exit_code}, not 1: a tool error, or nothing found to read", None
+        return {}, f"ruff exited {exit_code}: a tool error, with no findings to read", None
     counts: Counter[str] = Counter()
     found = None
     code = None
@@ -141,11 +152,11 @@ def _read_ruff(stdout: str, exit_code: int | None):
 
 
 def _read_pytest(output: str, exit_code: int | None):
-    """``pytest``: readable at exit 1 (tests failed), never 2 (a collection error or an interrupt) or
-    above, its ``FAILED`` and ``ERROR`` rows keyed ``"<kind> <node id>"``, adding up to its summary,
-    which also gives the tests it ran."""
-    if exit_code != 1:
-        return {}, f"pytest exited {exit_code}, not 1: the run didn't finish its tests", None
+    """``pytest``: readable at exit 0 (all passed) and exit 1 (tests failed), never 2 (a collection
+    error or an interrupt) or above, its ``FAILED`` and ``ERROR`` rows keyed ``"<kind> <node id>"``,
+    adding up to its summary, which also gives the tests it ran."""
+    if exit_code not in (0, 1):
+        return {}, f"pytest exited {exit_code}: the run didn't finish its tests", None
     counts: Counter[str] = Counter()
     summary = None
     for line in output.splitlines():
@@ -170,9 +181,12 @@ def _read_pytest(output: str, exit_code: int | None):
 
 def _read_lines(stdout: str, stderr: str, exit_code: int | None):
     """Any other tool: each non-empty output line is a finding, its digits replaced, so a count or a
-    line number that moves doesn't make it new. Readable at a non-zero exit with a line to read."""
-    if not exit_code:
-        return {}, f"the check exited {exit_code}: nothing failed to read", None
+    line number that moves doesn't make it new. Readable at exit 0 (nothing failed), and at any
+    other exit with a line to read."""
+    if exit_code == 0:
+        return {}, None, None
+    if exit_code is None:
+        return {}, "the check reached no exit status", None
     counts = Counter(
         _DIGITS.sub("#", line.strip())
         for line in (stdout + "\n" + stderr).splitlines()
