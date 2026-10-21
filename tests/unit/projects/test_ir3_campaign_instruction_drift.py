@@ -4,7 +4,10 @@ and an outside commit then changes that source.
 
 Entered where the runtime enters: the Campaign launcher builds each cycle
 (``CampaignLaunchService._build_cycle``), a standalone cycle is prepared by ``prepare_cycle`` and
-pinned by ``pin_standalone_cycle``, and the drift is read by ``sync_project``. The product is the
+pinned by ``pin_standalone_cycle``, and the drift is read by ``sync_project``. It enters below the
+drain: a refused launch leaves the Campaign escalated with its intent pending, and the next cycle
+launches after reconciliation and the owner's resume. This shows what each launch binds, not that
+escalation and resume. The product is the
 shared fixture's Tally, a real repository read through the managed clone, and the references are
 bound by the repository family's own resolver.
 

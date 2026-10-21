@@ -122,7 +122,7 @@ before the SIP closes and need not ship in 2.4 (the owner, the same day). Depend
 | E.4.1 existing-product registration and authority: the writable registry cutover, its validated rollback and minimum enrollment | **shipped**: the writable registry with its cutover from `config/projects.yaml` and guarded rollback (#2444), and registration through `POST /api/v1/projects` and `squadops projects import` behind the locator rules and the write gate (#2452). The owner's R1–R6 are on #2408. Owner decisions take the event table's `owner_decision` operation, written from E.4.4 (#2411) | 2.4.0, PRs #2444 and #2452, issue #2408 |
 | E.4.2 repository-native discovery and the inherited baseline, with the start declaration (§8.2 contract 7) | **shipped**: the managed clone and validation; the versioned Development Configuration with contract 7's start declaration and the repository's instruction sources; seeding with the commit-to-revision mapping (contract 3's seeding half); the inherited baseline through X-3a. Capture back to Git is E.4.3's (#2410) | 2.4.0, PR #2468, issue #2409 |
 | E.4.3 the first scoped feature through the shared cycle path | **shipped**: the source-backed run, from the product's tree to a verified change contributed through its own process (#2484); the sync's attribution of SquadOps's own contributions and its hold on Cycles until drift is reconciled (#2610, H.2); the brownfield demonstration read against its pre-registration, with IR-2 passing live (#2611). The deletion form and a regression's repair round are deferred follow-ups, each with its own issue | 2.4.0, PRs #2484, #2610 and #2611, issue #2410 |
-| E.4.4 the second feature after an outside contribution | **shipped**: a product's upstream read against its approved baseline, its contributions' standing, and the repository reference resolver (#2565); the sync's attribution and its hold on Cycles until drift is reconciled (#2610, H.2); the brownfield demonstration's second feature after an outside change, read (#2611); IR-3 as H.3 restates it (the PR that wrote this row) | 2.4.0, PRs #2565, #2610 and #2611, issue #2411 |
+| E.4.4 the second feature after an outside contribution | **shipped**: a product's upstream read against its approved baseline, its contributions' standing, and the repository reference resolver (#2565); the sync's attribution and its hold on Cycles until drift is reconciled (#2610, H.2); the brownfield demonstration's second feature after an outside change, read (#2611); IR-3 as H.3 restates it (#2616) | 2.4.0, PRs #2565, #2610 and #2611, issue #2411 |
 | E.4.5 lifecycle completeness: update history, archive/restore, concurrency and conflict recovery (before close; not required in 2.4) | **unplaced**, deliberately: placed by a later plan, before the SIP closes | — |
 | E.4.6 greenfield Project creation at an owner-approved external destination (required, Q34; shipped by the 2.4 cut, G6) | **placed** | 2.4.0, #2412 |
 | E.4.7 direct attachment: writing in place in an existing checkout (optional, FR-02) | **unplaced**, deliberately: optional | — |
@@ -1682,21 +1682,29 @@ source:
    reconciled, the Campaign's next launch is refused, so the Campaign escalates (§B.5.1's "held and escalated"), and a
    standalone Cycle is refused too.
 3. **After reconciliation** (validate, configure, baseline at the new commit):
-   - the Campaign's next Cycle binds the reference at its own pinned commit, the new content;
-   - a standalone Cycle created afterwards binds the new content at its admission.
+   - **the Campaign:** its refused launch left it escalated, with the launch intent pending. Once the owner resumes it,
+     its next Cycle binds the reference at its own pinned commit, the new content;
+   - **a standalone Cycle** created afterwards binds the new content at its admission.
 4. **A re-binding** changes the Campaign's instruction revision only as a recorded intervention, unchanged from the
    IR as written.
 
+**What became of "carry a drift finding":** after §5ad, no drift finding is recorded per Cycle. The finding is two
+records:
+- the later Cycle's own binding, whose reference revision and digest differ from the first Cycle's;
+- the sync's drift document, which names the changed source as `instructions`.
+
 **The evidence:**
 - `tests/unit/projects/test_ir3_campaign_instruction_drift.py` enters at the Campaign launcher's `_build_cycle`, at
-  `prepare_cycle` and `pin_standalone_cycle` for the standalone Cycle, and at `sync_project`. It runs over the shared
+  `prepare_cycle` and `pin_standalone_cycle` for the standalone Cycle, and at `sync_project`. It enters below the
+  drain, so it shows what each launch binds, not the escalation and the owner's resume between them. It runs over the shared
   fixture's Tally through the real managed clone, with the repository family's own resolver. A mutant without H.2's
   gate fails it.
 - Point 4 is the re-binding route's: `tests/unit/api/test_rebinding.py` and
   `tests/unit/memory/test_campaign_cycle_bindings.py`.
 - Live: H.2's hold was shown on the Spark's brownfield re-run and on the Mac (#2611).
-- **Not run live:** a Campaign's later Cycle binding a reference after reconciliation. It needs a Campaign past its
-  calibration on an external Project, which is the Spark's full squad.
+- **Not run live yet:** a Campaign's later Cycle binding a reference after reconciliation. It needs a Campaign past its
+  calibration on an external Project, which is the Spark's full squad. The Spark lane runs it before 2.4's cut, on
+  `z_continuum`, tracked on #2179 (the binding side's issue).
 
 **Who ruled:** the MacBook lane, under the owner's delegation of 2026-10-18. The restatement follows the owner's
 ruling of §5ad and H.2; it decides nothing new.
