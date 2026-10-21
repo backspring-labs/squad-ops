@@ -204,3 +204,81 @@ def test_a_record_that_isnt_what_it_is_compared_as_is_refused(current, other, ag
     another campaign, reported as this increment's moves."""
     with pytest.raises(NotComparable):
         quality_deltas(current, other, against=against)
+
+
+# §10j, §10n (#2562): the seeded reading, compared seeded with seeded, at one seed and plan.
+
+SEED_V = "seed:0123456789ab:plan-v1"
+#: An increment built on the calibration, its other measures as the calibration's.
+INCREMENT = _record(INC1, CAL, quality=CALIBRATION.quality, lint=CALIBRATION.lint)
+
+
+def _seeded(*pages: PageMeasure, version: str = SEED_V) -> QualityReading:
+    return QualityReading(
+        QualityStatus.MEASURED, pages=pages, evaluator=TAG, seed={"version": version}
+    )
+
+
+def _detail(score: float, *, url: str) -> PageMeasure:
+    """A seeded page, keyed by route and record, loaded at an address its own instance gave it."""
+    return PageMeasure("/runs/{id}#at_capacity", {**SCORES, "performance": score}, AXE, url=url)
+
+
+def test_a_seeded_page_compares_by_route_and_record_whatever_ids_its_instances_gave_it():
+    """Bug caught: seeded pages keyed by a filled URL that differs on every instance, so nothing
+    compares; or seeded deltas mixed into the empty instance's, under its names."""
+    before = replace(CALIBRATION, quality_seeded=_seeded(_detail(0.90, url="/runs/r-17")))
+    after = replace(
+        INCREMENT,
+        previous_accepted_tree_identity=CAL,
+        quality_seeded=_seeded(_detail(0.84, url="/runs/r-93")),
+    )
+
+    result = quality_deltas(after, before, against=Against.PREVIOUS)
+
+    seeded = [d for d in result.deltas if d.measure.startswith("seeded:")]
+    assert (
+        MeasureDelta("seeded:lighthouse:performance", "/runs/{id}#at_capacity", 0.90, 0.84)
+        in seeded
+    )
+    assert {d.page for d in seeded} == {"/runs/{id}#at_capacity"}
+    assert not any(d.page == "/runs/{id}#at_capacity" for d in result.deltas if d not in seeded)
+
+
+@pytest.mark.parametrize(
+    ("before", "after", "why"),
+    [
+        (_seeded(version=SEED_V), _seeded(version="seed:fedcba987654:plan-v1"), "seeded by"),
+        (None, _seeded(), "not recorded before"),
+        (
+            QualityReading.not_measured(NotMeasured.SEED_FAILED, "POST /runs answered 500"),
+            _seeded(),
+            "not_measured before (seed_failed)",
+        ),
+    ],
+    ids=["another-seed", "seeded-on-one-side-only", "a-failed-seed"],
+)
+def test_seeded_readings_that_arent_like_for_like_are_named_never_read_as_no_move(
+    before, after, why
+):
+    """§10n ruling 5. Bug caught: two seeds' readings, or a seeded one against nothing, read as a
+    delta of zero."""
+    result = quality_deltas(
+        replace(INCREMENT, previous_accepted_tree_identity=CAL, quality_seeded=after),
+        replace(CALIBRATION, quality_seeded=before),
+        against=Against.PREVIOUS,
+    )
+
+    [(what, said)] = [s for s in result.not_compared if s[0] == "seeded lighthouse and axe"]
+    assert why in said
+    assert not any(d.measure.startswith("seeded:") for d in result.deltas)
+
+
+def test_two_records_with_no_seeded_reading_say_nothing_of_it():
+    """Bug caught: every record written before the seeded reading listed as not compared on it,
+    changing what each existing delta says."""
+    result = quality_deltas(
+        replace(INCREMENT, previous_accepted_tree_identity=CAL), CALIBRATION, against="previous"
+    )
+
+    assert not any("seeded" in what for what, _ in result.not_compared)

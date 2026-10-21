@@ -170,6 +170,24 @@ async def test_an_evaluation_reads_back_whole_and_the_table_refuses_a_commit_for
         ),
         21: LintReading.not_measured(NotMeasured.NOT_A_SCAFFOLD_STACK),
     }
+    # §10j, §10n (#2562): a seeded reading, its page keyed by route and record and loaded at its
+    # own instance's address, with its account; and a record from before it, with none.
+    seeded = {
+        22: QualityReading(
+            QualityStatus.MEASURED,
+            pages=(
+                PageMeasure(
+                    "/runs/{id}#at_capacity",
+                    {"performance": 0.84, "accessibility": 0.96, "best_practices": 0.78},
+                    {"critical": 0, "serious": 1, "moderate": 2, "minor": 0},
+                    url="/runs/r-93",
+                ),
+            ),
+            evaluator="squadops-evaluator:test",
+            seed={"version": "seed:0123456789ab:plan-v1", "unfilled": [], "notes": []},
+        ),
+        21: None,
+    }
     records = [
         evaluation_record(
             suite,
@@ -182,6 +200,7 @@ async def test_an_evaluation_reads_back_whole_and_the_table_refuses_a_commit_for
             evaluated_at=T0.replace(hour=h),
             quality=readings[h],
             lint=lints[h],
+            quality_seeded=seeded[h],
         )
         for h in (22, 21)
     ]

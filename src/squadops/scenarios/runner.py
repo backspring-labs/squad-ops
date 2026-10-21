@@ -244,6 +244,8 @@ class TreeEvaluation:
     quality: QualityReading | None = None
     #: #1937's lint over the tree as delivered (#2416), whatever the start did.
     lint: LintReading | None = None
+    #: Lighthouse and axe on a second, seeded instance (§10j, §10n). ``None`` when none was asked.
+    quality_seeded: QualityReading | None = None
 
     def as_dict(self) -> dict[str, Any]:
         return {
@@ -256,6 +258,9 @@ class TreeEvaluation:
             "configuration_revision": self.configuration_revision,
             "quality": self.quality.as_dict() if self.quality is not None else None,
             "lint": self.lint.as_dict() if self.lint is not None else None,
+            "quality_seeded": (
+                self.quality_seeded.as_dict() if self.quality_seeded is not None else None
+            ),
         }
 
     @classmethod
@@ -270,4 +275,7 @@ class TreeEvaluation:
             configuration_revision=d.get("configuration_revision"),
             quality=QualityReading.from_dict(d["quality"]) if d.get("quality") else None,
             lint=LintReading.from_dict(d["lint"]) if d.get("lint") else None,
+            quality_seeded=(
+                QualityReading.from_dict(d["quality_seeded"]) if d.get("quality_seeded") else None
+            ),
         )
