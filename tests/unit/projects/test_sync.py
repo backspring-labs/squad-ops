@@ -227,6 +227,57 @@ async def test_an_outside_change_is_named_and_the_baseline_stays_where_it_was(wo
     assert registry.project.development_baseline_commit == repo.second_commit
 
 
+@pytest.mark.parametrize("merge", ["merge-commit", "squash"])
+async def test_an_integrated_contribution_is_named_apart_from_what_changed_outside(world, merge):
+    """#2606, the brownfield demonstration's stage 4 replayed: the squad's change merged, then an
+    outside commit on top. Bugs caught: the squad's own merged files filed as outside source drift
+    beside the outside developer's; a squash merge, which takes no commit of ours, losing them."""
+    repo, clones, registry = world
+    commit = await _contributed(repo, clones, registry)
+    if merge == "merge-commit":
+        _git(
+            repo.path, "merge", "-q", "--no-ff", "-m", "merge the squad's change", "squadops/cyc_1"
+        )
+        forge = None
+    else:
+        _git(repo.path, "merge", "-q", "--squash", "squadops/cyc_1")
+        _git(repo.path, "commit", "-q", "-m", "the squad's change, squashed")
+        forge = _Forge(ReviewRequestState("merged", _git(repo.path, "rev-parse", "HEAD")))
+    _commit(
+        repo.path,
+        {"CONTRIBUTING.md": "Run the checks first.\n", "tally/notes.py": "NOTES = []\n"},
+        "outside",
+    )
+
+    document, _ = await _sync(clones, registry, forge)
+
+    drift = document["drift"]
+    assert drift["schema"] == "source-drift/v2"
+    assert drift["changed"] == {INSTRUCTIONS: ["CONTRIBUTING.md"], SOURCE: ["tally/notes.py"]}
+    assert drift["integrated"] == [
+        {"cycle_id": "cyc_1", "run_id": "run_1", "commit": commit,
+         "changed": {SOURCE: ["tally/report.py"]}},
+    ]  # fmt: skip
+    assert drift["relevant"] == [INSTRUCTIONS]
+    assert document["contributions"][0]["state"] == "integrated"
+
+
+async def test_a_file_changed_outside_after_the_contribution_is_outside_drift(world):
+    """#2606. Bug caught: a path the squad changed and an outside developer changed again since,
+    credited to the squad, so the outside change goes unnamed."""
+    repo, clones, registry = world
+    await _contributed(repo, clones, registry)
+    _git(repo.path, "merge", "-q", "--ff-only", "squadops/cyc_1")
+    report = (repo.path / "tally/report.py").read_text()
+    _commit(repo.path, {"tally/report.py": report + "# an outside edit\n"}, "outside")
+
+    document, _ = await _sync(clones, registry)
+
+    drift = document["drift"]
+    assert drift["changed"] == {SOURCE: ["tally/report.py"]}
+    assert drift["integrated"] == []
+
+
 async def test_an_unmoved_upstream_has_no_drift(world):
     repo, clones, registry = world
 

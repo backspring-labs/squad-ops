@@ -180,7 +180,8 @@ class ProjectNotReadyError(CycleError):
 
 class StaleSourcePreconditionError(CycleError):
     """Raised when a Cycle's stated source precondition names a commit or Development
-    Configuration revision the Project has moved past (SIP-0112 FR-09, §D.3): refused, never
+    Configuration revision the Project has moved past (SIP-0112 FR-09, §D.3), or the Project's
+    upstream has, with drift in evidence the Cycle would rely on (FR-21, #2608): refused, never
     silently re-pinned."""
 
 

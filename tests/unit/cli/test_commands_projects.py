@@ -287,3 +287,36 @@ class TestCyclesCreateSourcePrecondition:
             ],
         )
         assert result.exit_code == 1
+
+
+class TestProjectsSync:
+    """#2606. Bug caught: the operator's table filing the squad's own merged files as outside
+    change, or dropping them, so a sync can't say who changed what."""
+
+    @patch("squadops.cli.commands.projects._get_client")
+    def test_the_squads_integrated_paths_are_named_apart_from_outside_change(self, get_client):
+        client = MagicMock()
+        client.post.return_value = {
+            "document": {
+                "baseline_commit": "4" * 40,
+                "upstream_commit": "b" * 40,
+                "drift": {
+                    "changed": {"instructions": ["CLAUDE.md"], "source": ["src/c/__init__.py"]},
+                    "integrated": [
+                        {"cycle_id": "cyc_709e3a912150", "run_id": "run_7", "commit": "2" * 40,
+                         "changed": {"source": ["src/c/cli.py", "tests/test_cli_version.py"]}},
+                    ],
+                    "relevant": ["instructions"],
+                },
+                "contributions": [],
+            }
+        }  # fmt: skip
+        get_client.return_value = client
+
+        result = runner.invoke(app, ["projects", "sync", "prj-z"])
+
+        assert result.exit_code == 0, result.output
+        rows = [" ".join(line.replace("│", " ").split()) for line in result.output.splitlines()]
+        assert "source 1 src/c/__init__.py" in rows
+        assert "source, by cyc_709e3a912150 2 src/c/cli.py," in rows
+        assert "evidence to revalidate: instructions" in " ".join(rows)
