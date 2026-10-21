@@ -116,3 +116,9 @@ class ReferenceResolvers(Mapping[str, ReferenceResolverPort]):
 
     def __len__(self) -> int:
         return len(self._families)
+
+
+def create_reference_resolvers(timeout_seconds: float) -> ReferenceResolvers:
+    """The runtime's resolver registry, every family registered into it under ``timeout_seconds``
+    (``ProjectsConfig.reference_resolver_timeout_seconds``)."""
+    return ReferenceResolvers(timeout_seconds)

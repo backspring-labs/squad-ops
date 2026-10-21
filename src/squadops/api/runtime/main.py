@@ -71,7 +71,6 @@ from squadops.cycles.cycle_assessment import AssessorIdentity
 from squadops.execution.cycle_evidence import assess_cycle
 from squadops.execution.reply_router import ReplyRouter
 from squadops.memory.reconcile import reconcile_recent
-from squadops.memory.resolvers import ReferenceResolvers
 from squadops.outcomes.campaign_package import campaign_interventions, campaign_outcomes
 from squadops.projects.cutover import (
     CutoverProblem,
@@ -853,6 +852,7 @@ def _init_memory(state, config, pool) -> None:
     selected by its required provider."""
     from adapters.memory.cross_cycle import create_cross_cycle_store
     from adapters.memory.records import create_memory_records
+    from adapters.memory.reference_resolvers import create_reference_resolvers
 
     provider = config.cycles.registry_provider
     state.memory_store = create_cross_cycle_store(
@@ -865,7 +865,7 @@ def _init_memory(state, config, pool) -> None:
     # family. None is registered yet: Project Lifecycle Management registers the repository family
     # (SIP-0112 §B.5.1, contract 6), and until then ``@current`` is refused at write. A family is
     # registered through ``register``, which bounds each of its calls (#2575).
-    state.reference_resolvers = ReferenceResolvers(
+    state.reference_resolvers = create_reference_resolvers(
         config.projects.reference_resolver_timeout_seconds
     )
 

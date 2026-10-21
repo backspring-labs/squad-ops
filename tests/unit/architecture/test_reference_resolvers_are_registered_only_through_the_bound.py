@@ -1,9 +1,9 @@
 """The runtime's resolver slot holds the bounded registry, and nothing in the runtime replaces it (#2575).
 
-``ReferenceResolvers`` takes a family only through ``register``, which bounds it, and no item
-assignment. What it can't stop is code replacing the whole slot: ``state.reference_resolvers =
-{...}`` after ``_init_memory`` would put every later family outside the bound, and nothing would say
-so. The MacBook lane's G4 asked for a guard on exactly that ordering (a registration after
+``ReferenceResolvers`` (``adapters.memory.reference_resolvers``) takes a family only through
+``register``, which bounds it, and no item assignment. What it can't stop is code replacing the
+whole slot: ``state.reference_resolvers = {...}`` after ``_init_memory`` would put every later
+family outside the bound, and nothing would say so. The MacBook lane's G4 asked for a guard on exactly that ordering (a registration after
 ``_init_memory`` creates the slot).
 
 What bug would this catch? A later init step, or #2565's registration, assigning the slot or an
@@ -20,7 +20,10 @@ ROOT = Path(__file__).resolve().parents[3]
 #: An assignment to the slot, or to an item of it, on any object: never a keyword argument.
 _ASSIGNMENT = re.compile(r"\.reference_resolvers\s*(\[[^\]]*\])?\s*=(?!=)")
 #: The one assignment the runtime makes, in ``main._init_memory``.
-_ALLOWED = ("src/squadops/api/runtime/main.py", "state.reference_resolvers = ReferenceResolvers(")
+_ALLOWED = (
+    "src/squadops/api/runtime/main.py",
+    "state.reference_resolvers = create_reference_resolvers(",
+)
 
 
 def _assignments() -> list[tuple[str, str]]:

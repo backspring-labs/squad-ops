@@ -20,11 +20,15 @@ from types import SimpleNamespace
 
 import pytest
 
+from adapters.memory.reference_resolvers import (
+    ReferenceResolvers,
+    ResolverTimedOut,
+    TimeBoundResolver,
+)
 from squadops.config.schema import ProjectsConfig
 from squadops.memory.cycle_bindings import instructions_bound_for
 from squadops.memory.records import InstructionApplicability, PinnedInstruction, Reference
 from squadops.memory.reference_binding import bound_instruction
-from squadops.memory.resolvers import ReferenceResolvers, ResolverTimedOut, TimeBoundResolver
 from squadops.ports.memory.references import (
     BindingContext,
     BoundReference,
