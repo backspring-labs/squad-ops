@@ -67,6 +67,7 @@ def increment_launch(
     frozen: tuple[dict, ...] = (),
     abandoned: dict | None = None,
     qa_proposed: list[dict] | None = None,
+    unapproved: list[dict] | None = None,
 ) -> LaunchRequest:
     """An increment cycle (§7.3): the policy's proposal profile, run by its squad, proposing
     against the accepted tree. The ``campaign_proposal`` block carries what the proposal run
@@ -79,7 +80,10 @@ def increment_launch(
 
     ``abandoned`` is the brief of the increment this one replaces (row 13), when there is one.
 
-    ``qa_proposed`` is what the qa authors proposed instead of testing (#1884), when anything."""
+    ``qa_proposed`` is what the qa authors proposed instead of testing (#1884), when anything.
+
+    ``unapproved`` is each proposal the campaign ruled on and never approved, by its last ruling
+    (#2593), when there is any."""
     policy = campaign.policy
     assert campaign.accepted is not None
     return LaunchRequest(
@@ -112,6 +116,10 @@ def increment_launch(
                         # #1884: behaviour a qa author judged desirable that nothing accepted
                         # required, returned as a proposal rather than a test.
                         **({"qa_proposed_behaviours": list(qa_proposed)} if qa_proposed else {}),
+                        # #2593: each proposal the campaign never approved, with the ruling's
+                        # reason. A revision is shown its note; a rejection's fresh successor was
+                        # shown nothing, and proposed the rejected change again.
+                        **({"unapproved_proposals": list(unapproved)} if unapproved else {}),
                     },
                 },
                 notes=f"campaign {campaign.campaign_id}: increment (SIP-0109 §7.3)",

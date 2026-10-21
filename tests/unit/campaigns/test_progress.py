@@ -1301,6 +1301,100 @@ async def test_an_abandoned_increments_record_reaches_the_next_proposal_and_no_o
     assert "prior_cycle" not in block
 
 
+async def test_a_rejected_proposals_reason_reaches_the_fresh_proposal_after_it(
+    calibrating, stored, monkeypatch
+):
+    """#2593, the 2.4 window's campaign 4, entered at the completion hook as the rejected
+    proposal's cycle ends; row 6 launches a fresh proposal. Bugs caught: the fresh proposal told
+    nothing of the rejection (campaign 4 proposed one rejected change in four of its five
+    proposals), or told the ruling without what was rejected."""
+    import dataclasses as _dc
+
+    from squadops.campaigns.change_request import (
+        ProposalContext,
+        stored_change_request,
+        validate_proposal,
+    )
+    from squadops.campaigns.gate import ruling_transition, submission
+    from squadops.campaigns.models import ProposalBinding, SubmittedProposal
+    from squadops.cycles.models import GateDecisionValue
+
+    fixtures = Path(__file__).resolve().parents[2] / "fixtures" / "campaigns"
+    request = validate_proposal(
+        yaml.safe_load((fixtures / "reference-capacity-change-request.yaml").read_text()),
+        ProposalContext(
+            "prop_cap",
+            1,
+            "sha-accepted",
+            (fixtures / "baseline-cyc_7a4b7a6fbf0e-interface_manifest.yaml").read_text(),
+            "fullstack_fastapi_react",
+            ("backend/**", "frontend/**"),
+            (),
+        ),
+    ).change_request
+    # Stored by the proposal run, as the gate reads it; the vault answers by run.
+    stored["art_cr"] = (
+        _dc.replace(
+            _ref("art_cr", "change_request.yaml", "change_request", 30), cycle_id="cyc_inc"
+        ),
+        stored_change_request(request).encode(),
+    )
+
+    async def by_run(self, *, cycle_id=None, run_id=None, **_):
+        return [
+            ref
+            for ref, _content in _STORED.values()
+            if cycle_id in (None, ref.cycle_id) and run_id in (None, ref.run_id)
+        ]
+
+    monkeypatch.setattr(_Vault, "list_artifacts", by_run)
+    w, run = await calibrating(RunVerdict.ACCEPTED)
+    await w.end("cyc_cal", run, CycleStopReason.SEQUENCE_COMPLETED)
+    accepted = (await w.campaigns.get_campaign(CID)).accepted.identity
+    proposal_run = await w.launched_cycle("increment", "cyc_inc", "proposal", "completed")
+    binding = ProposalBinding("prop_cap", 1, "hash-1", accepted)
+    state = (await w.campaigns.get_campaign(CID)).state
+    await w.campaigns.transition(
+        CID, submission(state, SubmittedProposal(binding, "cyc_inc", proposal_run.run_id))
+    )
+    reason = "Priority order: an Expansion Tier 2 change while Tier 1 is incomplete."
+    await w.campaigns.transition(
+        CID,
+        ruling_transition(
+            GateDecisionValue.REJECTED,
+            binding,
+            run_id=proposal_run.run_id,
+            actor="supervisor",
+            actor_role="campaign_supervisor",
+            reason=reason,
+            idempotency_key="rule-1",
+            classification="unclassified",
+            classification_rationale="Priority order is none of the classes.",
+        ),
+    )
+
+    await w.end("cyc_inc", proposal_run, CycleStopReason.GATE_REJECTED)
+
+    decision = (await w.campaigns.control_log(CID))[-1]
+    *_, fresh = await w.campaigns.launch_intents(CID)
+    block = fresh.cycle_request["body"]["execution_overrides"]["campaign_proposal"]
+    assert (decision.binding["row"], decision.binding["action"]) == (6, "propose")
+    [shown] = block["unapproved_proposals"]
+    assert {k: v for k, v in shown.items() if k not in ("prd_delta", "criteria")} == {
+        "proposal_id": "prop_cap",
+        "version": 1,
+        "decision": "rejected",
+        "reason": reason,
+        "classification": "unclassified",
+        "classification_rationale": "Priority order is none of the classes.",
+    }
+    assert [(s["id"], s["op"]) for s in shown["prd_delta"]] == [("capacity-limit", "add")]
+    assert [c["id"] for c in shown["criteria"]] == ["C1", "C2", "C3"]
+    assert shown["criteria"][0]["statement"] == (
+        "A run created with capacity 2 is returned with capacity 2"
+    )
+
+
 async def test_a_retry_of_a_repair_starts_from_the_accepted_tree(calibrating, stored, monkeypatch):
     """§10a, #2558, entered at the continuation decision. Bug caught: a retry of a repair that
     failed for a cause outside the work keeping the repair's ``repair_of``, so it starts from the
