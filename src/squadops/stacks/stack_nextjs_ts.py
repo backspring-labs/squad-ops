@@ -366,6 +366,88 @@ describe('page test harness', () => {
 })
 """
 
+#: Where the scaffold's route caller lives, and how a criterion test (``__tests__/criteria/``)
+#: imports it. Relative, because a verifier bundle carries only the test-surface files its test
+#: imports relatively (``evaluator_trees._JS_IMPORT``), and the bundle is what runs on the
+#: accepted tree, which may predate this file.
+ROUTE_CALLER_PATH = "__tests__/support/routes.ts"
+ROUTE_CALLER_IMPORT = "../support/routes"
+
+#: Scaffold-owned route caller (frozen, #2577), the counterpart of stack #1's ``client`` fixture.
+#: A criterion's test runs on the accepted application, where it must fail, and on the change,
+#: where it must pass (SIP-0109 §8.2). This stack's tests import a route's module, and a route the
+#: change adds has no module on the accepted tree, so the file failed at collection: a setup
+#: failure, never counted as the criterion failing, and the 2.4 window's campaign 2 seed increment
+#: was rejected however correct its build. Through ``callRoute`` the route is found when the call
+#: is made, as the App Router finds it, and a path no route serves answers 404.
+_ROUTE_CALLER = """// Scaffold-owned (frozen): call a route handler by method and path, as a client calls the
+// running application. The route is found when the call is made, the way the App Router finds
+// it: a static folder wins over a [param] folder, segment by segment. A path no route serves
+// answers 404, and a method its route does not export answers 405.
+//
+// A criterion's test calls its route here, never by importing the route module: on the
+// application before the change that module may not exist, and an import of it fails the file
+// before any assertion runs.
+import { existsSync, readdirSync } from 'node:fs'
+import path from 'node:path'
+import { fileURLToPath } from 'node:url'
+
+type Handler = (
+  request: Request,
+  context: { params: Record<string, string> },
+) => Response | Promise<Response>
+
+const APP = fileURLToPath(new URL('../../app', import.meta.url))
+
+function routes(dir: string, segments: string[] = []): string[][] {
+  if (!existsSync(dir)) return []
+  const found: string[][] = []
+  for (const entry of readdirSync(dir, { withFileTypes: true })) {
+    const at = [...segments, entry.name]
+    if (entry.isDirectory()) found.push(...routes(path.join(dir, entry.name), at))
+    else if (entry.name === 'route.ts') found.push(segments)
+  }
+  return found
+}
+
+function match(segments: string[], parts: string[]): Record<string, string> | null {
+  if (segments.length !== parts.length) return null
+  const params: Record<string, string> = {}
+  for (let i = 0; i < segments.length; i++) {
+    const segment = segments[i]
+    if (segment.startsWith('[') && segment.endsWith(']')) {
+      params[segment.slice(1, -1)] = decodeURIComponent(parts[i])
+    } else if (segment !== parts[i]) {
+      return null
+    }
+  }
+  return params
+}
+
+function specificity(segments: string[]): string {
+  return segments.map((s) => (s.startsWith('[') ? '1' : '0')).join('')
+}
+
+export async function callRoute(method: string, url: string, init: RequestInit = {}): Promise<Response> {
+  const target = new URL(url, 'http://localhost')
+  const parts = target.pathname.split('/').filter(Boolean)
+  const candidates = routes(APP)
+    .map((segments) => ({ segments, params: match(segments, parts) }))
+    .filter((c): c is { segments: string[]; params: Record<string, string> } => c.params !== null)
+    .sort((a, b) => specificity(a.segments).localeCompare(specificity(b.segments)))
+  const chosen = candidates[0]
+  if (chosen === undefined) return new Response(null, { status: 404 })
+  const handlers = (await import(
+    /* @vite-ignore */ path.join(APP, ...chosen.segments, 'route.ts')
+  )) as Record<string, Handler | undefined>
+  const handler = handlers[method.toUpperCase()]
+  if (typeof handler !== 'function') return new Response(null, { status: 405 })
+  return handler(new Request(target, { ...init, method: method.toUpperCase() }), {
+    params: chosen.params,
+  })
+}
+"""
+
 _HARNESS_TEST_HEAD = """// Scaffold-owned harness (SIP-0100). QA suites consume the seams this proves, and must
 // not reach past them into the app entry — the boundary that killed pf-25/26 on stack #1.
 import { describe, it, expect } from 'vitest'
@@ -773,6 +855,7 @@ def expand_nextjs_ts(manifest: InterfaceManifest) -> list[dict[str, str]]:
         {"name": "app/globals.css", "content": BASELINE_CSS},
         {"name": "__tests__/harness.test.ts", "content": _harness_test_source(manifest)},
         {"name": "__tests__/harness-dom.test.tsx", "content": _HARNESS_DOM_TEST},
+        {"name": ROUTE_CALLER_PATH, "content": _ROUTE_CALLER},
         # #598: rendered from the environment contract and frozen, not builder-authored.
         *render_packaging("nextjs_ts"),
     ]

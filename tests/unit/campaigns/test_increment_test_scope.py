@@ -126,6 +126,33 @@ async def test_an_increments_qa_test_is_shown_what_its_tests_may_assert(monkeypa
     )
 
 
+@pytest.mark.parametrize(
+    ("stack", "told"), [("nextjs_ts", True), ("fullstack_fastapi_react", False)]
+)
+async def test_an_endpoint_criterions_test_author_is_told_to_call_its_route_through_the_caller(
+    monkeypatch, stack, told
+):
+    """#2577, entered at the task plan and through the qa.test handler's render. The 2.4
+    window's campaign 2 (Next.js) seed increment: its criterion test imported the route module
+    its change added, so on the accepted tree the file failed at collection and the increment
+    was rejected (`only_setup_failures`) however correct the build. Bugs caught: a Next.js
+    author never told to call a route through the scaffold's caller, or told an import it can't
+    resolve; a FastAPI author told it, whose `client` fixture already answers a missing route."""
+    cycle = _increment_cycle()
+    cycle = dataclasses.replace(
+        cycle, applied_defaults={**cycle.applied_defaults, "build_profile": stack}
+    )
+    [qa] = [e for e in _implementation(cycle, STORED) if e.task_type == "qa.test"]
+
+    prompt = await _qa_prompt(qa, monkeypatch)
+
+    assert _RULE in prompt
+    assert ("### How a criterion's test calls its route" in prompt) is told
+    if told:
+        assert "Each of these criteria is proven at an API route: C1, C2." in prompt
+        assert "import { callRoute } from '../support/routes'" in prompt
+
+
 async def test_a_qa_test_outside_a_campaign_is_shown_none_of_it(monkeypatch):
     """Bug caught: the rule leaking into every cycle's suite author, where nothing is frozen and
     there is no change request to judge a test against."""

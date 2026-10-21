@@ -161,3 +161,92 @@ async def test_without_the_jsx_setting_the_same_suite_dies_inside_the_page(refer
     assert result.executed, result.error
     assert result.exit_code != 0
     assert "React is not defined" in result.stdout + result.stderr
+
+
+#: #2577: a route an increment adds, static beside the skeleton's ``[run_id]`` (which exports no
+#: POST), and its criterion's test in each idiom. Invented, not any campaign's.
+_ADDED_ROUTE = (
+    "app/api/runs/import/route.ts",
+    """export async function POST(request: Request) {
+  return Response.json({ imported: (await request.json()).titles.length }, { status: 201 })
+}
+""",
+)
+_THROUGH_THE_CALLER = """import { describe, expect, it } from 'vitest'
+import { callRoute } from '../support/routes'
+
+describe('T1: importing runs', () => {
+  it('answers 201 with how many it imported', async () => {
+    const res = await callRoute('POST', '/api/runs/import', {
+      body: JSON.stringify({ titles: ['Hill repeats', 'Long slow'] }),
+      headers: { 'content-type': 'application/json' },
+    })
+    expect(res.status).toBe(201)
+    expect((await res.json()).imported).toBe(2)
+  })
+})
+"""
+_BY_IMPORTING_THE_MODULE = """import { describe, expect, it } from 'vitest'
+import * as route from '@/app/api/runs/import/route'
+
+describe('T1: importing runs', () => {
+  it('answers 201 with how many it imported', async () => {
+    const res = await route.POST(
+      new Request('http://localhost/api/runs/import', {
+        method: 'POST',
+        body: JSON.stringify({ titles: ['Hill repeats', 'Long slow'] }),
+      }),
+    )
+    expect(res.status).toBe(201)
+  })
+})
+"""
+
+
+@pytest.mark.parametrize(
+    ("test_source", "reason"),
+    [(_THROUGH_THE_CALLER, "discriminates"), (_BY_IMPORTING_THE_MODULE, "only_setup_failures")],
+    ids=["through-the-route-caller", "importing-the-route-module"],
+)
+async def test_a_criterion_for_a_route_the_change_adds_discriminates_through_the_route_caller(
+    reference, test_source, reason
+):
+    """#2577, through the increment evaluation itself (``evaluate_increment``, the runner the
+    evaluation passes it). The 2.4 window's campaign 2 seed increment was rejected because its
+    criterion test imported the route its change added: on the accepted tree the file failed at
+    collection, ``only_setup_failures``, however correct the build. Bugs caught: a test through
+    the scaffold's route caller still failing on the accepted tree before any assertion; or the
+    caller missing from the criterion's bundle, so an accepted tree that predates it (this one
+    is the skeleton without it) fails at collection again. The import idiom is the control."""
+    from functools import partial
+
+    from squadops.campaigns.acceptance_run import NewCriterion, evaluate_increment
+    from squadops.campaigns.evaluator_trees import FileTree, TestSurface
+    from squadops.stacks.stack_nextjs_ts import ROUTE_CALLER_PATH, STACK_NAME
+
+    tree, _ = reference
+    files = {f["name"]: f["content"].encode() for f in tree}
+    accepted = FileTree.of({p: c for p, c in files.items() if p != ROUTE_CALLER_PATH})
+    test_path = "__tests__/criteria/T1.test.ts"
+    candidate = FileTree.of(
+        {**files, _ADDED_ROUTE[0]: _ADDED_ROUTE[1].encode(), test_path: test_source.encode()}
+    )
+
+    evaluation = await evaluate_increment(
+        increment_id="inc_import",
+        accepted=accepted,
+        candidate=candidate,
+        surface=TestSurface.for_stack(STACK_NAME),
+        new=[NewCriterion("T1", test_path)],
+        frozen=[],
+        declared_routes={},
+        rendered={},
+        unseeded=(),
+        run=partial(run_suite, TEST_FRAMEWORK_VITEST, timeout_seconds=_TIMEOUT),
+        invocation=(TEST_FRAMEWORK_VITEST,),
+        retired=(),
+    )
+
+    [judged] = evaluation.discriminations
+    assert judged.reason.value == reason
+    assert judged.met is (reason == "discriminates")

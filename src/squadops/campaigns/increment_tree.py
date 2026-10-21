@@ -15,7 +15,11 @@ import logging
 from collections.abc import Iterable, Mapping
 from typing import Any
 
-from squadops.campaigns.change_request import derive_footprint_from, load_stored_change_request
+from squadops.campaigns.change_request import (
+    SurfaceKind,
+    derive_footprint_from,
+    load_stored_change_request,
+)
 from squadops.capabilities.handlers.planning.proposal import CHANGE_REQUEST_ARTIFACT_TYPE
 from squadops.cycles.contract_derivation import CONTRACT_ARTIFACT_TYPE
 from squadops.cycles.delivered_tree import StoredArtifact, delivered_files
@@ -485,6 +489,12 @@ def increment_test_scope(
             for pin in block.get("frozen_criteria") or ()
             if pin["criterion_id"] not in retired
         ],
+        # #2577: the criteria proven at an API route, and the stack, which says how a test of
+        # one reaches its route (``scaffold.criterion_route_harness_for``).
+        "route_criteria": [
+            c.id for c in request.criteria if c.surface_kind is SurfaceKind.ENDPOINT
+        ],
+        "stack": scaffold_stack_for(resolved_config),
     }
 
 
