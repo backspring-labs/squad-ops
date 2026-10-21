@@ -737,9 +737,9 @@ def _evaluation(verdict: str) -> bytes:
     ).encode()
 
 
-def _capacity_request() -> bytes:
+def _capacity_request(prd_id: str = "capacity-limit") -> bytes:
     """The reference increment's change request (C1, ``POST /runs``), stored as the gate stores
-    an approved one."""
+    an approved one; its PRD section renamed when a second, different document is wanted."""
     from squadops.campaigns.change_request import (
         ProposalContext,
         stored_change_request,
@@ -747,8 +747,10 @@ def _capacity_request() -> bytes:
     )
 
     fixtures = Path(__file__).resolve().parents[2] / "fixtures" / "campaigns"
+    authored = yaml.safe_load((fixtures / "reference-capacity-change-request.yaml").read_text())
+    authored["prd_delta"][0]["id"] = prd_id
     request = validate_proposal(
-        yaml.safe_load((fixtures / "reference-capacity-change-request.yaml").read_text()),
+        authored,
         ProposalContext(
             "prop_cap",
             1,
@@ -1329,33 +1331,6 @@ async def test_an_abandoned_increments_record_reaches_the_next_proposal_and_no_o
     assert "prior_cycle" not in block
 
 
-def _capacity_request_document(prd_id: str = "capacity-limit") -> bytes:
-    """The reference capacity change request as its proposal run stores it, its PRD section
-    renamed when a second, different document is wanted."""
-    from squadops.campaigns.change_request import (
-        ProposalContext,
-        stored_change_request,
-        validate_proposal,
-    )
-
-    fixtures = Path(__file__).resolve().parents[2] / "fixtures" / "campaigns"
-    authored = yaml.safe_load((fixtures / "reference-capacity-change-request.yaml").read_text())
-    authored["prd_delta"][0]["id"] = prd_id
-    request = validate_proposal(
-        authored,
-        ProposalContext(
-            "prop_cap",
-            1,
-            "sha-accepted",
-            (fixtures / "baseline-cyc_7a4b7a6fbf0e-interface_manifest.yaml").read_text(),
-            "fullstack_fastapi_react",
-            ("backend/**", "frontend/**"),
-            (),
-        ),
-    ).change_request
-    return stored_change_request(request).encode()
-
-
 _PRIORITY = "Priority order: an Expansion Tier 2 change while Tier 1 is incomplete."
 
 
@@ -1376,13 +1351,13 @@ async def _rejected_at_the_gate(calibrating, stored):
             cycle_id="cyc_inc",
             run_id="run_prop",
         ),
-        _capacity_request_document(),
+        _capacity_request(),
     )
     stored["art_decoy"] = (
         _dc.replace(
             _ref("art_decoy", "change_request.yaml", "change_request", 40), cycle_id="cyc_inc"
         ),
-        _capacity_request_document("not-the-ruled-request"),
+        _capacity_request("not-the-ruled-request"),
     )
     w, run = await calibrating(RunVerdict.ACCEPTED)
     await w.end("cyc_cal", run, CycleStopReason.SEQUENCE_COMPLETED)
