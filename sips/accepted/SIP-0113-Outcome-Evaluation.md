@@ -80,12 +80,13 @@ One row per part that ships separately. Statuses as CLAUDE.md defines them. The 
 | phase 0: the per-increment scorecard (#1960) | **shipped** | v2.1.0, PR #2027 |
 | phase 0: reporting-only lint findings on the delivered app (#1937) | **shipped** | v2.1.0, PR #2088 |
 | phase 1: the scenario store, its suites and the campaign's suite pin (§4.1, §4.7) | **shipped** (§10a) | 2.4.0, PR #2448, issue #2413 |
-| phase 1: the runner, outside the squad's containers, on a disposable copy (§4.1; needs the sandbox's X-3, #2421) | **placed** | 2.4.0, #2414: the HTTP runner and the cycle-end hook shipped (§10c); the declared start at the hook remains here, and the browser runner moved to #2564 (§10k) |
+| phase 1: the runner, outside the squad's containers, on a disposable copy, and each campaign cycle evaluated at its end (§4.1, §10c) | **shipped** | 2.4.0, PRs #2450 (X-3b's start) and #2472 (the cycle-end hook) |
+| phase 1: the declared start at the cycle-end hook, read from a repository-backed Project's Development Configuration (§4.1, contract 7; §10l) | **placed**, re-placed from 2.4 on 2026-10-21: its only consumer is a Campaign on such a Project, which SIP-0112 H.4 places in 2.5 (#2619). The browser runner moved to #2564 (§10k) | 2.5.0, #2414 |
 | phase 1: the browser runner and page scenarios, in the evaluator's image (§4.1, A2, A3; §10k, proposed; its design review before it is built) | **placed** | 2.4.0, after the window, #2564 |
 | phase 1: the evaluation record and its reference (§4.1, contract 5) | **shipped** (§10b) | 2.4.0, PR #2449, issue #2415 |
-| phase 1: the quality baselines, Lighthouse, axe and lint, in the evaluator's image (§4.2) | **placed** | 2.4.0, #2416 |
+| phase 1: the quality baselines, Lighthouse, axe and lint, in the evaluator's image (§4.2) | **shipped** (§10f): Lighthouse and axe on each evaluated instance's declared pages, and #1937's lint. Prediction 4, the done-when, read at the window's close: **holds** (spread 0 within a session, at most 0.03 between sessions) | 2.4.0, PRs #2474 and #2479, issue #2416 |
 | phase 1: the intervention ledger's classifications (§4.3) | **shipped** (§10d) | 2.4.0, PR #2454, issue #2417 |
-| phase 1: contribution and the derived metrics in the digest (§4.4, §4.6) | **placed** | 2.4.0, #2418 |
+| phase 1: contribution and the derived metrics in the digest (§4.4, §4.6) | **shipped** (§10e): contribution per increment, the package's and digest's readings, the work class, the seven safety guarantees, and AOR's four inputs with the work envelope. Prediction 3 read at the window's close: **falsified as written** (all six counted increments read `contributed`). AOR's "every quality baseline held" input takes prediction 4's tolerance, which phase 2 reads (unplaced, D4) | 2.4.0, PRs #2470, #2481, #2485, #2487 and #2489, issue #2418 |
 | phase 2: the proposer sees each goal's result (§4.5) | **unplaced** | 2.4 if D4 rules it in, with its issue filed then; otherwise the next even release |
 | phase 2: the objective's scenario measure, read by SIP-0109 §10 row 3, as a SIP-0109 amendment (§4.7) | **unplaced** | 2.4 if D4 rules it in, with its issue filed then; otherwise the next even release |
 | quality gates where phase 1's data supports a threshold (§4.2, §6) | **unplaced** | with phase 2, each with its phase-1 evidence |
