@@ -1,0 +1,24 @@
+version: 1
+project_id: prj-z-continuum
+cycle_id: operator-supplied
+prd_hash: operator-supplied
+tasks:
+  - task_index: 0
+    task_type: development.develop
+    role: dev
+    focus: "the version in continuum inspect --json"
+    description: "In run_inspect in src/continuum/cli.py, add a top-level 'version' key, continuum.__version__, as the first key of the JSON object that --json prints. Every other key and value, and the human-readable output, are unchanged."
+    expected_artifacts:
+      - "src/continuum/cli.py"
+    acceptance_criteria: []
+  - task_index: 1
+    task_type: qa.test
+    role: qa
+    focus: "a test for the version in inspect --json"
+    description: "Add tests/test_cli_inspect_version.py: run continuum.cli.main() with sys.argv set to ['continuum', 'inspect', '--json', '--plugins-dir', <an empty tmp_path>], parse the printed JSON, and assert that version equals continuum.__version__ and is the first key, that plugins is an empty list, and that commands is 0."
+    expected_artifacts:
+      - "tests/test_cli_inspect_version.py"
+    acceptance_criteria: []
+    depends_on: [0]
+summary:
+  total_tasks: 2
