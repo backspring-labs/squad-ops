@@ -60,7 +60,7 @@ deferred until a second stack exists — see the §4.2 status note),
 SIP-Edge-Deployment-Profile (remote sandbox adapter target),
 SIP-Capability-Backed-Agents (toolchain-as-capability, 2.0 arc).
 
-## Delivery ledger (current as of 2026-10-19)
+## Delivery ledger (current as of 2026-10-21)
 
 Kept by the rule in CLAUDE.md ("SIP System"): one row per part, updated in the PR that ships or re-places it, read at each release cut. Built from the read-only SIP-portfolio audit of 2026-10-04; `sips/PORTFOLIO.md` indexes it.
 
@@ -80,7 +80,8 @@ Kept by the rule in CLAUDE.md ("SIP System"): one row per part, updated in the P
 | X-1: a `git_checkout` revision origin (§11d; SIP-0112 §8.2.2) | **shipped** | 2.4.0, PR #2441, issue #2419 |
 | X-2: a checkout's tracked tree round-trips: bytes, line endings, tracked derived names, the executable bit (§11d) | **shipped** | 2.4.0, PR #2442, issue #2420 |
 | X-3a: a product's declared command, run against a pinned revision in a disposable copy (§11d) | **shipped** | 2.4.0, PR #2447 |
-| X-3b: starting a product from its declaration, with readiness and the evaluation secrets, built with SIP-0113's scenario runner (§11d, §11e; SIP-0112 Q40) | **placed**: the start, `http` and `tcp` readiness and the secrets' redaction ship in PR #2450; the declared entry points and the approved secrets' resolution remain (§11e) | 2.4.0, #2421 |
+| X-3b: starting a product from its declaration, with `http` and `tcp` readiness, the secrets' redaction and its declared entry points (§11d, §11e) | **shipped** | 2.4.0, PRs #2450 and #2474 |
+| X-3b's remainder: resolving an owner-approved evaluation secret into the copy's environment at start (§11e; SIP-0112 Q40) | **placed**, re-placed from 2.4 on 2026-10-21: no 2.4 evaluation starts a product that needs one. Its consumer is the evaluation of a repository-backed Project's Campaign, which SIP-0112 H.4 places in 2.5 | 2.5.0, #2421 |
 | the runtime API as the service's caller: its own client selector, the service's URL and token, the service's provider split from the preflight's (§11f; #2451 parts 1–3) | **shipped** | 2.4.0, PR #2456 |
 | the apps the service starts, on the internal `sandbox-apps` network by container name, with no host port (§11h; #2451 part 4) | **shipped** | 2.4.0, PR #2460 |
 | a pinned revision's content, read through the port from the live tree only while it matches its pin (§11i; SIP-0112's E.4.3 capture) | **shipped** | 2.4.0, PR #2461 |
