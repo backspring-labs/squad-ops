@@ -351,7 +351,8 @@ async def _end_of_plan(executor, cycle, run, vault, changes, task_type="developm
             project_id=cycle.project_id,
             cycle_id=cycle.cycle_id,
             run_id=run.run_id,
-            artifact_type="source",
+            # Typed by extension, as a live emission is (`.md` is a document).
+            artifact_type="document" if path.endswith(".md") else "source",
             filename=path,
             content_hash="h",
             size_bytes=len(content),
@@ -434,6 +435,51 @@ async def test_an_accepted_change_is_captured_as_one_commit_on_the_pinned_one(wo
     subprocess.run(["git", "clone", "-q", str(repo.path), str(applied)], check=True)
     subprocess.run(["git", "apply", "-"], cwd=applied, input=patch, check=True)
     assert (applied / "tally/report.py").read_bytes() == expected["tally/report.py"]
+
+
+async def test_a_document_the_product_has_is_delivered_and_the_squads_own_is_named(world, tmp_path):
+    """The G4 of #2484, after #2591. Bugs caught: an edit to the product's README dropped, so a
+    docs request reads as a run that changed nothing; a note the squad wrote for itself at the
+    root committed into the product, or dropped with nothing saying so."""
+    repo, vault, executor, cycle, run = world
+    readme = tracked_files(repo.path, repo.second_commit)["README.md"]
+
+    await _end_of_plan(
+        executor, cycle, run, vault,
+        {"README.md": readme + b"\nSee CONTRIBUTING.md to add a counter.\n",
+         "implementation_notes.md": b"# What I changed\n"},
+    )  # fmt: skip
+
+    [(_ref, raw)] = _of_type(vault, SOURCE_VERIFICATION_TYPE)
+    verification = json.loads(raw)
+    assert (verification["changed_paths"], verification["left_out"]) == (
+        ["README.md"], ["implementation_notes.md"],
+    )  # fmt: skip
+    [(patch_ref, _patch)] = _of_type(vault, SOURCE_PATCH_TYPE)
+    captured = tracked_files(
+        tmp_path / "cache" / "prj-tally.git", patch_ref.metadata["captured_commit"]
+    )
+    assert "implementation_notes.md" not in captured
+    assert captured["README.md"].endswith(b"to add a counter.\n")
+
+
+async def test_a_resumed_runs_delivery_seeds_afresh_after_an_attempt_that_never_tore_down(world):
+    """The G4 of #2484. Bug caught: a resumed run's second delivery refused at the seed
+    (AlreadySeededError), the first attempt's workspace left behind with its head already that
+    attempt's candidate."""
+    repo, vault, executor, cycle, run = world
+    report = tracked_files(repo.path, repo.second_commit)["tally/report.py"]
+    change = {"tally/report.py": report + _SUMMARY_LINE}
+    release = executor._sandbox.release_workspace
+    executor._sandbox.release_workspace = AsyncMock()  # the first attempt dies before teardown
+    await _end_of_plan(executor, cycle, run, vault, change)
+    executor._sandbox.release_workspace = release
+
+    await _end_of_plan(executor, cycle, run, vault, change)
+
+    verifications = [json.loads(raw) for _ref, raw in _of_type(vault, SOURCE_VERIFICATION_TYPE)]
+    assert [v["verdict"] for v in verifications] == ["accepted", "accepted"]
+    assert len(_of_type(vault, SOURCE_PATCH_TYPE)) == 2
 
 
 async def test_a_change_that_breaks_a_passing_check_fails_the_run_and_is_never_captured(

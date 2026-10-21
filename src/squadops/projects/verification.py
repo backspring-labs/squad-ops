@@ -44,6 +44,9 @@ class SourceVerification:
     changed_paths: tuple[str, ...]
     environment: dict[str, str]
     checks: tuple[CheckResult, ...]
+    #: What the squad emitted that isn't a file of the product, so the candidate leaves it out
+    #: (#2591): named here rather than dropped silently.
+    left_out: tuple[str, ...] = ()
 
     @property
     def blocking(self) -> list[str]:
@@ -77,6 +80,7 @@ class SourceVerification:
             "candidate_revision_id": self.candidate_revision_id,
             "candidate_tree_identity": self.candidate_tree_identity,
             "changed_paths": list(self.changed_paths),
+            "left_out": list(self.left_out),
             "acceptance_policy": ACCEPTANCE_POLICY,
             "verdict": self.verdict,
             "environment": dict(self.environment),

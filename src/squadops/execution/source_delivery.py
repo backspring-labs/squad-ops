@@ -24,6 +24,7 @@ never part of the product.
 from __future__ import annotations
 
 import json
+import posixpath
 from collections.abc import Mapping
 from dataclasses import dataclass
 from datetime import UTC, datetime
@@ -35,6 +36,7 @@ from squadops.campaigns.evaluator_trees import FileTree
 from squadops.cycles.delivered_tree import WORKSPACE_ARTIFACT_TYPES
 from squadops.cycles.emission_integrity import EMISSION_STATUS_FAILED
 from squadops.cycles.models import ArtifactRef, Cycle
+from squadops.cycles.patch_verification import EVIDENCE_ARTIFACT_TYPES
 from squadops.cycles.task_plan import REPAIR_TASK_TYPES
 from squadops.projects.checkout import SOURCE_CHECKOUT
 from squadops.projects.configuration import baseline_tree
@@ -70,11 +72,14 @@ def squad_changes(
     stored_artifacts: list[tuple[str, ArtifactRef]],
     contents: Mapping[str, bytes],
     checkout: Mapping[str, bytes],
-) -> dict[str, bytes]:
+) -> tuple[dict[str, bytes], tuple[str, ...]]:
     """The product files the squad changed or added: each path's latest accepted content from a
     source or test author, where it differs from the checkout's. ``contents`` maps artifact ID
-    to its bytes."""
+    to its bytes. Also the paths an author emitted that aren't the product's files, which the
+    candidate leaves out and the verification record names."""
+    directories = {posixpath.dirname(path) for path in checkout} - {""}
     latest: dict[str, str] = {}
+    left_out: set[str] = set()
     for art_id, ref in stored_artifacts:
         producer = ref.metadata.get("producing_task_type", "")
         # As the executor's own resolution reads the workspace: a failed emission is never
@@ -83,18 +88,34 @@ def squad_changes(
             continue
         if producer in REPAIR_TASK_TYPES or producer == SOURCE_CHECKOUT:
             continue
+        if not (authors_source(producer) or authors_qa_suite(producer)):
+            continue
         # #2591: a task's own records (its test report, its typed-check evaluation) are the
         # squad's evidence, never the product's files (FR-19).
-        if ref.artifact_type not in WORKSPACE_ARTIFACT_TYPES:
+        if ref.artifact_type in EVIDENCE_ARTIFACT_TYPES:
             continue
-        if authors_source(producer) or authors_qa_suite(producer):
+        if _is_product_file(ref, checkout, directories):
             latest[ref.filename] = art_id
+        else:
+            left_out.add(ref.filename)
     changes = {}
     for path, art_id in sorted(latest.items()):
         content = _line_endings_of(checkout.get(path), contents[art_id])
         if checkout.get(path) != content:
             changes[path] = content
-    return changes
+    return changes, tuple(sorted(left_out - set(latest)))
+
+
+def _is_product_file(
+    ref: ArtifactRef, checkout: Mapping[str, bytes], directories: set[str]
+) -> bool:
+    """Source, tests and configuration are the product's. A document is when it edits one of the
+    product's files or sits in one of its directories (a README, docs/usage.md); a new one at the
+    root, beside nothing of the product's, is the squad's own (its notes, its warnings)."""
+    if ref.artifact_type in WORKSPACE_ARTIFACT_TYPES:
+        return True
+    path = ref.filename
+    return path in checkout or posixpath.dirname(path) in directories
 
 
 def _line_endings_of(original: bytes | None, emitted: bytes) -> bytes:
@@ -144,9 +165,10 @@ async def deliver_source_change(
     contents = {}
     for art_id, _ref in stored_artifacts:
         _stored, contents[art_id] = await vault.retrieve(art_id)
-    changes = squad_changes(stored_artifacts, contents, checkout.files)
+    changes, left_out = squad_changes(stored_artifacts, contents, checkout.files)
     if not changes:
-        raise SourceDeliveryRefused("the run changed no file of the product")
+        named = f"; it left out what isn't the product's: {', '.join(left_out)}" if left_out else ""
+        raise SourceDeliveryRefused(f"the run changed no file of the product{named}")
     binary = sorted(p for p in changes if _is_binary(checkout.files.get(p)))
     if binary:
         raise SourceDeliveryRefused(
@@ -156,96 +178,104 @@ async def deliver_source_change(
     candidate_files = {**checkout.files, **changes}
     tree_identity = FileTree.of(candidate_files).identity
     workspace_id = f"src-{run_id}-{tree_identity[:12]}"
-    seeded = await seed_project_tree(
-        project,
-        commit,
-        workspace_id,
-        registry=registry,
-        repository=repository,
-        sandbox=sandbox,
-        cycle_id=cycle.cycle_id,
-        tree=checkout,
-    )
-    patched = await sandbox.apply_workspace_patch(base=seeded, files=changes)
-    candidate = WorkspaceRevision(
-        revision_id=patched.new_revision_id,
-        cycle_id=workspace_id,
-        origin=RevisionOrigin.AGENT_PATCH,
-        parent_revision_id=seeded.revision_id,
-    )
-    expected = WorkspaceRevision.cut(
-        cycle_id=workspace_id,
-        origin=RevisionOrigin.AGENT_PATCH,
-        files=candidate_files,
-        executable=checkout.executable,
-    )
-    if candidate.revision_id != expected.revision_id:
-        raise SourceDeliveryRefused(
-            f"the sandbox cut {candidate.revision_id} for the candidate, and its content is "
-            f"{expected.revision_id}: the tree it would verify isn't the one the run changed"
-        )
-
-    results, environment = await run_checks(sandbox, candidate, configuration.commands)
-    verification = SourceVerification(
-        project_id=cycle.project_id,
-        cycle_id=cycle.cycle_id,
-        run_id=run_id,
-        baseline_commit=commit,
-        development_configuration_revision=configuration.revision,
-        candidate_revision_id=candidate.revision_id,
-        candidate_tree_identity=tree_identity,
-        changed_paths=tuple(sorted(changes)),
-        environment=environment,
-        checks=attributed(results, baseline),
-    )
-    ids = [
-        await _store(
-            vault,
-            cycle,
-            run_id,
-            SOURCE_VERIFICATION_FILENAME,
-            json.dumps(verification.to_document(), indent=1).encode(),
-            SOURCE_VERIFICATION_TYPE,
-            "application/json",
-        )
-    ]
-    if verification.verdict != ACCEPTED:
-        return SourceDelivery(verification, tuple(ids))
-
-    new_commit, captured = await _capture(
-        cycle, run_id, candidate, commit, verification, repository, sandbox
-    )
-    if captured != tree_identity:
-        raise SourceDeliveryRefused(
-            f"the captured commit's tree is {captured}, and the candidate verified is "
-            f"{tree_identity}: the commit is not the change that was verified"
-        )
-    await registry.record_source_mapping(
-        SourceMapping(
-            project_id=cycle.project_id,
-            workspace_id=workspace_id,
-            direction=CAPTURED,
-            commit=new_commit,
-            sandbox_revision_id=candidate.revision_id,
-            tree_identity=tree_identity,
+    # A resumed run delivers again: an earlier attempt's workspace, its head already that
+    # attempt's candidate, is released before seeding, and this one at its teardown, once the
+    # capture has read it back (#2473's release; the G4 of #2484).
+    await sandbox.release_workspace(workspace_id)
+    try:
+        seeded = await seed_project_tree(
+            project,
+            commit,
+            workspace_id,
+            registry=registry,
+            repository=repository,
+            sandbox=sandbox,
             cycle_id=cycle.cycle_id,
-            campaign_id=cycle.campaign_id,
+            tree=checkout,
         )
-    )
-    patch = await repository.export_patch(cycle.project_id, new_commit)
-    ids.append(
-        await _store(
-            vault,
-            cycle,
-            run_id,
-            SOURCE_PATCH_FILENAME,
-            patch,
-            SOURCE_PATCH_TYPE,
-            "text/x-patch",
-            {"captured_commit": new_commit, "parent_commit": commit},
+        patched = await sandbox.apply_workspace_patch(base=seeded, files=changes)
+        candidate = WorkspaceRevision(
+            revision_id=patched.new_revision_id,
+            cycle_id=workspace_id,
+            origin=RevisionOrigin.AGENT_PATCH,
+            parent_revision_id=seeded.revision_id,
         )
-    )
-    return SourceDelivery(verification, tuple(ids), captured_commit=new_commit)
+        expected = WorkspaceRevision.cut(
+            cycle_id=workspace_id,
+            origin=RevisionOrigin.AGENT_PATCH,
+            files=candidate_files,
+            executable=checkout.executable,
+        )
+        if candidate.revision_id != expected.revision_id:
+            raise SourceDeliveryRefused(
+                f"the sandbox cut {candidate.revision_id} for the candidate, and its content is "
+                f"{expected.revision_id}: the tree it would verify isn't the one the run changed"
+            )
+
+        results, environment = await run_checks(sandbox, candidate, configuration.commands)
+        verification = SourceVerification(
+            project_id=cycle.project_id,
+            cycle_id=cycle.cycle_id,
+            run_id=run_id,
+            baseline_commit=commit,
+            development_configuration_revision=configuration.revision,
+            candidate_revision_id=candidate.revision_id,
+            candidate_tree_identity=tree_identity,
+            changed_paths=tuple(sorted(changes)),
+            left_out=left_out,
+            environment=environment,
+            checks=attributed(results, baseline),
+        )
+        ids = [
+            await _store(
+                vault,
+                cycle,
+                run_id,
+                SOURCE_VERIFICATION_FILENAME,
+                json.dumps(verification.to_document(), indent=1).encode(),
+                SOURCE_VERIFICATION_TYPE,
+                "application/json",
+            )
+        ]
+        if verification.verdict != ACCEPTED:
+            return SourceDelivery(verification, tuple(ids))
+
+        new_commit, captured = await _capture(
+            cycle, run_id, candidate, commit, verification, repository, sandbox
+        )
+        if captured != tree_identity:
+            raise SourceDeliveryRefused(
+                f"the captured commit's tree is {captured}, and the candidate verified is "
+                f"{tree_identity}: the commit is not the change that was verified"
+            )
+        await registry.record_source_mapping(
+            SourceMapping(
+                project_id=cycle.project_id,
+                workspace_id=workspace_id,
+                direction=CAPTURED,
+                commit=new_commit,
+                sandbox_revision_id=candidate.revision_id,
+                tree_identity=tree_identity,
+                cycle_id=cycle.cycle_id,
+                campaign_id=cycle.campaign_id,
+            )
+        )
+        patch = await repository.export_patch(cycle.project_id, new_commit)
+        ids.append(
+            await _store(
+                vault,
+                cycle,
+                run_id,
+                SOURCE_PATCH_FILENAME,
+                patch,
+                SOURCE_PATCH_TYPE,
+                "text/x-patch",
+                {"captured_commit": new_commit, "parent_commit": commit},
+            )
+        )
+        return SourceDelivery(verification, tuple(ids), captured_commit=new_commit)
+    finally:
+        await sandbox.release_workspace(workspace_id)
 
 
 async def _capture(
