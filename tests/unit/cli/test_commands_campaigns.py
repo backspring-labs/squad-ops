@@ -85,6 +85,28 @@ def test_start_names_the_cycle_it_launched(get_client):
 
 
 @patch("squadops.cli.commands.campaigns._get_client")
+def test_a_start_whose_launch_was_refused_says_the_campaign_is_escalated_and_why(get_client):
+    """#2621. Bug caught: a start that printed only its own row (`draft → calibrating`) while the
+    launch it wrote was refused and the campaign escalated, so the operator walks away from a
+    campaign waiting on the owner."""
+    client = _client(
+        post={
+            **_RESULT,
+            "campaign": {"campaign_id": "cmp_1", "state": "escalated"},
+            "entry": {"operation": "start", "prior_state": "draft", "next_state": "calibrating"},
+            "launched_cycles": [],
+            "refused_launch": {"reason": "STALE_SOURCE_PRECONDITION: reconcile it first"},
+        }
+    )
+    get_client.return_value = client
+
+    result = runner.invoke(app, ["campaigns", "start", "cmp_1", "--reason", "go"])
+
+    assert result.exit_code == 0, result.output
+    assert "launch refused, cmp_1 is escalated: STALE_SOURCE_PRECONDITION" in result.output
+
+
+@patch("squadops.cli.commands.campaigns._get_client")
 def test_a_key_is_minted_and_printed_when_none_is_given(get_client):
     """A retry can resend what was printed. Bug caught: no key sent, or one the user never sees."""
     client = _client(post=_RESULT)

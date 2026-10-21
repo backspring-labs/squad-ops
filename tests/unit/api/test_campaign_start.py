@@ -453,13 +453,16 @@ async def test_a_launch_the_preflight_refuses_escalates_and_the_owners_resume_re
     """#1971, SIP-0109 §24e item 5. Entered at the start route with the real launch service.
     Bugs caught: a refused launch left pending with nothing asking the owner, so an unattended
     campaign stalls; a resume that names an action, writing a second launch beside the pending
-    one; or a resume that does not retry the launch once what refused it is fixed."""
+    one; or a resume that does not retry the launch once what refused it is fixed. And #2621:
+    the start's or a resume's own answer read from before its drain, so it says `calibrating`
+    while that drain has refused the launch and escalated the campaign, or names the earlier
+    refusal instead of the one this resume met."""
     from squadops.campaigns.models import ControlOperation
 
     state = {"refuse": True}
     _refusing_preflight(monkeypatch, state)
 
-    world.start()
+    started = world.start()
     await world.launch.drain()  # a second drain while escalated asks nothing again
 
     log = await world.campaigns.control_log(CID)
@@ -471,9 +474,17 @@ async def test_a_launch_the_preflight_refuses_escalates_and_the_owners_resume_re
     assert intent.state is LaunchIntentState.PENDING
     assert await world.cycles.list_cycles("group_run") == []
 
+    assert started.json()["campaign"]["state"] == "escalated"
+    assert started.json()["entry"]["operation"] == "start"
+    assert started.json()["refused_launch"]["entry_id"] == refused.entry_id
+    assert "PREFLIGHT_REJECTED" in started.json()["refused_launch"]["reason"]
+
     with_action = world.client.post(
         f"/api/v1/campaigns/{CID}/resume",
         json={"reason": "r", "idempotency_key": "r-1", "action": "propose"},
+    )
+    too_soon = world.client.post(  # resumed before the model is pulled: refused again
+        f"/api/v1/campaigns/{CID}/resume", json={"reason": "early", "idempotency_key": "r-0"}
     )
     state["refuse"] = False  # the operator pulls the model
     resumed = world.client.post(
@@ -483,8 +494,12 @@ async def test_a_launch_the_preflight_refuses_escalates_and_the_owners_resume_re
 
     [cycle] = await world.cycles.list_cycles("group_run")
     assert with_action.status_code == 422
+    assert too_soon.json()["campaign"]["state"] == "escalated"
+    assert too_soon.json()["refused_launch"]["entry_id"] not in (None, refused.entry_id)
     assert resumed.status_code == 200
     assert resumed.json()["launched_cycles"] == [cycle.cycle_id]
+    assert resumed.json()["campaign"]["state"] == "calibrating"
+    assert resumed.json()["refused_launch"] is None
     assert (await world.campaigns.get_campaign(CID)).state is CampaignState.CALIBRATING
     [intent] = await world.campaigns.launch_intents(CID)
     assert (intent.state, intent.cycle_id) == (LaunchIntentState.LAUNCHED, cycle.cycle_id)
