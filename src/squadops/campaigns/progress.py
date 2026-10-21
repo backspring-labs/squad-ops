@@ -61,6 +61,7 @@ from squadops.campaigns.increment_tree import (
     accepted_cycle_of,
     compose_accepted_tree,
     increment_seed,
+    proposal_change_request,
 )
 from squadops.campaigns.launch_requests import bound_launch, increment_launch
 from squadops.campaigns.models import (
@@ -84,7 +85,6 @@ from squadops.campaigns.proposed_behaviours import (
 )
 from squadops.campaigns.unapproved_proposals import unapproved_proposal, unapproved_rulings
 from squadops.capabilities.handlers.fault_injection import seed as fault_seed
-from squadops.capabilities.handlers.planning.proposal import CHANGE_REQUEST_ARTIFACT_TYPE
 from squadops.contracts.cycle_request_profiles import load_profile
 from squadops.cycles.contract_derivation import (
     is_interface_manifest,
@@ -1405,9 +1405,15 @@ class CampaignProgress:
         proposed = await self._qa_proposed_behaviours(
             [campaign.accepted.cycle_id, *([abandoned_cycle_id] if abandoned_cycle_id else [])]
         )
-        # #2593: each proposal the campaign never approved, with the ruling's reason.
+        # #2593: each proposal the campaign never approved, with the ruling's reason. As with
+        # every input above, a read that fails raises and the re-hearing retries the launch: a
+        # proposal is never launched without them.
         unapproved = [
-            unapproved_proposal(entry, await self._ruled_change_request(entry.target))
+            unapproved_proposal(
+                entry,
+                await self._ruled_change_request(entry.target),
+                current_tree=campaign.accepted.identity,
+            )
             for entry in unapproved_rulings(log)
         ]
         try:
@@ -1416,25 +1422,12 @@ class CampaignProgress:
             return f"the policy's proposal profile cannot be loaded: {e}"
 
     async def _ruled_change_request(self, run_id: str | None) -> ChangeRequest | None:
-        """The change request a ruled proposal run stored (#2593). It is an aid to the next
-        proposal, as the abandoned brief is, so one that cannot be read leaves out what that
-        proposal proposed, with a warning; the ruling itself is still shown."""
+        """The change request a ruled proposal run stored (#2593), from the run's own artifacts:
+        the document the ruling bound to. ``None`` when the run stored none."""
         if not run_id:
             return None
-        try:
-            refs = [
-                r
-                for r in await self._vault.list_artifacts(run_id=run_id)
-                if r.artifact_type == CHANGE_REQUEST_ARTIFACT_TYPE
-            ]
-            if not refs:
-                return None
-            latest = max(refs, key=lambda r: str(r.created_at))
-            _ref, content = await self._vault.retrieve(latest.artifact_id)
-            return load_stored_change_request(content.decode("utf-8"))
-        except Exception:  # noqa: BLE001 — an aid, never a blocked launch
-            logger.warning("ruled change request of run %s unreadable", run_id, exc_info=True)
-            return None
+        document = await proposal_change_request(self._vault, await self._cycles.get_run(run_id))
+        return load_stored_change_request(document) if document is not None else None
 
     async def _accepted_manifest(self, cycle_id: str) -> str | None:
         """The interface manifest the accepted cycle ran against (#1902): one it stored (a

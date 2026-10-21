@@ -199,6 +199,19 @@ async def increment_seed(vault: Any, registry: Any, cycle: Any, completed_run: A
     )
 
 
+async def proposal_change_request(vault: Any, run: Any) -> str | None:
+    """The change request a proposal run stored, or ``None`` when it stored none (SIP-0109 §9.1):
+    read from the run's own artifacts, the document the gate submitted and a ruling bound to.
+    One lookup for the gate that submits it, the executor that refuses to complete a proposal run
+    without it (#2213), and the next proposal that is shown what a ruling rejected (#2593). A read
+    that fails raises."""
+    for ref_id in tuple(run.artifact_refs or ()):
+        ref, content = await vault.retrieve(ref_id)
+        if ref.artifact_type == CHANGE_REQUEST_ARTIFACT_TYPE:
+            return content.decode("utf-8")
+    return None
+
+
 @dataclasses.dataclass(frozen=True)
 class CriterionFile:
     """A new criterion and its own test file (SIP-0109 §8.1): the qa role writes the test that
