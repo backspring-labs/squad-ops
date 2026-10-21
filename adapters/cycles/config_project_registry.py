@@ -119,6 +119,12 @@ class ConfigProjectRegistry(ProjectRegistryPort):
     async def source_syncs(self, project_id):
         return []
 
+    async def record_initialization(self, initialization, *, idempotency_key, request_hash):
+        raise ProjectRegistryReadOnlyError("the config provider records no initializations")
+
+    async def get_initialization(self, project_id):
+        return None
+
     async def get_inherited_baseline(self, project_id):
         raise InheritedBaselineNotFoundError(
             f"Project {project_id} is a sample application: it has no inherited baseline"

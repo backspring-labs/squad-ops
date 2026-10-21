@@ -32,6 +32,7 @@ from squadops.projects.development_configuration import (
     DevelopmentConfiguration,
     parse_configuration,
 )
+from squadops.projects.initialization import ProjectInitialization
 from squadops.projects.models import (
     ProjectLifecycleStatus,
     ProjectOwnership,
@@ -89,6 +90,16 @@ _CONTRIBUTION_COLUMNS = (
     "project_id, cycle_id, run_id, commit, parent_commit, mode, state, branch, review_url, "
     "contributed_by, contributed_at, integrated_commit"
 )
+
+
+_INITIALIZATION_COLUMNS = (
+    "project_id, commit, branch, stack, manifest_digest, manifest, files, initialized_by, "
+    "initialized_at"
+)
+
+
+def _row_to_initialization(row: asyncpg.Record) -> ProjectInitialization:
+    return ProjectInitialization(**{**dict(row), "files": tuple(row["files"])})
 
 
 def _event_id() -> str:
@@ -775,6 +786,89 @@ class PostgresProjectRegistry(ProjectRegistryPort):
                 project_id,
             )
         return [r["document"] for r in rows]
+
+    async def record_initialization(
+        self, initialization: ProjectInitialization, *, idempotency_key: str, request_hash: str
+    ) -> tuple[ProjectInitialization, bool]:
+        if not self._writable:
+            raise ProjectRegistryReadOnlyError(
+                "the project registry's writes are gated off (postgres_read_only)"
+            )
+        project_id = initialization.project_id
+        async with self._pool.acquire() as conn, conn.transaction():
+            row = await conn.fetchrow(
+                "SELECT record_version FROM project_records WHERE project_id = $1 FOR UPDATE",
+                project_id,
+            )
+            if row is None:
+                raise ProjectNotFoundError(f"Project not found: {project_id}")
+            prior = await conn.fetchrow(
+                "SELECT project_id, request_hash FROM project_record_events "
+                "WHERE idempotency_key = $1",
+                idempotency_key,
+            )
+            if prior is not None and (
+                prior["request_hash"] != request_hash or prior["project_id"] != project_id
+            ):
+                raise RegistrationKeyConflictError(
+                    f"idempotency key {idempotency_key!r} recorded different content"
+                )
+            existing = await conn.fetchrow(
+                f"SELECT {_INITIALIZATION_COLUMNS} FROM project_initializations "
+                "WHERE project_id = $1",
+                project_id,
+            )
+            if existing is not None:
+                return _row_to_initialization(existing), True
+            now = initialization.initialized_at
+            version = row["record_version"] + 1
+            await conn.execute(
+                f"INSERT INTO project_initializations ({_INITIALIZATION_COLUMNS}) "
+                "VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)",
+                project_id,
+                initialization.commit,
+                initialization.branch,
+                initialization.stack,
+                initialization.manifest_digest,
+                initialization.manifest,
+                list(initialization.files),
+                initialization.initialized_by,
+                now,
+            )
+            await conn.execute(
+                "UPDATE project_records SET record_version = $2, updated_at = $3 "
+                "WHERE project_id = $1",
+                project_id,
+                version,
+                now,
+            )
+            await conn.execute(
+                "INSERT INTO project_record_events (event_id, project_id, operation, "
+                "record_version, actor, idempotency_key, request_hash, detail, recorded_at) "
+                "VALUES ($1, $2, 'initialize', $3, $4, $5, $6, $7, $8)",
+                _event_id(),
+                project_id,
+                version,
+                initialization.initialized_by,
+                idempotency_key,
+                request_hash,
+                {
+                    "commit": initialization.commit,
+                    "stack": initialization.stack,
+                    "manifest_digest": initialization.manifest_digest,
+                },
+                now,
+            )
+        return initialization, False
+
+    async def get_initialization(self, project_id: str) -> ProjectInitialization | None:
+        async with self._pool.acquire() as conn:
+            row = await conn.fetchrow(
+                f"SELECT {_INITIALIZATION_COLUMNS} FROM project_initializations "
+                "WHERE project_id = $1",
+                project_id,
+            )
+        return _row_to_initialization(row) if row is not None else None
 
     async def _read(self, conn, project_id: str) -> Project:
         row = await conn.fetchrow(

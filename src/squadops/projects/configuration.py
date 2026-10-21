@@ -22,6 +22,7 @@ from squadops.projects.development_configuration import (
     submission_digest,
 )
 from squadops.projects.models import CheckoutTree, SourceUnavailable
+from squadops.stacks.scaffold import is_scaffoldable_stack, scaffoldable_stacks
 
 if TYPE_CHECKING:
     from squadops.ports.cycles.project_registry import ProjectRegistryPort
@@ -51,6 +52,7 @@ async def configure_project(
             "Configuration is recorded for a registered Project whose source has been reached"
         )
     project_type, target, stack, commands = parse_technical(_mapping(submission, "technical"))
+    await _check_stack(registry, project_id, stack)
     tree = await baseline_tree(
         repository, project_id, project.source.repo_uri, project.source.base_ref, commit
     )
@@ -95,3 +97,21 @@ def _mapping(doc: Mapping[str, Any], key: str) -> Mapping[str, Any]:
     if not isinstance(value, Mapping):
         raise ConfigurationInvalid(key, "required, a mapping")
     return value
+
+
+async def _check_stack(registry: ProjectRegistryPort, project_id: str, stack: str | None) -> None:
+    """§B.4.1: ``stack`` names a SIP-0105 blueprint, and a greenfield Project names the one it
+    was initialized on (E.4.6). Checked as it's submitted; a recorded revision is read as it was
+    recorded."""
+    if stack is not None and not is_scaffoldable_stack(stack):
+        raise ConfigurationInvalid(
+            "technical.stack",
+            f"{stack!r} is not a SIP-0105 blueprint ({', '.join(scaffoldable_stacks())})",
+        )
+    initialization = await registry.get_initialization(project_id)
+    if initialization is not None and stack != initialization.stack:
+        raise ConfigurationInvalid(
+            "technical.stack",
+            f"Project {project_id} was initialized on the {initialization.stack} blueprint, "
+            "which its Development Configuration names",
+        )

@@ -570,3 +570,44 @@ async def test_a_sync_is_recorded_once_and_a_contribution_moves_to_integrated(po
     assert await registry.contributions("prj-tally") == [integrated]
     assert (replayed, again_replayed, again) == (False, True, document)
     assert await registry.source_syncs("prj-tally") == [document]
+
+
+async def test_an_initialization_is_recorded_once_and_reads_back_whole(pool):
+    """E.4.6's record. Bugs caught: a second initialization of one Project recorded beside the
+    first; the manifest or the file list lost in the round trip; an initialize event the
+    operation check refuses."""
+    from squadops.projects.initialization import ProjectInitialization
+
+    registry = PostgresProjectRegistry(pool)
+    await registry.register_project(_registration(), actor="owner")
+    first = ProjectInitialization(
+        project_id="prj-tally",
+        commit="a" * 40,
+        branch="main",
+        stack="fullstack_fastapi_react",
+        manifest_digest="sha256:" + "1" * 64,
+        manifest="version: 1\nkind: interface_manifest\n",
+        files=("backend/main.py", "start.sh"),
+        initialized_by="owner",
+        initialized_at=datetime(2026, 10, 20, tzinfo=UTC),
+    )
+    other = dataclasses.replace(first, commit="b" * 40, manifest_digest="sha256:" + "2" * 64)
+
+    recorded, replayed = await registry.record_initialization(
+        first, idempotency_key="i-1", request_hash="h1"
+    )
+    kept, kept_replayed = await registry.record_initialization(
+        other, idempotency_key="i-2", request_hash="h2"
+    )
+
+    assert (recorded, replayed) == (first, False)
+    assert (kept, kept_replayed) == (first, True)
+    assert await registry.get_initialization("prj-tally") == first
+    assert await registry.get_initialization("prj-other") is None
+    async with pool.acquire() as conn:
+        assert (
+            await conn.fetchval(
+                "SELECT count(*) FROM project_record_events WHERE operation = 'initialize'"
+            )
+            == 1
+        )
