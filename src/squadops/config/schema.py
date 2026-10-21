@@ -665,6 +665,17 @@ class ProjectsConfig(BaseModel):
     git_timeout_seconds: float = Field(
         default=300.0, gt=0, description="The longest one clone, fetch or read may take"
     )
+    #: #2575: a reference resolver's ``bind`` runs under the campaign launcher's single lock, so
+    #: one family that hangs would stall every campaign. The repository family's slowest call is a
+    #: ``git cat-file`` in the managed clone, which never clones or fetches (#2565).
+    reference_resolver_timeout_seconds: float = Field(
+        default=30.0,
+        gt=0,
+        description=(
+            "The longest one reference resolver call (a bind, a read, or whether a project binds "
+            "nothing) may take before it is a fault (#2575)"
+        ),
+    )
 
 
 class SchedulerConfig(BaseModel):

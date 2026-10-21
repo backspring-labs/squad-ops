@@ -71,6 +71,7 @@ from squadops.cycles.cycle_assessment import AssessorIdentity
 from squadops.execution.cycle_evidence import assess_cycle
 from squadops.execution.reply_router import ReplyRouter
 from squadops.memory.reconcile import reconcile_recent
+from squadops.memory.resolvers import ReferenceResolvers
 from squadops.outcomes.campaign_package import campaign_interventions, campaign_outcomes
 from squadops.projects.cutover import (
     CutoverProblem,
@@ -862,8 +863,11 @@ def _init_memory(state, config, pool) -> None:
     )
     # #2179 T16: the resolvers that bind an instruction's ``@current`` references at admission, by
     # family. None is registered yet: Project Lifecycle Management registers the repository family
-    # (SIP-0112 §B.5.1, contract 6), and until then ``@current`` is refused at write.
-    state.reference_resolvers = {}
+    # (SIP-0112 §B.5.1, contract 6), and until then ``@current`` is refused at write. A family is
+    # registered through ``register``, which bounds each of its calls (#2575).
+    state.reference_resolvers = ReferenceResolvers(
+        config.projects.reference_resolver_timeout_seconds
+    )
 
 
 #: How often the memory reconciliation passes run (SIP-0110 §0.3). Observations feed lessons the
