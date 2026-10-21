@@ -117,6 +117,8 @@ So IR-2 passes.
 | #2608 | a cycle was accepted at a baseline a sync had already found upstream past, with relevant drift | fixed in #2610 (merged): `prepare_cycle` refuses until validation. Refused live on the Mac (`dep_cc31bd6fd406`) and in the re-run below |
 | #2609 | the acceptance policy reads an already-failing check only as a whole, so new failures inside it pass | open. It needs a design: a check declares how its findings are read, the baseline keeps them, and new ones are refused |
 | #2607 | every file the squad emits loses its final newline, and an edited file loses the one it had | open. Seen in all three pull requests; no check reads it |
+| #2612 | a source-backed change can't delete a file: the squad has no form for a removal | deferred from E.4.3. No change here needed one |
+| #2613 | an introduced regression at the end-of-plan verification ends the run with no repair round | deferred from E.4.3. Every change here was accepted on its first verification |
 | #2605 | the CLI's 30 s request timeout is shorter than a baseline capture, so a capture that completed reads as failed | open (the Spark lane's). #2603 (merged) keeps a contended memory change under it |
 
 **Two quality notes no check caught:**
