@@ -82,6 +82,33 @@ class SourceRepositoryPort(ABC):
         """
 
     @abstractmethod
+    async def initialize(
+        self,
+        project_id: str,
+        locator: str,
+        *,
+        ref: str,
+        files: Mapping[str, bytes],
+        executable: Collection[str],
+        message: str,
+        committed_at: int,
+        token: str,
+    ) -> str:
+        """Make ``files`` the first commit of ``ref`` (``refs/heads/<branch>``) in a product
+        repository that holds no commit there yet, and return it (SIP-0112 E.4.6, greenfield).
+
+        The commit has no parent, and its committer date is ``committed_at`` (seconds since the
+        epoch), so the same request makes the same commit. It's made in the managed clone, then
+        pushed, never forced, with ``token`` over https, or to a local repository under a
+        configured root. A branch already at that commit is answered with it, unpushed: a retry
+        whose push landed. Any other commit there refuses, and the product is untouched.
+
+        Raises:
+            SourceUnavailable: The locator is refused or ssh, the ref isn't a branch, the branch
+                holds another commit (``not_empty``), or the product refused the push.
+        """
+
+    @abstractmethod
     async def is_ancestor(self, project_id: str, ancestor: str, descendant: str) -> bool:
         """Whether ``ancestor`` is in ``descendant``'s history in the managed clone (a commit is
         its own ancestor). E.4.4 reads a contribution as integrated when its commit is.
