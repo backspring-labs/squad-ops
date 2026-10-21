@@ -20,7 +20,7 @@ first change, which turned its failing `backend_tests` to PASS. That change was 
 
 Three of the demonstrations' four findings are in SquadOps itself:
 - **Stage 5 as pre-registered didn't hold:** a cycle at the stale baseline was accepted before `validate` (#2608).
-  It's fixed in #2610 (merged), refused live on the Mac, and waits for the Spark's re-run.
+  It's fixed in #2610 (merged), and the Spark's re-run of stages 4–5 with it deployed refused the cycle.
 - **A sync filed the squad's own merged files as outside change** (#2606, fixed in #2610, merged).
 - **The acceptance policy can't see new failures inside a check that was already failing** (#2609, open). It
   accepted a second feature that added three lint findings.
@@ -65,12 +65,33 @@ the pre-registration. On the Spark:
 | 4. contribution | `contribute`: z_shelfnote#1, commit `2dd04e7f` | **held.** The head is the verified tree, recorded pending |
 | 5. integration | merged by the MacBook lane as the owner's stand-in (`9bcdc7c0`); `sync` | **held.** Read as integrated at `2dd04e7f`. The same sync listed the contribution's own files as source drift (#2606) |
 
+## The re-run of stages 4–5, with #2610 deployed
+
+On the Spark's `dep_31fe124fd638` (framework `88e5bf7e`, 166 of 166 loaded checks), with `prj-z-continuum` at
+`ba8fa68b`, revision 2:
+1. **The second contribution merged:** z_continuum#2, by a merge commit `6af35238`, made by the MacBook lane as the
+   owner's stand-in. Its review note (three new ruff findings, #2609) stays on the pull request.
+2. **Another outside commit,** `77cb6d66`, pushed from the owner's account. It adds a line to `CLAUDE.md` and
+   changes a docstring in `src/continuum/main.py`, neither of which #2 touched.
+3. **The sync** (`demo-a-sync-3`, `source-drift/v2`), verbatim on #2410, matched every expected line:
+   - `changed`: `instructions` `CLAUDE.md`, and `source` `src/continuum/main.py`;
+   - `integrated`: `cyc_c1b7dba3ae25` at `0c814a7c`, `source` `src/continuum/cli.py` and
+     `tests/test_cli_inspect_version.py`, shown in the CLI's table as `source, by cyc_c1b7dba3ae25`;
+   - `relevant`: `instructions`;
+   - both contributions integrated.
+4. **A cycle at `ba8fa68b`, revision 2, before `validate`:** HTTP 409 `STALE_SOURCE_PRECONDITION`, "upstream is at
+   77cb6d66…, past its baseline ba8fa68b…, with instructions changed (projects sync): reconcile it at the new commit
+   first". No cycle was created.
+
+So stages 4 and 5 now hold as pre-registered. The Spark lane then reconciled the Project at `77cb6d66` (validate,
+configuration revision 3, baseline, a closing sync), so it isn't left held.
+
 ## The findings
 
 | issue | what | where it stands |
 |---|---|---|
-| #2606 | a sync filed an integrated contribution's own files as outside source drift | fixed in #2610 (merged): the drift document lists them under `integrated`, apart from what changed outside |
-| #2608 | a cycle was accepted at a baseline a sync had already found upstream past, with relevant drift | fixed in #2610 (merged): `prepare_cycle` refuses until validation. Refused live on the Mac (`dep_cc31bd6fd406`); the Spark re-runs stages 4–5 once it's deployed |
+| #2606 | a sync filed an integrated contribution's own files as outside source drift | fixed in #2610 (merged): the drift document lists them under `integrated`, apart from what changed outside. Shown in the re-run below |
+| #2608 | a cycle was accepted at a baseline a sync had already found upstream past, with relevant drift | fixed in #2610 (merged): `prepare_cycle` refuses until validation. Refused live on the Mac (`dep_cc31bd6fd406`) and in the re-run below |
 | #2609 | the acceptance policy reads an already-failing check only as a whole, so new failures inside it pass | open. It needs a design: a check declares how its findings are read, the baseline keeps them, and new ones are refused |
 | #2607 | every file the squad emits loses its final newline, and an edited file loses the one it had | open. Seen in all three pull requests; no check reads it |
 | #2605 | the CLI's 30 s request timeout is shorter than a baseline capture, so a capture that completed reads as failed | open (the Spark lane's). #2603 (merged) keeps a contended memory change under it |
