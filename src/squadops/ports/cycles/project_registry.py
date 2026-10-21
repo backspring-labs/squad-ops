@@ -14,6 +14,8 @@ from squadops.projects.development_configuration import DevelopmentConfiguration
 from squadops.projects.registration import ProjectRegistration
 
 if TYPE_CHECKING:
+    from squadops.projects.contribution import Contribution
+    from squadops.projects.initialization import ProjectInitialization
     from squadops.projects.workspaces import SourceMapping
 
 
@@ -125,3 +127,57 @@ class ProjectRegistryPort(ABC):
         Raises:
             InheritedBaselineNotFoundError: none is captured.
         """
+
+    @abstractmethod
+    async def record_contribution(
+        self, contribution: Contribution, *, idempotency_key: str, request_hash: str
+    ) -> tuple[Contribution, bool]:
+        """Record a run's contribution, pending (FR-06, E.4.3). Returns it and whether this
+        replayed an earlier one: the same key, or the same run contributed already."""
+
+    @abstractmethod
+    async def contributions(self, project_id: str) -> list[Contribution]:
+        """A Project's contributions, oldest first."""
+
+    @abstractmethod
+    async def record_contribution_state(
+        self,
+        project_id: str,
+        cycle_id: str,
+        run_id: str,
+        *,
+        state: str,
+        integrated_commit: str | None,
+        actor: str,
+    ) -> Contribution:
+        """Record where a contribution now stands (E.4.4): integrated, through the commit the
+        product took it by, or closed."""
+
+    @abstractmethod
+    async def record_sync(
+        self, document: dict, *, actor: str, idempotency_key: str, request_hash: str
+    ) -> tuple[dict, bool]:
+        """Record one read of upstream against the approved baseline (FR-21). Returns the
+        document and whether this replayed an earlier sync under the same key."""
+
+    @abstractmethod
+    async def source_syncs(self, project_id: str) -> list[dict]:
+        """A Project's syncs, oldest first: the drift findings a later unit resolves (FR-09)."""
+
+    @abstractmethod
+    async def record_initialization(
+        self, initialization: ProjectInitialization, *, idempotency_key: str, request_hash: str
+    ) -> tuple[ProjectInitialization, bool]:
+        """Record a greenfield Project's first commit (SIP-0112 E.4.6), once per Project. Returns
+        it and whether this replayed an earlier one: the same key, or the Project initialized
+        already.
+
+        Raises:
+            ProjectRegistryReadOnlyError: The registry refuses writes.
+            RegistrationKeyConflictError: The key recorded different content.
+        """
+
+    @abstractmethod
+    async def get_initialization(self, project_id: str) -> ProjectInitialization | None:
+        """The Project's initialization, or ``None`` for a Project that wasn't initialized here: an
+        existing product, or a sample application."""

@@ -56,6 +56,7 @@ from squadops.cycles.verification_integrity import (
 )
 from squadops.memory.authoring_envelope import envelope_id
 from squadops.ports.cycles.cycle_registry import CycleRegistryPort
+from squadops.projects.source_context import parse_source_context
 
 logger = logging.getLogger(__name__)
 
@@ -70,7 +71,7 @@ _CYCLE_INSERT_COLUMNS = (
     "squad_profile_id, squad_profile_snapshot_ref, task_flow_policy, "
     "build_strategy, applied_defaults, execution_overrides, "
     "expected_artifact_types, experiment_context, notes, request_profile, "
-    "framework_version, framework_git_sha, deploy_id, campaign_id, kind"
+    "framework_version, framework_git_sha, deploy_id, campaign_id, kind, source_context"
 )
 _CYCLE_INSERT_COLUMN_COUNT = len(_CYCLE_INSERT_COLUMNS.split(","))
 
@@ -101,6 +102,7 @@ def _cycle_insert_args(cycle: Cycle) -> tuple:
         cycle.deploy_id,
         cycle.campaign_id,
         cycle.kind,
+        cycle.source_context.to_document() if cycle.source_context is not None else None,
     )
 
 
@@ -854,6 +856,11 @@ class PostgresCycleRegistry(CycleRegistryPort):
             deploy_id=row["deploy_id"],
             campaign_id=row["campaign_id"],
             kind=row["kind"],
+            source_context=(
+                parse_source_context(row["source_context"])
+                if row["source_context"] is not None
+                else None
+            ),
             notes=row["notes"],
             cancelled=row["cancelled"],
         )

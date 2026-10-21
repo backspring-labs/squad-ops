@@ -443,6 +443,14 @@ class SandboxClientConfig(BaseModel):
     service_token: str = Field(
         default="", description="The sandbox service's bearer token (supports secret://)"
     )
+    #: #2586: a declared run's setup steps and its command are each bounded by this on the
+    #: service, and the client waits for all of them. 600 s is the container backend's own.
+    command_timeout_seconds: float = Field(
+        default=600.0,
+        gt=0,
+        description="The longest one declared step (a product's install or check) may run in "
+        "the sandbox; the client waits for every step of a run (#2586)",
+    )
 
     @model_validator(mode="after")
     def _http_names_its_service(self) -> "SandboxClientConfig":
@@ -658,14 +666,43 @@ class ProjectsConfig(BaseModel):
         default_factory=list,
         description="Absolute directories under which a local repository path is allowed (R5)",
     )
-    #: E.4.2: the managed clones' cache. A cache: the external repository stays authoritative,
-    #: and a lost clone is fetched again (§B.3). Under cycle_data, as the sandbox's workspaces are.
+    #: E.4.2: the managed clones' cache. The external repository stays authoritative, and a lost
+    #: clone is fetched again (§B.3), but a run's captured change and a private product's clone
+    #: can't be: compose mounts the default path from ./data/repo_cache, so a redeploy keeps them
+    #: (#2588).
     clone_cache_root: Path = Field(
         default=Path("cycle_data/repo_cache"),
         description="Where the managed clones of registered products are kept (SIP-0112 FR-05)",
     )
     git_timeout_seconds: float = Field(
         default=300.0, gt=0, description="The longest one clone, fetch or read may take"
+    )
+    #: #2575: a reference resolver's ``bind`` runs under the campaign launcher's single lock, so
+    #: one family that hangs would stall every campaign. The repository family's slowest call is a
+    #: ``git cat-file`` in the managed clone, which never clones or fetches (#2565).
+    reference_resolver_timeout_seconds: float = Field(
+        default=30.0,
+        gt=0,
+        description=(
+            "The longest one reference resolver call (a bind, a read, or whether a project binds "
+            "nothing) may take before it is a fault (#2575)"
+        ),
+    )
+    #: E.4.3: who a captured candidate's commit names. The .invalid address is no one's mailbox,
+    #: so a deploy that contributes under its own identity says so here.
+    committer_name: str = Field(
+        default="SquadOps", description="The name a squad's captured commit is made under"
+    )
+    committer_email: str = Field(
+        default="squadops@squadops.invalid",
+        description="The email a squad's captured commit is made under",
+    )
+    #: E.4.3's review_request contributions: each Project's token, scoped by its owner to that
+    #: one repository (contents and pull requests). Written as secret:// references, which the
+    #: loader resolves; a Project with none contributes nothing by review request.
+    review_request_tokens: dict[str, str] = Field(
+        default_factory=dict,
+        description="Project ID to its review-request token, each a secret:// reference",
     )
 
 

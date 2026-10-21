@@ -14,6 +14,7 @@ Part of SIP-0.8.8 migration from _v0_legacy/infra/runtime-api/deps.py
 from __future__ import annotations
 
 import logging
+from collections.abc import Mapping
 from typing import TYPE_CHECKING, Any
 
 from fastapi import Request
@@ -129,6 +130,16 @@ def get_source_repository(request: Request) -> SourceRepositoryPort:
     return _required(request, "source_repository", "SourceRepositoryPort")
 
 
+def get_review_requests(request: Request):
+    """Where a review_request contribution's pull request is opened (SIP-0112 E.4.3)."""
+    return _slot(request, "review_requests")
+
+
+def get_review_request_tokens(request: Request) -> dict[str, str]:
+    """Each Project's review-request token, resolved from its secret:// reference."""
+    return _slot(request, "review_request_tokens") or {}
+
+
 def get_cycle_registry(request: Request) -> CycleRegistryPort:
     """Return the CycleRegistryPort (T14: never None at call sites)."""
     return _required(request, "cycle_registry", "CycleRegistryPort")
@@ -189,10 +200,11 @@ def get_memory_records(request: Request):
     return _slot(request, "memory_records")
 
 
-def get_reference_resolvers(request: Request) -> dict:
+def get_reference_resolvers(request: Request) -> Mapping[str, Any]:
     """SIP-0110 Appendix A §3.7 (#2179 T16): the reference resolvers by family, which bind an
-    instruction's ``@current`` references at its unit's admission (``main._init_memory``). Empty
-    when none is registered, so ``@current`` is refused for every family."""
+    instruction's ``@current`` references at its unit's admission (``main._init_memory``), each
+    under its time bound (#2575). Empty when none is registered, so ``@current`` is refused for
+    every family."""
     return _slot(request, "reference_resolvers") or {}
 
 

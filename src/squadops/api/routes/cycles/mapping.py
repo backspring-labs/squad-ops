@@ -304,6 +304,9 @@ def cycle_to_response(
         deploy_id=cycle.deploy_id,
         campaign_id=cycle.campaign_id,
         kind=cycle.kind,
+        source_context=(
+            cycle.source_context.to_document() if cycle.source_context is not None else None
+        ),
         notes=cycle.notes,
         status=status.value,
         runs=[run_to_response(r) for r in runs],

@@ -231,3 +231,59 @@ class TestProjectsConfigure:
             app, ["projects", "configure", "prj-tally", "-f", str(tmp_path / "missing.yaml")]
         )
         assert result.exit_code == 2
+
+
+class TestCyclesCreateSourcePrecondition:
+    """SIP-0112 §D.3. Bug caught: the expected baseline sent as a --set override inside the
+    execution overrides, where the server neither types nor checks it."""
+
+    @patch("squadops.cli.commands.cycles._get_client")
+    def test_the_expected_baseline_travels_as_the_typed_precondition(self, mock_get_client):
+        client = MagicMock()
+        client.post.return_value = {
+            "cycle_id": "cyc_1",
+            "run_id": "run_1",
+            "status": "queued",
+            "resolved_config_hash": "",
+            "source_context": {
+                "project_id": "prj-tally",
+                "development_baseline_commit": "c" * 40,
+                "development_configuration_revision": 2,
+            },
+        }
+        mock_get_client.return_value = client
+
+        result = runner.invoke(
+            app,
+            [
+                "cycles", "create", "prj-tally", "--squad-profile", "smoke",
+                "--request-profile", "selftest", "--expect-baseline", "c" * 40,
+                "--expect-configuration", "2",
+            ],
+        )  # fmt: skip
+
+        body = client.post.call_args.kwargs["json"]
+        assert result.exit_code == 0, result.output
+        assert body["source_precondition"] == {
+            "development_baseline_commit": "c" * 40,
+            "development_configuration_revision": 2,
+        }
+        assert "source_precondition" not in body["execution_overrides"]
+        assert "pinned prj-tally at cccccccccccc, configuration revision 2" in " ".join(
+            result.output.split()
+        )
+
+    def test_a_configuration_without_a_baseline_is_refused_before_any_call(self):
+        result = runner.invoke(
+            app,
+            [
+                "cycles",
+                "create",
+                "prj-tally",
+                "--squad-profile",
+                "smoke",
+                "--expect-configuration",
+                "2",
+            ],
+        )
+        assert result.exit_code == 1

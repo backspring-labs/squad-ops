@@ -2,21 +2,28 @@
 Project API routes (SIP-0064 §9.1).
 """
 
+from datetime import UTC, datetime
 from pathlib import Path
 
 from fastapi import APIRouter, Depends, Request
 from fastapi.responses import PlainTextResponse
 
 from squadops.api.cycle_schemas import (
+    ContributionRequest,
+    ContributionResponse,
     DevelopmentConfigurationRecordedResponse,
     DevelopmentConfigurationRequest,
     DevelopmentConfigurationResponse,
     InheritedBaselineRequest,
     InheritedBaselineResponse,
+    InitializationRequest,
+    InitializationResponse,
     ProjectRegistrationRequest,
     ProjectRegistrationResponse,
     ProjectResponse,
     ProjectValidationRequest,
+    SourceSyncRequest,
+    SourceSyncResponse,
 )
 from squadops.api.errors import http_error
 from squadops.api.middleware.auth import require_scopes
@@ -24,16 +31,23 @@ from squadops.api.routes.cycles.mapping import project_to_response
 from squadops.api.runtime.deps import (
     get_project_locator_policy,
     get_project_registry,
+    get_review_request_tokens,
+    get_review_requests,
     get_sandbox_client,
     get_source_repository,
 )
 from squadops.auth.models import Identity, Scope
+from squadops.ports.projects.review_request import ReviewRequestFailed
 from squadops.projects.configuration import configure_project
+from squadops.projects.contribution import ContributionRefused, contribute
 from squadops.projects.development_configuration import (
     ConfigurationInvalid,
     DevelopmentConfiguration,
 )
+from squadops.projects.initialization import InitializationRefused, initialize_project
+from squadops.projects.models import SourceUnavailable
 from squadops.projects.registration import RegistrationRefused, prepare_registration
+from squadops.projects.sync import SyncRefused, sync_project
 from squadops.projects.validation import validate_project
 from squadops.projects.workspaces import SandboxUnavailable, capture_inherited_baseline
 
@@ -95,14 +109,24 @@ async def validate_registered_project(
 ) -> ProjectRegistrationResponse:
     """Reach a registered Project's source through the managed clone (SIP-0112 E.4.2): READY
     at the base ref's commit, or FAILED_REGISTRATION with the reason. A failure is an answer,
-    not an error: the Project records it, and a retry validates again."""
-    project, replayed = await validate_project(
-        project_id,
-        registry=get_project_registry(request),
-        repository=get_source_repository(request),
-        actor=identity.user_id if identity is not None else "anonymous",
-        idempotency_key=body.idempotency_key,
-    )
+    not an error: the Project records it, and a retry validates again. A READY Project is
+    re-validated (E.4.4): its baseline moves to the upstream's commit, and a source that can't be
+    reached is a 502 that leaves it READY where it was."""
+    try:
+        project, replayed = await validate_project(
+            project_id,
+            registry=get_project_registry(request),
+            repository=get_source_repository(request),
+            actor=identity.user_id if identity is not None else "anonymous",
+            idempotency_key=body.idempotency_key,
+            tokens=(
+                {project_id: body.token.get_secret_value()}
+                if body.token is not None
+                else get_review_request_tokens(request)
+            ),
+        )
+    except SourceUnavailable as e:
+        raise http_error(502, "SOURCE_UNAVAILABLE", f"{e.reason}: {e}") from e
     return ProjectRegistrationResponse(
         project=project_to_response(project),
         idempotency_key=body.idempotency_key,
@@ -204,6 +228,136 @@ async def get_baseline(request: Request, project_id: str) -> InheritedBaselineRe
     """The Project's latest inherited baseline."""
     baseline = await get_project_registry(request).get_inherited_baseline(project_id)
     return InheritedBaselineResponse(project_id=project_id, document=baseline.to_document())
+
+
+@router.post("/{project_id}/contributions", status_code=201)
+async def contribute_change(
+    request: Request,
+    project_id: str,
+    body: ContributionRequest,
+    identity: Identity | None = Depends(require_scopes(Scope.ADMIN_WRITE)),
+) -> ContributionResponse:
+    """Contribute a run's verified, captured change through the Project's own process (SIP-0112
+    FR-06, E.4.3), and record it pending. The owner's act: nothing leaves the deploy without
+    it. ``review_request`` pushes the branch and opens the pull request; ``patch_export``
+    records the run's patch as the contribution."""
+    try:
+        contribution, replayed = await contribute(
+            project_id,
+            body.cycle_id,
+            body.run_id,
+            registry=get_project_registry(request),
+            repository=get_source_repository(request),
+            forge=get_review_requests(request),
+            tokens=(
+                {project_id: body.token.get_secret_value()}
+                if body.token is not None
+                else get_review_request_tokens(request)
+            ),
+            actor=identity.user_id if identity is not None else "anonymous",
+            idempotency_key=body.idempotency_key,
+        )
+    except ContributionRefused as e:
+        raise http_error(409, "CONTRIBUTION_REFUSED", str(e)) from e
+    except (SourceUnavailable, ReviewRequestFailed) as e:
+        raise http_error(502, "CONTRIBUTION_FAILED", str(e)) from e
+    return ContributionResponse(contribution=contribution.to_document(), replayed=replayed)
+
+
+@router.get(
+    "/{project_id}/contributions", dependencies=[Depends(require_scopes(Scope.CYCLES_READ))]
+)
+async def list_contributions(request: Request, project_id: str) -> list[ContributionResponse]:
+    """A Project's contributions, oldest first: pending until the product takes them."""
+    contributions = await get_project_registry(request).contributions(project_id)
+    return [ContributionResponse(contribution=c.to_document()) for c in contributions]
+
+
+@router.post("/{project_id}/initializations", status_code=201)
+async def initialize_greenfield_project(
+    request: Request,
+    project_id: str,
+    body: InitializationRequest,
+    identity: Identity | None = Depends(require_scopes(Scope.ADMIN_WRITE)),
+) -> InitializationResponse:
+    """Make a greenfield Project's first commit (SIP-0112 FR-01, E.4.6): the SIP-0105
+    blueprint's layout, rendered from the approved interface manifest, pushed to the empty
+    branch its owner made, never forced. The owner's act, once per Project; validation follows
+    as for any registered product."""
+    try:
+        initialization, replayed = await initialize_project(
+            project_id,
+            body.manifest,
+            registry=get_project_registry(request),
+            repository=get_source_repository(request),
+            tokens=(
+                {project_id: body.token.get_secret_value()}
+                if body.token is not None
+                else get_review_request_tokens(request)
+            ),
+            actor=identity.user_id if identity is not None else "anonymous",
+            idempotency_key=body.idempotency_key,
+            now=datetime.now(UTC),
+        )
+    except InitializationRefused as e:
+        raise http_error(409, "INITIALIZATION_REFUSED", str(e)) from e
+    except SourceUnavailable as e:
+        if e.reason == "not_empty":
+            raise http_error(409, "INITIALIZATION_REFUSED", str(e)) from e
+        raise http_error(502, "INITIALIZATION_FAILED", str(e)) from e
+    return InitializationResponse(initialization=initialization.to_document(), replayed=replayed)
+
+
+@router.get(
+    "/{project_id}/initializations", dependencies=[Depends(require_scopes(Scope.CYCLES_READ))]
+)
+async def list_initializations(request: Request, project_id: str) -> list[InitializationResponse]:
+    """A greenfield Project's initialization, or none for a product that existed before it was
+    registered."""
+    initialization = await get_project_registry(request).get_initialization(project_id)
+    return (
+        []
+        if initialization is None
+        else [InitializationResponse(initialization=initialization.to_document())]
+    )
+
+
+@router.post("/{project_id}/syncs", status_code=201)
+async def sync_upstream(
+    request: Request,
+    project_id: str,
+    body: SourceSyncRequest,
+    identity: Identity | None = Depends(require_scopes(Scope.ADMIN_WRITE)),
+) -> SourceSyncResponse:
+    """Fetch the product's base ref and record its drift from the approved development baseline,
+    by the category of evidence it invalidates, and where each pending contribution stands
+    (SIP-0112 FR-21, E.4.4). Moves nothing else: validation advances the baseline."""
+    try:
+        document, replayed = await sync_project(
+            project_id,
+            registry=get_project_registry(request),
+            repository=get_source_repository(request),
+            forge=get_review_requests(request),
+            tokens=(
+                {project_id: body.token.get_secret_value()}
+                if body.token is not None
+                else get_review_request_tokens(request)
+            ),
+            actor=identity.user_id if identity is not None else "anonymous",
+            idempotency_key=body.idempotency_key,
+        )
+    except SyncRefused as e:
+        raise http_error(409, "SYNC_REFUSED", str(e)) from e
+    except (SourceUnavailable, ReviewRequestFailed) as e:
+        raise http_error(502, "SYNC_FAILED", str(e)) from e
+    return SourceSyncResponse(document=document, replayed=replayed)
+
+
+@router.get("/{project_id}/syncs", dependencies=[Depends(require_scopes(Scope.CYCLES_READ))])
+async def list_syncs(request: Request, project_id: str) -> list[SourceSyncResponse]:
+    """A Project's syncs, oldest first: the drift findings since each baseline (FR-09)."""
+    syncs = await get_project_registry(request).source_syncs(project_id)
+    return [SourceSyncResponse(document=d) for d in syncs]
 
 
 @router.get("/{project_id}", dependencies=[Depends(require_scopes(Scope.CYCLES_READ))])

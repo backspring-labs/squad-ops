@@ -424,7 +424,20 @@ async def _init_cycle_subsystem(state, config, pool) -> None:
         cache_root=config.projects.clone_cache_root,
         policy=state.project_locator_policy,
         timeout_seconds=config.projects.git_timeout_seconds,
+        committer_name=config.projects.committer_name,
+        committer_email=config.projects.committer_email,
     )
+    # SIP-0112 contract 6 (#2179 T16): the repository family's resolver, which binds a
+    # ``repo:file:<path>@current`` reference at the commit its unit's source context pins.
+    from adapters.tools.factory import create_repository_reference_resolver
+
+    resolver = create_repository_reference_resolver(state.source_repository, project_registry)
+    state.reference_resolvers.register(resolver)
+    # E.4.3: a review_request contribution's forge, and each Project's token for it.
+    from adapters.tools.factory import create_review_requests
+
+    state.review_requests = create_review_requests()
+    state.review_request_tokens = dict(config.projects.review_request_tokens)
     # #1976: a transient database failure is retried inside the registry, never by its callers.
     cycle_registry = create_cycle_registry(
         config.cycles.registry_provider,
@@ -658,6 +671,10 @@ async def _init_cycle_subsystem(state, config, pool) -> None:
         failure_recall=create_failure_recall(
             "snapshot", store=state.memory_store, records=state.memory_records
         ),
+        # SIP-0112 E.4.3: the managed clones a source-backed run starts from and is captured to,
+        # and the sandbox its candidate is verified in.
+        source_repository=state.source_repository,
+        sandbox=sandbox_client,
     )
 
     state.project_registry = project_registry
@@ -852,6 +869,7 @@ def _init_memory(state, config, pool) -> None:
     selected by its required provider."""
     from adapters.memory.cross_cycle import create_cross_cycle_store
     from adapters.memory.records import create_memory_records
+    from adapters.memory.reference_resolvers import create_reference_resolvers
 
     provider = config.cycles.registry_provider
     state.memory_store = create_cross_cycle_store(
@@ -861,9 +879,12 @@ def _init_memory(state, config, pool) -> None:
         provider, **({"pool": pool} if provider == "postgres" else {})
     )
     # #2179 T16: the resolvers that bind an instruction's ``@current`` references at admission, by
-    # family. None is registered yet: Project Lifecycle Management registers the repository family
-    # (SIP-0112 §B.5.1, contract 6), and until then ``@current`` is refused at write.
-    state.reference_resolvers = {}
+    # family. The repository family's is registered with the cycle subsystem, beside the managed
+    # clones it reads (SIP-0112 §B.5.1, contract 6); a family with none is refused at write. A
+    # family is registered through ``register``, which bounds each of its calls (#2575).
+    state.reference_resolvers = create_reference_resolvers(
+        config.projects.reference_resolver_timeout_seconds
+    )
 
 
 #: How often the memory reconciliation passes run (SIP-0110 §0.3). Observations feed lessons the

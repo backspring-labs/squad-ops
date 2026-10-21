@@ -756,6 +756,18 @@ The external product owner/maintainer owns product intent, priorities, scope, co
 
 **Changed upstream instructions never modify an admitted snapshot.** A running unit changes what it bound only by SIP-0110's re-binding (§A.3.7): an authorized, recorded intervention, forward when no dispatched task used the old binding and a restart otherwise, with the unit's measurements set apart from the first affected task. Routine upstream edits need no re-confirmation, because a confirmed instruction that cites a repository source binds that source's content afresh at each admission.
 
+**A Campaign's repository references are bound per Cycle, against the Campaign's snapshot (the owner, 2026-10-20: "Approve your recommendations"; SIP-0110 §5ad, which resolves §5z).**
+- **The conflict.** The binding bullet above bound a Campaign's repository references when it's admitted, at the commit its source context pins. But a Campaign has no source context of its own. Each of its Cycles pins one when it's prepared (contract 1, FR-04, #2410), after the Campaign's snapshot.
+- **Neither way out named before the ruling was taken:**
+  - a source pin at the Campaign's admission would bind every Cycle's instructions to the starting commit while each increment's code moves on;
+  - plain per-Cycle binding would give up the Campaign's one shared snapshot.
+- **The ruling.**
+  - The Campaign's snapshot still fixes which instruction revisions are in force, for every Cycle.
+  - Each Cycle binds those instructions' `@current` repository references at its own pinned source commit when the Campaign launches it. The binding is recorded with the Cycle, and every dispatch reads it; nothing is bound at dispatch.
+  - A reference a Cycle can't bind is handled as at admission: a required one holds the tasks it applies to.
+  - A standalone Cycle is unchanged: it pins its source context and its snapshot together.
+- **Who builds it.** The launcher's per-Cycle binding and its record are SIP-0110's, on #2179. The repository family's resolver (contract 6, #2411) is unchanged: it binds at whatever commit its `BindingContext` carries, which for a Campaign's Cycle is that Cycle's own.
+
 ## B.6 Project lifecycle state model
 
 Proposed project state machine:
@@ -1605,3 +1617,30 @@ All paths below are relative to `backspring-labs/squad-ops` at commit `7aecfa0b3
 | 7 | 2026-10-17 | The tightening review: each contract's availability, absent or stale behavior, versioning and minimum test, with schemas for contracts 1, 5 and 7 (§8.2.1); the sandbox boundary and the cross-lane tasks X-1 to X-3 (§8.1, §8.2.2); the shared fixture (§8.2.3); status vocabularies (§8.3.1); evidence tiers and the *not run* record (§8.5, the owner's clarification); the 2.4 plan cross-reference; FR-02's required and optional levels; E.4's dependencies, rollback moved into E.4.1, and E.4.5 required before close but not in 2.4 (the owner's ruling); F.4 classified. Then the Spark lane's review of revision 7: X-3 runs in a disposable copy, `campaign_id` nullable, and Q40 opened for the owner (how secrets reach an evaluation). |
 | 8 | 2026-10-17 | Aligned with Outcome Evaluation's revision 2 (PR #2406) and the adopted 2.4 plan: its renamed terms (*scenario evidence*, *scenario result*, *contribution*, the *scenario measure*); contract 2's phase-1 and phase-2 fields as its §4.7 states them; contract 5 renamed *evaluation references*; Q40 named as its A4; the plan's D12 rulings on X-1 to X-3 and the shared fixture. No boundary changes. Q40 ruled the same day: evaluation-scoped, owner-approved test credentials only (§8.2.1). |
 | — | 2026-10-17 | **Accepted by the owner as SIP-0112** (PR #2401), titled *Project Lifecycle Management*. The shared fixture (#2407) and E.4.1–E.4.4 and E.4.6 (#2408–#2412) placed in 2.4.0, labelled `sip:0112`; E.4.5 and E.4.7 unplaced, deliberately. |
+
+# Appendix H — Post-acceptance amendments
+
+## H.1 A greenfield Project is registered against an empty repository its owner made, and initialized from an approved manifest (2026-10-20; E.4.6, #2412)
+
+**What changed.** FR-01 step 4 allowed either provisioning source at an approved destination or binding a pre-provisioned repository. §D.2 and §D.5 proposed `projects create --brief` with `origin.mode: new`. The built path is narrower:
+1. **The owner makes the repository and leaves it empty.** SquadOps binds it and never creates a repository.
+2. **It's registered as any external product is,** with `projects import` (`POST /api/v1/projects`), against that repository and branch.
+3. **`projects initialize <project> --manifest <file> [--token-from-gh]`** (`POST /api/v1/projects/{id}/initializations`) makes the branch's first commit:
+   - the SIP-0105 blueprint's layout, rendered from the approved interface manifest exactly as the scaffold renders it for a sample application's run (`scaffold.expand`), and nothing else;
+   - pushed with the owner's token for that one act, never forced, and refused when the branch already has a commit;
+   - recorded once per Project (`project_initializations`, migration 1807), with the manifest as submitted.
+
+   The commit has no parent and is dated at the registration, so a retry after a push that landed makes the same commit and is recorded, not refused.
+4. **From there, the lifecycle is an existing product's:** `validate`, `configure`, `baseline --capture`, then Cycles and contributions by review request. The Development Configuration names the blueprint it was initialized on (§B.4.1); `configure` refuses any other, and refuses a `stack` that isn't a blueprint.
+
+**Not built in 2.4:** `projects create --brief` and `origin.mode: new`. A brief's role is taken by the approved interface manifest, which is the input the blueprint's layout is rendered from. Authoring that manifest from a brief is framing's work (SIP-0103), and a framing Cycle is prepared only for a READY Project (contract 1). A greenfield Project isn't READY until it's initialized and validated.
+
+**The evidence:**
+- FR-01 says registration "does not authorize remote repository creation or publication beyond the caller's configured permissions".
+- The scaffold renders from a manifest, not from a brief (`src/squadops/stacks/scaffold.py`, `expand`).
+- `tests/unit/projects/test_initialization.py` runs the path through the real managed clone into an empty repository, then on through validation and configuration.
+
+**Who ruled:**
+- The owner chose the destination on 2026-10-20: an empty private repository in backspring-labs, made with the owner's GitHub access (`backspring-labs/shelfnote`, recorded on #2412).
+- The owner chose the product the same day: a small FastAPI and React application on `fullstack_fastapi_react`.
+- The API and CLI shape is the MacBook lane's, under the owner's delegation of 2026-10-18.

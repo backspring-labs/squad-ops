@@ -221,7 +221,7 @@ def bind_mode_authoring_decision(config: Mapping[str, Any]) -> PreflightDecision
 
 
 def builder_build_profile_decision(
-    profile: SquadProfile, config: Mapping[str, Any]
+    profile: SquadProfile, config: Mapping[str, Any], *, source_backed: bool = False
 ) -> PreflightDecision:
     """Block a cycle whose builder would assemble with no ``build_profile`` (#2437).
 
@@ -236,7 +236,9 @@ def builder_build_profile_decision(
     and ``build_profile`` are all in the resolved config at create time, and whether the builder
     assembles is the step selection's own reading (``task_plan.builder_assembles``).
     """
-    if config.get("build_profile") or not builder_assembles(profile, config):
+    if config.get("build_profile") or not builder_assembles(
+        profile, config, source_backed=source_backed
+    ):
         return PreflightDecision()
     known = ", ".join(f"`{name}`" for name in sorted(BUILD_PROFILES))
     return PreflightDecision(
@@ -252,6 +254,42 @@ def builder_build_profile_decision(
                     f"assumed stack). Set `build_profile` (one of {known}) in the request "
                     "profile or with `--set build_profile=<profile>`, or choose a squad "
                     "without a builder."
+                ),
+            ),
+        )
+    )
+
+
+#: What names a stack's starting tree: its skeleton and authored manifest (``build_profile``)
+#: and a seeded verification contract (``contract_ref``).
+_STACK_TREE_KEYS = ("build_profile", "contract_ref")
+
+
+def source_backed_stack_decision(
+    config: Mapping[str, Any], *, source_backed: bool
+) -> PreflightDecision:
+    """Block a source-backed cycle that names a stack (SIP-0112 E.4.3).
+
+    A Cycle that pins an external Project's source starts from that product's tree at the
+    pinned commit. A ``build_profile`` would also have framing author an interface manifest and
+    seed that stack's skeleton beside the product's files, and a ``contract_ref`` would bind a
+    stack's seeded contract. Neither describes the product, so the cycle is refused at create.
+    ``development_profile`` alone only shapes the developer's prompt, and stays allowed.
+    """
+    named = [k for k in _STACK_TREE_KEYS if config.get(k)]
+    if not source_backed or not named:
+        return PreflightDecision()
+    return PreflightDecision(
+        blocking=(
+            Finding(
+                code="source_backed_stack",
+                severity="block",
+                message=(
+                    "this cycle develops an external product from its own tree at the pinned "
+                    f"commit, and it also names a stack ({', '.join(f'`{k}`' for k in named)}), "
+                    "whose skeleton or contract would be set beside the product's files. Omit "
+                    "them for a cycle of an external Project: its own declared commands build "
+                    "and check it."
                 ),
             ),
         )

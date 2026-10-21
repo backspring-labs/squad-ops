@@ -22,6 +22,7 @@ Every Git call runs isolated:
 from __future__ import annotations
 
 import asyncio
+import base64
 import ipaddress
 import os
 import re
@@ -29,7 +30,9 @@ import shutil
 import socket
 import subprocess
 import tempfile
-from pathlib import Path
+import time
+from collections.abc import Collection, Mapping
+from pathlib import Path, PurePosixPath
 from urllib.parse import urlsplit
 
 from squadops.ports.projects.source_repository import SourceRepositoryPort
@@ -44,17 +47,49 @@ from squadops.projects.registration import (
 _COMMIT = re.compile(r"^[0-9a-f]{40}$")
 _PROJECT_ID = re.compile(r"^[a-z][a-z0-9_-]{1,62}$")
 _SCP_HOST = re.compile(r"^[A-Za-z0-9._-]+@(?P<host>[A-Za-z0-9.-]+):")
+#: Where a captured candidate is kept in the clone: a namespace the product's remote never has,
+#: so no fetch writes or prunes it.
+_CAPTURE_REF = re.compile(r"^refs/squadops/[A-Za-z0-9_-]+(/[A-Za-z0-9_-]+)*$")
+_IDENTITY = re.compile(r"^[^<>\n]+$")
+_REVIEW_BRANCH = re.compile(r"^squadops/[A-Za-z0-9_-]+$")
+_BRANCH_REF = re.compile(r"^refs/heads/[A-Za-z0-9_-][A-Za-z0-9._-]*(/[A-Za-z0-9._-]+)*$")
+#: Where a greenfield Project's first commit is made in the clone before it's pushed (E.4.6).
+_INITIAL_REF = "refs/squadops/initial"
+
+
+def _quoted(path: str) -> str:
+    """fast-import's C-style quoted path, so no path can end its line or start a command."""
+    escaped = path.replace("\\", "\\\\").replace('"', '\\"').replace("\n", "\\n")
+    return f'"{escaped}"'
+
+
+def _authorization(token: str) -> dict[str, str]:
+    """Over https the token travels as a config value in the environment, never in an argument a
+    process listing shows, and only for the one push it's given for."""
+    basic = base64.b64encode(f"x-access-token:{token}".encode()).decode()
+    return {"http.extraHeader": f"Authorization: Basic {basic}"}
 
 
 class GitSourceRepository(SourceRepositoryPort):
     def __init__(
-        self, cache_root: Path, policy: LocatorPolicy, *, timeout_seconds: float = 300.0
+        self,
+        cache_root: Path,
+        policy: LocatorPolicy,
+        *,
+        timeout_seconds: float = 300.0,
+        committer_name: str,
+        committer_email: str,
     ) -> None:
+        if not (_IDENTITY.match(committer_name) and _IDENTITY.match(committer_email)):
+            raise ValueError("a committer's name and email carry no angle brackets or newlines")
         self._cache_root = Path(cache_root)
         self._policy = policy
         self._timeout = timeout_seconds
+        self._committer = f"{committer_name} <{committer_email}>"
 
-    async def sync(self, project_id: str, locator: str, ref: str) -> str:
+    async def sync(
+        self, project_id: str, locator: str, ref: str, *, token: str | None = None
+    ) -> str:
         try:
             check_locator(locator, self._policy)
         except LocatorRefused as e:
@@ -62,7 +97,11 @@ class GitSourceRepository(SourceRepositoryPort):
         if ref.startswith("-"):
             raise SourceUnavailable(f"{ref!r} is not a ref", reason="ref_refused")
         await asyncio.to_thread(self._refuse_internal_resolution, locator)
-        return await asyncio.to_thread(self._sync, self._clone_dir(project_id), locator, ref)
+        https = urlsplit(locator).scheme == "https"
+        return await asyncio.to_thread(
+            self._sync, self._clone_dir(project_id), locator, ref,
+            _authorization(token) if token and https else None,
+        )  # fmt: skip
 
     def _refuse_internal_resolution(self, locator: str) -> None:
         """#2459: a remote host whose addresses reach the deploy itself, unless allow-listed."""
@@ -91,17 +130,239 @@ class GitSourceRepository(SourceRepositoryPort):
             raise SourceUnavailable(f"{commit!r} is not a commit", reason="not_a_commit")
         return await asyncio.to_thread(self._tree_at, self._clone_dir(project_id), commit)
 
+    async def commit_tree(
+        self,
+        project_id: str,
+        *,
+        parent: str,
+        files: Mapping[str, bytes],
+        executable: Collection[str],
+        ref: str,
+        message: str,
+    ) -> str:
+        if not _COMMIT.match(parent):
+            raise SourceUnavailable(f"{parent!r} is not a commit", reason="not_a_commit")
+        if not _CAPTURE_REF.match(ref):
+            raise SourceUnavailable(f"{ref!r} is not a capture ref", reason="ref_refused")
+        return await asyncio.to_thread(
+            self._commit_tree, self._clone_dir(project_id), parent, files, executable, ref, message
+        )
+
+    async def export_patch(self, project_id: str, commit: str) -> bytes:
+        if not _COMMIT.match(commit):
+            raise SourceUnavailable(f"{commit!r} is not a commit", reason="not_a_commit")
+        clone = self._clone_dir(project_id)
+        return await asyncio.to_thread(
+            self._git, clone, "format-patch", "--stdout", "--binary", "--full-index",
+            "--no-signature", "-1", commit, step="export",
+        )  # fmt: skip
+
+    async def file_at(self, project_id: str, commit: str, path: str) -> bytes:
+        if not _COMMIT.match(commit):
+            raise SourceUnavailable(f"{commit!r} is not a commit", reason="not_a_commit")
+        parts = PurePosixPath(path).parts
+        if not path or path.startswith(("/", "-")) or ".." in parts or ":" in path:
+            raise SourceUnavailable(f"{path!r} is not a repository path", reason="path_refused")
+        clone = self._clone_dir(project_id)
+        return await asyncio.to_thread(
+            self._git, clone, "cat-file", "blob", f"{commit}:{path}", step="read"
+        )
+
+    async def is_ancestor(self, project_id: str, ancestor: str, descendant: str) -> bool:
+        for commit in (ancestor, descendant):
+            if not _COMMIT.match(commit):
+                raise SourceUnavailable(f"{commit!r} is not a commit", reason="not_a_commit")
+        return await asyncio.to_thread(
+            self._is_ancestor, self._clone_dir(project_id), ancestor, descendant
+        )
+
+    def _is_ancestor(self, clone: Path, ancestor: str, descendant: str) -> bool:
+        for commit in (ancestor, descendant):
+            self._git(clone, "cat-file", "-e", f"{commit}^{{commit}}", step="read")
+        try:
+            self._git(clone, "merge-base", "--is-ancestor", ancestor, descendant, step="ancestry")
+        except SourceUnavailable as e:
+            # exit 1 is git's "no", an answer rather than a failure
+            if "exit 1" in str(e):
+                return False
+            raise
+        return True
+
+    async def commit_message(self, project_id: str, commit: str) -> str:
+        if not _COMMIT.match(commit):
+            raise SourceUnavailable(f"{commit!r} is not a commit", reason="not_a_commit")
+        out = await asyncio.to_thread(
+            self._git, self._clone_dir(project_id), "log", "-1", "--format=%B", commit,
+            step="read",
+        )  # fmt: skip
+        return out.decode("utf-8", errors="replace")
+
+    async def push_capture(
+        self, project_id: str, locator: str, *, ref: str, branch: str, token: str
+    ) -> None:
+        if not _CAPTURE_REF.match(ref):
+            raise SourceUnavailable(f"{ref!r} is not a capture ref", reason="ref_refused")
+        if not _REVIEW_BRANCH.match(branch):
+            raise SourceUnavailable(f"{branch!r} is not a review branch", reason="ref_refused")
+        https = self._push_target(locator, "a review request's branch")
+        await asyncio.to_thread(self._refuse_internal_resolution, locator)
+        await asyncio.to_thread(
+            self._git, self._clone_dir(project_id), "push", "--quiet", "--end-of-options",
+            locator, f"{ref}:refs/heads/{branch}", step="push",
+            config=_authorization(token) if https else None,
+        )  # fmt: skip
+
+    async def initialize(
+        self,
+        project_id: str,
+        locator: str,
+        *,
+        ref: str,
+        files: Mapping[str, bytes],
+        executable: Collection[str],
+        message: str,
+        committed_at: int,
+        token: str,
+    ) -> str:
+        if not _BRANCH_REF.match(ref) or ".." in ref or ref.endswith(".lock"):
+            raise SourceUnavailable(f"{ref!r} is not a branch (refs/heads/…)", reason="ref_refused")
+        https = self._push_target(locator, "a greenfield Project's first commit")
+        await asyncio.to_thread(self._refuse_internal_resolution, locator)
+        return await asyncio.to_thread(
+            self._initialize, self._clone_dir(project_id), locator, ref, files, executable,
+            message, committed_at, _authorization(token) if https else None,
+        )  # fmt: skip
+
+    def _push_target(self, locator: str, what: str) -> bool:
+        """Whether ``locator`` is pushed to over https, with the Project's token; otherwise it's a
+        local repository under a configured root, which takes none. ssh is refused."""
+        try:
+            check_locator(locator, self._policy)
+        except LocatorRefused as e:
+            raise SourceUnavailable(str(e), reason="locator_refused") from e
+        https = urlsplit(locator).scheme == "https"
+        if not https and ("://" in locator or _SCP_HOST.match(locator)):
+            raise SourceUnavailable(
+                f"{what} is pushed over https with the Project's token, and {locator} is ssh, "
+                "which needs a deploy key 2.4 doesn't hold",
+                reason="locator_refused",
+            )
+        return https
+
     # --- the blocking half, run off the event loop ---
+
+    def _commit_tree(
+        self,
+        clone: Path,
+        parent: str,
+        files: Mapping[str, bytes],
+        executable: Collection[str],
+        ref: str,
+        message: str,
+    ) -> str:
+        """One fast-import stream: the whole tree replaces the parent's (``deleteall``), so the
+        commit holds exactly ``files``, with their modes, and no working tree is written."""
+        if not clone.is_dir():
+            raise SourceUnavailable("the managed clone does not exist yet", reason="not_cloned")
+        self._git(clone, "cat-file", "-e", f"{parent}^{{commit}}", step="read")
+        return self._fast_import(clone, ref, parent, files, executable, message, int(time.time()))
+
+    def _initialize(
+        self,
+        clone: Path,
+        locator: str,
+        ref: str,
+        files: Mapping[str, bytes],
+        executable: Collection[str],
+        message: str,
+        committed_at: int,
+        config: Mapping[str, str] | None,
+    ) -> str:
+        self._fetch(clone, locator, config)
+        commit = self._fast_import(
+            clone, _INITIAL_REF, None, files, executable, message, committed_at
+        )
+        held = (
+            self._git(clone, "for-each-ref", "--format=%(objectname)", ref, step="resolve")
+            .decode()
+            .strip()
+        )
+        if held == commit:
+            return commit  # a retry of this request, whose push landed
+        if held:
+            raise SourceUnavailable(
+                f"{ref} already holds commit {held[:12]}: a greenfield Project's first commit "
+                "goes only to a branch with none",
+                reason="not_empty",
+            )
+        # Never forced: a root commit fast-forwards no branch, so one that appeared since the
+        # fetch refuses the push.
+        self._git(
+            clone, "push", "--quiet", "--end-of-options", locator, f"{_INITIAL_REF}:{ref}",
+            step="push", config=config,
+        )  # fmt: skip
+        return commit
+
+    def _fast_import(
+        self,
+        clone: Path,
+        ref: str,
+        parent: str | None,
+        files: Mapping[str, bytes],
+        executable: Collection[str],
+        message: str,
+        when: int,
+    ) -> str:
+        """``files``, the whole tree, as one commit set at ``ref``: on ``parent``, replacing its
+        tree (``deleteall``), or with no parent, the ref reset first."""
+        executable = set(executable)
+        body = message.encode()
+        head = [f"from {parent}\n".encode(), b"deleteall\n"] if parent else []
+        stream = [
+            *([] if parent else [f"reset {ref}\n".encode()]),
+            f"commit {ref}\n".encode(),
+            f"committer {self._committer} {when} +0000\n".encode(),
+            f"data {len(body)}\n".encode() + body + b"\n",
+            *head,
+        ]
+        for path in sorted(files):
+            content = files[path]
+            mode = "100755" if path in executable else "100644"
+            stream.append(f"M {mode} inline {_quoted(path)}\n".encode())
+            stream.append(f"data {len(content)}\n".encode() + content + b"\n")
+        stream.append(b"done\n")
+        self._git(
+            clone, "fast-import", "--quiet", "--force", "--done", step="capture",
+            stdin=b"".join(stream),
+        )  # fmt: skip
+        return self._git(clone, "rev-parse", "--verify", ref, step="capture").decode().strip()
 
     def _clone_dir(self, project_id: str) -> Path:
         if not _PROJECT_ID.match(project_id):
             raise SourceUnavailable(f"{project_id!r} is not a Project ID", reason="bad_project")
         return self._cache_root / f"{project_id}.git"
 
-    def _sync(self, clone: Path, locator: str, ref: str) -> str:
+    def _sync(self, clone: Path, locator: str, ref: str, config: Mapping[str, str] | None) -> str:
+        self._fetch(clone, locator, config)
+        resolved = self._git(
+            clone, "rev-parse", "--verify", "--quiet", "--end-of-options", f"{ref}^{{commit}}",
+            step="resolve",
+        )  # fmt: skip
+        return resolved.decode().strip()
+
+    def _fetch(self, clone: Path, locator: str, config: Mapping[str, str] | None) -> None:
+        """The clone made, or brought up to date with the product's branches and tags. A token's
+        header is in ``config``, the environment of these git processes alone: the clone's own
+        configuration never holds it."""
         if clone.is_dir():
             self._git(clone, "remote", "set-url", "origin", "--", locator, step="fetch")
-            self._git(clone, "fetch", "--prune", "--quiet", "origin", step="fetch")
+            # Branches and tags only, named: a mirror's own refspec (+refs/*:refs/*) would prune
+            # every captured ref under refs/squadops/, which the product never has.
+            self._git(
+                clone, "fetch", "--prune", "--quiet", "origin",
+                "+refs/heads/*:refs/heads/*", "+refs/tags/*:refs/tags/*", step="fetch",
+                config=config,
+            )  # fmt: skip
         else:
             self._cache_root.mkdir(parents=True, exist_ok=True)
             staging = Path(tempfile.mkdtemp(prefix=f".{clone.name}.", dir=self._cache_root))
@@ -115,15 +376,11 @@ class GitSourceRepository(SourceRepositoryPort):
                     locator,
                     str(staging / "clone"),
                     step="clone",
+                    config=config,
                 )
                 (staging / "clone").rename(clone)
             finally:
                 shutil.rmtree(staging, ignore_errors=True)
-        resolved = self._git(
-            clone, "rev-parse", "--verify", "--quiet", "--end-of-options", f"{ref}^{{commit}}",
-            step="resolve",
-        )  # fmt: skip
-        return resolved.decode().strip()
 
     def _tree_at(self, clone: Path, commit: str) -> CheckoutTree:
         if not clone.is_dir():
@@ -175,7 +432,14 @@ class GitSourceRepository(SourceRepositoryPort):
             at = start + int(size) + 1
         return contents
 
-    def _git(self, cwd: Path, *args: str, step: str, stdin: str | None = None) -> bytes:
+    def _git(
+        self,
+        cwd: Path,
+        *args: str,
+        step: str,
+        stdin: str | bytes | None = None,
+        config: Mapping[str, str] | None = None,
+    ) -> bytes:
         env = {k: v for k, v in os.environ.items() if not k.startswith("GIT_")}
         env.update(
             GIT_CONFIG_NOSYSTEM="1",
@@ -184,6 +448,10 @@ class GitSourceRepository(SourceRepositoryPort):
             GIT_ASKPASS="/bin/false",
             GIT_SSH_COMMAND="ssh -o BatchMode=yes -o StrictHostKeyChecking=accept-new",
         )
+        for i, (key, value) in enumerate((config or {}).items()):
+            env[f"GIT_CONFIG_KEY_{i}"], env[f"GIT_CONFIG_VALUE_{i}"] = key, value
+        if config:
+            env["GIT_CONFIG_COUNT"] = str(len(config))
         file_transport = "always" if self._policy.local_roots else "never"
         command = [
             "git",
@@ -199,7 +467,7 @@ class GitSourceRepository(SourceRepositoryPort):
                 command,
                 cwd=cwd,
                 env=env,
-                input=stdin.encode() if stdin is not None else None,
+                input=stdin.encode() if isinstance(stdin, str) else stdin,
                 capture_output=True,
                 timeout=self._timeout,
             )

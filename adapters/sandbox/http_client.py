@@ -54,6 +54,10 @@ _RESULT_TYPES: dict[str, type[OperationResult]] = {
 }
 
 
+#: What a request waits beyond the service's own bounds: the copy, the journal and the answer.
+_MARGIN_SECONDS = 60.0
+
+
 class SandboxServiceError(Exception):
     """The sandbox service rejected or failed a request."""
 
@@ -84,15 +88,21 @@ class HttpExecutionSandbox(ExecutionSandboxPort):
         base_url: str,
         service_token: str,
         http_client_factory: Callable[[], httpx.AsyncClient] | None = None,
+        command_timeout_seconds: float = 600.0,
     ) -> None:
         self._base_url = base_url.rstrip("/")
         self._headers = {"Authorization": f"Bearer {service_token}"}
         self._http_client_factory = http_client_factory or (lambda: httpx.AsyncClient(timeout=30.0))
+        self._command_timeout = command_timeout_seconds
 
-    async def _post(self, path: str, payload: dict) -> dict:
+    async def _post(self, path: str, payload: dict, *, wait: float | None = None) -> dict:
+        """``wait`` replaces the client's own bound for a request the service may take longer to
+        answer, so the client never gives up before the service's own bound does (#2586)."""
+        # As the scenario runner's long call does: a dead service is still found at connect.
+        timeout = httpx.USE_CLIENT_DEFAULT if wait is None else httpx.Timeout(wait, connect=10.0)
         async with self._http_client_factory() as client:
             response = await client.post(
-                f"{self._base_url}{path}", json=payload, headers=self._headers
+                f"{self._base_url}{path}", json=payload, headers=self._headers, timeout=timeout
             )
         return self._answer(response)
 
@@ -117,10 +127,18 @@ class HttpExecutionSandbox(ExecutionSandboxPort):
             raise SandboxServiceError(response.status_code, message)
         return response.json()
 
-    async def _operate(self, revision: WorkspaceRevision, operation: str, params: dict) -> dict:
+    async def _operate(
+        self,
+        revision: WorkspaceRevision,
+        operation: str,
+        params: dict,
+        *,
+        wait: float | None = None,
+    ) -> dict:
         return await self._post(
             f"/api/v1/workspaces/{revision.cycle_id}/operations",
             {"operation": operation, "revision": revision.to_dict(), "params": params},
+            wait=wait,
         )
 
     # -- service-level workspace lifecycle -----------------------------------
@@ -211,6 +229,9 @@ class HttpExecutionSandbox(ExecutionSandboxPort):
         setup: tuple[tuple[str, ...], ...] = (),
         timeout_seconds: float | None = None,
     ) -> CommandResult:
+        # #2586: the service bounds each setup step and the command apart, so the request waits
+        # for all of them, with one bound sent so both sides use the same.
+        bound = self._command_timeout if timeout_seconds is None else timeout_seconds
         payload = await self._operate(
             revision,
             OperationName.RUN_DECLARED_COMMAND,
@@ -218,8 +239,9 @@ class HttpExecutionSandbox(ExecutionSandboxPort):
                 "command": list(command),
                 "working_dir": working_dir,
                 "setup": [list(step) for step in setup],
-                "timeout_seconds": timeout_seconds,
+                "timeout_seconds": bound,
             },
+            wait=(len(setup) + 1) * bound + _MARGIN_SECONDS,
         )
         result = _rehydrate(payload)
         if not isinstance(result, CommandResult):

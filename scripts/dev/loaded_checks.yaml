@@ -1455,3 +1455,35 @@ checks:
       held = [s for s in ("db_password", "keycloak_admin_password", "keycloak_db_dsn") if os.path.exists(f"/run/secrets/{s}")]
       print(held, "SQUADOPS__DB__URL" in os.environ, config.db)
     expect: "[] False None"
+  - id: "2586-request-bound"
+    what: the runtime API's sandbox client waits for every step of a declared run, not 30 s, and sends the step bound it waited on (#2586)
+    container: squadops-runtime-api
+    code: |
+      import inspect
+      from adapters.sandbox.http_client import HttpExecutionSandbox
+      from squadops.config.schema import SandboxClientConfig
+      print("command_timeout_seconds" in inspect.signature(HttpExecutionSandbox).parameters,
+            SandboxClientConfig.model_fields["command_timeout_seconds"].default)
+    expect: "True 600.0"
+  - id: "2411-repo-resolver"
+    what: the repository family's reference resolver, built by the tools factory, refuses a unit that pins no source commit rather than binding a default (SIP-0112 contract 6, §B.5.1)
+    container: squadops-runtime-api
+    code: |
+      import asyncio
+      from adapters.tools.factory import create_repository_reference_resolver
+      from squadops.ports.memory.references import BindingContext, ReferenceUnresolved
+      resolver = create_repository_reference_resolver(None, None)
+      try:
+          asyncio.run(resolver.bind("repo:file:AGENTS.md@current", BindingContext("p", "campaign", "c")))
+      except ReferenceUnresolved as e:
+          print(resolver.family, "pins no source commit" in str(e))
+    expect: "repo True"
+  - id: "2412-initialize"
+    what: the runtime API serves a greenfield Project's initialization, and its managed clone can make a branch's first commit (SIP-0112 E.4.6)
+    container: squadops-runtime-api
+    code: |
+      from adapters.tools.git_source import GitSourceRepository
+      from squadops.api.routes.cycles.projects import router
+      paths = {r.path for r in router.routes}
+      print("/api/v1/projects/{project_id}/initializations" in paths, callable(GitSourceRepository.initialize))
+    expect: "True True"

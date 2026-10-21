@@ -39,7 +39,7 @@ async def main(cycle_id: str, times: int) -> int:
 
     config = load_config(secret_provider_factory=secret_provider_for)
     pool = await create_pool(
-        config.database().url,
+        config.db.url,
         min_size=1,
         max_size=2,
         server_settings={"default_transaction_read_only": "on"},

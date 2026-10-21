@@ -105,13 +105,16 @@ def test_the_runtime_composes_the_store_from_the_registry_provider():
     rather than the registry's required provider (#1568), so a Postgres deploy kept its
     observations in a process's memory."""
     from squadops.api.runtime.main import _init_memory
+    from squadops.config.schema import ProjectsConfig
 
     for provider, kind in (
         ("memory", InMemoryCrossCycleMemoryStore),
         ("postgres", PostgresCrossCycleMemoryStore),
     ):
         state = SimpleNamespace()
-        config = SimpleNamespace(cycles=SimpleNamespace(registry_provider=provider))
+        config = SimpleNamespace(
+            cycles=SimpleNamespace(registry_provider=provider), projects=ProjectsConfig()
+        )
         _init_memory(state, config, pool=object())
         assert isinstance(state.memory_store, kind)
 

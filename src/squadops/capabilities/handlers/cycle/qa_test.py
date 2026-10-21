@@ -32,6 +32,7 @@ from squadops.capabilities.handlers.cross_cycle_lessons import cross_cycle_lesso
 from squadops.capabilities.handlers.increment_test_scope import increment_test_scope_section
 from squadops.capabilities.handlers.prior_cycle import prior_cycle_section
 from squadops.capabilities.handlers.prompt_guard import _guard_prompt_size
+from squadops.capabilities.handlers.source_repository import source_repository_section
 from squadops.capabilities.handlers.task_instructions import (
     project_instructions_section,
     task_instructions_section,
@@ -69,7 +70,11 @@ from squadops.capabilities.anchored_edits import (
 )
 from squadops.capabilities.context_assembly import RETAKE_CURRENT_FILES_KEY, scaffold_shell_paths
 from squadops.capabilities.delivered_lint import LINT_READING_VERSION, lint_delivered
-from squadops.capabilities.handlers.cycle.base import SelfEvalFollowup, _CycleTaskHandler
+from squadops.capabilities.handlers.cycle.base import (
+    SelfEvalFollowup,
+    _CycleTaskHandler,
+    build_context_errors,
+)
 from squadops.capabilities.handlers.cycle.fill_mode_brief import (
     render_fill_mode_section,
     render_self_eval_fill_section,
@@ -590,8 +595,7 @@ class QATestHandler(_CycleTaskHandler):
 
     def validate_inputs(self, inputs: dict[str, Any], contract=None) -> list[str]:
         errors = super().validate_inputs(inputs, contract)
-        if "artifact_contents" not in inputs and "artifact_vault" not in inputs:
-            errors.append("'artifact_contents' or 'artifact_vault' is required for build tasks")
+        errors.extend(build_context_errors(inputs, "build tasks"))
         return errors
 
     async def _validate_output(
@@ -1936,6 +1940,12 @@ class QATestHandler(_CycleTaskHandler):
             )
             if prior_section:
                 user_prompt = f"{user_prompt}\n{prior_section}"
+            # SIP-0112 E.4.3: a source-backed run's test author is shown the product it changes.
+            repository_section = await source_repository_section(
+                getattr(context.ports, "request_renderer", None), inputs
+            )
+            if repository_section:
+                user_prompt = f"{user_prompt}\n{repository_section}"
             # SIP-0110 Appendix A §3.6 (#2178): this task's instructions, before the lessons.
             instructions_section = await task_instructions_section(
                 getattr(context.ports, "request_renderer", None), inputs

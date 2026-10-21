@@ -497,7 +497,15 @@ def _has_builder_role(profile: SquadProfile) -> bool:
     return serves_role(profile, "builder")
 
 
-def builder_assembles(profile: SquadProfile, config: Mapping[str, Any]) -> bool:
+def _assembles_with_builder(profile: SquadProfile, *, source_backed: bool) -> bool:
+    """A squad's builder assembles the deliverable, except for a source-backed cycle (SIP-0112
+    E.4.3): the external product builds itself, by its own declared commands."""
+    return _has_builder_role(profile) and not source_backed
+
+
+def builder_assembles(
+    profile: SquadProfile, config: Mapping[str, Any], *, source_backed: bool = False
+) -> bool:
     """Whether a cycle of ``config`` on ``profile`` dispatches a builder task (#2437).
 
     The step selection's own reading, for the whole cycle: an ``implementation`` workload in
@@ -506,7 +514,7 @@ def builder_assembles(profile: SquadProfile, config: Mapping[str, Any]) -> bool:
     adds ``builder.assemble``, which the #392 check below refuses without a ``build_profile``.
     Cycle-create preflight asks it, so that cycle is refused before its framing runs.
     """
-    if not _has_builder_role(profile):
+    if not _assembles_with_builder(profile, source_backed=source_backed):
         return False
     sequence = config.get("workload_sequence") or []
     if sequence:
@@ -536,6 +544,8 @@ def _resolve_workload_steps(
     profile: SquadProfile,
     profile_roles: set[str],
     resolved_config: dict | None = None,
+    *,
+    source_backed: bool = False,
 ) -> tuple[list, bool]:
     """Select task steps and builder flag based on workload type (SIP-0078)."""
     if workload_type not in _KNOWN_WORKLOAD_TYPES:
@@ -568,7 +578,7 @@ def _resolve_workload_steps(
         )
         steps = list(REFINEMENT_TASK_STEPS)
     elif workload_type == WorkloadType.IMPLEMENTATION:
-        builder_used = _has_builder_role(profile)
+        builder_used = _assembles_with_builder(profile, source_backed=source_backed)
         if builder_used:
             steps = list(IMPLEMENTATION_TASK_STEPS[:1]) + list(BUILDER_ASSEMBLY_TASK_STEPS)
         else:
@@ -600,7 +610,9 @@ def _resolve_legacy_steps(
     """Select task steps from legacy plan_tasks/build_tasks flags."""
     include_plan = bool(cycle.resolved_config().get("plan_tasks", True))
     include_build = bool(cycle.resolved_config().get("build_tasks"))
-    builder_used = include_build and _has_builder_role(profile)
+    builder_used = include_build and _assembles_with_builder(
+        profile, source_backed=cycle.source_context is not None
+    )
 
     steps: list = []
     if include_plan:
@@ -1526,7 +1538,11 @@ def generate_task_plan(
 
     if run.workload_type is not None:
         steps, builder_used = _resolve_workload_steps(
-            run.workload_type, profile, profile_roles, resolved_config
+            run.workload_type,
+            profile,
+            profile_roles,
+            resolved_config,
+            source_backed=cycle.source_context is not None,
         )
     else:
         steps, builder_used = _resolve_legacy_steps(cycle, profile, profile_roles)

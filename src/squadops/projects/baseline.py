@@ -16,6 +16,7 @@ status, duration, bounded output) is kept beside it, not in it.
 
 from __future__ import annotations
 
+import dataclasses
 import re
 from collections.abc import Iterable, Mapping
 from dataclasses import dataclass, field
@@ -28,6 +29,12 @@ _SCHEMA_MAJOR = re.compile(r"^inherited-baseline/v(\d+)$")
 PASS, FAIL, UNVERIFIED = "PASS", "FAIL", "UNVERIFIED"
 RESULTS = (PASS, FAIL, UNVERIFIED)
 INHERITED = "inherited"
+#: FR-20's other attributions, read against the inherited baseline: a check the candidate fails
+#: and the baseline passed; one it passes and the baseline failed; and one either side couldn't
+#: run, so nothing can be said of where its result came from.
+INTRODUCED = "introduced/regressed"
+RESOLVED = "resolved"
+UNVERIFIED_ATTRIBUTION = "unverified attribution"
 #: X-3a's outcomes that mean the check itself never reached an exit status.
 _DID_NOT_RUN = {
     "timeout": "timed out",
@@ -112,6 +119,27 @@ def result_of(check: Check, run: Any) -> CheckResult:
         )
     verdict = PASS if run.exit_code == 0 else FAIL
     return CheckResult(check.id, verdict, evidence=evidence)
+
+
+def attribute(candidate: CheckResult, baseline: CheckResult | None) -> CheckResult:
+    """A candidate's check, attributed against the inherited baseline's (FR-20). The result stays
+    the candidate's own, and only the attribution compares:
+    - the same result as the baseline is inherited, a FAIL included: it was already there;
+    - a FAIL where the baseline passed is introduced, and a PASS where it failed is resolved;
+    - an UNVERIFIED on either side, or a check the baseline never ran, is unverified
+      attribution.
+
+    A check is compared as a whole, so a second failure inside a check that already failed
+    reads as inherited. Both runs' evidence is kept for a reader to look inside."""
+    if candidate.result == UNVERIFIED or baseline is None or baseline.result == UNVERIFIED:
+        attribution = UNVERIFIED_ATTRIBUTION
+    elif candidate.result == baseline.result:
+        attribution = INHERITED
+    elif candidate.result == FAIL:
+        attribution = INTRODUCED
+    else:
+        attribution = RESOLVED
+    return dataclasses.replace(candidate, attribution=attribution)
 
 
 def parse_baseline(doc: Mapping[str, Any]) -> InheritedBaseline:

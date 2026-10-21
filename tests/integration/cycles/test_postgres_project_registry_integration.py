@@ -278,9 +278,10 @@ async def test_a_taken_id_and_a_closed_gate_write_nothing(pool):
 
 
 async def test_a_validation_moves_a_registration_ready_or_failed_and_a_retry_recovers(pool):
-    """E.4.2, §B.6. Bugs caught: READY written without the commit contract 1 pins; a failure's
-    diagnostic surviving the retry that fixed it; a validation applied twice under one key; a
-    READY Project validated again here, where re-validation is E.4.4's drift."""
+    """E.4.2, §B.6; E.4.4's re-validation. Bugs caught: READY written without the commit
+    contract 1 pins; a failure's diagnostic surviving the retry that fixed it; a validation
+    applied twice under one key; a READY Project refused its upstream's commit, so a drift can
+    never be reconciled, or demoted by a failed re-validation."""
     from squadops.cycles.models import ProjectStateConflictError
 
     registry = PostgresProjectRegistry(pool)
@@ -298,8 +299,13 @@ async def test_a_validation_moves_a_registration_ready_or_failed_and_a_retry_rec
     )
     with pytest.raises(ProjectStateConflictError, match="READY"):
         await registry.record_validation(
-            "prj-tally", commit=commit, diagnostic=None, actor="owner", idempotency_key="v-3"
-        )
+            "prj-tally", commit=None, diagnostic="fetch: denied", actor="owner",
+            idempotency_key="v-3",
+        )  # fmt: skip
+    upstream = "d" * 40
+    moved, _ = await registry.record_validation(
+        "prj-tally", commit=upstream, diagnostic=None, actor="owner", idempotency_key="v-4"
+    )
 
     assert (failed.lifecycle_status, failed.validation_diagnostic, failed.record_version) == (
         ProjectLifecycleStatus.FAILED_REGISTRATION,
@@ -314,6 +320,9 @@ async def test_a_validation_moves_a_registration_ready_or_failed_and_a_retry_rec
     assert (ready.development_baseline_commit, ready.integrated_upstream_commit) == (commit, commit)
     assert ready.validation_diagnostic is None
     assert (again, again_replayed) == (ready, True)
+    assert (moved.lifecycle_status, moved.development_baseline_commit, moved.record_version) == (
+        ProjectLifecycleStatus.READY, upstream, 4,
+    )  # fmt: skip
     async with pool.acquire() as conn:
         events = await conn.fetch(
             "SELECT operation, record_version, detail FROM project_record_events "
@@ -323,8 +332,10 @@ async def test_a_validation_moves_a_registration_ready_or_failed_and_a_retry_rec
         ("register", 1),
         ("validate", 2),
         ("validate", 3),
+        ("validate", 4),
     ]
     assert events[2]["detail"] == {"from": "FAILED_REGISTRATION", "commit": commit}
+    assert events[3]["detail"] == {"from": "READY", "commit": upstream, "previous": commit}
 
 
 async def test_configuration_revisions_follow_one_another_and_read_back_as_recorded(pool):
@@ -419,3 +430,184 @@ async def test_mappings_resolve_both_ways_and_baselines_read_back(pool):
     assert await registry.get_inherited_baseline("prj-tally") == baseline
     async with pool.acquire() as conn:
         assert await conn.fetchval("SELECT count(*) FROM project_inherited_baselines") == 1
+
+
+async def test_a_cycles_pinned_source_context_round_trips_and_a_sample_apps_stays_null(pool):
+    """Contract 1's persistence (§D.3: persisted before dispatch). Bugs caught: the context
+    dropped by the cycle registry's insert or read; a sample application's cycle given one."""
+    import uuid
+    from datetime import UTC, datetime
+
+    from adapters.cycles.postgres_cycle_registry import PostgresCycleRegistry
+    from adapters.persistence.transient import TransientRetry
+    from squadops.cycles.models import Cycle, TaskFlowPolicy
+    from squadops.projects.source_context import parse_source_context
+    from tests.fixtures.shared_contract.repository import recorded
+
+    cycles = PostgresCycleRegistry(pool=pool, retry=TransientRetry(attempts=1, backoff_seconds=0.0))
+    context = parse_source_context(recorded("project_source_context", "valid"))
+
+    def cycle(source_context):
+        return Cycle(
+            cycle_id=f"cyc_{uuid.uuid4().hex[:12]}",
+            project_id=REFERENCED,
+            created_at=datetime.now(UTC),
+            created_by="it",
+            prd_ref=None,
+            squad_profile_id="full",
+            squad_profile_snapshot_ref="sha256:abc",
+            task_flow_policy=TaskFlowPolicy(mode="sequential"),
+            build_strategy="fresh",
+            source_context=source_context,
+        )
+
+    external, sample = cycle(context), cycle(None)
+    await cycles.create_cycle(external)
+    await cycles.create_cycle(sample)
+
+    assert (await cycles.get_cycle(external.cycle_id)).source_context == context
+    assert (await cycles.get_cycle(sample.cycle_id)).source_context is None
+
+
+async def test_a_contribution_is_recorded_once_and_its_key_names_one_run(pool):
+    """FR-06's record (E.4.3). Bugs caught:
+    - a retried contribution making a second row, or bumping the record version again;
+    - a key reused for another run accepted;
+    - a review request recorded without its branch and URL, which the table refuses."""
+    from squadops.cycles.models import RegistrationKeyConflictError
+    from squadops.projects.contribution import Contribution
+
+    registry = PostgresProjectRegistry(pool)
+    await registry.register_project(_registration(), actor="owner")
+    contribution = Contribution(
+        project_id="prj-tally",
+        cycle_id="cyc_1",
+        run_id="run_1",
+        commit="a" * 40,
+        parent_commit="b" * 40,
+        mode="review_request",
+        state="pending",
+        branch="squadops/cyc_1",
+        review_url="https://github.com/owner/tally/pull/7",
+        contributed_by="owner",
+        contributed_at=datetime(2026, 10, 18, tzinfo=UTC),
+    )
+
+    _, replayed = await registry.record_contribution(
+        contribution, idempotency_key="c-1", request_hash="h"
+    )
+    again, again_replayed = await registry.record_contribution(
+        contribution, idempotency_key="c-2", request_hash="h2"
+    )
+    with pytest.raises(RegistrationKeyConflictError):
+        await registry.record_contribution(
+            dataclasses.replace(contribution, run_id="run_2"), idempotency_key="c-1",
+            request_hash="other",
+        )  # fmt: skip
+    with pytest.raises(asyncpg.CheckViolationError):
+        await registry.record_contribution(
+            dataclasses.replace(contribution, run_id="run_3", review_url=None),
+            idempotency_key="c-3",
+            request_hash="h3",
+        )
+
+    assert (replayed, again_replayed, again) == (False, True, contribution)
+    assert await registry.contributions("prj-tally") == [contribution]
+    async with pool.acquire() as conn:
+        assert (
+            await conn.fetchval(
+                "SELECT count(*) FROM project_record_events WHERE operation = 'contribute'"
+            )
+            == 1
+        )
+
+
+async def test_a_sync_is_recorded_once_and_a_contribution_moves_to_integrated(pool):
+    """FR-21's drift findings and FR-06's integration (E.4.4). Bugs caught:
+    - a retried sync recording a second finding;
+    - the integrated commit lost when a contribution's state moves;
+    - an integrated commit the table can't hold.
+    """
+    from squadops.projects.contribution import Contribution
+
+    registry = PostgresProjectRegistry(pool)
+    await registry.register_project(_registration(), actor="owner")
+    contribution = Contribution(
+        project_id="prj-tally",
+        cycle_id="cyc_1",
+        run_id="run_1",
+        commit="a" * 40,
+        parent_commit="b" * 40,
+        mode="review_request",
+        state="pending",
+        branch="squadops/cyc_1",
+        review_url="https://github.com/owner/tally/pull/7",
+        contributed_by="owner",
+        contributed_at=datetime(2026, 10, 19, tzinfo=UTC),
+    )
+    await registry.record_contribution(contribution, idempotency_key="c-1", request_hash="h")
+    document = {
+        "schema": "source-sync/v1",
+        "project_id": "prj-tally",
+        "baseline_commit": "b" * 40,
+        "upstream_commit": "c" * 40,
+        "drift": {"changed": {"instructions": ["CONTRIBUTING.md"]}, "relevant": ["instructions"]},
+        "contributions": [],
+    }
+
+    integrated = await registry.record_contribution_state(
+        "prj-tally", "cyc_1", "run_1", state="integrated", integrated_commit="c" * 40,
+        actor="owner",
+    )  # fmt: skip
+    _, replayed = await registry.record_sync(
+        document, actor="owner", idempotency_key="s-1", request_hash="h"
+    )
+    again, again_replayed = await registry.record_sync(
+        document, actor="owner", idempotency_key="s-1", request_hash="h"
+    )
+
+    assert (integrated.state, integrated.integrated_commit) == ("integrated", "c" * 40)
+    assert await registry.contributions("prj-tally") == [integrated]
+    assert (replayed, again_replayed, again) == (False, True, document)
+    assert await registry.source_syncs("prj-tally") == [document]
+
+
+async def test_an_initialization_is_recorded_once_and_reads_back_whole(pool):
+    """E.4.6's record. Bugs caught: a second initialization of one Project recorded beside the
+    first; the manifest or the file list lost in the round trip; an initialize event the
+    operation check refuses."""
+    from squadops.projects.initialization import ProjectInitialization
+
+    registry = PostgresProjectRegistry(pool)
+    await registry.register_project(_registration(), actor="owner")
+    first = ProjectInitialization(
+        project_id="prj-tally",
+        commit="a" * 40,
+        branch="main",
+        stack="fullstack_fastapi_react",
+        manifest_digest="sha256:" + "1" * 64,
+        manifest="version: 1\nkind: interface_manifest\n",
+        files=("backend/main.py", "start.sh"),
+        initialized_by="owner",
+        initialized_at=datetime(2026, 10, 20, tzinfo=UTC),
+    )
+    other = dataclasses.replace(first, commit="b" * 40, manifest_digest="sha256:" + "2" * 64)
+
+    recorded, replayed = await registry.record_initialization(
+        first, idempotency_key="i-1", request_hash="h1"
+    )
+    kept, kept_replayed = await registry.record_initialization(
+        other, idempotency_key="i-2", request_hash="h2"
+    )
+
+    assert (recorded, replayed) == (first, False)
+    assert (kept, kept_replayed) == (first, True)
+    assert await registry.get_initialization("prj-tally") == first
+    assert await registry.get_initialization("prj-other") is None
+    async with pool.acquire() as conn:
+        assert (
+            await conn.fetchval(
+                "SELECT count(*) FROM project_record_events WHERE operation = 'initialize'"
+            )
+            == 1
+        )
