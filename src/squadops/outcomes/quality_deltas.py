@@ -100,28 +100,37 @@ def _why_not(name: str, before, after) -> str | None:
     return None
 
 
+def _seeded_apart(before, after) -> str | None:
+    """Why two seeded readings can't be compared beyond what ``_why_not`` reads: another seed, or
+    another plan of it (§10n ruling 5)."""
+    was, now = (before.seed or {}).get("version"), (after.seed or {}).get("version")
+    if was != now:
+        return f"seeded lighthouse and axe: seeded by {was} before and {now} after"
+    return None
+
+
 def _page_deltas(
-    before: QualityReading, after: QualityReading
+    before: QualityReading, after: QualityReading, prefix: str = ""
 ) -> tuple[list[MeasureDelta], list[tuple[str, str]]]:
     deltas: list[MeasureDelta] = []
     skipped: list[tuple[str, str]] = []
     was = {p.path: p for p in before.pages}
     now = {p.path: p for p in after.pages}
     for path in sorted(was.keys() ^ now.keys()):
-        skipped.append((f"page {path}", "declared by one tree only"))
+        skipped.append((f"{prefix}page {path}", "declared by one tree only"))
     for path in sorted(was.keys() & now.keys()):
         b, a = was[path], now[path]
         if b.error or a.error:
-            skipped.append((f"page {path}", f"not scored: {b.error or a.error}"))
+            skipped.append((f"{prefix}page {path}", f"not scored: {b.error or a.error}"))
             continue
         for category in LIGHTHOUSE_CATEGORIES:
             x, y = (b.lighthouse or {}).get(category), (a.lighthouse or {}).get(category)
             if x is not None and y is not None:
-                deltas.append(MeasureDelta(f"lighthouse:{category}", path, x, y))
+                deltas.append(MeasureDelta(f"{prefix}lighthouse:{category}", path, x, y))
         for impact in AXE_IMPACTS:
             x, y = (b.axe or {}).get(impact), (a.axe or {}).get(impact)
             if x is not None and y is not None:
-                deltas.append(MeasureDelta(f"axe:{impact}", path, x, y))
+                deltas.append(MeasureDelta(f"{prefix}axe:{impact}", path, x, y))
     return deltas, skipped
 
 
@@ -160,6 +169,19 @@ def quality_deltas(
         found, missed = _page_deltas(q_before, q_after)
         deltas += found
         skipped += missed
+    s_before, s_after = other.quality_seeded, current.quality_seeded
+    if s_before is not None or s_after is not None:
+        # §10j, §10n: seeded with seeded only, at one seed and plan. Two records with no seeded
+        # reading say nothing of it, as before it existed.
+        why = _why_not("seeded lighthouse and axe", s_before, s_after) or _seeded_apart(
+            s_before, s_after
+        )
+        if why or s_before is None or s_after is None:
+            skipped.append(("seeded lighthouse and axe", why or "not recorded"))
+        else:
+            found, missed = _page_deltas(s_before, s_after, prefix="seeded:")
+            deltas += found
+            skipped += missed
     l_before, l_after = other.lint, current.lint
     why = _why_not("lint", l_before, l_after)
     if why or l_before is None or l_after is None:

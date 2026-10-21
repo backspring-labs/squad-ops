@@ -132,6 +132,9 @@ class EvaluationRecord:
     quality: QualityReading | None = None
     #: #1937's lint over the evaluated tree (§4.2, #2416). ``None`` on a record written before it.
     lint: LintReading | None = None
+    #: Lighthouse and axe on a second, seeded instance of the tree (§10j, §10n). ``None`` on a
+    #: record written before it: never read as measured, nor as not measured.
+    quality_seeded: QualityReading | None = None
 
     def reference(self) -> OutcomeEvaluationRef:
         return OutcomeEvaluationRef(
@@ -162,6 +165,7 @@ def evaluation_record(
     quality: QualityReading,
     lint: LintReading,
     evaluation_id: str | None = None,
+    quality_seeded: QualityReading | None = None,
 ) -> EvaluationRecord:
     """A record that names its suite's scenarios exactly: one outcome for each, at the version and
     goal the suite holds. Anything else would report against a suite it didn't run."""
@@ -183,6 +187,7 @@ def evaluation_record(
         evaluated_at=evaluated_at,
         quality=quality,
         lint=lint,
+        quality_seeded=quality_seeded,
     )
     parse_reference(record.reference().to_dict())  # the reference it yields must be readable
     return record

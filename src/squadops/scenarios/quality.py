@@ -60,6 +60,13 @@ class NotMeasured(StrEnum):
     #: #1937's rule sets exist only for the scaffold stacks: a declared Project's lint is never
     #: read, and the product's own linter is never used in its place (§4.2).
     NOT_A_SCAFFOLD_STACK = "not_a_scaffold_stack"
+    #: §10j, §10n: the seeded reading's. The Project declares no quality seed
+    #: (``config/quality_seeds.yaml``).
+    NO_SEED = "no_seed"
+    #: The delivery's interface can take no record of the seed (``campaigns.seed_plan``).
+    SEED_REFUSED = "seed_refused"
+    #: The app refused every record the seed sent, so nothing was seeded to measure.
+    SEED_FAILED = "seed_failed"
 
 
 @dataclass(frozen=True)
@@ -71,6 +78,10 @@ class PageMeasure:
     lighthouse: Mapping[str, float | None] | None = None
     axe: Mapping[str, int] | None = None
     error: str | None = None
+    #: §10n ruling 4: a seeded page's ``path`` is its key, the route and the record that filled it
+    #: (``/runs/{id}#partial``), and ``url`` the address it was loaded at, which differs on every
+    #: instance. ``None`` on an unseeded page, whose path is its address.
+    url: str | None = None
 
     def as_dict(self) -> dict[str, Any]:
         return {
@@ -78,12 +89,17 @@ class PageMeasure:
             "lighthouse": dict(self.lighthouse) if self.lighthouse is not None else None,
             "axe": dict(self.axe) if self.axe is not None else None,
             "error": self.error,
+            **({"url": self.url} if self.url is not None else {}),
         }
 
     @classmethod
     def from_dict(cls, d: Mapping[str, Any]) -> PageMeasure:
         return cls(
-            path=d["path"], lighthouse=d.get("lighthouse"), axe=d.get("axe"), error=d.get("error")
+            path=d["path"],
+            lighthouse=d.get("lighthouse"),
+            axe=d.get("axe"),
+            error=d.get("error"),
+            url=d.get("url"),
         )
 
 
@@ -97,6 +113,10 @@ class QualityReading:
     pages: tuple[PageMeasure, ...] = field(default_factory=tuple)
     evaluator: str | None = None
     detail: str | None = None
+    #: §10j, §10n: a seeded reading's account. Its ``version`` (``SeedPlan.version``), each
+    #: record's outcome, the pages it couldn't fill, its notes and each phase's duration.
+    #: ``None`` on §10f's reading.
+    seed: Mapping[str, Any] | None = None
 
     def __post_init__(self) -> None:
         if (self.status is QualityStatus.NOT_MEASURED) != (self.reason is not None):
@@ -115,6 +135,7 @@ class QualityReading:
             "pages": [p.as_dict() for p in self.pages],
             "evaluator": self.evaluator,
             "detail": self.detail,
+            **({"seed": dict(self.seed)} if self.seed is not None else {}),
         }
 
     @classmethod
@@ -125,6 +146,7 @@ class QualityReading:
             pages=tuple(PageMeasure.from_dict(p) for p in d.get("pages", ())),
             evaluator=d.get("evaluator"),
             detail=d.get("detail"),
+            seed=d.get("seed"),
         )
 
 
