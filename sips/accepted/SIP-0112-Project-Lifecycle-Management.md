@@ -122,7 +122,7 @@ before the SIP closes and need not ship in 2.4 (the owner, the same day). Depend
 | E.4.1 existing-product registration and authority: the writable registry cutover, its validated rollback and minimum enrollment | **shipped**: the writable registry with its cutover from `config/projects.yaml` and guarded rollback (#2444), and registration through `POST /api/v1/projects` and `squadops projects import` behind the locator rules and the write gate (#2452). The owner's R1–R6 are on #2408. Owner decisions take the event table's `owner_decision` operation, written from E.4.4 (#2411) | 2.4.0, PRs #2444 and #2452, issue #2408 |
 | E.4.2 repository-native discovery and the inherited baseline, with the start declaration (§8.2 contract 7) | **shipped**: the managed clone and validation; the versioned Development Configuration with contract 7's start declaration and the repository's instruction sources; seeding with the commit-to-revision mapping (contract 3's seeding half); the inherited baseline through X-3a. Capture back to Git is E.4.3's (#2410) | 2.4.0, PR #2468, issue #2409 |
 | E.4.3 the first scoped feature through the shared cycle path | **shipped**: the source-backed run, from the product's tree to a verified change contributed through its own process (#2484); the sync's attribution of SquadOps's own contributions and its hold on Cycles until drift is reconciled (#2610, H.2); the brownfield demonstration read against its pre-registration, with IR-2 passing live (#2611). The deletion form and a regression's repair round are deferred follow-ups, each with its own issue | 2.4.0, PRs #2484, #2610 and #2611, issue #2410 |
-| E.4.4 the second feature after an outside contribution | **placed** | 2.4.0, #2411 |
+| E.4.4 the second feature after an outside contribution | **shipped**: a product's upstream read against its approved baseline, its contributions' standing, and the repository reference resolver (#2565); the sync's attribution and its hold on Cycles until drift is reconciled (#2610, H.2); the brownfield demonstration's second feature after an outside change, read (#2611); IR-3 as H.3 restates it (the PR that wrote this row) | 2.4.0, PRs #2565, #2610 and #2611, issue #2411 |
 | E.4.5 lifecycle completeness: update history, archive/restore, concurrency and conflict recovery (before close; not required in 2.4) | **unplaced**, deliberately: placed by a later plan, before the SIP closes | — |
 | E.4.6 greenfield Project creation at an owner-approved external destination (required, Q34; shipped by the 2.4 cut, G6) | **placed** | 2.4.0, #2412 |
 | E.4.7 direct attachment: writing in place in an existing checkout (optional, FR-02) | **unplaced**, deliberately: optional | — |
@@ -395,7 +395,7 @@ Each enters at the seam the live cycle uses and asserts what reaches the other l
 |---|---|---|---|
 | IR-1 | After the registry cutover, `group_run`, `hello_squad`, `run_crysis`, `play_game` and `agent_chess` create Cycles through `cycles create` and `POST /api/v1/projects/{project_id}/cycles` | the same IDs, PRD resolution, cycle and run IDs and artifact paths; `projects list/show` changed only by added fields | MacBook |
 | IR-2 | One Project at one pinned revision, launched standalone and through the Campaign launcher | both reach `prepare_cycle()` with the same typed source context and Development Configuration revision, and each pins a SIP-0110 snapshot under its own snapshot owner | MacBook, with SIP-0110's #2179 |
-| IR-3 | A Campaign is admitted; an outside commit then changes a repository instruction source | the Campaign's later Cycles keep the admission binding and carry a drift finding; a standalone Cycle created afterwards binds the new content; a re-binding changes the Campaign only as a recorded intervention | MacBook, with SIP-0110's #2179 |
+| IR-3 | A Campaign is admitted; an outside commit then changes a repository instruction source | the Campaign's later Cycles keep the admission binding and carry a drift finding; a standalone Cycle created afterwards binds the new content; a re-binding changes the Campaign only as a recorded intervention (restated by H.3, after SIP-0110 §5ad and H.2) | MacBook, with SIP-0110's #2179 |
 | IR-4 | An increment of an external Project runs with a scenario suite | no scenario step in any rendered prompt (Outcome Evaluation §7, prediction 2), any stored squad task envelope, any squad agent's container, the Project Context, handoff metadata, a project instruction, the managed clone, a workspace or the product repository; no scenario result in the Project Context or the handoff before phase 2 | both |
 | IR-5 | An accepted increment of an external Project | sandbox revision, Git commit, Campaign accepted tree and Outcome Evaluation result resolve to one another through this SIP's mappings, and none is stored in another's field | both |
 | IR-6 | An external Project with its own layout and no SquadOps interface manifest runs through Outcome Evaluation, started by contract 7's commands | scenarios run on the surfaces their authors declare or report `blocked_unverified`; a surface kind the product lacks is recorded not applicable; nothing falls back to a sample application | Spark |
@@ -1665,3 +1665,39 @@ All paths below are relative to `backspring-labs/squad-ops` at commit `7aecfa0b3
   - `tests/unit/shared_contract/test_contract1_source_context.py` enters at the create route and at the Campaign launcher's `prepare_cycle`.
 
 **Who ruled:** the MacBook lane, under the owner's delegation of 2026-10-18. The gate is the stated design of #2565's drift module. The narrowing to `relevant` drift follows that module's own definition of what invalidates evidence.
+
+## H.3 IR-3 restated under SIP-0110 §5ad and H.2 (2026-10-21; E.4.4, #2411)
+
+**What changed.** IR-3 was written before two later decisions:
+- **§5ad (the owner, 2026-10-20):** a Campaign's snapshot fixes which instruction revisions are in force, and each of
+  its Cycles binds their `@current` repository references at its own pinned commit when the Campaign launches it.
+- **H.2:** a sync's relevant drift holds new Cycles until the Project is reconciled.
+
+So "the Campaign's later Cycles keep the admission binding" reads, after both, as follows. A Campaign is admitted with
+a project instruction citing a repository instruction source at `@current`, and an outside commit then changes the
+source:
+1. **The Campaign's snapshot is unchanged.** It pins the same instruction revision. A Cycle already launched keeps the
+   content it bound at its own commit.
+2. **The drift is found and holds new work.** A sync records it (`relevant: instructions`). Until the Project is
+   reconciled, the Campaign's next launch is refused, so the Campaign escalates (§B.5.1's "held and escalated"), and a
+   standalone Cycle is refused too.
+3. **After reconciliation** (validate, configure, baseline at the new commit):
+   - the Campaign's next Cycle binds the reference at its own pinned commit, the new content;
+   - a standalone Cycle created afterwards binds the new content at its admission.
+4. **A re-binding** changes the Campaign's instruction revision only as a recorded intervention, unchanged from the
+   IR as written.
+
+**The evidence:**
+- `tests/unit/projects/test_ir3_campaign_instruction_drift.py` enters at the Campaign launcher's `_build_cycle`, at
+  `prepare_cycle` and `pin_standalone_cycle` for the standalone Cycle, and at `sync_project`. It runs over the shared
+  fixture's Tally through the real managed clone, with the repository family's own resolver. A mutant without H.2's
+  gate fails it.
+- Point 4 is the re-binding route's: `tests/unit/api/test_rebinding.py` and
+  `tests/unit/memory/test_campaign_cycle_bindings.py`.
+- Live: H.2's hold was shown on the Spark's brownfield re-run and on the Mac (#2611).
+- **Not run live:** a Campaign's later Cycle binding a reference after reconciliation. It needs a Campaign past its
+  calibration on an external Project, which is the Spark's full squad.
+
+**Who ruled:** the MacBook lane, under the owner's delegation of 2026-10-18. The restatement follows the owner's
+ruling of §5ad and H.2; it decides nothing new.
+
