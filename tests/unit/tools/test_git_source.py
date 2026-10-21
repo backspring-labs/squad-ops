@@ -322,3 +322,41 @@ async def test_a_private_repositorys_fetch_carries_its_token_in_the_environment_
     [env] = [env for command, env in calls[:tokened] if "fetch" in command]
     header = base64.b64decode(env["GIT_CONFIG_VALUE_0"].removeprefix("Authorization: Basic "))
     assert header == b"x-access-token:github_pat_s3cr3t"
+
+
+async def test_the_token_never_reaches_the_error_git_reports(product, tmp_path):
+    """The owner's ruling of 2026-10-20 kept the token as an environment header (D11), with this
+    test for the one path not yet covered: git's own error text, which a ``SourceUnavailable``
+    carries to the API's answer and the logs. Real git, against an allow-listed address that
+    refuses the connection, on the fetch and the push."""
+    unreachable = "https://127.0.0.1:1/owner/tally.git"
+    clones = GitSourceRepository(
+        tmp_path / "cache",
+        LocatorPolicy.of(["127.0.0.1"], [str(product.path.parent)]),
+        timeout_seconds=60,
+        committer_name="SquadOps",
+        committer_email="squadops@squadops.invalid",
+    )
+    commit = await clones.sync("prj-tally", str(product.path), "refs/heads/main")
+    tree = await clones.tree_at("prj-tally", commit)
+    await clones.commit_tree(
+        "prj-tally", parent=commit, files=tree.files, executable=tree.executable,
+        ref="refs/squadops/cyc_1/run_1", message="m\n",
+    )  # fmt: skip
+    token = "github_pat_s3cr3tTOKEN"
+    basic = base64.b64encode(f"x-access-token:{token}".encode()).decode()
+
+    failures = []
+    for attempt in (
+        clones.sync("prj-tally", unreachable, "refs/heads/main", token=token),
+        clones.push_capture(
+            "prj-tally", unreachable, ref="refs/squadops/cyc_1/run_1", branch="squadops/cyc_1",
+            token=token,
+        ),
+    ):  # fmt: skip
+        with pytest.raises(SourceUnavailable) as failed:
+            await attempt
+        failures.append(str(failed.value))
+
+    assert all("127.0.0.1" in f for f in failures)  # git's own text, naming the host it tried
+    assert not any(token in f or basic in f or "s3cr3t" in f for f in failures)
