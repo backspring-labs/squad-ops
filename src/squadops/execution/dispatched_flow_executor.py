@@ -164,7 +164,12 @@ from squadops.stacks.verification_scaffold_emission import (
     emit_verification_scaffold,
 )
 from squadops.stacks.verification_scaffold_gate import validate_execution_readiness
-from squadops.tasks.models import TaskEnvelope, TaskResult, TaskResultStatus
+from squadops.tasks.models import (
+    INPUT_REFUSAL_EVIDENCE,
+    TaskEnvelope,
+    TaskResult,
+    TaskResultStatus,
+)
 from squadops.tasks.task_types import (
     TaskType,
     authors_qa_suite,
@@ -3135,6 +3140,15 @@ class DispatchedFlowExecutor(FlowExecutionPort):
             _ExecutionError — unrecoverable failure (incl. max_correction_attempts
                 exhausted, so a repair that never converges fails the run)
         """
+        # #2553: a handler that refused its inputs refuses the same envelope every time, and
+        # neither a retry nor a repair changes what this executor composes. Fail the run here,
+        # naming the refusal, rather than spend correction rounds on it.
+        refused = (result.execution_evidence or {}).get(INPUT_REFUSAL_EVIDENCE)
+        if refused:
+            raise _ExecutionError(
+                f"Task {envelope.task_id} ({envelope.task_type}) refused its inputs: "
+                + "; ".join(str(e) for e in refused)
+            )
         outcome = (result.outputs or {}).get("outcome_class") if result.outputs else None
 
         # The four steps this router has always run, in order — the blocks its own comment

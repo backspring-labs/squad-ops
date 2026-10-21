@@ -2,7 +2,8 @@
 
 The script runs in the runtime image, piped to ``python -``, so nothing but a live run executed its
 ``main()``: at the 2.4 window's close it failed on all four calibration trees before measuring
-anything, because it asked ``AppConfig`` for a ``database()`` it doesn't have.
+anything, because it asked the window deploy's ``AppConfig`` for a ``database()`` that arrived only
+with #2457. It reads the database there now, the one accessor that requires it.
 """
 
 from __future__ import annotations

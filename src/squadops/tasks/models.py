@@ -101,6 +101,11 @@ class TaskResultStatus(StrEnum):
     CANCELED = "CANCELED"
 
 
+#: The evidence key under which an agent's handler names the inputs it refused (``handler_executor``).
+#: A refusal is deterministic: the same envelope is refused again, so no retry or repair can help.
+INPUT_REFUSAL_EVIDENCE = "validation_errors"
+
+
 @dataclass(frozen=True)
 class TaskResult:
     """ACI Task Result - Terminal result from agent container execution.

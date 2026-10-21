@@ -509,7 +509,9 @@ class KeycloakAdminConfig(BaseModel):
     """Keycloak admin account configuration (SIP-0063)."""
 
     username: str = "admin"
-    password: str  # Supports secret:// references
+    #: #2498: the identity provider's own, which its container reads from .env. No service reads it,
+    #: so a profile carries none, and no service mounts it.
+    password: str | None = None
     allowed_networks: list[str] = Field(default_factory=list)
 
     @model_validator(mode="after")
@@ -996,8 +998,11 @@ class DeploymentConfig(BaseModel):
 class AppConfig(BaseModel):
     """Main application configuration model."""
 
-    # Core infrastructure
-    db: DBConfig = Field(..., description="Database configuration")
+    # Core infrastructure. The database is the runtime API's: an agent never connects to it, so it
+    # declares none and holds no credential that reaches it (#2457). ``database()`` requires it.
+    db: DBConfig | None = Field(
+        default=None, description="Database configuration: the runtime API's, absent in an agent"
+    )
     comms: CommsConfig = Field(..., description="Communication services configuration")
 
     # Runtime API
@@ -1050,6 +1055,17 @@ class AppConfig(BaseModel):
                 "(1.8.2 plan §3.2 item 15)."
             )
         return float(self.dispatch.task_timeout)
+
+    def database(self) -> DBConfig:
+        """The database, required at the places a pool is made: the runtime API and its scripts.
+        An agent declares none, so it holds no credential that reaches the held-out scenarios'
+        tables, or any other (#2457, IR-4)."""
+        if self.db is None:
+            raise ValueError(
+                "this process connects to Postgres and has no database configured: set "
+                "SQUADOPS__DB__URL. Only the runtime API and its scripts declare one (#2457)."
+            )
+        return self.db
 
     # Prompts (SIP-0084)
     prompts: PromptsConfig = Field(

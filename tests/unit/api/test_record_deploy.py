@@ -158,7 +158,7 @@ async def test_the_one_off_loads_the_deploys_config_as_the_runtime_does(monkeypa
     def load_config(**kwargs):
         seen.update(kwargs)
         return SimpleNamespace(
-            db=SimpleNamespace(url="postgresql://unused"),
+            database=lambda: SimpleNamespace(url="postgresql://unused"),
             cycles=SimpleNamespace(registry_provider="memory", squad_profile_provider="config"),
             llm=SimpleNamespace(
                 provider="ollama", url="http://ollama:11434", timeout=5, api_key=None, model=None
@@ -289,7 +289,7 @@ async def test_the_check_loads_the_deploys_config_and_reads_the_registry_it_sele
     def load_config(**kwargs):
         seen.update(kwargs)
         return SimpleNamespace(
-            db=SimpleNamespace(url="postgresql://unused"),
+            database=lambda: SimpleNamespace(url="postgresql://unused"),
             cycles=SimpleNamespace(registry_provider="memory"),
         )
 

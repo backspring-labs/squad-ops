@@ -330,6 +330,29 @@ def test_a_version_at_the_gate_with_no_ruling_reads_as_waiting():
     assert "- `prop_450986544201` v2" not in text
 
 
+def test_a_criterion_frozen_without_its_statement_is_named_and_the_digest_is_written():
+    """#2595, the 2.4 window's campaign 3: its accepted repair's promotion froze T4 with no
+    statement, and the digest's ``KeyError`` stopped the package before either part was stored.
+    Bug caught: a record the campaign already holds making its package unwritable."""
+    doc = _real_package()
+    [t2] = [
+        frozen
+        for r in doc["control_log"]
+        if r["operation"] == "promote"
+        for frozen in r["binding"].get("frozen_criteria") or ()
+        if frozen["criterion_id"] == "T2"
+    ]
+    del t2["statement"]
+
+    text = digest(doc)
+
+    assert (
+        "  - froze T1: A run created with capacity 2 returns that capacity in the response\n"
+        "  - froze T2: statement not recorded\n"
+        "  - froze T3: A run created without a capacity field returns capacity as null\n"
+    ) in text
+
+
 @pytest.mark.parametrize("max_cycles, over", [(9, False), (1, True)])
 def test_a_package_past_its_size_bound_is_named_and_kept_whole(max_cycles, over):
     """Bug caught: a size bound that is only a number. The real package (110 KB, four cycles) sits

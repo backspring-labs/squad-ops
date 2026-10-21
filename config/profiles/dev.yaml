@@ -10,7 +10,6 @@ auth:
     hostname_strict: false
     admin:
       username: admin
-      password: "secret://keycloak_admin_password"
     security:
       mfa_required_for_admin: false
       mfa_required_for_operator: false

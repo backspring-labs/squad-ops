@@ -45,7 +45,7 @@ async def main(dsn: str, vault_dir: str, campaign_id: str) -> int:
         from squadops.bootstrap.secrets import secret_provider_for
         from squadops.config.loader import load_config
 
-        dsn = load_config(secret_provider_factory=secret_provider_for).db.url
+        dsn = load_config(secret_provider_factory=secret_provider_for).database().url
     pool = await create_pool(
         dsn, min_size=1, max_size=2, server_settings={"default_transaction_read_only": "on"}
     )

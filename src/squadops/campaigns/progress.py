@@ -60,6 +60,8 @@ from squadops.campaigns.increment_tree import (
     VERIFIER_BUNDLE_ARTIFACT_TYPE,
     accepted_cycle_of,
     compose_accepted_tree,
+    forwarded_change_request,
+    increment_baseline,
     increment_seed,
     proposal_change_request,
 )
@@ -1094,7 +1096,8 @@ class CampaignProgress:
         what the application already does, not only the ids it may not reuse (a proposal told
         "do not break T3" re-proposed T3's feature). Found through the increment's seed, as every
         later workload finds it: the cycle row carries no plan refs, which ride each run's
-        forwarding.
+        forwarding. A repair or a retry, which reuses the seed and runs no proposal, finds it in
+        its own launch's plan refs.
 
         **A function of stored data alone (#1943).** The binding it feeds is part of the PROMOTE
         transition's replay identity, so a replay after a restart must compute the same binding.
@@ -1104,10 +1107,21 @@ class CampaignProgress:
         complete replay were one key with two bindings, refused, and the campaign never decided."""
 
         seed = await increment_seed(self._vault, self._cycles, cycle, run)
-        if seed is None or seed.change_request_ref is None:
+        if seed is not None:
+            if seed.change_request_ref is None:
+                return {}
+            _ref, content = await self._vault.retrieve(seed.change_request_ref)
+            document: str | None = content.decode("utf-8")
+        elif increment_baseline(cycle.resolved_config()) is not None:
+            # A repair or a retry runs no proposal: its launch carries the increment's approved
+            # seeds, and its workloads bind the change request from there (#2595). Read through
+            # the proposal only, an accepted repair froze its criteria without their statements.
+            document = await forwarded_change_request(self._vault, cycle)
+        else:
+            document = None
+        if document is None:
             return {}
-        _ref, content = await self._vault.retrieve(seed.change_request_ref)
-        request = load_stored_change_request(content.decode("utf-8"))
+        request = load_stored_change_request(document)
         return {c.id: {"statement": c.statement, "surface": c.surface} for c in request.criteria}
 
     async def _store_bundle(self, cycle: Cycle, run: Run, criterion_id: str, bundle: dict) -> str:
