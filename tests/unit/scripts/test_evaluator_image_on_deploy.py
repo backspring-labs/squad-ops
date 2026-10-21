@@ -3,9 +3,13 @@
 What bugs would these catch?
 - the evaluator image left to a manual script, so a deploy runs the sandbox with no evaluator and
   loaded check ``2416`` is red on a fresh box (the MacBook lane's deploy, 2026-10-20);
-- a rebuild on every deploy of an image that's already there, since it's a long Chromium build;
-- the evaluator built after the sandbox starts or after the deploy record, or a failed build
-  reported as a deployed sandbox.
+- a rebuild under the tag already on the box, FORCE_REBUILD included: its base and Chromium aren't
+  pinned, so the same tag would name a different evaluator, and every quality reading records only
+  the tag (#2581's second read);
+- a failed evaluator build that holds the sandbox's restart, though the sandbox runs without it, or
+  that doesn't fail the deploy;
+- the tag read by importing the package, which an older system python3 can't (Apple's 3.9);
+- the evaluator built after the deploy record, which reads the running services.
 
 The build script runs against a stand-in ``docker`` that records its arguments, so no image is
 built and the box's Docker is never reached. The deploy script is read, not run, as its order tests
@@ -32,7 +36,9 @@ exit 0
 """
 
 
-def _build(tmp_path: Path, *args: str, on_box: bool) -> tuple[subprocess.CompletedProcess, list]:
+def _build(
+    tmp_path: Path, *args: str, on_box: bool, python: str = sys.executable
+) -> tuple[subprocess.CompletedProcess, list]:
     bin_dir = tmp_path / "bin"
     bin_dir.mkdir()
     docker = bin_dir / "docker"
@@ -44,7 +50,7 @@ def _build(tmp_path: Path, *args: str, on_box: bool) -> tuple[subprocess.Complet
         "PATH": f"{bin_dir}{os.pathsep}{os.environ['PATH']}",
         "DOCKER_LOG": str(log),
         "INSPECT_RC": "0" if on_box else "1",
-        "PYTHON": sys.executable,
+        "PYTHON": python,
     }
     done = subprocess.run(
         ["bash", str(BUILD), *args], env=env, capture_output=True, text=True, timeout=60
@@ -83,15 +89,36 @@ def test_the_image_is_built_when_absent_and_rebuilt_only_when_asked(
         assert builds == [f"build {built_with}-t {_tag()} infra/evaluator"]
 
 
-def test_the_deploys_sandbox_step_builds_the_evaluator_before_it_starts_or_records():
+def test_the_deploy_builds_the_evaluator_only_if_absent_after_the_sandbox_and_before_the_record():
     text = DEPLOY.read_text()
     sandbox_build = text.index("docker compose --profile sandbox build sandbox-service")
-    evaluator = text.index('"$REPO_ROOT/scripts/dev/build_evaluator_image.sh" --if-absent')
     started = text.index("docker compose --profile sandbox up -d --wait sandbox-service")
+    evaluator = text.index(
+        '"$REPO_ROOT/scripts/dev/build_evaluator_image.sh" --if-absent || EVALUATOR_FAILED=1'
+    )
     record = text.index('"$REPO_ROOT/scripts/dev/ops/record_deploy.sh"')
 
-    assert sandbox_build < evaluator < started < record
-    # A failed evaluator build fails the sandbox step, as a failed sandbox build does.
-    step = text[evaluator - 400 : started]
-    assert step.count("|| BUILD_OK=false") == 2
-    assert '"$REPO_ROOT/scripts/dev/build_evaluator_image.sh" --no-cache' in step
+    assert sandbox_build < started < evaluator < record
+    # Never rebuilt under the tag on the box: the deploy calls the script one way only.
+    assert text.count('build_evaluator_image.sh" ') == 1
+    # A failed build fails the deploy, apart from the sandbox, which it doesn't hold.
+    assert '[ "${EVALUATOR_FAILED:-0}" = "1" ] && DEPLOY_FAILED=1' in text
+    assert "EVALUATOR_FAILED" not in text[sandbox_build:started]
+
+
+def test_the_tag_is_read_by_a_python_that_cant_import_the_package(tmp_path):
+    """Apple's python3 is 3.9, which can't import ``squadops.sandbox`` (it needs 3.10). Stood in by
+    an interpreter run isolated from site-packages and the source path, which can't import it
+    either, so the script must parse the tag from the source, never import it."""
+    isolated = tmp_path / "python-without-squadops"
+    isolated.write_text(f'#!/bin/sh\nexec "{sys.executable}" -I -S "$@"\n')
+    isolated.chmod(0o755)
+    probe = subprocess.run(
+        [str(isolated), "-c", "import squadops.sandbox.environment"], capture_output=True
+    )
+    assert probe.returncode != 0, "the stand-in can import the package, so it proves nothing"
+
+    done, calls = _build(tmp_path, "--if-absent", on_box=False, python=str(isolated))
+
+    assert done.returncode == 0, done.stderr
+    assert calls[-1] == f"build -t {_tag()} infra/evaluator"

@@ -6,7 +6,7 @@
 # src/squadops/sandbox/environment.py), so it cannot drift from what the runner launches.
 #
 # A deploy's sandbox step runs this (#2580): with --if-absent it builds only when the pinned tag
-# isn't on the box. Any other argument goes to `docker build` (--no-cache, under FORCE_REBUILD).
+# isn't on the box. Any other argument goes to `docker build` (--no-cache, by hand).
 set -euo pipefail
 cd "$(dirname "$0")/../.."
 
@@ -20,7 +20,22 @@ PYTHON="${PYTHON:-}"
 if [ -z "$PYTHON" ]; then
   if [ -x .venv/bin/python ]; then PYTHON=.venv/bin/python; else PYTHON=python3; fi
 fi
-TAG="$(PYTHONPATH=src "$PYTHON" -c 'from squadops.sandbox.environment import EVALUATOR_IMAGE; print(EVALUATOR_IMAGE)')"
+# Parsed from the source, never imported: the import chain needs Python 3.10+, and a deploy from a
+# checkout with no .venv may only have an older system python3, Apple's 3.9 among them (#2581).
+TAG="$("$PYTHON" - <<'PY'
+import ast
+import sys
+
+tree = ast.parse(open("src/squadops/sandbox/environment.py", encoding="utf-8").read())
+for node in tree.body:
+    targets = node.targets if isinstance(node, ast.Assign) else [getattr(node, "target", None)]
+    if any(getattr(t, "id", None) == "EVALUATOR_IMAGE" for t in targets):
+        if isinstance(node.value, ast.Constant) and isinstance(node.value.value, str):
+            print(node.value.value)
+            sys.exit(0)
+sys.exit("EVALUATOR_IMAGE is not a string literal in src/squadops/sandbox/environment.py")
+PY
+)"
 if [ "$IF_ABSENT" = true ] && docker image inspect "$TAG" >/dev/null 2>&1; then
   echo "$TAG is on the box"
   exit 0
