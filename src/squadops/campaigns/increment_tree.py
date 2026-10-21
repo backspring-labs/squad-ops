@@ -139,16 +139,27 @@ async def approved_change_request(vault: Any, cycle: Any) -> str | None:
 
     if increment_baseline(cycle.resolved_config()) is None:
         return None
+    document = await forwarded_change_request(vault, cycle)
+    if document is None:
+        raise ValueError(
+            f"increment cycle {cycle.cycle_id}: its framing was forwarded no approved "
+            f"{CHANGE_REQUEST_ARTIFACT_TYPE}, and an increment frames nothing else"
+        )
+    return document
+
+
+async def forwarded_change_request(vault: Any, cycle: Any) -> str | None:
+    """The approved change request among the cycle's ``plan_artifact_refs``, its stored hash
+    checked, or ``None`` when none was forwarded. A repair's or a retry's launch carries its
+    increment's approved seeds there, as it runs no proposal of its own (#2595). A read that
+    fails raises."""
     for ref_id in cycle.execution_overrides.get("plan_artifact_refs") or ():
         ref, content = await vault.retrieve(ref_id)
         if ref.artifact_type == CHANGE_REQUEST_ARTIFACT_TYPE:
             document = content.decode("utf-8")
             load_stored_change_request(document)
             return document
-    raise ValueError(
-        f"increment cycle {cycle.cycle_id}: its framing was forwarded no approved "
-        f"{CHANGE_REQUEST_ARTIFACT_TYPE}, and an increment frames nothing else"
-    )
+    return None
 
 
 @dataclasses.dataclass(frozen=True)
