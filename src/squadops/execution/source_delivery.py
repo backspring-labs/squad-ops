@@ -32,6 +32,7 @@ from typing import Any
 from uuid import uuid4
 
 from squadops.campaigns.evaluator_trees import FileTree
+from squadops.cycles.delivered_tree import WORKSPACE_ARTIFACT_TYPES
 from squadops.cycles.emission_integrity import EMISSION_STATUS_FAILED
 from squadops.cycles.models import ArtifactRef, Cycle
 from squadops.cycles.task_plan import REPAIR_TASK_TYPES
@@ -81,6 +82,10 @@ def squad_changes(
         if ref.metadata.get("emission_status") == EMISSION_STATUS_FAILED:
             continue
         if producer in REPAIR_TASK_TYPES or producer == SOURCE_CHECKOUT:
+            continue
+        # #2591: a task's own records (its test report, its typed-check evaluation) are the
+        # squad's evidence, never the product's files (FR-19).
+        if ref.artifact_type not in WORKSPACE_ARTIFACT_TYPES:
             continue
         if authors_source(producer) or authors_qa_suite(producer):
             latest[ref.filename] = art_id

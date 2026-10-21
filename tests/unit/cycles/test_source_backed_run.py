@@ -361,6 +361,27 @@ async def _end_of_plan(executor, cycle, run, vault, changes, task_type="developm
         )
         vault.stored[ref.artifact_id] = (ref, content)
         emitted.append(ref.artifact_id)
+    # #2591: each task also stores its own records, as a live develop and qa.test do. They are
+    # the squad's evidence, never the product's files.
+    for path, artifact_type, producer in (
+        ("typed_check_evaluation_task_0.json", "typed_check_evaluation", "development.develop"),
+        ("test_report.md", "test_report", "qa.test"),
+    ):
+        ref = ArtifactRef(
+            artifact_id=f"art_rec{len(emitted):09d}",
+            project_id=cycle.project_id,
+            cycle_id=cycle.cycle_id,
+            run_id=run.run_id,
+            artifact_type=artifact_type,
+            filename=path,
+            content_hash="h",
+            size_bytes=2,
+            media_type="text/plain",
+            created_at=datetime.now(UTC),
+            metadata={"producing_task_type": producer, "task_id": "task_dev"},
+        )
+        vault.stored[ref.artifact_id] = (ref, b"{}")
+        emitted.append(ref.artifact_id)
     plan = [dataclasses.replace(_envelope(cycle, list(changes)), task_type=task_type)]
     await executor._execute_sequential(
         plan, run.run_id, cycle, seed_artifact_refs=[*seeded, *emitted], ledger=RunLedger()
