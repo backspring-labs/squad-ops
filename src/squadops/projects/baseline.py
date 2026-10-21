@@ -23,7 +23,7 @@ from dataclasses import dataclass, field
 from typing import Any
 
 from squadops.projects.development_configuration import Check
-from squadops.sandbox.findings import FindingsReading, comparable, grown
+from squadops.sandbox.findings import READERS, FindingsReading, UnknownReader, comparable, grown
 
 BASELINE_SCHEMA = "inherited-baseline/v1"
 _SCHEMA_MAJOR = re.compile(r"^inherited-baseline/v(\d+)$")
@@ -132,8 +132,23 @@ def result_of(check: Check, run: Any) -> CheckResult:
             check.id, UNVERIFIED, reason=_DID_NOT_RUN[run.outcome], evidence=evidence
         )
     verdict = PASS if run.exit_code == 0 else FAIL
-    findings = FindingsReading.from_dict(run.findings) if check.findings and run.findings else None
-    return CheckResult(check.id, verdict, evidence=evidence, findings=findings)
+    return CheckResult(check.id, verdict, evidence=evidence, findings=_reading_of(check, run))
+
+
+def _reading_of(check: Check, run: Any) -> FindingsReading | None:
+    """The run's reading by its check's declared reader, or ``None`` for a check that declares
+    none. A declared reader whose run brought back no reading (a sandbox from before #2623, or a
+    stand-in) reads as unreadable, never as a check with no reader: that would read it whole."""
+    if not check.findings:
+        return None
+    if run.findings:
+        return FindingsReading.from_dict(run.findings)
+    return FindingsReading(
+        check.findings,
+        READERS[check.findings],
+        readable=False,
+        reason="the run returned no reading for its declared reader",
+    )
 
 
 def attribute(candidate: CheckResult, baseline: CheckResult | None) -> CheckResult:
@@ -199,13 +214,19 @@ def parse_baseline(doc: Mapping[str, Any]) -> InheritedBaseline:
         if entry.get("result") not in RESULTS:
             raise BaselineInvalid(f"check {entry.get('id')!r}: result is one of {RESULTS}")
         findings = entry.get("findings")
+        try:
+            reading = FindingsReading.from_dict(findings) if findings else None
+        except (UnknownReader, ValueError, KeyError) as e:
+            raise BaselineInvalid(
+                f"check {entry.get('id')!r}: its findings can't be read ({e})"
+            ) from e
         checks.append(
             CheckResult(
                 entry["id"],
                 entry["result"],
                 entry.get("attribution", INHERITED),
                 entry.get("reason"),
-                findings=FindingsReading.from_dict(findings) if findings else None,
+                findings=reading,
             )
         )
     return InheritedBaseline(

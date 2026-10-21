@@ -252,3 +252,29 @@ def test_a_baselines_readings_are_stored_and_read_back():
     [lint] = [c for c in parse_baseline(doc).checks if c.id == "lint"]
 
     assert lint.findings == reading
+
+
+def test_a_declared_reader_whose_run_brought_back_no_reading_is_never_read_whole():
+    """The Spark lane's G4 on #2630. Bug caught: a check that declares a reader, run by a sandbox
+    that returned no reading (one from before #2623, or a stand-in), read as a check with no
+    reader, so a regression inside it passes as inherited."""
+    declared = Check("lint", ("ruff", "check"), findings="ruff")
+    run = _run(exit_code=1, findings=None)
+
+    candidate = result_of(declared, run)
+    got = attribute(candidate, _lint(_ruff("continuum-ba8fa68b-ruff-concise.txt")))
+
+    assert candidate.findings.readable is False
+    assert got.attribution == UNVERIFIED_ATTRIBUTION
+    assert "returned no reading" in got.read["reason"]
+
+
+def test_a_stored_reading_that_cant_be_read_refuses_the_baseline_naming_its_check():
+    doc = {**recorded("inherited_baseline", "valid")}
+    doc["checks"] = [
+        *doc["checks"],
+        {"id": "lint", "result": FAIL, "findings": {"reader": "eslint"}},
+    ]
+
+    with pytest.raises(BaselineInvalid, match="check 'lint'"):
+        parse_baseline(doc)
