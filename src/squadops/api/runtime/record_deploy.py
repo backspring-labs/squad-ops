@@ -144,7 +144,7 @@ async def _deploy_config_and_pool() -> tuple[AppConfig, asyncpg.Pool]:
     from adapters.persistence.pool import create_pool
 
     config = load_config(secret_provider_factory=secret_provider_for)
-    return config, await create_pool(config.db.url, min_size=1, max_size=2)
+    return config, await create_pool(config.database().url, min_size=1, max_size=2)
 
 
 def _deploy_registry(config: AppConfig, pool: asyncpg.Pool) -> DeployRegistryPort:

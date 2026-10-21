@@ -188,8 +188,6 @@ services:
     secrets:
       - db_password
       - rabbitmq_password
-      - keycloak_admin_password
-      - keycloak_db_dsn
     environment:
       POSTGRES_URL: postgresql://squadops:secret://db_password@postgres:5432/squadops
       RABBITMQ_URL: amqp://squadops:secret://rabbitmq_password@rabbitmq:5672/
@@ -268,16 +266,12 @@ services:
     restart: unless-stopped
     secrets:
       - agent_client_secret
-      - db_password
       - rabbitmq_password
-      - keycloak_admin_password
-      - keycloak_db_dsn
     environment:
       SQUADOPS__AGENT__ID: max
       SQUADOPS_AGENT_ROLE: lead
       SQUADOPS_PROFILE: "${SQUADOPS_PROFILE:?Run bootstrap first}"
       SQUADOPS__SECRETS__PROVIDER: docker_secret
-      SQUADOPS__DB__URL: postgresql://squadops:secret://db_password@postgres:5432/squadops
       SQUADOPS__COMMS__RABBITMQ__URL: amqp://squadops:secret://rabbitmq_password@rabbitmq:5672/
       SQUADOPS__COMMS__REDIS__URL: redis://redis:6379/0
       SQUADOPS__TELEMETRY__BACKEND: otel
@@ -332,16 +326,12 @@ services:
     restart: unless-stopped
     secrets:
       - agent_client_secret
-      - db_password
       - rabbitmq_password
-      - keycloak_admin_password
-      - keycloak_db_dsn
     environment:
       SQUADOPS__AGENT__ID: nat
       SQUADOPS_AGENT_ROLE: strat
       SQUADOPS_PROFILE: "${SQUADOPS_PROFILE:?Run bootstrap first}"
       SQUADOPS__SECRETS__PROVIDER: docker_secret
-      SQUADOPS__DB__URL: postgresql://squadops:secret://db_password@postgres:5432/squadops
       SQUADOPS__COMMS__RABBITMQ__URL: amqp://squadops:secret://rabbitmq_password@rabbitmq:5672/
       SQUADOPS__COMMS__REDIS__URL: redis://redis:6379/0
       SQUADOPS__TELEMETRY__BACKEND: otel
@@ -417,16 +407,12 @@ services:
     restart: unless-stopped
     secrets:
       - agent_client_secret
-      - db_password
       - rabbitmq_password
-      - keycloak_admin_password
-      - keycloak_db_dsn
     environment:
       SQUADOPS__AGENT__ID: neo
       SQUADOPS_AGENT_ROLE: dev
       SQUADOPS_PROFILE: "${SQUADOPS_PROFILE:?Run bootstrap first}"
       SQUADOPS__SECRETS__PROVIDER: docker_secret
-      SQUADOPS__DB__URL: postgresql://squadops:secret://db_password@postgres:5432/squadops
       SQUADOPS__COMMS__RABBITMQ__URL: amqp://squadops:secret://rabbitmq_password@rabbitmq:5672/
       SQUADOPS__COMMS__REDIS__URL: redis://redis:6379/0
       SQUADOPS__TELEMETRY__BACKEND: otel
@@ -483,16 +469,12 @@ services:
     restart: unless-stopped
     secrets:
       - agent_client_secret
-      - db_password
       - rabbitmq_password
-      - keycloak_admin_password
-      - keycloak_db_dsn
     environment:
       SQUADOPS__AGENT__ID: eve
       SQUADOPS_AGENT_ROLE: qa
       SQUADOPS_PROFILE: "${SQUADOPS_PROFILE:?Run bootstrap first}"
       SQUADOPS__SECRETS__PROVIDER: docker_secret
-      SQUADOPS__DB__URL: postgresql://squadops:secret://db_password@postgres:5432/squadops
       SQUADOPS__COMMS__RABBITMQ__URL: amqp://squadops:secret://rabbitmq_password@rabbitmq:5672/
       SQUADOPS__COMMS__REDIS__URL: redis://redis:6379/0
       SQUADOPS__TELEMETRY__BACKEND: otel
@@ -547,16 +529,12 @@ services:
     restart: unless-stopped
     secrets:
       - agent_client_secret
-      - db_password
       - rabbitmq_password
-      - keycloak_admin_password
-      - keycloak_db_dsn
     environment:
       SQUADOPS__AGENT__ID: data
       SQUADOPS_AGENT_ROLE: data
       SQUADOPS_PROFILE: "${SQUADOPS_PROFILE:?Run bootstrap first}"
       SQUADOPS__SECRETS__PROVIDER: docker_secret
-      SQUADOPS__DB__URL: postgresql://squadops:secret://db_password@postgres:5432/squadops
       SQUADOPS__COMMS__RABBITMQ__URL: amqp://squadops:secret://rabbitmq_password@rabbitmq:5672/
       SQUADOPS__COMMS__REDIS__URL: redis://redis:6379/0
       SQUADOPS__TELEMETRY__BACKEND: otel
@@ -613,16 +591,12 @@ services:
     restart: unless-stopped
     secrets:
       - agent_client_secret
-      - db_password
       - rabbitmq_password
-      - keycloak_admin_password
-      - keycloak_db_dsn
     environment:
       SQUADOPS__AGENT__ID: han
       SQUADOPS_AGENT_ROLE: generalist
       SQUADOPS_PROFILE: "${SQUADOPS_PROFILE:?Run bootstrap first}"
       SQUADOPS__SECRETS__PROVIDER: docker_secret
-      SQUADOPS__DB__URL: postgresql://squadops:secret://db_password@postgres:5432/squadops
       SQUADOPS__COMMS__RABBITMQ__URL: amqp://squadops:secret://rabbitmq_password@rabbitmq:5672/
       SQUADOPS__COMMS__REDIS__URL: redis://redis:6379/0
       SQUADOPS__TELEMETRY__BACKEND: otel
@@ -677,16 +651,12 @@ services:
     restart: unless-stopped
     secrets:
       - agent_client_secret
-      - db_password
       - rabbitmq_password
-      - keycloak_admin_password
-      - keycloak_db_dsn
     environment:
       SQUADOPS__AGENT__ID: bob
       SQUADOPS_AGENT_ROLE: builder
       SQUADOPS_PROFILE: "${SQUADOPS_PROFILE:?Run bootstrap first}"
       SQUADOPS__SECRETS__PROVIDER: docker_secret
-      SQUADOPS__DB__URL: postgresql://squadops:secret://db_password@postgres:5432/squadops
       SQUADOPS__COMMS__RABBITMQ__URL: amqp://squadops:secret://rabbitmq_password@rabbitmq:5672/
       SQUADOPS__COMMS__REDIS__URL: redis://redis:6379/0
       SQUADOPS__TELEMETRY__BACKEND: otel
@@ -764,10 +734,7 @@ services:
     restart: unless-stopped
     secrets:
       - agent_client_secret
-      - db_password
       - rabbitmq_password
-      - keycloak_admin_password
-      - keycloak_db_dsn
     environment:
       SQUADOPS__AGENT__ID: joi
       SQUADOPS_AGENT_ROLE: comms
@@ -783,7 +750,6 @@ services:
       SQUADOPS__CYCLES__SQUAD_PROFILE_PROVIDER: postgres  # required, never defaulted (#1568)
       SQUADOPS__CYCLES__PROJECT_REGISTRY_PROVIDER: ${SQUADOPS__CYCLES__PROJECT_REGISTRY_PROVIDER:?set it in .env (see .env.example) — required, never defaulted (#1568)}
       SQUADOPS__SANDBOX__PROVIDER: ${SQUADOPS__SANDBOX__PROVIDER:?set it in .env (see .env.example) — required, never defaulted (#1568)}
-      SQUADOPS__DB__URL: postgresql://squadops:secret://db_password@postgres:5432/squadops
       SQUADOPS__COMMS__RABBITMQ__URL: amqp://squadops:secret://rabbitmq_password@rabbitmq:5672/
       SQUADOPS__COMMS__REDIS__URL: redis://redis:6379/0
       SQUADOPS__TELEMETRY__BACKEND: otel
