@@ -50,6 +50,7 @@ from squadops.memory.context import (
     TaskInvocation,
     UnitRef,
 )
+from squadops.memory.dispatch_turns import DispatchTurnUnavailable
 from squadops.memory.exposures import Exposure
 from squadops.memory.lessons import RecallDisposition, Recalled, RecallPolicy, _tokens
 from squadops.memory.project_instructions import (
@@ -331,10 +332,20 @@ async def _ask_and_disclose(
     """One invocation's context, through the port: assembled with the task's trusted scope, disclosed
     under its attempt, and what it is handed: its lessons and its task instructions, each ``None``
     when nothing is supplied. A binding section that is incomplete is disclosed, then refused with
-    why: the task is not dispatched (§3.6)."""
+    why: the task is not dispatched (§3.6).
+
+    #2545: read and disclosed in the unit's dispatch turn, so a re-binding or an instruction added
+    after admission lands before the read or after the exposure, never between them. A turn that
+    isn't given holds the task, as an unreadable section does."""
     assembly = LessonContextAssembly(recall, now=now)
-    bundle = await assembly.assemble(request_for(envelope, unit=unit, stack=stack, run_id=run_id))
-    await assembly.disclose(bundle)
+    try:
+        async with recall.dispatch_turn(*unit):
+            bundle = await assembly.assemble(
+                request_for(envelope, unit=unit, stack=stack, run_id=run_id)
+            )
+            await assembly.disclose(bundle)
+    except DispatchTurnUnavailable as e:
+        raise TaskInstructionsUnavailable(f"task {envelope.task_id} is held: {e}") from e
     if not bundle.complete:
         why = "; ".join(
             unresolved_reason(s)

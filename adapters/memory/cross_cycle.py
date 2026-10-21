@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 from collections.abc import Sequence
+from contextlib import AbstractAsyncContextManager
 from datetime import datetime
 from typing import Any
 
@@ -12,6 +13,7 @@ from squadops.memory.approval import units_holding
 from squadops.memory.assessment import Assessment
 from squadops.memory.chat import ChatExposure
 from squadops.memory.cycle_bindings import CycleBinding
+from squadops.memory.dispatch_turns import DispatchTurns
 from squadops.memory.exposures import Exposure
 from squadops.memory.lessons import Approval, PatternRevision, Snapshot, UnitKind
 from squadops.memory.observations import Observation, ObservationSource
@@ -46,6 +48,7 @@ class InMemoryCrossCycleMemoryStore(CrossCycleMemoryStorePort):
         self._chat_exposures: dict[tuple[str, str], ChatExposure] = {}
         self._assessments: dict[str, Assessment] = {}
         self._annotations: dict[str, Annotation] = {}
+        self._turns = DispatchTurns()
 
     async def record_observations(self, observations: Sequence[Observation]) -> int:
         new = 0
@@ -147,6 +150,11 @@ class InMemoryCrossCycleMemoryStore(CrossCycleMemoryStorePort):
             cycle_id, rows[0][1], rows[0][2], tuple(r[0] for r in rows), max(r[3] for r in rows)
         )
 
+    def dispatch_turn(
+        self, unit_kind: UnitKind, unit_id: str, *, wait_seconds: float | None = None
+    ) -> AbstractAsyncContextManager[None]:
+        return self._turns.held(unit_kind, unit_id, wait_seconds=wait_seconds)
+
     async def rebind_snapshot(self, snapshot: Snapshot, *, after: int) -> None:
         key = (snapshot.unit_kind.value, snapshot.unit_id)
         held = self._snapshots[key]
@@ -220,6 +228,9 @@ class InMemoryCrossCycleMemoryStore(CrossCycleMemoryStorePort):
 class PostgresCrossCycleMemoryStore(CrossCycleMemoryStorePort):
     def __init__(self, pool: Any) -> None:
         self._pool = pool
+        #: #2545: in this process, as every dispatch and every change to a binding is (the runtime
+        #: API's one server process). A second process needs them ordered in Postgres instead.
+        self._turns = DispatchTurns()
 
     async def record_observations(self, observations: Sequence[Observation]) -> int:
         new = 0
@@ -445,6 +456,11 @@ class PostgresCrossCycleMemoryStore(CrossCycleMemoryStorePort):
             cycle_id, rows[0]["unit_kind"], rows[0]["unit_id"], entries,
             max(r["bound_at"] for r in rows),
         )  # fmt: skip
+
+    def dispatch_turn(
+        self, unit_kind: UnitKind, unit_id: str, *, wait_seconds: float | None = None
+    ) -> AbstractAsyncContextManager[None]:
+        return self._turns.held(unit_kind, unit_id, wait_seconds=wait_seconds)
 
     async def rebind_snapshot(self, snapshot: Snapshot, *, after: int) -> None:
         # One statement, so two re-bindings read from the same snapshot can't both land.

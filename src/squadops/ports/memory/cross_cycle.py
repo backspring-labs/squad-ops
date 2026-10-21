@@ -12,6 +12,7 @@ from __future__ import annotations
 
 from abc import ABC, abstractmethod
 from collections.abc import Sequence
+from contextlib import AbstractAsyncContextManager
 from datetime import datetime
 
 from squadops.memory.annotation import Annotation
@@ -119,6 +120,16 @@ class CrossCycleMemoryStorePort(ABC):
         """Store ``snapshot``, a re-binding of its unit's, if the stored one still carries ``after``
         re-bindings (Appendix A §3.7; #2179). Raises :class:`SnapshotMoved` when it doesn't, and
         ``KeyError`` for a unit that pinned none."""
+
+    @abstractmethod
+    def dispatch_turn(
+        self, unit_kind: UnitKind, unit_id: str, *, wait_seconds: float | None = None
+    ) -> AbstractAsyncContextManager[None]:
+        """The unit's dispatch turn (#2545, ``squadops.memory.dispatch_turns``). A dispatch holds it
+        from reading what it is handed to recording its exposure. A change to what the unit's
+        dispatches are handed (a re-binding, a task instruction added after admission) holds it
+        from its check of the exposures to its write. Raises ``DispatchTurnUnavailable`` when the
+        turn isn't given within ``wait_seconds`` (a change's bound), or the dispatch's bound."""
 
     @abstractmethod
     async def list_snapshots_holding(self, approval_id: str) -> list[Snapshot]:

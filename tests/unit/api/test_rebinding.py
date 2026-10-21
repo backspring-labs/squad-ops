@@ -81,6 +81,7 @@ class _World:
         app.state.campaign_registry = self.campaigns
         app.state.campaign_launch = self.launches = _Launches()
         app.state.authz_port = KeycloakAuthzAdapter()
+        self.app = app
         self.client = TestClient(app)
 
     def instruct(self, text: str = "Name each run by its route.") -> str:

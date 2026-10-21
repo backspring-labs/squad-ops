@@ -31,7 +31,7 @@ from squadops.api.memory_schemas import (
 )
 from squadops.api.middleware.auth import require_scopes
 from squadops.api.routes.cycles.mapping import cycle_status_of
-from squadops.api.routes.memory.interventions import record_on_control_log
+from squadops.api.routes.memory.interventions import dispatch_turn, record_on_control_log
 from squadops.api.runtime.deps import (
     get_campaign_launch,
     get_campaign_registry,
@@ -177,17 +177,6 @@ async def rebind_unit(
     if record is None or record.project_id != project_id:
         raise http_error(404, "NOT_FOUND", f"no record {body.record_id} in {project_id}")
     store = get_memory_store(request)
-    handed = runs_handed(snapshot, body.record_id, await store.list_project_exposures(project_id))
-    if handed:
-        runs = ", ".join(sorted({run_id for _, run_id in handed}))
-        raise http_error(
-            409,
-            "RESTART_REQUIRED",
-            f"{runs} dispatched with the revision being replaced, so the {kind.value}'s later work "
-            "would build on work done under it. Forward re-binding is for a unit none of whose "
-            "dispatches had it; restart the work as a new standalone cycle or campaign, which "
-            "binds the record's current revision (SIP-0110 Appendix A §3.7, §5u)",
-        )
     now = datetime.now(UTC)
     try:
         replacement = await _replacement(request, record, kind, project_id, unit_id, unit)
@@ -196,9 +185,11 @@ async def rebind_unit(
         )
     except RebindRefused as e:
         raise http_error(422, "VALIDATION_ERROR", str(e)) from e
-    # Only the running cycles' bindings and the commit hold launches: the unit's own binding of
-    # the replacement, above, reads no cycle.
-    async with _launches_held(request, kind):
+    # Only the check, the running cycles' bindings and the commit hold launches and the unit's
+    # dispatches: the unit's own binding of the replacement, above, reads no cycle. #2545: no
+    # dispatch composes between the check of what the unit's dispatches were handed and the write.
+    async with _launches_held(request, kind), dispatch_turn(request, (kind, unit_id)):
+        _refuse_handed(snapshot, body.record_id, await store.list_project_exposures(project_id))
         try:
             if kind is UnitKind.CAMPAIGN:
                 await _bind_running_cycles(request, store, unit_id, replacement, now)
@@ -224,6 +215,22 @@ async def rebind_unit(
             "next": _next(kind, rebinding, entry_id),
         }
     )
+
+
+def _refuse_handed(snapshot: Snapshot, record_id: str, exposures: list[Any]) -> None:
+    """Refuse (409) a re-binding when a dispatch of the unit was handed the revision it replaces."""
+    handed = runs_handed(snapshot, record_id, exposures)
+    if handed:
+        runs = ", ".join(sorted({run_id for _, run_id in handed}))
+        raise http_error(
+            409,
+            "RESTART_REQUIRED",
+            f"{runs} dispatched with the revision being replaced, so the "
+            f"{snapshot.unit_kind.value}'s later work would build on work done under it. Forward "
+            "re-binding is for a unit none of whose dispatches had it; restart the work as a new "
+            "standalone cycle or campaign, which binds the record's current revision (SIP-0110 "
+            "Appendix A §3.7, §5u)",
+        )
 
 
 async def _replacement(

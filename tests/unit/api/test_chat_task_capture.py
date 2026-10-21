@@ -11,10 +11,12 @@ capture the intervention ledger never sees; the card offered nothing to fill its
 
 from __future__ import annotations
 
+import asyncio
 import dataclasses
 import json
 from datetime import UTC, datetime
 
+import httpx
 import pytest
 
 from adapters.cycles.memory_campaign_registry import MemoryCampaignRegistry
@@ -23,10 +25,13 @@ from adapters.memory.recall import SnapshotRecall
 from squadops.auth.models import Role
 from squadops.campaigns.models import ControlOperation
 from squadops.capabilities.lesson_supply import supply_lessons, unit_of
+from squadops.memory.exposures import Exposure
 from squadops.memory.lessons import UnitKind
 from squadops.memory.pinning import pin_unit
+from squadops.memory.recall import RecallQuery
 from squadops.memory.task_instructions import TASK_INSTRUCTIONS_INPUT
 from tests.unit.api.test_chat_memory_routes import world  # noqa: F401 — the chat world fixture
+from tests.unit.api.test_dispatch_turns import _dispatching, _still_waiting
 from tests.unit.campaigns.builders import campaign
 from tests.unit.cycles.test_failure_recall import _framing_cycle, _plan
 
@@ -135,6 +140,42 @@ async def test_a_capture_for_a_task_that_already_dispatched_is_refused_as_such(w
     assert response.json()["detail"]["error"]["code"] == "TASK_DISPATCHED"
     assert await world.records.list_project("group_run") == []
     assert len(world.chats.messages) == replies_before
+
+
+async def test_a_capture_waits_for_a_dispatch_being_composed(world):  # noqa: F811
+    """#2545. Bug caught: the capture's dispatched check run while the task's dispatch is between
+    reading its instructions and disclosing them, so the capture lands for a task that dispatched
+    without it."""
+    cycles, _ = _registries(world)
+    cycle = _cycle()
+    await cycles.create_cycle(cycle)
+    session_id, card = _proposed(world, cycle.cycle_id)
+    entered, release = asyncio.Event(), asyncio.Event()
+    exposure = Exposure(
+        run_id="run_recall0001", task_id="t_design", cycle_id=cycle.cycle_id, agent_id="nat",
+        seam="plan_authoring", query=RecallQuery(project_id="group_run", task_type=DESIGN),
+        recalled={}, recorded_at=NOW,
+    )  # fmt: skip
+    dispatching = asyncio.create_task(
+        _dispatching(world.store, unit_of(cycle), exposure, entered, release)
+    )
+    await entered.wait()
+    body = {"message_id": card["source_message_id"], "text": card["text"], "kind": "instruction",
+            "scope": "task", "target": card["target"]}  # fmt: skip
+    transport = httpx.ASGITransport(app=world.client.app)
+    async with httpx.AsyncClient(transport=transport, base_url="http://t") as client:
+        capture = asyncio.create_task(
+            client.post(f"/api/v1/chat/sessions/{session_id}/captures", json=body)
+        )
+        waited = await _still_waiting(capture)
+        release.set()
+        await dispatching
+        response = await capture
+
+    assert waited
+    assert response.status_code == 409, response.text
+    assert response.json()["detail"]["error"]["code"] == "TASK_DISPATCHED"
+    assert await world.records.list_project("group_run") == []
 
 
 @pytest.mark.parametrize(("disabled", "status"), [(True, 422), (False, 201)])

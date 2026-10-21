@@ -8,6 +8,7 @@ disclosure, so duty and ambient callers reuse it rather than reimplement its tru
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
+from contextlib import AbstractAsyncContextManager
 
 from squadops.memory.exposures import Exposure
 from squadops.memory.lessons import Recalled
@@ -25,6 +26,12 @@ class FailurePatternRecallPort(ABC):
     async def disclose(self, exposure: Exposure) -> None:
         """Record what a consuming task was supplied, or why nothing (§0.8 step 7). Never raises:
         an exposure that cannot be stored is logged, and the task runs."""
+
+    @abstractmethod
+    def dispatch_turn(self, unit_kind: UnitKind, unit_id: str) -> AbstractAsyncContextManager[None]:
+        """The unit's dispatch turn (#2545), held by a dispatch from reading what it is handed to
+        disclosing it, so a change to the unit's binding never lands between the two. It is the
+        store's (``CrossCycleMemoryStorePort.dispatch_turn``), which a change holds too."""
 
     @abstractmethod
     async def task_instructions(self, project_id: str, cycle_id: str) -> list[MemoryRecord]:

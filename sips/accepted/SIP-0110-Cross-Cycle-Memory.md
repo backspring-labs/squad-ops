@@ -89,7 +89,7 @@ re-places it.
 | entry points: the console's memory record view (§A.3.11) | **placed** | 2.4.0, #2182: the view and its uses route shipped in PR #2524 (§5q); the page's capture test remains, live with #2183 |
 | entry points: the acceptance matrix, T1–T17, live on a deploy (§A.5) | **placed** | 2.4.0, #2183 |
 | entry points: the legacy agent store retired (§A.4.3), on the owner's OK for its compose change | **placed** | 2.5.0, #2184 |
-| a unit pinned while a revocation or a withdrawal is answered, missed by its answer (§0.7, §A.3.8) | **placed** | 2.4.0, #2545: found by the second reader on PR #2544 (§5u) |
+| a unit pinned while a revocation or a withdrawal is answered, missed by its answer (§0.7, §A.3.8) | **placed** | 2.4.0, #2545: found by the second reader on PR #2544 (§5u); its dispatch half, a dispatch between a change's check and its write (§5v, §5w), shipped in the PR that wrote this (§5af); the pin half remains, on #2551 |
 
 **What closes this SIP:** Phase 1's four slices shipped in 2.2.0 with the window's finding recorded (§0.13), Phase 2's
 gate ruled by the owner on that finding (both done, §5h), the next build-side experiment shipped or dropped, and the
@@ -2977,6 +2977,71 @@ are `tests/integration/memory/test_postgres_cycle_bindings_integration.py`, whic
 
   The Postgres store's `ON CONFLICT … DO NOTHING` is held by the integration test, in CI only while the 2.4 window is
   open.
+
+## 5af. A unit's dispatches and the changes to what they're handed, ordered, as built (2026-10-21, #2545's dispatch half; the MacBook lane, under the owner's delegation of 2026-10-18, with the lanes' agreement that the executor's half of #2545 is the MacBook lane's)
+
+**What shipped:** the window §5v and §5w each named, "a dispatch that lands between the check and the write", closed
+for every change that checks a unit's dispatches.
+- **The turn.** Each unit (a standalone cycle, or a campaign with all its cycles) has a dispatch turn
+  (`squadops.memory.dispatch_turns`). It is the store's (`CrossCycleMemoryStorePort.dispatch_turn`), and the recall
+  port hands it to the composer (`FailurePatternRecallPort.dispatch_turn`).
+- **A dispatch** holds it from reading what it's handed to recording its exposure (`_ask_and_disclose`). That covers
+  every authoring dispatch: a run's provisioning, a retry's re-dispatch and a repair alike.
+- **A change** holds it from its check of the unit's exposures to its write:
+  - a re-binding (§5v), inside the campaign's launch hold (§5ad);
+  - a task instruction added or revised through the records API (§5w), captured in chat (§5x), or given at the
+    increment gate's approval (§5aa).
+- **So a change lands either before a dispatch's read or after its exposure.** In the first case the dispatch is handed
+  the change. In the second the change's check sees the dispatch and refuses (`RESTART_REQUIRED`, `TASK_DISPATCHED`).
+- **A turn not given in time:**
+  - a dispatch waits 300 s. Its task is then held, and its run fails naming it, as an unreadable binding section
+    does (§3.6). A change holds the turn longest through its reference bindings, each bounded by its resolver
+    (#2579).
+  - a change waits 20 s, under the CLI's own 30 s request timeout, and is then refused (503
+    `DISPATCH_TURN_UNAVAILABLE`), with nothing written. So the operator reads "send it again", not a timeout that
+    can't say whether it was written (#2605).
+- **A ruling with no task instructions takes no turn:** it has nothing to check.
+- **One process, one store.** The turns are in memory, in the runtime API, which composes every dispatch and serves
+  every change in one server process. Two guards hold it:
+  - one reads its image's command and every compose file that starts it;
+  - one reads the composition root: one store, with the executor's recall built over it.
+
+  A second process would need the store to order them instead, with a Postgres advisory lock for one. The loaded
+  check `2545-dispatch-turn` reads it on a deploy.
+
+**Where it narrows §5v and §5w:**
+- **A re-binding's dispatch check now comes after its replacement is bound.** A request both refuse is answered with the
+  binding's refusal (422) rather than `RESTART_REQUIRED`.
+- **Still unseen:** a dispatch whose exposure wasn't recorded (`disclose` logs a failed write, and the task dispatches),
+  as §5v names it.
+- **#2545's pin half** (an admission's pin against a revocation or a withdrawal) is the Spark lane's, on #2551.
+
+**Evidence:**
+- **`tests/unit/api/test_dispatch_turns.py`** enters at each change's route, over HTTP on the test's own event loop, and
+  at the live composer (`supply_lessons` through `SnapshotRecall`), over one store. It covers a re-binding, an added
+  instruction and a revised one:
+  - a dispatch between its read and its disclosure holds the change off, and the change then refuses;
+  - a change between its check and its write holds the dispatch off, and the dispatch is then handed the change;
+  - a turn not given refuses the change within a change's bound (503, nothing stored), and holds the dispatch.
+- **The chat capture** (`test_chat_task_capture.py`) and **the increment gate's approval** (`test_ruling_instructions.py`)
+  are each held off by a dispatch in its turn, then refused. An approval with no instructions answers while the turn is
+  held.
+- **`tests/unit/memory/test_dispatch_turns.py`:** the turn's order, another unit's independence, a holder that raises,
+  no turn kept once idle, a change's bound under the CLI's, and the guard on the one process.
+  `tests/unit/architecture/test_dispatch_turns_share_one_store.py` guards the one store.
+- **Twelve mutants, each caught:**
+  - the composer holding no turn;
+  - its turn around the disclosure only;
+  - a re-binding holding no turn;
+  - its check outside its turn;
+  - an added instruction holding no turn;
+  - a revision holding no turn;
+  - a chat capture holding no turn;
+  - a ruling holding no turn;
+  - a turn not given, waited on forever;
+  - a change waiting the dispatch's bound;
+  - every ruling taking the turn;
+  - a change's bound past the CLI's.
 
 ## 6. Mode neutrality: cycle, duty, and ambient utilization
 
