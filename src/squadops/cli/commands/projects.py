@@ -343,3 +343,47 @@ def _gh_token() -> str:
         print_error("--token-from-gh: `gh auth token` gave no token; run `gh auth login` first")
         raise typer.Exit(code=2)
     return token
+
+
+@app.command("sync")
+def sync(
+    ctx: typer.Context,
+    project_id: str = typer.Argument(...),
+    token_from_gh: bool = typer.Option(
+        False,
+        "--token-from-gh",
+        help="Read review requests' state with your own GitHub access (`gh auth token`)",
+    ),
+    idempotency_key: str | None = typer.Option(None, "--idempotency-key"),
+):
+    """Read a Project's upstream against its approved development baseline (SIP-0112 FR-21):
+    what changed, by the evidence it invalidates, and where each pending contribution stands.
+    Moves nothing: `projects validate` advances the baseline, then configure and baseline."""
+    fmt = ctx.obj.get("format", "table") if ctx.obj else "table"
+    key = idempotency_key or f"cli-{uuid.uuid4().hex}"
+    try:
+        client = _get_client(ctx)
+        body = {"idempotency_key": key, **({"token": _gh_token()} if token_from_gh else {})}
+        data = client.post(f"/api/v1/projects/{project_id}/syncs", json=body)
+        client.close()
+    except CLIError as e:
+        print_error(f"{e} (idempotency key {key})")
+        raise typer.Exit(code=e.exit_code) from e
+    if fmt == "json":
+        print_json(data)
+        return
+    document = data["document"]
+    drift = document.get("drift")
+    if drift is None:
+        print_success(f"{project_id} upstream is its baseline, {document['baseline_commit'][:12]}")
+    else:
+        rows = [[c, len(paths), ", ".join(paths[:4])] for c, paths in drift["changed"].items()]
+        print_table(["Changed", "Paths", "First paths"], rows, quiet=False)
+        relevant = ", ".join(drift["relevant"]) or "none beyond source"
+        print_success(
+            f"{project_id} upstream {document['upstream_commit'][:12]} is past its baseline "
+            f"{document['baseline_commit'][:12]}; evidence to revalidate: {relevant}"
+        )
+    for c in document["contributions"]:
+        where = c["integrated_commit"] or c["review_url"] or ""
+        print_success(f"contribution {c['cycle_id']}/{c['run_id']}: {c['state']} {where}")

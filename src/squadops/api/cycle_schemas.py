@@ -22,12 +22,18 @@ from pydantic import BaseModel, ConfigDict, Field, SecretStr
 
 
 class GateDTO(BaseModel):
+    # Nested in CycleCreateRequest, which forbids extras: a misspelt key here is refused too,
+    # never dropped (SIP-0112 contract 2).
+    model_config = ConfigDict(extra="forbid")
+
     name: str
     description: str
     after_task_types: list[str] = Field(default_factory=list)
 
 
 class TaskFlowPolicyDTO(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
     mode: Literal["sequential", "fan_out_fan_in", "fan_out_soft_gates"] = "sequential"
     gates: list[GateDTO] = Field(default_factory=list)
 
@@ -355,6 +361,23 @@ class ContributionResponse(BaseModel):
     """A contribution, pending until the product takes it, and whether this replayed one."""
 
     contribution: dict[str, Any]
+    replayed: bool = False
+
+
+class SourceSyncRequest(BaseModel):
+    """Read a Project's upstream against its approved baseline (SIP-0112 FR-21, E.4.4)."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    idempotency_key: str = Field(min_length=1, max_length=200)
+    #: The caller's own forge token, to read its review requests' state for this sync only.
+    token: SecretStr | None = Field(default=None, min_length=1, max_length=512)
+
+
+class SourceSyncResponse(BaseModel):
+    """A sync's record: the drift by category and each contribution's standing."""
+
+    document: dict[str, Any]
     replayed: bool = False
 
 

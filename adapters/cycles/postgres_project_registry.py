@@ -87,7 +87,7 @@ def _row_to_project(row: asyncpg.Record) -> Project:
 
 _CONTRIBUTION_COLUMNS = (
     "project_id, cycle_id, run_id, commit, parent_commit, mode, state, branch, review_url, "
-    "contributed_by, contributed_at"
+    "contributed_by, contributed_at, integrated_commit"
 )
 
 
@@ -223,8 +223,8 @@ class PostgresProjectRegistry(ProjectRegistryPort):
         digest = hashlib.sha256(f"validate:{project_id}".encode()).hexdigest()
         async with self._pool.acquire() as conn, conn.transaction():
             row = await conn.fetchrow(
-                "SELECT lifecycle_status, record_version FROM project_records "
-                "WHERE project_id = $1 FOR UPDATE",
+                "SELECT lifecycle_status, record_version, development_baseline_commit "
+                "FROM project_records WHERE project_id = $1 FOR UPDATE",
                 project_id,
             )
             if row is None:
@@ -241,13 +241,22 @@ class PostgresProjectRegistry(ProjectRegistryPort):
                     )
                 return await self._read(conn, project_id), True
             status = ProjectLifecycleStatus(row["lifecycle_status"])
-            if status not in (
+            if status == ProjectLifecycleStatus.READY:
+                # E.4.4: a READY Project is re-validated to adopt its upstream's commit. A failed
+                # fetch is never recorded against it: it stays READY at the baseline it has.
+                if commit is None:
+                    raise ProjectStateConflictError(
+                        f"Project {project_id} is READY: a re-validation records the commit it "
+                        "adopts, and a failed one is reported, not recorded"
+                    )
+                detail["previous"] = row["development_baseline_commit"]
+            elif status not in (
                 ProjectLifecycleStatus.REGISTERING,
                 ProjectLifecycleStatus.FAILED_REGISTRATION,
             ):
                 raise ProjectStateConflictError(
-                    f"Project {project_id} is {status.value}: only a registering or failed "
-                    "registration is validated (re-validation against drift is E.4.4's)"
+                    f"Project {project_id} is {status.value}: a registering, failed or READY "
+                    "Project is validated"
                 )
             version = row["record_version"] + 1
             now = datetime.now(UTC)
@@ -566,7 +575,7 @@ class PostgresProjectRegistry(ProjectRegistryPort):
             version = row["record_version"] + 1
             await conn.execute(
                 f"INSERT INTO project_contributions ({_CONTRIBUTION_COLUMNS}) "
-                "VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)",
+                "VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)",
                 project_id,
                 contribution.cycle_id,
                 contribution.run_id,
@@ -578,6 +587,7 @@ class PostgresProjectRegistry(ProjectRegistryPort):
                 contribution.review_url,
                 contribution.contributed_by,
                 now,
+                contribution.integrated_commit,
             )
             await conn.execute(
                 "UPDATE project_records SET record_version = $2, updated_at = $3 "
@@ -615,6 +625,156 @@ class PostgresProjectRegistry(ProjectRegistryPort):
                 project_id,
             )
         return [Contribution(**dict(r)) for r in rows]
+
+    async def record_contribution_state(
+        self,
+        project_id: str,
+        cycle_id: str,
+        run_id: str,
+        *,
+        state: str,
+        integrated_commit: str | None,
+        actor: str,
+    ) -> Contribution:
+        if not self._writable:
+            raise ProjectRegistryReadOnlyError(
+                "the project registry's writes are gated off (postgres_read_only)"
+            )
+        async with self._pool.acquire() as conn, conn.transaction():
+            row = await conn.fetchrow(
+                "SELECT record_version FROM project_records WHERE project_id = $1 FOR UPDATE",
+                project_id,
+            )
+            if row is None:
+                raise ProjectNotFoundError(f"Project not found: {project_id}")
+            updated = await conn.fetchrow(
+                "UPDATE project_contributions SET state = $4, integrated_commit = $5 "
+                "WHERE project_id = $1 AND cycle_id = $2 AND run_id = $3 "
+                f"RETURNING {_CONTRIBUTION_COLUMNS}",
+                project_id,
+                cycle_id,
+                run_id,
+                state,
+                integrated_commit,
+            )
+            if updated is None:
+                raise ProjectNotFoundError(
+                    f"Project {project_id} has no contribution from run {run_id} of {cycle_id}"
+                )
+            now = datetime.now(UTC)
+            version = row["record_version"] + 1
+            await conn.execute(
+                "UPDATE project_records SET record_version = $2, updated_at = $3 "
+                "WHERE project_id = $1",
+                project_id,
+                version,
+                now,
+            )
+            await conn.execute(
+                "INSERT INTO project_record_events (event_id, project_id, operation, "
+                "record_version, actor, idempotency_key, request_hash, detail, recorded_at) "
+                "VALUES ($1, $2, 'contribution_state', $3, $4, NULL, NULL, $5, $6)",
+                _event_id(),
+                project_id,
+                version,
+                actor,
+                {
+                    "cycle_id": cycle_id,
+                    "run_id": run_id,
+                    "state": state,
+                    "integrated_commit": integrated_commit,
+                },
+                now,
+            )
+        return Contribution(**dict(updated))
+
+    async def record_sync(
+        self, document: dict, *, actor: str, idempotency_key: str, request_hash: str
+    ) -> tuple[dict, bool]:
+        if not self._writable:
+            raise ProjectRegistryReadOnlyError(
+                "the project registry's writes are gated off (postgres_read_only)"
+            )
+        project_id = document["project_id"]
+        async with self._pool.acquire() as conn, conn.transaction():
+            row = await conn.fetchrow(
+                "SELECT record_version FROM project_records WHERE project_id = $1 FOR UPDATE",
+                project_id,
+            )
+            if row is None:
+                raise ProjectNotFoundError(f"Project not found: {project_id}")
+            prior = await conn.fetchrow(
+                "SELECT project_id, request_hash, detail FROM project_record_events "
+                "WHERE idempotency_key = $1",
+                idempotency_key,
+            )
+            if prior is not None:
+                if prior["request_hash"] != request_hash or prior["project_id"] != project_id:
+                    raise RegistrationKeyConflictError(
+                        f"idempotency key {idempotency_key!r} recorded different content"
+                    )
+                stored = await conn.fetchval(
+                    "SELECT document FROM project_source_syncs "
+                    "WHERE project_id = $1 AND synced_seq = $2",
+                    project_id,
+                    prior["detail"]["synced_seq"],
+                )
+                return stored, True
+            seq = 1 + (
+                await conn.fetchval(
+                    "SELECT COALESCE(MAX(synced_seq), 0) FROM project_source_syncs "
+                    "WHERE project_id = $1",
+                    project_id,
+                )
+            )
+            now = datetime.now(UTC)
+            version = row["record_version"] + 1
+            await conn.execute(
+                "INSERT INTO project_source_syncs (project_id, synced_seq, baseline_commit, "
+                "upstream_commit, document, synced_by, synced_at) "
+                "VALUES ($1, $2, $3, $4, $5, $6, $7)",
+                project_id,
+                seq,
+                document["baseline_commit"],
+                document["upstream_commit"],
+                document,
+                actor,
+                now,
+            )
+            await conn.execute(
+                "UPDATE project_records SET record_version = $2, updated_at = $3 "
+                "WHERE project_id = $1",
+                project_id,
+                version,
+                now,
+            )
+            await conn.execute(
+                "INSERT INTO project_record_events (event_id, project_id, operation, "
+                "record_version, actor, idempotency_key, request_hash, detail, recorded_at) "
+                "VALUES ($1, $2, 'sync', $3, $4, $5, $6, $7, $8)",
+                _event_id(),
+                project_id,
+                version,
+                actor,
+                idempotency_key,
+                request_hash,
+                {
+                    "synced_seq": seq,
+                    "upstream_commit": document["upstream_commit"],
+                    "relevant": (document.get("drift") or {}).get("relevant", []),
+                },
+                now,
+            )
+        return document, False
+
+    async def source_syncs(self, project_id: str) -> list[dict]:
+        async with self._pool.acquire() as conn:
+            rows = await conn.fetch(
+                "SELECT document FROM project_source_syncs WHERE project_id = $1 "
+                "ORDER BY synced_seq",
+                project_id,
+            )
+        return [r["document"] for r in rows]
 
     async def _read(self, conn, project_id: str) -> Project:
         row = await conn.fetchrow(

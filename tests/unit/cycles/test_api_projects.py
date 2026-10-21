@@ -340,8 +340,9 @@ class TestValidateProject:
             contribution_mode="review_request",
         )
         project = Project(
-            project_id="prj-tally", name="Tally", description="", created_at=NOW, source=source
-        )
+            project_id="prj-tally", name="Tally", description="", created_at=NOW, source=source,
+            lifecycle_status=ProjectLifecycleStatus.REGISTERING,
+        )  # fmt: skip
         mock_project_registry.get_project.return_value = project
 
         async def record(project_id, *, commit, diagnostic, actor, idempotency_key):
@@ -398,6 +399,29 @@ class TestValidateProject:
         assert resp.status_code == 200
         assert project["lifecycle_status"] == "FAILED_REGISTRATION"
         assert project["validation_diagnostic"] == "clone: git clone failed: denied"
+
+    def test_a_ready_projects_unreachable_re_validation_is_a_502_and_records_nothing(
+        self, client, wired, mock_project_registry
+    ):
+        """E.4.4. Bug caught: a READY Project's failed re-validation answered as recorded, or
+        recorded as a failed registration, refusing every Cycle over a product that was fine."""
+        import dataclasses
+
+        from squadops.projects.models import ProjectLifecycleStatus, SourceUnavailable
+
+        mock_project_registry.get_project.return_value = dataclasses.replace(
+            mock_project_registry.get_project.return_value,
+            lifecycle_status=ProjectLifecycleStatus.READY,
+            development_baseline_commit="b" * 40,
+        )
+        wired.sync.side_effect = SourceUnavailable("git fetch failed: denied", reason="fetch")
+
+        resp = client.post("/api/v1/projects/prj-tally/validate", json={"idempotency_key": "v-3"})
+
+        assert (resp.status_code, resp.json()["detail"]["error"]["code"]) == (
+            502, "SOURCE_UNAVAILABLE",
+        )  # fmt: skip
+        mock_project_registry.record_validation.assert_not_awaited()
 
 
 class TestDevelopmentConfigurationRoutes:
@@ -632,3 +656,24 @@ class TestContributionRoutes:
         assert resp.status_code == 201
         assert seen.await_args.kwargs["tokens"] == expected
         assert "t0ken" not in resp.text
+
+
+class TestSyncRoutes:
+    """``/api/v1/projects/{id}/syncs`` (SIP-0112 FR-21, E.4.4). Bugs caught: a sample
+    application's sync answered as a server failure; the recorded findings not what's listed."""
+
+    def test_a_sample_application_has_no_upstream_to_sync(self, client, mock_project_registry):
+        client.app.state.source_repository = AsyncMock()
+
+        resp = client.post("/api/v1/projects/hello_squad/syncs", json={"idempotency_key": "s-1"})
+
+        assert (resp.status_code, resp.json()["detail"]["error"]["code"]) == (409, "SYNC_REFUSED")
+        mock_project_registry.record_sync.assert_not_awaited()
+
+    def test_the_findings_list_as_recorded(self, client, mock_project_registry):
+        document = {"schema": "source-sync/v1", "project_id": "prj-tally", "drift": None}
+        mock_project_registry.source_syncs.return_value = [document]
+
+        resp = client.get("/api/v1/projects/prj-tally/syncs")
+
+        assert resp.json() == [{"document": document, "replayed": False}]

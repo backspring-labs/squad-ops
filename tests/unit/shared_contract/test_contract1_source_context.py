@@ -226,3 +226,23 @@ def test_the_recorded_bad_forms_are_refused_by_the_reader():
     doc = copy.deepcopy(recorded("project_source_context", "valid"))
     doc["integrated_upstream_commit"] = None
     assert parse_source_context(doc).integrated_upstream_commit is None
+
+
+@pytest.mark.parametrize(
+    "policy",
+    [
+        {"mode": "sequential", "gate": []},
+        {"mode": "sequential", "gates": [{"name": "g", "description": "d", "after": ["x"]}]},
+    ],
+    ids=["policy-key", "gate-key"],
+)
+def test_a_misspelt_key_inside_the_task_flow_policy_is_refused_never_dropped(client, policy):
+    """Contract 2: the create request forbids extras, and so do the models nested in it. Bug
+    caught: a gate declared under a misspelt key silently dropped, so the cycle runs ungated."""
+    resp = client.post(
+        "/api/v1/projects/prj-tally/cycles",
+        json={"squad_profile_id": "full", "task_flow_policy": policy},
+    )
+
+    assert resp.status_code == 422
+    assert resp.json()["detail"][0]["type"] == "extra_forbidden"

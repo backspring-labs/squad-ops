@@ -278,9 +278,10 @@ async def test_a_taken_id_and_a_closed_gate_write_nothing(pool):
 
 
 async def test_a_validation_moves_a_registration_ready_or_failed_and_a_retry_recovers(pool):
-    """E.4.2, §B.6. Bugs caught: READY written without the commit contract 1 pins; a failure's
-    diagnostic surviving the retry that fixed it; a validation applied twice under one key; a
-    READY Project validated again here, where re-validation is E.4.4's drift."""
+    """E.4.2, §B.6; E.4.4's re-validation. Bugs caught: READY written without the commit
+    contract 1 pins; a failure's diagnostic surviving the retry that fixed it; a validation
+    applied twice under one key; a READY Project refused its upstream's commit, so a drift can
+    never be reconciled, or demoted by a failed re-validation."""
     from squadops.cycles.models import ProjectStateConflictError
 
     registry = PostgresProjectRegistry(pool)
@@ -298,8 +299,13 @@ async def test_a_validation_moves_a_registration_ready_or_failed_and_a_retry_rec
     )
     with pytest.raises(ProjectStateConflictError, match="READY"):
         await registry.record_validation(
-            "prj-tally", commit=commit, diagnostic=None, actor="owner", idempotency_key="v-3"
-        )
+            "prj-tally", commit=None, diagnostic="fetch: denied", actor="owner",
+            idempotency_key="v-3",
+        )  # fmt: skip
+    upstream = "d" * 40
+    moved, _ = await registry.record_validation(
+        "prj-tally", commit=upstream, diagnostic=None, actor="owner", idempotency_key="v-4"
+    )
 
     assert (failed.lifecycle_status, failed.validation_diagnostic, failed.record_version) == (
         ProjectLifecycleStatus.FAILED_REGISTRATION,
@@ -314,6 +320,9 @@ async def test_a_validation_moves_a_registration_ready_or_failed_and_a_retry_rec
     assert (ready.development_baseline_commit, ready.integrated_upstream_commit) == (commit, commit)
     assert ready.validation_diagnostic is None
     assert (again, again_replayed) == (ready, True)
+    assert (moved.lifecycle_status, moved.development_baseline_commit, moved.record_version) == (
+        ProjectLifecycleStatus.READY, upstream, 4,
+    )  # fmt: skip
     async with pool.acquire() as conn:
         events = await conn.fetch(
             "SELECT operation, record_version, detail FROM project_record_events "
@@ -323,8 +332,10 @@ async def test_a_validation_moves_a_registration_ready_or_failed_and_a_retry_rec
         ("register", 1),
         ("validate", 2),
         ("validate", 3),
+        ("validate", 4),
     ]
     assert events[2]["detail"] == {"from": "FAILED_REGISTRATION", "commit": commit}
+    assert events[3]["detail"] == {"from": "READY", "commit": upstream, "previous": commit}
 
 
 async def test_configuration_revisions_follow_one_another_and_read_back_as_recorded(pool):
@@ -509,3 +520,53 @@ async def test_a_contribution_is_recorded_once_and_its_key_names_one_run(pool):
             )
             == 1
         )
+
+
+async def test_a_sync_is_recorded_once_and_a_contribution_moves_to_integrated(pool):
+    """FR-21's drift findings and FR-06's integration (E.4.4). Bugs caught:
+    - a retried sync recording a second finding;
+    - the integrated commit lost when a contribution's state moves;
+    - an integrated commit the table can't hold.
+    """
+    from squadops.projects.contribution import Contribution
+
+    registry = PostgresProjectRegistry(pool)
+    await registry.register_project(_registration(), actor="owner")
+    contribution = Contribution(
+        project_id="prj-tally",
+        cycle_id="cyc_1",
+        run_id="run_1",
+        commit="a" * 40,
+        parent_commit="b" * 40,
+        mode="review_request",
+        state="pending",
+        branch="squadops/cyc_1",
+        review_url="https://github.com/owner/tally/pull/7",
+        contributed_by="owner",
+        contributed_at=datetime(2026, 10, 19, tzinfo=UTC),
+    )
+    await registry.record_contribution(contribution, idempotency_key="c-1", request_hash="h")
+    document = {
+        "schema": "source-sync/v1",
+        "project_id": "prj-tally",
+        "baseline_commit": "b" * 40,
+        "upstream_commit": "c" * 40,
+        "drift": {"changed": {"instructions": ["CONTRIBUTING.md"]}, "relevant": ["instructions"]},
+        "contributions": [],
+    }
+
+    integrated = await registry.record_contribution_state(
+        "prj-tally", "cyc_1", "run_1", state="integrated", integrated_commit="c" * 40,
+        actor="owner",
+    )  # fmt: skip
+    _, replayed = await registry.record_sync(
+        document, actor="owner", idempotency_key="s-1", request_hash="h"
+    )
+    again, again_replayed = await registry.record_sync(
+        document, actor="owner", idempotency_key="s-1", request_hash="h"
+    )
+
+    assert (integrated.state, integrated.integrated_commit) == ("integrated", "c" * 40)
+    assert await registry.contributions("prj-tally") == [integrated]
+    assert (replayed, again_replayed, again) == (False, True, document)
+    assert await registry.source_syncs("prj-tally") == [document]

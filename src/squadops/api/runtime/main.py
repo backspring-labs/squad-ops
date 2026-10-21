@@ -427,6 +427,12 @@ async def _init_cycle_subsystem(state, config, pool) -> None:
         committer_name=config.projects.committer_name,
         committer_email=config.projects.committer_email,
     )
+    # SIP-0112 contract 6 (#2179 T16): the repository family's resolver, which binds a
+    # ``repo:file:<path>@current`` reference at the commit its unit's source context pins.
+    from adapters.tools.factory import create_repository_reference_resolver
+
+    resolver = create_repository_reference_resolver(state.source_repository, project_registry)
+    state.reference_resolvers.register(resolver)
     # E.4.3: a review_request contribution's forge, and each Project's token for it.
     from adapters.tools.factory import create_review_requests
 
@@ -873,9 +879,9 @@ def _init_memory(state, config, pool) -> None:
         provider, **({"pool": pool} if provider == "postgres" else {})
     )
     # #2179 T16: the resolvers that bind an instruction's ``@current`` references at admission, by
-    # family. None is registered yet: Project Lifecycle Management registers the repository family
-    # (SIP-0112 §B.5.1, contract 6), and until then ``@current`` is refused at write. A family is
-    # registered through ``register``, which bounds each of its calls (#2575).
+    # family. The repository family's is registered with the cycle subsystem, beside the managed
+    # clones it reads (SIP-0112 §B.5.1, contract 6); a family with none is refused at write. A
+    # family is registered through ``register``, which bounds each of its calls (#2575).
     state.reference_resolvers = create_reference_resolvers(
         config.projects.reference_resolver_timeout_seconds
     )

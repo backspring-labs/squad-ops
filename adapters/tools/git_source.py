@@ -32,7 +32,7 @@ import subprocess
 import tempfile
 import time
 from collections.abc import Collection, Mapping
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 from urllib.parse import urlsplit
 
 from squadops.ports.projects.source_repository import SourceRepositoryPort
@@ -140,6 +140,37 @@ class GitSourceRepository(SourceRepositoryPort):
             self._git, clone, "format-patch", "--stdout", "--binary", "--full-index",
             "--no-signature", "-1", commit, step="export",
         )  # fmt: skip
+
+    async def file_at(self, project_id: str, commit: str, path: str) -> bytes:
+        if not _COMMIT.match(commit):
+            raise SourceUnavailable(f"{commit!r} is not a commit", reason="not_a_commit")
+        parts = PurePosixPath(path).parts
+        if not path or path.startswith(("/", "-")) or ".." in parts or ":" in path:
+            raise SourceUnavailable(f"{path!r} is not a repository path", reason="path_refused")
+        clone = self._clone_dir(project_id)
+        return await asyncio.to_thread(
+            self._git, clone, "cat-file", "blob", f"{commit}:{path}", step="read"
+        )
+
+    async def is_ancestor(self, project_id: str, ancestor: str, descendant: str) -> bool:
+        for commit in (ancestor, descendant):
+            if not _COMMIT.match(commit):
+                raise SourceUnavailable(f"{commit!r} is not a commit", reason="not_a_commit")
+        return await asyncio.to_thread(
+            self._is_ancestor, self._clone_dir(project_id), ancestor, descendant
+        )
+
+    def _is_ancestor(self, clone: Path, ancestor: str, descendant: str) -> bool:
+        for commit in (ancestor, descendant):
+            self._git(clone, "cat-file", "-e", f"{commit}^{{commit}}", step="read")
+        try:
+            self._git(clone, "merge-base", "--is-ancestor", ancestor, descendant, step="ancestry")
+        except SourceUnavailable as e:
+            # exit 1 is git's "no", an answer rather than a failure
+            if "exit 1" in str(e):
+                return False
+            raise
+        return True
 
     async def commit_message(self, project_id: str, commit: str) -> str:
         if not _COMMIT.match(commit):

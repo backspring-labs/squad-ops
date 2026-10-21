@@ -80,3 +80,21 @@ class SourceRepositoryPort(ABC):
             SourceUnavailable: The locator is refused or ssh, the branch or ref isn't one of
                 ours, or the product refused the push.
         """
+
+    @abstractmethod
+    async def is_ancestor(self, project_id: str, ancestor: str, descendant: str) -> bool:
+        """Whether ``ancestor`` is in ``descendant``'s history in the managed clone (a commit is
+        its own ancestor). E.4.4 reads a contribution as integrated when its commit is.
+
+        Raises:
+            SourceUnavailable: The clone doesn't hold one of them.
+        """
+
+    @abstractmethod
+    async def file_at(self, project_id: str, commit: str, path: str) -> bytes:
+        """One tracked file's bytes at ``commit`` in the managed clone (contract 6's resolver).
+
+        Raises:
+            SourceUnavailable: The clone doesn't hold ``commit``, the path isn't a tracked file
+                there, or the path isn't a repository-relative one.
+        """
