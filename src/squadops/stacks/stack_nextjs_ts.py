@@ -61,11 +61,13 @@ STACK_NAME = "nextjs_ts"
 APP_INVOCATION = AppInvocation(
     invocation_import=(
         JS_MODULE_LOAD
-        + r"""['"`][^'"`]*(?:app/api/|app/(?:[^'"`]*/)?page(?:\.tsx?)?['"`]|components/)"""
+        + r"""['"`][^'"`]*(?:app/api/|app/(?:[^'"`]*/)?page(?:\.tsx?)?['"`]|components/"""
+        # #2577: the frozen route caller loads and calls the route module itself.
+        + r"""|vitest\.routes(?:\.ts)?['"`])"""
     ),
     subject_mock=(
         r"""(?:vi|jest)\s*\.\s*mock\s*\(\s*['"`][^'"`]*"""
-        r"""(?:app/api/|app/(?:[^'"`]*/)?page(?:\.tsx?)?['"`])"""
+        r"""(?:app/api/|app/(?:[^'"`]*/)?page(?:\.tsx?)?['"`]|vitest\.routes(?:\.ts)?['"`])"""
     ),
     network_seam_mock=(
         NETWORK_SEAM_FETCH_STUB
@@ -73,7 +75,8 @@ APP_INVOCATION = AppInvocation(
     ),
     invocation_description=(
         "an import of an `app/api/**/route` handler module, called directly with a "
-        "`new Request(...)` — the in-process model — or, for a page, rendering the real "
+        "`new Request(...)` — the in-process model — or a route called through the frozen "
+        "`callRoute` from `@/vitest.routes`, or, for a page, rendering the real "
         "`app/**/page` (or a `components/` component) with `fetch` or the frozen `@/lib/api` "
         "client stubbed beneath it; `@/lib/api` alone is the browser client and reaches no "
         "server under vitest"
@@ -382,8 +385,10 @@ ROUTE_CALLER_IMPORT = "@/vitest.routes"
 #: is made, as the App Router finds it, and a path no route serves answers 404.
 _ROUTE_CALLER = """// Scaffold-owned (frozen): call a route handler by method and path, as a client calls the
 // running application. The route is found when the call is made, the way the App Router finds
-// it: a static folder wins over a [param] folder, segment by segment. A path no route serves
-// answers 404, and a method its route does not export answers 405.
+// it: a static folder wins over a [param] folder, segment by segment; a (group) folder adds no
+// segment and a _private folder routes nothing. A path no route serves answers 404, a method its
+// route does not export 405, HEAD is served by GET, OPTIONS answers 204 with Allow, and a path
+// with a trailing slash is redirected (308), as `next start` does.
 //
 // A criterion's test calls its route here, never by importing the route module: on the
 // application before the change that module may not exist, and an import of it fails the file
@@ -397,15 +402,22 @@ type Handler = (
   context: { params: Record<string, string> },
 ) => Response | Promise<Response>
 
-const APP = fileURLToPath(new URL('./app', import.meta.url))
+const METHODS = ['GET', 'HEAD', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS']
+// As vitest.config.ts finds the root: a literal `new URL(..., import.meta.url)` is rewritten to an
+// http URL in a DOM suite, and `fileURLToPath` refuses it.
+const APP = path.join(path.dirname(fileURLToPath(import.meta.url)), 'app')
 
-function routes(dir: string, segments: string[] = []): string[][] {
+function routes(dir: string, segments: string[] = []): { file: string; segments: string[] }[] {
   if (!existsSync(dir)) return []
-  const found: string[][] = []
+  const found: { file: string; segments: string[] }[] = []
   for (const entry of readdirSync(dir, { withFileTypes: true })) {
-    const at = [...segments, entry.name]
-    if (entry.isDirectory()) found.push(...routes(path.join(dir, entry.name), at))
-    else if (entry.name === 'route.ts') found.push(segments)
+    if (entry.isDirectory()) {
+      if (entry.name.startsWith('_')) continue
+      const group = entry.name.startsWith('(') && entry.name.endsWith(')')
+      found.push(...routes(path.join(dir, entry.name), group ? segments : [...segments, entry.name]))
+    } else if (entry.name === 'route.ts') {
+      found.push({ file: path.join(dir, entry.name), segments })
+    }
   }
   return found
 }
@@ -415,11 +427,8 @@ function match(segments: string[], parts: string[]): Record<string, string> | nu
   const params: Record<string, string> = {}
   for (let i = 0; i < segments.length; i++) {
     const segment = segments[i]
-    if (segment.startsWith('[') && segment.endsWith(']')) {
-      params[segment.slice(1, -1)] = decodeURIComponent(parts[i])
-    } else if (segment !== parts[i]) {
-      return null
-    }
+    if (segment.startsWith('[') && segment.endsWith(']')) params[segment.slice(1, -1)] = parts[i]
+    else if (segment !== parts[i]) return null
   }
   return params
 }
@@ -430,21 +439,34 @@ function specificity(segments: string[]): string {
 
 export async function callRoute(method: string, url: string, init: RequestInit = {}): Promise<Response> {
   const target = new URL(url, 'http://localhost')
-  const parts = target.pathname.split('/').filter(Boolean)
+  if (target.pathname.length > 1 && target.pathname.endsWith('/')) {
+    const location = target.pathname.replace(/\\/+$/, '') + target.search
+    return new Response(null, { status: 308, headers: { location } })
+  }
+  let parts: string[]
+  try {
+    parts = target.pathname.split('/').filter(Boolean).map(decodeURIComponent)
+  } catch {
+    return new Response(null, { status: 400 })
+  }
   const candidates = routes(APP)
-    .map((segments) => ({ segments, params: match(segments, parts) }))
-    .filter((c): c is { segments: string[]; params: Record<string, string> } => c.params !== null)
+    .map((r) => ({ ...r, params: match(r.segments, parts) }))
+    .filter((c): c is { file: string; segments: string[]; params: Record<string, string> } => c.params !== null)
     .sort((a, b) => specificity(a.segments).localeCompare(specificity(b.segments)))
   const chosen = candidates[0]
   if (chosen === undefined) return new Response(null, { status: 404 })
-  const handlers = (await import(
-    /* @vite-ignore */ path.join(APP, ...chosen.segments, 'route.ts')
-  )) as Record<string, Handler | undefined>
-  const handler = handlers[method.toUpperCase()]
-  if (typeof handler !== 'function') return new Response(null, { status: 405 })
-  return handler(new Request(target, { ...init, method: method.toUpperCase() }), {
-    params: chosen.params,
-  })
+  const handlers = (await import(/* @vite-ignore */ chosen.file)) as Record<string, Handler | undefined>
+  const verb = method.toUpperCase()
+  const exported = METHODS.filter((m) => typeof handlers[m] === 'function')
+  const handler = handlers[verb] ?? (verb === 'HEAD' ? handlers.GET : undefined)
+  if (handler === undefined) {
+    if (verb === 'OPTIONS') return new Response(null, { status: 204, headers: { allow: exported.join(', ') } })
+    return new Response(null, { status: 405, headers: { allow: exported.join(', ') } })
+  }
+  const response = await handler(new Request(target, { ...init, method: verb }), { params: chosen.params })
+  return verb === 'HEAD' && handlers.HEAD === undefined
+    ? new Response(null, { status: response.status, headers: response.headers })
+    : response
 }
 """
 

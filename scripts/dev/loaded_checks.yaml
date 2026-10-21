@@ -1487,3 +1487,13 @@ checks:
       paths = {r.path for r in router.routes}
       print("/api/v1/projects/{project_id}/initializations" in paths, callable(GitSourceRepository.initialize))
     expect: "True True"
+  - id: "2577"
+    what: a Next.js criterion's test calls its route through the frozen route caller, which every bundle carries, the containment check counts and the qa author is told of (#2577)
+    container: squadops-eve
+    code: |
+      import pathlib, squadops.prompts as p
+      from squadops.stacks.scaffold import criterion_route_harness_for, test_config_files_for_stack
+      from squadops.stacks.stack_nextjs_ts import APP_INVOCATION
+      asset = pathlib.Path(p.__file__).parent / "request_templates" / (criterion_route_harness_for("nextjs_ts") + ".md")
+      print("vitest.routes.ts" in test_config_files_for_stack("nextjs_ts"), APP_INVOCATION.invokes("import { callRoute } from '@/vitest.routes'\n"), asset.is_file())
+    expect: "True True True"

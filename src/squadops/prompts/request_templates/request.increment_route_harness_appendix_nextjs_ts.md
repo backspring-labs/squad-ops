@@ -14,8 +14,13 @@ A route this change adds has no `route.ts` before the change. A test that import
 fails before any assertion runs, which never counts as the criterion failing, and the increment is
 refused however correct the build.
 
-So a criterion's test calls its route through the scaffold's `callRoute`, imported as shown, and
-never imports a route module:
+So **a criterion's own test** calls its route through the scaffold's `callRoute`, imported as shown,
+and never imports a route module. This replaces, for those test files only, the direct import your
+other instructions show: that form is right for a route that already exists, and a criterion's
+route may not. Every other test keeps the direct import.
+
+The paths and fields below are illustrative. Use your criterion's own surface, and the request
+shapes in the manifest:
 
 ```ts
 import { describe, expect, it } from 'vitest'
@@ -35,7 +40,7 @@ describe('T9: archiving a run', () => {
 })
 ```
 
-`callRoute(method, path, init)` answers as the running application would. A path no route serves
-answers 404, and a method its route doesn't export answers 405, so before the change the test fails
-at its assertion. Pass a request body as `init`, as above. Read the store through `@/lib/store` as
-the frozen harness test does.
+`callRoute(method, path, init)` routes the path as the App Router does and calls the handler it
+finds with the request and its `params`. A path no route serves answers 404, and a method its route
+doesn't export answers 405, so before the change the test fails at its assertion. Pass a request
+body as `init`, as above. Read the store through `@/lib/store`, as the frozen harness test does.

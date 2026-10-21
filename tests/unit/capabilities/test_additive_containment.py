@@ -146,10 +146,44 @@ async def test_the_qa_handlers_containment_row_passes_a_dynamically_loaded_route
     ]
 
 
+async def test_the_route_caller_idiom_the_appendix_teaches_passes_the_qa_handlers_containment():
+    """#2577, wiring (anti-pattern 6a): an increment's criterion test on Next.js calls its route
+    through the frozen `callRoute`, as `request.increment_route_harness_appendix_nextjs_ts`
+    teaches. Bug caught: the taught idiom refused as `no_application_invocation` at the qa
+    handler's typed-acceptance seam, whose finding tells the author to import the route module:
+    the import #2577 exists to replace. The test reads the asset's own example."""
+    import re
+    from pathlib import Path
+
+    from squadops.capabilities.handlers.cycle.qa_test import QATestHandler
+    from squadops.stacks.scaffold import route_caller_import_for
+
+    asset = (
+        Path(__file__).resolve().parents[3]
+        / "src/squadops/prompts/request_templates"
+        / "request.increment_route_harness_appendix_nextjs_ts.md"
+    ).read_text()
+    [example] = re.findall(r"```ts\n(.*?)```", asset, re.S)
+    suite = example.replace("{{route_caller_import}}", route_caller_import_for("nextjs_ts"))
+    checks: list[dict] = []
+    await QATestHandler()._evaluate_typed_acceptance(
+        {"acceptance_criteria": [], "resolved_config": {"build_profile": "nextjs_ts"}},
+        [{"name": "__tests__/criteria/T9.test.ts", "type": "test", "content": suite}],
+        checks,
+        [],
+        {},
+    )
+    rows = [c for c in checks if c["check"] == "acceptance:additive_containment"]
+    assert [(r["params"]["file"], r["status"]) for r in rows] == [
+        ("__tests__/criteria/T9.test.ts", "passed")
+    ]
+
+
 @pytest.mark.parametrize(
     "not_a_load",
     [
         "vi.mock('@/app/api/runs/route')",
+        "vi.mock('@/vitest.routes')",
         "const actual = await vi.importActual('@/app/api/runs/route')",
         "vi.mock('@/app/api/runs/route', () => import('./fake-route'))",
     ],

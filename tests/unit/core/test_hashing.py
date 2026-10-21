@@ -71,7 +71,8 @@ def test_the_bound_record_and_the_verification_scaffold_keep_their_identities():
         # spine and scaffold hashes again unmoved. #2531 (2026-10-19): the vitest config collects
         # `.test.tsx` too, a fourth tree-only move. #2534 (2026-10-19): the page-suite DOM harness,
         # a fifth. 2026-10-20: each route handler states its response entity's fields, a sixth.
-        "c7cc400575c86ce19e044fa36bf1757e22ed5d8ee1cb1fff7f442915695feee6",
+        # #2577 (2026-10-21): the frozen route caller, `vitest.routes.ts`, a seventh.
+        "fc2cc133429af09709d3d0e22ac0e4f1ed126aad18ddce152c3727d1247ded9b",
     )
 
 
