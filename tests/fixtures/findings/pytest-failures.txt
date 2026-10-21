@@ -1,0 +1,33 @@
+.FE.F                                                                    [100%]
+==================================== ERRORS ====================================
+_________________________ ERROR at setup of test_uses __________________________
+
+    @pytest.fixture
+    def broken():
+>       raise RuntimeError("boom")
+E       RuntimeError: boom
+
+tests/test_c.py:5: RuntimeError
+=================================== FAILURES ===================================
+___________________________________ test_bad ___________________________________
+
+    def test_bad():
+>       assert 1 == 2
+E       assert 1 == 2
+
+tests/test_a.py:5: AssertionError
+________________________________ test_param[2] _________________________________
+
+n = 2
+
+    @pytest.mark.parametrize("n", [1, 2])
+    def test_param(n):
+>       assert n == 1
+E       assert 2 == 1
+
+tests/test_c.py:12: AssertionError
+=========================== short test summary info ============================
+FAILED tests/test_a.py::test_bad - assert 1 == 2
+FAILED tests/test_c.py::test_param[2] - assert 2 == 1
+ERROR tests/test_c.py::test_uses - RuntimeError: boom
+2 failed, 2 passed, 1 error in 0.06s

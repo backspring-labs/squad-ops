@@ -1,0 +1,32 @@
+invalid-syntax: Expected a parameter or the end of the parameter list
+ --> src/broken.py:3:7
+  |
+1 | import os
+2 |
+3 | def f(:
+  |       ^
+4 |     return 1
+  |
+
+invalid-syntax: Expected `)`, found newline
+ --> src/broken.py:3:8
+  |
+1 | import os
+2 |
+3 | def f(:
+  |        ^
+4 |     return 1
+  |
+
+F401 [*] `sys` imported but unused
+ --> src/ok.py:1:8
+  |
+1 | import sys
+  |        ^^^
+help: Remove unused import: `sys`
+  |
+  - import sys
+  |
+
+Found 3 errors.
+[*] 1 fixable with the `--fix` option.
