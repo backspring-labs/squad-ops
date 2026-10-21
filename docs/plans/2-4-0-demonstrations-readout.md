@@ -95,8 +95,8 @@ each unit pins a SIP-0110 snapshot under its own owner.
 **The setup:** `prj-shelfnote` on the Mac (`dep_cc31bd6fd406`), reconciled at `433f6c51`, configuration revision 3,
 baseline `boots`, `backend_tests` and `frontend_tests` all PASS.
 - **The standalone cycle:** `cyc_2c995f503391`.
-- **The Campaign:** `cmp_e616b0a78aa6`, uncounted, one cycle allowed (its definition is in the scratchpad, not
-  committed). Its calibration cycle is `cyc_95c8659ae6c5`, launched by `campaigns start`.
+- **The Campaign:** `cmp_e616b0a78aa6`, uncounted, one cycle allowed
+  (`docs/plans/2-4-0-greenfield/campaign-ir2.yaml`). Its calibration cycle is `cyc_95c8659ae6c5`, launched by `campaigns start`.
 
 **The result:**
 - **Both cycles' source contexts are identical,** read back from the API: `project-source-context/v1`, baseline
