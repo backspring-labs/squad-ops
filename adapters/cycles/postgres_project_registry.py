@@ -223,8 +223,8 @@ class PostgresProjectRegistry(ProjectRegistryPort):
         digest = hashlib.sha256(f"validate:{project_id}".encode()).hexdigest()
         async with self._pool.acquire() as conn, conn.transaction():
             row = await conn.fetchrow(
-                "SELECT lifecycle_status, record_version FROM project_records "
-                "WHERE project_id = $1 FOR UPDATE",
+                "SELECT lifecycle_status, record_version, development_baseline_commit "
+                "FROM project_records WHERE project_id = $1 FOR UPDATE",
                 project_id,
             )
             if row is None:
@@ -241,13 +241,22 @@ class PostgresProjectRegistry(ProjectRegistryPort):
                     )
                 return await self._read(conn, project_id), True
             status = ProjectLifecycleStatus(row["lifecycle_status"])
-            if status not in (
+            if status == ProjectLifecycleStatus.READY:
+                # E.4.4: a READY Project is re-validated to adopt its upstream's commit. A failed
+                # fetch is never recorded against it: it stays READY at the baseline it has.
+                if commit is None:
+                    raise ProjectStateConflictError(
+                        f"Project {project_id} is READY: a re-validation records the commit it "
+                        "adopts, and a failed one is reported, not recorded"
+                    )
+                detail["previous"] = row["development_baseline_commit"]
+            elif status not in (
                 ProjectLifecycleStatus.REGISTERING,
                 ProjectLifecycleStatus.FAILED_REGISTRATION,
             ):
                 raise ProjectStateConflictError(
-                    f"Project {project_id} is {status.value}: only a registering or failed "
-                    "registration is validated (re-validation against drift is E.4.4's)"
+                    f"Project {project_id} is {status.value}: a registering, failed or READY "
+                    "Project is validated"
                 )
             version = row["record_version"] + 1
             now = datetime.now(UTC)

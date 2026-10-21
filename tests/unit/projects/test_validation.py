@@ -11,7 +11,12 @@ from datetime import UTC, datetime
 import pytest
 
 from squadops.cycles.models import Project, ProjectStateConflictError
-from squadops.projects.models import CheckoutTree, ProjectSource, SourceUnavailable
+from squadops.projects.models import (
+    CheckoutTree,
+    ProjectLifecycleStatus,
+    ProjectSource,
+    SourceUnavailable,
+)
 from squadops.projects.validation import validate_project
 
 COMMIT = "c" * 40
@@ -23,13 +28,15 @@ SOURCE = ProjectSource(
 
 
 class _Registry:
-    def __init__(self, source=SOURCE):
+    def __init__(self, source=SOURCE, status=ProjectLifecycleStatus.REGISTERING, baseline=None):
         self.project = Project(
             project_id="prj-tally",
             name="Tally",
             description="",
             created_at=datetime(2026, 10, 18, tzinfo=UTC),
             source=source,
+            lifecycle_status=status,
+            development_baseline_commit=baseline,
         )
         self.recorded = None
 
@@ -106,3 +113,42 @@ async def test_a_sample_application_has_nothing_to_validate():
     with pytest.raises(ProjectStateConflictError, match="sample application"):
         await _validate(_Registry(source=None), clone)
     assert clone.calls == []
+
+
+async def test_a_ready_project_adopts_its_upstreams_commit_when_re_validated():
+    """E.4.4's reconciliation of a drift finding (FR-21). Bug caught: a READY Project refused, so
+    a product whose upstream moved can never adopt it and no Cycle can pin the new commit."""
+    registry = _Registry(status=ProjectLifecycleStatus.READY, baseline="b" * 40)
+
+    await _validate(registry, _Clone())
+
+    assert registry.recorded == {
+        "commit": COMMIT, "diagnostic": None, "actor": "owner", "idempotency_key": "v-1",
+    }  # fmt: skip
+
+
+@pytest.mark.parametrize(
+    ("clone", "why"),
+    [(_Clone(fails=SourceUnavailable("git fetch failed: denied", reason="fetch")), "denied"),
+     (_Clone(symlinks=frozenset({"link"})), "capability gap")],
+    ids=["unreachable", "a-symlink"],
+)  # fmt: skip
+async def test_a_ready_projects_failed_re_validation_is_reported_and_never_demotes_it(clone, why):
+    """Bug caught: a fetch that failed for a moment recorded against a READY Project, demoting it
+    to FAILED_REGISTRATION and refusing every Cycle over a product that was fine."""
+    registry = _Registry(status=ProjectLifecycleStatus.READY, baseline="b" * 40)
+
+    with pytest.raises(SourceUnavailable, match=why):
+        await _validate(registry, clone)
+
+    assert registry.recorded is None
+
+
+async def test_a_ready_project_already_at_its_upstream_records_nothing():
+    registry = _Registry(status=ProjectLifecycleStatus.READY, baseline=COMMIT)
+
+    project, replayed = await _validate(registry, _Clone())
+
+    assert (project.development_baseline_commit, replayed, registry.recorded) == (
+        COMMIT, False, None,
+    )  # fmt: skip

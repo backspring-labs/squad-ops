@@ -105,14 +105,19 @@ async def validate_registered_project(
 ) -> ProjectRegistrationResponse:
     """Reach a registered Project's source through the managed clone (SIP-0112 E.4.2): READY
     at the base ref's commit, or FAILED_REGISTRATION with the reason. A failure is an answer,
-    not an error: the Project records it, and a retry validates again."""
-    project, replayed = await validate_project(
-        project_id,
-        registry=get_project_registry(request),
-        repository=get_source_repository(request),
-        actor=identity.user_id if identity is not None else "anonymous",
-        idempotency_key=body.idempotency_key,
-    )
+    not an error: the Project records it, and a retry validates again. A READY Project is
+    re-validated (E.4.4): its baseline moves to the upstream's commit, and a source that can't be
+    reached is a 502 that leaves it READY where it was."""
+    try:
+        project, replayed = await validate_project(
+            project_id,
+            registry=get_project_registry(request),
+            repository=get_source_repository(request),
+            actor=identity.user_id if identity is not None else "anonymous",
+            idempotency_key=body.idempotency_key,
+        )
+    except SourceUnavailable as e:
+        raise http_error(502, "SOURCE_UNAVAILABLE", f"{e.reason}: {e}") from e
     return ProjectRegistrationResponse(
         project=project_to_response(project),
         idempotency_key=body.idempotency_key,

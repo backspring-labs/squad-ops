@@ -340,8 +340,9 @@ class TestValidateProject:
             contribution_mode="review_request",
         )
         project = Project(
-            project_id="prj-tally", name="Tally", description="", created_at=NOW, source=source
-        )
+            project_id="prj-tally", name="Tally", description="", created_at=NOW, source=source,
+            lifecycle_status=ProjectLifecycleStatus.REGISTERING,
+        )  # fmt: skip
         mock_project_registry.get_project.return_value = project
 
         async def record(project_id, *, commit, diagnostic, actor, idempotency_key):
@@ -398,6 +399,29 @@ class TestValidateProject:
         assert resp.status_code == 200
         assert project["lifecycle_status"] == "FAILED_REGISTRATION"
         assert project["validation_diagnostic"] == "clone: git clone failed: denied"
+
+    def test_a_ready_projects_unreachable_re_validation_is_a_502_and_records_nothing(
+        self, client, wired, mock_project_registry
+    ):
+        """E.4.4. Bug caught: a READY Project's failed re-validation answered as recorded, or
+        recorded as a failed registration, refusing every Cycle over a product that was fine."""
+        import dataclasses
+
+        from squadops.projects.models import ProjectLifecycleStatus, SourceUnavailable
+
+        mock_project_registry.get_project.return_value = dataclasses.replace(
+            mock_project_registry.get_project.return_value,
+            lifecycle_status=ProjectLifecycleStatus.READY,
+            development_baseline_commit="b" * 40,
+        )
+        wired.sync.side_effect = SourceUnavailable("git fetch failed: denied", reason="fetch")
+
+        resp = client.post("/api/v1/projects/prj-tally/validate", json={"idempotency_key": "v-3"})
+
+        assert (resp.status_code, resp.json()["detail"]["error"]["code"]) == (
+            502, "SOURCE_UNAVAILABLE",
+        )  # fmt: skip
+        mock_project_registry.record_validation.assert_not_awaited()
 
 
 class TestDevelopmentConfigurationRoutes:
