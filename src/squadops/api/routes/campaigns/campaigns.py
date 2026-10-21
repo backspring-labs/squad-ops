@@ -799,6 +799,8 @@ def _escalation(e: Escalation) -> EscalationResponse:
         answers=dict(e.answers),
         answered_by=e.answered_by,
         answered_at=e.answered_at,
+        kind=str(e.kind),
+        hold_class=e.hold_class,
     )
 
 

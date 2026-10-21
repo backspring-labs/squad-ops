@@ -45,6 +45,12 @@ class CycleEnding(StrEnum):
     #: §24bj: the plan gate escalated and its bound passed with nobody deciding it. Unaccepted,
     #: and neither rejected nor failed: silence is never a verdict.
     PARKED = "parked"
+    #: §24bw: the run was held on its instruction bindings and the bound passed with the store
+    #: still not answering. An infrastructure ending (rows 10 and 11), counted nowhere.
+    HELD_STORE = "held_store"
+    #: §24bw: held on an operator's input that can't be bound (a required reference at the
+    #: cycle's commit, an instruction withdrawn or narrowed to nothing). Row 17 escalates.
+    HELD_INPUT = "held_input"
 
 
 @dataclass(frozen=True)
@@ -274,6 +280,13 @@ def _pending(
     # was not accepted, so row 2 ended the campaign.
     if cycle.ending is CycleEnding.PARKED:
         return 15, PendingAction.ABANDON_AND_PROPOSE
+    # §24bw, asked before row 6: a hold that expired said nothing about the squad's work. The
+    # store's reads as the environment's (rows 10 and 11); an operator's input escalates (row 17),
+    # so the owner re-binds or withdraws it and resumes. Neither is an abandonment.
+    if cycle.ending is CycleEnding.HELD_STORE:
+        return (10, PendingAction.RETRY) if retries_remain else (11, PendingAction.ESCALATE)
+    if cycle.ending is CycleEnding.HELD_INPUT:
+        return 17, PendingAction.ESCALATE
     if cycle.ending is not CycleEnding.ASSESSED:
         return 6, PendingAction.PROPOSE
     if verdict is RunVerdict.ACCEPTED:

@@ -259,8 +259,9 @@ def classify(
 
 @app.command("escalations")
 def escalations(ctx: typer.Context, campaign_id: str = typer.Argument(...)):
-    """The plan-review tier's escalations (SIP-0109 §24bj): each one's state, what the tier could
-    not establish, its questions, and its late answer."""
+    """The campaign's escalations (SIP-0109 §24bj, §24bw): each one's kind and state, what could
+    not be established (a plan gate's failed conditions, a held cycle's unbound records), its
+    questions, and its late answer."""
     entries = _call(ctx, "get", f"/api/v1/campaigns/{campaign_id}/escalations")
     fmt, quiet = _fmt(ctx)
     if fmt == "json":
@@ -269,6 +270,7 @@ def escalations(ctx: typer.Context, campaign_id: str = typer.Argument(...)):
     rows = [
         [
             e["escalation_id"],
+            _kind(e),
             e["state"],
             e["run_id"],
             ", ".join(f["condition"] for f in e["failed"]),
@@ -278,8 +280,16 @@ def escalations(ctx: typer.Context, campaign_id: str = typer.Argument(...)):
         for e in entries
     ]
     print_table(
-        ["Escalation", "State", "Run", "Failed", "Questions", "Late answer"], rows, quiet=quiet
+        ["Escalation", "Kind", "State", "Run", "Failed", "Questions", "Late answer"],
+        rows,
+        quiet=quiet,
     )
+
+
+def _kind(entry: dict) -> str:
+    """``plan_review``, or ``binding_hold (store)`` with its cause class (§24bw)."""
+    kind = entry.get("kind") or "plan_review"
+    return f"{kind} ({entry['hold_class']})" if entry.get("hold_class") else kind
 
 
 @app.command("answer")

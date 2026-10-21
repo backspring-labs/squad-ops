@@ -11,6 +11,10 @@ identity, and one ``escalation_closed`` row whose every ending shares a key, so 
 one escalation is refused as a conflicting key, recorded, and never applied. Both are records: the
 campaign holds where it is. ``cancelled`` is read, not written: the campaign's own terminal row is
 its record. Pure, so the gate and the sweep write exactly what this decides.
+
+The queue holds two kinds (§24bw): a plan gate's, and a cycle held on its instruction bindings
+(``binding_hold``, ``campaigns.binding_hold``). They share the rows, the bound and the listing. A
+binding hold has no question, is never answered, and never parks its cycle.
 """
 
 from __future__ import annotations
@@ -49,6 +53,15 @@ class LogRow(Protocol):
     def actor(self) -> str: ...
     @property
     def committed_at(self) -> datetime: ...
+
+
+class EscalationKind(StrEnum):
+    """What an escalation is about (§24bw): a plan gate the tier couldn't approve, or a cycle held
+    because its instructions couldn't be bound. A row written before kinds existed is a plan
+    gate's."""
+
+    PLAN_REVIEW = "plan_review"
+    BINDING_HOLD = "binding_hold"
 
 
 class EscalationState(StrEnum):
@@ -109,6 +122,10 @@ class Escalation:
     answers: Mapping[str, str] = field(default_factory=dict)
     answered_by: str | None = None
     answered_at: datetime | None = None
+    kind: EscalationKind = EscalationKind.PLAN_REVIEW
+    #: A binding hold's (§24bw): the run's hold it escalates, and its cause class.
+    hold_id: str | None = None
+    hold_class: str | None = None
 
     def question_of(self, decision_id: str) -> str | None:
         """The question this escalation recorded for ``decision_id``, or ``None``."""
@@ -197,23 +214,45 @@ def escalations(log: Sequence[LogRow], campaign_state: CampaignState) -> list[Es
             state = EscalationState.CANCELLED
         else:
             state = EscalationState.PENDING
+        common = {
+            "escalation_id": b["escalation_id"],
+            "run_id": b["identity"]["run_id"],
+            "cycle_id": b["identity"]["cycle_id"],
+            "opened_at": datetime.fromisoformat(b["opened_at"]),
+            "state": state,
+            "closed_by": ending.actor if ending is not None else None,
+            "closed_at": ending.committed_at if ending is not None else None,
+        }
+        if kind_of(b) is EscalationKind.BINDING_HOLD:
+            # §24bw: what couldn't be bound stands where a plan gate's failed conditions do.
+            out.append(
+                Escalation(
+                    **common,
+                    gate_name="",
+                    failed=tuple((u["ref"], u["reason"]) for u in b["unresolved"]),
+                    questions=(),
+                    kind=EscalationKind.BINDING_HOLD,
+                    hold_id=b["hold_id"],
+                    hold_class=b["hold_class"],
+                )
+            )
+            continue
         out.append(
             Escalation(
-                escalation_id=b["escalation_id"],
-                run_id=b["identity"]["run_id"],
-                cycle_id=b["identity"]["cycle_id"],
+                **common,
                 gate_name=b["identity"]["gate_name"],
-                opened_at=datetime.fromisoformat(b["opened_at"]),
                 failed=tuple((f["condition"], f["reading"]) for f in b["failed"]),
                 questions=tuple(b["questions"]),
-                state=state,
                 decision_ids=tuple(b.get("decision_ids") or ()),
-                closed_by=ending.actor if ending is not None else None,
-                closed_at=ending.committed_at if ending is not None else None,
                 **_answer_of(answered.get(b["escalation_id"])),
             )
         )
     return out
+
+
+def kind_of(binding: Mapping) -> EscalationKind:
+    """An opening row's kind: a row written before kinds existed is a plan gate's."""
+    return EscalationKind(binding.get("kind") or EscalationKind.PLAN_REVIEW)
 
 
 def _answer_of(row) -> dict:
@@ -261,6 +300,8 @@ def closing_transitions(
     bound = campaign.policy.ruling_bound_s
     out = []
     for esc in escalations(log, campaign.state):
+        if esc.kind is not EscalationKind.PLAN_REVIEW:
+            continue  # §24bw: a binding hold ends by its run's hold record, never a gate decision
         if esc.state is not EscalationState.PENDING or esc.run_id not in runs:
             continue
         run = runs[esc.run_id]
@@ -313,6 +354,7 @@ def parked_run(log: Sequence[ControlLogEntry], run_id: str) -> bool:
     return any(
         e.operation is ControlOperation.ESCALATION_OPENED
         and e.outcome is ControlOutcome.APPLIED
+        and kind_of(e.binding) is EscalationKind.PLAN_REVIEW  # §24bw: a binding hold never parks
         and e.binding["escalation_id"] in expired
         and e.binding["identity"]["run_id"] == run_id
         for e in log
@@ -335,6 +377,11 @@ def answer_refusal(escalation: Escalation | None, answers: Mapping[str, str]) ->
     superseded or is still pending has nothing to answer late."""
     if escalation is None:
         return "no escalation with that id is recorded in this campaign"
+    if escalation.kind is EscalationKind.BINDING_HOLD:
+        return (
+            f"escalation {escalation.escalation_id} is a binding hold: it is released by "
+            "re-supply, not by an answer (§24bw)"
+        )
     if escalation.state not in ANSWERABLE:
         return (
             f"escalation {escalation.escalation_id} is {escalation.state}: only an expired or "
