@@ -121,7 +121,7 @@ async def test_a_pass_sees_the_failing_check_and_the_file_and_fixes_it_with_an_e
     assert "How to Write an Edit Fence" in followup
     assert result.status == "SUCCEEDED", result.error
     # Stored as the extractor stores every file: without its final newline.
-    assert stored["backend/routes.py"] == "import fastapi\n" + _ROUTES.rstrip("\n")
+    assert stored["backend/routes.py"] == "import fastapi\n" + _ROUTES
     (form,) = forms
     assert (form["pass"], form["form"], form["edited"]) == (1, "edits", ["backend/routes.py"])
     # #1710: carried in the task's outputs, so the run keeps it after the agent's log is gone.
@@ -135,7 +135,7 @@ async def test_a_pass_that_re_emits_a_shown_file_whole_is_recorded_as_such(caplo
     result, _sent, forms, stored = await _develop(_WHOLE, caplog)
 
     assert result.status == "SUCCEEDED", result.error
-    assert stored["backend/routes.py"] == "import fastapi\n" + _ROUTES.rstrip("\n")
+    assert stored["backend/routes.py"] == "import fastapi\n" + _ROUTES
     (form,) = forms
     assert form["form"] == "whole_file"
     assert form["whole_file_offered"] == ["backend/routes.py"]
@@ -146,7 +146,7 @@ async def test_a_refused_edit_applies_nothing(caplog):
     remainder applied, or the refused fence stored as a file."""
     result, _sent, forms, stored = await _develop(_REFUSED, caplog)
 
-    assert stored["backend/routes.py"] == _ROUTES.rstrip("\n"), "the pass changed nothing"
+    assert stored["backend/routes.py"] == _ROUTES, "the pass changed nothing"
     assert "backend/extra.py" not in stored, "nor added the whole file it emitted beside it"
     assert result.status == "FAILED"
     (form,) = forms

@@ -5,6 +5,8 @@ from __future__ import annotations
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock
 
+import pytest
+
 from squadops.capabilities.handlers.cycle_tasks import (
     DevelopmentDevelopHandler,
     QATestHandler,
@@ -261,6 +263,18 @@ class TestDetectStubs:
 
     async def test_substantial_content_passes(self):
         assert _detect_stubs([{"name": "x.py", "content": "x = 1\n" * 50}]) == []
+
+    @pytest.mark.parametrize(
+        ("content", "stub"),
+        [("class Missing(Exception):\n    pass\n", False), ("def f():\n    pass\n\nx = 1\n", True)],
+        ids=["an-exception-class", "a-pass-body-mid-file"],
+    )
+    def test_a_files_final_newline_moves_no_file_across_the_stub_line(self, content, stub):
+        """#2607. Bug caught: a small exception class, ending in ``pass`` now that files keep
+        their final newline, read as a stub and sent to correction."""
+        assert _detect_stubs([{"name": "errors.py", "content": content}]) == (
+            ["errors.py"] if stub else []
+        )
 
 
 class TestDetectExpectedLayers:
