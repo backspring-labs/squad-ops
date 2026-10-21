@@ -14,9 +14,12 @@ from squadops.projects.models import CheckoutTree
 
 class SourceRepositoryPort(ABC):
     @abstractmethod
-    async def sync(self, project_id: str, locator: str, ref: str) -> str:
+    async def sync(
+        self, project_id: str, locator: str, ref: str, *, token: str | None = None
+    ) -> str:
         """Clone the repository into the managed cache, or fetch it there, and return the commit
-        ``ref`` names now (40 hexadecimal characters).
+        ``ref`` names now (40 hexadecimal characters). ``token`` reaches a private repository
+        over https, for this fetch only: never stored, in the clone or anywhere else.
 
         Raises:
             SourceUnavailable: The repository or the ref could not be reached, with the reason.
@@ -79,6 +82,33 @@ class SourceRepositoryPort(ABC):
         Raises:
             SourceUnavailable: The locator is refused or ssh, the branch or ref isn't one of
                 ours, or the product refused the push.
+        """
+
+    @abstractmethod
+    async def initialize(
+        self,
+        project_id: str,
+        locator: str,
+        *,
+        ref: str,
+        files: Mapping[str, bytes],
+        executable: Collection[str],
+        message: str,
+        committed_at: int,
+        token: str,
+    ) -> str:
+        """Make ``files`` the first commit of ``ref`` (``refs/heads/<branch>``) in a product
+        repository that holds no commit there yet, and return it (SIP-0112 E.4.6, greenfield).
+
+        The commit has no parent, and its committer date is ``committed_at`` (seconds since the
+        epoch), so the same request makes the same commit. It's made in the managed clone, then
+        pushed, never forced, with ``token`` over https, or to a local repository under a
+        configured root. A branch already at that commit is answered with it, unpushed: a retry
+        whose push landed. Any other commit there refuses, and the product is untouched.
+
+        Raises:
+            SourceUnavailable: The locator is refused or ssh, the ref isn't a branch, the branch
+                holds another commit (``not_empty``), or the product refused the push.
         """
 
     @abstractmethod

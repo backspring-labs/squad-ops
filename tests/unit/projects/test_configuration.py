@@ -49,6 +49,9 @@ class _Registry:
     async def get_project(self, project_id):
         return self.project
 
+    async def get_initialization(self, project_id):
+        return None  # an existing product, registered rather than initialized here
+
     async def record_development_configuration(self, configuration, **kwargs):
         self.recorded = (configuration, kwargs)
         return configuration, False

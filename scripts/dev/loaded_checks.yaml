@@ -1467,3 +1467,12 @@ checks:
       except ReferenceUnresolved as e:
           print(resolver.family, "pins no source commit" in str(e))
     expect: "repo True"
+  - id: "2412-initialize"
+    what: the runtime API serves a greenfield Project's initialization, and its managed clone can make a branch's first commit (SIP-0112 E.4.6)
+    container: squadops-runtime-api
+    code: |
+      from adapters.tools.git_source import GitSourceRepository
+      from squadops.api.routes.cycles.projects import router
+      paths = {r.path for r in router.routes}
+      print("/api/v1/projects/{project_id}/initializations" in paths, callable(GitSourceRepository.initialize))
+    expect: "True True"

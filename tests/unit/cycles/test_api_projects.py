@@ -385,8 +385,22 @@ class TestValidateProject:
             "c" * 40,
         )
         wired.sync.assert_awaited_once_with(
-            "prj-tally", "https://code.example.invalid/tally.git", "refs/heads/main"
+            "prj-tally", "https://code.example.invalid/tally.git", "refs/heads/main", token=None
         )
+
+    def test_a_private_repository_is_reached_with_the_owners_token_for_this_act(
+        self, client, wired
+    ):
+        """E.4.6's private destination, and any private product. Bugs caught: the owner's token
+        not reaching the fetch, so a private repository can't be validated; the token returned."""
+        resp = client.post(
+            "/api/v1/projects/prj-tally/validate",
+            json={"idempotency_key": "v-3", "token": "owner-secret"},
+        )
+
+        assert resp.status_code == 200
+        assert wired.sync.await_args.kwargs["token"] == "owner-secret"
+        assert "owner-secret" not in resp.text
 
     def test_an_unreachable_source_is_recorded_and_answered_not_raised(self, client, wired):
         from squadops.projects.models import SourceUnavailable
@@ -458,6 +472,7 @@ class TestDevelopmentConfigurationRoutes:
             return configuration, False
 
         mock_project_registry.record_development_configuration.side_effect = record
+        mock_project_registry.get_initialization.return_value = None  # an existing product
         clone = AsyncMock()
         clone.tree_at.return_value = CheckoutTree(
             repo.second_commit,
@@ -677,3 +692,78 @@ class TestSyncRoutes:
         resp = client.get("/api/v1/projects/prj-tally/syncs")
 
         assert resp.json() == [{"document": document, "replayed": False}]
+
+
+class TestInitializationRoutes:
+    """``/api/v1/projects/{id}/initializations`` (SIP-0112 FR-01, E.4.6). Bugs caught: an owner's
+    repository that already has a commit answered as a server failure, inviting retries; a
+    forge's refusal answered as the caller's; the owner's token not reaching the push, or
+    returned in the answer."""
+
+    def _greenfield(self, client, mock_project_registry, repository):
+        from pathlib import Path
+
+        import yaml
+
+        from squadops.projects.models import ProjectLifecycleStatus, ProjectSource
+
+        mock_project_registry.get_project.return_value = Project(
+            project_id="shelfnote",
+            name="Shelfnote",
+            description="",
+            created_at=NOW,
+            lifecycle_status=ProjectLifecycleStatus.REGISTERING,
+            source=ProjectSource(
+                "https://github.com/owner/shelfnote.git", "refs/heads/main", "review_request"
+            ),
+        )
+        mock_project_registry.get_initialization.return_value = None
+        client.app.state.source_repository = repository
+        root = Path(__file__).resolve().parents[3]
+        manifest = yaml.safe_load(
+            (root / "examples/03_group_run/interface_manifest.yaml").read_text()
+        )
+        manifest["project_id"] = "shelfnote"
+        return yaml.safe_dump(manifest)
+
+    @pytest.mark.parametrize(
+        ("reason", "status", "code"),
+        [("not_empty", 409, "INITIALIZATION_REFUSED"), ("push", 502, "INITIALIZATION_FAILED")],
+        ids=["the-branch-has-a-commit", "the-forge-refused-the-push"],
+    )
+    def test_the_clones_refusal_is_answered_by_whose_it_is(
+        self, client, mock_project_registry, reason, status, code
+    ):
+        from squadops.projects.models import SourceUnavailable
+
+        repository = AsyncMock()
+        repository.initialize.side_effect = SourceUnavailable("refused", reason=reason)
+        manifest = self._greenfield(client, mock_project_registry, repository)
+
+        resp = client.post(
+            "/api/v1/projects/shelfnote/initializations",
+            json={"manifest": manifest, "idempotency_key": "i-1", "token": "owner-secret"},
+        )
+
+        assert (resp.status_code, resp.json()["detail"]["error"]["code"]) == (status, code)
+        assert repository.initialize.await_args.kwargs["token"] == "owner-secret"
+        assert "owner-secret" not in resp.text
+        mock_project_registry.record_initialization.assert_not_awaited()
+
+    def test_a_sample_application_is_refused_and_nothing_is_pushed(
+        self, client, mock_project_registry
+    ):
+        repository = AsyncMock()
+        client.app.state.source_repository = repository
+        mock_project_registry.get_initialization.return_value = None
+
+        resp = client.post(
+            "/api/v1/projects/hello_squad/initializations",
+            json={"manifest": "kind: interface_manifest\n", "idempotency_key": "i-1"},
+        )
+
+        assert (resp.status_code, resp.json()["detail"]["error"]["code"]) == (
+            409,
+            "INITIALIZATION_REFUSED",
+        )
+        repository.initialize.assert_not_awaited()

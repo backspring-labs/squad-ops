@@ -298,6 +298,9 @@ class ProjectValidationRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     idempotency_key: str = Field(min_length=1, max_length=200)
+    #: The owner's own forge token, for a private repository's fetch in this one act: never
+    #: stored, logged or returned. Absent, the deploy's token for the Project is used, if any.
+    token: SecretStr | None = Field(default=None, min_length=1, max_length=512)
 
 
 class DevelopmentConfigurationRequest(BaseModel):
@@ -361,6 +364,28 @@ class ContributionResponse(BaseModel):
     """A contribution, pending until the product takes it, and whether this replayed one."""
 
     contribution: dict[str, Any]
+    replayed: bool = False
+
+
+class InitializationRequest(BaseModel):
+    """Make a greenfield Project's first commit from an approved interface manifest (SIP-0112
+    FR-01, E.4.6)."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    #: The approved interface manifest, as YAML: the structure the blueprint's layout is
+    #: rendered from, kept as submitted.
+    manifest: str = Field(min_length=1, max_length=200_000)
+    idempotency_key: str = Field(min_length=1, max_length=200)
+    #: The owner's own forge token, for this one act: used in memory for the push, never stored,
+    #: logged or returned. Absent, the deploy's token for the Project is used.
+    token: SecretStr | None = Field(default=None, min_length=1, max_length=512)
+
+
+class InitializationResponse(BaseModel):
+    """A greenfield Project's initialization, and whether this replayed one."""
+
+    initialization: dict[str, Any]
     replayed: bool = False
 
 

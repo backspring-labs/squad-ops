@@ -47,3 +47,31 @@ def test_1805s_check_lists_are_what_a_contribution_writes(column, values):
     """Bug caught: a mode 2.4 contributes through, or a state it records, that the table
     refuses on its first write."""
     assert _check_values(column, MIGRATIONS / "1805_project_contributions.sql") == values
+
+
+def _operations_set_by(migration: Path) -> set[str] | None:
+    match = re.search(
+        r"ADD CONSTRAINT project_record_events_operation_check\s+CHECK \(operation IN \(([^)]*)\)\)",
+        migration.read_text(),
+    )
+    return set(re.findall(r"'([^']+)'", match.group(1))) if match else None
+
+
+def test_the_last_operation_list_holds_every_operation_the_registry_writes():
+    """Each SIP-0112 act rewrites one CHECK list on ``project_record_events``. Bug caught: a
+    later migration that leaves out an earlier one's operation (two PRs adding acts at once), so
+    that act's first write is refused in production, after its product-side effect (a push, a
+    review request) already happened."""
+    lists = [
+        found
+        for migration in sorted(MIGRATIONS.glob("18*.sql"))
+        if (found := _operations_set_by(migration)) is not None
+    ]
+    registry = (
+        Path(__file__).resolve().parents[3] / "adapters/cycles/postgres_project_registry.py"
+    ).read_text()
+    written = set(re.findall(r"INSERT INTO project_record_events .*?VALUES \(\$1, \$2, '(\w+)'",
+                             registry, re.DOTALL))  # fmt: skip
+
+    assert {"register", "initialize"} <= written
+    assert written <= lists[-1], f"no migration allows {sorted(written - lists[-1])}"

@@ -1752,6 +1752,11 @@ def is_scaffoldable_stack(stack: str) -> bool:
     return bool(stack) and stack in _STACKS
 
 
+def scaffoldable_stacks() -> tuple[str, ...]:
+    """The stacks with a walking-skeleton expander, by name: SIP-0105's blueprints."""
+    return tuple(sorted(_STACKS))
+
+
 @dataclass(frozen=True)
 class ScaffoldStack:
     """Everything the scaffold knows about one stack, in one place (#S1).

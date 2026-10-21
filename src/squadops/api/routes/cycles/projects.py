@@ -2,6 +2,7 @@
 Project API routes (SIP-0064 §9.1).
 """
 
+from datetime import UTC, datetime
 from pathlib import Path
 
 from fastapi import APIRouter, Depends, Request
@@ -15,6 +16,8 @@ from squadops.api.cycle_schemas import (
     DevelopmentConfigurationResponse,
     InheritedBaselineRequest,
     InheritedBaselineResponse,
+    InitializationRequest,
+    InitializationResponse,
     ProjectRegistrationRequest,
     ProjectRegistrationResponse,
     ProjectResponse,
@@ -41,6 +44,7 @@ from squadops.projects.development_configuration import (
     ConfigurationInvalid,
     DevelopmentConfiguration,
 )
+from squadops.projects.initialization import InitializationRefused, initialize_project
 from squadops.projects.models import SourceUnavailable
 from squadops.projects.registration import RegistrationRefused, prepare_registration
 from squadops.projects.sync import SyncRefused, sync_project
@@ -115,6 +119,11 @@ async def validate_registered_project(
             repository=get_source_repository(request),
             actor=identity.user_id if identity is not None else "anonymous",
             idempotency_key=body.idempotency_key,
+            tokens=(
+                {project_id: body.token.get_secret_value()}
+                if body.token is not None
+                else get_review_request_tokens(request)
+            ),
         )
     except SourceUnavailable as e:
         raise http_error(502, "SOURCE_UNAVAILABLE", f"{e.reason}: {e}") from e
@@ -262,6 +271,55 @@ async def list_contributions(request: Request, project_id: str) -> list[Contribu
     """A Project's contributions, oldest first: pending until the product takes them."""
     contributions = await get_project_registry(request).contributions(project_id)
     return [ContributionResponse(contribution=c.to_document()) for c in contributions]
+
+
+@router.post("/{project_id}/initializations", status_code=201)
+async def initialize_greenfield_project(
+    request: Request,
+    project_id: str,
+    body: InitializationRequest,
+    identity: Identity | None = Depends(require_scopes(Scope.ADMIN_WRITE)),
+) -> InitializationResponse:
+    """Make a greenfield Project's first commit (SIP-0112 FR-01, E.4.6): the SIP-0105
+    blueprint's layout, rendered from the approved interface manifest, pushed to the empty
+    branch its owner made, never forced. The owner's act, once per Project; validation follows
+    as for any registered product."""
+    try:
+        initialization, replayed = await initialize_project(
+            project_id,
+            body.manifest,
+            registry=get_project_registry(request),
+            repository=get_source_repository(request),
+            tokens=(
+                {project_id: body.token.get_secret_value()}
+                if body.token is not None
+                else get_review_request_tokens(request)
+            ),
+            actor=identity.user_id if identity is not None else "anonymous",
+            idempotency_key=body.idempotency_key,
+            now=datetime.now(UTC),
+        )
+    except InitializationRefused as e:
+        raise http_error(409, "INITIALIZATION_REFUSED", str(e)) from e
+    except SourceUnavailable as e:
+        if e.reason == "not_empty":
+            raise http_error(409, "INITIALIZATION_REFUSED", str(e)) from e
+        raise http_error(502, "INITIALIZATION_FAILED", str(e)) from e
+    return InitializationResponse(initialization=initialization.to_document(), replayed=replayed)
+
+
+@router.get(
+    "/{project_id}/initializations", dependencies=[Depends(require_scopes(Scope.CYCLES_READ))]
+)
+async def list_initializations(request: Request, project_id: str) -> list[InitializationResponse]:
+    """A greenfield Project's initialization, or none for a product that existed before it was
+    registered."""
+    initialization = await get_project_registry(request).get_initialization(project_id)
+    return (
+        []
+        if initialization is None
+        else [InitializationResponse(initialization=initialization.to_document())]
+    )
 
 
 @router.post("/{project_id}/syncs", status_code=201)
