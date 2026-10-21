@@ -13,7 +13,7 @@ that step.
 
 **A check:** ``{"check": "status", "step": 3, "equals": 409}`` (or ``"in": [400, 422]``), or ``{"check": "json", "step": 4,
 "path": "participants.0.name", "equals": "Ada"}`` (or ``"length": 1``, or ``"contains": ...``, or
-``"where": {"title": "Bridge Loop"}``: some element of the list has every field named equal).
+``"where": {"title": "Riverside 10K"}``: some element of the list has every field named equal).
 Steps are numbered from 1.
 
 A step the runner has no vocabulary for is ``blocked_unverified``: ``no_runner``, or for a

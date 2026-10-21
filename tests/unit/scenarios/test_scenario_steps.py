@@ -131,23 +131,23 @@ async def test_a_status_check_may_accept_each_status_a_delivery_can_choose(statu
 
 
 _LISTED = [
-    {"id": "r1", "title": "Tempo Tuesday", "meeting_location": "Track", "participants": []},
-    {"id": "r2", "title": "Bridge Loop", "meeting_location": "East Bridge", "participants": []},
+    {"id": "r1", "title": "Sunrise Social", "meeting_location": "Track", "participants": []},
+    {"id": "r2", "title": "Riverside 10K", "meeting_location": "Pier 4", "participants": []},
 ]
 
 
 @pytest.mark.parametrize(
     ("body", "where", "result", "detail"),
     [
-        (_LISTED, {"title": "Bridge Loop", "meeting_location": "East Bridge"}, "passed", None),
-        (_LISTED, {"title": "Bridge Loop", "meeting_location": "Track"}, "failed",
-         "'' (2 elements) has none with {'title': 'Bridge Loop', 'meeting_location': 'Track'}"),
-        (_LISTED, {"title": "Bridge Loop", "location": "East Bridge"}, "failed",
-         "'' (2 elements) has none with {'title': 'Bridge Loop', 'location': 'East Bridge'}"),
-        ([], {"title": "Bridge Loop"}, "failed", "'' (0 elements) has none with {'title': 'Bridge Loop'}"),
-        ({"runs": _LISTED}, {"title": "Bridge Loop"}, "failed",
-         "'' (None elements) has none with {'title': 'Bridge Loop'}"),
-        (["Bridge Loop"], {"title": "Bridge Loop"}, "failed", "'' (1 elements) has none with {'title': 'Bridge Loop'}"),
+        (_LISTED, {"title": "Riverside 10K", "meeting_location": "Pier 4"}, "passed", None),
+        (_LISTED, {"title": "Riverside 10K", "meeting_location": "Track"}, "failed",
+         "'' (2 elements) has none with {'title': 'Riverside 10K', 'meeting_location': 'Track'}"),
+        (_LISTED, {"title": "Riverside 10K", "location": "Pier 4"}, "failed",
+         "'' (2 elements) has none with {'title': 'Riverside 10K', 'location': 'Pier 4'}"),
+        ([], {"title": "Riverside 10K"}, "failed", "'' (0 elements) has none with {'title': 'Riverside 10K'}"),
+        ({"runs": _LISTED}, {"title": "Riverside 10K"}, "failed",
+         "'' (None elements) has none with {'title': 'Riverside 10K'}"),
+        (["Riverside 10K"], {"title": "Riverside 10K"}, "failed", "'' (1 elements) has none with {'title': 'Riverside 10K'}"),
     ],
     ids=["an-element-has-every-field", "one-field-differs", "a-field-it-lacks", "empty-list",
          "not-a-list", "elements-not-mappings"],
