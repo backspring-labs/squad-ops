@@ -526,6 +526,16 @@ if [ "$REBUILD_SANDBOX" = true ]; then
     else
         BUILD_OK=true; docker compose --profile sandbox build sandbox-service || BUILD_OK=false
     fi
+    # #2580: the evaluator image the sandbox's scenario runner launches (SIP-0113 A2). It was built
+    # only by hand, so a deploy could run the sandbox with no evaluator and loaded check 2416 red:
+    # built here when its pinned tag is absent, and rebuilt without cache when the sandbox is.
+    if [ "$BUILD_OK" = true ]; then
+        if [ "${FORCE_REBUILD:-0}" = "1" ]; then
+            "$REPO_ROOT/scripts/dev/build_evaluator_image.sh" --no-cache || BUILD_OK=false
+        else
+            "$REPO_ROOT/scripts/dev/build_evaluator_image.sh" --if-absent || BUILD_OK=false
+        fi
+    fi
     if [ "$BUILD_OK" = true ] && docker compose --profile sandbox up -d --wait sandbox-service; then
         echo -e "${GREEN}✅ sandbox-service rebuilt and restarted${NC}"
     else
