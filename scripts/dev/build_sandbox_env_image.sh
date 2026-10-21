@@ -1,17 +1,8 @@
 #!/usr/bin/env bash
-# Build the canonical sandbox environment image (SIP-0102 phase 102.2).
-#
-# The tag is read from the environment contract's one pinned reference
-# (SANDBOX_ENV_IMAGE in src/squadops/sandbox/environment.py) so it cannot drift from
-# what the contracts pin (#1197). The publish pipeline (registry vs local-only) is open
-# decision 4 in the SIP-0102 plan.
+# Build the canonical sandbox environment image (SIP-0102 phase 102.2), which cycle-create preflight
+# requires on the sandbox host. Its tag is SANDBOX_ENV_IMAGE (src/squadops/sandbox/environment.py),
+# so it can't drift from what the contracts pin (#1197); --if-absent and the rest are
+# build_pinned_image.sh's. The publish pipeline (registry vs local-only) is open decision 4 in the
+# SIP-0102 plan.
 set -euo pipefail
-cd "$(dirname "$0")/../.."
-
-PYTHON="${PYTHON:-}"
-if [ -z "$PYTHON" ]; then
-  if [ -x .venv/bin/python ]; then PYTHON=.venv/bin/python; else PYTHON=python3; fi
-fi
-TAG="$(PYTHONPATH=src "$PYTHON" -c 'from squadops.sandbox.environment import SANDBOX_ENV_IMAGE; print(SANDBOX_ENV_IMAGE)')"
-docker build -t "$TAG" -f infra/sandbox/sandbox-env.Dockerfile infra/sandbox
-echo "Built $TAG"
+exec "$(dirname "$0")/build_pinned_image.sh" SANDBOX_ENV_IMAGE infra/sandbox/sandbox-env.Dockerfile infra/sandbox "$@"
