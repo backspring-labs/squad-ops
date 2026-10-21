@@ -1263,7 +1263,7 @@ checks:
       from squadops.sandbox import workspace
       print("release_workspace" in ExecutionSandboxPort.__abstractmethods__, workspace._STORE_ENTRIES)
     expect: "True ('workspace', 'copies', 'revisions', 'lease.json')"
-  - id: "2418"
+  - id: "2418-package-readings"
     what: the campaign's evidence package (version 4) carries its outcome readings, from the runtime's scenario store
     container: squadops-runtime-api
     code: |
@@ -1486,4 +1486,30 @@ checks:
       from squadops.api.routes.cycles.projects import router
       paths = {r.path for r in router.routes}
       print("/api/v1/projects/{project_id}/initializations" in paths, callable(GitSourceRepository.initialize))
+    expect: "True True"
+  - id: "2595"
+    what: an accepted repair's or retry's promotion reads its criteria's statements from its own launch, and the digest names a criterion frozen without one (#2595)
+    container: squadops-runtime-api
+    code: |
+      from squadops.campaigns.evidence import _accepted
+      from squadops.campaigns.increment_tree import forwarded_change_request
+      row = {"operation": "promote", "outcome": "applied", "binding": {"cycle_id": "c", "identity": "0" * 12, "frozen_criteria": [{"criterion_id": "T4"}]}}
+      print(callable(forwarded_change_request), _accepted({"cycles": [], "control_log": [row]})[-1].strip())
+    expect: "True - froze T4: statement not recorded"
+  - id: "2593-runtime"
+    what: a fresh proposal's launch carries each proposal its campaign never approved, the ten most recent (#2593)
+    container: squadops-runtime-api
+    code: |
+      import inspect
+      from squadops.campaigns.launch_requests import increment_launch
+      from squadops.campaigns.unapproved_proposals import MOST_RECENT
+      print(MOST_RECENT, "unapproved" in inspect.signature(increment_launch).parameters)
+    expect: "10 True"
+  - id: "2593-agent"
+    what: the strategy role renders a fresh proposal's unapproved proposals from its own asset (#2593)
+    container: squadops-nat
+    code: |
+      import pathlib, squadops.prompts as p
+      t = pathlib.Path(p.__file__).parent / "request_templates"
+      print((t / "request.proposal_unapproved_proposals.md").is_file(), "unapproved_proposals_section" in (t / "request.strategy_propose_increment.md").read_text())
     expect: "True True"

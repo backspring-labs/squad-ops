@@ -169,6 +169,18 @@ def test_every_loaded_check_row_is_complete():
     assert rows and all({"id", "what", "container", "code", "expect"} <= set(r) for r in rows)
 
 
+def test_every_loaded_check_has_its_own_id():
+    """Bug caught: two rows under one id (2.4 carried two `2418`s). `--only` runs a row by its
+    id, a run's lines name it, and the verification-set driver tracks checks by id, so a shared
+    id runs both under one name and credits whichever was meant."""
+    from collections import Counter
+
+    import yaml
+
+    ids = Counter(str(r["id"]) for r in yaml.safe_load(loaded.CHECKS.read_text())["checks"])
+    assert [i for i, n in ids.items() if n > 1] == []
+
+
 @pytest.mark.parametrize(
     ("container", "exists", "exec_rc", "row_line", "summary", "expected_exit"),
     [
