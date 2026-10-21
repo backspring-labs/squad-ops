@@ -104,7 +104,7 @@ sandbox, which the Spark lane owns, are named as cross-lane tasks (§8.2.2).
   review, was approved by the owner as written, 2026-10-17 (§8.2 contract 7). This PR stays proposal-only until the
   owner approves it, and no integration branch is created yet.
 
-## Delivery ledger (current as of 2026-10-18)
+## Delivery ledger (current as of 2026-10-21)
 
 One row per part that ships separately, from Appendix E.4. Statuses: *shipped* (the release, the PR,
 and the issue it closed), *placed* (the release and the open issue tracking it, labelled `sip:NNNN` once
@@ -121,7 +121,7 @@ before the SIP closes and need not ship in 2.4 (the owner, the same day). Depend
 | §8.2.3 the shared fixture product and contract tests, landing before either lane's first shared-contract PR (the MacBook lane writes it; the Spark lane adds its recorded reference, the 2.4 plan's D12) | **shipped**: Tally, with each lane's recorded outputs in four forms and the fixture's own checks (`tests/fixtures/shared_contract/`). Each contract test lands with the PR that builds its seam (agreed on #2407) | 2.4.0, PR #2440, issue #2407 |
 | E.4.1 existing-product registration and authority: the writable registry cutover, its validated rollback and minimum enrollment | **shipped**: the writable registry with its cutover from `config/projects.yaml` and guarded rollback (#2444), and registration through `POST /api/v1/projects` and `squadops projects import` behind the locator rules and the write gate (#2452). The owner's R1–R6 are on #2408. Owner decisions take the event table's `owner_decision` operation, written from E.4.4 (#2411) | 2.4.0, PRs #2444 and #2452, issue #2408 |
 | E.4.2 repository-native discovery and the inherited baseline, with the start declaration (§8.2 contract 7) | **shipped**: the managed clone and validation; the versioned Development Configuration with contract 7's start declaration and the repository's instruction sources; seeding with the commit-to-revision mapping (contract 3's seeding half); the inherited baseline through X-3a. Capture back to Git is E.4.3's (#2410) | 2.4.0, PR #2468, issue #2409 |
-| E.4.3 the first scoped feature through the shared cycle path | **placed** | 2.4.0, #2410 |
+| E.4.3 the first scoped feature through the shared cycle path | **shipped**: the source-backed run, from the product's tree to a verified change contributed through its own process (#2484); the sync's attribution of SquadOps's own contributions and its hold on Cycles until drift is reconciled (#2610, H.2); the brownfield demonstration read against its pre-registration, with IR-2 passing live (#2611). The deletion form and a regression's repair round are deferred follow-ups, each with its own issue | 2.4.0, PRs #2484, #2610 and #2611, issue #2410 |
 | E.4.4 the second feature after an outside contribution | **placed** | 2.4.0, #2411 |
 | E.4.5 lifecycle completeness: update history, archive/restore, concurrency and conflict recovery (before close; not required in 2.4) | **unplaced**, deliberately: placed by a later plan, before the SIP closes | — |
 | E.4.6 greenfield Project creation at an owner-approved external destination (required, Q34; shipped by the 2.4 cut, G6) | **placed** | 2.4.0, #2412 |
