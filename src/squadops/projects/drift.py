@@ -11,6 +11,11 @@ detection names, path by path, what changed in the inputs that evidence depends 
 - the contribution policy (the files that say how a change is offered);
 - everything else, the product's source.
 
+Paths SquadOps's own integrated contributions account for are listed under each contribution, apart
+from what changed outside it (#2606): a path a contribution changed, whose upstream content is still
+what it wrote. One an outside developer changed again after it is outside drift. Both invalidate
+evidence alike, so ``relevant`` reads both.
+
 The finding is evidence for a decision. It moves nothing by itself: the development baseline
 advances through validation, and the Development Configuration and inherited baseline are
 recorded again at the new commit before a unit relies on them (``prepare_cycle`` refuses until
@@ -20,7 +25,7 @@ they are).
 from __future__ import annotations
 
 import fnmatch
-from collections.abc import Iterable, Mapping
+from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass, field
 from pathlib import PurePosixPath
 from typing import Any
@@ -31,7 +36,8 @@ from squadops.projects.development_configuration import (
     DevelopmentConfiguration,
 )
 
-DRIFT_SCHEMA = "source-drift/v1"
+#: v2 (#2606): ``changed`` is what changed outside SquadOps; ``integrated`` lists its contributions'.
+DRIFT_SCHEMA = "source-drift/v2"
 
 INSTRUCTIONS = "instructions"
 COMMAND_INPUTS = "command_inputs"
@@ -76,17 +82,51 @@ _POLICY_NAMES = frozenset({"CONTRIBUTING.md", "CODEOWNERS", "PULL_REQUEST_TEMPLA
 
 
 @dataclass(frozen=True)
+class ContributedChange:
+    """An integrated contribution's change: its commit's tree and its parent's."""
+
+    cycle_id: str
+    run_id: str
+    commit: str
+    before: Mapping[str, bytes]
+    after: Mapping[str, bytes]
+
+
+@dataclass(frozen=True)
+class IntegratedDrift:
+    """The upstream paths one integrated contribution accounts for, by category."""
+
+    cycle_id: str
+    run_id: str
+    commit: str
+    changed: Mapping[str, tuple[str, ...]]
+
+    def to_document(self) -> dict[str, Any]:
+        return {
+            "cycle_id": self.cycle_id,
+            "run_id": self.run_id,
+            "commit": self.commit,
+            "changed": _by_category(self.changed),
+        }
+
+
+@dataclass(frozen=True)
 class SourceDrift:
     project_id: str
     from_commit: str
     to_commit: str
+    #: What changed outside SquadOps, by category.
     changed: Mapping[str, tuple[str, ...]] = field(default_factory=dict)
+    #: What SquadOps's integrated contributions account for, each apart.
+    integrated: tuple[IntegratedDrift, ...] = ()
 
     @property
     def relevant(self) -> list[str]:
-        """The categories, other than the product's source, that changed: each invalidates
-        evidence until it is reconciled and revalidated."""
-        return [c for c in CATEGORIES if c != SOURCE and self.changed.get(c)]
+        """The categories, other than the product's source, that changed, outside SquadOps or
+        through its contributions: each invalidates evidence until it is reconciled and
+        revalidated."""
+        changed = [self.changed, *(i.changed for i in self.integrated)]
+        return [c for c in CATEGORIES if c != SOURCE and any(m.get(c) for m in changed)]
 
     def to_document(self) -> dict[str, Any]:
         return {
@@ -94,9 +134,14 @@ class SourceDrift:
             "project_id": self.project_id,
             "from_commit": self.from_commit,
             "to_commit": self.to_commit,
-            "changed": {c: list(self.changed[c]) for c in CATEGORIES if self.changed.get(c)},
+            "changed": _by_category(self.changed),
+            "integrated": [i.to_document() for i in self.integrated],
             "relevant": self.relevant,
         }
+
+
+def _by_category(changed: Mapping[str, tuple[str, ...]]) -> dict[str, list[str]]:
+    return {c: list(changed[c]) for c in CATEGORIES if changed.get(c)}
 
 
 def changed_paths(old: Mapping[str, bytes], new: Mapping[str, bytes]) -> list[str]:
@@ -141,6 +186,20 @@ def classify(path: str, *, instructions: Iterable[str], command_inputs: Iterable
     return SOURCE
 
 
+def accounted_for(
+    new: Mapping[str, bytes], contributed: Sequence[ContributedChange]
+) -> dict[str, ContributedChange]:
+    """Each upstream path an integrated contribution accounts for: one it changed, whose upstream
+    content is still what it wrote. A later contribution's claim on a path replaces an earlier
+    one's; a path changed again since is nobody's here."""
+    claims: dict[str, ContributedChange] = {}
+    for change in contributed:
+        for path in changed_paths(change.before, change.after):
+            if new.get(path) == change.after.get(path):
+                claims[path] = change
+    return claims
+
+
 def drift_between(
     project_id: str,
     from_commit: str,
@@ -148,17 +207,35 @@ def drift_between(
     old: Mapping[str, bytes],
     new: Mapping[str, bytes],
     configuration: DevelopmentConfiguration,
+    *,
+    contributed: Sequence[ContributedChange] = (),
 ) -> SourceDrift:
-    """The drift from the approved baseline's tree to the upstream one, by category."""
+    """The drift from the approved baseline's tree to the upstream one, by category: what changed
+    outside SquadOps, and what each of its integrated contributions (``contributed``, oldest
+    first) accounts for."""
     instructions = {s.path for s in configuration.instruction_sources} | set(INSTRUCTION_FILES)
     inputs = command_paths(configuration, old.keys() | new.keys())
-    changed: dict[str, list[str]] = {}
+    claims = accounted_for(new, contributed)
+    outside: dict[str, list[str]] = {}
+    integrated: dict[str, dict[str, list[str]]] = {}
     for path in changed_paths(old, new):
         category = classify(path, instructions=instructions, command_inputs=inputs)
-        changed.setdefault(category, []).append(path)
+        claim = claims.get(path)
+        into = outside if claim is None else integrated.setdefault(claim.commit, {})
+        into.setdefault(category, []).append(path)
     return SourceDrift(
         project_id=project_id,
         from_commit=from_commit,
         to_commit=to_commit,
-        changed={c: tuple(paths) for c, paths in changed.items()},
+        changed={c: tuple(paths) for c, paths in outside.items()},
+        integrated=tuple(
+            IntegratedDrift(
+                change.cycle_id,
+                change.run_id,
+                change.commit,
+                {c: tuple(paths) for c, paths in integrated[change.commit].items()},
+            )
+            for change in contributed
+            if change.commit in integrated
+        ),
     )

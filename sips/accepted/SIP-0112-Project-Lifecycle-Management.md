@@ -1644,3 +1644,24 @@ All paths below are relative to `backspring-labs/squad-ops` at commit `7aecfa0b3
 - The owner chose the destination on 2026-10-20: an empty private repository in backspring-labs, made with the owner's GitHub access (`backspring-labs/shelfnote`, recorded on #2412).
 - The owner chose the product the same day: a small FastAPI and React application on `fullstack_fastapi_react`.
 - The API and CLI shape is the MacBook lane's, under the owner's delegation of 2026-10-18.
+
+## H.2 A sync names what SquadOps's own contributions account for apart from outside change, and its drift holds new Cycles until reconciled (2026-10-21; E.4.4, #2606, #2608)
+
+**What changed.** FR-21 says drift "invalidates affected Development Configuration and baseline evidence until reconciled and revalidated". The brownfield demonstration's stages 4 and 5 showed two ways the built sync fell short of that:
+1. **Who changed what.** A sync compared the baseline's tree with upstream's before reading contributions, so a merged contribution's own files read as outside source drift (#2606). The drift document is now `source-drift/v2`:
+   - `changed` holds what changed outside SquadOps;
+   - `integrated` lists each integrated contribution with the paths it accounts for. A path counts as the contribution's when it changed the path and upstream's content is still what it wrote. A path an outside developer changed again since is outside drift.
+   - `relevant` reads both, since a contribution that changed an instruction source invalidates the configuration as an outside edit does.
+2. **What holds a Cycle.** Nothing on the Cycle path read a recorded sync, so a Cycle at a baseline a sync had already found upstream past was accepted (#2608), though the drift module's own docstring said `prepare_cycle` refuses. Now, while the Project's latest sync read upstream past its current baseline with `relevant` drift, `prepare_cycle` refuses (409 `STALE_SOURCE_PRECONDITION`, naming the upstream commit and the categories), on the standalone and the Campaign path alike (IR-2's shared path).
+   - Once `validate` advances the baseline, that sync describes a replaced baseline and holds nothing. The configuration and the inherited baseline are then each required at the new commit on their own, as before.
+
+**Where it narrows FR-21:** **source drift alone holds nothing.** A Cycle pinned at the older commit develops the tree its evidence describes, and its contribution is offered on that commit, through the product's own process. Only the categories that invalidate evidence (`relevant`) hold Cycles.
+
+**The evidence:**
+- The Spark lane's stage 4 sync of `prj-z-continuum` (`demo-a-sync-1`, #2410) listed z_continuum#1's two files under `source`, beside the outside commit's.
+- Its stage 5 probe created `cyc_001b267cac63` at `43369054` after that sync, and it was accepted.
+- **The wiring tests:**
+  - `tests/unit/projects/test_sync.py` replays stage 4 through the real managed clone, for a merge commit and a squash merge, plus a path changed again outside;
+  - `tests/unit/shared_contract/test_contract1_source_context.py` enters at the create route and at the Campaign launcher's `prepare_cycle`.
+
+**Who ruled:** the MacBook lane, under the owner's delegation of 2026-10-18. The gate is the stated design of #2565's drift module. The narrowing to `relevant` drift follows that module's own definition of what invalidates evidence.

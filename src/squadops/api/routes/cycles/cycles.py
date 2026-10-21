@@ -102,6 +102,7 @@ from squadops.memory.reference_binding import bound_for_cycle
 from squadops.memory.task_instructions import admitted, requested_references
 from squadops.ports.llm.provider import LLMCapability
 from squadops.projects.source_context import ProjectSourceContext
+from squadops.projects.sync import unreconciled
 from squadops.sandbox.environment import get_environment_contract
 from squadops.sandbox.main import sandbox_config_from_env
 from squadops.sandbox.preflight import sandbox_environment_decision
@@ -465,6 +466,23 @@ def pin_source_context(
     )
 
 
+async def require_reconciled_upstream(registry: Any, context: ProjectSourceContext) -> None:
+    """FR-21 (#2608): once a sync has read upstream past the pinned baseline, with drift in evidence
+    a unit relies on, a Cycle on the older evidence is refused until the Project is reconciled:
+    validated, configured and its baseline captured at the new commit. Source drift alone holds
+    nothing: the pinned evidence still describes the tree the Cycle develops."""
+    finding = unreconciled(
+        await registry.source_syncs(context.project_id), context.development_baseline_commit
+    )
+    if finding is not None:
+        raise StaleSourcePreconditionError(
+            f"Project {context.project_id}'s upstream is at {finding['upstream_commit']}, past its "
+            f"baseline {context.development_baseline_commit}, with "
+            f"{', '.join(finding['drift']['relevant'])} changed (projects sync): reconcile it at "
+            "the new commit first (squadops projects validate, configure, baseline --capture)"
+        )
+
+
 async def require_inherited_baseline(registry: Any, context: ProjectSourceContext) -> None:
     """FR-20, FR-09: a source-backed run is judged against the product's inherited baseline at
     the commit and Development Configuration revision it pins, so a Cycle without that
@@ -509,6 +527,7 @@ async def prepare_cycle(
         )
     source_context = pin_source_context(project, body.source_precondition)
     if source_context is not None:
+        await require_reconciled_upstream(ports.project_registry, source_context)
         await require_inherited_baseline(ports.project_registry, source_context)
 
     # Resolve squad profile snapshot

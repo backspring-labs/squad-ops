@@ -28,6 +28,7 @@ from squadops.cycles.models import (
     InheritedBaselineNotFoundError,
     Project,
     SquadProfile,
+    StaleSourcePreconditionError,
 )
 from squadops.projects.baseline import parse_baseline
 from squadops.projects.models import ProjectLifecycleStatus, ProjectSource
@@ -77,6 +78,7 @@ def ports():
     registry.get_inherited_baseline.return_value = parse_baseline(
         recorded("inherited_baseline", "valid")
     )
+    registry.source_syncs.return_value = []
     profiles = AsyncMock()
     profiles.resolve_snapshot.return_value = (_profile(), "sha256:abc")
     return CreationPorts(
@@ -176,6 +178,53 @@ def test_a_cycle_without_the_baseline_of_its_pin_is_refused_before_dispatch(
     assert (resp.status_code, error["code"]) == (409, "PROJECT_STATE_CONFLICT")
     assert "capture the baseline there first" in error["message"]
     assert ports.cycle_registry._cycles == {}
+
+
+@pytest.mark.parametrize(
+    ("synced", "refused"),
+    [
+        ({"relevant": ["instructions"], "changed": {"instructions": ["CONTRIBUTING.md"]}}, True),
+        ({"relevant": [], "changed": {"source": ["tally/notes.py"]}}, False),
+        (None, False),
+    ],
+    ids=["instructions-drifted", "source-only", "a-baseline-since-replaced"],
+)
+async def test_a_sync_that_found_drift_past_the_baseline_holds_new_cycles(
+    client, ports, synced, refused
+):
+    """#2608, the brownfield demonstration's stage 5 probe, entered at the create route and at the
+    Campaign launcher. Bugs caught: a Cycle accepted at a baseline a sync already found upstream
+    past, with the instructions it relies on changed; source drift alone holding a Cycle whose
+    pinned evidence still describes its tree; a sync read against a baseline validation has
+    since replaced still holding Cycles."""
+    baseline = _project().development_baseline_commit
+    read_at = baseline if synced is not None else "e" * 40
+    drift = synced or {"relevant": ["instructions"], "changed": {"instructions": ["CLAUDE.md"]}}
+    ports.project_registry.source_syncs.return_value = [
+        {"baseline_commit": baseline, "upstream_commit": baseline, "drift": None},
+        {"baseline_commit": read_at, "upstream_commit": "f" * 40, "drift": drift},
+    ]
+
+    resp = client.post("/api/v1/projects/prj-tally/cycles", json={"squad_profile_id": "full"})
+    try:
+        await prepare_cycle(
+            ports, "prj-tally", CycleCreateRequest(squad_profile_id="full"),
+            campaign_id="cmp_2407a0000001", kind="increment",
+        )  # fmt: skip
+        launched = None
+    except StaleSourcePreconditionError as e:
+        launched = str(e)
+
+    if refused:
+        error = resp.json()["detail"]["error"]
+        assert (resp.status_code, error["code"]) == (409, "STALE_SOURCE_PRECONDITION")
+        assert f"upstream is at {'f' * 40}" in error["message"]
+        assert "with instructions changed" in error["message"]
+        assert launched == error["message"]
+        assert ports.cycle_registry._cycles == {}
+    else:
+        assert resp.status_code == 201, resp.json()
+        assert launched is None
 
 
 @pytest.mark.parametrize(

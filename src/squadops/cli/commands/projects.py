@@ -432,6 +432,12 @@ def sync(
         print_success(f"{project_id} upstream is its baseline, {document['baseline_commit'][:12]}")
     else:
         rows = [[c, len(paths), ", ".join(paths[:4])] for c, paths in drift["changed"].items()]
+        # #2606: what SquadOps's own integrated contributions account for, apart (v1 has none)
+        rows += [
+            [f"{c}, by {i['cycle_id']}", len(paths), ", ".join(paths[:4])]
+            for i in drift.get("integrated", [])
+            for c, paths in i["changed"].items()
+        ]
         print_table(["Changed", "Paths", "First paths"], rows, quiet=False)
         relevant = ", ".join(drift["relevant"]) or "none beyond source"
         print_success(
