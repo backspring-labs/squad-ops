@@ -15,14 +15,13 @@ from typing import Any
 import yaml
 
 from squadops.campaigns import seed_plan
+from squadops.config.path_resolver import PathResolver
 
 #: Where the declarations are, under the repository root.
 DECLARATIONS = Path("config") / "quality_seeds.yaml"
 
 
 def _root() -> Path:
-    from squadops.config.path_resolver import PathResolver
-
     return PathResolver.get_base_path()
 
 

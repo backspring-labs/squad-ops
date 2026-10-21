@@ -862,7 +862,7 @@ async def test_a_record_the_app_refuses_voids_its_own_pages_only(tmp_path):
     [refused] = [r for r in seeded.seed["records"] if not r["seeded"]]
     assert refused == {
         "label": "at_capacity", "seeded": False,
-        "failed": "POST /runs/r-2/join answered 500",
+        "refusal": "POST /runs/r-2/join answered 500",
     }  # fmt: skip
 
 

@@ -578,7 +578,7 @@ class ContainerScenarioRunner(ScenarioRunnerPort):
             return QualityReading(
                 QualityStatus.NOT_MEASURED,
                 reason=NotMeasured.SEED_FAILED,
-                detail="; ".join(f"{o['label']}: {o['failed']}" for o in outcomes),
+                detail="; ".join(f"{o['label']}: {o['refusal']}" for o in outcomes),
                 seed=account,
             )
         asked = [
@@ -680,19 +680,19 @@ async def _seed_record(client: httpx.AsyncClient, base: str, record: SeedRecord)
 
     created = await send(record.create.method, record.create.path, record.create.json)
     if isinstance(created, str):
-        return {"label": record.label, "seeded": False, "failed": created}
+        return {"label": record.label, "seeded": False, "refusal": created}
     try:
         ident = str(created.json()["id"])
     except (ValueError, KeyError, TypeError):
         return {
             "label": record.label,
             "seeded": False,
-            "failed": f"{record.create.method} {record.create.path} answered no id",
+            "refusal": f"{record.create.method} {record.create.path} answered no id",
         }
     for member in record.members:
         joined = await send(member.method, fill(member.path, member.segment, ident), member.json)
         if isinstance(joined, str):
-            return {"label": record.label, "seeded": False, "failed": joined}
+            return {"label": record.label, "seeded": False, "refusal": joined}
     return {"label": record.label, "seeded": True, "id": ident, "members": len(record.members)}
 
 
@@ -723,7 +723,7 @@ def _redacted(evaluation: TreeEvaluation, secrets: Collection[str]) -> TreeEvalu
             seed = {
                 **seed,
                 "records": [
-                    {**r, "failed": scrub(r["failed"])} if "failed" in r else r
+                    {**r, "refusal": scrub(r["refusal"])} if "refusal" in r else r
                     for r in seed.get("records", ())
                 ],
             }
