@@ -1740,7 +1740,9 @@ preventing squad ops from working on it", and then "go with 2.5, write up the am
    - the start declaration;
    - the blueprint the tree follows, if any. A greenfield product names its blueprint in its configuration, and the
      tree and the approved manifest are checked against it;
-   - the toolchains the declared commands need, against those the sandbox image provides.
+   - the toolchains the declared commands need. These are read from the baseline capture's own evidence, never from a
+     stack's environment contract, which fits no arbitrary product. A check UNVERIFIED as `command_not_found` or
+     `command_not_executable` names a missing toolchain, recorded with the image it ran on.
 2. **Capability gaps, named.** Each fact the squad can't serve is a gap, with what it blocks and what would close it.
    Examples:
    - a frontend whose test framework QA doesn't author: the squad's changes there go unverified by its own tests;
@@ -1748,10 +1750,15 @@ preventing squad ops from working on it", and then "go with 2.5, write up the am
    - a lint without a findings reader: it is compared only whole;
    - no start declaration: Outcome Evaluation is blocked.
 
-   The gaps are recorded with the revision, and `projects configure` and `projects show` report them. A Cycle or a
-   Campaign whose work would meet a blocking gap is refused before dispatch, naming it. This is the existing rule
-   that an unsupported layout or toolchain surfaces a capability gap, never an automatic restructuring (E.7),
-   given a record.
+   The gaps are recorded with the revision, and `projects configure` and `projects show` report them. Each gap is one
+   of two kinds:
+   - **blocking:** the gap leaves no check that the work's footprint touches able to run. A Cycle or a Campaign whose
+     work would meet one is refused before dispatch, naming it.
+   - **disclosed:** reported, and recorded with each run it applies to, but not refused. For one, a missing start
+     declaration blocks only Outcome Evaluation, which reports, and never the Cycle.
+
+   This is the existing rule that an unsupported layout or toolchain surfaces a capability gap, never an automatic
+   restructuring (E.7), given a record.
 3. **The recipe is derived, not pinned.** Request profiles carry no stack.
    - A sample application's stack comes from its Project and the Campaign's policy, as today (#2443).
    - A repository-backed Project's cycles take the derived profile:
@@ -1761,14 +1768,32 @@ preventing squad ops from working on it", and then "go with 2.5, write up the am
      - a greenfield product that follows a blueprint gets that blueprint's QA and check conventions, without its
        template laid down.
    - E.4.3's guard narrows from "a stack is named" to "a skeleton would be seeded", which is what it protects against.
+   - Removing the stack from the profiles comes with a resolution-parity test. Every sample application's Campaign
+     definition (`examples/03_group_run/campaigns/*.yaml`, the window's four included) must resolve to the same cycle
+     requests as before, with `policy.stack` set and with it unset.
 4. **Campaigns on a repository-backed Project.** SIP-0109's calibration and proposal, as they read such a Project:
    - **Calibration is the inherited baseline.** The first accepted tree is the pinned commit, already checked by the
      product's own checks (FR-20). Nothing is built, so the calibration needs no PRD or plan.
    - **A proposal reads the product's tree** (the bounded view) and its derived profile, where a sample application's
      proposal reads its interface manifest. A greenfield product's approved manifest, recorded at its
      initialization (H.1), is read beside them.
-   - **Each increment is a source-backed cycle,** verified by the product's checks and contributed through its own
-     process, as a standalone cycle is today.
+   - **Increments stack on a campaign branch** in the managed clone. A standalone source-backed cycle seeds from the
+     Project's development baseline and captures one commit on it. A Campaign's increments would then each restart
+     from upstream, without the one before, unless that one had been merged and reconciled first. So:
+     - each accepted increment's captured commit is the next increment's pinned commit;
+     - its regression baseline is the previous increment's verification, at that commit;
+     - the per-cycle binding (H.3, SIP-0110 §5ad) reads instruction sources as the previous increment left them;
+     - contract 4's mapping holds per increment.
+   - **One review request per Campaign** is the contribution: its branch, holding the accepted increments in order,
+     updated as each is accepted. The owner can merge it at any time. A later process per increment can be added
+     beside it, but this is the default.
+   - **When upstream moves** (H.2), the campaign branch is rebased onto it before the next increment launches. A
+     rebase that conflicts escalates the Campaign, never resolving by itself. Merged increments then read as
+     integrated (H.2's attribution).
+   - **Serial contribution was rejected:** each increment merged upstream before the next could start. It would stall
+     an unattended Campaign on the product owner's review.
+   - **Each increment is a source-backed cycle,** verified by the product's checks and contributed through the
+     campaign branch, as above.
 
 **What stays:**
 - A sample application's Campaigns are unchanged, and the counted pair holds (IR-10).
@@ -1777,7 +1802,11 @@ preventing squad ops from working on it", and then "go with 2.5, write up the am
 
 **Boundaries:**
 - **SIP-0109** owns the calibration and proposal mechanics. This amendment states what they read for a
-  repository-backed Project, and SIP-0109 records the counterpart (the Spark lane's).
+  repository-backed Project, and SIP-0109 records the counterpart (the Spark lane's). There, the calibration is a
+  calibration record, not a cycle, and counts toward no cycle limit. The proposal reads the tree view, the derived
+  profile and the previous increment's verification, and its criteria freeze as typed checks on the product's runner.
+- **SIP-0113** records its own counterpart (the Spark lane's): Outcome Evaluation's Campaign baseline is an evaluation
+  of the pinned commit, read against the calibration record.
 - **SIP-0105** owns the blueprints. The derived profile recognises one, and never generates one.
 
 **In 2.4:** the shared demonstration (the 2.4 plan's D13: one Campaign on an external Project across two features)
@@ -1790,6 +1819,10 @@ can't run its feature cycles. It reports *not run*, naming #2619 as its prerequi
 - IR-2's calibration cycle failing at provisioning for lack of a plan (`cyc_95c8659ae6c5`, #2611).
 - The Spark lane's IR-3 run on `z_continuum`, which reached a Campaign's calibration and no further.
 
-**Who ruled:** the owner, 2026-10-21: the direction, and placement in 2.5. The MacBook lane wrote this, and the
-Spark lane's G4 follows.
+**Who ruled:** the owner, 2026-10-21: the direction, and placement in 2.5. The MacBook lane wrote this. The Spark
+lane's G4 (on #2624) added:
+- the campaign branch (the stacking gap);
+- blocking against disclosed gaps;
+- toolchain gaps read from the baseline's evidence;
+- the resolution-parity test.
 
