@@ -1821,15 +1821,17 @@ async def test_an_accepted_repair_proposes_from_the_manifest_it_ran_against(
     assert decision["warrant"].startswith("answered at cyc_inc's plan gate by agent:005159fd")
 
 
-async def test_an_accepted_repair_freezes_its_criteria_with_what_they_assert(
-    calibrating, stored, monkeypatch
+@pytest.mark.parametrize("kind", ["repair", "retry"])
+async def test_an_accepted_repair_or_retry_freezes_its_criteria_with_what_they_assert(
+    calibrating, stored, monkeypatch, kind
 ):
-    """#2595, the 2.4 window's campaign 3, entered at ``CycleCompletion.end`` for the repair over
-    a vault that answers by cycle. A repair runs no proposal: its launch carries the increment's
-    approved seeds, as the live repair row did (``plan_artifact_refs``: the manifest, the change
-    request, the plan). Bug caught: the promotion read each criterion's statement through the
-    proposal only, froze the repair's criterion with none, and the evidence digest's
-    ``KeyError`` on it meant the campaign's package was never stored."""
+    """#2595, the 2.4 window's campaign 3, entered at ``CycleCompletion.end`` for the successor
+    over a vault that answers by cycle. A repair or a retry runs no proposal: its launch carries
+    the increment's approved seeds, as the live repair row did (``plan_artifact_refs``: the
+    manifest, the change request and, for a repair, the plan). Bug caught: the promotion read
+    each criterion's statement through the proposal only, froze the successor's criterion with
+    none, and the evidence digest's ``KeyError`` on it meant the campaign's package was never
+    stored."""
     import dataclasses as _dc
 
     stored["art_plan"] = (
@@ -1839,12 +1841,14 @@ async def test_an_accepted_repair_freezes_its_criteria_with_what_they_assert(
         ),
         b"version: 1",
     )
-    w = await _increment_failed_by_the_environment(calibrating, stored, environment=False)
-    *_, repair = await w.campaigns.launch_intents(CID)
+    # The environment failing is a retry's cause (row 10); the work failing, a repair's (row 12).
+    w = await _increment_failed_by_the_environment(calibrating, stored, environment=kind == "retry")
+    *_, successor = await w.campaigns.launch_intents(CID)
+    assert successor.cycle_kind is CycleKind(kind)
     stored["art_eval"] = (
         _dc.replace(
             _ref("art_eval", "increment_evaluation.json", "increment_evaluation", 30),
-            cycle_id="cyc_rep",
+            cycle_id="cyc_next",
         ),
         _evaluation("accepted"),
     )
@@ -1857,25 +1861,25 @@ async def test_an_accepted_repair_freezes_its_criteria_with_what_they_assert(
         ]
 
     monkeypatch.setattr(_Vault, "list_artifacts", by_cycle)
-    repair_run = await w.launched_cycle(
-        "repair",
-        "cyc_rep",
+    run = await w.launched_cycle(
+        kind,
+        "cyc_next",
         "implementation",
         "completed",
-        overrides=repair.cycle_request["body"]["execution_overrides"],
+        overrides=successor.cycle_request["body"]["execution_overrides"],
     )
     w._assess = lambda cycle_id: _async(_assessment(cycle_id, RunVerdict.ACCEPTED))
     w.progress._assess = w._assess
 
-    await w.end("cyc_rep", repair_run, CycleStopReason.SEQUENCE_COMPLETED)
+    await w.end("cyc_next", run, CycleStopReason.SEQUENCE_COMPLETED)
 
     [promote] = [
         e
         for e in await w.campaigns.control_log(CID)
-        if e.operation is ControlOperation.PROMOTE and e.target == "cyc_rep"
+        if e.operation is ControlOperation.PROMOTE and e.target == "cyc_next"
     ]
     [frozen] = promote.binding["frozen_criteria"]
-    assert (frozen["criterion_id"], frozen["statement"], frozen["surface"]) == (
+    assert (frozen["criterion_id"], frozen.get("statement"), frozen.get("surface")) == (
         "C1",
         "A run created with capacity 2 is returned with capacity 2",
         "POST /runs",
