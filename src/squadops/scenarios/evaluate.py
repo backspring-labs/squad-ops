@@ -23,6 +23,7 @@ from typing import TYPE_CHECKING, Any
 
 import yaml
 
+from squadops.campaigns import seed_plan
 from squadops.campaigns.evaluator_trees import FileTree
 from squadops.campaigns.increment_tree import accepted_cycle_of, evaluated_tree_refs
 from squadops.scenarios.evaluation import (
@@ -42,6 +43,7 @@ from squadops.scenarios.quality import (
     QualityStatus,
     measurable_pages,
 )
+from squadops.scenarios.quality_seeds import quality_seed
 from squadops.scenarios.runner import (
     DeclaredStart,
     ReadinessUnsupported,
@@ -176,6 +178,47 @@ def quality_of(
     )
 
 
+def planned_seed(
+    project_id: str, manifest: InterfaceManifest | None, *, blueprint: bool, serves_pages: bool
+) -> tuple[QualityReading | None, seed_plan.SeedPlan | None]:
+    """The seeded reading's plan (§10j, §10n), or the reading it already is: *not applicable* off
+    a blueprint delivery that serves pages, ``no_seed`` with none declared, ``seed_refused`` when
+    the seed can't be written through the delivery's own interface."""
+    if not serves_pages or not blueprint:
+        return QualityReading(QualityStatus.NOT_APPLICABLE), None
+    try:
+        found = quality_seed(project_id)
+        if found is None:
+            return QualityReading.not_measured(
+                NotMeasured.NO_SEED, f"{project_id} declares no quality seed"
+            ), None
+        if manifest is None:
+            return QualityReading.not_measured(
+                NotMeasured.SEED_REFUSED,
+                "the delivery has no interface manifest to write it through",
+            ), None
+        seed, raw = found
+        return None, seed_plan.plan(manifest, seed, raw)
+    except seed_plan.SeedRefused as e:
+        return QualityReading.not_measured(NotMeasured.SEED_REFUSED, str(e)), None
+
+
+def seeded_of(
+    planned: QualityReading | None, blocked: BlockedReason | None, evaluated: TreeEvaluation | None
+) -> QualityReading:
+    """The seeded reading: what planning already decided, else the runner's, or why there is none.
+    An evaluation that couldn't run says so first, as ``quality_of`` does."""
+    if planned is not None:
+        return planned
+    if blocked is not None:
+        return QualityReading.not_measured(_NOT_MEASURED_BY_BLOCK[blocked])
+    if evaluated is not None and evaluated.quality_seeded is not None:
+        return evaluated.quality_seeded
+    return QualityReading.not_measured(
+        NotMeasured.EVALUATOR_FAILED, "the runner started the app and returned no seeded reading"
+    )
+
+
 def lint_of(
     blueprint: bool, blocked: BlockedReason | None, evaluated: TreeEvaluation | None
 ) -> LintReading:
@@ -279,6 +322,10 @@ async def evaluate_cycle(
         contents.append(content)
     # §4.2 (#2416): Lighthouse and axe on the declared pages, of a Project that serves pages.
     pages = declared_pages(manifest, declared) if SurfaceKind.PAGE in kinds else ()
+    # §10j, §10n (#2562): a second, seeded instance, measured on every declared page.
+    planned, plan = planned_seed(
+        cycle.project_id, manifest, blueprint=blueprint, serves_pages=SurfaceKind.PAGE in kinds
+    )
     evaluated: TreeEvaluation | None = None
     # A blueprint's tree is linted whether or not anything else runs (§4.2, #2416).
     if (contents or pages or blueprint) and unstartable is not None:
@@ -296,6 +343,7 @@ async def evaluate_cycle(
                 scenarios=contents,
                 environment=environment or {},
                 pages=pages,
+                **({"seed": plan} if plan is not None else {}),
             )
         except RunnerUnavailable:
             blocked = BlockedReason.NO_RUNNER
@@ -322,6 +370,7 @@ async def evaluate_cycle(
             else QualityReading(QualityStatus.NOT_APPLICABLE)
         ),
         lint=lint_of(blueprint, blocked, evaluated),
+        quality_seeded=seeded_of(planned, blocked, evaluated),
     )
     await store.save_evaluation(record)
     return record

@@ -36,6 +36,7 @@ import httpx
 
 from adapters.sandbox.placement import address, placement
 from squadops.campaigns.evaluator_trees import FileTree
+from squadops.campaigns.seed_plan import SeedPlan, SeedRecord, fill
 from squadops.capabilities.delivered_lint import (
     RUFF_ARGS,
     eslint_findings,
@@ -170,6 +171,7 @@ class ContainerScenarioRunner(ScenarioRunnerPort):
         scenarios: Sequence[Mapping[str, Any]],
         environment: Mapping[str, str],
         pages: Sequence[str],
+        seed: SeedPlan | None = None,
     ) -> TreeEvaluation:
         built = FileTree.of(tree).identity
         if built != tree_identity:
@@ -185,13 +187,23 @@ class ContainerScenarioRunner(ScenarioRunnerPort):
         start = self._start_for(stack, declared)
         started = time.monotonic()
         copy = self._root / "evaluations" / uuid.uuid4().hex
+        # §10n ruling 8: the seeded instance starts from the copy as setup left it, snapshotted
+        # before the first instance starts, so nothing the scenarios write reaches its reading.
+        snapshot = copy.with_name(f"{copy.name}-seeded") if seed is not None else None
+        timings: dict[str, float] = {}
         try:
             self._write_copy(copy, tree, executable)
             evaluation = await self._evaluate(
-                copy, tree_identity, start, scenarios, environment, pages, started
-            )
+                copy, tree_identity, start, scenarios, environment, pages, started,
+                snapshot=snapshot, timings=timings,
+            )  # fmt: skip
+            if seed is not None and snapshot is not None and evaluation.started:
+                seeded = await self._seeded(snapshot, start, seed, environment, timings)
+                evaluation = dataclasses.replace(evaluation, quality_seeded=seeded)
         finally:
             shutil.rmtree(copy, ignore_errors=True)
+            if snapshot is not None:
+                shutil.rmtree(snapshot, ignore_errors=True)
         evaluation = dataclasses.replace(evaluation, lint=await self._lint(tree, declared))
         return _redacted(evaluation, environment.values())
 
@@ -335,9 +347,17 @@ class ContainerScenarioRunner(ScenarioRunnerPort):
             **kw,
         )
 
-    async def _evaluate(self, copy, identity, start, scenarios, environment, pages, started):
+    async def _evaluate(
+        self, copy, identity, start, scenarios, environment, pages, started, *, snapshot=None,
+        timings=None,
+    ):  # fmt: skip
         try:
             await self._setup(copy, start)
+            if snapshot is not None:
+                taken = time.monotonic()
+                shutil.copytree(copy, snapshot, symlinks=True)
+                if timings is not None:
+                    timings["snapshot_s"] = round(time.monotonic() - taken, 3)
             env = (("HOME", "/tmp"), *sorted(environment.items()))
             try:
                 container_id = await self._container.run_detached(
@@ -480,6 +500,105 @@ class ContainerScenarioRunner(ScenarioRunnerPort):
             QualityStatus.MEASURED, pages=measured, evaluator=self._evaluator_image
         )
 
+    async def _seeded(
+        self,
+        snapshot: Path,
+        start: _Start,
+        plan: SeedPlan,
+        environment: Mapping[str, str],
+        timings: dict[str, float],
+    ) -> QualityReading:
+        """§10j, §10n ruling 8: the tree started a second time, from setup's snapshot, after the
+        first instance is torn down; seeded through its own API; measured on every page the plan
+        names; and torn down. Whatever keeps it from a reading is the seeded reading's *not
+        measured*, and never touches the scenarios' record."""
+        began = time.monotonic()
+        env = (("HOME", "/tmp"), *sorted(environment.items()))
+        try:
+            container_id = await self._container.run_detached(
+                spec := self._spec(
+                    snapshot,
+                    start.argv,
+                    start.working_dir,
+                    env=env,
+                    **placement(self._app_network, "eval-seeded", start.ports),
+                )
+            )
+        except ToolContainerError as e:
+            return QualityReading.not_measured(
+                NotMeasured.START_FAILED, f"the seeded instance could not start: {e}"
+            )
+        try:
+            return await self._seed_and_measure(container_id, spec, start, plan, timings, began)
+        except Exception as e:  # noqa: BLE001 — the seeded reading never takes the scenarios' down
+            return QualityReading.not_measured(
+                NotMeasured.EVALUATOR_FAILED, f"the seeded instance: {type(e).__name__}: {e}"
+            )
+        finally:
+            await self._teardown(container_id)
+
+    async def _seed_and_measure(
+        self,
+        container_id: str,
+        spec: ContainerSpec,
+        start: _Start,
+        plan: SeedPlan,
+        timings: dict[str, float],
+        began: float,
+    ) -> QualityReading:
+        host, port = await address(self._container, container_id, spec, start.port)
+        api_host, api_port = await address(self._container, container_id, spec, start.api_port)
+        if not await self._ready(f"http://{host}:{port}", host, port, start):
+            return QualityReading.not_measured(
+                NotMeasured.START_FAILED,
+                f"the seeded instance wasn't ready within {start.ready_timeout:g}s",
+            )
+        timings["start_s"] = round(time.monotonic() - began, 3)
+        seeding = time.monotonic()
+        # §10n ruling 8: to the app's own address and each path as the manifest writes it, never
+        # through the scenarios' API prefix.
+        base = f"http://{api_host}:{api_port}"
+        async with self._http() as client:
+            outcomes = [await _seed_record(client, base, record) for record in plan.records]
+        timings["seed_s"] = round(time.monotonic() - seeding, 3)
+        ids = {o["label"]: o["id"] for o in outcomes if o.get("seeded")}
+        account: dict[str, Any] = {
+            "version": plan.version,
+            "records": outcomes,
+            "unfilled": [list(u) for u in plan.unfilled]
+            + [
+                [f"{p.route}#{p.record}", "seed_failed"]
+                for p in plan.pages
+                if p.record and p.record not in ids
+            ],
+            "notes": list(plan.notes) + [f"{label}: {why}" for label, why in plan.refused],
+            "durations": timings,
+        }
+        if not ids:
+            return QualityReading(
+                QualityStatus.NOT_MEASURED,
+                reason=NotMeasured.SEED_FAILED,
+                detail="; ".join(f"{o['label']}: {o['failed']}" for o in outcomes),
+                seed=account,
+            )
+        asked = [
+            (page, fill(page.route, page.segment, ids[page.record]) if page.record else page.route)
+            for page in plan.pages
+            if page.record is None or page.record in ids
+        ]
+        measuring = time.monotonic()
+        reading = await self._quality(spec, start, [url for _, url in asked])
+        timings["measure_s"] = round(time.monotonic() - measuring, 3)
+        timings["total_s"] = round(time.monotonic() - began, 3)
+        by_url = {p.path: p for p in reading.pages}
+        # §10n ruling 4: each page under its key, route and record, with the address it loaded at.
+        keyed = tuple(
+            dataclasses.replace(by_url[url], path=page.key, url=url if page.record else None)
+            for page, url in asked
+            if url in by_url
+        )
+        return dataclasses.replace(reading, pages=keyed, seed=account)
+
     async def _ui_answers(self, base: str, timeout: float) -> bool:
         """Whether anything answers at the UI's base: any HTTP answer, since the preview server
         refuses a name it doesn't know (the evaluator itself reaches it by IP)."""
@@ -545,6 +664,38 @@ async def _tcp_answers(host: str, port: int, *, connect_timeout: float) -> bool:
         writer.close()
 
 
+async def _seed_record(client: httpx.AsyncClient, base: str, record: SeedRecord) -> dict[str, Any]:
+    """One record written through the app's own API (§10j): its create, whose response gives its
+    id, then each member action on that id. A request that fails voids this record only (§10n
+    ruling 7), and the request and status are kept; a body is never kept."""
+
+    async def send(method: str, path: str, body: Mapping[str, Any]) -> httpx.Response | str:
+        try:
+            response = await client.request(method, base + path, json=dict(body))
+        except httpx.HTTPError as e:
+            return f"{method} {path}: {type(e).__name__}"
+        if response.status_code >= 300:
+            return f"{method} {path} answered {response.status_code}"
+        return response
+
+    created = await send(record.create.method, record.create.path, record.create.json)
+    if isinstance(created, str):
+        return {"label": record.label, "seeded": False, "failed": created}
+    try:
+        ident = str(created.json()["id"])
+    except (ValueError, KeyError, TypeError):
+        return {
+            "label": record.label,
+            "seeded": False,
+            "failed": f"{record.create.method} {record.create.path} answered no id",
+        }
+    for member in record.members:
+        joined = await send(member.method, fill(member.path, member.segment, ident), member.json)
+        if isinstance(joined, str):
+            return {"label": record.label, "seeded": False, "failed": joined}
+    return {"label": record.label, "seeded": True, "id": ident, "members": len(record.members)}
+
+
 def _redacted(evaluation: TreeEvaluation, secrets: Collection[str]) -> TreeEvaluation:
     """The evaluation with every resolved secret's value replaced in its free text (Q40: never in a
     log, a record or an agent's input). An app may log its environment, or answer with a token, and
@@ -563,9 +714,26 @@ def _redacted(evaluation: TreeEvaluation, secrets: Collection[str]) -> TreeEvalu
             text = text.replace(secret, _REDACTED)
         return text
 
+    def scrubbed(reading: QualityReading | None) -> QualityReading | None:
+        # §10n ruling 8: a reading's detail is an evaluator's or a seed's free text too.
+        if reading is None:
+            return None
+        seed = reading.seed
+        if seed is not None:
+            seed = {
+                **seed,
+                "records": [
+                    {**r, "failed": scrub(r["failed"])} if "failed" in r else r
+                    for r in seed.get("records", ())
+                ],
+            }
+        return dataclasses.replace(reading, detail=scrub(reading.detail), seed=seed)
+
     return dataclasses.replace(
         evaluation,
         start_detail=scrub(evaluation.start_detail),
         startup_diagnostics=tuple(scrub(line) or "" for line in evaluation.startup_diagnostics),
         runs=tuple(dataclasses.replace(run, detail=scrub(run.detail)) for run in evaluation.runs),
+        quality=scrubbed(evaluation.quality),
+        quality_seeded=scrubbed(evaluation.quality_seeded),
     )

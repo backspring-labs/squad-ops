@@ -151,6 +151,53 @@ class SeedPlan:
         """The seed's part of the measure's version: its bytes and the planner's rules."""
         return f"seed:{self.seed_sha256[:12]}:plan-v{self.mapping_version}"
 
+    def as_dict(self) -> dict[str, Any]:
+        """The plan on the wire to the sandbox's runner, which sends and measures it."""
+
+        def request(r: SeedRequest) -> dict[str, Any]:
+            return {"method": r.method, "path": r.path, "json": dict(r.json), "segment": r.segment}
+
+        return {
+            "records": [
+                {
+                    "label": r.label,
+                    "create": request(r.create),
+                    "members": [request(m) for m in r.members],
+                }
+                for r in self.records
+            ],
+            "pages": [
+                {"route": p.route, "record": p.record, "segment": p.segment} for p in self.pages
+            ],
+            "refused": [list(x) for x in self.refused],
+            "unfilled": [list(x) for x in self.unfilled],
+            "notes": list(self.notes),
+            "seed_sha256": self.seed_sha256,
+            "mapping_version": self.mapping_version,
+        }
+
+    @classmethod
+    def from_dict(cls, d: Mapping[str, Any]) -> SeedPlan:
+        def request(r: Mapping[str, Any]) -> SeedRequest:
+            return SeedRequest(r["method"], r["path"], dict(r.get("json") or {}), r.get("segment"))
+
+        return cls(
+            records=tuple(
+                SeedRecord(
+                    r["label"], request(r["create"]), tuple(map(request, r.get("members", ())))
+                )
+                for r in d["records"]
+            ),
+            pages=tuple(
+                SeededPage(p["route"], p.get("record"), p.get("segment")) for p in d["pages"]
+            ),
+            refused=tuple((str(a), str(b)) for a, b in d.get("refused", ())),
+            unfilled=tuple((str(a), str(b)) for a, b in d.get("unfilled", ())),
+            notes=tuple(d.get("notes", ())),
+            seed_sha256=str(d.get("seed_sha256", "")),
+            mapping_version=int(d.get("mapping_version", MAPPING_VERSION)),
+        )
+
 
 def fill(path: str, segment: str | None, value: str) -> str:
     """``path`` with its parameter segment, as written, replaced by ``value``."""

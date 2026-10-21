@@ -9,11 +9,14 @@ from __future__ import annotations
 
 from abc import ABC, abstractmethod
 from collections.abc import Collection, Mapping, Sequence
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from squadops.scenarios.evaluation import EvaluationRecord
 from squadops.scenarios.models import CampaignSuitePin, SuiteRecord
 from squadops.scenarios.runner import DeclaredStart, TreeEvaluation
+
+if TYPE_CHECKING:  # the plan is the campaigns side's; the port only carries it
+    from squadops.campaigns.seed_plan import SeedPlan
 
 
 class ScenarioStorePort(ABC):
@@ -63,9 +66,12 @@ class ScenarioRunnerPort(ABC):
         scenarios: Sequence[Mapping[str, Any]],
         environment: Mapping[str, str],
         pages: Sequence[str],
+        seed: SeedPlan | None = None,
     ) -> TreeEvaluation:
         """Stand the tree up in a disposable copy and run the scenarios against it.
         ``declared`` is a non-blueprint Project's start (contract 7). Without one, the
         ``stack``'s environment contract starts it. ``environment`` is the owner-approved
         evaluation secrets, resolved (Q40), and is never written anywhere. ``pages`` are the
-        declared pages Lighthouse and axe measure before any scenario runs (§4.2, #2416)."""
+        declared pages Lighthouse and axe measure before any scenario runs (§4.2, #2416).
+        ``seed``, when given, is §10j's: a second instance of the tree, seeded through its own API
+        and measured on every page the plan names (``quality_seeded``)."""

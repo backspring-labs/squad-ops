@@ -13,7 +13,7 @@ import pytest
 from adapters.scenarios.memory_scenario_store import MemoryScenarioStore
 from squadops.scenarios import evaluate
 from squadops.scenarios.evaluate import declared_surfaces
-from squadops.scenarios.models import parse_suite
+from squadops.scenarios.models import SurfaceKind, parse_suite
 from squadops.scenarios.quality import (
     LintReading,
     NotMeasured,
@@ -80,12 +80,19 @@ class _Cycle:
 
 
 _LINTED = LintReading(QualityStatus.MEASURED, reading={"total": 3}, evaluator="e:1")
+#: §10j, §10n: what a runner answers for a seeded instance it was asked for.
+_SEEDED = QualityReading(
+    QualityStatus.MEASURED, evaluator="e:1", seed={"version": "seed:x:plan-v1"}
+)
 
 
 class _Runner:
-    def __init__(self, *, started=True, quality=_MEASURED, raises=None, lint=_LINTED):
+    def __init__(
+        self, *, started=True, quality=_MEASURED, raises=None, lint=_LINTED, seeded=_SEEDED
+    ):
         self.calls: list[dict] = []
         self._started, self._quality, self._raises, self._lint = started, quality, raises, lint
+        self._seeded = seeded
 
     async def evaluate_tree(self, **kw):
         self.calls.append(kw)
@@ -100,6 +107,7 @@ class _Runner:
             runs=runs if self._started else (),
             quality=self._quality if self._started else None,
             lint=self._lint,
+            quality_seeded=self._seeded if self._started and "seed" in kw else None,
         )
 
 
@@ -266,3 +274,62 @@ async def test_a_blueprint_is_linted_when_nothing_else_would_start_it(world):
     [call] = runner.calls
     assert (call["scenarios"], call["pages"]) == ([], ())
     assert record.lint == _LINTED
+
+
+# §10j, §10n (#2562): the seeded reading, planned from the Project's declared seed.
+
+
+async def test_a_blueprint_that_serves_pages_is_seeded_from_its_projects_declared_seed(world):
+    """Entered at ``evaluate_cycle``. Bug caught: the seed never planned, so no runner is asked for
+    a seeded instance; planned on something other than the delivery's own manifest; or the
+    runner's seeded reading dropped between the runner and the record."""
+    runner = _Runner()
+
+    record = await world(runner)
+
+    [call] = runner.calls
+    plan = call["seed"]
+    assert [r.label for r in plan.records] == ["partial", "at_capacity", "unjoined"]
+    assert [p.key for p in plan.pages if p.record] == [
+        "/runs/{id}#partial",
+        "/runs/{id}#at_capacity",
+    ]
+    assert record.quality_seeded == _SEEDED
+    assert record.quality == _MEASURED
+
+
+@pytest.mark.parametrize(
+    ("change", "kw", "runner", "status", "reason"),
+    [
+        ("no-seed", {}, _Runner(), QualityStatus.NOT_MEASURED, NotMeasured.NO_SEED),
+        ("no-create", {}, _Runner(), QualityStatus.NOT_MEASURED, NotMeasured.SEED_REFUSED),
+        ("declared", {}, _Runner(), QualityStatus.NOT_APPLICABLE, None),
+        (None, {}, _Runner(started=False), QualityStatus.NOT_MEASURED, NotMeasured.START_FAILED),
+        (None, {}, _Runner(seeded=None), QualityStatus.NOT_MEASURED, NotMeasured.EVALUATOR_FAILED),
+    ],
+    ids=["no-seed-declared", "a-seed-the-interface-cant-take", "a-declared-project",
+         "the-tree-didnt-start", "a-runner-with-no-seeded-reading"],
+)  # fmt: skip
+async def test_a_seeded_reading_that_couldnt_be_taken_says_why_never_none(
+    world, monkeypatch, change, kw, runner, status, reason
+):
+    """§10j's reasons. Bug caught: a record with no seeded reading at all, read later as one
+    written before the measure existed; or a seed the interface can't take sent anyway."""
+    vault = _Vault(_MANIFEST)
+    if change == "no-seed":
+        monkeypatch.setattr(evaluate, "quality_seed", lambda project_id: None)
+    elif change == "no-create":
+        vault = _Vault(
+            _MANIFEST.replace(b"method: POST, path: /runs,", b"method: POST, path: /races,")
+        )
+    elif change == "declared":
+        kw = {
+            "declared": DeclaredStart(("python3", "app.py"), 18407, "http", "/healthz", 30.0),
+            "served": frozenset({SurfaceKind.PAGE}),
+        }
+
+    record = await world(runner, vault=vault, **kw)
+
+    assert (record.quality_seeded.status, record.quality_seeded.reason) == (status, reason)
+    # A reading planning decided sends no seed; one the runner decides was sent one.
+    assert all(("seed" in call) == (change is None) for call in runner.calls)
