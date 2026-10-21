@@ -62,6 +62,8 @@ from squadops.stacks.stack_fastapi_react import (
 )
 from squadops.stacks.stack_nextjs_ts import APP_INVOCATION as _APP_INVOCATION_NEXTJS_TS
 from squadops.stacks.stack_nextjs_ts import CLIENT_SURFACE as _CLIENT_SURFACE_NEXTJS_TS
+from squadops.stacks.stack_nextjs_ts import ROUTE_CALLER_IMPORT as _ROUTE_CALLER_IMPORT_NEXTJS_TS
+from squadops.stacks.stack_nextjs_ts import ROUTE_CALLER_PATH as _ROUTE_CALLER_PATH_NEXTJS_TS
 from squadops.stacks.stack_nextjs_ts import STACK_NAME as _NEXTJS_TS_NAME
 from squadops.stacks.stack_nextjs_ts import (
     client_surface_lines_nextjs_ts as _client_surface_lines_nextjs_ts,
@@ -1899,6 +1901,14 @@ class ScaffoldStack:
     #: test changes never touch it. Inside ``qa_test_namespace`` (held by the stack inventory).
     #: Empty means the stack cannot host a campaign increment's criteria, and asking refuses.
     criterion_test_files: tuple[tuple[str, str], ...] = ()
+    #: #2577: the request asset that tells an endpoint criterion's test author how to call a
+    #: route so the test fails on the application before the change as an assertion, not at
+    #: collection (SIP-0109 §8.2). Empty for a stack whose test client already answers a missing
+    #: route (stack #1's ``client`` fixture answers 404).
+    criterion_route_harness: str = ""
+    #: How a criterion test imports the stack's frozen route caller (#2577), which the stack
+    #: declares among its ``test_config_files`` so every criterion's bundle carries it.
+    route_caller_import: str = ""
     #: SIP-0109 §8.3: how this stack's app is stood up so its pages can be read — a *name*
     #: in ``handlers.route_rendering``, like ``probe_profile``. Empty means its pages cannot
     #: be read, and every declared route is ``blocked_unverified``, never passed.
@@ -1968,7 +1978,8 @@ _STACKS: dict[str, ScaffoldStack] = {
         name=_NEXTJS_TS_NAME,
         expand=_expand_nextjs_ts,
         fill_slots=_fill_slots_nextjs_ts,
-        test_config_files=("vitest.config.ts", "vitest.setup.ts"),
+        # #2577: the frozen route caller rides every criterion's bundle, as the setup does.
+        test_config_files=("vitest.config.ts", "vitest.setup.ts", _ROUTE_CALLER_PATH_NEXTJS_TS),
         # Co-located `__tests__/` beside source, not a directory prefix at the tree root —
         # one of the three FastAPI-shaped assumptions S2 selected this stack to break. The
         # bare name is the declaration of that convention; `within_namespace` reads it as a
@@ -2004,6 +2015,9 @@ _STACKS: dict[str, ScaffoldStack] = {
             ("endpoint", "__tests__/criteria/{criterion}.test.ts"),
             ("client_route", "__tests__/criteria/{criterion}.test.tsx"),
         ),
+        # #2577: an endpoint criterion's test calls its route through the frozen route caller.
+        criterion_route_harness="request.increment_route_harness_appendix_nextjs_ts",
+        route_caller_import=_ROUTE_CALLER_IMPORT_NEXTJS_TS,
         # #1950: the frozen types write an optional field ``field?: type`` and the frozen store
         # adds no default, so what a create without it returns is each build's handler's choice.
         # 225 stored handlers return it left out, null and "" (#1950's comment of 2026-10-05).
@@ -2038,6 +2052,19 @@ def render_profile_name_for(stack: str) -> str:
     cannot be read — or one not registered."""
     known = _STACKS.get(stack)
     return known.render_profile if known else ""
+
+
+def criterion_route_harness_for(stack: str) -> str:
+    """The request asset telling ``stack``'s endpoint criterion tests how to call a route (#2577),
+    or ``""`` when the stack needs none, or isn't registered."""
+    known = _STACKS.get(stack) if stack else None
+    return known.criterion_route_harness if known else ""
+
+
+def route_caller_import_for(stack: str) -> str:
+    """How ``stack``'s criterion tests import its frozen route caller (#2577), or ``""``."""
+    known = _STACKS.get(stack) if stack else None
+    return known.route_caller_import if known else ""
 
 
 def criterion_test_path(stack: str, criterion_id: str, surface_kind: str) -> str:

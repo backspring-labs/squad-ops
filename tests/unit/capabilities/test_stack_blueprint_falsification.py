@@ -136,6 +136,15 @@ _DECLARED_OPTIONAL = {
     ),
     ("probe profile", "prepare_argv"): "uvicorn needs no build step before boot",
     # #1967: three string fields the empty-string blind spot had passed without a reason.
+    # #2577: stack #1's ``client`` fixture answers a missing route 404, so its criterion tests
+    # fail on the accepted tree as assertions already; only nextjs_ts needs a route caller.
+    ("ScaffoldStack", "criterion_route_harness"): (
+        "stack #1's `client` fixture already answers a route the change adds 404 on the "
+        "accepted tree; only nextjs_ts's tests import route modules, and need the caller"
+    ),
+    ("ScaffoldStack", "route_caller_import"): (
+        "the import of the route caller only nextjs_ts declares (#2577); stack #1 has none"
+    ),
     ("ScaffoldStack", "verification_scaffold"): (
         "SIP-0104: a deterministic test scaffold is opt-in per stack, never inherited; only "
         "nextjs_ts declares one"

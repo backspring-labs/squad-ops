@@ -1479,7 +1479,12 @@
                 "statement": "The run's page shows places taken of capacity"
               }
             ],
-            "frozen": []
+            "frozen": [],
+            "route_criteria": [
+              "C1",
+              "C2"
+            ],
+            "stack": "fullstack_fastapi_react"
           },
           "prd": "PRD-CONTENT",
           "profile_roles": [

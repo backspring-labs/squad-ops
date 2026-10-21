@@ -222,6 +222,33 @@ def test_a_bundle_that_cannot_run_is_never_frozen():
         freeze_bundle("C8", broken, "frontend/src/__tests__/criteria/C8.test.jsx", SURFACE, ())
 
 
+def test_a_nextjs_route_criterions_bundle_carries_the_route_caller():
+    """#2577: an endpoint criterion's test on Next.js calls its route through the scaffold's
+    route caller, and its bundle is what runs on the accepted tree, which may predate the
+    caller. Bugs caught: the caller left out of the bundle, so an older accepted tree fails at
+    collection again; or the import the author is told naming some other file than the one the
+    scaffold emits."""
+    from squadops.stacks.scaffold import criterion_test_path, expand, route_caller_import_for
+    from squadops.stacks.stack_nextjs_ts import ROUTE_CALLER_PATH, STACK_NAME
+    from tests.unit.capabilities._stack_fixtures import manifest_for_stack
+
+    told = route_caller_import_for(STACK_NAME)
+    test_path = criterion_test_path(STACK_NAME, "T1", "endpoint")
+    test = f"import {{ callRoute }} from '{told}'\ncallRoute('GET', '/api/runs')\n"
+    files = {f["name"]: f["content"] for f in expand(manifest_for_stack(STACK_NAME))}
+
+    bundle = freeze_bundle(
+        "T1",
+        FileTree.of({**files, test_path: test}),
+        test_path,
+        TestSurface.for_stack(STACK_NAME),
+        (),
+    )
+
+    assert {test_path, ROUTE_CALLER_PATH} <= set(bundle.files.paths())
+    assert told.removeprefix("@/") + ".ts" == ROUTE_CALLER_PATH
+
+
 def test_an_overlay_identity_moves_with_the_tests_and_the_accepted_tree_is_unchanged():
     first = baseline_evaluator_overlay(ACCEPTED, CANDIDATE, SURFACE)
     edited = FileTree.of({**CANDIDATE.as_dict(), "frontend/src/__tests__/views.test.jsx": "edited"})
