@@ -276,13 +276,19 @@ def baseline(
     try:
         client = _get_client(ctx)
         data = (
-            client.post(f"/api/v1/projects/{project_id}/baselines", json={"idempotency_key": key})
+            # #2605: a capture runs the product's install and every check before it answers.
+            client.post(
+                f"/api/v1/projects/{project_id}/baselines",
+                json={"idempotency_key": key},
+                timeout=client.long_timeout,
+            )
             if capture
             else client.get(f"/api/v1/projects/{project_id}/baseline")
         )
         client.close()
     except CLIError as e:
-        print_error(f"{e} (idempotency key {key})" if capture else str(e))
+        named = not capture or key in str(e)
+        print_error(str(e) if named else f"{e} (idempotency key {key})")
         raise typer.Exit(code=e.exit_code) from e
     if fmt == "json":
         print_json(data)

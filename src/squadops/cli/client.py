@@ -59,9 +59,15 @@ class APIClient:
         """Send GET request, return parsed JSON."""
         return self._request("GET", path, params=params)
 
-    def post(self, path: str, json: dict | None = None) -> dict:
-        """Send POST request with JSON body, return parsed JSON."""
-        return self._request("POST", path, json=json)
+    @property
+    def long_timeout(self) -> int:
+        """The bound for a request that runs work on the server before it answers (#2605)."""
+        return self._config.long_timeout
+
+    def post(self, path: str, json: dict | None = None, *, timeout: float | None = None) -> dict:
+        """Send POST request with JSON body, return parsed JSON. ``timeout`` replaces the
+        configured bound for this request alone (#2605)."""
+        return self._request("POST", path, json=json, timeout=timeout)
 
     def put(self, path: str, json: dict | None = None) -> dict:
         """Send PUT request with JSON body, return parsed JSON."""
@@ -122,10 +128,17 @@ class APIClient:
         path: str,
         params: dict | None = None,
         json: dict | None = None,
+        timeout: float | None = None,
     ) -> dict:
         """Core request method with error handling."""
         try:
-            response = self._client.request(method, path, params=params, json=json)
+            response = self._client.request(
+                method,
+                path,
+                params=params,
+                json=json,
+                timeout=httpx.USE_CLIENT_DEFAULT if timeout is None else timeout,
+            )
         except httpx.ConnectError:
             raise CLIError(
                 f"Error: cannot reach {self._config.base_url} — connection refused",
@@ -133,10 +146,22 @@ class APIClient:
             ) from None
         except httpx.TimeoutException:
             raise CLIError(
-                f"Error: request to {self._config.base_url} timed out after {self._config.timeout}s",
+                self._timed_out(self._config.timeout if timeout is None else timeout, json),
                 exit_codes.NETWORK_ERROR,
             ) from None
         return self._handle_response(response)
+
+    def _timed_out(self, bound: float, body: dict | None) -> str:
+        """A timeout, said as what it is (#2605): the CLI stopped waiting, which isn't the server
+        failing. A keyed request may still complete there, and resending its key replays it."""
+        message = f"Error: request to {self._config.base_url} timed out after {bound}s"
+        key = (body or {}).get("idempotency_key")
+        if key:
+            message += (
+                f": it may still complete on the server. Resend it with --idempotency-key {key} "
+                "to read its outcome"
+            )
+        return message
 
     def _handle_response(self, response: httpx.Response) -> dict:
         """Parse JSON response or raise CLIError for error status codes."""

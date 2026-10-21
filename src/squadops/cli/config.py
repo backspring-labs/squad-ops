@@ -21,6 +21,9 @@ class CLIConfig:
 
     base_url: str = "http://localhost:8001"
     timeout: int = 30
+    #: #2605: the bound for a request that runs work on the server before it answers, as a baseline
+    #: capture runs the product's install and every check. ``[api] long_timeout`` sets it.
+    long_timeout: int = 1800
     auth_mode: str = "token"  # "token" only in v0.9.4
     token_env: str = "SQUADOPS_TOKEN"
     output_format: str = "table"  # "table" | "json"
@@ -60,6 +63,8 @@ def load_config() -> CLIConfig:
         kwargs["base_url"] = api["base_url"]
     if "timeout" in api:
         kwargs["timeout"] = api["timeout"]
+    if "long_timeout" in api:
+        kwargs["long_timeout"] = api["long_timeout"]
     if "tls_verify" in api:
         kwargs["tls_verify"] = api["tls_verify"]
 
