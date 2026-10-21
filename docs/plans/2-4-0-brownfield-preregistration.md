@@ -29,7 +29,10 @@ The shakeout cycles on the Mac below aren't the demonstration.*
 ## The features
 
 - **First:** `continuum --version` prints `continuum <version>` and exits 0 (the PRD as filed for the shakeout cycles).
-- **Second:** set after the outside change, before its cycle, and appended here first.
+- **Second:** `continuum inspect --json` reports the version, as a top-level `"version"` key, first, equal to
+  `continuum.__version__`, with every other key unchanged (`prd-inspect-version.md`, `implementation_plan_2.yaml`).
+  Set on 2026-10-21, after the outside change and before its cycle. It changes the file the first contribution
+  changed, so it builds on that change rather than beside it.
 
 ## Where it runs
 
@@ -62,3 +65,13 @@ Fixed here before the first cycle, in `docs/plans/2-4-0-brownfield/`:
    push it from my account". What stage 4 tests is a change made outside SquadOps's process, never through a cycle,
    and that holds whoever types it. It is a small, real change: a line in `CLAUDE.md`, the instruction source, and one
    source edit, so the instruction drift and the source drift are each named.
+3. **The squad is `full-38-tf`, not `full`** (2026-10-21, the Spark lane). `full` names `qwen3.6:27b`, which the Spark
+   doesn't serve. `full-38-tf` is the same six-agent roster on the model the Spark serves.
+
+## Stages so far
+
+| stage | what ran | what it showed |
+|---|---|---|
+| 1–2 | the Spark (`dep_ceda294644b3`, after the owner approved the project registry's cutover to Postgres): `prj-z-continuum` registered, READY at `43369054`, configured, baseline captured | as recorded on #2410 |
+| 3 | `cyc_709e3a912150` / `run_7bca712bd35b`; verification `art_0d17c83b411c` | accepted under `no-introduced-regression/v1`: `tests` PASS (60 passed, 3 skipped), `lint` FAIL inherited (59 findings before and after). Captured commit `2f6b3baa` on `43369054`, holding only `src/continuum/cli.py` and `tests/test_cli_version.py`. Pull request z_continuum#1, recorded pending. The change also dropped `cli.py`'s final newline, which no check reads |
+| 4 | the pull request merged by the MacBook lane as the owner's stand-in, with a merge commit (`17a819f3`), so the captured commit stays in `main`'s history; then the outside commit `ba8fa68b`: a `CLAUDE.md` convention for CLI option tests, and `__all__` in `src/continuum/__init__.py` | read by stage 4's `sync`, next |
