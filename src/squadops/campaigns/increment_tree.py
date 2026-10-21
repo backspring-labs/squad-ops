@@ -474,9 +474,7 @@ def increment_frozen_files(
     )
 
 
-def increment_test_scope(
-    resolved_config: Any, change_request: str | None
-) -> dict[str, list[dict[str, str]]] | None:
+def increment_test_scope(resolved_config: Any, change_request: str | None) -> dict[str, Any] | None:
     """What a test in this increment may assert (#1884, the owner's rule): the approved change's
     criteria (id, statement, observable) and the statements of the criteria this increment's
     launch pinned as frozen and the change does not retire. Present for every increment, a
