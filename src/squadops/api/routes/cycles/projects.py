@@ -8,6 +8,8 @@ from fastapi import APIRouter, Depends, Request
 from fastapi.responses import PlainTextResponse
 
 from squadops.api.cycle_schemas import (
+    ContributionRequest,
+    ContributionResponse,
     DevelopmentConfigurationRecordedResponse,
     DevelopmentConfigurationRequest,
     DevelopmentConfigurationResponse,
@@ -24,15 +26,20 @@ from squadops.api.routes.cycles.mapping import project_to_response
 from squadops.api.runtime.deps import (
     get_project_locator_policy,
     get_project_registry,
+    get_review_request_tokens,
+    get_review_requests,
     get_sandbox_client,
     get_source_repository,
 )
 from squadops.auth.models import Identity, Scope
+from squadops.ports.projects.review_request import ReviewRequestFailed
 from squadops.projects.configuration import configure_project
+from squadops.projects.contribution import ContributionRefused, contribute
 from squadops.projects.development_configuration import (
     ConfigurationInvalid,
     DevelopmentConfiguration,
 )
+from squadops.projects.models import SourceUnavailable
 from squadops.projects.registration import RegistrationRefused, prepare_registration
 from squadops.projects.validation import validate_project
 from squadops.projects.workspaces import SandboxUnavailable, capture_inherited_baseline
@@ -204,6 +211,49 @@ async def get_baseline(request: Request, project_id: str) -> InheritedBaselineRe
     """The Project's latest inherited baseline."""
     baseline = await get_project_registry(request).get_inherited_baseline(project_id)
     return InheritedBaselineResponse(project_id=project_id, document=baseline.to_document())
+
+
+@router.post("/{project_id}/contributions", status_code=201)
+async def contribute_change(
+    request: Request,
+    project_id: str,
+    body: ContributionRequest,
+    identity: Identity | None = Depends(require_scopes(Scope.ADMIN_WRITE)),
+) -> ContributionResponse:
+    """Contribute a run's verified, captured change through the Project's own process (SIP-0112
+    FR-06, E.4.3), and record it pending. The owner's act: nothing leaves the deploy without
+    it. ``review_request`` pushes the branch and opens the pull request; ``patch_export``
+    records the run's patch as the contribution."""
+    try:
+        contribution, replayed = await contribute(
+            project_id,
+            body.cycle_id,
+            body.run_id,
+            registry=get_project_registry(request),
+            repository=get_source_repository(request),
+            forge=get_review_requests(request),
+            tokens=(
+                {project_id: body.token.get_secret_value()}
+                if body.token is not None
+                else get_review_request_tokens(request)
+            ),
+            actor=identity.user_id if identity is not None else "anonymous",
+            idempotency_key=body.idempotency_key,
+        )
+    except ContributionRefused as e:
+        raise http_error(409, "CONTRIBUTION_REFUSED", str(e)) from e
+    except (SourceUnavailable, ReviewRequestFailed) as e:
+        raise http_error(502, "CONTRIBUTION_FAILED", str(e)) from e
+    return ContributionResponse(contribution=contribution.to_document(), replayed=replayed)
+
+
+@router.get(
+    "/{project_id}/contributions", dependencies=[Depends(require_scopes(Scope.CYCLES_READ))]
+)
+async def list_contributions(request: Request, project_id: str) -> list[ContributionResponse]:
+    """A Project's contributions, oldest first: pending until the product takes them."""
+    contributions = await get_project_registry(request).contributions(project_id)
+    return [ContributionResponse(contribution=c.to_document()) for c in contributions]
 
 
 @router.get("/{project_id}", dependencies=[Depends(require_scopes(Scope.CYCLES_READ))])

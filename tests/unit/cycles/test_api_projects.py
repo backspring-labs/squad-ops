@@ -534,3 +534,101 @@ class TestBaselineRoutes:
             404,
             "INHERITED_BASELINE_NOT_FOUND",
         )
+
+
+class TestContributionRoutes:
+    """``/api/v1/projects/{id}/contributions`` (SIP-0112 FR-06, E.4.3). Bugs caught: a refused
+    contribution answered as a server failure; a forge's failure answered as the caller's; the
+    recorded contribution not what the response says."""
+
+    def _sample(self, client, mock_project_registry):
+        mock_project_registry.contributions.return_value = []
+        client.app.state.source_repository = AsyncMock()
+
+    def test_a_run_with_no_accepted_change_is_refused_and_records_nothing(
+        self, client, mock_project_registry
+    ):
+        self._sample(client, mock_project_registry)
+
+        resp = client.post(
+            "/api/v1/projects/hello_squad/contributions",
+            json={"cycle_id": "cyc_1", "run_id": "run_1", "idempotency_key": "c-1"},
+        )
+
+        assert (resp.status_code, resp.json()["detail"]["error"]["code"]) == (
+            409,
+            "CONTRIBUTION_REFUSED",
+        )
+        assert "sample application" in resp.json()["detail"]["error"]["message"]
+        mock_project_registry.record_contribution.assert_not_awaited()
+
+    def test_a_pending_contribution_lists_as_recorded(self, client, mock_project_registry):
+        from squadops.projects.contribution import Contribution
+
+        contribution = Contribution(
+            project_id="prj-tally",
+            cycle_id="cyc_1",
+            run_id="run_1",
+            commit="a" * 40,
+            parent_commit="b" * 40,
+            mode="review_request",
+            state="pending",
+            branch="squadops/cyc_1",
+            review_url="https://github.com/owner/tally/pull/7",
+            contributed_by="owner",
+            contributed_at=NOW,
+        )
+        mock_project_registry.contributions.return_value = [contribution]
+
+        resp = client.get("/api/v1/projects/prj-tally/contributions")
+
+        assert resp.status_code == 200
+        assert resp.json() == [{"contribution": contribution.to_document(), "replayed": False}]
+
+    def test_a_contribution_without_its_key_is_refused(self, client, mock_project_registry):
+        """The key is required, so a retried contribution replays rather than contributes
+        twice."""
+        self._sample(client, mock_project_registry)
+
+        resp = client.post(
+            "/api/v1/projects/hello_squad/contributions",
+            json={"cycle_id": "cyc_1", "run_id": "run_1"},
+        )
+
+        assert resp.status_code == 422
+        mock_project_registry.record_contribution.assert_not_awaited()
+
+    @pytest.mark.parametrize(
+        ("token", "deploy_tokens", "expected"),
+        [("own-t0ken", {"prj-tally": "deploy"}, {"prj-tally": "own-t0ken"}),
+         (None, {"prj-tally": "deploy"}, {"prj-tally": "deploy"})],
+        ids=["the-contributors-own", "the-deploys"],
+    )  # fmt: skip
+    def test_the_contributors_own_token_is_used_for_this_act_and_never_answered(
+        self, client, mock_project_registry, monkeypatch, token, deploy_tokens, expected
+    ):
+        """Bugs caught: the contributor's token ignored for the deploy's, or the deploy's
+        ignored without one; the token echoed back in the response."""
+        from squadops.api.routes.cycles import projects as route
+        from squadops.projects.contribution import Contribution
+
+        recorded = Contribution(
+            project_id="prj-tally", cycle_id="cyc_1", run_id="run_1", commit="a" * 40,
+            parent_commit="b" * 40, mode="review_request", state="pending",
+            branch="squadops/cyc_1", review_url="https://github.com/o/t/pull/7",
+            contributed_by="anonymous", contributed_at=NOW,
+        )  # fmt: skip
+        seen = AsyncMock(return_value=(recorded, False))
+        monkeypatch.setattr(route, "contribute", seen)
+        client.app.state.source_repository = AsyncMock()
+        client.app.state.review_request_tokens = deploy_tokens
+        body = {"cycle_id": "cyc_1", "run_id": "run_1", "idempotency_key": "c-1"}
+
+        resp = client.post(
+            "/api/v1/projects/prj-tally/contributions",
+            json={**body, **({"token": token} if token else {})},
+        )
+
+        assert resp.status_code == 201
+        assert seen.await_args.kwargs["tokens"] == expected
+        assert "t0ken" not in resp.text

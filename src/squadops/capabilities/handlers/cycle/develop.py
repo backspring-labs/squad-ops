@@ -10,13 +10,8 @@ from typing import TYPE_CHECKING, Any
 
 from squadops.capabilities.disputed_checks import criterion_identities
 from squadops.capabilities.handlers.base import HandlerResult
-from squadops.capabilities.handlers.cross_cycle_lessons import cross_cycle_lessons_section
-from squadops.capabilities.handlers.prior_cycle import prior_cycle_section
+from squadops.capabilities.handlers.context_sections import context_sections
 from squadops.capabilities.handlers.prompt_guard import _guard_prompt_size
-from squadops.capabilities.handlers.task_instructions import (
-    project_instructions_section,
-    task_instructions_section,
-)
 from squadops.llm.exceptions import LLMError
 from squadops.llm.models import ChatMessage
 from squadops.stacks.development_profiles import (
@@ -28,7 +23,11 @@ from squadops.tasks.task_types import TaskType
 if TYPE_CHECKING:
     from squadops.capabilities.handlers.context import ExecutionContext
 
-from squadops.capabilities.handlers.cycle.base import SelfEvalFollowup, _CycleTaskHandler
+from squadops.capabilities.handlers.cycle.base import (
+    SelfEvalFollowup,
+    _CycleTaskHandler,
+    build_context_errors,
+)
 from squadops.capabilities.handlers.cycle.validation import (
     ValidationResult,
     _classify_file,
@@ -67,9 +66,7 @@ class DevelopmentDevelopHandler(_CycleTaskHandler):
 
     def validate_inputs(self, inputs: dict[str, Any], contract=None) -> list[str]:
         errors = super().validate_inputs(inputs, contract)
-        # Build handlers require artifact_contents or artifact_vault for plan data
-        if "artifact_contents" not in inputs and "artifact_vault" not in inputs:
-            errors.append("'artifact_contents' or 'artifact_vault' is required for build tasks")
+        errors.extend(build_context_errors(inputs, "build tasks"))
         return errors
 
     async def _validate_output(
@@ -378,21 +375,9 @@ class DevelopmentDevelopHandler(_CycleTaskHandler):
         )
         if disputes:
             variables["disputed_checks_section"] = disputes
-        # #1692: a repair's build is shown the failed cycle it continues.
-        prior = await prior_cycle_section(renderer, inputs)
-        if prior:
-            variables["prior_cycle_section"] = prior
-        # SIP-0110 Appendix A §3.6 (#2178): this task's instructions, before the lessons.
-        instructions = await task_instructions_section(renderer, inputs)
-        if instructions:
-            variables["task_instructions_section"] = instructions
-        project = await project_instructions_section(renderer, inputs)
-        if project:
-            variables["project_instructions_section"] = project
-        # SIP-0110 §0.9: the lessons approved for this task, in a slot of their own.
-        lessons = await cross_cycle_lessons_section(renderer, inputs)
-        if lessons:
-            variables["cross_cycle_lessons_section"] = lessons
+        # The shared context slots: the prior cycle, the product, the instructions and the
+        # lessons (context_sections).
+        variables.update(await context_sections(renderer, inputs))
         rendered = await renderer.render(
             "request.development_develop.focused_build_task", variables
         )

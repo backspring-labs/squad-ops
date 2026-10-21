@@ -13,6 +13,7 @@ from datetime import datetime
 from enum import StrEnum
 
 from squadops.projects.models import ProjectLifecycleStatus, ProjectOwnership, ProjectSource
+from squadops.projects.source_context import ProjectSourceContext
 
 # =============================================================================
 # Enums (str, Enum) — following config/schema.py SSLMode pattern
@@ -175,6 +176,12 @@ class ProjectNotFoundError(CycleError):
 class ProjectNotReadyError(CycleError):
     """Raised when a Cycle is prepared for a Project whose lifecycle accepts none (SIP-0112
     contract 1): registering, archived or failed. A typed refusal, never a 404."""
+
+
+class StaleSourcePreconditionError(CycleError):
+    """Raised when a Cycle's stated source precondition names a commit or Development
+    Configuration revision the Project has moved past (SIP-0112 FR-09, §D.3): refused, never
+    silently re-pinned."""
 
 
 class ProjectRegistryReadOnlyError(CycleError):
@@ -468,6 +475,9 @@ class Cycle:
     # otherwise unchanged (§19).
     campaign_id: str | None = None
     kind: str | None = None
+    #: SIP-0112 contract 1 (E.4.3): an external Project's source, pinned before dispatch and
+    #: never changed for this Cycle. None for a sample application.
+    source_context: ProjectSourceContext | None = None
 
     notes: str | None = None
 

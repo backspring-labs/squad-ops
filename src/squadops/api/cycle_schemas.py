@@ -14,7 +14,7 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Any, Literal
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, SecretStr
 
 # =============================================================================
 # Nested DTOs
@@ -50,6 +50,16 @@ class TaskInstructionDTO(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
 
+class SourcePreconditionDTO(BaseModel):
+    """What a caller expects an external Project's source to be (SIP-0112 FR-09, §D.3). A
+    Project that has moved past it is refused, never silently re-pinned."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    development_baseline_commit: str = Field(pattern=r"^[0-9a-f]{40}$")
+    development_configuration_revision: int | None = Field(default=None, ge=1)
+
+
 class CycleCreateRequest(BaseModel):
     """Create a new cycle + first run (T17: atomic)."""
 
@@ -65,6 +75,8 @@ class CycleCreateRequest(BaseModel):
     notes: str | None = None
     #: #2178: directives for this cycle's selected tasks, stored as task instructions with it.
     task_instructions: list[TaskInstructionDTO] = Field(default_factory=list)
+    # SIP-0112 §D.3 (E.4.3): an external Project's expected source; absent, the current one.
+    source_precondition: SourcePreconditionDTO | None = None
 
     model_config = ConfigDict(extra="forbid")
 
@@ -325,6 +337,27 @@ class InheritedBaselineResponse(BaseModel):
     replayed: bool = False
 
 
+class ContributionRequest(BaseModel):
+    """Contribute a run's verified change through the Project's own process (SIP-0112 FR-06)."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    cycle_id: str = Field(min_length=1, max_length=200)
+    run_id: str = Field(min_length=1, max_length=200)
+    idempotency_key: str = Field(min_length=1, max_length=200)
+    #: The contributor's own forge token, for this one act: used in memory for the push and the
+    #: review request, never stored, logged or returned. Absent, the deploy's token for the
+    #: Project is used (`projects.review_request_tokens`).
+    token: SecretStr | None = Field(default=None, min_length=1, max_length=512)
+
+
+class ContributionResponse(BaseModel):
+    """A contribution, pending until the product takes it, and whether this replayed one."""
+
+    contribution: dict[str, Any]
+    replayed: bool = False
+
+
 class ProjectRegistrationResponse(BaseModel):
     """A registration, applied or replayed: the Project, and the key a retry resends (D.6)."""
 
@@ -437,6 +470,8 @@ class CycleResponse(BaseModel):
     # launched, which is otherwise unchanged.
     campaign_id: str | None = None
     kind: str | None = None
+    # SIP-0112 contract 1 (E.4.3): the external source this Cycle pinned; None for a sample app.
+    source_context: dict[str, Any] | None = None
     notes: str | None = None
     status: str  # Derived CycleStatus
     runs: list[RunResponse] = Field(default_factory=list)
@@ -470,6 +505,8 @@ class CycleCreateResponse(BaseModel):
     resolved_config_hash: str
     # SIP-0095 Phase 4: non-blocking preflight warnings surfaced to the operator.
     warnings: list[PreflightWarningDTO] = Field(default_factory=list)
+    # SIP-0112 §D.3: the external source the server pinned, stated or implicit.
+    source_context: dict[str, Any] | None = None
 
 
 class EvidenceRefDTO(BaseModel):

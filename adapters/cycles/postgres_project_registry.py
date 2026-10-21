@@ -27,6 +27,7 @@ from squadops.cycles.models import (
 )
 from squadops.ports.cycles.project_registry import ProjectRegistryPort
 from squadops.projects.baseline import InheritedBaseline, parse_baseline
+from squadops.projects.contribution import Contribution
 from squadops.projects.development_configuration import (
     DevelopmentConfiguration,
     parse_configuration,
@@ -82,6 +83,12 @@ def _row_to_project(row: asyncpg.Record) -> Project:
         integrated_upstream_commit=row["integrated_upstream_commit"],
         validation_diagnostic=row["validation_diagnostic"],
     )
+
+
+_CONTRIBUTION_COLUMNS = (
+    "project_id, cycle_id, run_id, commit, parent_commit, mode, state, branch, review_url, "
+    "contributed_by, contributed_at"
+)
 
 
 def _event_id() -> str:
@@ -517,6 +524,97 @@ class PostgresProjectRegistry(ProjectRegistryPort):
         if document is None:
             raise InheritedBaselineNotFoundError(f"Project {project_id} has no inherited baseline")
         return parse_baseline(document)
+
+    # --- contributions (FR-06; E.4.3) ---
+
+    async def record_contribution(
+        self, contribution: Contribution, *, idempotency_key: str, request_hash: str
+    ) -> tuple[Contribution, bool]:
+        if not self._writable:
+            raise ProjectRegistryReadOnlyError(
+                "the project registry's writes are gated off (postgres_read_only)"
+            )
+        project_id = contribution.project_id
+        async with self._pool.acquire() as conn, conn.transaction():
+            row = await conn.fetchrow(
+                "SELECT record_version FROM project_records WHERE project_id = $1 FOR UPDATE",
+                project_id,
+            )
+            if row is None:
+                raise ProjectNotFoundError(f"Project not found: {project_id}")
+            prior = await conn.fetchrow(
+                "SELECT project_id, request_hash, detail FROM project_record_events "
+                "WHERE idempotency_key = $1",
+                idempotency_key,
+            )
+            if prior is not None and (
+                prior["request_hash"] != request_hash or prior["project_id"] != project_id
+            ):
+                raise RegistrationKeyConflictError(
+                    f"idempotency key {idempotency_key!r} recorded different content"
+                )
+            existing = await conn.fetchrow(
+                f"SELECT {_CONTRIBUTION_COLUMNS} FROM project_contributions "
+                "WHERE project_id = $1 AND cycle_id = $2 AND run_id = $3",
+                project_id,
+                contribution.cycle_id,
+                contribution.run_id,
+            )
+            if existing is not None:
+                return Contribution(**dict(existing)), True
+            now = contribution.contributed_at
+            version = row["record_version"] + 1
+            await conn.execute(
+                f"INSERT INTO project_contributions ({_CONTRIBUTION_COLUMNS}) "
+                "VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)",
+                project_id,
+                contribution.cycle_id,
+                contribution.run_id,
+                contribution.commit,
+                contribution.parent_commit,
+                contribution.mode,
+                contribution.state,
+                contribution.branch,
+                contribution.review_url,
+                contribution.contributed_by,
+                now,
+            )
+            await conn.execute(
+                "UPDATE project_records SET record_version = $2, updated_at = $3 "
+                "WHERE project_id = $1",
+                project_id,
+                version,
+                now,
+            )
+            await conn.execute(
+                "INSERT INTO project_record_events (event_id, project_id, operation, "
+                "record_version, actor, idempotency_key, request_hash, detail, recorded_at) "
+                "VALUES ($1, $2, 'contribute', $3, $4, $5, $6, $7, $8)",
+                _event_id(),
+                project_id,
+                version,
+                contribution.contributed_by,
+                idempotency_key,
+                request_hash,
+                {
+                    "cycle_id": contribution.cycle_id,
+                    "run_id": contribution.run_id,
+                    "commit": contribution.commit,
+                    "mode": contribution.mode,
+                    "review_url": contribution.review_url,
+                },
+                now,
+            )
+        return contribution, False
+
+    async def contributions(self, project_id: str) -> list[Contribution]:
+        async with self._pool.acquire() as conn:
+            rows = await conn.fetch(
+                f"SELECT {_CONTRIBUTION_COLUMNS} FROM project_contributions "
+                "WHERE project_id = $1 ORDER BY contributed_at",
+                project_id,
+            )
+        return [Contribution(**dict(r)) for r in rows]
 
     async def _read(self, conn, project_id: str) -> Project:
         row = await conn.fetchrow(

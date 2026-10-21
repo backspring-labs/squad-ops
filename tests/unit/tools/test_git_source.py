@@ -6,6 +6,7 @@ must resolve to the recorded commit, and its tree must read back with the record
 
 from __future__ import annotations
 
+import base64
 import os
 import subprocess
 from pathlib import Path
@@ -49,7 +50,11 @@ def product(tmp_path):
 @pytest.fixture
 def clones(tmp_path):
     return GitSourceRepository(
-        tmp_path / "cache", LocatorPolicy.of([], [str(tmp_path / "sources")]), timeout_seconds=60
+        tmp_path / "cache",
+        LocatorPolicy.of([], [str(tmp_path / "sources")]),
+        timeout_seconds=60,
+        committer_name="SquadOps",
+        committer_email="squadops@squadops.invalid",
     )
 
 
@@ -120,6 +125,64 @@ async def test_modes_symlinks_submodules_and_odd_paths_are_read_as_git_records_t
     ]
 
 
+async def test_a_captured_tree_is_committed_exactly_and_survives_the_next_sync(product, clones):
+    """E.4.3's capture (contract 3). Bugs caught:
+    - a mode, a byte or an awkward path lost on the way into Git;
+    - a file the candidate dropped kept from the parent;
+    - the mirror's ``fetch --prune`` deleting the captured ref, since the product never has it."""
+    commit = await clones.sync("prj-tally", str(product.path), "refs/heads/main")
+    tree = await clones.tree_at("prj-tally", commit)
+    files = {p: c for p, c in tree.files.items() if p != "tally/notify.py"}
+    files['docs/a "quoted" name\twith tab.md'] = b"odd\r\n"
+    files["tools/run.sh"] = b"#!/bin/sh\necho run\n"
+
+    captured = await clones.commit_tree(
+        "prj-tally",
+        parent=commit,
+        files=files,
+        executable={"tools/run.sh"},
+        ref="refs/squadops/cyc_1/run_1",
+        message="a change\n",
+    )
+    (product.path / "NOTES.md").write_text("an outside change\n")
+    _git(product.path, "add", "NOTES.md")
+    _git(product.path, "commit", "-q", "-m", "outside")
+    await clones.sync("prj-tally", str(product.path), "refs/heads/main")
+
+    back = await clones.tree_at("prj-tally", captured)
+    assert back.files == files
+    assert back.executable == frozenset({"tools/run.sh"})
+    clone = clones._clone_dir("prj-tally")
+    assert _git(clone, "rev-parse", "refs/squadops/cyc_1/run_1") == captured
+    assert _git(clone, "rev-parse", f"{captured}^") == commit
+    patch = await clones.export_patch("prj-tally", captured)
+    assert b"deleted file mode 100644" in patch and b"new file mode 100755" in patch
+
+
+@pytest.mark.parametrize(
+    ("ref", "parent"),
+    [("refs/heads/main", None), ("refs/squadops/../heads/main", None), (None, "f" * 40)],
+    ids=["a-product-branch", "escaping-ref", "parent-not-in-clone"],
+)
+async def test_a_capture_names_only_our_namespace_and_a_parent_the_clone_holds(
+    product, clones, ref, parent
+):
+    """Bugs caught: a capture that moves the product's own branch in the clone (the next fetch
+    would silently undo it, or a push would publish it), or one committed on a parent nothing
+    can check out."""
+    commit = await clones.sync("prj-tally", str(product.path), "refs/heads/main")
+
+    with pytest.raises(SourceUnavailable):
+        await clones.commit_tree(
+            "prj-tally",
+            parent=parent or commit,
+            files={"a.txt": b"a\n"},
+            executable=(),
+            ref=ref or "refs/squadops/cyc_1/run_1",
+            message="m\n",
+        )
+
+
 @pytest.mark.parametrize(
     ("locator", "ref", "reason"),
     [
@@ -187,3 +250,47 @@ async def test_a_public_name_that_resolves_to_the_deploy_itself_is_refused(clone
     with pytest.raises(SourceUnavailable) as refused:
         await clones.sync("prj-tally", "git@git.example.org:o/r.git", "refs/heads/main")
     assert refused.value.reason == "internal_host"
+
+
+async def test_a_push_carries_its_token_in_the_environment_never_an_argument(
+    product, clones, monkeypatch
+):
+    """E.4.3's review_request. Bugs caught: the token in an argument, which any process listing
+    shows; an ssh locator pushed with no key to push it; a push to the product's own branch."""
+    commit = await clones.sync("prj-tally", str(product.path), "refs/heads/main")
+    tree = await clones.tree_at("prj-tally", commit)
+    await clones.commit_tree(
+        "prj-tally", parent=commit, files=tree.files, executable=tree.executable,
+        ref="refs/squadops/cyc_1/run_1", message="m\n",
+    )  # fmt: skip
+    monkeypatch.setattr("socket.getaddrinfo", lambda *a, **k: [(2, 1, 6, "", ("140.82.112.3", 0))])
+    calls = []
+
+    def run(command, **kwargs):
+        calls.append((command, kwargs["env"]))
+        return subprocess.CompletedProcess(command, 0, b"", b"")
+
+    monkeypatch.setattr("adapters.tools.git_source.subprocess.run", run)
+    await clones.push_capture(
+        "prj-tally", "https://github.com/owner/tally.git", ref="refs/squadops/cyc_1/run_1",
+        branch="squadops/cyc_1", token="github_pat_s3cr3t",
+    )  # fmt: skip
+
+    [(command, env)] = calls
+    assert not any("s3cr3t" in arg for arg in command)
+    assert command[-2:] == ["https://github.com/owner/tally.git",
+                            "refs/squadops/cyc_1/run_1:refs/heads/squadops/cyc_1"]  # fmt: skip
+    header = base64.b64decode(env["GIT_CONFIG_VALUE_0"].removeprefix("Authorization: Basic "))
+    assert (env["GIT_CONFIG_KEY_0"], header) == (
+        "http.extraHeader",
+        b"x-access-token:github_pat_s3cr3t",
+    )
+    for locator, branch in (
+        ("git@github.com:owner/tally.git", "squadops/cyc_1"),
+        ("https://github.com/owner/tally.git", "main"),
+    ):
+        with pytest.raises(SourceUnavailable):
+            await clones.push_capture(
+                "prj-tally", locator, ref="refs/squadops/cyc_1/run_1", branch=branch, token="t"
+            )
+    assert len(calls) == 1

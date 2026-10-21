@@ -686,6 +686,22 @@ class ProjectsConfig(BaseModel):
             "nothing) may take before it is a fault (#2575)"
         ),
     )
+    #: E.4.3: who a captured candidate's commit names. The .invalid address is no one's mailbox,
+    #: so a deploy that contributes under its own identity says so here.
+    committer_name: str = Field(
+        default="SquadOps", description="The name a squad's captured commit is made under"
+    )
+    committer_email: str = Field(
+        default="squadops@squadops.invalid",
+        description="The email a squad's captured commit is made under",
+    )
+    #: E.4.3's review_request contributions: each Project's token, scoped by its owner to that
+    #: one repository (contents and pull requests). Written as secret:// references, which the
+    #: loader resolves; a Project with none contributes nothing by review request.
+    review_request_tokens: dict[str, str] = Field(
+        default_factory=dict,
+        description="Project ID to its review-request token, each a secret:// reference",
+    )
 
 
 class SchedulerConfig(BaseModel):

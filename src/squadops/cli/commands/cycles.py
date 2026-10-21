@@ -130,6 +130,17 @@ def create_cycle(
         "--for",
         help="The task types (comma-separated) the --instruction in the same position is for",
     ),
+    expect_baseline: str | None = typer.Option(
+        None,
+        "--expect-baseline",
+        help="An external Project's development baseline commit this cycle expects; refused "
+        "if the Project has moved past it (SIP-0112 §D.3)",
+    ),
+    expect_configuration: int | None = typer.Option(
+        None,
+        "--expect-configuration",
+        help="The Development Configuration revision this cycle expects (with --expect-baseline)",
+    ),
 ):
     """Create a new experiment cycle and start its run.
 
@@ -172,6 +183,20 @@ def create_cycle(
             for text, types in zip(instructions, instructed or [], strict=True)
         ]
 
+    # SIP-0112 §D.3: a typed precondition, never a --set value hidden in the overrides.
+    if expect_configuration is not None and expect_baseline is None:
+        print_error("--expect-configuration needs --expect-baseline")
+        raise typer.Exit(code=exit_codes.GENERAL_ERROR)
+    if expect_baseline is not None:
+        body["source_precondition"] = {
+            "development_baseline_commit": expect_baseline,
+            **(
+                {"development_configuration_revision": expect_configuration}
+                if expect_configuration is not None
+                else {}
+            ),
+        }
+
     # 5. Compute local hash for verification
     local_hash = compute_config_hash(body["applied_defaults"], body["execution_overrides"])
 
@@ -193,6 +218,12 @@ def create_cycle(
         print_json(data)
     else:
         print_success(f"Cycle {data['cycle_id']} created (run {data['run_id']})")
+        if data.get("source_context"):
+            context = data["source_context"]
+            print_success(
+                f"pinned {context['project_id']} at {context['development_baseline_commit'][:12]}, "
+                f"configuration revision {context['development_configuration_revision']}"
+            )
         print_detail(
             {
                 "cycle_id": data["cycle_id"],

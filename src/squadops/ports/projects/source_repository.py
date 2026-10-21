@@ -7,6 +7,7 @@ implementation reuses the agents' Git conventions (``adapters/tools``) under its
 """
 
 from abc import ABC, abstractmethod
+from collections.abc import Collection, Mapping
 
 from squadops.projects.models import CheckoutTree
 
@@ -28,4 +29,54 @@ class SourceRepositoryPort(ABC):
 
         Raises:
             SourceUnavailable: The clone does not hold ``commit``.
+        """
+
+    @abstractmethod
+    async def commit_tree(
+        self,
+        project_id: str,
+        *,
+        parent: str,
+        files: Mapping[str, bytes],
+        executable: Collection[str],
+        ref: str,
+        message: str,
+    ) -> str:
+        """Commit ``files``, the whole tree, as one commit on ``parent`` in the managed clone, set
+        ``ref`` (under ``refs/squadops/``) to it, and return the commit. The external repository
+        is never touched, and a later sync never prunes the ref (E.4.3, contract 3's capture).
+
+        Raises:
+            SourceUnavailable: The clone does not hold ``parent``, or the ref is not one of ours.
+        """
+
+    @abstractmethod
+    async def export_patch(self, project_id: str, commit: str) -> bytes:
+        """``commit``'s change from its parent as a mail-formatted patch, binary-safe, that
+        ``git am`` applies: FR-06's ``patch_export`` contribution.
+
+        Raises:
+            SourceUnavailable: The clone does not hold ``commit``.
+        """
+
+    @abstractmethod
+    async def commit_message(self, project_id: str, commit: str) -> str:
+        """``commit``'s message, as committed.
+
+        Raises:
+            SourceUnavailable: The clone does not hold ``commit``.
+        """
+
+    @abstractmethod
+    async def push_capture(
+        self, project_id: str, locator: str, *, ref: str, branch: str, token: str
+    ) -> None:
+        """Push a captured ref (``refs/squadops/...``) to the product's repository as
+        ``refs/heads/<branch>`` (``squadops/...``), authenticated by ``token`` over https, or to
+        a local repository under a configured root. Never forced: a branch the product already
+        holds with other history is refused (FR-06's review_request).
+
+        Raises:
+            SourceUnavailable: The locator is refused or ssh, the branch or ref isn't one of
+                ours, or the product refused the push.
         """

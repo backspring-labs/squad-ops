@@ -424,7 +424,14 @@ async def _init_cycle_subsystem(state, config, pool) -> None:
         cache_root=config.projects.clone_cache_root,
         policy=state.project_locator_policy,
         timeout_seconds=config.projects.git_timeout_seconds,
+        committer_name=config.projects.committer_name,
+        committer_email=config.projects.committer_email,
     )
+    # E.4.3: a review_request contribution's forge, and each Project's token for it.
+    from adapters.tools.factory import create_review_requests
+
+    state.review_requests = create_review_requests()
+    state.review_request_tokens = dict(config.projects.review_request_tokens)
     # #1976: a transient database failure is retried inside the registry, never by its callers.
     cycle_registry = create_cycle_registry(
         config.cycles.registry_provider,
@@ -658,6 +665,10 @@ async def _init_cycle_subsystem(state, config, pool) -> None:
         failure_recall=create_failure_recall(
             "snapshot", store=state.memory_store, records=state.memory_records
         ),
+        # SIP-0112 E.4.3: the managed clones a source-backed run starts from and is captured to,
+        # and the sandbox its candidate is verified in.
+        source_repository=state.source_repository,
+        sandbox=sandbox_client,
     )
 
     state.project_registry = project_registry

@@ -76,6 +76,7 @@ from squadops.cycles.models import (
     FlowMode,
     GateDecision,
     GateDecisionValue,
+    InheritedBaselineNotFoundError,
     Run,
     RunStatus,
     WorkloadType,
@@ -139,6 +140,8 @@ from squadops.execution.pulse_boundary_runner import PulseBoundaryRunner
 from squadops.execution.run_admission import RunAdmission
 from squadops.execution.run_completion import RunCompletion, resolve_terminal_outcome
 from squadops.execution.run_provisioning import RunInProgress, RunProvisioning
+from squadops.execution.source_checkout import seed_checkout_artifacts, task_source_repository
+from squadops.execution.source_delivery import SourceDeliveryRefused, deliver_source_change
 from squadops.execution.task_dispatcher import TaskDispatcher
 from squadops.execution.task_naming import build_task_name
 from squadops.execution.workload_gate import GateOutcome, WorkloadGate, stored_change_request
@@ -146,6 +149,8 @@ from squadops.memory.task_instructions import TaskInstructionsUnavailable
 from squadops.ports.comms.queue import QueueError
 from squadops.ports.cycles.flow_execution import FlowExecutionPort
 from squadops.ports.events.noop import NoOpCycleEventBus
+from squadops.projects.models import SourceUnavailable
+from squadops.projects.workspaces import SandboxUnavailable
 from squadops.sandbox.models import RevisionOrigin, WorkspaceRevision
 from squadops.stacks.scaffold import (
     InterfaceManifest,
@@ -163,6 +168,7 @@ from squadops.tasks.models import TaskEnvelope, TaskResult, TaskResultStatus
 from squadops.tasks.task_types import (
     TaskType,
     authors_qa_suite,
+    authors_source,
     fails_without_correction,
 )
 from squadops.telemetry.context import use_correlation_context
@@ -182,9 +188,11 @@ if TYPE_CHECKING:
     from squadops.ports.cycles.workflow_tracker import WorkflowTrackerPort
     from squadops.ports.events.cycle_event_bus import CycleEventBusPort
     from squadops.ports.memory.recall import FailurePatternRecallPort
+    from squadops.ports.projects.source_repository import SourceRepositoryPort
     from squadops.ports.runtime.activity import RuntimeActivityPort
     from squadops.ports.runtime.assignments import AssignmentPort
     from squadops.ports.runtime.focus_lease import FocusLeasePort
+    from squadops.ports.sandbox import ExecutionSandboxPort
     from squadops.ports.telemetry.llm_observability import LLMObservabilityPort
     from squadops.runtime.coordinator import RuntimeCoordinator
 
@@ -696,6 +704,8 @@ class DispatchedFlowExecutor(FlowExecutionPort):
         activity_port: RuntimeActivityPort | None = None,
         coordinator: RuntimeCoordinator | None = None,
         focus_lease_port: FocusLeasePort | None = None,
+        source_repository: SourceRepositoryPort | None = None,
+        sandbox: ExecutionSandboxPort | None = None,
         run_completion: RunCompletion | None = None,
         correction_runner: CorrectionRunner | None = None,
         pulse_boundary_runner: PulseBoundaryRunner | None = None,
@@ -746,6 +756,10 @@ class DispatchedFlowExecutor(FlowExecutionPort):
         # replay (#288 idempotent-skip, e.g. a resumed run), whose leases are
         # owned by this run but were never returned in `recruited_agent_ids`.
         self._focus_lease_port = focus_lease_port
+        # SIP-0112 E.4.3: the managed clones a source-backed run starts from and is captured to,
+        # and the sandbox its candidate is verified in.
+        self._source_repository = source_repository
+        self._sandbox = sandbox
         self._cancelled: set[str] = set()
         # SIP-0097 §6.4: run-completion collaborator (terminal path). Plain
         # injected collaborator with a default composed from this executor's
@@ -1887,6 +1901,13 @@ class DispatchedFlowExecutor(FlowExecutionPort):
                 f"Build deliverable incomplete: build profile {profile_name!r} requires files "
                 f"the run never emitted. Missing required files: {missing}."
             )
+        # SIP-0112 E.4.3: a source-backed run's change is known here too, so its candidate is
+        # verified by the product's own checks and, when accepted, captured to Git. Only a run
+        # that authors the product does: a framing run changes nothing by design.
+        if cycle.source_context is not None and any(
+            authors_source(e.task_type) or authors_qa_suite(e.task_type) for e in plan
+        ):
+            await self._deliver_source_change(cycle, run_id, state.produced)
 
     async def _execute_task(
         self,
@@ -2292,6 +2313,46 @@ class DispatchedFlowExecutor(FlowExecutionPort):
             run_id,
         )
         return seeded_ids
+
+    async def _seed_checkout_artifacts(self, cycle: Cycle, run_id: str) -> list[str]:
+        """SIP-0112 E.4.3: a source-backed run starts from its product's tree at the pinned
+        commit, seeded as an increment's accepted tree is (``source_checkout``)."""
+        return await seed_checkout_artifacts(
+            cycle,
+            run_id,
+            vault=self._artifact_vault,
+            repository=self._source_repository,
+            registry=self._project_registry,
+        )
+
+    async def _deliver_source_change(self, cycle: Cycle, run_id: str, produced: Any) -> None:
+        """Verify the run's change against the inherited baseline and capture it when accepted
+        (``source_delivery``). Its evidence is the run's whether or not it is accepted; a
+        candidate that regressed or that nothing verified fails the run with it."""
+        try:
+            delivery = await deliver_source_change(
+                cycle,
+                run_id,
+                produced.stored_artifacts,
+                vault=self._artifact_vault,
+                registry=self._project_registry,
+                repository=self._source_repository,
+                sandbox=self._sandbox,
+            )
+        except (
+            SourceDeliveryRefused,
+            SourceUnavailable,
+            SandboxUnavailable,
+            InheritedBaselineNotFoundError,
+        ) as e:
+            raise _ExecutionError(f"source delivery: {e}") from e
+        produced.all_artifact_refs.extend(delivery.artifact_ids)
+        if self._cycle_registry is not None:
+            await self._cycle_registry.append_artifact_refs(run_id, delivery.artifact_ids)
+        if delivery.captured_commit is None:
+            raise _ExecutionError(
+                f"source delivery: the product's own checks: {delivery.verification.summary()}"
+            )
 
     async def _seed_verification_scaffold_artifacts(
         self,
@@ -2756,6 +2817,17 @@ class DispatchedFlowExecutor(FlowExecutionPort):
         # #1312 / H2: the builder's optional notes reach the test author here, paired with
         # the producing artifact's id, and only through the presence-keyed appendix — the
         # curated `artifact_contents` above never carried the old handoff to qa either.
+        # SIP-0112 E.4.3: a source-backed run's task sees the product's repository through a
+        # bounded view: the map, its instruction files, and the current content of the files the
+        # task names. Never the whole tree, and never a truncated one.
+        repository = await task_source_repository(
+            self._artifact_vault,
+            stored_artifacts,
+            envelope.inputs.get("expected_artifacts") or (),
+        )
+        if repository is not None:
+            extra_inputs["source_repository"] = repository
+
         if envelope.task_type in _ASSEMBLY_NOTES_READERS:
             notes = await self._resolve_assembly_notes(stored_artifacts)
             if notes:

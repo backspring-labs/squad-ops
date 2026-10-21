@@ -9,15 +9,15 @@ from pathlib import Path
 
 import pytest
 
+from squadops.projects.contribution import CONTRIBUTION_MODES_MADE, CONTRIBUTION_STATES
 from squadops.projects.models import ProjectLifecycleStatus, ProjectProvenance
 
-MIGRATION = (
-    Path(__file__).resolve().parents[3] / "infra" / "migrations" / "1800_project_records.sql"
-)
+MIGRATIONS = Path(__file__).resolve().parents[3] / "infra" / "migrations"
+MIGRATION = MIGRATIONS / "1800_project_records.sql"
 
 
-def _check_values(column: str) -> set[str]:
-    match = re.search(rf"CHECK \({column} IN \(([^)]*)\)\)", MIGRATION.read_text())
+def _check_values(column: str, migration: Path = MIGRATION) -> set[str]:
+    match = re.search(rf"CHECK \({column} IN \(([^)]*)\)\)", migration.read_text())
     assert match, f"no CHECK list for {column}"
     return set(re.findall(r"'([^']+)'", match.group(1)))
 
@@ -37,3 +37,13 @@ def test_each_check_list_is_its_enum(column, values):
 def test_a_column_with_no_check_list_is_reported_not_passed():
     with pytest.raises(AssertionError, match="no CHECK list for nonexistent"):
         _check_values("nonexistent")
+
+
+@pytest.mark.parametrize(
+    ("column", "values"),
+    [("mode", set(CONTRIBUTION_MODES_MADE)), ("state", set(CONTRIBUTION_STATES))],
+)
+def test_1805s_check_lists_are_what_a_contribution_writes(column, values):
+    """Bug caught: a mode 2.4 contributes through, or a state it records, that the table
+    refuses on its first write."""
+    assert _check_values(column, MIGRATIONS / "1805_project_contributions.sql") == values
