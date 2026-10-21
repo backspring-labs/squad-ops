@@ -737,6 +737,31 @@ def _evaluation(verdict: str) -> bytes:
     ).encode()
 
 
+def _capacity_request() -> bytes:
+    """The reference increment's change request (C1, ``POST /runs``), stored as the gate stores
+    an approved one."""
+    from squadops.campaigns.change_request import (
+        ProposalContext,
+        stored_change_request,
+        validate_proposal,
+    )
+
+    fixtures = Path(__file__).resolve().parents[2] / "fixtures" / "campaigns"
+    request = validate_proposal(
+        yaml.safe_load((fixtures / "reference-capacity-change-request.yaml").read_text()),
+        ProposalContext(
+            "prop_cap",
+            1,
+            "sha-accepted",
+            (fixtures / "baseline-cyc_7a4b7a6fbf0e-interface_manifest.yaml").read_text(),
+            "fullstack_fastapi_react",
+            ("backend/**", "frontend/**"),
+            (),
+        ),
+    ).change_request
+    return stored_change_request(request).encode()
+
+
 @pytest.fixture(autouse=True)
 def stored(monkeypatch):
     """A vault per test that can also store (the promotion writes bundles and its tree)."""
@@ -1102,7 +1127,10 @@ async def _increment_failed_by_the_environment(
         _ref("art_candidate", "interface_manifest.yaml", "interface_manifest", -2),
         MANIFEST.encode(),
     )
-    stored["art_cr"] = (_ref("art_cr", "change_request.yaml", "change_request", -1), b"cr")
+    stored["art_cr"] = (
+        _ref("art_cr", "change_request.yaml", "change_request", -1),
+        _capacity_request(),
+    )
     from squadops.campaigns.gate import RETURNING_DECISIONS, ruling_transition, submission
     from squadops.campaigns.models import ProposalBinding, SubmittedProposal
     from squadops.cycles.models import GateDecisionValue
@@ -1791,6 +1819,67 @@ async def test_an_accepted_repair_proposes_from_the_manifest_it_ran_against(
         d for d in yaml.safe_load(baseline)["decisions"] if d["id"] == "run-list-ordering"
     ]
     assert decision["warrant"].startswith("answered at cyc_inc's plan gate by agent:005159fd")
+
+
+async def test_an_accepted_repair_freezes_its_criteria_with_what_they_assert(
+    calibrating, stored, monkeypatch
+):
+    """#2595, the 2.4 window's campaign 3, entered at ``CycleCompletion.end`` for the repair over
+    a vault that answers by cycle. A repair runs no proposal: its launch carries the increment's
+    approved seeds, as the live repair row did (``plan_artifact_refs``: the manifest, the change
+    request, the plan). Bug caught: the promotion read each criterion's statement through the
+    proposal only, froze the repair's criterion with none, and the evidence digest's
+    ``KeyError`` on it meant the campaign's package was never stored."""
+    import dataclasses as _dc
+
+    stored["art_plan"] = (
+        _dc.replace(
+            _ref("art_plan", "implementation_plan.yaml", "control_implementation_plan", 5),
+            promotion_status="promoted",
+        ),
+        b"version: 1",
+    )
+    w = await _increment_failed_by_the_environment(calibrating, stored, environment=False)
+    *_, repair = await w.campaigns.launch_intents(CID)
+    stored["art_eval"] = (
+        _dc.replace(
+            _ref("art_eval", "increment_evaluation.json", "increment_evaluation", 30),
+            cycle_id="cyc_rep",
+        ),
+        _evaluation("accepted"),
+    )
+
+    async def by_cycle(self, *, cycle_id=None, run_id=None, **_):
+        return [
+            ref
+            for ref, _content in _STORED.values()
+            if cycle_id in (None, ref.cycle_id) and run_id in (None, ref.run_id)
+        ]
+
+    monkeypatch.setattr(_Vault, "list_artifacts", by_cycle)
+    repair_run = await w.launched_cycle(
+        "repair",
+        "cyc_rep",
+        "implementation",
+        "completed",
+        overrides=repair.cycle_request["body"]["execution_overrides"],
+    )
+    w._assess = lambda cycle_id: _async(_assessment(cycle_id, RunVerdict.ACCEPTED))
+    w.progress._assess = w._assess
+
+    await w.end("cyc_rep", repair_run, CycleStopReason.SEQUENCE_COMPLETED)
+
+    [promote] = [
+        e
+        for e in await w.campaigns.control_log(CID)
+        if e.operation is ControlOperation.PROMOTE and e.target == "cyc_rep"
+    ]
+    [frozen] = promote.binding["frozen_criteria"]
+    assert (frozen["criterion_id"], frozen["statement"], frozen["surface"]) == (
+        "C1",
+        "A run created with capacity 2 is returned with capacity 2",
+        "POST /runs",
+    )
 
 
 @pytest.mark.parametrize(
