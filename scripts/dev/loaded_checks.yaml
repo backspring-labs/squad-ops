@@ -1455,6 +1455,26 @@ checks:
       held = [s for s in ("db_password", "keycloak_admin_password", "keycloak_db_dsn") if os.path.exists(f"/run/secrets/{s}")]
       print(held, "SQUADOPS__DB__URL" in os.environ, config.db)
     expect: "[] False None"
+  - id: "2545-dispatch-turn"
+    what: the runtime API's memory store gives each unit one dispatch turn, which a change waits on for less than the CLI waits on it, and the recall hands the composer the same turn (#2545, SIP-0110 §5af)
+    container: squadops-runtime-api
+    code: |
+      import asyncio
+      from adapters.memory.cross_cycle import PostgresCrossCycleMemoryStore
+      from adapters.memory.recall import create_failure_recall
+      from squadops.memory.dispatch_turns import CHANGE_WAIT_SECONDS, DispatchTurnUnavailable, TURN_WAIT_SECONDS
+      store = PostgresCrossCycleMemoryStore(None)
+      recall = create_failure_recall("snapshot", store=store, records=None)
+      async def contended():
+          async with store.dispatch_turn("cycle", "cyc_loaded"):
+              try:
+                  async with recall.dispatch_turn("cycle", "cyc_loaded"):
+                      return "not ordered"
+              except DispatchTurnUnavailable:
+                  return "ordered"
+      store._turns._wait_seconds = 0.05
+      print(asyncio.run(contended()), TURN_WAIT_SECONDS, CHANGE_WAIT_SECONDS)
+    expect: "ordered 300.0 20.0"
   - id: "2586-request-bound"
     what: the runtime API's sandbox client waits for every step of a declared run, not 30 s, and sends the step bound it waited on (#2586)
     container: squadops-runtime-api

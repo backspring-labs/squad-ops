@@ -14,7 +14,8 @@ from pathlib import Path
 import pytest
 import yaml
 
-from squadops.memory.dispatch_turns import DispatchTurns
+from squadops.cli.config import CLIConfig
+from squadops.memory.dispatch_turns import CHANGE_WAIT_SECONDS, TURN_WAIT_SECONDS, DispatchTurns
 from squadops.memory.lessons import UnitKind
 
 pytestmark = [pytest.mark.domain_memory]
@@ -58,14 +59,54 @@ async def test_a_holder_that_raises_gives_the_turn_back_and_nothing_is_kept():
     assert (held, len(turns)) == (1, 0)
 
 
+def test_a_change_gives_up_on_a_turn_before_the_cli_gives_up_on_the_change():
+    """#2605. Bug caught: a change waiting on a contended turn longer than the CLI waits for its
+    answer, so the operator reads a timeout that can't say whether it was written, never the 503
+    that says it wasn't; or a change's bound longer than a dispatch's."""
+    assert CHANGE_WAIT_SECONDS < CLIConfig().timeout
+    assert CHANGE_WAIT_SECONDS < TURN_WAIT_SECONDS
+
+
+class _ComposeLoader(yaml.SafeLoader):
+    """Compose's own tags (``!override``, ``!reset``) read as the values they tag."""
+
+
+def _untagged(loader, _suffix, node):
+    if isinstance(node, yaml.MappingNode):
+        return loader.construct_mapping(node, deep=True)
+    if isinstance(node, yaml.SequenceNode):
+        return loader.construct_sequence(node, deep=True)
+    return loader.construct_scalar(node)
+
+
+_ComposeLoader.add_multi_constructor("!", _untagged)
+
+
+def _variables(environment) -> set[str]:
+    if isinstance(environment, dict):
+        return set(environment)
+    return {item.split("=", 1)[0] for item in environment or ()}
+
+
 def test_the_runtime_api_runs_one_server_process():
     """The turns order dispatches against changes within one process. Bug caught: a worker count
-    given to the runtime API, so one process writes a change while another composes a dispatch it
-    changes, each holding its own turn."""
+    given to the runtime API, in its image or in any compose file that starts it, so one process
+    writes a change while another composes a dispatch it changes, each holding its own turn."""
     dockerfile = (ROOT / "src/squadops/api/runtime/Dockerfile").read_text().splitlines()
     [command] = [line for line in dockerfile if line.startswith("CMD")]
-    service = yaml.safe_load((ROOT / "docker-compose.yml").read_text())["services"]["runtime-api"]
+    services = {
+        compose.name: service
+        for compose in sorted(ROOT.glob("docker-compose*.yml"))
+        if (
+            service := (yaml.load(compose.read_text(), _ComposeLoader).get("services") or {}).get(
+                "runtime-api"
+            )
+        )
+        is not None
+    }
 
     assert "uvicorn" in command and "--workers" not in command
-    assert "command" not in service and "entrypoint" not in service
-    assert "WEB_CONCURRENCY" not in service.get("environment", {})
+    assert "docker-compose.yml" in services
+    for name, service in services.items():
+        assert "command" not in service and "entrypoint" not in service, name
+        assert "WEB_CONCURRENCY" not in _variables(service.get("environment")), name

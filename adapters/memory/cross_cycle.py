@@ -150,8 +150,10 @@ class InMemoryCrossCycleMemoryStore(CrossCycleMemoryStorePort):
             cycle_id, rows[0][1], rows[0][2], tuple(r[0] for r in rows), max(r[3] for r in rows)
         )
 
-    def dispatch_turn(self, unit_kind: UnitKind, unit_id: str) -> AbstractAsyncContextManager[None]:
-        return self._turns.held(unit_kind, unit_id)
+    def dispatch_turn(
+        self, unit_kind: UnitKind, unit_id: str, *, wait_seconds: float | None = None
+    ) -> AbstractAsyncContextManager[None]:
+        return self._turns.held(unit_kind, unit_id, wait_seconds=wait_seconds)
 
     async def rebind_snapshot(self, snapshot: Snapshot, *, after: int) -> None:
         key = (snapshot.unit_kind.value, snapshot.unit_id)
@@ -455,8 +457,10 @@ class PostgresCrossCycleMemoryStore(CrossCycleMemoryStorePort):
             max(r["bound_at"] for r in rows),
         )  # fmt: skip
 
-    def dispatch_turn(self, unit_kind: UnitKind, unit_id: str) -> AbstractAsyncContextManager[None]:
-        return self._turns.held(unit_kind, unit_id)
+    def dispatch_turn(
+        self, unit_kind: UnitKind, unit_id: str, *, wait_seconds: float | None = None
+    ) -> AbstractAsyncContextManager[None]:
+        return self._turns.held(unit_kind, unit_id, wait_seconds=wait_seconds)
 
     async def rebind_snapshot(self, snapshot: Snapshot, *, after: int) -> None:
         # One statement, so two re-bindings read from the same snapshot can't both land.

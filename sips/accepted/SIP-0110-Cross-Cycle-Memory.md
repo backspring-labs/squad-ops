@@ -2993,14 +2993,21 @@ for every change that checks a unit's dispatches.
     increment gate's approval (§5aa).
 - **So a change lands either before a dispatch's read or after its exposure.** In the first case the dispatch is handed
   the change. In the second the change's check sees the dispatch and refuses (`RESTART_REQUIRED`, `TASK_DISPATCHED`).
-- **A turn not given within 300 s:**
-  - the dispatch's task is held, and its run fails naming it, as an unreadable binding section does (§3.6);
-  - the change is refused (503 `DISPATCH_TURN_UNAVAILABLE`), with nothing written.
+- **A turn not given in time:**
+  - a dispatch waits 300 s. Its task is then held, and its run fails naming it, as an unreadable binding section
+    does (§3.6). A change holds the turn longest through its reference bindings, each bounded by its resolver
+    (#2579).
+  - a change waits 20 s, under the CLI's own 30 s request timeout, and is then refused (503
+    `DISPATCH_TURN_UNAVAILABLE`), with nothing written. So the operator reads "send it again", not a timeout that
+    can't say whether it was written (#2605).
+- **A ruling with no task instructions takes no turn:** it has nothing to check.
+- **One process, one store.** The turns are in memory, in the runtime API, which composes every dispatch and serves
+  every change in one server process. Two guards hold it:
+  - one reads its image's command and every compose file that starts it;
+  - one reads the composition root: one store, with the executor's recall built over it.
 
-  A change holds the turn longest through its reference bindings, each bounded by its resolver (#2579).
-- **One process.** The turns are in memory, in the runtime API, which composes every dispatch and serves every change in
-  one server process. A guard test reads its image's command and its compose service. A second process would need the
-  store to order them instead, with a Postgres advisory lock for one.
+  A second process would need the store to order them instead, with a Postgres advisory lock for one. The loaded
+  check `2545-dispatch-turn` reads it on a deploy.
 
 **Where it narrows §5v and §5w:**
 - **A re-binding's dispatch check now comes after its replacement is bound.** A request both refuse is answered with the
@@ -3015,12 +3022,14 @@ for every change that checks a unit's dispatches.
   instruction and a revised one:
   - a dispatch between its read and its disclosure holds the change off, and the change then refuses;
   - a change between its check and its write holds the dispatch off, and the dispatch is then handed the change;
-  - a turn not given refuses the change (503, nothing stored) and holds the dispatch.
+  - a turn not given refuses the change within a change's bound (503, nothing stored), and holds the dispatch.
 - **The chat capture** (`test_chat_task_capture.py`) and **the increment gate's approval** (`test_ruling_instructions.py`)
-  are each held off by a dispatch in its turn, then refused.
+  are each held off by a dispatch in its turn, then refused. An approval with no instructions answers while the turn is
+  held.
 - **`tests/unit/memory/test_dispatch_turns.py`:** the turn's order, another unit's independence, a holder that raises,
-  no turn kept once idle, and the guard on the one process.
-- **Nine mutants, each caught:**
+  no turn kept once idle, a change's bound under the CLI's, and the guard on the one process.
+  `tests/unit/architecture/test_dispatch_turns_share_one_store.py` guards the one store.
+- **Twelve mutants, each caught:**
   - the composer holding no turn;
   - its turn around the disclosure only;
   - a re-binding holding no turn;
@@ -3029,7 +3038,10 @@ for every change that checks a unit's dispatches.
   - a revision holding no turn;
   - a chat capture holding no turn;
   - a ruling holding no turn;
-  - a turn not given, waited on forever.
+  - a turn not given, waited on forever;
+  - a change waiting the dispatch's bound;
+  - every ruling taking the turn;
+  - a change's bound past the CLI's.
 
 ## 6. Mode neutrality: cycle, duty, and ambient utilization
 

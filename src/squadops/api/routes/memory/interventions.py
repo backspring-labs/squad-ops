@@ -27,7 +27,7 @@ from squadops.auth.models import Identity
 from squadops.campaigns.models import CampaignTransition, ControlOperation
 from squadops.capabilities.context_assembly import authoring_seam_of
 from squadops.capabilities.lesson_supply import unit_of
-from squadops.memory.dispatch_turns import DispatchTurnUnavailable
+from squadops.memory.dispatch_turns import CHANGE_WAIT_SECONDS, DispatchTurnUnavailable
 from squadops.memory.lessons import UnitKind
 from squadops.memory.records import MemoryRecord, RecordRefused, RecordScope
 from squadops.memory.task_instructions import (
@@ -106,13 +106,13 @@ async def dispatch_turn(request: Request, unit: tuple[UnitKind, str] | None) -> 
     """#2545: ``unit``'s dispatch turn, held by a change to what its dispatches are handed from its
     check of their exposures to its write, so no dispatch composes between the two. Nothing is held
     for no unit (a record no cycle's dispatch reads), or with no store, whose check refuses. A turn
-    that isn't given answers 503, with nothing written."""
+    that isn't given within a change's bound answers 503, with nothing written."""
     store = get_memory_store(request)
     if unit is None or store is None:
         yield
         return
     try:
-        async with store.dispatch_turn(*unit):
+        async with store.dispatch_turn(*unit, wait_seconds=CHANGE_WAIT_SECONDS):
             yield
     except DispatchTurnUnavailable as e:
         raise http_error(

@@ -22,9 +22,13 @@ from contextlib import asynccontextmanager
 
 from squadops.memory.recall import UnitKind
 
-#: How long a dispatch or a change waits for its unit's turn. A change holds it through its reference
-#: bindings, each bounded by its resolver, so a turn held longer than this is one never given back.
+#: How long a dispatch waits for its unit's turn. A change holds it through its reference bindings,
+#: each bounded by its resolver, so a turn held longer than this is one never given back.
 TURN_WAIT_SECONDS = 300.0
+#: How long a change waits. It answers a request, so it gives up before the CLI's own request timeout
+#: (30 s) does: the operator reads its 503, "nothing was written, so it can be sent again", rather
+#: than a timeout that can't say whether it was (#2605).
+CHANGE_WAIT_SECONDS = 20.0
 
 
 class DispatchTurnUnavailable(RuntimeError):
@@ -40,7 +44,11 @@ class DispatchTurns:
         self._wanted: dict[tuple[UnitKind, str], int] = {}
 
     @asynccontextmanager
-    async def held(self, unit_kind: UnitKind, unit_id: str) -> AsyncIterator[None]:
+    async def held(
+        self, unit_kind: UnitKind, unit_id: str, *, wait_seconds: float | None = None
+    ) -> AsyncIterator[None]:
+        """The unit's turn, waited for ``wait_seconds``, or this registry's own bound."""
+        wait = self._wait_seconds if wait_seconds is None else wait_seconds
         key = (UnitKind(unit_kind), unit_id)
         turn = self._turns.get(key)
         if turn is None:
@@ -48,11 +56,10 @@ class DispatchTurns:
         self._wanted[key] = self._wanted.get(key, 0) + 1
         try:
             try:
-                await asyncio.wait_for(turn.acquire(), self._wait_seconds)
+                await asyncio.wait_for(turn.acquire(), wait)
             except TimeoutError:
                 raise DispatchTurnUnavailable(
-                    f"{key[0].value} {unit_id}'s dispatch turn wasn't given within "
-                    f"{self._wait_seconds:.0f}s"
+                    f"{key[0].value} {unit_id}'s dispatch turn wasn't given within {wait:g}s"
                 ) from None
             try:
                 yield

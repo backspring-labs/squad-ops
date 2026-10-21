@@ -17,6 +17,7 @@ from typing import Any
 import httpx
 import pytest
 
+from squadops.api.routes.memory import interventions
 from squadops.cycles.models import RunStatus
 from squadops.memory.dispatch_turns import DispatchTurns
 from squadops.memory.task_instructions import TaskInstructionsUnavailable
@@ -166,15 +167,18 @@ async def test_a_dispatch_waits_for_a_change_being_written_then_is_handed_it(cha
     assert handed == [NEW]
 
 
-async def test_a_turn_not_given_refuses_the_change_and_holds_the_dispatch():
-    """Bugs caught: a change written without its turn, or one waiting forever on a turn never
-    given back; a dispatch sent without its turn, or one that hangs the run."""
+async def test_a_turn_not_given_refuses_a_change_within_its_bound_and_holds_a_dispatch(monkeypatch):
+    """Bugs caught: a change written without its turn; one waiting on it for the dispatch's bound,
+    past the CLI's own request timeout, so the operator reads a timeout rather than its 503 (#2605);
+    a dispatch sent without its turn, or one that hangs the run."""
     world = _World()
     cycle, _ = await CHANGES[1].setup(world)
-    world.store._turns = DispatchTurns(wait_seconds=0.05)
+    monkeypatch.setattr(interventions, "CHANGE_WAIT_SECONDS", 0.05)
 
     async with world.store.dispatch_turn("cycle", cycle.cycle_id), _client(world) as client:
-        response = await CHANGES[1].send(client, cycle, None)
+        response = await asyncio.wait_for(CHANGES[1].send(client, cycle, None), timeout=5)
+    world.store._turns = DispatchTurns(wait_seconds=0.05)
+    async with world.store.dispatch_turn("cycle", cycle.cycle_id):
         with pytest.raises(TaskInstructionsUnavailable, match="dispatch turn"):
             await _dispatch(world, cycle)
 

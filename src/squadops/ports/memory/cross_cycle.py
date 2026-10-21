@@ -122,12 +122,14 @@ class CrossCycleMemoryStorePort(ABC):
         ``KeyError`` for a unit that pinned none."""
 
     @abstractmethod
-    def dispatch_turn(self, unit_kind: UnitKind, unit_id: str) -> AbstractAsyncContextManager[None]:
+    def dispatch_turn(
+        self, unit_kind: UnitKind, unit_id: str, *, wait_seconds: float | None = None
+    ) -> AbstractAsyncContextManager[None]:
         """The unit's dispatch turn (#2545, ``squadops.memory.dispatch_turns``). A dispatch holds it
         from reading what it is handed to recording its exposure. A change to what the unit's
         dispatches are handed (a re-binding, a task instruction added after admission) holds it
         from its check of the exposures to its write. Raises ``DispatchTurnUnavailable`` when the
-        turn isn't given in time."""
+        turn isn't given within ``wait_seconds`` (a change's bound), or the dispatch's bound."""
 
     @abstractmethod
     async def list_snapshots_holding(self, approval_id: str) -> list[Snapshot]:

@@ -261,3 +261,26 @@ async def test_an_approvals_instructions_wait_for_a_dispatch_being_composed(worl
     assert response.json()["detail"]["error"]["code"] == "TASK_DISPATCHED"
     assert await records.list_project("group_run") == []
     assert await _rule_rows(world) == []
+
+
+async def test_an_approval_without_instructions_waits_on_no_dispatch(world):  # noqa: F811
+    """#2545. Bug caught: every ruling taking its unit's dispatch turn, so one with nothing to check
+    waits behind the campaign's dispatches, and is refused (503) when they hold it long."""
+    _with_records(world)
+    store = world.client.app.state.memory_store
+    unit = turn_of(await world.cycles.get_cycle("cyc_inc"))
+    body = {"decision": "approved", "notes": "the footprint stays inside the create view",
+            "binding": BINDING, "idempotency_key": "rule-1"}  # fmt: skip
+    transport = httpx.ASGITransport(app=world.client.app)
+    async with store.dispatch_turn(*unit):
+        async with httpx.AsyncClient(transport=transport, base_url="http://t") as client:
+            response = await asyncio.wait_for(
+                client.post(
+                    f"/api/v1/projects/group_run/cycles/cyc_inc/runs/run_prop/gates/{INCREMENT_RULING_GATE}",
+                    json=body,
+                ),
+                timeout=5,
+            )
+
+    assert response.status_code == 200, response.text
+    assert len(await _rule_rows(world)) == 1
