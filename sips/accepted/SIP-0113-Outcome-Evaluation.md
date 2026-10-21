@@ -1374,3 +1374,77 @@ read-only, 2026-10-21):
 - **Within a campaign,** on one deploy, the deltas compare like with like.
 - **Across #2618's deploy,** a FastAPI tree's lint drops by its emitted-file count. A W292 delta that spans that deploy
   isn't comparable, and the next window's pre-registration names it.
+
+### 10n. §10j's design review: the rulings it settles, before any of it is built (2026-10-21, §10j; #2562; the supervisor's, by the owner's assignment)
+
+**How it was reviewed.** A fresh reviewer that saw none of the drafting read §10j against the code (2026-10-21). The
+supervisor checked the claims the rulings rest on at the cited lines:
+- the held-out guard (`tests/unit/architecture/test_held_out_scenarios_stay_out_of_the_squads_reach.py`) forbids
+  `capabilities` from importing `squadops.scenarios`;
+- the package reads a cycle's **latest** evaluation record for the pinned suite (`outcomes/campaign_package.py:50`);
+- `increment_tree.route_param` fills `:x` and `{x}` only;
+- the quality deltas key a page by its path (`outcomes/quality_deltas.py:108`).
+
+The owner's approved answers (§10j) stand. Where the review found one couldn't be built as written, the ruling below
+says how it is built instead.
+
+**The rulings:**
+1. **Re-measures are their own records, never evaluation records.**
+   - Written into `scenario_evaluations`, a re-measure would become a cycle's latest record and replace the window's
+     real one (its scenario results, its contribution) whenever a package was rebuilt.
+   - So: a `quality_remeasures` table, naming the `evaluation_id` it re-measures, its campaign, cycle, evaluated and
+     previous tree identities, a provenance label (`2.4 window, seeded`) and the reading.
+   - Its own delta reader compares re-measure with re-measure, seeded with seeded. `remeasure_quality.py` writes it,
+     with its own pool, and nothing else does.
+2. **The seed mapping is a hybrid, and it lives in `campaigns`.** Route rendering's rules give:
+   - endpoint resolution against the delivery's manifest;
+   - the id read from each create's own response.
+
+   The release screenshots' seed gives its records, field aliases and member action (`_body`, `_pick`, `_norm`), which
+   move out of `scripts/dev/capture_delivered_app.py`. The pure planner is its own module in `campaigns`
+   (`campaigns.seed_plan`, beside `increment_tree.route_seeds`, whose rules it reuses), never in `squadops.scenarios`,
+   which `capabilities` may not import. The capture script imports it.
+3. **The seed names what each parameterised route is measured with.**
+   - Each seed record carries a label.
+   - The seed file maps each parameterised route to the labelled records whose ids fill it. For `group_run`,
+     `/runs/:id` is filled by `partial` and by `at_capacity`.
+   - The route is measured once per named record, so a capacity indicator's full state is read, which S2's own example
+     needs. "The first record" isn't the rule.
+   - The code never reads "capacity": the seed's records name their members explicitly.
+4. **A page is keyed by its declared route and record label,** and the filled URL is stored beside it. A filled id
+   differs on every instance, so a key on the URL would compare nothing.
+5. **The measure's version** is the evaluator's tag, the seed's sha256 and the mapping's version (a constant, moved
+   whenever the planner's rules change). Deltas compare one version with itself.
+6. **The seed's location is declared, not derived.** Projects declare nothing of the kind, and a field on the
+   registry would be SIP-0112's. So `config/quality_seeds.yaml`, Outcome Evaluation's own, maps a Project to its seed
+   file. A sample application without an entry is *not measured*, `no_seed`. A repository-backed Project is *not
+   applicable* (§10j).
+7. **A seed request that fails voids its record only.**
+   - That record's pages read `seed_failed`, keeping the request and the status.
+   - The other records are still seeded and measured.
+   - The reading is *not measured* only when no record could be seeded.
+   - A field the seed can't place (an unaliased name) is a note on the reading, never silently dropped.
+8. **The second instance:**
+   - It starts from the copy as setup left it, snapshotted before the first instance starts, so an app that persists
+     to disk never carries the scenarios' writes into the seeded reading.
+   - It runs after the first instance is torn down, one at a time, within the containers' memory bounds.
+   - A failure there becomes the seeded reading's *not measured* and never touches the scenarios' record.
+   - Seed requests go to the app's own address and path, as the manifest writes them, never through the scenarios'
+     `api_path` prefix.
+   - Each phase's duration is recorded, so the two-minute bar is read from the record.
+   - The redaction that covers the scenarios' evidence covers the seeded reading's detail too.
+9. **A correction to §10j:** `[id]` isn't one of the forms filled. `route_param` reads `:x` and `{x}`, and the Next.js
+   manifests write `{x}` (#1973). A route written another way, with a wildcard, or with two parameters, reads
+   `no_seed_value`.
+
+**The build order:**
+1. the planner, tested on the canonical and Next.js manifests, with the capture script on it;
+2. the reading's model, the new reasons, the delta selector, migration 1950 and the stores;
+3. the port and the wire, with `evaluate.py` building the plan;
+4. the second instance in the runner, with a wiring test entering at `evaluate_cycle`, and its cost measured on the
+   Spark;
+5. the re-measure table, its writer and its delta reader;
+6. then the window's re-measures, read against S1 and S2.
+
+**Who ruled.** The supervisor, by the owner's assignment of 2026-10-20 ("Approve your recommendations"). D4 and every
+quality gate stay the owner's.
