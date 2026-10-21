@@ -228,6 +228,7 @@ class HttpExecutionSandbox(ExecutionSandboxPort):
         working_dir: str = ".",
         setup: tuple[tuple[str, ...], ...] = (),
         timeout_seconds: float | None = None,
+        findings_reader: str | None = None,
     ) -> CommandResult:
         # #2586: the service bounds each setup step and the command apart, so the request waits
         # for all of them, with one bound sent so both sides use the same.
@@ -240,6 +241,7 @@ class HttpExecutionSandbox(ExecutionSandboxPort):
                 "working_dir": working_dir,
                 "setup": [list(step) for step in setup],
                 "timeout_seconds": bound,
+                "findings_reader": findings_reader,
             },
             wait=(len(setup) + 1) * bound + _MARGIN_SECONDS,
         )

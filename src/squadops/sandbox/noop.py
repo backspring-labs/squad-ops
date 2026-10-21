@@ -27,6 +27,7 @@ from squadops.sandbox.models import (
     StopResult,
     TestRunResult,
     WorkspaceRevision,
+    unread,
 )
 from squadops.sandbox.workspace import StaleBaseRevisionError
 
@@ -127,9 +128,11 @@ class NoOpExecutionSandbox(ExecutionSandboxPort):
         working_dir: str = ".",
         setup: tuple[tuple[str, ...], ...] = (),
         timeout_seconds: float | None = None,
+        findings_reader: str | None = None,
     ) -> CommandResult:
         return CommandResult(
             command=tuple(command),
+            findings=unread(findings_reader, "the sandbox runs nothing"),
             **self._common(OperationName.RUN_DECLARED_COMMAND, revision.revision_id),
         )
 

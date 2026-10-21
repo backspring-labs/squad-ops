@@ -346,8 +346,14 @@ async def test_a_declared_command_travels_the_client_to_the_backend_and_back(tmp
     assert "FAILED (failures=1)" in result.stderr_tail
 
 
-async def test_a_declared_command_the_sandbox_cannot_run_as_given_is_a_400(stack):
-    """Bug caught: a malformed declaration answered 500, or run anyway."""
+@pytest.mark.parametrize(
+    "params",
+    [{"command": []}, {"command": ["ruff", "check"], "findings_reader": "eslint"}],
+    ids=["empty-argv", "unknown-findings-reader"],
+)
+async def test_a_declared_command_the_sandbox_cannot_run_as_given_is_a_400(stack, params):
+    """Bug caught: a malformed declaration, or one naming a findings reader the sandbox doesn't
+    have (#2609), answered 500 or run anyway, its output never read."""
     _, _, _, sandbox, client_factory = stack
     seed = await sandbox.seed_workspace("cyc_1", FILES)
     async with client_factory() as client:
@@ -356,12 +362,83 @@ async def test_a_declared_command_the_sandbox_cannot_run_as_given_is_a_400(stack
             json={
                 "operation": OperationName.RUN_DECLARED_COMMAND,
                 "revision": seed.to_dict(),
-                "params": {"command": []},
+                "params": params,
             },
             headers={"Authorization": f"Bearer {TOKEN}"},
         )
     assert response.status_code == 400
     assert response.json()["error"]["code"] == "INVALID_COMMAND"
+
+
+def _over_the_wire(tmp_path, container):
+    """The runtime API's sandbox client, over the sandbox service's app and a container backend
+    whose container is ``container``: the path a declared check takes on a deploy."""
+    from adapters.sandbox.container_backend import ContainerBackend
+
+    root = tmp_path / "cycles"
+    store = WorkspaceStore(root)
+    backend = ContainerBackend(
+        app_network=None,
+        container=container,
+        store=store,
+        image="sandbox:pinned",
+        operation_commands={},
+    )
+    app = create_app(
+        SandboxService(store=store, journal=OperationEvidenceJournal(root), backend=backend),
+        service_token=TOKEN,
+    )
+    return HttpExecutionSandbox(
+        base_url="http://exec",
+        service_token=TOKEN,
+        http_client_factory=lambda: httpx.AsyncClient(
+            transport=httpx.ASGITransport(app=app), base_url="http://exec"
+        ),
+    )
+
+
+async def test_a_named_readers_findings_travel_the_client_to_the_backend_and_back(tmp_path):
+    """#2609, entered at the client the runtime API uses. Bug caught: ``findings_reader`` dropped
+    on the wire, so the backend reads nothing; or the reading lost in rehydration, so the runtime
+    side gets none and reads the check whole while thinking it was read by findings."""
+    from squadops.sandbox.findings import FindingsReading, read
+    from tests.unit.sandbox.test_container_backend import CONTINUUM_RUFF, _exit, _WritingContainer
+
+    whole = CONTINUUM_RUFF.read_text(encoding="utf-8")
+    sandbox = _over_the_wire(tmp_path, _WritingContainer(_exit(1, stdout=whole)))
+    seed = await sandbox.seed_workspace("cyc_1", FILES, origin=RevisionOrigin.GIT_CHECKOUT)
+
+    result = await sandbox.run_declared_command(
+        revision=seed, command=("ruff", "check", "."), findings_reader="ruff"
+    )
+
+    assert FindingsReading.from_dict(result.findings) == read("ruff", whole, "", 1)
+    assert (result.stdout_truncated, result.stderr_truncated) == (True, False)
+
+
+async def test_a_cut_tail_says_so_in_the_checks_stored_evidence(tmp_path):
+    """#2622, entered at ``run_checks``, which both the inherited baseline and a source-backed
+    candidate are checked through. Bug caught: the flag set by the backend but dropped on the
+    wire or by ``result_of``, so a stored 4,000-character tail still reads as the whole output."""
+    from squadops.projects.development_configuration import Check, Commands
+    from squadops.projects.workspaces import run_checks
+    from tests.unit.sandbox.test_container_backend import _exit, _WritingContainer
+
+    sandbox = _over_the_wire(
+        tmp_path, _WritingContainer(_exit(1, stdout="F" * 4001), _exit(1, stderr="short\n"))
+    )
+    seed = await sandbox.seed_workspace("cyc_1", FILES, origin=RevisionOrigin.GIT_CHECKOUT)
+    commands = Commands(
+        working_directory=".",
+        checks=(Check("lint", ("ruff", "check")), Check("unit", ("pytest",))),
+        start=None,
+    )
+
+    (lint, unit), _ = await run_checks(sandbox, seed, commands)
+
+    assert (lint.evidence["stdout_truncated"], lint.evidence["stderr_truncated"]) == (True, False)
+    assert (unit.evidence["stdout_truncated"], unit.evidence["stderr_truncated"]) == (False, False)
+    assert len(lint.evidence["stdout_tail"]) == 4000
 
 
 async def test_an_evaluation_travels_the_client_to_the_runner_and_back(tmp_path):

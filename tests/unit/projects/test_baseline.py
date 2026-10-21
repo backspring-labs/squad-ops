@@ -34,6 +34,8 @@ def _run(**fields):
         "duration_seconds": 1.0,
         "stdout_tail": "",
         "stderr_tail": "",
+        "stdout_truncated": False,
+        "stderr_truncated": False,
         "unavailable_reason": None,
     }
     return SimpleNamespace(**{**base, **fields})

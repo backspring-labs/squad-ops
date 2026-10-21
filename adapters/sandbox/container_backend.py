@@ -33,6 +33,7 @@ import httpx
 
 from adapters.sandbox.placement import address, placement
 from squadops.ports.tools.container import ContainerPort
+from squadops.sandbox.findings import read
 from squadops.sandbox.models import (
     BuildResult,
     CommandOutcome,
@@ -47,6 +48,8 @@ from squadops.sandbox.models import (
     TestRunResult,
     WorkspaceRevision,
     declared_argv,
+    declared_reader,
+    unread,
 )
 from squadops.sandbox.noop import NoOpExecutionSandbox
 from squadops.sandbox.workspace import WorkspaceStore, WorkspaceStoreError, working_directory
@@ -287,14 +290,17 @@ class ContainerBackend(NoOpExecutionSandbox):
         working_dir: str = ".",
         setup: tuple[tuple[str, ...], ...] = (),
         timeout_seconds: float | None = None,
+        findings_reader: str | None = None,
     ) -> CommandResult:
         """X-3a (#2421; SIP-0102 §11d): a product's own declared command, after its setup
         commands, in a disposable copy of exactly the pinned revision (contract 3). Setup
         reaches the dependency network, as an install does; the command itself gets none
         (§7 item 10). The copy is discarded whatever happens, so nothing a command does
-        reaches the live tree or a revision."""
+        reaches the live tree or a revision. A named ``findings_reader`` reads the command's
+        whole output, before its tails are cut (#2609); setup steps are never read."""
         argv = declared_argv(command)
         steps = tuple(declared_argv(step) for step in setup)
+        declared_reader(findings_reader)
         if timeout_seconds is not None and timeout_seconds <= 0:
             raise ValueError(f"timeout_seconds must be positive, got {timeout_seconds}")
         inside = posixpath.join(_WORKSPACE_MOUNT, working_directory(working_dir)).rstrip("/")
@@ -316,6 +322,10 @@ class ContainerBackend(NoOpExecutionSandbox):
                     # never started keeps its own outcome.
                     if ended["ran"]:
                         ended["outcome"] = CommandOutcome.SETUP_FAILED
+                    # A setup step's output is never the check's: the reader reads nothing.
+                    ended["findings"] = unread(
+                        findings_reader, f"setup step {index} stopped the run"
+                    )
                     return CommandResult(
                         **base,
                         **ended,
@@ -323,7 +333,7 @@ class ContainerBackend(NoOpExecutionSandbox):
                         duration_seconds=time.monotonic() - started,
                     )
             ended = await self._run_declared(
-                revision.cycle_id, copy, argv, inside, "none", timeout_seconds
+                revision.cycle_id, copy, argv, inside, "none", timeout_seconds, findings_reader
             )
         return CommandResult(**base, **ended, duration_seconds=time.monotonic() - started)
 
@@ -335,8 +345,10 @@ class ContainerBackend(NoOpExecutionSandbox):
         inside: str,
         network: str,
         timeout_seconds: float | None,
+        findings_reader: str | None = None,
     ) -> dict[str, Any]:
-        """One declared argv in the copy, read into a command result's fields."""
+        """One declared argv in the copy, read into a command result's fields: its findings by
+        ``findings_reader`` when one is named, from the whole output, before the tails are cut."""
         spec = self._spec(
             OperationName.RUN_DECLARED_COMMAND,
             cycle_id,
@@ -356,13 +368,20 @@ class ContainerBackend(NoOpExecutionSandbox):
                     "ran": True,
                     "outcome": CommandOutcome.TIMEOUT,
                     "exit_classification": "timeout",
+                    "findings": unread(findings_reader, "the command timed out"),
                 }
             return {
                 "status": OperationStatus.NOT_RUN,
                 "ran": False,
                 "unavailable_reason": str(e),
+                "findings": unread(findings_reader, "the command never started"),
             }
-        tails = {"stdout_tail": run.stdout[-_TAIL_CHARS:], "stderr_tail": run.stderr[-_TAIL_CHARS:]}
+        tails = {
+            "stdout_tail": run.stdout[-_TAIL_CHARS:],
+            "stderr_tail": run.stderr[-_TAIL_CHARS:],
+            "stdout_truncated": len(run.stdout) > _TAIL_CHARS,
+            "stderr_truncated": len(run.stderr) > _TAIL_CHARS,
+        }
         if run.exit_code in _UNRUNNABLE:
             # The command never started: missing from the image, or not executable. The
             # environment's gap, never a failed check (§4.4).
@@ -374,8 +393,12 @@ class ContainerBackend(NoOpExecutionSandbox):
                 "outcome": outcome,
                 "exit_code": run.exit_code,
                 "unavailable_reason": f"{outcome}: {argv[0]}",
+                "findings": unread(findings_reader, f"{outcome}: {argv[0]}"),
             }
         ok = run.exit_code == 0
+        findings = None
+        if findings_reader is not None:
+            findings = read(findings_reader, run.stdout, run.stderr, run.exit_code).as_dict()
         return {
             **tails,
             "status": OperationStatus.SUCCEEDED if ok else OperationStatus.FAILED,
@@ -383,6 +406,7 @@ class ContainerBackend(NoOpExecutionSandbox):
             "outcome": CommandOutcome.EXITED,
             "exit_code": run.exit_code,
             "exit_classification": None if ok else "nonzero_exit",
+            "findings": findings,
         }
 
     async def read_build_diagnostics(self, *, revision: WorkspaceRevision) -> DiagnosticsResult:

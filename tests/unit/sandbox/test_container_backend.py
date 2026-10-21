@@ -6,6 +6,7 @@ import pytest
 
 from adapters.sandbox.container_backend import ContainerBackend
 from squadops.ports.tools.container import ContainerPort
+from squadops.sandbox.findings import read
 from squadops.sandbox.models import (
     OperationName,
     OperationStatus,
@@ -17,6 +18,11 @@ from squadops.tools.exceptions import ToolContainerError
 from squadops.tools.models import ContainerResult, ContainerSpec
 
 FILES = {"backend/main.py": "print('a')\n"}
+#: continuum's ruff findings at ba8fa68b, as #2609's readers were tested on them.
+CONTINUUM_RUFF = (
+    Path(__file__).resolve().parents[2] / "fixtures/findings/continuum-ba8fa68b-ruff-concise.txt"
+)
+
 COMMANDS = {
     OperationName.INSTALL_DEPENDENCIES: ("pip", "install", "-r", "requirements.txt"),
     OperationName.BUILD_FRONTEND: ("npm", "run", "build"),
@@ -447,6 +453,63 @@ class TestDeclaredCommand:
         )
         assert "npm ERR!" in result.stderr_tail
 
+    async def test_a_named_reader_reads_the_whole_output_and_each_tail_says_it_was_cut(
+        self, store, seeded
+    ):
+        """#2609 and #2622, on continuum's real ruff output at ba8fa68b (59 findings, 4,808
+        characters, past the 4,000-character tail). Bug caught: the findings read from the tail,
+        which here is unreadable (its rows don't add up to ruff's "Found 59"); the reading lost
+        between the run and the result; or a cut tail that reads as the whole output."""
+        whole = CONTINUUM_RUFF.read_text(encoding="utf-8")
+        container = _WritingContainer(_exit(0), _exit(1, stdout=whole, stderr="warning: x\n"))
+
+        result = await _backend(container, store).run_declared_command(
+            revision=seeded,
+            command=("ruff", "check", "--output-format", "concise", "."),
+            setup=(("pip", "install", "ruff"),),
+            findings_reader="ruff",
+        )
+
+        assert result.findings == read("ruff", whole, "warning: x\n", 1).as_dict()
+        assert (result.findings["readable"], sum(result.findings["counts"].values())) == (True, 59)
+        assert not read("ruff", result.stdout_tail, "", 1).readable
+        assert (result.stdout_truncated, result.stderr_truncated) == (True, False)
+        assert len(result.stdout_tail) == 4000
+
+    @pytest.mark.parametrize(
+        ("ended", "setup", "reason"),
+        [
+            ((_exit(1, stdout="E501 noise"), _exit(0)), (("pip", "install", "."),), "setup step 0"),
+            ((ToolContainerError("run timed out after 600s"),), (), "timed out"),
+            ((_exit(127),), (), "command_not_found: ruff"),
+            ((ToolContainerError("docker daemon unreachable"),), (), "never started"),
+        ],
+        ids=["setup-failed", "timeout", "not-found", "no-daemon"],
+    )
+    async def test_a_named_reader_answers_unreadable_when_the_command_never_ran_to_an_exit(
+        self, store, seeded, ended, setup, reason
+    ):
+        """#2609. Bug caught: a check that never ran to an exit returned with no reading, which a
+        comparison would take as a check with no reader, read whole; or a failed setup step's
+        own output read as the check's findings."""
+        result = await _backend(_WritingContainer(*ended), store).run_declared_command(
+            revision=seeded, command=("ruff", "check", "."), setup=setup, findings_reader="ruff"
+        )
+
+        assert (result.findings["readable"], result.findings["counts"]) == (False, {})
+        assert reason in result.findings["reason"]
+
+    async def test_no_reader_named_reads_nothing(self, store, seeded):
+        """Bug caught: a reading made for a check that declared no reader, so a reader-less check
+        stops being read whole (§8.3.1, IR-9's case)."""
+        container = _WritingContainer(_exit(1, stdout="x.py:1:1: F401 y"))
+
+        result = await _backend(container, store).run_declared_command(
+            revision=seeded, command=("ruff", "check")
+        )
+
+        assert result.findings is None
+
     @pytest.mark.parametrize(
         ("kwargs", "error"),
         [
@@ -455,6 +518,7 @@ class TestDeclaredCommand:
             (dict(command=("make", "")), "non-empty argv"),
             (dict(command="make test"), "non-empty argv"),
             (dict(command=("make",), timeout_seconds=0), "must be positive"),
+            (dict(command=("make", "lint"), findings_reader="eslint"), "no findings reader"),
         ],
         ids=[
             "escaping-directory",
@@ -462,13 +526,15 @@ class TestDeclaredCommand:
             "empty-argument",
             "a-shell-string",
             "zero-timeout",
+            "an-unknown-findings-reader",
         ],
     )
     async def test_a_declaration_the_sandbox_cannot_run_as_given_runs_nothing(
         self, store, seeded, kwargs, error
     ):
         """Bug caught: a working directory that leaves the copy, or a malformed argv, run anyway
-        instead of refused as the declaration's error; a shell string run as one-letter argvs."""
+        instead of refused as the declaration's error; a shell string run as one-letter argvs; a
+        findings reader the sandbox doesn't have, the command run and its output never read."""
         container = _WritingContainer()
 
         with pytest.raises((ValueError, WorkspaceStoreError), match=error):
