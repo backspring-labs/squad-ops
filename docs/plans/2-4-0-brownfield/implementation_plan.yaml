@@ -1,0 +1,24 @@
+version: 1
+project_id: prj-z-continuum
+cycle_id: operator-supplied
+prd_hash: operator-supplied
+tasks:
+  - task_index: 0
+    task_type: development.develop
+    role: dev
+    focus: "continuum --version"
+    description: "Add a top-level --version option to the continuum CLI in src/continuum/cli.py with argparse's version action, printing 'continuum <version>' from continuum.__version__ and exiting 0. The run, dev and inspect commands are unchanged."
+    expected_artifacts:
+      - "src/continuum/cli.py"
+    acceptance_criteria: []
+  - task_index: 1
+    task_type: qa.test
+    role: qa
+    focus: "a test for continuum --version"
+    description: "Add tests/test_cli_version.py: run continuum.cli.main() with sys.argv set to ['continuum', '--version'], and assert it exits 0 and prints 'continuum ' followed by continuum.__version__."
+    expected_artifacts:
+      - "tests/test_cli_version.py"
+    acceptance_criteria: []
+    depends_on: [0]
+summary:
+  total_tasks: 2

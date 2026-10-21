@@ -1,0 +1,19 @@
+# Shelfnote's Development Configuration (SIP-0112 §B.5): its blueprint, and the product's own
+# install and check commands, as a squad's change is verified against them.
+technical:
+  project_type: web_application
+  target: web
+  stack: fullstack_fastapi_react
+  commands:
+    working_directory: "."
+    install:
+      - [python3, -m, venv, .venv]
+      - [.venv/bin/pip, install, --quiet, -r, backend/requirements.txt, pytest, httpx]
+      - [npm, --prefix, frontend, install, --silent]
+    checks:
+      - id: boots
+        argv: [.venv/bin/python, -c, "from backend.main import app"]
+      - id: backend_tests
+        argv: [.venv/bin/python, -m, pytest, -q, -p, "no:cacheprovider"]
+      - id: frontend_tests
+        argv: [npm, --prefix, frontend, test, --silent]

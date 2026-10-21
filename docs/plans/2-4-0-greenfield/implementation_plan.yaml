@@ -1,0 +1,24 @@
+version: 1
+project_id: prj-shelfnote
+cycle_id: operator-supplied
+prd_hash: operator-supplied
+tasks:
+  - task_index: 0
+    task_type: development.develop
+    role: dev
+    focus: "Shelfnote's books API"
+    description: "Fill the four route bodies in backend/routes.py, which are the scaffold's stubs raising 501. Store books in book_store (backend/store.py), keyed by a generated id. GET /books returns every book, newest first. POST /books adds a Book with an empty notes list and returns it. GET /books/{book_id} returns the book, or raises ApiError('book_not_found', ...). POST /books/{book_id}/notes appends a Note (generated id, author, text) to the book's notes and returns the whole Book; it raises ApiError('book_not_found', ...) for an unknown book, and ApiError('validation_error', ...) for a note text over 500 characters. Change only the route bodies in backend/routes.py."
+    expected_artifacts:
+      - "backend/routes.py"
+    acceptance_criteria: []
+  - task_index: 1
+    task_type: qa.test
+    role: qa
+    focus: "tests for the books API"
+    description: "Add tests/test_books_api.py using the client fixture from conftest.py. Cover: an empty list; adding a book answers 201 with the book; the list shows the newest book first; getting a book by id; adding a note returns the book with the note; an unknown book id answers 404 with error code book_not_found; a book missing its title answers 422; a 501-character note answers 422 with error code validation_error."
+    expected_artifacts:
+      - "tests/test_books_api.py"
+    acceptance_criteria: []
+    depends_on: [0]
+summary:
+  total_tasks: 2
