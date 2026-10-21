@@ -123,6 +123,7 @@ before the SIP closes and need not ship in 2.4 (the owner, the same day). Depend
 | E.4.2 repository-native discovery and the inherited baseline, with the start declaration (§8.2 contract 7) | **shipped**: the managed clone and validation; the versioned Development Configuration with contract 7's start declaration and the repository's instruction sources; seeding with the commit-to-revision mapping (contract 3's seeding half); the inherited baseline through X-3a. Capture back to Git is E.4.3's (#2410) | 2.4.0, PR #2468, issue #2409 |
 | E.4.3 the first scoped feature through the shared cycle path | **shipped**: the source-backed run, from the product's tree to a verified change contributed through its own process (#2484); the sync's attribution of SquadOps's own contributions and its hold on Cycles until drift is reconciled (#2610, H.2); the brownfield demonstration read against its pre-registration, with IR-2 passing live (#2611). The deletion form and a regression's repair round are deferred follow-ups, each with its own issue | 2.4.0, PRs #2484, #2610 and #2611, issue #2410 |
 | E.4.4 the second feature after an outside contribution | **shipped**: a product's upstream read against its approved baseline, its contributions' standing, and the repository reference resolver (#2565); the sync's attribution and its hold on Cycles until drift is reconciled (#2610, H.2); the brownfield demonstration's second feature after an outside change, read (#2611); IR-3 as H.3 restates it (#2616) | 2.4.0, PRs #2565, #2610 and #2611, issue #2411 |
+| H.4 a repository-backed Project's development profile derived from its tree, its capability gaps named, and Campaigns run on it (found as #2619; the owner, 2026-10-21) | **placed** | 2.5.0, #2619 |
 | E.4.5 lifecycle completeness: update history, archive/restore, concurrency and conflict recovery (before close; not required in 2.4) | **unplaced**, deliberately: placed by a later plan, before the SIP closes | — |
 | E.4.6 greenfield Project creation at an owner-approved external destination (required, Q34; shipped by the 2.4 cut, G6) | **placed** | 2.4.0, #2412 |
 | E.4.7 direct attachment: writing in place in an existing checkout (optional, FR-02) | **unplaced**, deliberately: optional | — |
@@ -1708,4 +1709,87 @@ records:
 
 **Who ruled:** the MacBook lane, under the owner's delegation of 2026-10-18. The restatement follows the owner's
 ruling of §5ad and H.2; it decides nothing new.
+
+## H.4 A repository-backed Project's development profile is derived, its gaps are named, and Campaigns run on it (2026-10-21; #2619; placed in 2.5)
+
+**What was found.** A Campaign on a repository-backed Project can run its calibration cycle but can never launch an
+increment (#2619, the Spark lane, 2026-10-21). That holds for an external product and for a greenfield one alike: once
+created, a greenfield product is a repository registered like any other, and its cycles are source-backed. There are
+three causes:
+1. **The template stack.** The Campaign's increment request profiles (`campaign-increment`, `campaign-increment-asks`)
+   pin the `fullstack_fastapi_react` template stack, and a source-backed cycle refuses a stack (E.4.3's
+   `source_backed_stack_decision`).
+2. **The proposal's input.** A proposal reads the accepted cycle's interface manifest from the artifact vault. A
+   source-backed cycle carries none forward, not even for a greenfield product whose approved manifest made its first
+   commit.
+3. **The calibration's input.** The calibration launch carries no PRD or plan, so its cycle fails at provisioning
+   ("implementation plan required but absent", IR-2's live run).
+
+A Campaign on a sample application, which lives only in SquadOps's vault, is unaffected: the 2.4 window ran four.
+
+**The owner's direction, 2026-10-21:** "it seems we need a way to derive the stack and recipe and call out any gaps
+preventing squad ops from working on it", and then "go with 2.5, write up the amendment".
+
+**The design:**
+1. **A derived development profile.** E.4.2's discovery is extended. When a Development Configuration revision is
+   recorded, SquadOps reads the pinned tree and the configuration, and records with the revision what its roles
+   depend on:
+   - the languages and their package managers;
+   - the test runners and the test command;
+   - the lint and type tools, and the findings reader each takes (#2609);
+   - the start declaration;
+   - the blueprint the tree follows, if any. A greenfield product names its blueprint in its configuration, and the
+     tree and the approved manifest are checked against it;
+   - the toolchains the declared commands need, against those the sandbox image provides.
+2. **Capability gaps, named.** Each fact the squad can't serve is a gap, with what it blocks and what would close it.
+   Examples:
+   - a frontend whose test framework QA doesn't author: the squad's changes there go unverified by its own tests;
+   - a toolchain the sandbox image lacks: those checks are UNVERIFIED;
+   - a lint without a findings reader: it is compared only whole;
+   - no start declaration: Outcome Evaluation is blocked.
+
+   The gaps are recorded with the revision, and `projects configure` and `projects show` report them. A Cycle or a
+   Campaign whose work would meet a blocking gap is refused before dispatch, naming it. This is the existing rule
+   that an unsupported layout or toolchain surfaces a capability gap, never an automatic restructuring (E.7),
+   given a record.
+3. **The recipe is derived, not pinned.** Request profiles carry no stack.
+   - A sample application's stack comes from its Project and the Campaign's policy, as today (#2443).
+   - A repository-backed Project's cycles take the derived profile:
+     - nothing is seeded, and the squad starts from the product's own tree;
+     - the checks are the configuration's;
+     - QA writes tests for the product's own runner;
+     - a greenfield product that follows a blueprint gets that blueprint's QA and check conventions, without its
+       template laid down.
+   - E.4.3's guard narrows from "a stack is named" to "a skeleton would be seeded", which is what it protects against.
+4. **Campaigns on a repository-backed Project.** SIP-0109's calibration and proposal, as they read such a Project:
+   - **Calibration is the inherited baseline.** The first accepted tree is the pinned commit, already checked by the
+     product's own checks (FR-20). Nothing is built, so the calibration needs no PRD or plan.
+   - **A proposal reads the product's tree** (the bounded view) and its derived profile, where a sample application's
+     proposal reads its interface manifest. A greenfield product's approved manifest, recorded at its
+     initialization (H.1), is read beside them.
+   - **Each increment is a source-backed cycle,** verified by the product's checks and contributed through its own
+     process, as a standalone cycle is today.
+
+**What stays:**
+- A sample application's Campaigns are unchanged, and the counted pair holds (IR-10).
+- Standalone cycles on repository-backed Projects are unchanged: both 2.4 demonstrations ran on them.
+- A drift's hold (H.2) and the per-cycle binding (H.3) apply to every increment as to any cycle.
+
+**Boundaries:**
+- **SIP-0109** owns the calibration and proposal mechanics. This amendment states what they read for a
+  repository-backed Project, and SIP-0109 records the counterpart (the Spark lane's).
+- **SIP-0105** owns the blueprints. The derived profile recognises one, and never generates one.
+
+**In 2.4:** the shared demonstration (the 2.4 plan's D13: one Campaign on an external Project across two features)
+can't run its feature cycles. It reports *not run*, naming #2619 as its prerequisite, as the plan provides (G5).
+- IR-3's live half ran through calibration launches instead (#2179).
+- IR-2 and both demonstrations are unaffected.
+
+**The evidence:**
+- #2619's three refusals, at the lines it cites.
+- IR-2's calibration cycle failing at provisioning for lack of a plan (`cyc_95c8659ae6c5`, #2611).
+- The Spark lane's IR-3 run on `z_continuum`, which reached a Campaign's calibration and no further.
+
+**Who ruled:** the owner, 2026-10-21: the direction, and placement in 2.5. The MacBook lane wrote this, and the
+Spark lane's G4 follows.
 

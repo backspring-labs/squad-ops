@@ -322,6 +322,12 @@ scenarios, not a release requirement.
 - **If it can't run before the cut:** its scenarios report *not run*, each with its missing prerequisite (G5). The
   release ships on each lane's own evidence.
 - **It stays held out:** neither the product nor the squad sees a scenario step (the SIP's §8.3, IR-4).
+- **Not run in 2.4** (the owner, 2026-10-21: "go with 2.5"). A Campaign on a repository-backed Project runs its
+  calibration but can't launch an increment (#2619). Its profiles pin a template stack that source-backed cycles refuse,
+  and a proposal needs an interface manifest the product has none of. So the demonstration's feature cycles can't run,
+  and its scenarios report *not run* with #2619 as the missing prerequisite. The fix is SIP-0112's amendment H.4,
+  placed in 2.5: a development profile derived from the product, its capability gaps named, calibration as the inherited
+  baseline, and proposals read from the product's tree.
 
 ---
 
@@ -378,6 +384,7 @@ own evidence, #2183's acceptance matrix, live.
 | #557, #949, #950: the judgement steps | they follow Outcome Evaluation and are measured on it, and 2.4 already changes the proposer. Adding judgement steps would make neither change readable | 2.5 or later, re-read at 2.4's cut |
 | #2230, the upgrade to TensorFold 1.x (redirected by the owner on 2026-10-18 from Qwen3.8-Flash-Next on TensorFold; SIP-0111 §9m) | the owner on 2026-10-15: "no second tensorfold candidate at this time"; on 2026-10-18: "I will want to tackle this move to 1.1.0 - but not just yet", and "I think this model change will come after 2.4 and the outcome evaluation work" | **unplaced, deliberately,** with the owner's words, until the owner places it (D9) |
 | #1978, test-first verification | "after Outcome Evaluation's baseline": it needs phase 1's data first | 2.5 or later |
+| #2619, Campaigns on a repository-backed Project (SIP-0112 H.4) | a Campaign on an external or greenfield product can't launch an increment. The fix derives the product's development profile, names its capability gaps and reads proposals from its tree. That needs SIP-0109's counterpart and a live full-squad run. The shared demonstration (§2.7) reports *not run* in 2.4 | **2.5**, the owner, 2026-10-21 |
 | #1965, the framework suite's test-value audit | the crew's first optimization experiment, an outer-loop item with no 2.4 dependency | the owner's to place |
 | the squad authoring its own backlog | portfolio Q1: 2.6, with its own SIP. The squad chooses features only once there's an independent measure of whether a feature helped | 2.6 |
 | #2184, retiring the legacy store | placed 2.5.0 (SIP-0110) | 2.5 |
