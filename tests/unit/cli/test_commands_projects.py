@@ -320,3 +320,55 @@ class TestProjectsSync:
         assert "source 1 src/c/__init__.py" in rows
         assert "source, by cyc_709e3a912150 2 src/c/cli.py," in rows
         assert "evidence to revalidate: instructions" in " ".join(rows)
+
+
+class TestBaselineCaptureBound:
+    """#2605, entered at the CLI over the real API client."""
+
+    def _invoke(self, handler, *args):
+        import httpx
+
+        from squadops.cli.client import APIClient
+        from squadops.cli.config import CLIConfig
+
+        api = APIClient(
+            CLIConfig(timeout=30, long_timeout=1234),
+            client=httpx.Client(
+                transport=httpx.MockTransport(handler), base_url="http://api", timeout=30
+            ),
+        )
+        with patch("squadops.cli.commands.projects._get_client", return_value=api):
+            return runner.invoke(app, ["--json", "projects", "baseline", "prj-tally", *args])
+
+    def test_a_capture_waits_for_the_long_bound_and_a_read_for_the_default(self):
+        """Bug caught: the capture sent under the 30 s default, so it reads as failed while the
+        server runs the product's install and checks (#2605's `demo-b-baseline-1`); or every
+        request given the long bound, so a dead server takes 30 minutes to say so."""
+        seen = []
+
+        def handler(request):
+            import httpx
+
+            seen.append((request.method, request.extensions["timeout"]["read"]))
+            return httpx.Response(200, json={"document": {}, "replayed": False})
+
+        captured = self._invoke(handler, "--capture", "--idempotency-key", "cap-1")
+        read = self._invoke(handler)
+
+        assert (captured.exit_code, read.exit_code) == (0, 0), captured.output + read.output
+        assert seen == [("POST", 1234), ("GET", 30)]
+
+    def test_a_capture_that_times_out_names_its_key_once_and_how_to_read_it(self):
+        """Bug caught: the timeout printed as a bare failure, or the key printed twice."""
+
+        def handler(request):
+            import httpx
+
+            raise httpx.ReadTimeout("timed out", request=request)
+
+        result = self._invoke(handler, "--capture", "--idempotency-key", "cap-2")
+
+        said = " ".join(result.output.split())  # as printed, unwrapped
+        assert result.exit_code == exit_codes.NETWORK_ERROR
+        assert "timed out after 1234s: it may still complete on the server" in said
+        assert said.count("cap-2") == 1
