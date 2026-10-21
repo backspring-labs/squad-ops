@@ -12,13 +12,24 @@ call site's rule for a fault holds:
 - a campaign cycle's launch repeats on the next drain;
 - a re-binding is refused with ``503 CYCLES_UNBOUND``, its snapshot unchanged;
 - a task instruction's write is answered as a fault;
-- admission names the failure in the reference's ``unbound``.
+- admission names the failure in the reference's ``unbound``. A standalone cycle admitted while its
+  family overruns keeps that reference unbound for its life, as it does for any other fault there.
+
+**After an overrun, the family fails fast for one bound's length.** Its calls raise
+``ResolverTimedOut`` at once, without calling it. A hung family is then one bound under the lock, not
+one per pending launch, cycle fill or reconciliation (the second read of #2579).
+
+**The bound frees the wait, not the thread.** The repository family runs git in
+``asyncio.to_thread``, and that thread keeps going until git's own bound
+(``ProjectsConfig.git_timeout_seconds``). Failing fast keeps the threads an overrunning family leaves
+to about one per two bounds, a handful against git's 300 s (the G4's reading, acceptable for 2.4).
 """
 
 from __future__ import annotations
 
 import asyncio
-from collections.abc import Awaitable, Iterator, Mapping
+import time
+from collections.abc import Awaitable, Callable, Iterator, Mapping
 from typing import TypeVar
 
 from squadops.memory.references import BindingContext, BoundReference
@@ -28,35 +39,54 @@ T = TypeVar("T")
 
 
 class ResolverTimedOut(TimeoutError):
-    """A resolver call that overran its bound: a fault, which its caller repeats or reports."""
+    """A resolver call that overran its bound, or was refused while its family fails fast: a
+    fault, which its caller repeats or reports."""
 
 
 class TimeBoundResolver(ReferenceResolverPort):
-    """``inner``, with each of its calls bounded to ``seconds``. A ``TimeoutError`` the resolver
-    raises itself passes through as its own; only the bound's expiry is ``ResolverTimedOut``."""
+    """``inner``, with each of its calls bounded to ``seconds``, failing fast for ``seconds`` after
+    an overrun. A ``TimeoutError`` the resolver raises itself passes through as its own; only the
+    bound's expiry is ``ResolverTimedOut``."""
 
-    def __init__(self, inner: ReferenceResolverPort, seconds: float) -> None:
+    def __init__(
+        self,
+        inner: ReferenceResolverPort,
+        seconds: float,
+        *,
+        clock: Callable[[], float] = time.monotonic,
+    ) -> None:
         self.family = inner.family
         self._inner = inner
         self._seconds = seconds
+        self._clock = clock
+        #: After an overrun, calls fail fast until this moment.
+        self._failing_until = 0.0
 
     async def bind(self, ref: str, ctx: BindingContext) -> BoundReference:
-        return await self._bounded("bind", self._inner.bind(ref, ctx))
+        return await self._bounded("bind", lambda: self._inner.bind(ref, ctx))
 
     async def read(self, bound: BoundReference, ctx: BindingContext) -> str:
-        return await self._bounded("read", self._inner.read(bound, ctx))
+        return await self._bounded("read", lambda: self._inner.read(bound, ctx))
 
     async def binds_nothing_for(self, project_id: str) -> str | None:
-        return await self._bounded("binds_nothing_for", self._inner.binds_nothing_for(project_id))
+        return await self._bounded(
+            "binds_nothing_for", lambda: self._inner.binds_nothing_for(project_id)
+        )
 
-    async def _bounded(self, call: str, awaitable: Awaitable[T]) -> T:
+    async def _bounded(self, call: str, start: Callable[[], Awaitable[T]]) -> T:
+        if self._clock() < self._failing_until:
+            raise ResolverTimedOut(
+                f"the {self.family} resolver overran its {self._seconds:g} s bound within the "
+                f"last {self._seconds:g} s, so its {call} is refused until then"
+            )
         bound = asyncio.timeout(self._seconds)
         try:
             async with bound:
-                return await awaitable
+                return await start()
         except TimeoutError as e:
             if not bound.expired():
                 raise
+            self._failing_until = self._clock() + self._seconds
             raise ResolverTimedOut(
                 f"the {self.family} resolver's {call} overran its {self._seconds:g} s bound"
             ) from e

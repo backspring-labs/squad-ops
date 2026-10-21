@@ -1,14 +1,14 @@
 """A reference resolver's calls, each under one time bound (#2575; the MacBook lane's G4).
 
 A resolver's ``bind`` runs under the campaign launcher's single lock (SIP-0110 §5ae), so a family
-that hangs would stall every campaign. The bound is applied where a family is registered, and an
-overrun is a fault, never a refusal.
+that hangs would stall every campaign. The bound is applied where a family is registered, an
+overrun is a fault, never a refusal, and a family that overran fails fast for one bound's length.
 
 What bugs would these catch?
 - a call with no bound, so a hung family holds every launch behind it;
-- an overrun read as a refusal, so the reference is kept unbound for its unit's life where a launch
-  would have repeated it;
-- a resolver's own ``TimeoutError`` reported as the bound's;
+- a hung family costing one bound per call, so a drain over many launches holds the lock for many;
+- an overrun read as a refusal, so the reference is kept unbound where a launch would repeat it;
+- a resolver's own ``TimeoutError``, or a cancellation, reported as the bound's;
 - a family registered without the bound, at the composition root or anywhere else;
 - the configured bound not reaching the registry.
 """
@@ -40,17 +40,26 @@ BOUND_S = 0.05
 
 
 class _Hung(ReferenceResolverPort):
-    """A family whose every call waits on something that never answers."""
+    """A family whose every call waits on something that never answers, counting the calls."""
 
     family = "fake"
 
-    async def bind(self, ref: str, ctx: BindingContext) -> BoundReference:
+    def __init__(self) -> None:
+        self.calls = 0
+
+    async def _hang(self):
+        self.calls += 1
         await asyncio.Event().wait()
         raise AssertionError("unreachable")
 
+    async def bind(self, ref: str, ctx: BindingContext) -> BoundReference:
+        return await self._hang()
+
     async def read(self, bound: BoundReference, ctx: BindingContext) -> str:
-        await asyncio.Event().wait()
-        raise AssertionError("unreachable")
+        return await self._hang()
+
+    async def binds_nothing_for(self, project_id: str) -> str | None:
+        return await self._hang()
 
 
 class _OwnTimeout(ReferenceResolverPort):
@@ -65,24 +74,65 @@ class _OwnTimeout(ReferenceResolverPort):
         raise ReferenceUnresolved("not read")
 
 
-def _pinned() -> PinnedInstruction:
+def _call(resolver: ReferenceResolverPort, call: str):
+    if call == "bind":
+        return resolver.bind(REF, CTX)
+    if call == "read":
+        return resolver.read(BoundReference("fake:doc:spec@r1", "r1", "d"), CTX)
+    return resolver.binds_nothing_for("group_run")
+
+
+def _pinned(*refs: str) -> PinnedInstruction:
     where = InstructionApplicability(("development.design_plan",), ("*",), ("*",))
-    return PinnedInstruction("mrec_ref", 1, "Read the spec.", where, (Reference(REF, True),))
+    references = tuple(Reference(r, True) for r in refs or (REF,))
+    return PinnedInstruction("mrec_ref", 1, "Read the spec.", where, references)
 
 
-@pytest.mark.parametrize("call", ["bind", "read"])
+@pytest.mark.parametrize("call", ["bind", "read", "binds_nothing_for"])
 async def test_a_hung_call_overruns_its_bound_as_a_fault_not_a_refusal(call):
     """Bugs caught: a call with no bound (the test would hang); an overrun raised as
     ``ReferenceUnresolved``, which every caller keeps as unbound."""
     bounded = TimeBoundResolver(_Hung(), BOUND_S)
-    invoke = (
-        bounded.bind(REF, CTX)
-        if call == "bind"
-        else bounded.read(BoundReference("fake:doc:spec@r1", "r1", "d"), CTX)
-    )
 
     with pytest.raises(ResolverTimedOut, match=f"fake resolver's {call} overran its 0.05 s bound"):
-        await asyncio.wait_for(invoke, timeout=5)
+        await asyncio.wait_for(_call(bounded, call), timeout=5)
+
+
+async def test_a_family_that_overran_fails_fast_for_one_bound_then_is_called_again():
+    """The second read of #2579. Bug caught: a hung family costing one bound for every call, so a
+    drain over many pending launches, or the sweep over many cycles, holds the launch lock for one
+    bound each and leaves a thread behind for each."""
+    now = [100.0]
+    inner = _Hung()
+    bounded = TimeBoundResolver(inner, BOUND_S, clock=lambda: now[0])
+
+    with pytest.raises(ResolverTimedOut, match="overran"):
+        await asyncio.wait_for(bounded.bind(REF, CTX), timeout=5)
+    with pytest.raises(ResolverTimedOut, match="refused until then"):
+        await asyncio.wait_for(bounded.bind(REF, CTX), timeout=5)
+    assert inner.calls == 1
+
+    now[0] += BOUND_S + 0.01
+    with pytest.raises(ResolverTimedOut, match="overran"):
+        await asyncio.wait_for(bounded.bind(REF, CTX), timeout=5)
+    assert inner.calls == 2
+
+
+async def test_two_references_of_a_hung_family_cost_one_bound_not_two():
+    """Entered where admission binds (``bound_instruction``, as ``pin_unit`` calls it). Bug caught:
+    each reference of a hung family waiting out its own bound."""
+    inner = _Hung()
+    resolvers = ReferenceResolvers(BOUND_S)
+    resolvers.register(inner)
+
+    admitted = await asyncio.wait_for(
+        bound_instruction(_pinned(REF, "fake:doc:notes@current"), resolvers, CTX), timeout=5
+    )
+
+    assert inner.calls == 1
+    assert [why for _, why in admitted.unbound] == [
+        "the fake resolver failed: ResolverTimedOut"
+    ] * 2
 
 
 async def test_a_resolvers_own_timeout_is_its_own_not_the_bounds():
@@ -93,17 +143,35 @@ async def test_a_resolvers_own_timeout_is_its_own_not_the_bounds():
     assert not isinstance(raised.value, ResolverTimedOut)
 
 
+async def test_a_cancellation_from_outside_is_a_cancellation_and_trips_nothing():
+    """Bug caught: a request cancelled, or the runtime shutting down, reported as the family's
+    overrun, and the family then failing fast for a bound it never overran."""
+    inner = _Hung()
+    bounded = TimeBoundResolver(inner, 5)
+    task = asyncio.ensure_future(bounded.bind(REF, CTX))
+    await asyncio.sleep(0.01)
+    task.cancel()
+
+    with pytest.raises(asyncio.CancelledError):
+        await task
+    retried = asyncio.ensure_future(bounded.bind(REF, CTX))
+    await asyncio.sleep(0.01)
+    assert inner.calls == 2
+    retried.cancel()
+
+
 async def test_each_call_site_keeps_its_rule_for_the_fault():
     """Bug caught: an overrun treated as a refusal. A campaign cycle's launch, which binds strictly,
     raises it so the next drain repeats the launch. Admission, which binds once, names the failure
     in the reference's ``unbound``, so a required reference holds its task rather than reading
     unbound content."""
-    resolvers = ReferenceResolvers(BOUND_S)
-    resolvers.register(_Hung())
+    launch, admission = ReferenceResolvers(BOUND_S), ReferenceResolvers(BOUND_S)
+    launch.register(_Hung())
+    admission.register(_Hung())
 
     with pytest.raises(ResolverTimedOut):
-        await asyncio.wait_for(instructions_bound_for((_pinned(),), resolvers, CTX), timeout=5)
-    admitted = await asyncio.wait_for(bound_instruction(_pinned(), resolvers, CTX), timeout=5)
+        await asyncio.wait_for(instructions_bound_for((_pinned(),), launch, CTX), timeout=5)
+    admitted = await asyncio.wait_for(bound_instruction(_pinned(), admission, CTX), timeout=5)
     assert admitted.unbound == ((REF, "the fake resolver failed: ResolverTimedOut"),)
 
 
@@ -129,9 +197,9 @@ def test_a_bound_that_isnt_positive_is_refused(seconds):
 
 
 async def test_the_runtime_registers_families_under_its_configured_bound():
-    """Entered where the runtime builds it (``main._init_memory``). Bugs caught: the composition
-    root still creating a plain dict, which takes an unbounded family; the configured bound not
-    reaching the registry."""
+    """Entered where the runtime builds it (``main._init_memory``), then registered as a later init
+    step does (#2565's ``_init_cycle_subsystem``). Bugs caught: the composition root still creating
+    a plain dict, which takes an unbounded family; the configured bound not reaching the registry."""
     from squadops.api.runtime import main
 
     state = SimpleNamespace()
