@@ -12,7 +12,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from squadops.projects.models import ProjectLifecycleStatus, SourceUnavailable
+from squadops.projects.models import ProjectLifecycleStatus, ProjectSource, SourceUnavailable
 
 if TYPE_CHECKING:
     from squadops.cycles.models import Project
@@ -41,7 +41,9 @@ async def validate_project(
             "source to validate"
         )
     if project.lifecycle_status == ProjectLifecycleStatus.READY:
-        return await _revalidate(project, registry, repository, actor, idempotency_key)
+        return await _revalidate(
+            project, project.source, registry, repository, actor, idempotency_key
+        )
     commit, diagnostic = None, None
     try:
         resolved = await repository.sync(
@@ -66,6 +68,7 @@ async def validate_project(
 
 async def _revalidate(
     project: Project,
+    source: ProjectSource,
     registry: ProjectRegistryPort,
     repository: SourceRepositoryPort,
     actor: str,
@@ -77,7 +80,6 @@ async def _revalidate(
     Units already prepared keep the commit they pinned (contract 1). New ones pin the new
     commit, and are refused until a Development Configuration and an inherited baseline are
     recorded there."""
-    source = project.source
     resolved = await repository.sync(project.project_id, source.repo_uri, source.base_ref)
     gaps = (await repository.tree_at(project.project_id, resolved)).capability_gaps
     if gaps:
