@@ -284,6 +284,28 @@ def test_the_sweep_walks_every_running_agent_and_names_one_that_isnt(monkeypatch
     ]
 
 
+def test_the_vault_is_walked_at_each_window_cycles_own_directory(monkeypatch):
+    """Bug caught: the vault walked at a path its artifacts aren't under, which reads no file and,
+    before the zero-files rule, read as clean. Artifacts live at ``data/artifacts/<project>/<cycle>``."""
+    walked: dict[str, tuple] = {}
+    clean = {"files": 3, "missing_roots": [], "hits": {}}
+    monkeypatch.setattr(sweep, "sweep_databases", lambda values: {"squadops": {"tables": {}}})
+    monkeypatch.setattr(sweep, "window_cycles", lambda campaigns: ["cyc_aaaaaaaaaaaa", "cyc_b0"])
+    monkeypatch.setattr(sweep, "expected_agents", lambda: [])
+    monkeypatch.setattr(sweep, "running_containers", lambda: set())
+    monkeypatch.setattr(
+        sweep, "walk", lambda c, roots, values: walked.setdefault(c, tuple(roots)) and clean
+    )
+
+    report = sweep.sweep(_values(), ["cmp_83d63c2ebb50"])
+
+    assert walked["squadops-runtime-api"] == (
+        "/app/data/artifacts/group_run/cyc_aaaaaaaaaaaa",
+        "/app/data/artifacts/group_run/cyc_b0",
+    )
+    assert report["unsearched"] == []
+
+
 def test_the_agents_are_every_service_the_compose_file_builds_from_the_agents_image(tmp_path):
     compose = tmp_path / "docker-compose.yml"
     compose.write_text(
