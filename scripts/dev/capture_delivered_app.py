@@ -67,6 +67,7 @@ import yaml
 
 from squadops.campaigns.increment_tree import ACCEPTED_TREE_ARTIFACT_TYPE
 from squadops.cycles.delivered_tree import StoredArtifact, delivered_files
+from squadops.sandbox.environment import SANDBOX_ENV_IMAGE
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from capture_browser import add_browser_argument, loaded_dom, screenshot  # noqa: E402
@@ -78,7 +79,8 @@ REPO = Path(__file__).resolve().parents[2]
 MAIN = main_checkout(REPO)
 VAULT = MAIN / "data/artifacts"
 RELEASES = REPO / "site/content/releases"
-SANDBOX_IMAGE = "squadops-sandbox-env:py3.12-node20-1.4"
+#: The pinned sandbox environment image, from its one reference (#2582: this was a second copy).
+SANDBOX_IMAGE = SANDBOX_ENV_IMAGE
 CONTAINER = "squadops-delivered-app-capture"
 
 
