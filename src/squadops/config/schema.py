@@ -656,8 +656,10 @@ class ProjectsConfig(BaseModel):
         default_factory=list,
         description="Absolute directories under which a local repository path is allowed (R5)",
     )
-    #: E.4.2: the managed clones' cache. A cache: the external repository stays authoritative,
-    #: and a lost clone is fetched again (§B.3). Under cycle_data, as the sandbox's workspaces are.
+    #: E.4.2: the managed clones' cache. The external repository stays authoritative, and a lost
+    #: clone is fetched again (§B.3), but a run's captured change and a private product's clone
+    #: can't be: compose mounts the default path from ./data/repo_cache, so a redeploy keeps them
+    #: (#2588).
     clone_cache_root: Path = Field(
         default=Path("cycle_data/repo_cache"),
         description="Where the managed clones of registered products are kept (SIP-0112 FR-05)",
