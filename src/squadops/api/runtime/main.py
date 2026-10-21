@@ -852,6 +852,7 @@ def _init_memory(state, config, pool) -> None:
     selected by its required provider."""
     from adapters.memory.cross_cycle import create_cross_cycle_store
     from adapters.memory.records import create_memory_records
+    from adapters.memory.reference_resolvers import create_reference_resolvers
 
     provider = config.cycles.registry_provider
     state.memory_store = create_cross_cycle_store(
@@ -862,8 +863,11 @@ def _init_memory(state, config, pool) -> None:
     )
     # #2179 T16: the resolvers that bind an instruction's ``@current`` references at admission, by
     # family. None is registered yet: Project Lifecycle Management registers the repository family
-    # (SIP-0112 §B.5.1, contract 6), and until then ``@current`` is refused at write.
-    state.reference_resolvers = {}
+    # (SIP-0112 §B.5.1, contract 6), and until then ``@current`` is refused at write. A family is
+    # registered through ``register``, which bounds each of its calls (#2575).
+    state.reference_resolvers = create_reference_resolvers(
+        config.projects.reference_resolver_timeout_seconds
+    )
 
 
 #: How often the memory reconciliation passes run (SIP-0110 §0.3). Observations feed lessons the
