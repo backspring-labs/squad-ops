@@ -174,7 +174,23 @@ def test_only_a_place_the_squad_or_product_can_see_counts_as_found_and_unsearche
     ]
 
 
-def test_a_suite_whose_digest_isnt_the_pinned_one_is_refused_before_any_search(tmp_path, capsys):
+@pytest.fixture
+def no_box(monkeypatch):
+    """Every way the sweep reaches the deploy, refused: on the Spark a test that got that far would
+    dump the live databases and walk the live containers (2026-10-21, a mutant of this file did)."""
+
+    def refused(*args, **kwargs):
+        raise AssertionError("the sweep reached the box")
+
+    for name in ("sweep_databases", "walk", "window_cycles", "agent_containers"):
+        monkeypatch.setattr(sweep, name, refused)
+    monkeypatch.setattr(sweep.subprocess, "run", refused)
+    monkeypatch.setattr(sweep.subprocess, "Popen", refused)
+
+
+def test_a_suite_whose_digest_isnt_the_pinned_one_is_refused_before_any_search(
+    tmp_path, capsys, no_box
+):
     path = tmp_path / "suite.yaml"
     path.write_text(yaml.safe_dump(_suite_doc()))
 
