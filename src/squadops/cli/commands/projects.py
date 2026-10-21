@@ -329,6 +329,52 @@ def contribute(
     print_success(f"{contribution['mode']} {contribution['commit'][:12]}: {where}{again}")
 
 
+@app.command("initialize")
+def initialize(
+    ctx: typer.Context,
+    project_id: str = typer.Argument(...),
+    manifest: Path = typer.Option(
+        ...,
+        "--manifest",
+        exists=True,
+        dir_okay=False,
+        help="The approved interface manifest (YAML) the blueprint's layout is rendered from",
+    ),
+    token_from_gh: bool = typer.Option(
+        False,
+        "--token-from-gh",
+        help="Push with your own GitHub access (`gh auth token`), for this act only",
+    ),
+    idempotency_key: str | None = typer.Option(None, "--idempotency-key"),
+):
+    """Make a greenfield Project's first commit (SIP-0112 E.4.6): its blueprint's layout, rendered
+    from the approved interface manifest, pushed to the empty branch you made for it, never
+    forced. Then validate it as any registered product."""
+    fmt = ctx.obj.get("format", "table") if ctx.obj else "table"
+    key = idempotency_key or f"cli-{uuid.uuid4().hex}"
+    body = {"manifest": manifest.read_text(), "idempotency_key": key}
+    if token_from_gh:
+        body["token"] = _gh_token()
+    try:
+        client = _get_client(ctx)
+        data = client.post(f"/api/v1/projects/{project_id}/initializations", json=body)
+        client.close()
+    except CLIError as e:
+        print_error(f"{e} (idempotency key {key})")
+        raise typer.Exit(code=e.exit_code) from e
+    if fmt == "json":
+        print_json(data)
+        return
+    initialization = data["initialization"]
+    print_detail({k: v for k, v in initialization.items() if k != "files"})
+    again = " (already initialized)" if data.get("replayed") else ""
+    print_success(
+        f"{initialization['branch']} at {initialization['commit'][:12]}: "
+        f"{len(initialization['files'])} files of the {initialization['stack']} blueprint{again}. "
+        f"Next: squadops projects validate {project_id}"
+    )
+
+
 def _gh_token() -> str:
     """The caller's own GitHub token, from the GitHub CLI's login. Never printed."""
     import subprocess
