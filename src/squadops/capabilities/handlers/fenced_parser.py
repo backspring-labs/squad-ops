@@ -182,8 +182,13 @@ def _path_is_safe(path: str) -> bool:
     return True
 
 
-def _strip_trailing_newline(content: str) -> str:
-    return content[:-1] if content.endswith("\n") else content
+def _as_file(content: str) -> str:
+    """A fenced body as a file holds it: ending in exactly one newline (#2607). The body runs up to
+    the closing fence, so its last newline is the file's own, and stripping it left every emitted
+    file without one: an edited file lost the one it had, a diff line nothing asked for. Blank lines
+    the model left before the fence are dropped. An empty body stays empty."""
+    stripped = content.rstrip("\n")
+    return stripped + "\n" if stripped else ""
 
 
 def _resolve_filename_from_heading(
@@ -477,7 +482,7 @@ def extract_fenced_files(
         results.append(
             {
                 "filename": filename,
-                "content": _strip_trailing_newline(body),
+                "content": _as_file(body),
                 "language": language or "text",
             }
         )
@@ -552,6 +557,6 @@ def _single_expected_artifact_fallback(
     candidate = unlabeled[0]
     return {
         "filename": expected[0],
-        "content": _strip_trailing_newline(candidate["content"]),
+        "content": _as_file(candidate["content"]),
         "language": candidate["language"],
     }

@@ -68,8 +68,11 @@ def _detect_stubs(artifacts: list[dict], threshold: int = _STUB_THRESHOLD_BYTES)
         name = art.get("name", "")
         if name.endswith("__init__.py"):
             continue
-        if len(content) < threshold:
-            if any(pat in content for pat in _STUB_PATTERNS) or not content.strip():
+        # #2607: read as the parser handed it before files kept their final newline, so a small
+        # file ending in ``pass`` (an exception class) stays what it was here: not a stub.
+        body = content[:-1] if content.endswith("\n") else content
+        if len(body) < threshold:
+            if any(pat in body for pat in _STUB_PATTERNS) or not body.strip():
                 stubs.append(name)
     return stubs
 

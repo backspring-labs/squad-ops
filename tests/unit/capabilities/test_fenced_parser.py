@@ -21,7 +21,7 @@ class TestSingleFence:
         result = extract_fenced_files(response)
         assert len(result) == 1
         assert result[0]["filename"] == "src/main.py"
-        assert result[0]["content"] == "print('hello')"
+        assert result[0]["content"] == "print('hello')\n"
         assert result[0]["language"] == "python"
 
     def test_single_fence_multiline_content(self):
@@ -62,7 +62,7 @@ class TestThinkBlockStripping:
         result = extract_fenced_files(response)
         assert len(result) == 1
         assert result[0]["filename"] == "src/main.py"
-        assert result[0]["content"] == "print('real')"
+        assert result[0]["content"] == "print('real')\n"
 
     def test_response_that_is_only_a_think_block_yields_nothing(self):
         """The exact #130 failure: thinking mode emits a fence but no real
@@ -85,7 +85,7 @@ class TestThinkBlockStripping:
         result = extract_fenced_files(response)
         assert len(result) == 1
         assert result[0]["filename"] == "app.py"
-        assert result[0]["content"] == "print('ok')"
+        assert result[0]["content"] == "print('ok')\n"
 
 
 class TestNoFencedBlocksLogging:
@@ -229,7 +229,7 @@ class TestEdgeCases:
         result = extract_fenced_files(response)
         assert len(result) == 1
         assert result[0]["filename"] == "main.py"
-        assert result[0]["content"] == "print('hi')"
+        assert result[0]["content"] == "print('hi')\n"
 
     def test_malformed_header_with_space(self):
         """Fence headers with spaces in the path are not matched."""
@@ -269,8 +269,8 @@ class TestEdgeCases:
         )
         result = extract_fenced_files(response)
         assert len(result) == 2
-        assert result[0]["content"] == "a = 1"
-        assert result[1]["content"] == "b = 2"
+        assert result[0]["content"] == "a = 1\n"
+        assert result[1]["content"] == "b = 2\n"
 
 
 class TestSpecialFilenameInLanguageSlot:
@@ -309,7 +309,7 @@ class TestHeadingPrecedingFence:
         result = extract_fenced_files(response)
         assert len(result) == 1
         assert result[0]["filename"] == "backend/models.py"
-        assert result[0]["content"] == "class Run: pass"
+        assert result[0]["content"] == "class Run: pass\n"
 
     def test_heading_with_blank_line_before_fence(self):
         response = "### models.py\n\n```python\nclass Run: pass\n```\n"
@@ -381,7 +381,7 @@ class TestFirstLineFilenameComment:
         assert len(result) == 1
         assert result[0]["filename"] == "backend/models.py"
         # The filename comment line must NOT appear in the extracted content.
-        assert result[0]["content"] == "class Run: pass"
+        assert result[0]["content"] == "class Run: pass\n"
 
     def test_js_double_slash_comment_filename(self):
         response = "```javascript\n// frontend/src/App.jsx\nexport default function App() {}\n```\n"
@@ -428,7 +428,7 @@ class TestStrictWinsOverPermissive:
         assert len(result) == 1
         assert result[0]["filename"] == "right.py"
         # First-line comment is NOT stripped when strict format won.
-        assert result[0]["content"] == "# wrong.py\nx = 1"
+        assert result[0]["content"] == "# wrong.py\nx = 1\n"
 
 
 class TestRealWorldFailurePatterns:
@@ -495,7 +495,7 @@ class TestNestedFences:
         assert record["filename"] == "qa_handoff.md"
         assert "```bash\ncd backend\npytest\n```" in record["content"]
         assert "## Expected Behavior" in record["content"]
-        assert record["content"].endswith("In-memory store only.")
+        assert record["content"].endswith("In-memory store only.\n")
 
     def test_multiple_nested_examples_in_one_block(self):
         response = (
@@ -513,7 +513,7 @@ class TestNestedFences:
         )
         [record] = extract_fenced_files(response)
         assert record["content"].count("```bash") == 2
-        assert record["content"].endswith("Done.")
+        assert record["content"].endswith("Done.\n")
 
     def test_scan_resumes_correctly_after_nested_block(self):
         """A file following a nested-fence block must still be extracted with
@@ -533,8 +533,8 @@ class TestNestedFences:
         )
         records = extract_fenced_files(response)
         assert [r["filename"] for r in records] == ["docs/guide.md", "app.py"]
-        assert records[0]["content"].endswith("End of guide.")
-        assert records[1]["content"] == "print('hello')"
+        assert records[0]["content"].endswith("End of guide.\n")
+        assert records[1]["content"] == "print('hello')\n"
 
     def test_unmatched_nested_opener_abandons_block_but_recovers_later_files(self):
         """An inner tokened fence that never closes leaves the outer block
@@ -552,7 +552,7 @@ class TestNestedFences:
         )
         records = extract_fenced_files(response)
         assert [r["filename"] for r in records] == ["config.json"]
-        assert records[0]["content"] == '{"ok": true}'
+        assert records[0]["content"] == '{"ok": true}\n'
 
 
 class TestFirstLinePathPrefix:
@@ -580,7 +580,7 @@ class TestFirstLinePathPrefix:
     def test_bare_extension_filename_without_slash(self):
         # a slash-less path is accepted via the source-extension guard
         result = extract_fenced_files("```python\nmain.py:import sys\n```")
-        assert result == [{"filename": "main.py", "content": "import sys", "language": "python"}]
+        assert result == [{"filename": "main.py", "content": "import sys\n", "language": "python"}]
 
     def test_path_colon_alone_takes_code_from_next_line(self):
         # ``path:`` with nothing after the colon — code starts on the next line,
@@ -589,14 +589,14 @@ class TestFirstLinePathPrefix:
             "```python\nbackend/main.py:\nfrom fastapi import FastAPI\n```"
         )
         assert result[0]["filename"] == "backend/main.py"
-        assert result[0]["content"] == "from fastapi import FastAPI"
+        assert result[0]["content"] == "from fastapi import FastAPI\n"
 
     def test_multiple_path_prefix_fences(self):
         response = "```python\na/one.py:x = 1\n```\n```js\nb/two.js:y = 2\n```"
         result = extract_fenced_files(response)
         assert [(r["filename"], r["content"]) for r in result] == [
-            ("a/one.py", "x = 1"),
-            ("b/two.js", "y = 2"),
+            ("a/one.py", "x = 1\n"),
+            ("b/two.js", "y = 2\n"),
         ]
 
     def test_strict_header_still_wins_over_body_prefix(self):
@@ -604,7 +604,7 @@ class TestFirstLinePathPrefix:
         # body line is left untouched as content, not treated as the filename
         result = extract_fenced_files("```python:real.py\nother.py:import os\n```")
         assert result[0]["filename"] == "real.py"
-        assert result[0]["content"] == "other.py:import os"
+        assert result[0]["content"] == "other.py:import os\n"
 
     def test_host_port_first_line_is_not_a_filename(self):
         # guard: no slash and a non-source extension (.com) -> not a file (would
@@ -644,13 +644,13 @@ class TestFirstLineBareFilename:
 
     def test_slashless_bare_filename_accepted_via_extension_guard(self):
         result = extract_fenced_files("```python\nmain.py\nimport sys\n```")
-        assert result == [{"filename": "main.py", "content": "import sys", "language": "python"}]
+        assert result == [{"filename": "main.py", "content": "import sys\n", "language": "python"}]
 
     def test_multiple_bare_filename_fences(self):
         response = "```python\na/one.py\nx = 1\n```\n```js\nb/two.js\ny = 2\n```"
         assert [(r["filename"], r["content"]) for r in extract_fenced_files(response)] == [
-            ("a/one.py", "x = 1"),
-            ("b/two.js", "y = 2"),
+            ("a/one.py", "x = 1\n"),
+            ("b/two.js", "y = 2\n"),
         ]
 
     def test_code_first_line_is_never_stolen(self):
@@ -670,7 +670,7 @@ class TestFirstLineBareFilename:
         # a first-line COMMENT filename resolves via strategy 4, not 6
         result = extract_fenced_files("```python\n# real.py\nimport os\n```")
         assert result[0]["filename"] == "real.py"
-        assert result[0]["content"] == "import os"
+        assert result[0]["content"] == "import os\n"
 
 
 class TestPathLabelHeal:
@@ -684,12 +684,12 @@ class TestPathLabelHeal:
         assert len(result) == 1
         assert result[0]["filename"] == "backend/main.py"
         assert result[0]["language"] == "python"
-        assert result[0]["content"] == "x = 1"
+        assert result[0]["content"] == "x = 1\n"
 
     def test_file_label_stripped(self):
         result = extract_fenced_files("```js:file:src/api.js\nconst x = 1;\n```\n")
         assert result[0]["filename"] == "src/api.js"
-        assert result[0]["content"] == "const x = 1;"
+        assert result[0]["content"] == "const x = 1;\n"
 
     def test_two_labelled_files_both_recovered(self):
         """The real cyc_40dd251ff9b8 shape: two path:-labelled blocks, both
@@ -730,14 +730,14 @@ class TestImplicitEofClose:
         result = extract_fenced_files(response)
         assert len(result) == 1
         assert result[0]["filename"] == "backend/routes.py"
-        assert result[0]["content"] == "def handler():\n    return 1"
+        assert result[0]["content"] == "def handler():\n    return 1\n"
 
     def test_labelled_unterminated_block_recovered(self):
         """Both fixes compose: path: label + missing close on one block."""
         response = "```python:path:backend/x.py\nvalue = 42\n"
         result = extract_fenced_files(response)
         assert result[0]["filename"] == "backend/x.py"
-        assert result[0]["content"] == "value = 42"
+        assert result[0]["content"] == "value = 42\n"
 
     def test_inner_fence_blocks_implicit_close_no_swallow(self):
         """Guard: an unterminated opener followed by another fenced block must
@@ -749,7 +749,7 @@ class TestImplicitEofClose:
         filenames = [r["filename"] for r in result]
         assert "b.py" in filenames
         b = next(r for r in result if r["filename"] == "b.py")
-        assert b["content"] == "code_b"
+        assert b["content"] == "code_b\n"
         # No emitted file smuggles the other block's header/content.
         assert all("```" not in r["content"] for r in result)
         assert all("code_a" not in r["content"] for r in result if r["filename"] == "b.py")
@@ -826,7 +826,7 @@ class TestSingleExpectedArtifactFallback:
         response = "```python\ndef test_x():\n    pass\n```\n"
         result = extract_fenced_files(response, expected_artifacts=self._EXPECTED)
         assert [r["filename"] for r in result] == ["backend/tests/test_runs.py"]
-        assert result[0]["content"] == "def test_x():\n    pass"
+        assert result[0]["content"] == "def test_x():\n    pass\n"
 
     def test_no_expected_artifacts_disables_fallback(self):
         response = "```python\ndef test_x():\n    pass\n```\n"
@@ -877,3 +877,19 @@ class TestSingleExpectedArtifactFallback:
         response = "```python:backend/tests/test_other.py\ndef test_a():\n    pass\n```\n"
         result = extract_fenced_files(response, expected_artifacts=self._EXPECTED)
         assert [r["filename"] for r in result] == ["backend/tests/test_other.py"]
+
+
+class TestAFileEndsAsAFile:
+    """#2607. Bugs caught: every emitted file stored without its final newline, so a contribution
+    removes the newline from each file of the product it edits; blank lines the model left before
+    the fence kept as the file's end; an empty file made into a newline."""
+
+    @pytest.mark.parametrize(
+        ("body", "stored"),
+        [("x = 1\n", "x = 1\n"), ("x = 1\n\n\n", "x = 1\n"), ("", ""), ("x = 1\r\n", "x = 1\r\n")],
+        ids=["one-newline", "blank-lines-before-the-fence", "empty", "crlf"],
+    )
+    def test_a_fenced_file_ends_in_exactly_one_newline(self, body, stored):
+        [record] = extract_fenced_files(f"```python:src/a.py\n{body}```\n")
+
+        assert record["content"] == stored
