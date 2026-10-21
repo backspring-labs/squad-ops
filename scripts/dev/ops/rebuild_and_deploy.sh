@@ -532,6 +532,15 @@ if [ "$REBUILD_SANDBOX" = true ]; then
         SANDBOX_FAILED=1
         echo -e "${RED}  ⚠️  sandbox-service build or restart failed${NC}"
     fi
+    # #2580: the evaluator image the sandbox's scenario runner launches (SIP-0113 A2). It was built
+    # only by hand, so a deploy could run the sandbox with no evaluator and loaded check 2416 red.
+    # - Built when its pinned tag is absent, never rebuilt under it, FORCE_REBUILD included: the tag
+    #   is each quality reading's evaluator version, and its base and Chromium aren't pinned by
+    #   digest, so a rebuild under one tag could change what Lighthouse measures with nothing said
+    #   (#2581's second read). A new evaluator is a new tag.
+    # - A failed build fails the deploy without holding the sandbox, which runs without it and says
+    #   so (not measured: evaluator_absent).
+    "$REPO_ROOT/scripts/dev/build_evaluator_image.sh" --if-absent || EVALUATOR_FAILED=1
 fi
 
 # Step 6: Verify deployment
@@ -557,6 +566,7 @@ DEPLOY_FAILED=0
 [ "${RUNTIME_API_FAILED:-0}" = "1" ] && DEPLOY_FAILED=1
 [ "${CONSOLE_FAILED:-0}" = "1" ] && DEPLOY_FAILED=1
 [ "${SANDBOX_FAILED:-0}" = "1" ] && DEPLOY_FAILED=1
+[ "${EVALUATOR_FAILED:-0}" = "1" ] && DEPLOY_FAILED=1
 [ "${AGENTS_RESTART_FAILED:-0}" = "1" ] && DEPLOY_FAILED=1
 [ "${PROMPT_SYNC_FAILED:-0}" = "1" ] && DEPLOY_FAILED=1
 [ "${REALM_SYNC_FAILED:-0}" = "1" ] && DEPLOY_FAILED=1
@@ -599,6 +609,11 @@ if [ "${SANDBOX_FAILED:-0}" = "1" ]; then
     echo ""
     echo -e "${RED}❌ sandbox-service build or restart failed (#2193). Fix it and rebuild:${NC}"
     echo -e "${YELLOW}   ./scripts/dev/ops/rebuild_and_deploy.sh sandbox${NC}"
+fi
+if [ "${EVALUATOR_FAILED:-0}" = "1" ]; then
+    echo ""
+    echo -e "${RED}❌ the evaluator image didn't build (#2580); the sandbox runs without it, and every quality reading is not measured (evaluator_absent). Build it:${NC}"
+    echo -e "${YELLOW}   ./scripts/dev/build_evaluator_image.sh${NC}"
 fi
 if [ "${PROMPT_SYNC_FAILED:-0}" = "1" ]; then
     echo ""
