@@ -99,10 +99,10 @@ class HttpExecutionSandbox(ExecutionSandboxPort):
         """``wait`` replaces the client's own bound for a request the service may take longer to
         answer, so the client never gives up before the service's own bound does (#2586)."""
         # As the scenario runner's long call does: a dead service is still found at connect.
-        extra = {} if wait is None else {"timeout": httpx.Timeout(wait, connect=10.0)}
+        timeout = httpx.USE_CLIENT_DEFAULT if wait is None else httpx.Timeout(wait, connect=10.0)
         async with self._http_client_factory() as client:
             response = await client.post(
-                f"{self._base_url}{path}", json=payload, headers=self._headers, **extra
+                f"{self._base_url}{path}", json=payload, headers=self._headers, timeout=timeout
             )
         return self._answer(response)
 
