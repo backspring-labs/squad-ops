@@ -443,6 +443,14 @@ class SandboxClientConfig(BaseModel):
     service_token: str = Field(
         default="", description="The sandbox service's bearer token (supports secret://)"
     )
+    #: #2586: a declared run's setup steps and its command are each bounded by this on the
+    #: service, and the client waits for all of them. 600 s is the container backend's own.
+    command_timeout_seconds: float = Field(
+        default=600.0,
+        gt=0,
+        description="The longest one declared step (a product's install or check) may run in "
+        "the sandbox; the client waits for every step of a run (#2586)",
+    )
 
     @model_validator(mode="after")
     def _http_names_its_service(self) -> "SandboxClientConfig":
