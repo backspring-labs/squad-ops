@@ -300,12 +300,14 @@ class HttpScenarioRunner(ScenarioRunnerPort):
         scenarios: Sequence[Mapping[str, Any]],
         environment: Mapping[str, str],
         pages: Sequence[str],
+        seed: Any = None,
     ) -> TreeEvaluation:
         wire = wire_files(tree)
         try:
             payload = await self._post_evaluation(
-                wire, tree_identity, executable, stack, declared, scenarios, environment, pages
-            )
+                wire, tree_identity, executable, stack, declared, scenarios, environment, pages,
+                seed,
+            )  # fmt: skip
         except SandboxServiceError as e:
             if e.status_code == 503:
                 raise RunnerUnavailable(str(e)) from e
@@ -315,7 +317,7 @@ class HttpScenarioRunner(ScenarioRunnerPort):
         return TreeEvaluation.from_dict(payload)
 
     async def _post_evaluation(
-        self, wire, tree_identity, executable, stack, declared, scenarios, environment, pages
+        self, wire, tree_identity, executable, stack, declared, scenarios, environment, pages, seed
     ) -> dict:
         return await self._sandbox._post(
             "/api/v1/evaluations",
@@ -329,5 +331,6 @@ class HttpScenarioRunner(ScenarioRunnerPort):
                 "scenarios": [dict(s) for s in scenarios],
                 "environment": dict(environment),
                 "pages": list(pages),
+                "seed": seed.as_dict() if seed is not None else None,
             },
         )

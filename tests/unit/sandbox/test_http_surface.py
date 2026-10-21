@@ -507,3 +507,55 @@ async def test_a_sandbox_without_a_runner_answers_503(stack):
             headers={"Authorization": f"Bearer {TOKEN}"},
         )
     assert (response.status_code, response.json()["error"]["code"]) == (503, "RUNNER_UNAVAILABLE")
+
+
+async def test_a_seed_plan_travels_the_client_to_the_runner_and_its_reading_back(tmp_path):
+    """§10j, §10n (#2562), entered at the client the runtime API's evaluation uses. Bug caught:
+    the plan dropped on the wire, so no seeded instance is ever started; a record's members or a
+    page's record lost in its round trip; or the seeded reading lost in rehydration."""
+    from adapters.sandbox.http_client import HttpScenarioRunner
+    from squadops.campaigns.evaluator_trees import FileTree
+    from squadops.scenarios.quality import PageMeasure, QualityReading, QualityStatus
+    from squadops.scenarios.runner import TreeEvaluation
+    from tests.unit.sandbox.test_scenario_runner import TREE, _seed_plan
+
+    seeded = QualityReading(
+        QualityStatus.MEASURED,
+        pages=(
+            PageMeasure("/runs/{id}#partial", {"performance": 0.9}, {"minor": 0}, url="/runs/r-1"),
+        ),
+        evaluator="evaluator:pinned",
+        seed={"version": "seed:x:plan-v1", "records": [{"label": "partial", "seeded": True}]},
+    )
+    received = []
+
+    class _Recording:
+        async def evaluate_tree(self, **kw):
+            received.append(kw.get("seed"))
+            return TreeEvaluation(kw["tree_identity"], started=True, quality_seeded=seeded)
+
+    root = tmp_path / "cycles"
+    app = create_app(
+        SandboxService(
+            store=WorkspaceStore(root),
+            journal=OperationEvidenceJournal(root),
+            scenario_runner=_Recording(),
+        ),
+        service_token=TOKEN,
+    )
+    client = HttpScenarioRunner(
+        base_url="http://exec",
+        service_token=TOKEN,
+        http_client_factory=lambda: httpx.AsyncClient(
+            transport=httpx.ASGITransport(app=app), base_url="http://exec"
+        ),
+    )
+    plan = _seed_plan()
+
+    result = await client.evaluate_tree(
+        tree=TREE, tree_identity=FileTree.of(TREE).identity, executable={"run.sh"}, stack=None,
+        declared=None, scenarios=[], environment={}, pages=("/",), seed=plan,
+    )  # fmt: skip
+
+    assert received == [plan]
+    assert result.quality_seeded == seeded

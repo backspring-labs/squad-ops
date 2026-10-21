@@ -22,6 +22,7 @@ from fastapi import Depends, FastAPI, Header, HTTPException, Request, Response
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
 
+from squadops.campaigns.seed_plan import SeedPlan
 from squadops.sandbox.evidence import result_to_dict
 from squadops.sandbox.models import (
     OperationName,
@@ -73,6 +74,8 @@ class EvaluationRequest(BaseModel):
     #: The declared pages Lighthouse and axe measure (SIP-0113 §4.2, #2416). Required: a client
     #: that names none says so with ``[]``, never by leaving it out.
     pages: list[str]
+    #: §10j, §10n (#2562): the seeded reading's plan (``campaigns.seed_plan``), or none.
+    seed: dict | None = None
 
 
 class OperationRequest(BaseModel):
@@ -201,6 +204,7 @@ async def _handle_evaluation(service: SandboxService, body: EvaluationRequest) -
             scenarios=body.scenarios,
             environment=body.environment,
             pages=body.pages,
+            **({"seed": SeedPlan.from_dict(body.seed)} if body.seed else {}),
         )
     except (KeyError, TypeError, ValueError) as e:
         raise _error(400, "INVALID_EVALUATION", str(e)) from e

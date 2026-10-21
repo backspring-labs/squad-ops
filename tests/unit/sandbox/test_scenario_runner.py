@@ -13,6 +13,7 @@ from adapters.sandbox.scenario_runner import ContainerScenarioRunner
 from squadops.campaigns.evaluator_trees import FileTree
 from squadops.scenarios.quality import NotMeasured, PageMeasure, QualityReading, QualityStatus
 from squadops.scenarios.runner import DeclaredStart
+from squadops.tools.exceptions import ToolContainerError
 from squadops.tools.models import ContainerResult, ContainerSpec
 from tests.unit.sandbox.test_container_backend import FakeContainer
 
@@ -708,3 +709,188 @@ async def test_a_tree_that_cant_start_is_still_linted(tmp_path):
 
     assert result.started is False
     assert result.lint.status is QualityStatus.MEASURED
+
+
+# --------------------------------------------------------------------------------------------
+# SIP-0113 §10j, §10n (#2562): a second, seeded instance, measured on every page the plan names
+# --------------------------------------------------------------------------------------------
+
+
+def _seed_plan(**change):
+    """The group_run seed, planned on the 2.4 window's FastAPI increment's own manifest."""
+    import yaml
+
+    from squadops.campaigns import seed_plan
+    from squadops.stacks.scaffold import InterfaceManifest
+
+    root = Path(__file__).resolve().parents[3]
+    manifest = InterfaceManifest.from_dict(
+        yaml.safe_load(
+            (root / "tests/fixtures/roll_replays/2-4-0-window-c1-increment-2-interface_manifest.yaml")
+            .read_text(encoding="utf-8")
+        )
+    )  # fmt: skip
+    raw = (root / "examples/03_group_run/quality_seed.json").read_bytes()
+    seed = {**json.loads(raw), **change}
+    return seed_plan.plan(manifest, seed, json.dumps(seed).encode())
+
+
+class _Seeding(_OnTheNetwork):
+    """On the app network: each instance's start recorded by name, the first instance writing a
+    file of its own into its copy, and the evaluator scoring whatever pages it's asked for."""
+
+    def __init__(self, events: list, *, seeded_start_fails: bool = False) -> None:
+        super().__init__()
+        self.events, self.names = events, []
+        self.seeded_start_fails = seeded_start_fails
+
+    async def run_detached(self, spec: ContainerSpec) -> str:
+        seeded = "eval-seeded" in (spec.name or "")
+        self.events.append("start seeded" if seeded else "start")
+        if seeded and self.seeded_start_fails:
+            raise ToolContainerError("no room for a second instance")
+        container_id = await super().run_detached(spec)
+        self.names.append(spec.name)
+        if not seeded:  # what the first instance writes must never reach the seeded one
+            (Path(spec.volumes[0][0]) / "written-by-the-first-instance").write_text("x")
+        return container_id
+
+    async def stop(self, container_id: str) -> None:
+        self.events.append("stop")
+        await super().stop(container_id)
+
+    async def run(self, spec: ContainerSpec) -> ContainerResult:
+        if spec.image == EVALUATOR and b"base_url" in spec.stdin:
+            asked = json.loads(spec.stdin)["pages"]
+            self.events.append(f"measure {len(asked)}")
+            self.specs.append(spec)
+            page = {
+                "lighthouse": {"performance": 0.9, "accessibility": 0.96, "best-practices": 0.78},
+                "axe": {"critical": 0, "serious": 0, "moderate": 2, "minor": 0},
+                "error": None,
+            }
+            answer = {"pages": [{"path": p, **page} for p in asked]}
+            return ContainerResult("", 0, json.dumps(answer) + "\n", "")
+        return await super().run(spec)
+
+
+def _seeded_app(events: list, fail: set[str] = frozenset()):
+    """The app by name: its UI answering, its API taking the seed on the seeded instance only,
+    a create answering with the new run's id, and ``fail`` paths answering 500."""
+    made: list[str] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        host, path = request.url.host, request.url.path
+        if request.url.port in (4173, 18409) or path in ("/", "/healthz"):
+            return httpx.Response(200, text="ok")
+        if request.method == "POST" and "eval-seeded" in host:
+            events.append(f"seed {path}")
+            if path in fail:
+                return httpx.Response(500, json={"detail": "boom"})
+            if path == "/runs":
+                made.append(f"r-{len(made) + 1}")
+                return httpx.Response(201, json={"id": made[-1]})
+            return httpx.Response(200, json={})
+        events.append("scenario")
+        return httpx.Response(200, json={"name": "apples", "count": 1})
+
+    return lambda: httpx.AsyncClient(transport=httpx.MockTransport(handler))
+
+
+async def _evaluate_seeded(tmp_path, container, app, plan):
+    return await _evaluate(
+        _runner(tmp_path, container, app=app, app_network="squadops-sandbox-apps"),
+        stack="fullstack_fastapi_react",
+        declared=None,
+        pages=("/",),
+        seed=plan,
+    )
+
+
+async def test_a_seeded_instance_starts_from_setups_snapshot_after_the_first_and_reads_every_page(
+    tmp_path,
+):
+    """§10j, §10n rulings 3, 4 and 8, entered at ``evaluate_tree``. Bugs caught: the seeded
+    instance started on the first one's copy, carrying what the scenarios wrote; started beside
+    it; seeded through the scenarios' API prefix; a parameterised page filled with another
+    record's id or keyed by its filled URL; or the seeded reading mixed into §10f's."""
+    events: list = []
+    container = _Seeding(events)
+    plan = _seed_plan()
+
+    result = await _evaluate_seeded(tmp_path, container, _seeded_app(events), plan)
+
+    seeded = result.quality_seeded
+    assert (
+        seeded.status is QualityStatus.MEASURED and result.quality.status is QualityStatus.MEASURED
+    )
+    assert [(p.path, p.url) for p in seeded.pages] == [
+        ("/", None),
+        ("/create", None),
+        ("/runs/{id}#partial", "/runs/r-1"),
+        ("/runs/{id}#at_capacity", "/runs/r-2"),
+    ]
+    assert [p.path for p in result.quality.pages] == ["/"]
+    assert events[: events.index("start seeded")] == ["start", "measure 1", "scenario", "stop"]
+    assert events[events.index("start seeded") + 1 :] == [
+        "seed /runs", "seed /runs/r-1/join", "seed /runs/r-1/join",
+        "seed /runs", "seed /runs/r-2/join", "seed /runs/r-2/join", "seed /runs/r-2/join",
+        "seed /runs", "measure 4", "stop",
+    ]  # fmt: skip
+    [first, second] = [h for h in container.held if "run.sh" in h][-2:]
+    assert "written-by-the-first-instance" not in second
+    assert seeded.seed["version"] == plan.version
+    assert [r["seeded"] for r in seeded.seed["records"]] == [True, True, True]
+    assert {"snapshot_s", "start_s", "seed_s", "measure_s", "total_s"} <= set(
+        seeded.seed["durations"]
+    )
+    assert [r.result for r in result.runs] == ["passed"]
+
+
+async def test_a_record_the_app_refuses_voids_its_own_pages_only(tmp_path):
+    """§10n ruling 7. Bug caught: one refused join voiding the whole reading, or the refused
+    record's page measured as if its run had reached capacity."""
+    events: list = []
+
+    result = await _evaluate_seeded(
+        tmp_path, _Seeding(events), _seeded_app(events, fail={"/runs/r-2/join"}), _seed_plan()
+    )
+
+    seeded = result.quality_seeded
+    assert [p.path for p in seeded.pages] == ["/", "/create", "/runs/{id}#partial"]
+    assert ["/runs/:run_id#at_capacity", "seed_failed"] in seeded.seed["unfilled"]
+    [refused] = [r for r in seeded.seed["records"] if not r["seeded"]]
+    assert refused == {
+        "label": "at_capacity", "seeded": False,
+        "refusal": "POST /runs/r-2/join answered 500",
+    }  # fmt: skip
+
+
+async def test_a_seed_the_app_refuses_entirely_is_not_measured_and_the_scenarios_stand(tmp_path):
+    """Bug caught: a seed that failed throughout read as measured with no pages, or taking the
+    scenarios' results and §10f's reading down with it."""
+    events: list = []
+
+    result = await _evaluate_seeded(
+        tmp_path, _Seeding(events), _seeded_app(events, fail={"/runs"}), _seed_plan()
+    )
+
+    seeded = result.quality_seeded
+    assert (seeded.status, seeded.reason) == (QualityStatus.NOT_MEASURED, NotMeasured.SEED_FAILED)
+    assert "partial: POST /runs answered 500" in seeded.detail
+    assert result.quality.status is QualityStatus.MEASURED
+    assert [r.result for r in result.runs] == ["passed"]
+
+
+async def test_a_seeded_instance_that_cant_start_is_its_own_reading_never_the_scenarios(tmp_path):
+    """Bug caught: the second start's failure read as the tree's, so its scenarios and §10f's
+    reading are lost."""
+    events: list = []
+
+    result = await _evaluate_seeded(
+        tmp_path, _Seeding(events, seeded_start_fails=True), _seeded_app(events), _seed_plan()
+    )
+
+    seeded = result.quality_seeded
+    assert (seeded.status, seeded.reason) == (QualityStatus.NOT_MEASURED, NotMeasured.START_FAILED)
+    assert result.started and [r.result for r in result.runs] == ["passed"]
