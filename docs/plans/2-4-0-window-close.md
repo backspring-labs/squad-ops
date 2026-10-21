@@ -69,6 +69,10 @@ prediction (two accepted, then a stop on seed) is **not met as written**: the ca
 - **Quality deltas:** Lighthouse and axe did not move on any accepted increment beyond campaign 4's drift. **Lint grew
   with every increment:** against calibration, campaign 1 19 → 67, campaign 2 27 → 53, campaign 3 23 → 78, mostly
   `PLR2004` on FastAPI and `@typescript-eslint/no-explicit-any` on Next.js.
+  - **Disclosed after the close (2026-10-21, SIP-0113 §10m):** of the FastAPI campaigns' growth, W292 ("no newline at
+    end of file") is 6 of 48 in campaign 1 and 6 of 55 in campaign 3. That share is an emission defect, files the
+    squad wrote losing their final newline (#2607, fixed by #2618), not the squad's code. The reading stands as a
+    measurement.
 - **The per-increment scorecard:** 12 to 23 LLM calls and 190k to 490k tokens per accepted increment; waiting (the
   ruling, the plan gate, the box and dispatch) 2 to 4 minutes of each.
 

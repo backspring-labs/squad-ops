@@ -131,6 +131,7 @@ Kept by the rule in CLAUDE.md ("SIP System"): one row per part, updated in the P
 | proposal-run retries bound failed proposal cycles in a row, and the failure past them pauses (§24bn) | **shipped** | 2.3.0, PR #2245, issue #2231 |
 | a campaign declares its stack, and every cycle it launches carries it (§24bs) | **shipped** | 2.4.0, PR #2446, issue #2443 |
 | a fresh proposal is shown each proposal its campaign never approved, with the ruling's reason (§24bu) | **shipped** | 2.4.0, PR #2598, issue #2593 |
+| a Campaign on a repository-backed Project: calibration as a record, increments on a campaign branch, proposals from the product's tree (§24bv; SIP-0112 H.4) | **placed** | 2.5.0, #2619 |
 
 **What closes this SIP:** Its 2.1.0 rows closing, #1710's remainder ruled, and #1708's remainder shipped in 2.2.0 or ruled out of scope. §24at, the consolidated status at the v2.0.0 cut, replaces the 2.0 plan's §5a as the permanent record. Promotion follows at the sweep after the last placed row closes.
 
@@ -3617,3 +3618,156 @@ never carry a held-out value. Campaign 4's notes cited the window's pre-registra
 
 **Who ruled it.** Not the owner yet. The supervisor built it under the owner's 2.4 grant of 2026-10-19, as a defect the
 window's campaign 4 found. It's for the owner's review.
+
+### 24bv. A Campaign on a repository-backed Project: calibration as a record, increments on a campaign branch, proposals from the product's tree (2026-10-21, §7, §8, §9.1, §10 rows 2, 4 and 5, §11, §12a; SIP-0112 H.4; #2619; designed, not built: placed in 2.5)
+
+**What was found.** A Campaign on a repository-backed Project, external or greenfield, runs its calibration cycle and
+never launches an increment (#2619, the Spark lane, 2026-10-21). The increment profiles pin a template stack that a
+source-backed cycle refuses, and a proposal needs an interface manifest such a product doesn't have. The calibration
+launch also carries no PRD or plan, so it fails at provisioning (IR-2's live run). This SIP was written for a
+product SquadOps builds from its PRD in its own vault. The only Campaigns run so far are on such sample applications,
+and nothing below changes them.
+
+**The owner's direction, 2026-10-21** (through the MacBook lane, on #2619): "it seems we need a way to derive the stack
+and recipe and call out any gaps preventing squad ops from working on it", and then "go with 2.5". SIP-0112 H.4 states
+what such a Project is (its derived development profile and its capability gaps). This amendment states how a
+Campaign runs on one. Each part names the section it amends.
+
+**A repository-backed Project** is one with a source (SIP-0112 E.4.1): an imported product, or a greenfield one after
+its initialization (H.1). Everything below applies to it and to nothing else.
+
+#### 1. Calibration is a record, not a cycle (§11, §10 rows 2, 4 and 5)
+
+- **`campaigns start` writes a calibration record in place of launching a calibration cycle.** The record holds the
+  Project's state as it stands at the start:
+  - the reconciled commit;
+  - the Development Configuration revision;
+  - the inherited baseline captured at both;
+  - the derived profile's gaps.
+- **The start is refused (409) when it can't write one, naming why, and nothing is written.** It's refused when:
+  - the Project isn't READY;
+  - a sync recorded relevant drift it hasn't reconciled (SIP-0112 H.2);
+  - no inherited baseline is captured at that commit and revision;
+  - a blocking gap stands (H.4), including a baseline in which no check ran.
+
+  This is the start's own precondition. Nothing has been launched, so nothing escalates.
+- **The rows:**
+  - row 2 never fires for a record, since a start that would have failed it is refused;
+  - row 5 reads the record as an accepted calibration and proposes;
+  - the record counts toward no limit of row 4's, and none of step 3's guards;
+  - the elapsed time runs from the start, as today.
+- **The definition says so:**
+  - `calibration_profile: inherited_baseline` is required for a repository-backed Project and refused for any other;
+  - `policy.stack` must be unset (§24bs), since the derived profile is the product's recipe;
+  - `proposal_profile` names the stack-less source-backed increment profile that H.4's point 3 adds.
+
+  Each refusal comes at creation (422), naming the field.
+- **What the calibration no longer is:** the yardstick for greenfield behaviour (§11). A repository-backed Campaign
+  has no greenfield yardstick, and its package says so. Its increments are compared with the tree before them, and
+  with Outcome Evaluation's reading of the record's commit (SIP-0113 §10l).
+
+#### 2. The accepted tree is a campaign branch (§7.1, §12a)
+
+- **The accepted tree is the head of the campaign's branch** in the managed clone (`squadops/campaign/<campaign_id>`).
+  It starts at the record's commit. It's identified by its commit and by the commit's tree identity (contract 4), and
+  it's immutable as today: it moves only by promotion, or by the rebase in point 4.
+- **Promotion (§12a) moves the branch head to the increment's captured commit**, in the same keyed transition.
+  - The capture's parent is the head (`source_delivery`), so the branch holds the accepted increments in order.
+  - The Campaign's one review request is updated after it (SIP-0112 H.4).
+- **A failed increment leaves the branch where it was** (§7.5). Its candidate commit, if one was captured, is kept as
+  evidence off the branch.
+
+#### 3. What an increment pins and is compared against (§7.1, §8)
+
+- **Its source context pins the branch head.**
+  - It pins the head commit, not the Project's `development_baseline_commit`.
+  - It pins the Project's configuration revision.
+  - Its instruction sources bind at that commit (SIP-0110 §5ad), so it reads `CLAUDE.md` as the previous increment
+    left it.
+- **Its regression baseline is the previous accepted increment's verification,** or, for the first, the record's
+  inherited baseline. The product's checks, read under no-introduced-regression (SIP-0112 FR-20, and its findings
+  readers once #2609 ships), compare the candidate with the tree it was built on, never with upstream.
+- **Accumulated acceptance and discrimination (§8.1, §8.2), on the product's own runner:**
+  - **A criterion's verifier bundle** is a test file placed where the product's runner discovers tests, under the
+    derived profile's test layout. It's frozen with the test-support files the profile names, and run by the
+    product's test command scoped to that file.
+    - A runner the profile can't scope to one file is a disclosed gap.
+    - Then the frozen criteria run as the whole suite, and each is read by its test id: pytest's node id, through
+      #2609's reader.
+  - **The baseline-evaluator overlay** is the accepted tree's product files plus the candidate's test files, as the
+    profile classes them.
+    - A product whose test files the profile can't class is a blocking gap for `feature` and `fix` increments, named
+      at configure time. Without it, no criterion could be shown to discriminate (§8.2).
+  - **Route rendering (§8.3)** applies only where the profile names client routes: a greenfield product following a
+    blueprint, from its approved manifest. Elsewhere it's recorded as not applicable.
+- **The emission, correction and route seams in §8.4's table** see the candidate on the branch head, as today. Each
+  row's "outcome when input is missing" is unchanged.
+
+#### 4. When upstream moves (SIP-0112 H.2)
+
+- **Before each fresh launch, the launcher compares the branch's base with upstream,** read by the Project's latest
+  sync.
+  - **Relevant drift:** the Project is reconciled first (validate, configure, baseline at the new commit, as today).
+    The launcher then rebases the branch onto the reconciled commit, re-verifies the rebased head by the product's
+    checks, and records `branch_rebased` in the control log: the base and head before and after, and the
+    verification.
+  - That verification is the next increment's regression baseline.
+- **A rebase that conflicts, or a rebased head whose checks regress against upstream's baseline, refuses the launch.**
+  The Campaign escalates (`CAMPAIGN_BRANCH_CONFLICT`, `REBASED_HEAD_REGRESSED`), and nothing is resolved by itself.
+- **Drift that isn't relevant holds nothing,** as for a standalone cycle. The review request carries any conflict it
+  makes.
+- **When the owner merges the review request,** the next sync attributes those increments as integrated (H.2's
+  attribution). The branch's base becomes the merge commit, with no rebase.
+- **A rebase between a failed increment and its repair** leaves the repair nothing to continue, since its candidate
+  was built on the old head. **Proposed, for the owner's review:** the increment is abandoned as `upstream_moved`,
+  counted toward no `max_unaccepted_increments` (the squad's work didn't fail), and row 6's fresh proposal follows on
+  the rebased head.
+
+#### 5. The proposal's input (§7.2, §9.1)
+
+- **In place of "the accepted tree's identity, manifest and frozen criteria"**, a repository-backed proposal is given:
+  - the branch head;
+  - the bounded tree view at it: the file map and the instruction files, framing's `source_repository` view;
+  - the derived profile, with its disclosed gaps;
+  - the frozen criteria;
+  - the previous increment's verification: its checks and, once #2609 ships, its findings;
+  - the requirements source, bound at the head.
+
+  A greenfield product's approved manifest (H.1) is given beside them. Rows 6, 7, 13 and 16's inputs (§24w, §24br,
+  §24bu) are unchanged.
+- **The requirements source.** An imported Project has no `prd_path`, and a calibration record carries none. So a
+  repository-backed Campaign's objective names one:
+  - `objective.requirements`, required at creation;
+  - either a `repo:file:<path>@current` reference, bound at each increment's head as §5ad binds an instruction's (a
+    PRD that an increment or upstream changed is read as it now stands), or a stored artifact's id.
+- **The change request (§7.2), on such a Project:**
+  - **`manifest_delta`** is absent, and refused if present.
+  - **`footprint`** is authored by the proposer as path globs, since no scaffold map derives it. It must lie inside
+    the objective's `allowed_scope`, and the plan validator enforces it as today.
+  - **Each criterion's public surface** is one the derived profile names: an endpoint the start declaration serves, a
+    command-line entry point, or a package's public interface. The observable is asserted there, never by importing
+    a module that exists only in the candidate (§8.2's rule).
+  - **`prd_delta`** is against the requirements source.
+
+**What stays.**
+- A sample application's Campaigns, the counted pair (SIP-0112 IR-10), and every row's predicate.
+- The launch intent (§12b), the ruling (§9.2), the plan gate (§24bj) and the intervention ledger.
+- Standalone source-backed cycles.
+
+**Not decided here, for 2.5's design review:**
+- whether the review request stays a draft until the Campaign ends;
+- a per-increment review request beside the Campaign's (H.4 names it as a later addition);
+- how a frozen bundle snapshots fixtures for runners other than pytest and vitest.
+
+**Evidence.**
+- #2619's three refusals, at the lines it cites.
+- IR-2's calibration failing at provisioning (`cyc_95c8659ae6c5`, `docs/plans/2-4-0-demonstrations-readout.md`).
+- The Spark lane's IR-3 run on `z_continuum` (#2179, issuecomment-6326878563), which reached two calibration launches
+  and could go no further.
+- The stacking gap: a source-backed run seeds from `development_baseline_commit` (`execution/source_checkout.py:62`),
+  and its accepted change is captured as one commit on it (`execution/source_delivery.py:279`, `:314`).
+
+**Who ruled.** The owner ruled the direction and the placement in 2.5, on 2026-10-21. The supervisor (the Spark lane)
+wrote this, as H.4's boundary assigns it. The proposals in points 1 and 4 (refusing the start; `upstream_moved` not
+counted) and the requirements source in point 5 are the supervisor's, for the owner's review and the MacBook lane's
+G4.

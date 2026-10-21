@@ -68,7 +68,7 @@ contracts (its §8.2). §4.8 says what this SIP produces and reads at each.
 >   revision's design (§4.1, §4.8).
 > - **No conflict.**
 
-## Delivery ledger (current as of 2026-10-20)
+## Delivery ledger (current as of 2026-10-21)
 
 One row per part that ships separately. Statuses as CLAUDE.md defines them. The 2.4 plan places phase 1 in 2.4
 (committed) and phase 2 in 2.4 conditionally. **Phase 1's parts are placed** with the issues filed at acceptance
@@ -90,6 +90,7 @@ One row per part that ships separately. Statuses as CLAUDE.md defines them. The 
 | phase 2: the objective's scenario measure, read by SIP-0109 §10 row 3, as a SIP-0109 amendment (§4.7) | **unplaced** | 2.4 if D4 rules it in, with its issue filed then; otherwise the next even release |
 | quality gates where phase 1's data supports a threshold (§4.2, §6) | **unplaced** | with phase 2, each with its phase-1 evidence |
 | phase 1 amendment: Lighthouse and axe on a seeded instance, parameterised pages included (§10j, proposed; its design review before it is built) | **placed** | 2.4.0, after the window, #2562 |
+| a repository-backed Project's Campaign: its baseline reading, an evaluation of the calibration record's commit (§10l; SIP-0112 H.4, SIP-0109 §24bv) | **placed** | 2.5.0, #2619 |
 
 **What closes this SIP:** phase 1 shipped and phase 2 shipped, or phase 2 dropped by a numbered amendment the owner
 rules.
@@ -1320,3 +1321,55 @@ receiving a run's steps on its input. The vocabulary reserves `visit`, `click`, 
      it isn't.
 7. **Where a mixed scenario runs:** the sandbox's runner handing browser runs to the evaluator, as proposed, or the
    whole vocabulary in Node (above).
+
+### 10l. A repository-backed Project's Campaign: its baseline reading is an evaluation of the calibration record's commit (2026-10-21, §4.1, §4.2, §4.4; SIP-0112 H.4, SIP-0109 §24bv; #2619; designed, not built: placed in 2.5)
+
+**What changes.** On a repository-backed Project, SIP-0109 §24bv makes a Campaign's calibration a record, not a cycle,
+and there's no calibration tree to evaluate. This SIP's unit is "a campaign's calibration and its increments", and
+"the calibration's reading is the campaign's baseline" (§4.2). So on such a Project:
+
+- **The baseline reading is an evaluation of the record's commit:**
+  - the product started from its start declaration (contract 7) in a disposable copy of that commit (X-3);
+  - the Campaign's pinned suite run against it;
+  - the quality measures taken on it.
+
+  It runs once, when the record is written, and is stored as an evaluation record that names the calibration record
+  in place of a cycle: `calibration_record_id`, an additive field (contract 5's reference, nullable as `campaign_id`
+  is).
+- **No start declaration, or a start that fails:** every scenario and every quality measure reads `blocked_unverified`
+  (§4.1). The Campaign's deltas then say "no baseline reading", never a delta of zero. This is the gap H.4 classes as
+  disclosed: it blocks this reading and never the Campaign.
+- **Each increment is evaluated at its cycle's end, as today.** Its previous accepted tree is the campaign branch head
+  it was built on (§24bv point 2). The record names trees by tree identity, and joins them to commits through contract
+  4, never by a commit stored in the record (§4.1's rule).
+- **Lint stays as §4.2 states it:**
+  - off the scaffold stacks it's *not measured* (`not_a_scaffold_stack`), and the product's own linter is never read
+    in its place;
+  - a greenfield product that follows a scaffold blueprint is measured by that blueprint's rule set.
+- **Contribution (§4.4) reads the same,** with the record's evaluation standing where the calibration's did.
+
+**Unchanged:** a sample application's evaluation, the held-out boundary (IR-4), and phase 1's reporting-only rule.
+
+**Who ruled.** The owner ruled the direction and the 2.5 placement on 2026-10-21. The supervisor wrote this, as SIP-0112
+H.4's boundary assigns it, for the MacBook lane's G4.
+
+### 10m. W292 in the 2.4 window's lint readings: an emission defect, not the squad's code (2026-10-21, §4.2, §10f; #2607, #2618; a disclosure, the supervisor's)
+
+**What was read.** #1937's ruff set selects all of `W` (`capabilities/delivered_lint.py:37`), so this SIP's lint
+measure counts W292, "no newline at end of file". Until #2618, every file the squad emitted lost its final newline
+(#2607), so a Python file the squad wrote carried a W292, where a file SquadOps seeded (the skeleton, a frozen bundle) didn't. In the window's stored evaluations (`scenario_evaluations.lint`,
+read-only, 2026-10-21):
+
+| campaign | lint, calibration → last accepted (the readout's) | of which W292 |
+|---|---|---|
+| 1 (`cmp_83d63c2ebb50`, FastAPI) | 19 → 67 | 2 → 8 |
+| 3 (`cmp_e717aefe1143`, FastAPI) | 23 → 78 | 2 → 8 |
+| 2 and 4 (Next.js) | — | 0 in every evaluation: no Python file was linted |
+
+**What it means:**
+- **The readout stands as a measurement** (`docs/plans/2-4-0-window-close.md`, "Lint grew with every increment").
+  Of the FastAPI campaigns' growth, W292 is 6 of 48 in campaign 1 and 6 of 55 in campaign 3. That share is the
+  emission defect, and the readout's line now says so.
+- **Within a campaign,** on one deploy, the deltas compare like with like.
+- **Across #2618's deploy,** a FastAPI tree's lint drops by its emitted-file count. A W292 delta that spans that deploy
+  isn't comparable, and the next window's pre-registration names it.
