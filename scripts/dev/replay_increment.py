@@ -36,6 +36,8 @@ ROOT = Path(__file__).resolve().parents[2]
 VAULT = ROOT / "data" / "artifacts"
 #: The seed types an approved increment gate promotes on its proposal run (``increment_seed``).
 SEED_TYPES = ("interface_manifest", "change_request", "verification_contract")
+#: A cycle's two stack keys, which a campaign's launch sets together (§24bs, #2443).
+STACK_KEYS = ("build_profile", "development_profile")
 
 
 def approved_seeds(records: list[dict]) -> dict[str, str]:
@@ -56,11 +58,25 @@ def approved_seeds(records: list[dict]) -> dict[str, str]:
     return {t: chosen[t]["artifact_id"] for t in SEED_TYPES}
 
 
+def source_stack(row: dict) -> dict[str, str]:
+    """The stack the source cycle ran on: its two stack keys as it resolved them, its overrides
+    over its defaults. ``campaign-reference`` defaults to FastAPI + React, so a replay that didn't
+    carry these would rebuild a Next.js increment on the other stack."""
+    resolved = {**(row.get("applied_defaults") or {}), **(row.get("execution_overrides") or {})}
+    return {key: str(resolved[key]) for key in STACK_KEYS if resolved.get(key)}
+
+
 def replay_request(
-    source_cycle: str, block: dict, seeds: dict[str, str], *, squad_profile_id: str, campaign: str
+    source_cycle: str,
+    block: dict,
+    seeds: dict[str, str],
+    *,
+    squad_profile_id: str,
+    campaign: str,
+    stack: dict[str, str] | None = None,
 ) -> dict:
     """The cycle request: ``campaign-reference`` carrying the source increment's block (under a
-    replay's own proposal id) and its approved seeds by artifact id."""
+    replay's own proposal id), its approved seeds by artifact id, and the stack it ran on."""
     from squadops.contracts.cycle_request_profiles import cycle_request_body
 
     if not block.get("accepted_cycle_id"):
@@ -70,6 +86,7 @@ def replay_request(
         "campaign-reference",
         squad_profile_id=squad_profile_id,
         user_values={
+            **(stack or {}),
             "campaign_proposal": replayed,
             "plan_artifact_refs": [seeds["interface_manifest"], seeds["change_request"]],
             "contract_ref": seeds["verification_contract"],
@@ -132,6 +149,7 @@ def main(argv: list[str]) -> int:
         seeds,
         squad_profile_id=a.squad_profile,
         campaign=row.get("campaign_id") or "?",
+        stack=source_stack(row),
     )
     if a.dry_run:
         shown = json.loads(json.dumps(body))
