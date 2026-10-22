@@ -696,16 +696,15 @@ class TestRetestProgress:
         assert refusal == why
         assert (reduction is not None) == (why == "")
 
-    def test_two_rows_of_one_suite_merge_to_the_worse_verdict_in_either_order(self):
+    @pytest.mark.parametrize("order", [1, -1], ids=["ran-first", "ambiguous-first"])
+    def test_two_rows_of_one_suite_merge_to_the_worse_verdict_in_either_order(self, order):
         """Bug caught: the merge kept the first row's verdict unless a later one was broken, so
-        ``[ran, ambiguous]`` and ``[ambiguous, ran]`` read differently."""
-        ran, ambiguous = _suite("a"), _suite("b", broken=None)
-        retest = _evidence([_suite("a"), _suite("b", broken=None)])
-        first, _ = self._judge(_evidence([ran, ambiguous]), retest)
-        second, _ = self._judge(_evidence([ambiguous, ran]), retest)
-        # Both orders read the round as ambiguous, so the identical retest is a repeat.
-        assert (first, second) == (None, None)
-        assert self._judge(_evidence([ambiguous, ran]), retest)[1] == "no_progress"
+        a round whose rows ran and were ambiguous read as ran in one order. Its retest, ambiguous
+        with one test cleared, then read as a suite that stopped running, and was refused."""
+        rows = [_suite("a"), _suite("b", broken=None)][::order]
+        reduction, why = self._judge(_evidence(rows), _evidence([_suite("a", broken=None)]))
+        assert why == ""
+        assert sorted(reduction.cleared) == [("tests_pass", "tests/test_api.py", "b")]
 
     def test_a_side_with_no_product_failure_is_never_compared(self):
         reduction, why = self._judge(_evidence([_suite("a")]), _evidence([]))
