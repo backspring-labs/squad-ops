@@ -1,6 +1,6 @@
 ---
 template_id: request.manifest_authoring_rules_appendix
-version: "5"
+version: "6"
 required_variables: []
 ---
 ## MANIFEST RULES (authoritative — a manifest that breaks one is rejected)
@@ -114,6 +114,19 @@ and checks the list it reads back. An order written only in `decisions[]` is che
 nothing: a build declared datetime sorting there, returned its runs in insertion order, and
 passed every gate. Keep the decision for the warrant; the endpoint states what the application
 does.
+
+**a-query-input-is-declared-on-its-endpoint** — When an endpoint takes an input from its query
+string, declare it on the endpoint, not only in its summary or in `decisions[]`:
+
+```yaml
+- { method: DELETE, path: "/runs/{run_id}/participants", response: RunEvent,
+    query: { name: string } }   # optional: { page: { type: integer, required: false } }
+```
+
+The scaffold seeds each one into the handler's signature, and QA is shown it. A query input
+written only in prose was seeded as nothing: the handler that read it was refused for taking an
+argument the scaffold didn't declare. A query name may not repeat a path parameter or a request
+body field. Its type is one of string, integer, number or boolean.
 
 **every-view-declares-anchors** — Every frontend route declares `testids`: the stable
 `data-testid` values the view exposes, root container first. These are the only handles the
