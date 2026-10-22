@@ -24,7 +24,8 @@ done < requirements/audit-ignore.txt
 status=0
 for lock in requirements/base.lock requirements/api.lock requirements/agent.lock; do
   echo "== $lock"
-  pip-audit -r "$lock" --progress-spinner off "${IGNORES[@]}" || status=1
+  # ${…+…}: an empty list under `set -u` is "unbound" to bash before 4.4, which macOS ships.
+  pip-audit -r "$lock" --progress-spinner off ${IGNORES[@]+"${IGNORES[@]}"} || status=1
 done
 # The evaluator image's npm lock (SIP-0113 A2; #2455): the same rule, its own ignore list.
 echo "== infra/evaluator/package-lock.json"
