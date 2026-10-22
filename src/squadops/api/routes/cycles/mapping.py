@@ -4,6 +4,8 @@ Domain ↔ DTO mapping functions for SIP-0064.
 
 from __future__ import annotations
 
+import dataclasses
+
 from squadops.api.cycle_schemas import (
     AgentProfileEntryResponse,
     ArtifactRefResponse,
@@ -21,6 +23,7 @@ from squadops.api.cycle_schemas import (
     ProjectResponse,
     ProjectSourceResponse,
     ReplayProvenanceDTO,
+    RunHaltResponse,
     RunResponse,
     SquadProfileResponse,
     TaskFlowPolicyDTO,
@@ -122,6 +125,7 @@ def run_to_response(run: Run) -> RunResponse:
             )
             for h in run.binding_holds
         ],
+        halt=RunHaltResponse(**dataclasses.asdict(run.halt)) if run.halt else None,
     )
 
 

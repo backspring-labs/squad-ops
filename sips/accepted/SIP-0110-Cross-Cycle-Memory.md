@@ -82,7 +82,7 @@ re-places it.
 | entry points: chat's conversation history reaching the agent, with session ownership checked (SIP-0085 §4, §9; §A.3.3) | **shipped** | 2.3.0, PR #2247, issue #2175: resuming or reading a session checks its owner and agent first, refused as a missing session; each turn carries its bounded history, the drop counted |
 | entry points: the context-assembly port, inert, at the four seams (§A.3.6) | **shipped** | 2.3.0, #2257 (closes #2176; §5j records where it departs from §A.3.6's text) |
 | entry points: the typed records (notes, preferences, project and task instructions), permissions by kind, provenance (§A.3.2–§A.3.4) | **shipped** (§5l) | 2.4.0, PR #2508, issue #2177 |
-| entry points: task instructions, with the work target, retries, references bound with the cycle, binding holds and emergency withdrawal (§A.3.5–§A.3.8) | **placed** | 2.4.0, #2178: stage 1 (the records reach the tasks they name, binding, the task held when incomplete) shipped in PR #2513 (§5m), stage 2's interventions after admission with `squadops instructions` in PR #2549 (§5w), and `carries_into: continuations` with the increment gate's structured `task_instructions` field in PR #2556 (§5aa), and a task instruction's `@current` bound with its cycle (T16's task part) in PR #2559 (§5ab), and the hold and its release in the PR that wrote this row (§5ag); emergency withdrawal after dispatch remains |
+| entry points: task instructions, with the work target, retries, references bound with the cycle, binding holds and emergency withdrawal (§A.3.5–§A.3.8) | **shipped** | 2.4.0, closes #2178: stage 1 (the records reach the tasks they name, binding, the task held when incomplete) shipped in PR #2513 (§5m), stage 2's interventions after admission with `squadops instructions` in PR #2549 (§5w), and `carries_into: continuations` with the increment gate's structured `task_instructions` field in PR #2556 (§5aa), and a task instruction's `@current` bound with its cycle (T16's task part) in PR #2559 (§5ab), the hold and its release in PR #2636 (§5ag), and emergency withdrawal after dispatch (T13) in the PR that wrote this row (§5ah) |
 | entry points: project instructions in the snapshot with references bound, re-binding, the effective lesson budget, the comparison arms and disclosure (§A.3.6, §A.3.7) | **placed** | 2.4.0, #2179: stage 1 (pinned at admission, binding on the tasks they apply to, the lesson budget after them) shipped in PR #2515 (§5n), stage 2's effective lesson budget (T17) in PR #2526 (§5r), the `memory_context: none` arm with the lesson-text diagnostic in PR #2528 (§5s), a counted roll's pinned instruction set in PR #2533 (§5t), and a project instruction's emergency withdrawal in PR #2544 (§5u), re-binding a running unit's project instruction in PR #2546 (§5v), and `@current` bound at admission, the project part of T16, in PR #2555 (§5z), with the write-time refusal of a reference no unit of its project can bind in PR #2567 (§5ac); re-binding a reference's revision and reading a reference's content at dispatch (the MacBook lane, with the hold) remain; a campaign's repository references, bound per cycle against the campaign's snapshot (the owner's ruling of 2026-10-20, §5ad), shipped in the PR that wrote this row (§5ae) |
 | entry points: chat on the substrate, with capture confirmed, chat exposures, server-side project binding and provenance authorized (§A.3.5) | **shipped** | 2.4.0, issue #2180: stage A (the binding, each turn's context and exposure, confirmed capture of notes and preferences, authorized provenance, Q29's deletion) in PR #2517, stage B's project-instruction capture in PR #2525 (§5o), and its task-instruction capture in PR #2550 (§5x) |
 | entry points: lesson inspection from chat; a conversational claim never becomes a lesson (§A.3.5) | **shipped** | 2.4.0, PR #2518, issue #2181 (§5p) |
@@ -3139,6 +3139,101 @@ for every change that checks a unit's dispatches.
   - the re-supply skipping the launcher's fill;
   - a resume before the box is read;
   - a store failure read as input.
+
+## 5ah. A task instruction's emergency withdrawal, as built (2026-10-22, #2178, T13; the MacBook lane, under the owner's delegation of 2026-10-18, with the Spark lane's G4 of 2026-10-21 on the design)
+
+**What shipped:** §A.3.8's emergency withdrawal of a task instruction that has reached its tasks.
+- **The request:** `POST /api/v1/memory-records/{id}/withdrawal` with `emergency: true`. It needs a task instruction's
+  authority (`cycles:write` for a standalone cycle, `campaigns:supervise` for a campaign's). It may carry a
+  `replacement`, the corrected instruction.
+- **What it reads, in the unit's dispatch turn (§5af):**
+  - which runs of the cycle received it (`squadops.memory.emergency.tasks_received`): every exposure whose task
+    section was supplied it, apart from a held one;
+  - the cycle's runs.
+
+  When those can't be read, the request is refused (503) with nothing written, never read as "nothing received it".
+- **What it halts (`halts_for`):** once some run of the cycle received it, every run of the cycle still in flight
+  (queued, running or paused).
+  - A run that received it restarts from the first of its tasks that did.
+  - A run that only built on an earlier run's work under it is halted, and nothing in it restarts.
+- **The halt.** It is recorded on the run first (`Run.halt`, migration 1794). Then the run is cancelled by the existing
+  path (`cancel_run_by_the_existing_path`, which the run cancel route now calls too): its status, its Prefect flow run,
+  its leases and its cycle's activities, telling its agents first. The executor stops it at its next task boundary, or
+  in the wait of the task it has out (#1699).
+- **The restart is the cycle's own.** When a run ends cancelled with a halt that names a task, `execute_cycle`:
+  - creates a run in its place, at the same workload position, as #811's framing revision does;
+  - records it on the halt once (`record_restart`), so a run is restarted at most once;
+  - runs it from the halted run's latest checkpoint before that task (`_resolve_restart_checkpoint`, translated as a
+    replay's is).
+
+  The restart reads its bindings again at provisioning, so the withdrawn instruction is absent and the replacement, if
+  any, is present. The unit's pinned snapshot is unchanged.
+- **The replacement is a new task instruction** for the same tasks of the same cycle. It carries the references its
+  cycle bound, has the source `corrects: <record>`, and was given after admission, so it is an intervention, marked in
+  the restart's envelope and exposure. It isn't refused by §5w's dispatched check, because the emergency is the
+  authority that check defers to.
+- **History is kept and never reused.** The halted run and its exposures stay, and the exposures that used the
+  instruction read it withdrawn (§5u's mark). The restart takes nothing from the halted run beyond the checkpoint
+  before the affected task.
+- **Measurements set apart:**
+  - **A Campaign cycle's emergency** is its `instruct` row (`action: emergency_withdraw`), naming each run halted and
+    where it restarts. It's an intervention the ledger counts (SIP-0113 §10d). Its class, reason and severity, is the
+    supervisor's classification, as every row's is.
+  - **A standalone cycle's** is read from the withdrawn record, as §5w's is.
+- **Shown:** the run's response carries `halt`, and `squadops runs show` says who halted it, why, and the run it
+  restarted as.
+
+**Where it narrows §A.3.8 and the design on #2178:**
+- **The restart stays within the run that received the instruction.** Suppose the instruction reached a framing run
+  that has finished, and the cycle's implementation run is now in flight. The implementation run is halted and
+  nothing restarts: the restart is a new cycle. Rewinding a cycle to an earlier workload isn't built.
+- **A halt is a cancellation with a record, not a separate flag.** The executor already stops a cancelled run at its
+  next boundary and in the wait of its task out, and the record is what tells the cycle to restart it.
+- **The restart is always a new run.** "New attempts where the correction loop already re-dispatches" isn't built.
+- **It is conservative.** A run in flight is halted even when the only run that received the instruction was one its
+  cycle discarded, such as a superseded framing run.
+- **A task out when the halt lands** may still return and be stored in the halted run. The restart's checkpoint is
+  from before that task, so nothing built on it is kept.
+- **A run that ends between the read and the halt** isn't halted. Its halt record may stand on a finished run, which
+  no restart reads.
+- **The restart needs the cycle loop that saw the halt.** If the process stops between the cancel and the restart,
+  the run is left halted with no `restart_run_id`. The re-attach takes up no cancelled run (SIP-0109 §12a).
+
+**Evidence:**
+- **`tests/unit/cycles/test_emergency_restart.py`:**
+  - entered at `execute_cycle` over the memory registry, with the snapshot recall over the typed records: a framing
+    cycle whose design instruction is withdrawn in an emergency while its task is out. Its run is halted, and the run
+    it restarts as is never handed the instruction, runs nothing from before the design task again, and completes;
+  - the multi-workload loop restarts the halted run in its own place, before the next workload, and tells the
+    restart what it restarts from;
+  - a halt with nothing to restart ends the cycle;
+  - a run is restarted once.
+- **`tests/unit/api/test_emergency_withdrawal.py`,** at the route:
+  - the run that received it is halted (its halt recorded before its cancel), and the restart's dispatch is handed
+    the replacement, marked an intervention;
+  - which runs are halted: a later run that built on it is, a finished run and a cycle that never received it aren't;
+  - a refusal writes nothing: unreadable dispatches, a project instruction, a replacement with no emergency, a blank
+    replacement;
+  - a Campaign cycle's row names what it halted, and the ledger counts it.
+- **`tests/unit/memory/test_emergency.py`,** the rules: receipts in the order handed, a held exposure, another cycle
+  and another record left out, what is halted, and the checkpoint kept.
+- **`tests/unit/cli/test_commands_runs.py`:** a halted run's response and `runs show`.
+- **Fifteen mutants, each caught:**
+  - an emergency halting nothing;
+  - the halt recorded after the cancel;
+  - a restart from the last task received;
+  - a held exposure read as received;
+  - finished runs halted;
+  - the earliest checkpoint kept;
+  - the checkpoint holding the task kept;
+  - the restart not told where it restarts;
+  - the loop never restarting;
+  - the fast path never restarting;
+  - a run restarted twice;
+  - a replacement stored without an emergency;
+  - unreadable dispatches read as none;
+  - the Campaign row without its halts;
+  - the restart handed nothing new.
 
 ## 6. Mode neutrality: cycle, duty, and ambient utilization
 

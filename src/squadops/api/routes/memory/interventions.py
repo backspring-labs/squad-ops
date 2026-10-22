@@ -154,10 +154,16 @@ async def refuse_dispatched(request: Request, cycle: Any, target: Any) -> None:
 
 
 async def log_intervention(
-    request: Request, identity: Identity | None, cycle: Any, record: MemoryRecord, action: str
+    request: Request,
+    identity: Identity | None,
+    cycle: Any,
+    record: MemoryRecord,
+    action: str,
+    extra: dict[str, Any] | None = None,
 ) -> str | None:
     """A campaign cycle's task instruction changed after admission, as a row in the campaign's
-    control log (§3.5): ``None`` for a standalone cycle's, or when the row couldn't be written."""
+    control log (§3.5): ``None`` for a standalone cycle's, or when the row couldn't be written.
+    ``extra`` joins the row's binding (an emergency withdrawal's halts, §3.8)."""
     if not of_campaign(cycle):
         return None
     current = record.current
@@ -166,7 +172,7 @@ async def log_intervention(
         identity,
         cycle.campaign_id,
         operation=ControlOperation.INSTRUCT,
-        reason=current.body if action != "withdraw" else record.status_changes[-1].why,
+        reason=current.body if "withdraw" not in action else record.status_changes[-1].why,
         idempotency_key=f"instruct:{record.record_id}:{action}:{current.number}",
         target=record.record_id,
         binding={
@@ -175,6 +181,7 @@ async def log_intervention(
             "revision": current.number,
             "cycle_id": cycle.cycle_id,
             "task_types": list(current.target.task_types) if current.target else [],
+            **(extra or {}),
         },
     )
 

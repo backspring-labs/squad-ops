@@ -131,7 +131,24 @@ def show_run(
         print_json(data)
     else:
         holds = data.pop("binding_holds", None) or []
+        halt = data.pop("halt", None)
         print_detail(data, quiet=quiet)
+        if halt:
+            # SIP-0110 §A.3.8 (T13): an emergency withdrawal halted it, and where it restarted.
+            restart = (
+                f"restarted as {halt.get('restart_run_id') or '(not yet)'} from "
+                f"{halt['restart_from_task_id']}"
+                if halt.get("restart_from_task_id")
+                else "nothing in it restarts: it built on work an earlier run did"
+            )
+            print_detail(
+                {
+                    "halted_by": f"{halt['requested_by']}'s emergency withdrawal of "
+                    f"{halt['record_id']}: {halt['why']}",
+                    "restart": restart,
+                },
+                quiet=quiet,
+            )
         if holds:
             # SIP-0110 §5ag (#2178): each time the run was held on a task's bindings, and why.
             print_table(

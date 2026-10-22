@@ -64,6 +64,8 @@ _RUN_COMPLETION_PATH = Path("src/squadops/execution/run_completion.py")
 _CORRECTION_RUNNER_PATH = Path("src/squadops/execution/correction_runner.py")
 _PULSE_BOUNDARY_RUNNER_PATH = Path("src/squadops/execution/pulse_boundary_runner.py")
 _TASK_DISPATCHER_PATH = Path("src/squadops/execution/task_dispatcher.py")
+# SIP-0110 §5ag (#2178): a run held on a task's binding sections pauses and resumes here.
+_BINDING_HOLDS_PATH = Path("src/squadops/execution/binding_holds.py")
 _CYCLES_ROUTE = Path("src/squadops/api/routes/cycles/cycles.py")
 # SIP-0109 #1799: the cycle cancel path moved here, shared by the cycle route and a campaign's
 # abort, and its CYCLE_CANCELLED emit with it.
@@ -87,6 +89,7 @@ _ALL_EMISSION_FILES = [
     _CORRECTION_RUNNER_PATH,
     _PULSE_BOUNDARY_RUNNER_PATH,
     _TASK_DISPATCHER_PATH,
+    _BINDING_HOLDS_PATH,
     _RUN_PROVISIONING_PATH,
     _WORKLOAD_GATE_PATH,
     _CYCLES_ROUTE,
@@ -430,8 +433,10 @@ class TestEmitCallSitePayloadFields:
         #1986 replaced the three hand-assembled GATE_DECIDED emits (the runs route, the
         executor's question-free approval, the workload gate's plan rejection) with the one
         recorder's, 51 → 49. #1990 replaced the executor's and the correction runner's two
-        ARTIFACT_OWNERSHIP_ENFORCED emits with the one emitter's, 49 → 48."""
+        ARTIFACT_OWNERSHIP_ENFORCED emits with the one emitter's, 49 → 48. #2178 added the
+        binding hold's RUN_PAUSED and RUN_RESUMED (SIP-0110 §5ag), 48 → 50, and the emergency
+        withdrawal's restart WORKLOAD_ADVANCED (T13), 50 → 51."""
         total = 0
         for path in _ALL_EMISSION_FILES:
             total += len(self._extract_emit_calls(path))
-        assert total == 48
+        assert total == 51

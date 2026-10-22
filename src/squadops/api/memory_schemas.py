@@ -322,6 +322,12 @@ class MemoryRecordCreateRequest(MemoryRecordContent):
 class MemoryRecordWithdrawalRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
     why: str
+    #: A task instruction's emergency withdrawal (Appendix A §3.8, T13): the work already built on
+    #: it is halted, and a run that received it restarts without it.
+    emergency: bool = False
+    #: With ``emergency``: the corrected instruction, given to the same tasks as a new task
+    #: instruction, which the restart is handed instead.
+    replacement: str | None = None
 
 
 class MemoryRecordRevisionResponse(BaseModel):
@@ -414,6 +420,11 @@ class MemoryRecordResponse(BaseModel):
     control_log_entry_id: str | None = None
 
 
+class HaltedRunResponse(BaseModel):
+    run_id: str
+    restart_from_task_id: str | None = None
+
+
 class MemoryRecordWithdrawalResponse(MemoryRecordResponse):
     """A withdrawn record. For a project instruction, the units whose snapshot pinned it (running,
     then finished) and what to do next: its emergency withdrawal (Appendix A §3.8). No other kind
@@ -423,6 +434,11 @@ class MemoryRecordWithdrawalResponse(MemoryRecordResponse):
     units_holding_it: list[HoldingUnitResponse] | None = []
     finished_units_holding_it: list[HoldingUnitResponse] | None = []
     next: str | None = None
+    #: An emergency withdrawal's: each run halted, and the task its restart runs again from
+    #: (``None``: the run only built on the instruction's work, and nothing in it restarts).
+    halted: list[HaltedRunResponse] = []
+    #: An emergency withdrawal's corrected instruction, as the new record the restart is handed.
+    replacement_record_id: str | None = None
 
 
 # --- a unit's snapshot as it binds now, and its re-binding (Appendix A §3.7; #2179) ---

@@ -35,6 +35,7 @@ from fastapi import APIRouter, Depends, Request
 
 from squadops.api.errors import http_error
 from squadops.api.memory_schemas import (
+    HaltedRunResponse,
     MemoryRecordBuild,
     MemoryRecordChatUse,
     MemoryRecordContent,
@@ -68,7 +69,9 @@ from squadops.api.runtime.deps import (
 )
 from squadops.auth.models import Identity, scopes_for_roles
 from squadops.comms.models import SessionNotFoundError
+from squadops.cycles.models import IllegalStateTransitionError, RunHalt
 from squadops.memory.build_report import exposure_builds
+from squadops.memory.emergency import IN_FLIGHT, Halt, halts_for, tasks_received
 from squadops.memory.indicators import BuildRow
 from squadops.memory.pinning import cycle_binding
 from squadops.memory.record_uses import NO_EFFECT_MEASURED, chat_uses, task_uses
@@ -543,30 +546,156 @@ async def withdraw_memory_record(
     """A withdrawal: the record is no longer retrieved, and every revision is kept (§A.3.8). A
     project instruction's answers with the units whose snapshot pinned it, as a lesson's revocation
     does: units admitted from now pin without it, and those named keep it until their work is
-    halted or restarted under a new snapshot (its emergency withdrawal, SIP-0110 §0.7)."""
+    halted or restarted under a new snapshot (its emergency withdrawal, SIP-0110 §0.7).
+
+    A task instruction's emergency withdrawal (``emergency``, T13) also halts the work already built
+    on it: each run of its cycle still in flight is halted, and one that received it restarts
+    without it, handed the ``replacement`` when one is given (``squadops.memory.emergency``)."""
     actor, scopes = _who(identity)
     record = await _readable(request, record_id, actor, scopes)
     target: Any = record.current.target
     cycle = await target_cycle(request, record.scope, record.project_id, target)
+    task_instruction = record.kind == RecordKind.INSTRUCTION and record.scope == RecordScope.TASK
+    if body.replacement is not None and not body.emergency:
+        raise http_error(422, "VALIDATION_ERROR", "a replacement goes with an emergency withdrawal")
+    if body.emergency and not task_instruction:
+        raise http_error(
+            422,
+            "VALIDATION_ERROR",
+            "an emergency withdrawal is a task instruction's (SIP-0110 Appendix A §3.8). A "
+            "project instruction's withdrawal names the units holding it, and re-binding a running "
+            "unit replaces it (§5v)",
+        )
+    if body.emergency and body.replacement is not None and not body.replacement.strip():
+        raise http_error(422, "VALIDATION_ERROR", "a replacement says what the tasks do instead")
     try:
         authorize_write(
             record.kind, record.scope, actor_id=actor, actor_scopes=scopes,
             owner_id=record.owner_id, campaign_cycle=of_campaign(cycle),
         )  # fmt: skip
-        updated = withdrawn(record, by=actor, at=datetime.now(UTC), why=body.why)
-        await _store(request).append_status(record_id, updated.status_changes[-1])
     except NotPermitted as e:
         raise http_error(403, "FORBIDDEN", str(e)) from e
-    except RecordRefused as e:
-        raise http_error(422, "VALIDATION_ERROR", str(e)) from e
-    entry = await log_intervention(request, identity, cycle, updated, "withdraw")
+    now = datetime.now(UTC)
+    halts: list[Halt] = []
+    replacement: MemoryRecord | None = None
+    # #2545: an emergency reads its cycle's dispatches and writes in the unit's dispatch turn, so
+    # every dispatch either read the instruction before (and is halted) or reads it withdrawn.
+    async with dispatch_turn(request, turn_of(cycle) if body.emergency else None):
+        if body.emergency:
+            halts = halts_for(
+                tasks_received(
+                    record_id, await _cycle_exposures(request, cycle), cycle_id=cycle.cycle_id
+                ),
+                await get_cycle_registry(request).list_runs(cycle.cycle_id),
+            )
+        try:
+            updated = withdrawn(record, by=actor, at=now, why=body.why)
+            await _store(request).append_status(record_id, updated.status_changes[-1])
+        except RecordRefused as e:
+            raise http_error(422, "VALIDATION_ERROR", str(e)) from e
+        if body.replacement is not None:
+            replacement = _replacement(record, body.replacement, actor=actor, now=now)
+            await _store(request).create(replacement)
+    halted = [
+        h
+        for h in halts
+        if await _halt(request, cycle, h, record_id=record_id, by=actor, why=body.why, now=now)
+    ]
+    extra = (
+        {
+            "emergency": True,
+            "halted": [dataclasses.asdict(h) for h in halted],
+            **({"replacement_record_id": replacement.record_id} if replacement else {}),
+        }
+        if body.emergency
+        else None
+    )
+    action = "emergency_withdraw" if body.emergency else "withdraw"
+    entry = await log_intervention(request, identity, cycle, updated, action, extra)
     shown = _response(
         updated, actor, await _deleted_sessions(request, [updated]), control_log_entry_id=entry
     )
     held: dict[str, Any] = {}
     if record.kind == RecordKind.INSTRUCTION and record.scope == RecordScope.PROJECT:
         held = await _units_pinning(request, record_id)
-    return MemoryRecordWithdrawalResponse(**shown.model_dump(), **held)
+    return MemoryRecordWithdrawalResponse(
+        **shown.model_dump(),
+        **held,
+        halted=[HaltedRunResponse(**dataclasses.asdict(h)) for h in halted],
+        replacement_record_id=replacement.record_id if replacement else None,
+    )
+
+
+async def _cycle_exposures(request: Request, cycle: Any) -> list:
+    """The exposures an emergency reads to find the work built on the instruction. Unknown is
+    refused (503) with nothing written, never read as "nothing received it"."""
+    store = get_memory_store(request)
+    try:
+        if store is None:
+            raise LookupError("the memory store is not configured")
+        return list(await store.list_project_exposures(cycle.project_id))
+    except Exception:  # noqa: BLE001 — what received it unknown refuses
+        logger.warning(
+            "emergency_withdrawal_exposures_unread cycle=%s", cycle.cycle_id, exc_info=True
+        )
+        raise http_error(
+            503,
+            "MEMORY_UNAVAILABLE",
+            f"which of {cycle.cycle_id}'s dispatches received it can't be read, so nothing was "
+            "withdrawn or halted; send it again",
+        ) from None
+
+
+def _replacement(record: MemoryRecord, text: str, *, actor: str, now: datetime) -> MemoryRecord:
+    """An emergency's corrected instruction: a new task instruction for the same tasks of the same
+    cycle, with the references its cycle bound, given after admission (an intervention, §3.5)."""
+    current = record.current
+    return new_record(
+        record_id=f"mrec_{uuid.uuid4().hex[:16]}",
+        kind=RecordKind.INSTRUCTION,
+        scope=RecordScope.TASK,
+        project_id=record.project_id,
+        owner_id=actor,
+        revision=Revision(
+            number=1,
+            body=text,
+            author=actor,
+            created_at=now,
+            source=Source(SourceKind.API_CALL, {"corrects": record.record_id}),
+            confirmed_by=actor,
+            target=current.target,
+            references=current.references,
+        ),
+    )
+
+
+async def _halt(
+    request: Request, cycle: Any, halt: Halt, *, record_id: str, by: str, why: str, now: datetime
+) -> bool:
+    """Halt one run: its halt recorded first, so the cycle that sees it cancelled reads where to
+    restart it from, then the run cancelled by the existing path. ``False`` when it ended first."""
+    registry = get_cycle_registry(request)
+    run = await registry.get_run(halt.run_id)
+    if run.status not in IN_FLIGHT:
+        return False
+    await registry.record_run_halt(
+        halt.run_id,
+        RunHalt(
+            record_id=record_id, requested_by=by, why=why, requested_at=now,
+            restart_from_task_id=halt.restart_from_task_id,
+        ),
+    )  # fmt: skip
+    # deferred (cycle): api.routes.cycles.cancellation loads the cycle routes
+    from squadops.api.routes.cycles.cancellation import cancel_run_by_the_existing_path
+
+    try:
+        await cancel_run_by_the_existing_path(
+            request, cycle.project_id, cycle.cycle_id, halt.run_id
+        )
+    except IllegalStateTransitionError:
+        logger.info("emergency_halt_run_ended_first run=%s", halt.run_id)
+        return False
+    return True
 
 
 #: The rule a project instruction's emergency withdrawal follows.
