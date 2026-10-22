@@ -3115,6 +3115,15 @@ for every change that checks a unit's dispatches.
   response and shown by `runs show`, lists both with their records, kinds and causes.
 - **The Postgres registry's batch read** carries each run's holds (`test_postgres_cycle_registry.py`), and the DDL
   guard reads the table against `BindingHold`.
+- **Live on the Mac** (`dep_ed93cc5fafaa`, this branch at 3a361659), `play_game` framing on `lite-14b`, its
+  design-plan instruction given at create at 39,853 tokens against a prompt of 27,413 (`cyc_f8e11de8b47f` /
+  `run_ec453fabe40c`):
+  - the run held at provisioning, `PAUSED`, with nothing dispatched and one exposure, `exp_7c0ac329bc0fecde:held`,
+    naming revision 1 and why;
+  - a revision to one line was accepted while it was held (§5w's check left the held exposure out);
+  - the poll released the hold `instruction_changed` within 5 s, and the run went `RUNNING`, its design task's
+    exposure `exp_7c0ac329bc0fecde` supplied revision 2, marked an intervention;
+  - the run was then cancelled, its check done.
 - **Sixteen mutants, each caught:**
   - a held run failing;
   - the re-dispatch, the correction repair or the pulse repair composed without the hold (three);
