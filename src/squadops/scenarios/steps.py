@@ -487,11 +487,19 @@ def _target_refusals(target: Any, *, named: bool, inner: bool = False) -> list[s
     return out
 
 
+#: Python's syntax a browser's JavaScript pattern reads otherwise or not at all: named groups and
+#: comments, ``\A`` and ``\Z`` (which JavaScript reads as the letters), and a leading flag group.
+_NOT_JAVASCRIPT = re.compile(r"\(\?P[<=]|\(\?#|\\[AZ]|\(\?[aiLmsux]+\)")
+
+
 def _pattern_refusals(pattern: Any, what: str) -> list[str]:
+    """A pattern compiles here and reads the same in the browser, which runs it as JavaScript."""
     if not isinstance(pattern, str) or not pattern:
         return [f"{what} is non-empty text"]
     try:
         re.compile(_VAR.sub("x", pattern))
     except re.error:
         return [f"{what} isn't a pattern"]
+    if _NOT_JAVASCRIPT.search(pattern):
+        return [f"{what} uses Python's syntax, which the browser reads otherwise"]
     return []
