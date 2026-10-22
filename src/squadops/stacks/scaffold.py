@@ -172,6 +172,34 @@ class ListOrder:
         return f"Return the list ordered by {self.field}, {word}: the contract checks it."
 
 
+#: The types a query parameter may declare (#2378): the ones both stacks read from a query
+#: string's text without a schema of their own.
+QUERY_PARAM_TYPES = frozenset(
+    {"string", "str", "integer", "int", "number", "float", "boolean", "bool"}
+)
+_QUERY_PARAM_NAME = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
+
+
+@dataclass(frozen=True)
+class QueryParam:
+    """An input an endpoint reads from its query string (#2378).
+
+    **Structure, not prose.** A manifest chose ``DELETE /runs/{run_id}/participants`` with the
+    name "as a query param" in its summary and a decision. No field held it, so the scaffold seeded
+    a signature without it, the signature check refused the conventional handler, and the repair
+    read the parameter through a context variable to get past the check (#2378). Declared here,
+    the scaffold seeds it, the check pins it, and QA and the route stub read it.
+    """
+
+    name: str
+    type: str = "string"
+    required: bool = True
+
+    def placeholder(self) -> str:
+        """``name=<string>``, as QA and the route stub read it."""
+        return f"{self.name}=<{self.type}{'' if self.required else ', optional'}>"
+
+
 @dataclass(frozen=True)
 class Endpoint:
     method: str
@@ -190,6 +218,12 @@ class Endpoint:
     success_status: int | None = None
     #: A collection GET's declared element order (#2202). ``None`` declares none.
     order: ListOrder | None = None
+    #: The inputs it reads from its query string, in declaration order (#2378).
+    query: tuple[QueryParam, ...] = ()
+
+    def query_suffix(self) -> str:
+        """``?name=<string>&page=<integer, optional>``, or nothing when it declares no query."""
+        return "?" + "&".join(p.placeholder() for p in self.query) if self.query else ""
 
 
 @dataclass(frozen=True)
@@ -513,6 +547,18 @@ class InterfaceManifest:
                             if ep.order
                             else {}
                         ),
+                        # #2378: present only when declared, as ``order`` is. It changes the
+                        # seeded signature, so it moves the hash.
+                        **(
+                            {
+                                "query": [
+                                    {"name": q.name, "type": q.type, "required": q.required}
+                                    for q in ep.query
+                                ]
+                            }
+                            if ep.query
+                            else {}
+                        ),
                     }
                     for ep in self.api.endpoints
                 ],
@@ -598,11 +644,35 @@ class InterfaceManifest:
                     f"{label}: errors {undeclared} are not defined in api.error_contract.codes"
                 )
             errors.extend(f"{label}: {e}" for e in self._order_errors(ep))
+            errors.extend(f"{label}: {e}" for e in self._query_errors(ep))
 
         for route in self.frontend.routes:
             if not route.view:
                 errors.append(f"frontend route {route.path!r}: view is required")
 
+        return errors
+
+    def _query_errors(self, ep: Endpoint) -> list[str]:
+        """Why ``ep``'s declared query parameters can't be seeded, if any can't (#2378).
+
+        Each is a name a handler couldn't take as its own argument: not an identifier, or the name
+        of a path parameter or a body field, which the handler already reads by that name. And a
+        type no stack reads from text. A mapping can't name a parameter twice."""
+        errors: list[str] = []
+        path_params = set(re.findall(r"\{(\w+)\}", ep.path))
+        body_fields = set(self.request_body_fields(ep.request)) if ep.request else set()
+        for param in ep.query:
+            if not _QUERY_PARAM_NAME.match(param.name):
+                errors.append(f"query parameter {param.name!r} is not an identifier")
+            if param.name in path_params:
+                errors.append(f"query parameter {param.name!r} is also a path parameter")
+            if param.name in body_fields:
+                errors.append(f"query parameter {param.name!r} is also a request body field")
+            if param.type.strip().lower() not in QUERY_PARAM_TYPES:
+                errors.append(
+                    f"query parameter {param.name!r} type {param.type!r} must be one of "
+                    f"{sorted(QUERY_PARAM_TYPES)}"
+                )
         return errors
 
     def _order_errors(self, ep: Endpoint) -> list[str]:
@@ -763,6 +833,7 @@ def _parse_api(raw: dict[str, Any]) -> Api:
                 int(ep["success_status"]) if ep.get("success_status") is not None else None
             ),
             order=_parse_order(ep.get("order")),
+            query=_parse_query(ep.get("query")),
         )
         for ep in raw.get("endpoints", [])
     )
@@ -799,6 +870,29 @@ def _parse_order(raw: Any) -> ListOrder | None:
     return ListOrder(
         field=str(raw.get("field", "")), direction=str(raw.get("direction", "")).strip().lower()
     )
+
+
+def _parse_query(raw: Any) -> tuple[QueryParam, ...]:
+    """An endpoint's ``query``, in declaration order (#2378): a mapping of each parameter's name to
+    its type (``{name: string}``), or to ``{type, required}`` when it is optional. Required by
+    default, as a parameter a handler reads is."""
+    if raw is None:
+        return ()
+    if not isinstance(raw, dict):
+        raise ValueError(f"an endpoint's query must map each name to its type, got {raw!r}")
+    params = []
+    for name, spec in raw.items():
+        if isinstance(spec, dict):
+            params.append(
+                QueryParam(
+                    name=str(name),
+                    type=str(spec.get("type", "string")),
+                    required=bool(spec.get("required", True)),
+                )
+            )
+        else:
+            params.append(QueryParam(name=str(name), type=str(spec or "string")))
+    return tuple(params)
 
 
 def _parse_frontend(raw: dict[str, Any]) -> Frontend:

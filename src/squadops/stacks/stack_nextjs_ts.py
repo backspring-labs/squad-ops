@@ -832,6 +832,9 @@ def _contract_lines(
         )
     if ep.errors:
         lines.append(f"    // errors: {', '.join(ep.errors)}")
+    if ep.query:
+        # #2378: the inputs it reads from ``new URL(request.url).searchParams``.
+        lines.append(f"    // query: {', '.join(q.placeholder() for q in ep.query)}")
     return lines
 
 
