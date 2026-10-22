@@ -404,3 +404,72 @@ async def test_the_test_author_shows_the_lessons_on_its_monolithic_path():
         )
         == plain
     )
+
+
+async def test_the_test_author_shows_its_instructions_on_its_monolithic_path():
+    """#2674, entered at ``QATestHandler._compose_user_prompt`` with the shipped assets, on the path
+    a ``qa.test`` without a subtask focus takes (live: ``cyc_3c4c69d0a18e``). Bug caught: the task
+    and project instructions on the envelope, and the exposure saying supplied, while this path's
+    prompt never showed them, as it once didn't show the lessons (#2509)."""
+    import time
+
+    from squadops.capabilities.handlers.cycle.qa_test import QATestHandler
+    from squadops.memory.project_instructions import PROJECT_INSTRUCTIONS_INPUT
+    from squadops.memory.task_instructions import TASK_INSTRUCTIONS_INPUT
+    from squadops.stacks.development_profiles import get_development_profile
+
+    context = _author_context([])
+    profile = get_development_profile("python_cli")
+    base = {"artifact_contents": {"validation_plan.md": "check the join"}}
+    task = {
+        "instructions": [
+            {
+                "record_id": "mrec_t",
+                "revision": 1,
+                "text": "Cover the empty-shelf case.",
+                "references": [],
+            }
+        ]
+    }
+    project = {"instructions": [{"record_id": "mrec_p", "revision": 2,
+                                 "text": "Name each test for the behaviour it checks.",
+                                 "references": []}]}  # fmt: skip
+
+    async def prompt(inputs):
+        composed = await QATestHandler()._compose_user_prompt(
+            context, inputs, profile, "python_cli", "the PRD", None, time.monotonic()
+        )
+        return composed.user_prompt
+
+    shown = await prompt(
+        {**base, TASK_INSTRUCTIONS_INPUT: task, PROJECT_INSTRUCTIONS_INPUT: project,
+         LESSONS_INPUT: _LESSONS}
+    )  # fmt: skip
+    plain = await prompt({**base, LESSONS_INPUT: _LESSONS})
+
+    order = [
+        shown.index("## INSTRUCTIONS FOR THIS TASK"),
+        shown.index("1. Cover the empty-shelf case."),
+        shown.index("## THIS PROJECT'S STANDING INSTRUCTIONS"),
+        shown.index("1. Name each test for the behaviour it checks."),
+        shown.index(_HEADING),
+    ]
+    assert order == sorted(order)
+    assert "INSTRUCTIONS FOR THIS TASK" not in plain and "STANDING INSTRUCTIONS" not in plain
+
+
+def test_every_template_showing_lessons_shows_both_instruction_slots_before_them():
+    """#2674's guard. Bug caught: an authoring template that shows the lessons but not the task's
+    or the project's instructions, so a task is handed binding instructions its prompt never
+    shows; or shows them after the lessons, against the slots' precedence (§3.6)."""
+    from pathlib import Path
+
+    templates = Path(__file__).resolve().parents[3] / "src/squadops/prompts/request_templates"
+    lessons = "{{cross_cycle_lessons_section}}"
+    showing = [t for t in sorted(templates.glob("*.md")) if lessons in t.read_text()]
+    assert len(showing) >= 10
+    for path in showing:
+        body = path.read_text().split("---", 2)[2]
+        slots = ["{{task_instructions_section}}", "{{project_instructions_section}}", lessons]
+        assert all(s in body for s in slots), path.name
+        assert [body.index(s) for s in slots] == sorted(body.index(s) for s in slots), path.name
