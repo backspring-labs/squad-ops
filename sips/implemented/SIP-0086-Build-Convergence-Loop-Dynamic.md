@@ -1553,3 +1553,45 @@ show the create answering 201. If the probes still failed, be3caea2 is a repeat.
 - eighteen mutations, each caught;
 - a before-and-after pair on the yardstick, pre-registered in
   `docs/plans/verification-sets/2-4-0-retest-progress-comparison-preregistration.md`.
+
+### 12f. 2026-10-22 — a kept repair's base after a refused round, and the termination rule's two questions: read, and not changed (#2306)
+
+**Ruled by the supervisor, 2026-10-22,** under the owner's grant of 2026-10-19, closing #2306. §12e built question 1's
+first part. Its second part, and questions 2 and 3, are read here on the whole population and left as they are.
+
+**The population.** Every keep since #1522 (§12b): 7 kept rounds in 7 runs, each at round 0 on a `qa.test` task. They come
+from the runtime's `progress_kept` lines in Prefect's log table, with the archived runtime logs and the run records naming
+the same 7. What followed each keep:
+- **4: the next round's patch was accepted** (fceaa062, d5cbe881, 466f9f71, b266348e).
+  - Three of those runs completed.
+  - d5cbe881 then failed at storage on the kept file. That was #2379, since closed.
+- **1: the next repair was empty and refunded.** The task was re-taken, the re-take passed, and the run completed (1fd06c51).
+- **2: the next repair was refused, and the task was re-dispatched from its inputs** (6f518c27, d34a3039).
+  - Neither re-roll passed. Both ended `plan_defect` at round 2.
+  - Each termination record (`term_-qa.test_02/correction_termination.json`) repeats one element: the single test still
+    failing after the keep, with nothing cleared and nothing added.
+  - The re-rolls brought back none of the failures the keeps had cleared.
+
+**Part 2: a kept repair survives a later refused round. Not built.** §12e ruled it in principle: start the round after a
+refused repair from the kept tree, not a re-dispatch. In both runs it would have applied to, the run ended on the one
+failure still standing after the keep, which two further attempts didn't fix. Starting from the kept tree would have
+ended them the same way. In neither run did a re-dispatch undo what was kept.
+- **6f518c27's keep was in the QA file the re-dispatch rewrote whole.** The re-dispatched file still failed only the case
+  the keep left.
+- **d34a3039's keep was a developer file the re-dispatch didn't touch.**
+
+So no run since #1522 lost progress this way. It is reopened if one does: a re-dispatch after a keep that brings back a
+failure the keep had cleared.
+
+**Question 2: what the repeated-signature rule compares. No change.** In both terminations it compared the keep's retest
+with the re-dispatch's failure, and the same test failed for the same reason after two attempts. That is the repeat it
+exists to catch. #2306's case was a re-roll compared with a round the re-roll had replaced. §12e removed the cause, since
+a repair that made progress is now kept rather than re-rolled.
+
+**Question 3: whether the advisory structural candidate should count. No change.** Every decision in #2306's 12 runs, and
+in both terminations here, chose `patch` and named `tighten_acceptance`. The candidate condition is always met when the
+first condition is, so it changes no termination either way. It stays as the second condition, as §12b and #435 have it.
+
+**What closes #2306:**
+- §12e (question 1, part 1, shipped in #2663 and read on the issue);
+- this section (part 2, and questions 2 and 3).
