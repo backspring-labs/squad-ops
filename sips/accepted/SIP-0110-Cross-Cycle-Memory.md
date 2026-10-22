@@ -3218,6 +3218,15 @@ for every change that checks a unit's dispatches.
 - **`tests/unit/memory/test_emergency.py`,** the rules: receipts in the order handed, a held exposure, another cycle
   and another record left out, what is halted, and the checkpoint kept.
 - **`tests/unit/cli/test_commands_runs.py`:** a halted run's response and `runs show`.
+- **Live on the Mac** (`dep_7b4dd14d0a62`, this branch at 13133765), `play_game` framing on `lite-14b`, its design
+  task instructed at create (`cyc_a98657ad89f0`):
+  - the emergency with a replacement was sent once the run (`run_9e4c01c6cbbd`) had checkpointed its research and its
+    objective frame. It answered with that run halted, restarting from its design task, and the replacement's record;
+  - the cycle restarted it as `run_223802098961` in its place, resumed from checkpoint 2 (two tasks completed), and
+    dispatched the design task first;
+  - that design task's exposure (`exp_63d9e56cd2316476`) was supplied the replacement alone, marked an intervention;
+  - `runs show` on the halted run named the withdrawal and the run it restarted as. The restart was then cancelled,
+    its check done.
 - **Fifteen mutants, each caught:**
   - an emergency halting nothing;
   - the halt recorded after the cancel;
