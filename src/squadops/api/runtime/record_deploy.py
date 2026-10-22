@@ -12,8 +12,10 @@ over the one pool (#577).
     {"recorded_by": "rebuild_and_deploy.sh all", "source_revision": "7acc2bc1",
      "services": [{"service": "neo", "image_id": "sha256:…", "revision": "7acc2bc1"}, …]}
 
-To them it adds the digest of every model an enabled agent of any squad profile names, as the
-LLM provider reports it, and writes one record. A provider that cannot be listed leaves every
+To them it adds the digest of every model the deploy serves, as the LLM provider reports it, and
+writes one record. Those are the models an enabled agent of any squad profile names, and the model
+of each enabled agent instance whose service the deploy runs (#2676), read from the configured
+agent instances file. A provider that cannot be listed leaves every
 digest ``None`` and says so on stderr; it does not stop the record, whose images are still true.
 
 Its check, which writes nothing, is ``deploy_check`` (#2193).
@@ -26,9 +28,12 @@ import json
 import logging
 import sys
 import uuid
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 from datetime import UTC, datetime
+from pathlib import Path
 from typing import TYPE_CHECKING, Any
+
+import yaml
 
 from squadops.bootstrap.secrets import secret_provider_for
 from squadops.config import load_config
@@ -36,6 +41,7 @@ from squadops.cycles.deploy_record import (
     DeployFactsError,
     DeployRecord,
     ServiceImage,
+    instance_models,
     model_weights,
     services_from_facts,
 )
@@ -58,10 +64,11 @@ async def record_deploy(
     registry: DeployRegistryPort,
     profiles: SquadProfilePort,
     llm: LLMPort,
+    instances: Sequence[Mapping[str, Any]],
     now: datetime | None = None,
 ) -> DeployRecord:
-    """Build the record from the deploy step's facts, the profiles' models and their digests,
-    and write it.
+    """Build the record from the deploy step's facts, the models the deploy serves (the profiles'
+    and its agent instances') and their digests, and write it.
 
     Raises:
         DeployFactsError: the facts name no services, a service without its image, or no writer.
@@ -75,7 +82,7 @@ async def record_deploy(
         for profile in await profiles.list_profiles()
         for agent in profile.agents
         if agent.enabled and agent.model
-    }
+    } | instance_models(instances, services)
     try:
         available: list[ModelInfo] = await llm.list_available_models()
     except Exception as exc:  # the provider is down or unreachable: the images are still true
@@ -162,6 +169,19 @@ async def compose_and_check(facts: Mapping[str, Any]) -> tuple[DeployRecord | No
         await pool.close()
 
 
+def _agent_instances(path: Path) -> list[dict[str, Any]]:
+    """The agent instances the runtime reads its chat agents from. Required: without them the
+    record would leave each agent's own model undeclared, and the box would read it as foreign
+    (#2676).
+
+    Raises:
+        DeployFactsError: the file is missing.
+    """
+    if not path.exists():
+        raise DeployFactsError(f"the agent instances file {path} is missing")
+    return (yaml.safe_load(path.read_text()) or {}).get("instances") or []
+
+
 async def _compose_and_record(facts: Mapping[str, Any]) -> DeployRecord:
     from adapters.cycles.factory import create_squad_profile_port
     from adapters.llm.factory import create_llm_provider
@@ -180,7 +200,13 @@ async def _compose_and_record(facts: Mapping[str, Any]) -> DeployRecord:
             api_key=config.llm.api_key,
             **({"default_model": config.llm.model} if config.llm.model else {}),
         )
-        return await record_deploy(facts, registry=registry, profiles=profiles, llm=llm)
+        return await record_deploy(
+            facts,
+            registry=registry,
+            profiles=profiles,
+            llm=llm,
+            instances=_agent_instances(config.agent.instances_file),
+        )
     finally:
         await pool.close()
 
