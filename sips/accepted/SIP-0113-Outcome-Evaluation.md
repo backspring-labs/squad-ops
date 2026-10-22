@@ -1607,7 +1607,8 @@ says how it is built instead.
      purpose and test ids, and §4.1 rules test ids out.
    - **Revision 5's candidate names** are drafted from an inventory of the names on the window's delivered trees,
      taken by the supervisor and kept outside every repository with the suite.
-4. **A control not found is `surface_absent`** (item 2), with five limits.
+4. **A control not found is `blocked_unverified`, `control_absent`** (item 2): the page's counterpart of
+   `surface_absent`, with a reason of its own. Five limits:
    - **An action's target only.** A check never reads absent. A new `control` check reads whether a target is
      `unavailable` (absent, hidden or disabled) or `enabled`. So a delivery that hides Join at capacity has that
      outcome checked, not read as an absence.
@@ -1615,13 +1616,16 @@ says how it is built instead.
      declared route fails the scenario at that step.
    - **Page surfaces are checked against the delivery before anything runs,** as endpoints are
      (`evaluate.py:309-319`). A route's parameters are normalised by `campaigns.increment_tree.route_param`, and a
-     route the manifest doesn't declare is `surface_absent`.
-   - **The kind of absence is recorded:** endpoint, page or control.
-     - In contribution, a control not found reads `unverified`, even when it's absent on both trees. Otherwise a
-       page scenario whose names match no delivery would vanish from every reading.
+     route the manifest doesn't declare is `surface_absent`, as an undeclared endpoint is.
+   - **So the kind of absence is in the reason:**
+     - `surface_absent` is a declared endpoint or page the delivery doesn't have, which the scenario's surfaces say;
+     - `control_absent` is a control none of a step's names found.
+     - In contribution, `control_absent` reads `unverified`, even on both trees: it isn't `surface_absent`, so
+       `_absent` doesn't take it out of the reading. Otherwise a page scenario whose names match no delivery would
+       vanish from every reading.
      - An endpoint or a page absent on both trees keeps today's rule.
-   - **The not-found rate** (k of n page scenarios) is in the package and the digest. The evidence lists the names
-     found for that role.
+   - **The not-found rate** (k of n page scenarios reading `control_absent`) is in the package and the digest. The
+     evidence lists the names found for that role.
 5. **The waits** (item 3).
    - **Navigation:** `networkidle0`, at most 30 s, as `_quality` uses.
    - **Locating a control:** at most 10 s, then it's not found. Before acting, the driver waits for the control to be
