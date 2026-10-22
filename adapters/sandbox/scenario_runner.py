@@ -785,7 +785,7 @@ def _evidence_kept(evaluation: TreeEvaluation, secrets: Collection[str]) -> Tree
     """Each run's evidence as it may leave the sandbox (§10p ruling 8): its text scrubbed of the
     evaluation's secrets, no screenshot when the evaluation resolved one, and within the caps.
     ``squadops.scenarios.evidence.kept`` decides; this only applies it."""
-    raw = [(i, run) for i, run in enumerate(evaluation.runs) if run.evidence]
+    raw = [(i, run, run.evidence) for i, run in enumerate(evaluation.runs) if run.evidence]
     if not raw:
         return evaluation
     values = sorted({v for v in secrets if v}, key=len, reverse=True)
@@ -796,12 +796,12 @@ def _evidence_kept(evaluation: TreeEvaluation, secrets: Collection[str]) -> Tree
         return text
 
     items = kept(
-        [ScenarioEvidence.from_wire(run.scenario_id, run.evidence) for _, run in raw],
+        [ScenarioEvidence.from_wire(run.scenario_id, evidence) for _, run, evidence in raw],
         scrub=scrub,
         secret_resolved=bool(values),
     )
     runs = list(evaluation.runs)
-    for (i, run), item in zip(raw, items, strict=True):
+    for (i, run, _), item in zip(raw, items, strict=True):
         runs[i] = dataclasses.replace(run, evidence=item.to_wire())
     return dataclasses.replace(evaluation, runs=tuple(runs))
 
