@@ -72,7 +72,8 @@ contracts (its §8.2). §4.8 says what this SIP produces and reads at each.
 
 One row per part that ships separately. Statuses as CLAUDE.md defines them. The 2.4 plan places phase 1 in 2.4
 (committed) and phase 2 in 2.4 conditionally. **Phase 1's parts are placed** with the issues filed at acceptance
-(2026-10-17), each labelled `sip:0113`. Phase 2's parts stay *unplaced* until the owner rules D4 on the window's record.
+(2026-10-17), each labelled `sip:0113`. **The owner ruled D4 on 2026-10-22 (§10s):** §4.5 in 2.4, and §4.7 held until
+contribution separates from acceptance.
 
 | part | status | where |
 |---|---|---|
@@ -89,9 +90,9 @@ One row per part that ships separately. Statuses as CLAUDE.md defines them. The 
 | phase 1: the quality baselines, Lighthouse, axe and lint, in the evaluator's image (§4.2) | **shipped** (§10f): Lighthouse and axe on each evaluated instance's declared pages, and #1937's lint. Prediction 4, the done-when, read at the window's close: **holds** (spread 0 within a session, at most 0.03 between sessions) | 2.4.0, PRs #2474 and #2479, issue #2416 |
 | phase 1: the intervention ledger's classifications (§4.3) | **shipped** (§10d) | 2.4.0, PR #2454, issue #2417 |
 | phase 1: contribution and the derived metrics in the digest (§4.4, §4.6) | **shipped** (§10e): contribution per increment, the package's and digest's readings, the work class, the seven safety guarantees, and AOR's four inputs with the work envelope. Prediction 3 read at the window's close: **falsified as written** (all six counted increments read `contributed`). AOR's "every quality baseline held" input takes prediction 4's tolerance, which phase 2 reads (unplaced, D4) | 2.4.0, PRs #2470, #2481, #2485, #2487 and #2489, issue #2418 |
-| phase 2: the proposer sees each goal's result (§4.5) | **unplaced** | 2.4 if D4 rules it in, with its issue filed then; otherwise the next even release |
-| phase 2: the objective's scenario measure, read by SIP-0109 §10 row 3, as a SIP-0109 amendment (§4.7) | **unplaced** | 2.4 if D4 rules it in, with its issue filed then; otherwise the next even release |
-| quality gates where phase 1's data supports a threshold (§4.2, §6) | **unplaced** | with phase 2, each with its phase-1 evidence |
+| phase 2: the proposer sees each goal's result (§4.5), with SIP-0109 §24ap's `prd_delta` | **placed** by D4 (§10s) | 2.4.0, #2677 |
+| phase 2: the objective's scenario measure, read by SIP-0109 §10 row 3, as a SIP-0109 amendment (§4.7) | **unplaced**, held by D4 (§10s) until a reading shows contribution separating from acceptance (prediction 3 was falsified as written at the window's close) | the next even release at the earliest, on that reading |
+| quality gates where phase 1's data supports a threshold (§4.2, §6) | **unplaced** | with §4.7, each with its phase-1 evidence (§10s) |
 | phase 1 amendment: Lighthouse and axe on a seeded instance, parameterised pages included (§10j; reviewed in §10n) | **shipped** (§10n, §10o): a second instance of each evaluated tree, seeded through its own API and measured on every page the seed names, and the window's 20 trees re-measured as their own series. S1 **holds**, S2 **falsified** (§10o) | 2.4.0, PRs #2632, #2633, #2634 and #2635, issue #2562 |
 | phase 1 amendment: a finer quality reading, axe by element, failing audits by id, the HTTPS audits read as the environment's (§10o, proposed; its design review before it is built) | **placed** | 2.5.0, #2637 |
 | a repository-backed Project's Campaign: its baseline reading, an evaluation of the calibration record's commit (§10l; SIP-0112 H.4, SIP-0109 §24bv) | **placed** | 2.5.0, #2619 |
@@ -1889,3 +1890,32 @@ caches. Checking there too, or checking a value against a public corpus, is the 
 
 **Who read it.** The supervisor, by the owner's assignment of 2026-10-20 and delegation of 2026-10-21 (revision 5's
 approval only). D4 and every quality gate stay the owner's.
+
+### 10s. D4 ruled: §4.5 is built in 2.4, and §4.7 waits until contribution separates from acceptance (2026-10-22; #2677; the owner's ruling)
+
+**The ruling.** The owner, 2026-10-22, asked to choose between phase 2 whole in 2.4, split, or moved to the next even
+release: "I prefer your recommedaiton for the best approach here". The supervisor's recommendation was the split:
+- **§4.5 in 2.4.** The proposal run sees each scenario goal's result and the quality readings, with SIP-0109 §24ap's
+  `prd_delta`. #2677 places it.
+- **§4.7 held.** Reading a campaign's success as its outcome target met waits until a reading shows contribution
+  separating from acceptance. The quality gates (§4.2, §6) wait with it.
+
+**The window's record against D4's four conditions** (the 2.4 plan §1.4; the record is
+`docs/plans/2-4-0-window-close.md` §2):
+
+| D4's condition | the record | how the split reads it |
+|---|---|---|
+| the scenarios discriminate | P1 **holds**, on the window's pairs; revision 5's page scenarios discriminate too (B1, §10r) | met |
+| holding out holds | P2 **falsified as written**: one held-out value exposed in the agent images, and nine already public before the suite | met since. Revision 4 retired the values the sweep found exposed, and they're gone from the source that leaked them. Revision 5's own sweep (B3, §10r) found no leak, only one value already public |
+| contribution is not the acceptance count by another name | P3 **falsified as written**: all six counted increments read `contributed` | §4.5 doesn't rest on it: the proposer aims at failing goals, and the ledger reads whether they moved. §4.7 does, so it waits |
+| each measure phase 2 would gate is stable | P4 **holds** (spread 0 within a session, at most 0.03 between sessions) | met, and read again when §4.7 and its gates come |
+
+**Why P3 holds §4.7 back and not §4.5.** §4.7 makes the outcome target a campaign's success reading (SIP-0109 §10 row 3).
+On the window's six increments contribution moved in lockstep with acceptance, so that reading would have added nothing.
+That's an absence of separation on six good increments, not proof that contribution is redundant, so §4.7 waits for a
+reading that can separate them. #2637's finer reading, placed in 2.5, is one instrument. §4.5 needs only discriminating
+scenarios and a clean holdout, and its prediction is read in the ledger whatever contribution does.
+
+**What else it changes.** Phase 2 changes what the proposer is shown, a squad behaviour. The 2.4 plan's rule that a
+release doesn't change two squad behaviours at once applies: #1966's risk-first QA instructions, read as an A/B on
+2026-10-22, are adopted no earlier than the release after §4.5's, unless the owner rules otherwise.
