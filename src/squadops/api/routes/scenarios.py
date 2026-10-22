@@ -34,7 +34,7 @@ from squadops.scenarios.suites import SuiteRefused, approve_suite, draft_suite
 
 router = APIRouter(prefix="/api/v1/scenario-suites", tags=["scenarios"])
 
-_STATUS = {"SUITE_NOT_FOUND": 404}
+_STATUS = {"SUITE_NOT_FOUND": 404, "SUITE_INVALID": 422}
 
 
 def _actor(identity: Identity | None) -> str:
@@ -77,9 +77,13 @@ async def draft(
 ) -> SuiteSummaryResponse:
     try:
         suite = parse_suite(body.model_dump())
+        record = await draft_suite(
+            _store(request), suite, actor=_actor(identity), at=datetime.now(UTC)
+        )
     except ScenarioInvalid as e:
         raise http_error(422, "SUITE_INVALID", str(e)) from e
-    record = await draft_suite(_store(request), suite, actor=_actor(identity), at=datetime.now(UTC))
+    except SuiteRefused as e:
+        raise http_error(_STATUS.get(e.code, 409), e.code, str(e)) from e
     return _summary(record)
 
 
