@@ -90,7 +90,8 @@ One row per part that ships separately. Statuses as CLAUDE.md defines them. The 
 | phase 2: the proposer sees each goal's result (§4.5) | **unplaced** | 2.4 if D4 rules it in, with its issue filed then; otherwise the next even release |
 | phase 2: the objective's scenario measure, read by SIP-0109 §10 row 3, as a SIP-0109 amendment (§4.7) | **unplaced** | 2.4 if D4 rules it in, with its issue filed then; otherwise the next even release |
 | quality gates where phase 1's data supports a threshold (§4.2, §6) | **unplaced** | with phase 2, each with its phase-1 evidence |
-| phase 1 amendment: Lighthouse and axe on a seeded instance, parameterised pages included (§10j, proposed; its design review before it is built) | **placed** | 2.4.0, after the window, #2562 |
+| phase 1 amendment: Lighthouse and axe on a seeded instance, parameterised pages included (§10j; reviewed in §10n) | **shipped** (§10n, §10o): a second instance of each evaluated tree, seeded through its own API and measured on every page the seed names, and the window's 20 trees re-measured as their own series. S1 **holds**, S2 **falsified** (§10o) | 2.4.0, PRs #2632, #2633, #2634 and #2635, issue #2562 |
+| phase 1 amendment: a finer quality reading, axe by element, failing audits by id, the HTTPS audits read as the environment's (§10o, proposed; its design review before it is built) | **placed** | 2.5.0, #2637 |
 | a repository-backed Project's Campaign: its baseline reading, an evaluation of the calibration record's commit (§10l; SIP-0112 H.4, SIP-0109 §24bv) | **placed** | 2.5.0, #2619 |
 
 **What closes this SIP:** phase 1 shipped and phase 2 shipped, or phase 2 dropped by a numbered amendment the owner
@@ -1448,3 +1449,83 @@ says how it is built instead.
 
 **Who ruled.** The supervisor, by the owner's assignment of 2026-10-20 ("Approve your recommendations"). D4 and every
 quality gate stay the owner's.
+
+### 10o. The seeded reading's series, read against S1 and S2 (2026-10-21, §10j, §10n step 6; #2562, #2637; the supervisor's reading, under the owner's grant of 2026-10-19)
+
+**The series.** On `dep_6de08ad8277b` (`590713ff`, which carries #2632 to #2635), `remeasure_quality.py --record
+"2.4 window, seeded"` re-measured every tree the window evaluated: 20 trees (four calibrations and 16 increments and
+repairs), three rounds each, from 2026-10-22T00:17Z to 01:44Z. No campaign was re-run.
+- 60 `quality_remeasures` rows. Every seeded reading is `measured`, on one measure version (the evaluator's tag
+  `lighthouse13.5-axe4.14-ruff0.16-eslint10.12-2` and seed version `seed:a297ead2e282:plan-v1`).
+- 180 of 180 seed records were seeded, no page was unfilled, and 240 of 240 seeded pages were measured with no error.
+- Three calibrations have no capacity field, and each noted `capacity dropped, not a field of RunCreate` on every
+  record, as §10n ruling 7 says a field the seed can't place is noted.
+- **The cost (§10j item 1):** the seeded instance took 33.3 to 34.1 s per evaluation (start, seed and measure), inside
+  the two-minute bar.
+
+**S1: holds.** On every tree, axe, accessibility and best practices spread 0 across the three rounds. Performance
+spread at most 0.04 (two trees), inside the 0.05 bound.
+
+**S2: falsified.** Each pair is the increment's round 1 against round 1 of the tree it was built on, seeded with seeded:
+
+| increment | built on | page it changed | seeded measures that moved there |
+|---|---|---|---|
+| capacity, campaign 1, `cyc_f9930df7c925` | `cyc_4145fa7e4b4a` | `/runs/{id}#partial`, `#at_capacity` | none |
+| capacity, campaign 2, `cyc_e5370cec344f` | `cyc_23232c9e72da` | `/runs/{id}#partial`, `#at_capacity` | none |
+| capacity, campaign 3, `cyc_840e72247f38` | `cyc_413e75801797` | `/runs/{id}#partial`, `#at_capacity` | none |
+| sorting, campaign 1, `cyc_b7432a9633a5` | `cyc_f9930df7c925` | `/` | none |
+| sorting, campaign 2, `cyc_679608d64edc` | `cyc_e5370cec344f` | `/` | none |
+| sorting, campaign 3, `cyc_f952d2473c22` (the repair) | `cyc_840e72247f38` | `/` | none |
+
+One measure moved in any pair, on any page: performance on campaign 2's capacity increment's `/`, 0.91 to 0.92, which
+is a page the increment didn't change and a move inside S1's noise. Campaign 4's capacity-display increment
+(`cyc_9915bf056615`, not one of the six) moved nothing on its detail pages either.
+
+**It isn't a hollow reading.** Two further re-measures, unrecorded (no row was written), were watched while their
+seeded instance ran: `cyc_840e72247f38` (FastAPI) and `cyc_e5370cec344f` (Next.js). The supervisor's diagnostic, not
+committed, ran in the evaluator's image on the sandbox's app network. It loaded each page, read its text and requests,
+and on the Next.js tree read axe's violations by rule and node and Lighthouse's failing weighted audits.
+- Both instances render the seeded records. The detail page of the run at capacity shows its full count and its three
+  participants, and the list shows all three runs, each fetched from the app's own API.
+- The calibration's at-capacity page shows no capacity, because its app has none, while the capacity increment's shows
+  the count. So the pages differ between the pair, and the scores don't.
+
+**The mechanism: the measures are coarser than the change.**
+1. **axe is counted by rule, not by element** (`infra/evaluator/driver.mjs:45`). On the Next.js tree, `region` holds
+   on 6 elements of the detail page and 2 of the list page, and each reads as one moderate violation. Content an
+   increment adds outside a landmark adds nothing to the count.
+2. **Lighthouse is read as its category scores** (`driver.mjs:58`), whose audits pass or fail. The one failing
+   accessibility audit there is `landmark-one-main` (no `<main>`), which comes from each app's shell. Every tree on
+   both stacks has it, no increment touched it, and a page that already fails it fails it the same way with more
+   content.
+3. **Best practices is pinned at 0.78 by the sandbox, not the app.** On the Next.js tree's pages read, the only failing
+   weighted audits are `is-on-https` and `redirects-http`: the instance is served over plain HTTP. It's constant, so no
+   delta sees it, but the absolute figure reads as the app's.
+
+So "every increment's quality delta reads zero" is now a true reading of these measures, on pages that carry the
+increments' content. The pages are no longer empty. The measures would still see an increment that breaks an audit, an
+unlabelled field or an image with no alt, and none of the 20 trees did.
+
+**What follows:**
+1. **S2's pre-registered consequence applies as written.** On this evidence, Lighthouse's category scores and axe's
+   rule counts, as the evaluator reads them, don't track this app's increments even seeded, and §4.2's weight rule
+   applies to them: they carry no weight in phase 2. The quality gates and D4 stay the owner's.
+2. **A finer reading is proposed, and placed in 2.5 (#2637), with its design review before it is built:**
+   - axe counted by element beside the rule;
+   - each page's failing audit and rule ids recorded with the scores;
+   - the HTTPS audits read as the environment's, not the app's.
+
+   Each is a new measure version (§10n ruling 5), so no delta compares it with this series. It carries weight only
+   after its own S1 and S2 series. A second re-measure of these 20 trees is enough for that.
+3. **§10j item 3, whether the seeded reading replaces §10f's, stays open:**
+   - On the pages both read, the two agree. Accessibility, best practices and axe are equal on 117 of 120 shared page
+     readings. The three that differ are one tree's, campaign 1's seed increment (`cyc_fbed0358af8e`): its seeded
+     list reads accessibility 0.97 to §10f's 0.96 in all three rounds. That's the one place seeded content changed a
+     score.
+   - #2637 changes the measure, so the replacement is decided on #2637's series. Until then both are read, as §10j
+     proposed.
+4. **§10j is shipped:** §10n's six steps are built, deployed and read. The ledger's row is turned, and #2562 closes
+   with this amendment.
+
+**Who ruled.** The supervisor read the pre-registered predictions and placed #2637, under the owner's grant of
+2026-10-19. D4 and every quality gate stay the owner's.
