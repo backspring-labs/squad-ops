@@ -2485,6 +2485,14 @@ class QATestHandler(_CycleTaskHandler):
                     source_parts.append(f"\n### {path}\n```{lang}\n{code}\n```\n")
                 variables["source_files"] = "\n".join(source_parts)
             variables["prior_outputs"] = self._format_prior_outputs(prior_outputs)
+            # SIP-0110 Appendix A §3.6 (#2674): this task's instructions and its project's, before
+            # the lessons, as the focused path shows them. None handed renders the prompt unchanged.
+            instructions = await task_instructions_section(renderer, inputs or {})
+            if instructions:
+                variables["task_instructions_section"] = instructions
+            project = await project_instructions_section(renderer, inputs or {})
+            if project:
+                variables["project_instructions_section"] = project
             # SIP-0110 §0.9 (#2509): the lessons approved for this task, in a slot of their own, as
             # the other build-authoring seams show them. None supplied renders the prompt unchanged.
             lessons = await cross_cycle_lessons_section(renderer, inputs or {})
