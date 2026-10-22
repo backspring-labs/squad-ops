@@ -49,6 +49,7 @@ _VAR = re.compile(r"\{([A-Za-z_][A-Za-z0-9_]*)\}")
 #: §10p ruling 10: ``page`` and ``browser`` were reserved for a browser and are no runner's.
 _BROWSER_ACTIONS = frozenset({"visit", "fill", "click"})
 _BROWSER_CHECKS = frozenset({"text", "absent", "count", "order", "control"})
+_PATTERN_CHECKS = frozenset({"text", "absent"})
 _HTTP_CHECKS = frozenset({"status", "json"})
 CONTROL_STATES = ("unavailable", "enabled")
 #: How the browser says a step ended (§10p ruling 1). ``done`` is the only one that carries on.
@@ -418,18 +419,20 @@ def _step_refusals(steps: Sequence[Mapping[str, Any]], actions: Mapping[int, Any
 def _check_refusals(checks: Sequence[Mapping[str, Any]], actions: Mapping[int, Any]) -> list[str]:
     out: list[str] = []
     for i, check in enumerate(checks, start=1):
-        kind, step = check.get("check"), check.get("step")
-        named = not isinstance(step, bool) and isinstance(step, int) and step in actions
+        kind, raw = check.get("check"), check.get("step")
+        step = (
+            raw if isinstance(raw, int) and not isinstance(raw, bool) and raw in actions else None
+        )
         if kind in _HTTP_CHECKS:
             # An HTTP check that names no step it can read stays as it was: blocked when it runs.
-            if named and actions[step] in _BROWSER_ACTIONS:
+            if step is not None and actions[step] in _BROWSER_ACTIONS:
                 out.append(
                     f"check {i}: a {kind} check reads an HTTP step, and step {step} isn't one"
                 )
             continue
         if kind not in _BROWSER_CHECKS:
             continue  # a kind no runner reads is blocked when it runs, as before
-        if not named:
+        if step is None:
             out.append(f"check {i}: names a step the scenario has")
         elif actions[step] not in _BROWSER_ACTIONS:
             out.append(f"check {i}: a {kind} check reads a browser step, and step {step} isn't one")
@@ -438,7 +441,7 @@ def _check_refusals(checks: Sequence[Mapping[str, Any]], actions: Mapping[int, A
 
 
 def _browser_check_refusals(kind: Any, check: Mapping[str, Any]) -> list[str]:
-    if kind in ("text", "absent"):
+    if kind in _PATTERN_CHECKS:
         return _pattern_refusals(check.get("pattern"), "pattern")
     if kind == "count":
         equals = check.get("equals")
