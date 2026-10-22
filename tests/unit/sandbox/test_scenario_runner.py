@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+from datetime import UTC, datetime
 from pathlib import Path
 
 import httpx
@@ -18,6 +19,7 @@ from squadops.tools.models import ContainerResult, ContainerSpec
 from tests.unit.sandbox.test_container_backend import FakeContainer
 
 EVALUATOR = "evaluator:pinned"
+_T0 = datetime(2026, 10, 22, 5, 0, tzinfo=UTC)
 TREE = {"app.py": "print('app')\n", "assets/logo.png": b"\x89PNG\x00", "run.sh": "#!/bin/sh\n"}
 DECLARED = DeclaredStart(
     start=("python3", "app.py"),
@@ -894,3 +896,181 @@ async def test_a_seeded_instance_that_cant_start_is_its_own_reading_never_the_sc
     seeded = result.quality_seeded
     assert (seeded.status, seeded.reason) == (QualityStatus.NOT_MEASURED, NotMeasured.START_FAILED)
     assert result.started and [r.result for r in result.runs] == ["passed"]
+
+
+#: SIP-0113 §10p (#2564 step 3): a scenario that creates a run over HTTP, then joins it on the page.
+BROWSING = {
+    "scenario_id": "join-from-the-page",
+    "steps": [
+        {"action": "http", "method": "POST", "path": "/runs", "json": {"title": "Dawn 5k"},
+         "save": {"run_id": "id"}, "expect_status": 201},
+        {"action": "visit", "path": "/runs/{run_id}"},
+        {"action": "click", "target": {"role": "button", "names": ["Join"]}},
+    ],
+    "checks": [{"check": "text", "step": 3, "pattern": "1\\s*/\\s*5"}],
+}  # fmt: skip
+_BROWSED = {
+    "browse": {
+        "browser": "HeadlessChrome/155.0",
+        "steps": [
+            {"step": 2, "outcome": "done", "seconds": 1.02},
+            {"step": 3, "outcome": "done", "seconds": 0.66},
+        ],
+        "checks": [{"index": 0, "holds": True, "seen": None}],
+        "evidence": None,
+        "timings": {"launch_s": 0.12, "total_s": 2.3},
+    }
+}
+
+
+def _runs_app():
+    """The app by name on the app network: Vite's preview on 4173 refuses the name (an answer
+    still), and the backend creates a run."""
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.port == 4173:
+            return httpx.Response(403, text="Blocked request. This host is not allowed.")
+        if request.url.path in ("/", "/healthz"):
+            return httpx.Response(200, text="ok")
+        if request.method == "POST" and request.url.path.endswith("/runs"):
+            return httpx.Response(201, json={"id": "r1", "title": "Dawn 5k"})
+        return httpx.Response(404, json={"detail": "not here"})
+
+    return lambda: httpx.AsyncClient(transport=httpx.MockTransport(handler))
+
+
+class _Browsing(_OnTheNetwork):
+    """On the app network; the evaluator answers each segment of browser steps as scripted, and
+    measures nothing else."""
+
+    def __init__(self, answer: ContainerResult) -> None:
+        super().__init__()
+        self.browse_answer, self.browsed = answer, []
+
+    async def run(self, spec: ContainerSpec) -> ContainerResult:
+        if spec.image == EVALUATOR and spec.stdin and b'"browse"' in spec.stdin:
+            self.browsed.append(spec)
+            return self.browse_answer
+        return await super().run(spec)
+
+
+class _BrowsingOnLoopback(_Browsing):
+    """The same, with no app network: the app publishes to loopback, as on a host run."""
+
+    async def resolve_host_port(self, container_id: str, container_port: int) -> int:
+        return 49999
+
+
+async def _browse(tmp_path, container, *, app_network="squadops-sandbox-apps", **kw):
+    return await _evaluate(
+        _runner(tmp_path, container, app=_runs_app(), app_network=app_network),
+        stack="fullstack_fastapi_react",
+        declared=None,
+        scenarios=[BROWSING],
+        **kw,
+    )
+
+
+async def test_a_segment_runs_in_the_evaluator_on_the_app_network_and_its_runner_is_recorded(
+    tmp_path,
+):
+    """§10p rulings 1, 5 and 7. Bugs caught: the segment sent unrendered or with the scenario's
+    other checks, given the app's secrets, a mount or a route out, or no deadline of its own; the
+    browser's answer dropped between the evaluator and the run; or the runner unrecorded, so a
+    change of browser can't be read as a methodology break."""
+    container = _Browsing(ContainerResult("", 0, json.dumps(_BROWSED) + "\n", ""))
+
+    result = await _browse(tmp_path, container)
+
+    [spec] = container.browsed
+    start = next(s for s in container.specs if s.image != EVALUATOR and s.name)
+    sent = json.loads(spec.stdin)["browse"]
+    assert sent == {
+        "base_url": f"http://{start.name}:4173",
+        "first_step": 2,
+        "steps": [BROWSING["steps"][1] | {"path": "/runs/r1"}, BROWSING["steps"][2]],
+        "checks": [{"index": 0, "check": BROWSING["checks"][0]}],
+        "deadline_s": 90.0,
+    }
+    assert (spec.network, spec.volumes, spec.env) == ("squadops-sandbox-apps", (), ())
+    assert spec.cap_drop_all and spec.no_new_privileges and spec.timeout_seconds == 120.0
+    [run] = result.runs
+    assert (run.result, run.steps_taken) == ("passed", 3)
+    assert run.runner == f"{EVALUATOR} HeadlessChrome/155.0"
+    assert len(run.step_seconds) == 3 and run.step_seconds[1:] == (1.02, 0.66)
+
+
+@pytest.mark.parametrize(
+    ("answer", "network"),
+    [
+        (ContainerResult("", 1, "Moonrise-Relay was typed\n", "TypeError: Moonrise-Relay\n"), "apps"),
+        (ContainerResult("", 0, "not json\n", ""), "apps"),
+        (ContainerResult("", 0, json.dumps(_BROWSED) + "\n", ""), None),
+    ],
+    ids=["the-browser-exited", "an-answer-it-cant-read", "no-app-network"],
+)  # fmt: skip
+async def test_a_segment_no_browser_answered_is_browser_unavailable_and_quotes_nothing(
+    tmp_path, answer, network
+):
+    """§10p ruling 1. Bugs caught: a browser that crashed read as the product failing; or the
+    container's output, which carries the segment's held-out values, copied into the run's
+    detail as ``_quality`` does for its own failures."""
+    container = (_Browsing if network else _BrowsingOnLoopback)(answer)
+
+    result = await _browse(tmp_path, container, app_network=network)
+
+    [run] = result.runs
+    assert (run.result, run.blocked_reason) == ("blocked_unverified", "browser_unavailable")
+    assert "Moonrise" not in (run.detail or "")
+    assert len(container.browsed) == (0 if network is None else 1)
+
+
+async def test_a_browser_scenario_travels_from_the_suite_to_the_record_through_the_real_runner(
+    tmp_path, monkeypatch
+):
+    """The wiring test §10p's build step 3 names, entered at ``evaluate_cycle``, the call a
+    campaign cycle's end makes, with the real runner over a fake container. Bugs caught: a browser
+    scenario refused by the page-surface check on a route the delivery declares in its own syntax
+    (``:id`` against the scenario's ``{id}``); the runner's version or the steps' seconds lost
+    between the run and the stored outcome; or the segment never reaching the evaluator."""
+    from adapters.scenarios.memory_scenario_store import MemoryScenarioStore
+    from squadops.scenarios import evaluate
+    from squadops.scenarios.evaluation import ScenarioResult
+    from squadops.scenarios.models import parse_suite
+    from squadops.scenarios.suites import approve_suite, draft_suite
+    from tests.unit.scenarios.test_quality_evaluation import _MANIFEST, _Cycle, _Vault
+
+    async def tree_refs(vault, cycle):
+        return {"backend/main.py": "tree"}
+
+    monkeypatch.setattr(evaluate, "evaluated_tree_refs", tree_refs)
+    scenario = {
+        **BROWSING,
+        "goal": "A runner joins a run from its page.",
+        "surfaces": [
+            {"kind": "http_endpoint", "method": "POST", "path": "/runs"},
+            {"kind": "page", "path": "/runs/{id}"},
+        ],
+    }
+    store, suite = MemoryScenarioStore(), parse_suite({"name": "pages", "scenarios": [scenario]})
+    await draft_suite(store, suite, actor="supervisor", at=_T0)
+    await approve_suite(store, suite.digest, actor="owner", at=_T0)
+    container = _Browsing(ContainerResult("", 0, json.dumps(_BROWSED) + "\n", ""))
+
+    record = await evaluate.evaluate_cycle(
+        store=store,
+        runner=_runner(tmp_path, container, app=_runs_app(), app_network="squadops-sandbox-apps"),
+        vault=_Vault(_MANIFEST),
+        cycle=_Cycle(),
+        suite_digest=suite.digest,
+        campaign_id=None,
+        previous_accepted_tree_identity=None,
+        evaluated_at=_T0,
+    )
+
+    [outcome] = record.outcomes
+    assert outcome.result is ScenarioResult.PASSED
+    assert outcome.runner == f"{EVALUATOR} HeadlessChrome/155.0"
+    assert len(outcome.step_seconds) == 3
+    assert len(container.browsed) == 1
+    assert await store.get_evaluation(record.evaluation_id) == record

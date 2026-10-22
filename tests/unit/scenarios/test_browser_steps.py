@@ -53,7 +53,12 @@ class _Browser:
         if self.raises:
             raise self.raises
         steps = tuple(
-            BrowseStep(n, self.outcomes.get(n, "done"))
+            BrowseStep(
+                n,
+                self.outcomes.get(n, "done"),
+                None if n not in self.outcomes else "Moonrise-Relay was on the page",
+                0.25,
+            )
             for n in range(request.first_step, request.first_step + len(request.steps))
             if self.outcomes.get(n) != "missing"
         )
@@ -61,7 +66,7 @@ class _Browser:
             BrowseCheck(i, self.holds.get(i, True), None if self.holds.get(i, True) else "seen 0")
             for i, _ in request.checks
         )
-        return BrowseAnswer(steps, checks)
+        return BrowseAnswer(steps, checks, browser="ev:1 Chrome/155")
 
 
 def _joining(*checks) -> dict:
@@ -276,3 +281,16 @@ def test_a_well_formed_mixed_scenario_and_an_http_only_one_are_refused_nothing()
 
     assert vocabulary_refusals(mixed["steps"], mixed["checks"]) == []
     assert vocabulary_refusals(http_only, [{"check": "status", "equals": 201}]) == []
+
+
+async def test_the_run_records_its_runner_and_each_steps_seconds_and_never_the_browsers_text():
+    """§10p rulings 1 and 7. Bugs caught: the runner unrecorded, so a change of browser can't be
+    read as a methodology break; a step's seconds lost; or the browser's own text, which can quote
+    the page and so the scenario's held-out values, copied into the run's detail."""
+    passed = await run_scenario(_joining(), _app, _Browser())
+    failed = await run_scenario(_joining(), _app, _Browser(outcomes={4: "action_failed"}))
+
+    assert (passed.result, passed.runner) == ("passed", "ev:1 Chrome/155")
+    assert len(passed.step_seconds) == 5 and passed.step_seconds[1:4] == (0.25, 0.25, 0.25)
+    assert (failed.first_failing_step, failed.detail) == (4, "step 4 action_failed")
+    assert len(failed.step_seconds) == 4
