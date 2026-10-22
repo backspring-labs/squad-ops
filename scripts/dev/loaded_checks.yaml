@@ -1557,3 +1557,15 @@ checks:
       erroring = {"validation_result": {"checks": [row]}, "app_tracebacks": [{"check": "tests_pass", "traceback": "x"}]}
       print(retest_reduction_or_refusal(erroring, {"validation_result": {"checks": [row]}}, frozenset({"tests_pass"}))[1] or "kept")
     expect: kept
+  - id: "2378-query"
+    what: an endpoint declares its query inputs, and the FastAPI stub seeds each as the handler's argument, which the signature check then pins (#2378, SIP-0103's 2026-10-22 amendment)
+    container: squadops-runtime-api
+    code: |
+      import pathlib, yaml
+      from squadops.cycles.fill_slot_integrity import declared_route_signatures
+      from squadops.stacks.scaffold import InterfaceManifest, expand
+      raw = yaml.safe_load(pathlib.Path("examples/03_group_run/interface_manifest.yaml").read_text())
+      raw["api"]["endpoints"].append({"method": "DELETE", "path": "/runs/{run_id}/participants", "response": "RunEvent", "query": {"name": "string"}})
+      seed = next(f["content"] for f in expand(InterfaceManifest.from_dict(raw)) if f["name"].endswith("routes.py"))
+      print([s["params"] for s in declared_route_signatures(seed) if s["route"] == "DELETE /runs/{run_id}/participants"])
+    expect: "[['run_id', 'name']]"

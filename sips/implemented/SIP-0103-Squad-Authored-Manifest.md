@@ -559,3 +559,44 @@ behind a real app, returns the declared message for a raise that passes other wo
 
 **Who ruled it.** The owner, 2026-10-14, choosing (a) of #2205's gap 3: "the error contract carries the message, which
 every later increment must then keep word for word". The rest is the implementer's, in PR #2275.
+
+## Post-implementation amendment (2026-10-22): an endpoint's query inputs are declared on it (#2378)
+
+**What changed.** An endpoint may declare the inputs it reads from its query string:
+`query: { name: string }`, or `{ page: { type: integer, required: false } }` for an optional one.
+- **The FastAPI stub seeds each one as the handler's argument:** `name: str = Query(...)`, or
+  `page: int | None = Query(None)`. The fill-slot signature check (`declared_route_signatures`) then pins it with the
+  path's parameters: a handler that drops it diverges.
+- **The Next.js route stub names it** in its contract comments (`// query: name=<string>`, #2522's place).
+- **QA is shown it** in the contract's endpoint list (`DELETE /runs/{run_id}/participants?name=<string>`).
+- **The authoring gate refuses a query no handler could take:**
+  - a name that isn't an identifier;
+  - a name that is also a path parameter or a request body field;
+  - a type other than string, integer, number or boolean.
+- **It is in the canonical projection only when declared,** so every manifest written before it keeps its hash, and each
+  stack's generated module is byte for byte what it was.
+- **It's an endpoint key** (`MANIFEST_ELEMENT_KEYS`, derived from `Endpoint`), so a change request may add one.
+
+**What it leaves alone.** No probe is derived for an endpoint because it declares a query. The derived probes cover a
+create's `POST` and its child actions, and a `DELETE` gets none today, with or without a query. #2390's smaller fix (2.3.1)
+stays: a parameter read from neither the path nor the body is still set aside when undeclared.
+
+**Evidence.** #2378's own cycle, `cyc_281f3978c9bd`. Its stored manifest (`art_7e46bc0b027f`) declares
+`DELETE /runs/{run_id}/participants`, "Leave a run by participant name (query param name)". Replayed through the scaffold
+and the signature check on this branch:
+- **As authored, the query in prose,** the scaffold seeds `(run_id)`. All three handlers pass:
+  - the developer's `name: str = ""` (`art_0d22498894d0`);
+  - the developer's `Query("")` (`art_be78c5f12d7a`);
+  - the accepted repair, which reads the name through a context variable (`art_cc3aaf15ae8a`).
+
+  #2390 stopped the refusal, but it can't tell the workaround from the handler.
+- **With `query: { name: string }` declared,** the scaffold seeds `(run_id, name)`. Both of the developer's handlers pass,
+  and the accepted repair is refused: "scaffold-owned parameters ['run_id', 'name'] emitted as ['run_id']".
+
+**How often.** Of the 404 manifests in the vault since 2026-09-15, one put an input in the query string. Others chose
+against it in their decisions. So the change is the contract stating what an application reads, which is design
+completeness rather than a rate a measurement could show. It was placed with 2.4's output-quality work (the plan's
+D8), and the replay above is its reading.
+
+**Who ruled it.** The owner placed #2378's proper fix in 2.4 (D8, ruled 2026-10-17), as the issue's option 1. The
+supervisor builds it under the owner's grant of 2026-10-19.
