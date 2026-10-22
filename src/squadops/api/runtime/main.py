@@ -54,6 +54,7 @@ from squadops.api.routes.memory import (
 )
 from squadops.api.routes.outcomes import router as outcomes_router
 from squadops.api.routes.platform_health import router as platform_health_router
+from squadops.api.routes.scenarios import evaluations_router as scenario_evaluations_router
 from squadops.api.routes.scenarios import router as scenarios_router
 from squadops.api.runtime.startup_reaps import (
     detect_stranded_cycles,
@@ -162,6 +163,8 @@ def _include_routers(app: FastAPI) -> None:
     app.include_router(memory_snapshots_router)  # Appendix A §3.7 (#2179): re-binding a unit
     app.include_router(outcomes_router)  # SIP-0113 §4.3 (#2417): the intervention ledger
     app.include_router(scenarios_router)  # SIP-0113 §4.1 (#2413): held-out scenario suites
+    # SIP-0113 §10p ruling 8 (#2564): a page scenario's evidence, the owner's alone
+    app.include_router(scenario_evaluations_router)
 
 
 #: Connection and process objects live on ``app.state`` (FastAPI's per-app holder), so an

@@ -119,3 +119,57 @@ def test_a_malformed_suite_file_is_refused_before_anything_is_sent(mock_get_clie
 
     assert result.exit_code == 2
     mock_get_client.assert_not_called()
+
+
+_EVIDENCE = [
+    {
+        "scenario_id": "join-from-the-page",
+        "step": 3,
+        "png_b64": "iVBORw0KGgo=",
+        "role": "button",
+        "nodes": [{"name": "Join", "visible": True, "disabled": True}],
+        "errors": ["driver: Node is detached"],
+        "failed_requests": [],
+        "withheld": [],
+        "sha256": "e" * 64,
+        "size": 120,
+    }
+]
+
+
+@pytest.mark.parametrize("inside", ["a-folder-in-a-checkout", "a-checkout-itself"])
+@patch("squadops.cli.commands.scenarios._get_client")
+def test_evidence_is_never_written_inside_a_git_working_tree(mock_get_client, tmp_path, inside):
+    """SIP-0113 §10p ruling 8. Bug caught: a screenshot of a held-out step written into a
+    checkout's ``var/``, which reaches the line's public Release with its records; or an ``--out``
+    that is a checkout's own root let through, because only its parents were read."""
+    (tmp_path / "repo" / ".git").mkdir(parents=True)
+    out = (
+        tmp_path / "repo" / "var" / "evidence"
+        if inside == "a-folder-in-a-checkout"
+        else tmp_path / "repo"
+    )
+
+    result = runner.invoke(app, ["scenarios", "evidence", "evl_x", "--out", str(out)])
+
+    assert result.exit_code == 2
+    assert "inside the Git working tree" in " ".join(result.output.split())
+    mock_get_client.assert_not_called()
+
+
+@patch("squadops.cli.commands.scenarios._get_client")
+def test_evidence_is_written_per_scenario_outside_every_repository(mock_get_client, tmp_path):
+    """Bug caught: the screenshot written as its base64 text, or the details lost beside it."""
+    client = MagicMock()
+    client.get.return_value = _EVIDENCE
+    mock_get_client.return_value = client
+    out = tmp_path / "evidence"
+
+    result = runner.invoke(app, ["scenarios", "evidence", "evl_x", "--out", str(out)])
+
+    assert result.exit_code == 0, result.output
+    assert client.get.call_args.args[0] == "/api/v1/scenario-evaluations/evl_x/evidence"
+    shot = out / "join-from-the-page" / "step-3.png"
+    assert shot.read_bytes().startswith(b"\x89PNG")
+    details = (out / "join-from-the-page" / "step-3.json").read_text()
+    assert '"errors"' in details and "png_b64" not in details

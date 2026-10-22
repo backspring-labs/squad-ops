@@ -137,3 +137,28 @@ def test_the_compose_guard_reads_every_agent_and_the_runtime_apis_credential():
     runtime = services["runtime-api"]
     assert "db_password" in _secrets(runtime)
     assert "postgresql://" in _environment(runtime)["SQUADOPS__DB__URL"]
+
+
+#: SIP-0113 §10p ruling 8: the one reader of a page scenario's evidence, under scenarios:approve.
+_EVIDENCE_READERS = {("src/squadops/api/routes/scenarios.py", "get_evidence")}
+
+
+def test_page_evidence_is_read_by_the_owners_route_alone():
+    """§10p ruling 8. Bug caught: a package, a digest, a proposal or a squad task reading a page
+    scenario's evidence, whose screenshot shows the held-out steps, past the owner's route."""
+    readers = set()
+    for base in ("src/squadops", "adapters"):
+        for path in (ROOT / base).rglob("*.py"):
+            tree = ast.parse(path.read_text(encoding="utf-8"))
+            for fn in ast.walk(tree):
+                if not isinstance(fn, ast.FunctionDef | ast.AsyncFunctionDef):
+                    continue
+                for node in ast.walk(fn):
+                    if (
+                        isinstance(node, ast.Call)
+                        and isinstance(node.func, ast.Attribute)
+                        and node.func.attr == "evidence_for"
+                    ):
+                        readers.add((path.relative_to(ROOT).as_posix(), fn.name))
+    # A method that defines evidence_for isn't a call of it; nested functions report twice at most.
+    assert readers == _EVIDENCE_READERS

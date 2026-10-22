@@ -15,7 +15,7 @@ from starlette.middleware.base import BaseHTTPMiddleware
 from adapters.auth.keycloak.authz_adapter import KeycloakAuthzAdapter
 from adapters.scenarios.memory_scenario_store import MemoryScenarioStore
 from squadops.api.error_handlers import register_domain_error_handlers
-from squadops.api.routes.scenarios import router
+from squadops.api.routes.scenarios import evaluations_router, router
 from squadops.auth.models import Identity, IdentityType, Role, scopes_for_roles
 from tests.unit.scenarios.suite_fixtures import HELD_OUT, SUITE, suite_doc
 
@@ -46,6 +46,7 @@ class _World:
 
         app.add_middleware(InjectIdentity)
         app.include_router(router)
+        app.include_router(evaluations_router)
         register_domain_error_handlers(app)
         app.state.scenario_store = self.store
         # Without an authorization backend, require_scopes is a no-op: the scopes go unread.
@@ -64,6 +65,7 @@ def _routes(digest: str) -> list[tuple[str, str]]:
         ("GET", f"/api/v1/scenario-suites/{digest}/content"),
         ("POST", "/api/v1/scenario-suites"),
         ("POST", f"/api/v1/scenario-suites/{digest}/approval"),
+        ("GET", "/api/v1/scenario-evaluations/evl_any000000/evidence"),
     ]
 
 
@@ -145,3 +147,44 @@ def test_a_suite_the_store_cannot_take_is_refused_with_its_code(body, status, co
     assert (resp.status_code, resp.json()["detail"]["error"]["code"]) == (status, code)
     assert HELD_OUT not in resp.text
     assert client.get("/api/v1/scenario-suites").json() == []
+
+
+def test_only_the_owner_reads_an_evaluations_page_evidence():
+    """SIP-0113 §10p ruling 8. Bug caught: a screenshot or a logged error of a held-out step read
+    by the supervisor's seat, which drafts the next suite, or by triage; or an evaluation that
+    doesn't exist answered as one with no evidence."""
+    import asyncio
+    from datetime import UTC, datetime
+
+    from squadops.scenarios.evaluation import EvaluationRecord
+    from squadops.scenarios.evidence import ScenarioEvidence
+
+    w = _World()
+    digest = w.as_(Role.ADMIN).post("/api/v1/scenario-suites", json=SUITE).json()["digest"]
+    record = EvaluationRecord(
+        evaluation_id="evl_page00000001", project_id="group_run", campaign_id=None,
+        cycle_id="cyc_page00000001", evaluated_tree_identity="a" * 64,
+        previous_accepted_tree_identity=None, suite_digest=digest, outcomes=(),
+        evaluated_at=datetime(2026, 10, 22, tzinfo=UTC),
+    )  # fmt: skip
+    item = ScenarioEvidence("join-from-the-page", 3, b"\x89PNG", "button", (),
+                            (f"driver: {HELD_OUT}",), (), ())  # fmt: skip
+    asyncio.run(w.store.save_evaluation(record))
+    asyncio.run(w.store.save_evidence(record.evaluation_id, [item]))
+    path = f"/api/v1/scenario-evaluations/{record.evaluation_id}/evidence"
+
+    owner = w.as_(Role.ADMIN).get(path)
+    refused = {
+        role: w.as_(role).get(path) for role in (Role.CAMPAIGN_SUPERVISOR, Role.CAMPAIGN_TRIAGE)
+    }
+    missing = w.as_(Role.ADMIN).get("/api/v1/scenario-evaluations/evl_none00000000/evidence")
+
+    [shown] = owner.json()
+    assert owner.status_code == 200 and HELD_OUT in shown["errors"][0]
+    assert (shown["sha256"], shown["png_b64"]) == (item.sha256, "iVBORw==")
+    assert {r: a.status_code for r, a in refused.items()} == dict.fromkeys(refused, 403)
+    assert not any(HELD_OUT in a.text for a in refused.values())
+    assert (missing.status_code, missing.json()["detail"]["error"]["code"]) == (
+        404,
+        "EVALUATION_NOT_FOUND",
+    )
