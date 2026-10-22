@@ -78,8 +78,8 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
-#: The action for a repair whose progress is kept (#1522): its retest cleared some of the round's
-#: failures and added none. The executor stores the kept set as accepted state, re-derives the
+#: The action for a repair whose progress is kept (#1522): its retest made progress on the round's
+#: failures and broke nothing (``retest_reduction``, #2306). The executor stores the kept set as accepted state, re-derives the
 #: task's workspace from it, and routes the retest's failure as the next round's: the retest
 #: already ran the task on the kept tree, so nothing is re-dispatched.
 KEEP_PROGRESS = "keep_progress"
@@ -326,8 +326,8 @@ class _RetestOutcome:
     corrected_outputs: dict[str, Any]
     rows: list[dict[str, Any]]
     evidence: list[dict[str, Any]] | None
-    #: #1522: set when the retest did not pass but cleared some of the round's failures
-    #: and added none. The repair is kept, whole, rather than discarded, and
+    #: #1522: set when the retest did not pass but made progress and broke nothing
+    #: (``retest_reduction``, #2306). The repair is kept, whole, rather than discarded, and
     #: ``failed_retest`` (the retest's own result) is the next round's failure.
     reduction: RetestReduction | None = None
     failed_retest: TaskResult | None = None
@@ -389,7 +389,7 @@ class PatchAcceptance:
         compliance_counter: dict[str, int] | None = None,
     ) -> str:
         """Behaviorally verify a patch (#389); return "accept_patch", "continue", or
-        ``KEEP_PROGRESS`` for a repair whose retest cleared some failures and added none (#1522).
+        ``KEEP_PROGRESS`` for a repair whose retest made progress and broke nothing (#1522, #2306).
 
         Verification itself is the pure ``patch_verification`` module; this
         method only assembles its inputs from the failed task and renders the
@@ -931,7 +931,7 @@ class PatchAcceptance:
                 retest_reason or "-",
             )
             if not retest_passed:
-                # #1522: a retest that cleared some of the round's failures and added none is
+                # #1522: a retest that made progress and broke nothing (#2306's comparison) is
                 # progress the next round must build on, not a repair to throw away.
                 reduction = (
                     _retest_reduction_of(envelope, result, retest_result, verified_criteria)
@@ -1182,7 +1182,7 @@ class PatchAcceptance:
         *,
         correction_attempts: int,
     ) -> str:
-        """#1522: keep a repair whose retest cleared some of the round's failures and added none.
+        """#1522: keep a repair whose retest made progress on its round and broke nothing (#2306).
 
         The kept set is the candidate that was verified, proven as an accepted patch is
         (SIP-0107 §20), less the failed attempt's evidence: the re-dispatch writes its own, and a
