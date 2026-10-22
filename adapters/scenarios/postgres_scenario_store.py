@@ -8,10 +8,14 @@ refused rather than served.
 
 from __future__ import annotations
 
+from collections.abc import Sequence
+from datetime import datetime
+
 import asyncpg
 
 from squadops.ports.scenarios import ScenarioStorePort
 from squadops.scenarios.evaluation import EvaluationRecord, QualityRemeasure, ScenarioOutcome
+from squadops.scenarios.evidence import ScenarioEvidence
 from squadops.scenarios.models import (
     CampaignSuitePin,
     SuiteRecord,
@@ -154,6 +158,41 @@ class PostgresScenarioStore(ScenarioStorePort):
             )
         return [_row_to_remeasure(row) for row in rows]
 
+    async def save_evidence(self, evaluation_id: str, evidence: Sequence[ScenarioEvidence]) -> None:
+        # §10p ruling 8: once per scenario, so a retry of the same evaluation keeps the first.
+        async with self._pool.acquire() as conn:
+            for item in evidence:
+                await conn.execute(
+                    "INSERT INTO scenario_evidence (evaluation_id, scenario_id, step, screenshot, "
+                    "details, sha256, size) VALUES ($1,$2,$3,$4,$5,$6,$7) "
+                    "ON CONFLICT (evaluation_id, scenario_id) DO NOTHING",
+                    evaluation_id,
+                    item.scenario_id,
+                    item.step,
+                    item.screenshot,
+                    item.details(),
+                    item.sha256,
+                    item.size,
+                )
+
+    async def evidence_for(self, evaluation_id: str) -> list[ScenarioEvidence]:
+        async with self._pool.acquire() as conn:
+            rows = await conn.fetch(
+                "SELECT scenario_id, step, screenshot, details FROM scenario_evidence "
+                "WHERE evaluation_id = $1 ORDER BY scenario_id",
+                evaluation_id,
+            )
+        return [_row_to_evidence(row) for row in rows]
+
+    async def purge_evidence(self, before: datetime) -> int:
+        async with self._pool.acquire() as conn:
+            status = await conn.execute(
+                "DELETE FROM scenario_evidence e USING scenario_evaluations v "
+                "WHERE e.evaluation_id = v.evaluation_id AND v.evaluated_at < $1",
+                before,
+            )
+        return int(status.split()[-1])
+
 
 def _row_to_record(row: asyncpg.Record) -> SuiteRecord:
     suite = parse_suite(row["content"])
@@ -189,3 +228,17 @@ def _row_to_remeasure(row: asyncpg.Record) -> QualityRemeasure:
     seeded = row["quality_seeded"]
     values["quality_seeded"] = QualityReading.from_dict(seeded) if seeded else None
     return QualityRemeasure(**values)
+
+
+def _row_to_evidence(row: asyncpg.Record) -> ScenarioEvidence:
+    details = row["details"]
+    return ScenarioEvidence(
+        scenario_id=row["scenario_id"],
+        step=row["step"],
+        screenshot=bytes(row["screenshot"]) if row["screenshot"] is not None else None,
+        role=details.get("role"),
+        nodes=tuple(details.get("nodes") or ()),
+        errors=tuple(details.get("errors") or ()),
+        failed_requests=tuple(details.get("failed_requests") or ()),
+        withheld=tuple(details.get("withheld") or ()),
+    )

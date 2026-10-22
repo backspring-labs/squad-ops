@@ -25,7 +25,7 @@ from squadops.campaigns.models import ControlLogEntry
 from squadops.outcomes.contribution import NotComparable, contribution
 from squadops.outcomes.ledger import LedgerEntry, ledger
 from squadops.outcomes.quality_deltas import Against, QualityDeltas, quality_deltas
-from squadops.scenarios.evaluation import EvaluationRecord
+from squadops.scenarios.evaluation import BlockedReason, EvaluationRecord
 
 if TYPE_CHECKING:
     from squadops.ports.outcomes import InterventionLedgerPort
@@ -44,7 +44,9 @@ async def campaign_outcomes(
         held = [
             r
             for r in await store.evaluations_for_cycle(cycle_id)
-            if r.suite_digest == pin.suite_digest
+            # Its own campaign's: a reading of the same suite written with no campaign (§10p
+            # ruling 13's tool) never stands in for the campaign's record.
+            if r.campaign_id == campaign_id and r.suite_digest == pin.suite_digest
         ]
         if held:
             latest[cycle_id] = max(held, key=lambda r: r.evaluated_at)
@@ -85,6 +87,18 @@ def _contribution(record: EvaluationRecord, previous: EvaluationRecord | None) -
     }
 
 
+def _page_controls(record: EvaluationRecord) -> dict:
+    """§10p ruling 4: of the scenarios a browser read (an outcome naming its runner), how many
+    found no control by any of their names (``control_absent``). Beside its results so a page
+    scenario whose names match no delivery can't hide a job. Only when a browser read one, so a
+    package with no page scenario is the package it was."""
+    read = [o for o in record.outcomes if o.runner]
+    if not read:
+        return {}
+    absent = [o for o in read if o.blocked_reason is BlockedReason.CONTROL_ABSENT]
+    return {"page_controls": {"read_in_a_browser": len(read), "control_absent": len(absent)}}
+
+
 def _cycle_section(
     cycle_id: str,
     record: EvaluationRecord | None,
@@ -111,6 +125,7 @@ def _cycle_section(
         "quality": record.quality.as_dict() if record.quality else None,
         "lint": record.lint.as_dict() if record.lint else None,
         "contribution": _contribution(record, previous),
+        **_page_controls(record),
     }
     if previous is not None:
         section["vs_previous"] = _deltas(quality_deltas(record, previous, against=Against.PREVIOUS))

@@ -270,7 +270,12 @@ class TreeEvaluation:
             started=d["started"],
             start_detail=d.get("start_detail"),
             startup_diagnostics=tuple(d.get("startup_diagnostics", ())),
-            runs=tuple(ScenarioRun(**r) for r in d.get("runs", ())),
+            # Strict: a key this side doesn't know fails loudly (§10p ruling 7: both sides deploy
+            # together). Only the steps' seconds arrive as a list.
+            runs=tuple(
+                ScenarioRun(**{**r, "step_seconds": tuple(r.get("step_seconds") or ())})
+                for r in d.get("runs", ())
+            ),
             duration_seconds=d.get("duration_seconds", 0.0),
             configuration_revision=d.get("configuration_revision"),
             quality=QualityReading.from_dict(d["quality"]) if d.get("quality") else None,

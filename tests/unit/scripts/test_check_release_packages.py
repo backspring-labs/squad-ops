@@ -365,3 +365,37 @@ def test_the_cut_is_unfinished_until_its_housekeeping_is_recorded_clean(
 def test_housekeeping_is_not_asked_of_releases_before_2_1(tmp_path):
     _write_package(tmp_path, "v2.0.1", [_GOOD_CYCLE], screenshots=["a.png"], showcase=_SHOWCASE)
     assert guard.package_problems("v2.0.1", tmp_path) == []
+
+
+def _package_with(releases: Path, tag: str, housekeeping: dict) -> list[str]:
+    """A package that satisfies rules 1–3, so only its housekeeping record can fail it."""
+    _write_package(
+        releases, tag, [_GOOD_CYCLE], screenshots=["delivered-app-run-list.png"], showcase=_SHOWCASE
+    )
+    (releases / tag / "housekeeping.yaml").write_text(
+        yaml.safe_dump(housekeeping), encoding="utf-8"
+    )
+    return guard.package_problems(tag, releases)
+
+
+@pytest.mark.parametrize(
+    ("purged", "failed"),
+    [(0, False), (12, False), (None, True), (-1, True), ("3", True), (True, True)],
+    ids=["none-to-purge", "a-count", "not-recorded", "negative", "a-string", "a-boolean"],
+)
+def test_from_2_4_the_cut_records_its_page_evidence_purge(tmp_path, purged, failed):
+    """SIP-0113 §10p ruling 8 (#2564): the line's page evidence is held out and kept for the line,
+    and its cut purges it. Bug caught: a cut that never purged, so a screenshot of a held-out step
+    outlives the line it was kept for, with nothing saying so."""
+    record = {"tag": "v2.4.0", "problems": []}
+    if purged is not None:
+        record["scenario_evidence_purged"] = purged
+
+    problems = _package_with(tmp_path, "v2.4.0", record)
+
+    assert bool(problems) == failed
+    assert not problems or "purge-evidence" in problems[0]
+
+
+def test_the_purge_is_not_asked_of_a_release_before_2_4(tmp_path):
+    assert _package_with(tmp_path, "v2.3.1", {"tag": "v2.3.1", "problems": []}) == []

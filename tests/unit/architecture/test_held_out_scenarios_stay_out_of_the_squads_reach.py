@@ -26,9 +26,11 @@ pytestmark = [pytest.mark.domain_contracts]
 ROOT = Path(__file__).resolve().parents[3]
 SQUAD_SIDE = ("agents", "capabilities", "prompts", "execution")
 HELD_OUT = ("squadops.scenarios", "squadops.ports.scenarios", "adapters.scenarios")
-#: The held-out tables (``infra/migrations/1900_scenario_suites.sql``): a suite's content, steps
-#: included, and each campaign's pin.
-HELD_OUT_TABLES = ("scenario_suites", "campaign_scenario_suites")
+#: The held-out tables: a suite's content, steps included, and each campaign's pin
+#: (``1900_scenario_suites.sql``); and a page scenario's evidence, whose screenshot shows a step's
+#: values (``1970_scenario_evidence.sql``, SIP-0113 §10p ruling 9).
+HELD_OUT_TABLES = ("scenario_suites", "campaign_scenario_suites", "scenario_evidence")
+_HELD_OUT_MIGRATIONS = ("1900_scenario_suites.sql", "1970_scenario_evidence.sql")
 
 
 def _imports(path: Path) -> set[str]:
@@ -77,8 +79,13 @@ def test_no_squad_side_file_names_a_held_out_table():
 def test_the_held_out_tables_are_the_migrations_own():
     """Bug caught: a table renamed in the migration, leaving the guard above matching a name no
     longer used, and passing."""
-    migration = (ROOT / "infra" / "migrations" / "1900_scenario_suites.sql").read_text()
-    created = set(re.findall(r"CREATE TABLE IF NOT EXISTS (\w+)", migration))
+    created = {
+        table
+        for name in _HELD_OUT_MIGRATIONS
+        for table in re.findall(
+            r"CREATE TABLE IF NOT EXISTS (\w+)", (ROOT / "infra" / "migrations" / name).read_text()
+        )
+    }
     assert created == set(HELD_OUT_TABLES)
 
 
@@ -130,3 +137,28 @@ def test_the_compose_guard_reads_every_agent_and_the_runtime_apis_credential():
     runtime = services["runtime-api"]
     assert "db_password" in _secrets(runtime)
     assert "postgresql://" in _environment(runtime)["SQUADOPS__DB__URL"]
+
+
+#: SIP-0113 §10p ruling 8: the one reader of a page scenario's evidence, under scenarios:approve.
+_EVIDENCE_READERS = {("src/squadops/api/routes/scenarios.py", "get_evidence")}
+
+
+def test_page_evidence_is_read_by_the_owners_route_alone():
+    """§10p ruling 8. Bug caught: a package, a digest, a proposal or a squad task reading a page
+    scenario's evidence, whose screenshot shows the held-out steps, past the owner's route."""
+    readers = set()
+    for base in ("src/squadops", "adapters"):
+        for path in (ROOT / base).rglob("*.py"):
+            tree = ast.parse(path.read_text(encoding="utf-8"))
+            for fn in ast.walk(tree):
+                if not isinstance(fn, ast.FunctionDef | ast.AsyncFunctionDef):
+                    continue
+                for node in ast.walk(fn):
+                    if (
+                        isinstance(node, ast.Call)
+                        and isinstance(node.func, ast.Attribute)
+                        and node.func.attr == "evidence_for"
+                    ):
+                        readers.add((path.relative_to(ROOT).as_posix(), fn.name))
+    # A method that defines evidence_for isn't a call of it; nested functions report twice at most.
+    assert readers == _EVIDENCE_READERS

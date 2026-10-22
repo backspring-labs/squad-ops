@@ -2,8 +2,12 @@
 
 from __future__ import annotations
 
+from collections.abc import Sequence
+from datetime import datetime
+
 from squadops.ports.scenarios import ScenarioStorePort
 from squadops.scenarios.evaluation import EvaluationRecord, QualityRemeasure
+from squadops.scenarios.evidence import ScenarioEvidence
 from squadops.scenarios.models import CampaignSuitePin, SuiteRecord
 
 
@@ -13,6 +17,7 @@ class MemoryScenarioStore(ScenarioStorePort):
         self._pins: dict[str, CampaignSuitePin] = {}
         self._evaluations: dict[str, EvaluationRecord] = {}
         self._remeasures: dict[tuple[str, str, int], QualityRemeasure] = {}
+        self._evidence: dict[tuple[str, str], ScenarioEvidence] = {}
 
     async def save_suite(self, record: SuiteRecord) -> None:
         self._suites[record.digest] = record
@@ -58,3 +63,18 @@ class MemoryScenarioStore(ScenarioStorePort):
     async def remeasures_for_cycle(self, cycle_id: str) -> list[QualityRemeasure]:
         found = [r for r in self._remeasures.values() if r.cycle_id == cycle_id]
         return sorted(found, key=lambda r: (r.provenance, r.round))
+
+    async def save_evidence(self, evaluation_id: str, evidence: Sequence[ScenarioEvidence]) -> None:
+        if evaluation_id not in self._evaluations:
+            raise ValueError(f"no evaluation {evaluation_id} to keep evidence for")
+        for item in evidence:
+            self._evidence.setdefault((evaluation_id, item.scenario_id), item)
+
+    async def evidence_for(self, evaluation_id: str) -> list[ScenarioEvidence]:
+        return [e for (eid, _), e in sorted(self._evidence.items()) if eid == evaluation_id]
+
+    async def purge_evidence(self, before: datetime) -> int:
+        gone = [k for k in self._evidence if self._evaluations[k[0]].evaluated_at < before]
+        for key in gone:
+            del self._evidence[key]
+        return len(gone)

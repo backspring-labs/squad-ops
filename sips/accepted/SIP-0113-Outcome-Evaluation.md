@@ -68,7 +68,7 @@ contracts (its §8.2). §4.8 says what this SIP produces and reads at each.
 >   revision's design (§4.1, §4.8).
 > - **No conflict.**
 
-## Delivery ledger (current as of 2026-10-21)
+## Delivery ledger (current as of 2026-10-22)
 
 One row per part that ships separately. Statuses as CLAUDE.md defines them. The 2.4 plan places phase 1 in 2.4
 (committed) and phase 2 in 2.4 conditionally. **Phase 1's parts are placed** with the issues filed at acceptance
@@ -82,7 +82,9 @@ One row per part that ships separately. Statuses as CLAUDE.md defines them. The 
 | phase 1: the scenario store, its suites and the campaign's suite pin (§4.1, §4.7) | **shipped** (§10a) | 2.4.0, PR #2448, issue #2413 |
 | phase 1: the runner, outside the squad's containers, on a disposable copy, and each campaign cycle evaluated at its end (§4.1, §10c) | **shipped** | 2.4.0, PRs #2450 (X-3b's start) and #2472 (the cycle-end hook) |
 | phase 1: the declared start at the cycle-end hook, read from a repository-backed Project's Development Configuration (§4.1, contract 7; §10l) | **placed**, re-placed from 2.4 on 2026-10-21: its only consumer is a Campaign on such a Project, which SIP-0112 H.4 places in 2.5 (#2619). The browser runner moved to #2564 (§10k) | 2.5.0, #2414 |
-| phase 1: the browser runner and page scenarios, in the evaluator's image (§4.1, A2, A3; §10k, reviewed in §10p: eight steps, revision 5's page scenarios approved by the supervisor under the owner's delegation) | **placed** | 2.4.0, after the window, #2564 |
+| phase 1: the browser runner and page scenarios, in the evaluator's image (§4.1, A2, A3; §10k, reviewed in §10p: eight steps, revision 5's page scenarios approved by the supervisor under the owner's delegation) | **shipped** (§10p, §10q, §10r): built in eight PRs; revision 5 approved; B1 and B2 **hold**, and B3 is **falsified as written** by one public value, not a leak (§10r) | 2.4.0, PRs #2646, #2647, #2651, #2652, #2653, #2655, #2656 and #2657, issue #2564 |
+| phase 1: the evaluator's next tag. Its base and Chromium are pinned so a tag names one image (#2583), and it carries ruling 5's measured bound of 5 s (§10r) | **shipped**: `…-eslint10.12-5`. The base is pinned by index digest and Debian's archives by a dated snapshot, and its 260 packages are `-4`'s exactly | 2.4.0, PR #2661, issue #2583 |
+| phase 1 amendment: a click that is skipped when its control is unavailable, so a page scenario can read an outcome a delivery builds in either form (§10r; #2659) | **unplaced**: it changes the driver, so it waits for a design review | the next even release, or dropped by amendment |
 | phase 1: the evaluation record and its reference (§4.1, contract 5) | **shipped** (§10b) | 2.4.0, PR #2449, issue #2415 |
 | phase 1: the quality baselines, Lighthouse, axe and lint, in the evaluator's image (§4.2) | **shipped** (§10f): Lighthouse and axe on each evaluated instance's declared pages, and #1937's lint. Prediction 4, the done-when, read at the window's close: **holds** (spread 0 within a session, at most 0.03 between sessions) | 2.4.0, PRs #2474 and #2479, issue #2416 |
 | phase 1: the intervention ledger's classifications (§4.3) | **shipped** (§10d) | 2.4.0, PR #2454, issue #2417 |
@@ -1755,3 +1757,135 @@ says how it is built instead.
 
 **Who ruled.** The supervisor, by the owner's assignment of 2026-10-20 ("Approve your recommendations") and
 delegation of 2026-10-21. D4 and every quality gate stay the owner's.
+
+### 10q. §10p as built, steps 1 to 6: where the build narrowed or corrected a ruling (2026-10-22, §10p; #2564; the supervisor's, by the owner's assignment of 2026-10-20)
+
+**Why this section.** Each step below departs from a §10p ruling as written, for a reason the build found. Step 3's
+narrowing (item 1) merged in #2651 without this section. Its PR named it, and it is recorded here.
+
+1. **Ruling 4's page-surface check reads only a scenario that drives a browser** (step 3, #2651).
+   - An HTTP-only scenario's page surfaces stay declarative, as they were.
+   - Ruling 4 named every page surface. Checking an HTTP-only scenario's would newly read `surface_absent` on a
+     delivery that names its pages otherwise, which would move revision 4's readings with no change to a scenario.
+2. **The browser's own text is the evidence's, never a reading's** (step 3, #2651; ruling 1).
+   - Step 2's driver put a failing check's exception text in its reading, and a JavaScript regex error quotes its
+     pattern, which is held out. A failed step's detail carried the browser's error text the same way.
+   - Now a check that can't be read says only that. A step's detail is its kind (`Error`, `TimeoutError`), and the
+     text goes to the evidence (`driver: …`). `run_scenario` never copies a browser step's detail into the run's.
+   - The evaluator's tag moved to `…-4`. Nothing was ever measured on `-3`, so no series breaks twice.
+3. **A pattern is refused at draft when the browser would read it otherwise** (step 1, #2646; ruling 9).
+   - Patterns are drafted and checked as Python's and run as JavaScript's.
+   - `\A` and `\Z` compile in Python and read as the letters A and Z in JavaScript, so a check would silently match
+     something else. They are refused, as are named groups, comments and a leading flag group.
+4. **The draft's HTTP-check rule is the mixing rule alone** (step 1, #2646; ruling 2).
+   - An HTTP check may not read a browser step.
+   - An HTTP check that names no step it can read stays as it was: blocked when it runs, never refused at draft. So no
+     approved revision's scenario is refused by a rule added after it.
+5. **A target's candidate names are not the sweep's markers** (step 4b; ruling 9 named them).
+   - Ruling 3 drafts them from an inventory of the deliveries' own labels, so every delivery holds one by
+     construction. As markers, they would make B3 read a leak on every tree.
+   - The markers are what a scenario supplies: what a step types (`value`), the text a step or a check finds its
+     control by (`text`, its `near`'s included), and the literal runs inside its patterns.
+   - The evidence table is excluded from the sweep's dump as the suite's own store is (`dump_command`).
+6. **The purge ships in its own step** (4c): the cut's housekeeping record gains its count, and the release guard
+   reads it. Steps 4a and 4b keep, read and guard the evidence.
+7. **The reading tool's records are safe because a campaign reads only its own, not because of the suite** (step 6;
+   ruling 13).
+   - Ruling 13 held a record with no campaign safe because a package reads only its pinned suite's records. That
+     holds only for a suite the cycle's campaign didn't pin. The package chose a cycle's latest record by suite
+     alone, so a reading of the campaign's own suite would have replaced the campaign's record. A cycle end would
+     also have taken such a reading for the cycle's evaluation, and never run its own.
+   - Nothing was read wrongly. On the Spark on 2026-10-22, the 15 campaigns that pinned a suite (2026-10-19 to
+     10-21) all pinned the same one, revision 4 was pinned by none, and no record without a campaign existed.
+   - Now the package and the cycle end's once-only check read only the campaign's own records, so the tool
+     (`scripts/dev/read_scenarios.py`) may read any approved suite, the campaign's own included.
+   - A reading names the tree its cycle built on as the campaign's own evaluation does (`built_on_identity`, which
+     both now share).
+   - The fault-injected tree is read by the same path. Its edits are applied where the tree is read, a spec that
+     doesn't apply is refused before anything runs, and its records name the tree they were made from.
+
+**Who ruled.** The supervisor, by the owner's assignment of 2026-10-20 ("Approve your recommendations"). None of these
+touches D4 or a quality gate.
+
+### 10r. B1 to B3 read: the page scenarios discriminate and don't flake, and B3 is falsified as written by a value already public (2026-10-22, §10k, §10p rulings 12 to 14; #2564; the supervisor's reading, by the owner's assignment of 2026-10-20 and delegation of 2026-10-21)
+
+**What was read.** As `docs/plans/2-4-0-page-scenarios-preregistration.md` (#2658) fixed it before any tree was read for it:
+- **the deploy:** `dep_292d81431472`, from main at `3711ebdd`, with all 166 loaded checks answering, on the evaluator
+  tag `…-eslint10.12-4`;
+- **the suite:** revision 5, `92a26ad0…`. It is revision 4's 25 scenarios unchanged, followed by six page scenarios:
+  the capacity indicator and a join at capacity, each with a `-via-participants` twin, the list's order, and joining
+  from the page;
+  - **drafted** by the supervisor from the ground truth's inventory of the trees' control names (ruling 3);
+  - **reviewed three times** by an agent that saw none of the drafting (ruling 14): *do not approve*, then *approve
+    with notes*, then *approve with notes*;
+  - **approved** at 2026-10-22T06:58:02Z under the owner's delegation. The window log records that the drafter and
+    the approver are the same actor;
+- **the readings:** `scripts/dev/read_scenarios.py`, run 06:58Z to 07:38Z, every record written with no campaign. The
+  outputs are in `var/window/2-4-0/page-scenarios/`.
+
+**The ground truth** came first. A fresh agent read only the nine trees and the pre-registration, and the supervisor
+checked its claims against the source before using it (`ground-truth.md`, beside the readings).
+
+| outcome | has it | lacks it |
+|---|---|---|
+| the capacity indicator, on the run's page | the capacity pairs' and the reference pair's next trees, and the sorting trees | `cyc_413e75801797`, `cyc_23232c9e72da`, `cyc_7a4b7a6fbf0e` |
+| capacity on the page | the same trees, each in the refusal form: no tree disables Join at capacity | the same three |
+| the list's order | `cyc_b7432a9633a5`, `cyc_679608d64edc` (sorted by the `datetime` text, earliest first) | the other seven |
+| joining from the page | all nine | none, so a fault-injected tree is made |
+
+**B1 holds.** Each main page scenario discriminates on every pair it is read on.
+
+| scenario | its pairs, base → next |
+|---|---|
+| the capacity indicator | `413e` → `840e`, `2323` → `e537`, `7a4b` → `2024`: each fails at its page check on the base and passes on the next |
+| a join at capacity | the same three pairs: each fails at its read-back on the base and passes on the next |
+| the list's order | `f993` → `b743`, `e537` → `6796`: each fails at its order check on the base and passes on the next |
+
+- **Across the nine trees, no main scenario passes where its outcome is lacking, or fails where it is present:** 36
+  readings, every one as the ground truth reads the tree.
+- **The two `-via-participants` twins read `surface_absent` on all nine trees,** as the review predicted: no window
+  delivery serves that join. B1 is unread for them, and the record says so.
+
+**F1 holds.** The fault-injected tree, `3838e324…`, was made from `cyc_413e75801797` (`c6cc2455…`) by
+`fault-join-submission.json`.
+- Joining from the page fails there at its step-4 check, and passes on the tree it was made from.
+- The faulted tree's 25 HTTP-only scenarios read exactly as its source's.
+- The join at capacity fails there at its step-5 check, the page join below capacity. That check was added by the
+  review's blocking finding, so a page join that does nothing can't pass.
+
+**B2 holds.** `cyc_840e72247f38` and `cyc_e5370cec344f` were evaluated three times each. All 31 scenarios gave the
+same result, blocked reason and first failing step in every round.
+
+**Ruling 5's bound is 5 s.** The longest browser step B2 observed is 1.086 s, so the bound is max(5 s, 3.26 s).
+- `-4` carries 10 s, which is above the bound. A longer bound only delays a not-found, so `-4`'s readings stand.
+- The bound changes the driver, so it moves with the evaluator's next tag, the one #2583's pins also need. The ledger
+  places them together.
+
+**B3 is falsified as written, by a value already public.**
+- **The sweep searched everything,** with nothing unsearched. It ran prediction 2's sweep with revision 5's 59
+  markers, over the four window campaigns' 24 cycles.
+- **It found one page marker:** a runner's name from the capacity indicator scenario. The name sits in the README text
+  of a public package's metadata, `python-dotenv` 1.2.4, in the sandbox service's pip cache.
+- **The cached file was written 2026-10-21 at 17:16Z,** about 14 hours before revision 5 was drafted.
+- **No page marker is in any database,** the evaluator's own records included, **or in any agent's container.**
+
+So no page value leaked. The value was public before the suite, which is the marker rule's known flaw (#2617). The
+drafting checked each new value against the repository, the nine trees and every revision, but not the box's package
+caches. Checking there too, or checking a value against a public corpus, is the remedy, recorded on #2617.
+
+**Limits, recorded with the approval:**
+- **A delivery that disables Join at capacity** reads failed at the at-capacity click (`browser.mjs:105-108`,
+  `steps.py:378-383`). No window tree does. It is filed as #2659 and unplaced.
+- **The review's notes stand:**
+  - the textbox's last candidate name is generic;
+  - the twins are unread on the window's trees;
+  - the at-capacity click's hand-off to its HTTP read-back rests on the settle.
+
+**What this reading doesn't cover:**
+- trees outside the nine, and stacks other than these two;
+- outcomes beyond ruling 12's four;
+- a delivery that serves the `-via-participants` join;
+- a delivery that disables Join at capacity.
+
+**Who read it.** The supervisor, by the owner's assignment of 2026-10-20 and delegation of 2026-10-21 (revision 5's
+approval only). D4 and every quality gate stay the owner's.

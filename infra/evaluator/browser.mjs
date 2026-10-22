@@ -15,10 +15,12 @@
 // page right after its step. What a check saw never quotes the page: the page shows the
 // scenario's own values, which are held out, so only the evidence carries it.
 
+// SIP-0113 §10p ruling 5: locating a control and a check's polling are bounded at max(5 s, three
+// times the longest wait B2's runs observed): 1.086 s, so 5 s (§10r). `-4` carried 10 s.
 export const BOUNDS = {
   navigateMs: 30000,
-  locateMs: 10000,
-  checkMs: 10000,
+  locateMs: 5000,
+  checkMs: 5000,
   settleIdleMs: 500,
   settleMs: 5000,
   pollMs: 100,
@@ -170,7 +172,7 @@ async function readCheck(page, check, bounds, deadline) {
   return { holds: result.done, seen: result.done ? null : result.seen };
 }
 
-async function capture(page, step, role) {
+async function capture(page, step, role, failure = null) {
   const nodes = [];
   let bytes = 0;
   if (role) {
@@ -192,7 +194,11 @@ async function capture(page, step, role) {
     png_b64: png,
     role: role ?? null,
     nodes,
-    errors: page.errors().slice(-CAPS.errors).map((s) => String(s).slice(0, CAPS.errorChars)),
+    // The driver's own failure first: an error's text can quote a pattern or the page, so it is
+    // the evidence's, never what a step's detail or a check's reading says (§10p ruling 1).
+    errors: [...(failure ? [`driver: ${failure}`] : []), ...page.errors()]
+      .slice(-CAPS.errors)
+      .map((s) => String(s).slice(0, CAPS.errorChars)),
     failed_requests: page.failedRequests().slice(-CAPS.failedRequests),
   };
 }
@@ -218,23 +224,30 @@ export async function runSegment(page, request, bounds = BOUNDS) {
       result = await runStep(page, step, request.base_url, bounds, deadline);
     } catch (err) {
       const timedOut = err?.name === "TimeoutError" || Date.now() >= deadline;
-      result = { outcome: timedOut ? "timeout" : "action_failed", detail: String(err?.message ?? err).slice(0, 300) };
+      result = {
+        outcome: timedOut ? "timeout" : "action_failed",
+        detail: err?.name ?? "Error",
+        failure: String(err?.message ?? err).slice(0, 300),
+      };
     }
     steps.push({ step: n, outcome: result.outcome, detail: result.detail ?? null, matched: result.matched ?? null, settled: result.settled ?? null, seconds: (Date.now() - t0) / 1000 });
     if (result.outcome !== "done") {
-      evidence = await capture(page, n, step.target?.role);
+      evidence = await capture(page, n, step.target?.role, result.failure ?? null);
       break;
     }
     for (const c of byStep.get(n) ?? []) {
       const c0 = Date.now();
       let read;
+      let failure = null;
       try {
         read = await readCheck(page, c.check, bounds, deadline);
       } catch (err) {
-        read = { holds: false, seen: `the check couldn't be read: ${String(err?.message ?? err).slice(0, 200)}` };
+        // A pattern's SyntaxError quotes the pattern, which is held out: only the evidence keeps it.
+        failure = String(err?.message ?? err).slice(0, 300);
+        read = { holds: false, seen: "the check couldn't be read" };
       }
       checks.push({ index: c.index, holds: read.holds, seen: read.seen, waited_s: (Date.now() - c0) / 1000 });
-      if (!read.holds && evidence === null) evidence = await capture(page, n, c.check.target?.role);
+      if (!read.holds && evidence === null) evidence = await capture(page, n, c.check.target?.role, failure);
     }
   }
   return { steps, checks, evidence, timings: { total_s: (Date.now() - started) / 1000 } };

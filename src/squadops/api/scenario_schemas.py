@@ -49,3 +49,30 @@ class SuiteContentResponse(BaseModel):
     digest: str
     state: str
     content: dict[str, Any]
+
+
+class ScenarioEvidenceResponse(BaseModel):
+    """A failed or blocked page scenario's evidence (SIP-0113 §10p ruling 8): the owner's alone
+    (``scenarios:approve``), since a screenshot of a filled form shows a step's values."""
+
+    scenario_id: str
+    step: int
+    png_b64: str | None = None
+    role: str | None = None
+    nodes: list[dict[str, Any]]
+    errors: list[str]
+    failed_requests: list[str]
+    withheld: list[str]
+    sha256: str
+    size: int
+
+
+class EvidencePurgeRequest(BaseModel):
+    """The cut's purge (§10p ruling 8, cut step 8): every evaluation made before ``before``."""
+
+    before: datetime
+
+
+class EvidencePurgeResponse(BaseModel):
+    before: datetime
+    purged: int

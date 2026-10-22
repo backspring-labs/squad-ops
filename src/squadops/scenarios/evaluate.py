@@ -25,7 +25,7 @@ import yaml
 
 from squadops.campaigns import seed_plan
 from squadops.campaigns.evaluator_trees import FileTree
-from squadops.campaigns.increment_tree import accepted_cycle_of, evaluated_tree_refs
+from squadops.campaigns.increment_tree import accepted_cycle_of, evaluated_tree_refs, route_param
 from squadops.scenarios.evaluation import (
     Applicability,
     BlockedReason,
@@ -34,6 +34,7 @@ from squadops.scenarios.evaluation import (
     ScenarioResult,
     evaluation_record,
 )
+from squadops.scenarios.evidence import ScenarioEvidence
 from squadops.scenarios.fields import resolve
 from squadops.scenarios.models import Scenario, SurfaceKind
 from squadops.scenarios.quality import (
@@ -51,7 +52,7 @@ from squadops.scenarios.runner import (
     StartUndeclared,
     TreeEvaluation,
 )
-from squadops.scenarios.steps import ScenarioRun
+from squadops.scenarios.steps import ScenarioRun, drives_a_browser
 from squadops.scenarios.suites import require_pinnable
 from squadops.stacks.scaffold import InterfaceManifest
 
@@ -140,6 +141,20 @@ def delivered_endpoints(manifest: InterfaceManifest | None, prefix: str) -> froz
     if manifest is None:
         return None
     return frozenset(_endpoint(e.method, e.path, prefix) for e in manifest.api.endpoints)
+
+
+def _route(path: str) -> str:
+    """A client route with its parameters unnamed: ``/runs/:id`` and ``/runs/{run_id}`` are one
+    route (``increment_tree.route_param``), as a scenario's ``/runs/{id}`` is."""
+    return "/".join("{}" if route_param(part) else part for part in path.split("/"))
+
+
+def delivered_routes(manifest: InterfaceManifest | None) -> frozenset[str] | None:
+    """The delivery's declared client routes, their parameters unnamed (§10p ruling 4). ``None``
+    without a manifest: there is nothing to check a page against."""
+    if manifest is None:
+        return None
+    return frozenset(_route(route.path) for route in manifest.frontend.routes)
 
 
 def declared_pages(
@@ -262,6 +277,8 @@ def _outcome(
         steps_taken=run.steps_taken,
         first_failing_step=run.first_failing_step if result is ScenarioResult.FAILED else None,
         elapsed_seconds=run.elapsed_seconds,
+        runner=run.runner,
+        step_seconds=run.step_seconds,
     )
 
 
@@ -306,15 +323,22 @@ async def evaluate_cycle(
     stack = cycle.resolved_config().get("build_profile")
     prefix = _api_prefix(stack) if manifest is not None and stack else ""
     endpoints = delivered_endpoints(manifest, prefix)
+    routes = delivered_routes(manifest)
     for scenario in applicable:
         needed = {
             _endpoint(s.method or "", s.path, "")
             for s in scenario.surfaces
             if s.kind is SurfaceKind.HTTP_ENDPOINT
         }
-        if endpoints is not None and not needed <= endpoints:
+        page_routes = {_route(s.path) for s in scenario.surfaces if s.kind is SurfaceKind.PAGE}
+        if (endpoints is not None and not needed <= endpoints) or (
+            # §10p ruling 4: a scenario that drives a browser is checked against the delivery's
+            # routes too. An HTTP-only scenario's page surfaces stay as they were: declarative.
+            routes is not None and drives_a_browser(scenario.steps) and not page_routes <= routes
+        ):
             # #2464: an endpoint the delivery doesn't serve, e.g. a join it takes at
-            # /participants rather than /join. Unverified, never failed.
+            # /participants rather than /join, or a page at a route it doesn't declare.
+            # Unverified, never failed.
             absent[scenario.scenario_id] = BlockedReason.SURFACE_ABSENT
             continue
         content = resolve(scenario.content(), dict(scenario.fields), fields)
@@ -373,4 +397,13 @@ async def evaluate_cycle(
         quality_seeded=seeded_of(planned, blocked, evaluated),
     )
     await store.save_evaluation(record)
+    # §10p ruling 8: a failed or blocked page scenario's evidence, beside its record and held out:
+    # never on the outcome, which the package and the digest read.
+    evidence = [
+        ScenarioEvidence.from_wire(scenario_id, run.evidence)
+        for scenario_id, run in runs.items()
+        if run.evidence
+    ]
+    if evidence:
+        await store.save_evidence(record.evaluation_id, evidence)
     return record

@@ -51,6 +51,7 @@ from squadops.ports.tools.container import ContainerPort
 from squadops.sandbox.environment import get_environment_contract
 from squadops.sandbox.models import OperationName, content_bytes, declared_argv
 from squadops.sandbox.workspace import WorkspaceEscapeError, tree_path, working_directory
+from squadops.scenarios.evidence import ScenarioEvidence, kept
 from squadops.scenarios.quality import (
     LintReading,
     NotMeasured,
@@ -59,7 +60,18 @@ from squadops.scenarios.quality import (
     evaluator_pages,
 )
 from squadops.scenarios.runner import DeclaredStart, ReadinessKind, TreeEvaluation
-from squadops.scenarios.steps import HttpRequest, HttpResponse, ScenarioRun, run_scenario
+from squadops.scenarios.steps import (
+    Browse,
+    BrowseAnswer,
+    BrowseCheck,
+    BrowseRequest,
+    BrowserUnavailable,
+    BrowseStep,
+    HttpRequest,
+    HttpResponse,
+    ScenarioRun,
+    run_scenario,
+)
 from squadops.tools.exceptions import ToolContainerError
 from squadops.tools.models import ContainerSpec
 
@@ -141,6 +153,7 @@ class ContainerScenarioRunner(ScenarioRunnerPort):
         app_network: str | None,
         evaluator_image: str,
         evaluator_timeout_seconds: float = 300.0,
+        browse_deadline_seconds: float = 90.0,
     ) -> None:
         # #2451 part 4 (the MacBook lane's review of #2460): the app, which holds the evaluation
         # secrets, runs on the app network by name with no host port and no route out. ``None``, as
@@ -159,6 +172,9 @@ class ContainerScenarioRunner(ScenarioRunnerPort):
         # network beside the app, with nothing of the app's environment.
         self._evaluator_image = evaluator_image
         self._evaluator_timeout = evaluator_timeout_seconds
+        # SIP-0113 §10p ruling 5: a segment's own deadline, inside the container's, so the driver
+        # always answers with the step it reached.
+        self._browse_deadline = browse_deadline_seconds
 
     async def evaluate_tree(
         self,
@@ -205,7 +221,7 @@ class ContainerScenarioRunner(ScenarioRunnerPort):
             if snapshot is not None:
                 shutil.rmtree(snapshot, ignore_errors=True)
         evaluation = dataclasses.replace(evaluation, lint=await self._lint(tree, declared))
-        return _redacted(evaluation, environment.values())
+        return _redacted(_evidence_kept(evaluation, environment.values()), environment.values())
 
     async def _lint(
         self, tree: Mapping[str, bytes | str], declared: DeclaredStart | None
@@ -451,7 +467,57 @@ class ContainerScenarioRunner(ScenarioRunnerPort):
                     body = response.text
                 return HttpResponse(response.status_code, body)
 
-            return tuple([await run_scenario(scenario, send) for scenario in scenarios]), quality
+            browse = self._browse(spec, start)
+            runs = [await run_scenario(scenario, send, browse) for scenario in scenarios]
+            return tuple(runs), quality
+
+    def _browse(self, spec: ContainerSpec, start: _Start) -> Browse | None:
+        """Each segment of a scenario's browser steps, run by the evaluator's image on the app
+        network, one container a segment, its request on its input (§10p ruling 1). ``None`` with
+        no UI or no app network: the scenario's browser steps are then ``browser_unavailable``.
+        What the container writes never reaches a scenario's detail: it carries the segment's
+        values, which are held out."""
+        if start.ui_port is None or spec.network is None or not spec.name:
+            return None
+        base = f"http://{spec.name}:{start.ui_port}"
+
+        async def browse(request: BrowseRequest) -> BrowseAnswer:
+            if not await self._container.has_image(self._evaluator_image):
+                raise BrowserUnavailable("the evaluator's image is absent")
+            payload = {
+                "browse": {
+                    "base_url": base,
+                    "first_step": request.first_step,
+                    "steps": list(request.steps),
+                    "checks": [{"index": i, "check": c} for i, c in request.checks],
+                    "deadline_s": self._browse_deadline,
+                }
+            }
+            try:
+                run = await self._container.run(
+                    ContainerSpec(
+                        image=self._evaluator_image,
+                        network=spec.network,
+                        timeout_seconds=self._browse_deadline + 30.0,
+                        memory_limit=self._limits[0],
+                        cpu_limit=self._limits[1],
+                        pids_limit=self._limits[2],
+                        cap_drop_all=True,
+                        no_new_privileges=True,
+                        stdin=json.dumps(payload).encode("utf-8"),
+                    )
+                )
+            except ToolContainerError as e:
+                raise BrowserUnavailable("the browser's container didn't run") from e
+            if run.exit_code != 0:
+                raise BrowserUnavailable(f"the browser exited {run.exit_code}")
+            try:
+                answer = json.loads(run.stdout.strip().splitlines()[-1])["browse"]
+                return browse_answer(answer, self._evaluator_image)
+            except (ValueError, IndexError, KeyError, TypeError) as e:
+                raise BrowserUnavailable("the browser's answer couldn't be read") from e
+
+        return browse
 
     async def _quality(
         self, spec: ContainerSpec, start: _Start, pages: Sequence[str]
@@ -643,6 +709,25 @@ class ContainerScenarioRunner(ScenarioRunnerPort):
         return not start.require_2xx or 200 <= response.status_code < 300
 
 
+def browse_answer(answer: Mapping[str, Any], tag: str) -> BrowseAnswer:
+    """The evaluator's answer to one segment (``infra/evaluator/driver.mjs``), with the runner it
+    names: the image's tag and its browser's version (§10p ruling 6)."""
+    return BrowseAnswer(
+        steps=tuple(
+            BrowseStep(
+                int(s["step"]), str(s["outcome"]), s.get("detail"), float(s.get("seconds") or 0.0)
+            )
+            for s in answer["steps"]
+        ),
+        checks=tuple(
+            BrowseCheck(int(c["index"]), bool(c["holds"]), c.get("seen"))
+            for c in answer.get("checks") or ()
+        ),
+        browser=f"{tag} {answer.get('browser') or 'an unnamed browser'}",
+        evidence=answer.get("evidence"),
+    )
+
+
 async def _tcp_answers(host: str, port: int, *, connect_timeout: float) -> bool:
     """A connection the app holds. Docker's port proxy accepts on the published port as soon as the
     container starts, and closes at once, sending nothing, while nothing listens behind it (read
@@ -694,6 +779,31 @@ async def _seed_record(client: httpx.AsyncClient, base: str, record: SeedRecord)
         if isinstance(joined, str):
             return {"label": record.label, "seeded": False, "refusal": joined}
     return {"label": record.label, "seeded": True, "id": ident, "members": len(record.members)}
+
+
+def _evidence_kept(evaluation: TreeEvaluation, secrets: Collection[str]) -> TreeEvaluation:
+    """Each run's evidence as it may leave the sandbox (§10p ruling 8): its text scrubbed of the
+    evaluation's secrets, no screenshot when the evaluation resolved one, and within the caps.
+    ``squadops.scenarios.evidence.kept`` decides; this only applies it."""
+    raw = [(i, run, run.evidence) for i, run in enumerate(evaluation.runs) if run.evidence]
+    if not raw:
+        return evaluation
+    values = sorted({v for v in secrets if v}, key=len, reverse=True)
+
+    def scrub(text: str) -> str:
+        for secret in values:
+            text = text.replace(secret, _REDACTED)
+        return text
+
+    items = kept(
+        [ScenarioEvidence.from_wire(run.scenario_id, evidence) for _, run, evidence in raw],
+        scrub=scrub,
+        secret_resolved=bool(values),
+    )
+    runs = list(evaluation.runs)
+    for (i, run, _), item in zip(raw, items, strict=True):
+        runs[i] = dataclasses.replace(run, evidence=item.to_wire())
+    return dataclasses.replace(evaluation, runs=tuple(runs))
 
 
 def _redacted(evaluation: TreeEvaluation, secrets: Collection[str]) -> TreeEvaluation:

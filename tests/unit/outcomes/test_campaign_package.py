@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import dataclasses
 import json
 from datetime import UTC, datetime, timedelta
 
@@ -11,6 +12,7 @@ from adapters.scenarios.memory_scenario_store import MemoryScenarioStore
 from squadops.outcomes.campaign_package import campaign_outcomes
 from squadops.scenarios.evaluation import (
     Applicability,
+    BlockedReason,
     EvaluationRecord,
     ScenarioOutcome,
     ScenarioResult,
@@ -65,7 +67,9 @@ def _lint(total: int) -> LintReading:
     return LintReading(QualityStatus.MEASURED, reading=reading, evaluator=TAG)
 
 
-def _record(cycle, tree, built_on, result, *, at=T0, suite=SUITE, quality=None, lint=None):
+def _record(
+    cycle, tree, built_on, result, *, at=T0, suite=SUITE, quality=None, lint=None, campaign_id=CID
+):
     [scenario] = suite.scenarios
     outcome = ScenarioOutcome(
         scenario.scenario_id,
@@ -78,7 +82,7 @@ def _record(cycle, tree, built_on, result, *, at=T0, suite=SUITE, quality=None, 
     return EvaluationRecord(
         evaluation_id=f"evl_{cycle}_{at.minute}",
         project_id="group_run",
-        campaign_id=CID,
+        campaign_id=campaign_id,
         cycle_id=cycle,
         evaluated_tree_identity=tree,
         previous_accepted_tree_identity=built_on,
@@ -184,6 +188,21 @@ async def test_a_reading_with_nothing_to_read_against_says_so(store, records, ex
     assert "vs_previous" not in section
 
 
+async def test_a_reading_written_with_no_campaign_never_stands_in_for_the_campaigns_record(store):
+    """§10p ruling 13's reading tool writes records with no campaign, under any approved suite.
+    Bug caught: a later reading of the campaign's own suite replacing its record in the package,
+    which then reports a tree the campaign never evaluated."""
+    own = _record("cyc_cal", "a" * 64, None, ScenarioResult.PASSED)
+    later = T0 + timedelta(minutes=5)
+    reading = _record("cyc_cal", "f" * 64, None, ScenarioResult.FAILED, at=later, campaign_id=None)
+    for record in (own, reading):
+        await store.save_evaluation(record)
+
+    [section] = (await campaign_outcomes(store, CID, ["cyc_cal"]))["cycles"]
+
+    assert (section["evaluation"], section["tree"]) == (own.evaluation_id, "a" * 64)
+
+
 async def test_a_campaign_with_no_suite_pinned_has_no_section():
     assert await campaign_outcomes(MemoryScenarioStore(), CID, ["cyc_cal"]) is None
 
@@ -206,3 +225,38 @@ async def test_a_not_measured_side_is_named_not_moved(store):
     assert inc1["vs_previous"]["not_compared"] == [
         ["lighthouse and axe", "lighthouse and axe: not_measured after (start_failed)"]
     ]
+
+
+async def test_a_cycle_says_how_many_of_its_page_scenarios_found_no_control(store):
+    """SIP-0113 §10p ruling 4 (#2564 step 5): ``control_absent`` is unverified, never failed, so a
+    page scenario whose names match no delivery would hide a job. The package and the digest say
+    how many did, of those a browser read. Bug caught: the rate missing, counted over scenarios
+    no browser read, or added to a package with no page scenario, which would move its identity."""
+    from squadops.campaigns.evidence import _outcome_lines
+
+    def outcome(sid, result, reason=None, runner=None):
+        return ScenarioOutcome(
+            sid, "v" * 64, f"{sid}'s goal", Applicability.APPLICABLE, result,
+            blocked_reason=reason, runner=runner,
+        )  # fmt: skip
+
+    browser, blocked = "evaluator:4 HeadlessChrome/155", ScenarioResult.BLOCKED_UNVERIFIED
+    paged = dataclasses.replace(
+        _record("cyc_cal", CAL, None, ScenarioResult.PASSED),
+        outcomes=(
+            outcome("over-http", ScenarioResult.PASSED),
+            outcome("joined-on-the-page", ScenarioResult.PASSED, runner=browser),
+            outcome("named-otherwise", blocked, BlockedReason.CONTROL_ABSENT, runner=browser),
+            outcome("no-browser-ran", blocked, BlockedReason.BROWSER_UNAVAILABLE),
+        ),
+    )
+    await store.save_evaluation(paged)
+    await store.save_evaluation(_record("cyc_inc1", INC1, CAL, ScenarioResult.PASSED))
+
+    section = await campaign_outcomes(store, CID, ["cyc_cal", "cyc_inc1"])
+
+    cal, inc1 = section["cycles"]
+    assert cal["page_controls"] == {"read_in_a_browser": 2, "control_absent": 1}
+    assert "page_controls" not in inc1
+    lines = _outcome_lines({"suite_digest": SUITE.digest, "cycles": section["cycles"]})
+    assert "  - page scenarios: 1 of 2 found no control by any of their names" in lines
