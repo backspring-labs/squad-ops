@@ -1371,6 +1371,25 @@ class TestAcceptPatchRetest:
         [entry] = carry["task_9"]
         assert entry.startswith(f"correction attempt 0: repaired suite retest {said} — the repair")
 
+    def test_only_a_typed_check_verification_ran_and_passed_counts_as_evaluated(self):
+        """Bug caught (#2306): a typed check counts as evaluated by the retest when the patch's
+        verification passed it. A row verification skipped (the runtime API can't execute it,
+        so the retest decides) or failed at warning severity is no evidence the check now
+        holds, and counting it would read the round's failure of it as cleared."""
+        from squadops.cycles.patch_verification import PatchCheckRecord, PatchVerification
+        from squadops.execution.patch_acceptance import _verified_checks
+
+        verification = PatchVerification(
+            status="passed",
+            checks=(
+                PatchCheckRecord(check="regex_match", severity="error", status="passed"),
+                PatchCheckRecord(check="frontend_compiles", severity="error", status="skipped"),
+                PatchCheckRecord(check="import_present", severity="warning", status="failed"),
+            ),
+        )
+        assert _verified_checks(verification) == {"acceptance:regex_match"}
+        assert _verified_checks(None) == frozenset()
+
     async def test_the_retest_line_names_a_failed_probe(self, executor, cycle, caplog):
         """Bug caught (#2341): the retest's verdict text listed only rows carrying
         ``passed: False``. A probe's row carries a status instead, so on R5's Next.js cycle the
