@@ -11,6 +11,8 @@ with no suite pinned has nothing to evaluate against, and is left alone.
 - **Which previous tree:** the identity the campaign promoted for the accepted cycle this one built
   on, read from its control log. A calibration builds on nothing.
 - **Once per cycle and suite:** a cycle heard again after a restart (§12a) is not evaluated twice.
+  Only the campaign's own record counts: a reading written with no campaign (§10p ruling 13's
+  tool) isn't the cycle's evaluation.
 - **How it starts:** a blueprint cycle by its stack. Any other Project needs its Development
   Configuration's start declaration (SIP-0112 E.4.2, contract 7), which this hook doesn't read yet,
   so its applicable scenarios are recorded ``blocked_unverified``, ``no_start_declaration``.
@@ -50,6 +52,16 @@ def promoted_identity(log: list, cycle_id: str | None) -> str | None:
     return None
 
 
+async def built_on_identity(campaigns: Any, cycle: Any) -> str | None:
+    """The tree ``cycle`` built on, as its evaluation names it: the identity its campaign promoted
+    for the accepted cycle it built on. ``None`` for a calibration, which built on nothing, and for
+    a cycle with no campaign, whose log isn't read."""
+    if not cycle.campaign_id:
+        return None
+    log = await campaigns.control_log(cycle.campaign_id)
+    return promoted_identity(log, accepted_cycle_of(cycle))
+
+
 class CampaignCycleEvaluator:
     """Evaluates a campaign's cycle at its end, reporting-only (#2414)."""
 
@@ -78,12 +90,13 @@ class CampaignCycleEvaluator:
         if pin is None:
             return None
         held = await self._store.evaluations_for_cycle(cycle.cycle_id)
-        if any(r.suite_digest == pin.suite_digest for r in held):
+        if any(
+            r.campaign_id == cycle.campaign_id and r.suite_digest == pin.suite_digest for r in held
+        ):
             return None
         if not await evaluated_tree_refs(self._vault, cycle):
             logger.info("outcome_evaluation_skipped_no_tree", extra={"cycle_id": cycle.cycle_id})
             return None
-        log = await self._campaigns.control_log(cycle.campaign_id)
         stack = cycle.resolved_config().get("build_profile")
         unstartable = (
             None
@@ -99,7 +112,7 @@ class CampaignCycleEvaluator:
             cycle=cycle,
             suite_digest=pin.suite_digest,
             campaign_id=cycle.campaign_id,
-            previous_accepted_tree_identity=promoted_identity(log, accepted_cycle_of(cycle)),
+            previous_accepted_tree_identity=await built_on_identity(self._campaigns, cycle),
             evaluated_at=self._clock(),
             unstartable=unstartable,
         )

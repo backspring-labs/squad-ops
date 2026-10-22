@@ -14,6 +14,7 @@ from adapters.scenarios.memory_scenario_store import MemoryScenarioStore
 from squadops.campaigns.models import ControlOperation, ControlOutcome
 from squadops.scenarios import campaign_cycles
 from squadops.scenarios.campaign_cycles import CampaignCycleEvaluator, promoted_identity
+from squadops.scenarios.evaluate import evaluate_cycle
 from squadops.scenarios.evaluation import BlockedReason, ScenarioResult
 from squadops.scenarios.models import CampaignSuitePin, parse_suite
 from squadops.scenarios.runner import TreeEvaluation
@@ -148,6 +149,27 @@ async def test_a_cycle_heard_again_is_evaluated_once_per_suite(monkeypatch):
         first.evaluation_id
     ]
     assert len(runner.trees) == 1
+
+
+async def test_a_reading_written_with_no_campaign_isnt_the_cycles_evaluation(monkeypatch):
+    """§10p ruling 13's reading tool writes records with no campaign. Bug caught: its record of
+    the campaign's own suite, written before the cycle's end is heard, taken for the cycle's
+    evaluation, so its campaign never evaluates it."""
+    evaluator, store, runner, suite = await _world(monkeypatch)
+    await evaluate_cycle(
+        store=store,
+        runner=runner,
+        vault=_Vault(),
+        cycle=_Cycle(),
+        suite_digest=suite.digest,
+        campaign_id=None,
+        previous_accepted_tree_identity=None,
+        evaluated_at=T0,
+    )
+
+    record = await evaluator.cycle_ended(_Cycle())
+
+    assert (record.campaign_id, len(runner.trees)) == (CID, 2)
 
 
 async def test_an_increment_names_the_tree_its_campaign_promoted_for_what_it_built_on(monkeypatch):

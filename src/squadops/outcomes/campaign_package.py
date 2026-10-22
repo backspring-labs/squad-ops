@@ -44,7 +44,9 @@ async def campaign_outcomes(
         held = [
             r
             for r in await store.evaluations_for_cycle(cycle_id)
-            if r.suite_digest == pin.suite_digest
+            # Its own campaign's: a reading of the same suite written with no campaign (§10p
+            # ruling 13's tool) never stands in for the campaign's record.
+            if r.campaign_id == campaign_id and r.suite_digest == pin.suite_digest
         ]
         if held:
             latest[cycle_id] = max(held, key=lambda r: r.evaluated_at)

@@ -1756,7 +1756,7 @@ says how it is built instead.
 **Who ruled.** The supervisor, by the owner's assignment of 2026-10-20 ("Approve your recommendations") and
 delegation of 2026-10-21. D4 and every quality gate stay the owner's.
 
-### 10q. §10p as built, steps 1 to 4: where the build narrowed or corrected a ruling (2026-10-22, §10p; #2564; the supervisor's, by the owner's assignment of 2026-10-20)
+### 10q. §10p as built, steps 1 to 6: where the build narrowed or corrected a ruling (2026-10-22, §10p; #2564; the supervisor's, by the owner's assignment of 2026-10-20)
 
 **Why this section.** Each step below departs from a §10p ruling as written, for a reason the build found. Step 3's
 narrowing (item 1) merged in #2651 without this section. Its PR named it, and it is recorded here.
@@ -1787,6 +1787,20 @@ narrowing (item 1) merged in #2651 without this section. Its PR named it, and it
    - The evidence table is excluded from the sweep's dump as the suite's own store is (`dump_command`).
 6. **The purge ships in its own step** (4c): the cut's housekeeping record gains its count, and the release guard
    reads it. Steps 4a and 4b keep, read and guard the evidence.
+7. **The reading tool's records are safe because a campaign reads only its own, not because of the suite** (step 6;
+   ruling 13).
+   - Ruling 13 held a record with no campaign safe because a package reads only its pinned suite's records. That
+     holds only for a suite the cycle's campaign didn't pin. The package chose a cycle's latest record by suite
+     alone, so a reading of the campaign's own suite would have replaced the campaign's record. A cycle end would
+     also have taken such a reading for the cycle's evaluation, and never run its own.
+   - Nothing was read wrongly. On the Spark on 2026-10-22, the 15 campaigns that pinned a suite (2026-10-19 to
+     10-21) all pinned the same one, revision 4 was pinned by none, and no record without a campaign existed.
+   - Now the package and the cycle end's once-only check read only the campaign's own records, so the tool
+     (`scripts/dev/read_scenarios.py`) may read any approved suite, the campaign's own included.
+   - A reading names the tree its cycle built on as the campaign's own evaluation does (`built_on_identity`, which
+     both now share).
+   - The fault-injected tree is read by the same path. Its edits are applied where the tree is read, a spec that
+     doesn't apply is refused before anything runs, and its records name the tree they were made from.
 
 **Who ruled.** The supervisor, by the owner's assignment of 2026-10-20 ("Approve your recommendations"). None of these
 touches D4 or a quality gate.
