@@ -232,14 +232,15 @@ class CampaignLaunchService:
                     started.append(run)
             return started
 
-    async def _fill_before_first_run(self, cycle: Cycle) -> None:
+    async def _fill_missing_bindings(self, cycle: Cycle) -> None:
         """§5ad: the cycle that starts is the one stored under its launch id, which a repeated
         launch finds rather than creates. That launch bound the cycle it built and threw away, so
         the stored cycle holds only what its first attempt bound; a re-binding committed between
         the attempts listed no launched cycle to reach it (the sixth read of #2570). So before its
         first run starts, under the launch lock, its missing entries are filled. One that can't be
         filled is logged, and the run starts: a required reference then holds it, loudly, rather
-        than the run waiting on a drain nothing schedules."""
+        than the run waiting on a drain nothing schedules. A run held on its bindings fills
+        through it too (``fill_held``, #2178)."""
         store = self._creation.memory_store
         if store is None or not cycle.campaign_id:
             return
@@ -258,7 +259,7 @@ class CampaignLaunchService:
         release never waits on the sweep and binds exactly as the launch would have. One that
         can't be filled is logged, and the run stays held."""
         async with self._lock:
-            await self._fill_before_first_run(
+            await self._fill_missing_bindings(
                 await self._creation.cycle_registry.get_cycle(cycle_id)
             )
 
@@ -419,7 +420,7 @@ class CampaignLaunchService:
         ):
             return None
         cycle = await cycles.get_cycle(cycle_id)
-        await self._fill_before_first_run(cycle)
+        await self._fill_missing_bindings(cycle)
         if queued is not None:
             self._execute(cycle, queued)
             return queued
