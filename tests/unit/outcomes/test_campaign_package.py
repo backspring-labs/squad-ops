@@ -67,7 +67,9 @@ def _lint(total: int) -> LintReading:
     return LintReading(QualityStatus.MEASURED, reading=reading, evaluator=TAG)
 
 
-def _record(cycle, tree, built_on, result, *, at=T0, suite=SUITE, quality=None, lint=None):
+def _record(
+    cycle, tree, built_on, result, *, at=T0, suite=SUITE, quality=None, lint=None, campaign_id=CID
+):
     [scenario] = suite.scenarios
     outcome = ScenarioOutcome(
         scenario.scenario_id,
@@ -80,7 +82,7 @@ def _record(cycle, tree, built_on, result, *, at=T0, suite=SUITE, quality=None, 
     return EvaluationRecord(
         evaluation_id=f"evl_{cycle}_{at.minute}",
         project_id="group_run",
-        campaign_id=CID,
+        campaign_id=campaign_id,
         cycle_id=cycle,
         evaluated_tree_identity=tree,
         previous_accepted_tree_identity=built_on,
@@ -184,6 +186,21 @@ async def test_a_reading_with_nothing_to_read_against_says_so(store, records, ex
 
     assert section["contribution"] == expected
     assert "vs_previous" not in section
+
+
+async def test_a_reading_written_with_no_campaign_never_stands_in_for_the_campaigns_record(store):
+    """§10p ruling 13's reading tool writes records with no campaign, under any approved suite.
+    Bug caught: a later reading of the campaign's own suite replacing its record in the package,
+    which then reports a tree the campaign never evaluated."""
+    own = _record("cyc_cal", "a" * 64, None, ScenarioResult.PASSED)
+    later = T0 + timedelta(minutes=5)
+    reading = _record("cyc_cal", "f" * 64, None, ScenarioResult.FAILED, at=later, campaign_id=None)
+    for record in (own, reading):
+        await store.save_evaluation(record)
+
+    [section] = (await campaign_outcomes(store, CID, ["cyc_cal"]))["cycles"]
+
+    assert (section["evaluation"], section["tree"]) == (own.evaluation_id, "a" * 64)
 
 
 async def test_a_campaign_with_no_suite_pinned_has_no_section():
