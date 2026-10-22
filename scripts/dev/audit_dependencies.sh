@@ -38,10 +38,20 @@ else
   echo "ERROR: neither npm nor docker found: the evaluator's npm lock can't be audited" >&2
   exit 2
 fi
-NPM_AUDIT_REPORT="$report" python3 - infra/evaluator/audit-ignore.txt <<'PY' || status=1
+npm_status=0
+NPM_AUDIT_REPORT="$report" python3 - infra/evaluator/audit-ignore.txt <<'PY' || npm_status=$?
 import json, os, sys
 ignored = {line.split("#")[0].strip() for line in open(sys.argv[1]) if line.split("#")[0].strip()}
-report = json.loads(os.environ["NPM_AUDIT_REPORT"])
+try:
+    report = json.loads(os.environ["NPM_AUDIT_REPORT"])
+except ValueError:
+    report = {"message": "npm audit wrote no JSON"}
+if not isinstance(report, dict) or "error" in report or "vulnerabilities" not in report:
+    # #2644: the audit endpoint didn't answer (a 503, no network), so nothing was read: neither
+    # an advisory found nor one gone, and no accepted id is stale.
+    why = report.get("message") if isinstance(report, dict) else None
+    print(f"NOT RUN  npm audit read nothing: {why or 'no report'}")
+    sys.exit(2)
 found = {
     via["url"].rsplit("/", 1)[-1]: f"{via['name']} ({via['severity']}): {via['title']}"
     for vuln in report.get("vulnerabilities", {}).values()
@@ -57,7 +67,14 @@ if stale:
 sys.exit(1 if new or stale else 0)
 PY
 
+if [ "$npm_status" -ne 0 ] && [ "$npm_status" -ne 2 ]; then
+  status=1
+fi
 if [ "$status" -ne 0 ]; then
   echo "dependency audit FAILED: an advisory above is not fixed and not accepted in requirements/audit-ignore.txt or infra/evaluator/audit-ignore.txt" >&2
+fi
+if [ "$npm_status" -eq 2 ]; then
+  echo "dependency audit NOT RUN: npm's audit endpoint didn't answer, so the evaluator's lock wasn't read; re-run the job" >&2
+  status=1
 fi
 exit "$status"
