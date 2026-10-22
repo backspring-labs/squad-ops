@@ -31,6 +31,9 @@ _CUT = {
     "squadops-evaluator:lighthouse13.5-axe4.14-ruff0.16-eslint10.12-3": "3c87fc625505fd42",
     # §10p ruling 1: the driver's error text kept to the evidence. Nothing was measured on -3.
     "squadops-evaluator:lighthouse13.5-axe4.14-ruff0.16-eslint10.12-4": "fe21f8ea911a4e61",
+    # #2583: the base and Debian's archive pinned (its 260 packages are -4's), and §10p ruling 5's
+    # measured bound of 5 s (§10r).
+    "squadops-evaluator:lighthouse13.5-axe4.14-ruff0.16-eslint10.12-5": "2fa34a2d556173c6",
 }
 
 
@@ -49,6 +52,20 @@ def test_the_evaluator_tag_moves_whenever_its_sources_do():
         f"infra/evaluator's sources changed (digest {_digest()}): cut a new EVALUATOR_IMAGE tag "
         "and record it in _CUT"
     )
+
+
+def test_one_tag_is_one_image_every_input_the_dockerfile_fetches_is_pinned():
+    """#2583. Bug caught: an unpinned base, archive or package, so two builds of one tag carry
+    different Chromium or libraries, and Lighthouse's scores move under a tag that says nothing
+    changed."""
+    dockerfile = (_EVALUATOR / "Dockerfile").read_text()
+    stages = [line.split()[1] for line in dockerfile.splitlines() if line.startswith("FROM ")]
+    assert stages and all("@sha256:" in image for image in stages), stages
+    assert "snapshot.debian.org/archive/debian/${DEBIAN_SNAPSHOT}" in dockerfile
+    assert "snapshot.debian.org/archive/debian-security/${DEBIAN_SNAPSHOT}" in dockerfile
+    install = dockerfile.split("apt-get install", 1)[1].split("&&", 1)[0]
+    packages = [w for w in install.replace("\\", " ").split() if not w.startswith("-")]
+    assert packages and all("=" in p for p in packages), packages
 
 
 def _qa_pins() -> dict[str, str]:

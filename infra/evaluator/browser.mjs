@@ -15,10 +15,12 @@
 // page right after its step. What a check saw never quotes the page: the page shows the
 // scenario's own values, which are held out, so only the evidence carries it.
 
+// SIP-0113 §10p ruling 5: locating a control and a check's polling are bounded at max(5 s, three
+// times the longest wait B2's runs observed): 1.086 s, so 5 s (§10r). `-4` carried 10 s.
 export const BOUNDS = {
   navigateMs: 30000,
-  locateMs: 10000,
-  checkMs: 10000,
+  locateMs: 5000,
+  checkMs: 5000,
   settleIdleMs: 500,
   settleMs: 5000,
   pollMs: 100,
