@@ -44,7 +44,7 @@ from squadops.stacks.success_status import derived_success_status
 from squadops.stacks.type_tokens import base_type_name
 
 if TYPE_CHECKING:  # pragma: no cover - annotations only, avoids a scaffold import cycle
-    from squadops.stacks.scaffold import Endpoint, InterfaceManifest, Route
+    from squadops.stacks.scaffold import Endpoint, InterfaceManifest, QueryParam, Route
 
 STACK_NAME = "fullstack_fastapi_react"
 
@@ -206,10 +206,13 @@ def _routes_source(manifest: InterfaceManifest) -> str:
 
     store_names = [f"{_snake(name)}_store" for name in root_persisted_entities(manifest)]
     store_import = f"from .store import {', '.join(store_names)}" if store_names else ""
+    # #2378: ``Query`` only when an endpoint reads one, so every manifest that declares none
+    # expands exactly as it did.
+    reads_query = any(ep.query for ep in manifest.api.endpoints)
     import_block = "\n".join(
         ln
         for ln in (
-            "from fastapi import APIRouter, HTTPException",
+            "from fastapi import APIRouter, HTTPException" + (", Query" if reads_query else ""),
             import_line,
             errors_import,
             store_import,
@@ -250,6 +253,9 @@ def _routes_source(manifest: InterfaceManifest) -> str:
         params = [f"{a}: str" for a in path_args]
         if ep.request:
             params.append(f"payload: {manifest.request_model_name(ep.request) or ep.request}")
+        # #2378: each declared query parameter is the handler's own argument, so the signature
+        # check pins it with the path's.
+        params.extend(_query_param(q) for q in ep.query)
         sig = ", ".join(params)
         decorator = f'@router.{ep.method.lower()}("{ep.path}"'
         if ep.response:
@@ -280,6 +286,26 @@ def _routes_source(manifest: InterfaceManifest) -> str:
         lines.append('    raise HTTPException(status_code=501, detail="not implemented")')
         lines.append("")
     return "\n".join(lines)
+
+
+#: A declared query parameter's type, as a FastAPI handler annotates it (#2378).
+_QUERY_PY_TYPES = {
+    "integer": "int",
+    "int": "int",
+    "number": "float",
+    "float": "float",
+    "boolean": "bool",
+    "bool": "bool",
+}
+
+
+def _query_param(param: QueryParam) -> str:
+    """``name: str = Query(...)`` for a required query parameter, ``page: int | None = Query(None)``
+    for an optional one (#2378)."""
+    py = _QUERY_PY_TYPES.get(param.type.strip().lower(), "str")
+    if param.required:
+        return f"{param.name}: {py} = Query(...)"
+    return f"{param.name}: {py} | None = Query(None)"
 
 
 _ERRORS_PY = '''"""Error contract rendering — scaffold-owned interface wiring.

@@ -25,6 +25,7 @@ _ENDPOINT = {
     "errors": ["validation_error"],
     "success_status": 201,
     "order": {"field": "kind", "direction": "desc"},
+    "query": {"page": "integer"},
 }
 _ROUTE = {"path": "/things", "view": "ThingsView", "purpose": "list things", "testids": ["things"]}
 _SHAPE = {"required": ["name"], "optional": ["note"], "values": {"kind": ["a", "b"]}}

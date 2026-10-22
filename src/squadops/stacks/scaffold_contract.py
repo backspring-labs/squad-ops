@@ -376,7 +376,8 @@ def _error_expect(manifest: InterfaceManifest, status: int, code: str) -> dict[s
 
 def _coverage_expectations(manifest: InterfaceManifest) -> list[str]:
     out: list[str] = []
-    eps = ", ".join(f"{ep.method} {ep.path}" for ep in manifest.api.endpoints)
+    # #2378: a declared query is part of how the endpoint is called.
+    eps = ", ".join(f"{ep.method} {ep.path}{ep.query_suffix()}" for ep in manifest.api.endpoints)
     if eps:
         out.append(f"happy path for each endpoint: {eps}")
     if manifest.api.error_contract:
