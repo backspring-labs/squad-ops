@@ -82,7 +82,11 @@ DEPLOY_SERVICES = ("runtime-api", *AGENT_SERVICES)
 #: squad deploy has no `han`, and a set that does not name it is not asked about it. A set
 #: names it by pinning its image id or probing it, and only then is it read and required up.
 SOLO_SERVICES = ("han",)
-KNOWN_SERVICES = (*DEPLOY_SERVICES, *SOLO_SERVICES)
+#: The platform's own containers a set reads only when it names them: the 2.4 line's loaded checks
+#: run in the sandbox service (the scenario runner, #2414, #2451, #2464) and the console (#2412).
+#: Not squad containers, so a set that probes none of them is not asked about them.
+PLATFORM_SERVICES = ("sandbox-service", "console")
+KNOWN_SERVICES = (*DEPLOY_SERVICES, *SOLO_SERVICES, *PLATFORM_SERVICES)
 POSTGRES_CONTAINER = "squadops-postgres"
 RUNTIME_API_CONTAINER = "squadops-runtime-api"
 
@@ -1045,10 +1049,11 @@ def image_id(service: str) -> str:
 
 
 def named_services(cfg: SetConfig) -> tuple[str, ...]:
-    """The services this set's identity is read from: the deploy's, plus any solo service the
-    config names by pinning its image or probing it (the 1.8.1 window's `han`)."""
+    """The services this set's identity is read from: the deploy's, plus any solo or platform
+    service the config names by pinning its image or probing it (the 1.8.1 window's `han`; the
+    2.4 line's sandbox service and console)."""
     extra = {c.service for c in cfg.loaded_checks} | set(cfg.frozen_image_ids)
-    return (*DEPLOY_SERVICES, *(s for s in SOLO_SERVICES if s in extra))
+    return (*DEPLOY_SERVICES, *(s for s in (*SOLO_SERVICES, *PLATFORM_SERVICES) if s in extra))
 
 
 def set_agent_services(cfg: SetConfig) -> tuple[str, ...]:

@@ -209,6 +209,24 @@ class TestSetConfig:
         with pytest.raises(SystemExit, match="unknown services \\['gateway'\\]"):
             driver.load_set_config(p)
 
+    @pytest.mark.parametrize(
+        ("tracked", "platform"),
+        [(["2451-apps"], ["sandbox-service"]), (["1961"], [])],
+        ids=["a-sandbox-check-names-the-sandbox-service", "a-squad-check-names-no-platform-one"],
+    )
+    def test_a_tracked_check_in_a_platform_container_is_read_there_only_when_named(
+        self, driver, tmp_path, tracked, platform
+    ):
+        """IR-10 (#2564's line): the 2.4 line's loaded checks run in the sandbox service and the
+        console, and a set tracking them was refused as naming unknown services. Bug caught: a
+        sandbox check refused, or a platform container read by every set whether it names one or
+        not. Entered at ``load_set_config``, which the preflight and every roll call."""
+        cfg = driver.load_set_config(self._write(tmp_path, tracked_loaded_checks=tracked))
+
+        named = driver.named_services(cfg)
+        assert [s for s in named if s in driver.PLATFORM_SERVICES] == platform
+        assert set(driver.DEPLOY_SERVICES) <= set(named)
+
     def test_gate_notes_survive_verbatim_including_braces(self, driver, tmp_path):
         cfg = driver.load_set_config(self._write(tmp_path))
         assert cfg.gate_notes == "verbatim {not formatted}"
