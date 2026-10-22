@@ -135,6 +135,219 @@ async def test_a_run_held_at_provisioning_waits_then_starts_when_its_instruction
     )
 
 
+class _Flaky(InMemoryMemoryRecords):
+    """The records store, down until the test brings it back."""
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.down = False
+
+    async def list_project(self, project_id):
+        if self.down:
+            raise ConnectionError("store down")
+        return await super().list_project(project_id)
+
+
+def _executor(registry, records, reply_router, profile=_PROFILE):
+    from squadops.execution.dispatched_flow_executor import DispatchedFlowExecutor
+
+    profiles = AsyncMock()
+    profiles.resolve_snapshot.return_value = (profile, "sha")
+    return DispatchedFlowExecutor(
+        cycle_registry=registry, artifact_vault=AsyncMock(), queue=reply_router.bind(AsyncMock()),
+        squad_profile=profiles, task_timeout=5.0, reply_router=reply_router, project_registry=None,
+        campaign_registry=None, campaign_progress=None, box_verdict=None,
+        failure_recall=SnapshotRecall(InMemoryCrossCycleMemoryStore(), records=records),
+    )  # fmt: skip
+
+
+def _until_held(registry, run_id, records, seen: dict, dispatched_so_far: list):
+    """The patched poll: at the first one that finds the run held, note what stands, then bring
+    the store back. It yields, so a hold that never ends times out rather than spins."""
+    real_sleep = asyncio.sleep
+
+    async def tick(*_args, **_kwargs):
+        await real_sleep(0)
+        run = await registry.get_run(run_id)
+        if run.open_hold is not None and not seen:
+            seen.update(status=run.status, hold=run.open_hold, dispatched=list(dispatched_so_far))
+            records.down = False
+
+    return tick
+
+
+async def test_a_redispatch_held_mid_run_waits_for_the_store_then_dispatches(reply_router):
+    """Wiring, entered at ``execute_run``: the design-plan writer fails once, and the records store
+    is down when the loop dispatches it again. Bugs caught: the re-dispatch failing the run, or
+    going out with no binding read; the run left ``PAUSED`` once the store answers."""
+    from squadops.capabilities.handlers.fault_injection import PRIOR_ATTEMPTS_KEY
+    from squadops.tasks.models import TaskResult
+
+    records = _Flaky()
+    cycle, run = _framing_cycle(), _framing_run()
+    registry = MemoryCycleRegistry()
+    await registry.create_cycle(cycle)
+    await registry.create_run(run)
+    executor = _executor(registry, records, reply_router)
+    handed: list[tuple[str, int]] = []
+
+    def responder(env):
+        attempt = int((env.get("inputs") or {}).get(PRIOR_ATTEMPTS_KEY) or 0) + 1
+        handed.append((env["task_type"], attempt))
+        if env["task_type"] == DESIGN and attempt == 1:
+            records.down = True  # the store goes down before the loop composes attempt 2
+            return TaskResult(task_id=env["task_id"], status="FAILED", error="transient")
+        return TaskResult(task_id=env["task_id"], status="SUCCEEDED", outputs={"summary": "ok"})
+
+    reply_router.responder = responder
+    seen: dict = {}
+    tick = _until_held(registry, run.run_id, records, seen, handed)
+    with patch("squadops.execution.binding_holds.asyncio.sleep", side_effect=tick):
+        await _bounded(executor.execute_run(cycle_id=cycle.cycle_id, run_id=run.run_id))
+
+    assert (seen["status"], seen["hold"].task_type) == ("paused", DESIGN)
+    assert {kind for _, _, kind in seen["hold"].unresolved} == {"store"}
+    assert (DESIGN, 2) not in seen["dispatched"] and (DESIGN, 2) in handed
+    ended = await registry.get_run(run.run_id)
+    assert (ended.status, [h.cause for h in ended.binding_holds]) == (
+        "completed",
+        ["store_answered"],
+    )
+
+
+async def test_a_correction_repair_holds_the_run_until_its_binding_can_be_read(reply_router):
+    """Wiring, entered at the correction runner the executor composes
+    (``run_correction_protocol``), composing a real dev repair of a failed
+    ``development.develop`` with the records store down. Bugs caught: the executor composing its
+    correction repair without its hold, so the run fails on the first repair it can't bind; the
+    repair dispatched with no binding read."""
+    from squadops.cycles.models import Run
+    from squadops.tasks.models import TaskResult
+    from tests.unit.cycles.test_correction_context_golden import (
+        _CYCLE,
+        _DEV_FAILED_INPUTS,
+        _DEV_FAILED_RESULT,
+        _HARNESS_PROFILE,
+        _RUN_ID,
+        _STEP_OUTPUTS,
+        _failed_envelope,
+    )
+
+    records = _Flaky()
+    registry = MemoryCycleRegistry()
+    await registry.create_run(
+        Run(run_id=_RUN_ID, cycle_id=_CYCLE.cycle_id, run_number=1, status="running",
+            initiated_by="api", resolved_config_hash="h")
+    )  # fmt: skip
+    executor = _executor(registry, records, reply_router, profile=_HARNESS_PROFILE)
+    dispatched: list[str] = []
+
+    async def _dispatch(step_envelope, *args, **kwargs):
+        dispatched.append(str(step_envelope.task_type))
+        outputs = _STEP_OUTPUTS.get(step_envelope.task_type, {"artifacts": []})
+        return TaskResult(task_id=step_envelope.task_id, status="SUCCEEDED", outputs=dict(outputs))
+
+    executor._correction_runner._dispatch_protocol_step = _dispatch
+    records.down = True
+    seen: dict = {}
+    tick = _until_held(registry, _RUN_ID, records, seen, dispatched)
+    with patch("squadops.execution.binding_holds.asyncio.sleep", side_effect=tick):
+        await _bounded(
+            executor._correction_runner.run_correction_protocol(
+                run_id=_RUN_ID, cycle=_CYCLE,
+                envelope=_failed_envelope("development.develop", _DEV_FAILED_INPUTS, "dev"),
+                result=_DEV_FAILED_RESULT, correction_attempts=0,
+                prior_outputs={"dev": {"summary": "[dev] built"}},
+                all_artifact_refs=["art_routes"], stored_artifacts=[],
+                completed_task_ids=["task-development.develop"], plan_delta_refs=[],
+                profile=_HARNESS_PROFILE, flow_run_id=None, interface_manifest=None,
+                artifact_contents=None, scaffold_enforcement_carry=None, budget_guard=None,
+                signature_state=None, correction_budget=3,
+            )
+        )  # fmt: skip
+
+    repair = "development.correction_repair"
+    assert (seen["status"], seen["hold"].task_type) == ("paused", repair)
+    assert repair not in seen["dispatched"] and repair in dispatched
+    ended = await registry.get_run(_RUN_ID)
+    assert (ended.status, [h.cause for h in ended.binding_holds]) == ("running", ["store_answered"])
+
+
+async def test_a_pulse_repair_holds_the_run_until_its_binding_can_be_read(reply_router):
+    """Wiring, entered at the pulse-boundary runner the executor composes
+    (``_verify_with_repair``) on a failing boundary, with the records store down when the chain's
+    repair is composed. Bugs caught: the executor composing its pulse runner without its hold;
+    the chain's repair dispatched with no binding read."""
+    from squadops.cycles.models import Run
+    from squadops.cycles.pulse_models import PulseVerificationRecord, SuiteOutcome
+    from squadops.cycles.run_ledger import RunLedger
+    from squadops.tasks.models import TaskEnvelope, TaskResult
+    from tests.unit.cycles.test_correction_repair_prefect_propagation import _HARNESS_PROFILE
+    from tests.unit.cycles.test_pulse_boundary_runner import _cycle_with_pulse_checks
+
+    cycle = _cycle_with_pulse_checks([])
+    records = _Flaky()
+    registry = MemoryCycleRegistry()
+    await registry.create_run(
+        Run(run_id="run_001", cycle_id=cycle.cycle_id, run_number=1, status="running",
+            initiated_by="api", resolved_config_hash="h")
+    )  # fmt: skip
+    executor = _executor(registry, records, reply_router, profile=_HARNESS_PROFILE)
+    dispatched: list[str] = []
+
+    class _Recording:
+        async def dispatch_task(self, envelope, run_id, **_kwargs):
+            dispatched.append(str(envelope.task_type))
+            return TaskResult(task_id=envelope.task_id, status="SUCCEEDED", outputs={})
+
+        async def create_task_run_if_enabled(self, _flow_run_id, _envelope):
+            return None
+
+    runner = executor._pulse_boundary_runner
+    runner._task_dispatcher = _Recording()
+
+    async def failing(*, suites, boundary_id, cadence_interval_id, run_id, **_kw):
+        return [
+            PulseVerificationRecord(
+                suite_id=s.suite_id, boundary_id=boundary_id,
+                cadence_interval_id=cadence_interval_id, run_id=run_id,
+                suite_outcome=SuiteOutcome.FAIL,
+            )
+            for s in suites
+        ]  # fmt: skip
+
+    records.down = True
+    seen: dict = {}
+    tick = _until_held(registry, "run_001", records, seen, dispatched)
+    envelope = TaskEnvelope(
+        task_id="task_1", agent_id="neo", cycle_id=cycle.cycle_id, pulse_id="p",
+        project_id=cycle.project_id, task_type="development.develop", correlation_id="corr",
+        causation_id=None, trace_id="t", span_id="s", inputs={}, metadata={"role": "dev"},
+    )  # fmt: skip
+    with (
+        patch("squadops.execution.binding_holds.asyncio.sleep", side_effect=tick),
+        patch(
+            "squadops.execution.pulse_boundary_runner.run_pulse_verification", side_effect=failing
+        ),
+        pytest.raises(Exception, match="VERIFICATION_EXHAUSTED"),
+    ):
+        await _bounded(
+            runner._verify_with_repair(
+                suites=[SimpleNamespace(suite_id="suite_a")], boundary_id="boundary_x",
+                cadence_interval_id=0, run_id="run_001", cycle=cycle, obs_ctx=None,
+                engine=AsyncMock(), context=AsyncMock(), envelope=envelope, prior_outputs={},
+                stored_artifacts=[], all_artifact_refs=[], max_repair_attempts=1,
+                profile=_HARNESS_PROFILE, ledger=RunLedger(),
+            )
+        )  # fmt: skip
+
+    repair = "development.repair"
+    assert (seen["status"], seen["hold"].task_type) == ("paused", repair)
+    assert repair not in seen["dispatched"] and repair in dispatched
+    held = await registry.get_run("run_001")
+    assert [h.cause for h in held.binding_holds] == ["store_answered"]
+
+
 def _held(kind: str = "store", sections: tuple[str, ...] = ("task_instructions",)):
     return TaskInstructionsUnavailable(
         "task t_design is held",

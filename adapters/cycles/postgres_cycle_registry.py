@@ -917,7 +917,9 @@ class PostgresCycleRegistry(CycleRegistryPort):
             cancelled=row["cancelled"],
         )
 
-    def _assemble_run(self, row: asyncpg.Record, gate_rows: list, hold_rows: list = ()) -> Run:
+    def _assemble_run(
+        self, row: asyncpg.Record, gate_rows: list, hold_rows: Sequence[Any] = ()
+    ) -> Run:
         """Reconstruct frozen Run from row + gate decision rows."""
         gate_decisions = tuple(
             GateDecision(

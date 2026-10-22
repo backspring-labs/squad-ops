@@ -3101,6 +3101,9 @@ for every change that checks a unit's dispatches.
   - entered at `execute_run` over the memory registry, with the snapshot recall over the typed records: a framing run
     whose design-plan instruction is too big for the prompt is held before any dispatch, its held exposure leaves
     §5w's check empty, and the instruction's withdrawal releases it (`instruction_changed`) and completes the run;
+  - each other supply site, through the caller the executor composes, with the records store down until the poll
+    brings it back: a re-dispatch mid-run (`execute_run`), a correction repair (`run_correction_protocol`) and a
+    pulse repair (`_verify_with_repair`), each held, then dispatched, the hold released `store_answered`;
   - entered at `BindingHolds.supplied`: the store answering, a cancel, an expiry winning the race, and a resumed run
     whose supply now completes, each one ending with the box read only on a resume;
   - a held exposure is neither a dispatch nor a handing;
@@ -3109,8 +3112,9 @@ for every change that checks a unit's dispatches.
   `input`, and the records store down is `store` in both sections.
 - **The Postgres registry's batch read** carries each run's holds (`test_postgres_cycle_registry.py`), and the DDL
   guard reads the table against `BindingHold`.
-- **Thirteen mutants, each caught:**
+- **Sixteen mutants, each caught:**
   - a held run failing;
+  - the re-dispatch, the correction repair or the pulse repair composed without the hold (three);
   - its exposure counted as dispatched;
   - its exposure counted as handed;
   - its exposure under the attempt's id;

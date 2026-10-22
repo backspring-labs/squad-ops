@@ -22,7 +22,6 @@ from __future__ import annotations
 import logging
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
-from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any
 from uuid import uuid4
 
@@ -33,7 +32,6 @@ from squadops.capabilities.context_assembly import (
     manifest_surface_fragments,
     repair_forwarded_inputs,
 )
-from squadops.capabilities.lesson_supply import supply_for_cycle
 from squadops.cycles.acceptance_check_spec import is_frontend_source
 from squadops.cycles.agent_config import resolve_agent_config
 from squadops.cycles.check_registry import CHECK_FRONTEND_BUILD
@@ -55,7 +53,7 @@ from squadops.cycles.scaffold_evidence import CLASS_APP_CONTRACT, CLASS_FILL
 from squadops.cycles.task_plan import own_artifact_role, repair_steps_for
 from squadops.cycles.verification_contract import Probe
 from squadops.cycles.write_authorization import normalize_ws_path
-from squadops.execution.binding_holds import held_or_supplied
+from squadops.execution.binding_holds import supplied_or_held
 from squadops.execution.correction_ids import correction_task_id
 from squadops.stacks.development_profiles import matches_test_file_patterns, test_file_patterns_for
 from squadops.tasks.models import TaskEnvelope
@@ -1099,17 +1097,12 @@ class CorrectionRepair:
                     metadata={"role": role, "step_index": step_idx},
                 )
                 # SIP-0110 §0.9: the lessons approved for this repair, if any, and its exposure.
-                [repair_envelope] = await held_or_supplied(
+                [repair_envelope] = await supplied_or_held(
                     self._hold,
-                    run_id,
-                    cycle,
-                    lambda unsupplied=repair_envelope: supply_for_cycle(
-                        [unsupplied],
-                        recall=self._failure_recall,
-                        cycle=cycle,
-                        run_id=run_id,
-                        now=datetime.now(UTC),
-                    ),
+                    [repair_envelope],
+                    recall=self._failure_recall,
+                    cycle=cycle,
+                    run_id=run_id,
                 )
 
                 # Dispatch the repair step (task_run creation + task events

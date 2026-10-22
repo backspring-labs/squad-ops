@@ -31,14 +31,19 @@ import asyncio
 import logging
 from collections.abc import Awaitable, Callable
 from datetime import UTC, datetime
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from squadops.campaigns.binding_hold import open_binding_hold
+from squadops.capabilities.lesson_supply import supply_for_cycle
 from squadops.cycles.models import BindingHold, Cycle, HoldCause, HoldKind, RunStatus
 from squadops.events.types import EventType
 from squadops.execution.execution_errors import _CancellationError
 from squadops.memory.context import SectionKind
 from squadops.memory.task_instructions import TaskInstructionsUnavailable
+
+if TYPE_CHECKING:
+    from squadops.ports.memory.recall import FailurePatternRecallPort
+    from squadops.tasks.models import TaskEnvelope
 
 logger = logging.getLogger(__name__)
 
@@ -49,14 +54,23 @@ HOLD_POLL_S = 5.0
 BindingFill = Callable[[str], Awaitable[Any]]
 
 
-async def held_or_supplied[T](
-    hold: Callable[..., Awaitable[T]] | None,
-    run_id: str,
+async def supplied_or_held(
+    hold: Callable[..., Awaitable[list[TaskEnvelope]]] | None,
+    envelopes: list[TaskEnvelope],
+    *,
+    recall: FailurePatternRecallPort,
     cycle: Cycle,
-    supply: Callable[[], Awaitable[T]],
-) -> T:
-    """``supply()`` through the executor's hold (``BindingHolds.supplied``). A collaborator built
-    outside an executor has none: there is no run to hold, and an incomplete binding raises."""
+    run_id: str,
+) -> list[TaskEnvelope]:
+    """``supply_for_cycle`` through the executor's hold (``BindingHolds.supplied``), composed again
+    at each attempt with its own time. A collaborator built outside an executor has no hold: there
+    is no run to hold, and an incomplete binding raises."""
+
+    async def supply() -> list[TaskEnvelope]:
+        return await supply_for_cycle(
+            envelopes, recall=recall, cycle=cycle, run_id=run_id, now=datetime.now(UTC)
+        )
+
     if hold is None:
         return await supply()
     return await hold(run_id, cycle, supply)
