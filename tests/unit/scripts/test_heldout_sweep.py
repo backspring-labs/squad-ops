@@ -379,3 +379,58 @@ def test_a_suite_that_doesnt_parse_is_refused_without_quoting_it(tmp_path, capsy
 @pytest.mark.parametrize("value", ["Pier", "12:30:00", "      ", "a1"])
 def test_a_value_too_short_or_without_a_letter_is_no_marker(value):
     assert not sweep._distinctive(value)
+
+
+def _browser_suite() -> dict:
+    """A page scenario (SIP-0113 §10p): what it types, the text it finds a control by, and the
+    words its patterns look for are values; its targets' candidate names are the deliveries' own."""
+    return {
+        "name": "pages",
+        "scenarios": [
+            {
+                "scenario_id": "join-from-the-page",
+                "goal": "A runner joins a run from its page.",
+                "surfaces": [{"kind": "page", "path": "/runs/{id}"}],
+                "steps": [
+                    {"action": "visit", "path": "/runs/r1"},
+                    {"action": "fill", "value": "Odalys Fairweather",
+                     "target": {"role": "textbox", "names": ["Your name"],
+                                "near": {"role": "button", "names": ["Join this run"],
+                                         "text": "Lantern Promenade"}}},
+                    {"action": "click", "target": {"role": "link", "names": ["Open"],
+                                                   "text": "Quarry Overlook"}},
+                ],
+                "checks": [
+                    {"check": "text", "step": 3, "pattern": "Saltmarsh\\ \\(dawn\\)\\s+1\\s*/\\s*5"},
+                    {"check": "order", "step": 3, "target": {"role": "listitem"},
+                     "patterns": ["(?:Harbor Ridge)", "Mill Lantern"]},
+                ],
+            }
+        ],
+    }  # fmt: skip
+
+
+def test_a_page_scenarios_markers_are_its_values_never_its_targets_names():
+    """§10p ruling 9 as built (§10q). Bugs caught: a typed value, a control's text or a pattern's
+    words missing from the sweep, so B3 reads clean while a page step leaks; or a candidate name,
+    drafted from the deliveries' own labels, counted as a leak in every delivery."""
+    values = {m["value"] for m in sweep.markers(parse_suite(_browser_suite())).values()}
+
+    assert values == {
+        "Odalys Fairweather", "Lantern Promenade", "Quarry Overlook", "Saltmarsh (dawn)",
+        "Harbor Ridge", "Mill Lantern",
+    }  # fmt: skip
+    assert not {"Your name", "Join this run", "textbox", "listitem"} & values
+
+
+def test_the_evidence_table_is_searched_as_the_suites_own_store():
+    """§10p ruling 9. Bug caught: a page scenario's evidence, which holds its values by design,
+    reported as a leak; or the suite's store dropped from the dump's exclusions when a table
+    joined it. Read from the command the sweep runs, never by running it."""
+    command = sweep.dump_command("squadops")
+
+    assert command[:4] == ["docker", "exec", "squadops-postgres", "pg_dump"]
+    assert [a for a in command if a.startswith("--exclude-table=")] == [
+        "--exclude-table=public.scenario_evidence",
+        "--exclude-table=public.scenario_suites",
+    ]

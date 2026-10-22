@@ -63,8 +63,9 @@ from urllib.parse import parse_qsl, urlsplit
 ROOT = Path(__file__).resolve().parents[2]
 #: A shorter value is too likely to be a word anyone would write.
 MIN_LEN = 6
-#: The suite's own store: where the values are supposed to be.
-OWN_STORE = frozenset({"scenario_suites"})
+#: The suite's own store: where the values are supposed to be. A page scenario's evidence is held
+#: out with it (SIP-0113 §10p ruling 9): its screenshot and the errors it kept can show the values.
+OWN_STORE = frozenset({"scenario_suites", "scenario_evidence"})
 #: The evaluator's own records: searched and reported apart, since they're not the squad's.
 EVALUATOR_RECORDS = frozenset({"scenario_evaluations"})
 DATABASES = ("squadops", "langfuse", "postgres")
@@ -113,6 +114,52 @@ def _query_values(path: Any) -> list[str]:
     return [v for _, v in parse_qsl(urlsplit(path).query, keep_blank_values=False)]
 
 
+#: A pattern's characters that aren't literal text (SIP-0113 §10p ruling 9).
+_PATTERN_SYNTAX = frozenset(".^$*+?()[]{}|")
+_GROUP_PREFIX = re.compile(r"\(\?(?:[:=!]|<[=!])")
+
+
+def _literal_runs(pattern: Any) -> list[str]:
+    """The literal text inside a browser check's pattern, run by run: an escaped punctuation mark
+    is its own character, and a class (``\\d``, ``\\s``) or any other syntax ends a run. So a run
+    title a scenario looks for is a marker, and the pattern's syntax around it isn't."""
+    if not isinstance(pattern, str):
+        return []
+    pattern = _GROUP_PREFIX.sub("(", pattern)  # (?: (?= (?! (?<= (?<! open a group, nothing else
+    runs, run, i = [], [], 0
+    while i < len(pattern):
+        c = pattern[i]
+        if c == "\\" and i + 1 < len(pattern):
+            nxt = pattern[i + 1]
+            if nxt.isalnum():
+                runs.append("".join(run))
+                run = []
+            else:
+                run.append(nxt)
+            i += 2
+            continue
+        if c in _PATTERN_SYNTAX:
+            runs.append("".join(run))
+            run = []
+        else:
+            run.append(c)
+        i += 1
+    runs.append("".join(run))
+    return [r.strip() for r in runs if r.strip()]
+
+
+def _browser_values(item: Any) -> list[Any]:
+    """What a browser step types (``value``), and the text a step or a check finds its control by
+    (``text``, its ``near``'s included). Never a target's candidate names: they are drafted from the
+    deliveries' own labels (§10p ruling 3), so a delivery holding one is no leak."""
+    found: list[Any] = [item.get("value")]
+    target = item.get("target")
+    while isinstance(target, dict):
+        found.append(target.get("text"))
+        target = target.get("near")
+    return found
+
+
 def _distinctive(value: str) -> bool:
     stripped = value.strip()
     return len(stripped) >= MIN_LEN and any(c.isalpha() for c in stripped)
@@ -129,9 +176,13 @@ def markers(suite: Any) -> dict[str, dict[str, str]]:
                 (f"step {n}", step.get("json")),
                 (f"step {n}", step.get("headers")),
                 (f"step {n}", _query_values(step.get("path"))),
+                *((f"step {n}", v) for v in _browser_values(step)),
             ]
         for n, check in enumerate(scenario.checks, start=1):
             sources += [(f"check {n}", check.get(k)) for k in ("equals", "in", "contains", "where")]
+            sources += [(f"check {n}", v) for v in _browser_values(check)]
+            patterns = [check.get("pattern"), *(check.get("patterns") or ())]
+            sources += [(f"check {n}", _literal_runs(p)) for p in patterns]
         for where, value in sources:
             for text in _strings(value):
                 if _distinctive(text):
@@ -243,15 +294,19 @@ def walk(container: str, roots: Iterable[str], values: dict[str, str]) -> dict:
         return {"error": "the walker's answer wasn't JSON"}
 
 
+def dump_command(db: str) -> list[str]:
+    """The dump the sweep reads ``db`` from: its data, without the suite's own store."""
+    return ["docker", "exec", "squadops-postgres", "pg_dump", "-U", "squadops", "-d", db,
+            "--data-only", *[f"--exclude-table=public.{t}" for t in sorted(OWN_STORE)]]  # fmt: skip
+
+
 def sweep_databases(values: dict[str, str]) -> dict:
     out: dict[str, Any] = {}
     for db in DATABASES:
         try:
             dump = subprocess.Popen(
-                ["docker", "exec", "squadops-postgres", "pg_dump", "-U", "squadops", "-d", db,
-                 "--data-only", *[f"--exclude-table=public.{t}" for t in OWN_STORE]],
-                stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, encoding="utf-8",
-                errors="replace",
+                dump_command(db), stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True,
+                encoding="utf-8", errors="replace",
             )  # fmt: skip
             assert dump.stdout is not None
             hits = match_dump(dump.stdout, values)

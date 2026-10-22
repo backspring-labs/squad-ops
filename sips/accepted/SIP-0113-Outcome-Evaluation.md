@@ -1755,3 +1755,38 @@ says how it is built instead.
 
 **Who ruled.** The supervisor, by the owner's assignment of 2026-10-20 ("Approve your recommendations") and
 delegation of 2026-10-21. D4 and every quality gate stay the owner's.
+
+### 10q. §10p as built, steps 1 to 4: where the build narrowed or corrected a ruling (2026-10-22, §10p; #2564; the supervisor's, by the owner's assignment of 2026-10-20)
+
+**Why this section.** Each step below departs from a §10p ruling as written, for a reason the build found. Step 3's
+narrowing (item 1) merged in #2651 without this section. Its PR named it, and it is recorded here.
+
+1. **Ruling 4's page-surface check reads only a scenario that drives a browser** (step 3, #2651).
+   - An HTTP-only scenario's page surfaces stay declarative, as they were.
+   - Ruling 4 named every page surface. Checking an HTTP-only scenario's would newly read `surface_absent` on a
+     delivery that names its pages otherwise, which would move revision 4's readings with no change to a scenario.
+2. **The browser's own text is the evidence's, never a reading's** (step 3, #2651; ruling 1).
+   - Step 2's driver put a failing check's exception text in its reading, and a JavaScript regex error quotes its
+     pattern, which is held out. A failed step's detail carried the browser's error text the same way.
+   - Now a check that can't be read says only that. A step's detail is its kind (`Error`, `TimeoutError`), and the
+     text goes to the evidence (`driver: …`). `run_scenario` never copies a browser step's detail into the run's.
+   - The evaluator's tag moved to `…-4`. Nothing was ever measured on `-3`, so no series breaks twice.
+3. **A pattern is refused at draft when the browser would read it otherwise** (step 1, #2646; ruling 9).
+   - Patterns are drafted and checked as Python's and run as JavaScript's.
+   - `\A` and `\Z` compile in Python and read as the letters A and Z in JavaScript, so a check would silently match
+     something else. They are refused, as are named groups, comments and a leading flag group.
+4. **The draft's HTTP-check rule is the mixing rule alone** (step 1, #2646; ruling 2).
+   - An HTTP check may not read a browser step.
+   - An HTTP check that names no step it can read stays as it was: blocked when it runs, never refused at draft. So no
+     approved revision's scenario is refused by a rule added after it.
+5. **A target's candidate names are not the sweep's markers** (step 4b; ruling 9 named them).
+   - Ruling 3 drafts them from an inventory of the deliveries' own labels, so every delivery holds one by
+     construction. As markers, they would make B3 read a leak on every tree.
+   - The markers are what a scenario supplies: what a step types (`value`), the text a step or a check finds its
+     control by (`text`, its `near`'s included), and the literal runs inside its patterns.
+   - The evidence table is excluded from the sweep's dump as the suite's own store is (`dump_command`).
+6. **The purge ships in its own step** (4c): the cut's housekeeping record gains its count, and the release guard
+   reads it. Steps 4a and 4b keep, read and guard the evidence.
+
+**Who ruled.** The supervisor, by the owner's assignment of 2026-10-20 ("Approve your recommendations"). None of these
+touches D4 or a quality gate.

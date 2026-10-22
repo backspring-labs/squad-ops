@@ -21,6 +21,7 @@ from squadops.api.errors import http_error
 from squadops.api.middleware.auth import require_scopes
 from squadops.api.runtime.deps import get_scenario_store
 from squadops.api.scenario_schemas import (
+    ScenarioEvidenceResponse,
     ScenarioSummaryDTO,
     SuiteContentResponse,
     SuiteDraftRequest,
@@ -33,6 +34,8 @@ from squadops.scenarios.models import ScenarioInvalid, SuiteRecord, parse_suite
 from squadops.scenarios.suites import SuiteRefused, approve_suite, draft_suite
 
 router = APIRouter(prefix="/api/v1/scenario-suites", tags=["scenarios"])
+#: SIP-0113 §10p ruling 8 (#2564): what an evaluation kept of its page scenarios, the owner's alone.
+evaluations_router = APIRouter(prefix="/api/v1/scenario-evaluations", tags=["scenarios"])
 
 _STATUS = {"SUITE_NOT_FOUND": 404, "SUITE_INVALID": 422}
 
@@ -135,3 +138,24 @@ async def approve(
     except SuiteRefused as e:
         raise http_error(_STATUS.get(e.code, 409), e.code, str(e)) from e
     return _summary(record)
+
+
+@evaluations_router.get("/{evaluation_id}/evidence")
+async def get_evidence(
+    request: Request,
+    evaluation_id: str,
+    identity: Identity | None = Depends(require_scopes(Scope.SCENARIOS_APPROVE)),
+) -> list[ScenarioEvidenceResponse]:
+    """Each failed or blocked page scenario's evidence for the evaluation: a screenshot, the
+    target role's nodes, the page's errors and failed requests, and what was withheld and why.
+    ``scenarios:approve`` alone, as the steps it shows are: never the supervisor's seat or an
+    agent's."""
+    store = _store(request)
+    if await store.get_evaluation(evaluation_id) is None:
+        raise http_error(404, "EVALUATION_NOT_FOUND", f"no evaluation {evaluation_id}")
+    return [
+        ScenarioEvidenceResponse(
+            scenario_id=item.scenario_id, sha256=item.sha256, size=item.size, **item.to_wire()
+        )
+        for item in await store.evidence_for(evaluation_id)
+    ]
