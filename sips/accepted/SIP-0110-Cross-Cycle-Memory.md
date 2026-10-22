@@ -3356,6 +3356,15 @@ for every change that checks a unit's dispatches.
     is omitted, named on the instruction and in the exposure;
   - a reference's content counts toward its section's budget;
   - a required reference no resolver reads is refused at write, and an optional one is stored.
+- **Live on the Mac** (`dep_7484c23af539`, this branch at 38181510; 166 of 166 loaded):
+  - a project instruction on `prj-shelfnote` ("Follow the repository's CONTRIBUTING.md.", for
+    `development.develop`) names `repo:file:CONTRIBUTING.md@current`, required;
+  - the implementation cycle `cyc_ac5f8c297843` / `run_73754277ac4a`, at baseline `433f6c51`, bound it at that
+    commit with digest `sha256:63694a755eaa…`, which is the file's own sha256 there;
+  - the develop task was supplied, not held, and its authoring envelope's prompt shows the instruction, then "Instruction
+    1 names repo:file:CONTRIBUTING.md@433f6c51…. At that revision it reads:" with the file's content verbatim in a
+    fence;
+  - the run was then cancelled and the instruction withdrawn.
 - **The binding tests** (`test_reference_binding.py`, `test_task_reference_binding.py`,
   `test_campaign_cycle_bindings.py`) now compose with the resolvers, and read each reference's content at the
   revision their unit or cycle bound.
