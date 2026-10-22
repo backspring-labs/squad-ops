@@ -58,7 +58,7 @@ a repeat, and refused.
 **The rolls.** One uncounted roll per stack per arm, `fullstack_fastapi_react` and `nextjs_ts`, project `group_run`,
 `full-38-tf` (TensorFold's NVFP4 recipe), `validated-fullstack`, memory declared disabled.
 - **Driver:** `scripts/dev/verification_set_driver.py shakeout`.
-- **Configs:** `2-4-0-retest-progress-fastapi-react.yaml` and `2-4-0-retest-progress-nextjs.yaml`, carried from IR-10's.
+- **Configs:** `2-4-0-retest-progress-regression-fastapi-react.yaml` and `2-4-0-retest-progress-regression-nextjs.yaml`, carried from IR-10's.
   - **What changes:** the name, the records home, this pre-registration and the notes. The deploy pins are dropped,
     since an uncounted roll doesn't read them.
   - **The loaded checks:** they track IR-10's 166 rows. Each arm launches from a worktree at its own deploy's commit,
