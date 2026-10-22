@@ -17,13 +17,19 @@ _EVALUATOR = _REPO / "infra" / "evaluator"
 _SOURCES = (
     _EVALUATOR / "Dockerfile",
     _EVALUATOR / "driver.mjs",
+    _EVALUATOR / "browser.mjs",
+    _EVALUATOR / "puppeteer_page.mjs",
     _EVALUATOR / "package.json",
     _EVALUATOR / "package-lock.json",
     _REPO / "src" / "squadops" / "capabilities" / "delivered_lint_eslint.cjs",
 )
 #: The digest of the sources each tag was cut from: cut a new tag here and in ``EVALUATOR_IMAGE``
 #: when they change, and the window's record names it.
-_CUT = {"squadops-evaluator:lighthouse13.5-axe4.14-ruff0.16-eslint10.12-2": "ed170cddc62fe9f3"}
+_CUT = {
+    "squadops-evaluator:lighthouse13.5-axe4.14-ruff0.16-eslint10.12-2": "ed170cddc62fe9f3",
+    # SIP-0113 §10p ruling 6: the browser runner's driver. The quality and lint series end here.
+    "squadops-evaluator:lighthouse13.5-axe4.14-ruff0.16-eslint10.12-3": "3c87fc625505fd42",
+}
 
 
 def _digest() -> str:

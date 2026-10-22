@@ -8,6 +8,14 @@
 //   out: {"lint": {"root": "/tmp/lint-…", "ruff": {"version": "ruff 0.16.6", "exit": 0, "stdout": "[…]", "stderr": ""},
 //                  "eslint": {"exit": 0, "stdout": "{…}", "stderr": ""}}}
 // A tool with no file of its kind isn't run, and is null.
+// A segment of a scenario's browser steps (SIP-0113 §10k, §10p; browser.mjs has the vocabulary):
+//   in:  {"browse": {"base_url": "http://app:4173", "first_step": 2, "steps": [...],
+//                    "checks": [{"index": 0, "check": {...}}], "deadline_s": 90}}
+//   out: {"browse": {"browser": "HeadlessChrome/...", "steps": [{"step": 2, "outcome": "done", ...}],
+//                    "checks": [{"index": 0, "holds": true, ...}], "evidence": null|{...},
+//                    "timings": {"launch_s": 0.9, "total_s": 4.2}}}
+// One container per segment, so each starts in a fresh browser, pinned to UTC, en-US and a
+// 1280x800 viewport (Lighthouse's desktop setting).
 // The app is addressed by its IP: Vite's preview server refuses a Host it doesn't know (read live on
 // the Spark, 2026-10-18), and the app's name on the sandbox's app network is one.
 // Chromium runs --no-sandbox: its own sandbox can't start with every capability dropped and
@@ -20,6 +28,8 @@ import path from "node:path";
 import lighthouse from "lighthouse";
 import puppeteer from "puppeteer-core";
 import { AxePuppeteer } from "@axe-core/puppeteer";
+import { runSegment } from "./browser.mjs";
+import { PuppeteerPage } from "./puppeteer_page.mjs";
 
 const IMPACTS = ["critical", "serious", "moderate", "minor"];
 const CATEGORIES = ["performance", "accessibility", "best-practices"];
@@ -117,6 +127,29 @@ async function pages(request) {
   }
 }
 
+async function browse(request) {
+  const base = new URL(request.base_url);
+  base.hostname = (await lookup(base.hostname, { family: 4 })).address;
+  const launched = Date.now();
+  const browser = await puppeteer.launch({
+    executablePath: process.env.PUPPETEER_EXECUTABLE_PATH,
+    args: ["--no-sandbox", "--disable-dev-shm-usage", "--lang=en-US"],
+    env: { ...process.env, TZ: "UTC", LANG: "en_US.UTF-8" },
+  });
+  try {
+    const launch_s = (Date.now() - launched) / 1000;
+    const page = await PuppeteerPage.open(browser);
+    const answer = await runSegment(page, { ...request, base_url: base.toString() });
+    return { browser: await browser.version(), ...answer, timings: { launch_s, ...answer.timings } };
+  } finally {
+    await browser.close();
+  }
+}
+
 const request = await readStdin();
-const result = request.lint ? { lint: await lint(request.lint) } : { pages: await pages(request) };
+const result = request.lint
+  ? { lint: await lint(request.lint) }
+  : request.browse
+    ? { browse: await browse(request.browse) }
+    : { pages: await pages(request) };
 process.stdout.write(JSON.stringify(result) + "\n");
