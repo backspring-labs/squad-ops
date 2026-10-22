@@ -38,6 +38,7 @@ from squadops.cycles.check_registry import (
 from squadops.cycles.correction_signature import (
     REPAIR_REFUSED_MARKER,
     RetestReduction,
+    criterion_identity,
     failure_signature,
     render_signature,
     retest_reduction_or_refusal,
@@ -60,6 +61,7 @@ from squadops.cycles.patch_verification import (
 from squadops.cycles.scaffold_enforcement import carry_named_producers, named_producer
 from squadops.cycles.scaffold_integrity_evidence import STAGE_PATCH_VERIFICATION
 from squadops.cycles.verification_contract import VerificationContract
+from squadops.cycles.verification_integrity import ResultStatus
 from squadops.cycles.verification_normalize import row_is_blocking_failure
 from squadops.execution.execution_errors import _ExecutionError
 from squadops.stacks.development_profiles import (
@@ -76,8 +78,8 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
-#: The action for a repair whose progress is kept (#1522): its retest cleared some of the round's
-#: failures and added none. The executor stores the kept set as accepted state, re-derives the
+#: The action for a repair whose progress is kept (#1522): its retest made progress on the round's
+#: failures and broke nothing (``retest_reduction``, #2306). The executor stores the kept set as accepted state, re-derives the
 #: task's workspace from it, and routes the retest's failure as the next round's: the retest
 #: already ran the task on the kept tree, so nothing is re-dispatched.
 KEEP_PROGRESS = "keep_progress"
@@ -173,16 +175,57 @@ def _prove_candidate_identity(
     return persisted_revision_id
 
 
+def _verified_criteria(verification: Any) -> frozenset[tuple[str, str]]:
+    """The typed criteria the patch's verification executed and passed (#2306), each as
+    ``criterion_identity``: its check and params. A criterion verification skipped, such as one on
+    a file the patch doesn't carry, or failed at warning severity, isn't among them."""
+    rows = (record.to_check_row() for record in getattr(verification, "checks", ()) or ())
+    return frozenset(
+        criterion_identity(str(row["check"]), row.get("params"))
+        for row in rows
+        if row["status"] == ResultStatus.PASSED
+    )
+
+
+def _executed(row: Mapping[str, Any]) -> bool:
+    """Whether a retest row is evidence its check was evaluated: not one that skipped (#2306). A
+    probe skipped because its subject never launched looked at nothing."""
+    status = row.get("status")
+    return status != ResultStatus.SKIPPED if status is not None else "passed" in row
+
+
+def _progress_made(reduction: RetestReduction) -> str:
+    """What a kept repair's retest did, for the next round's carry (#1522, #2306)."""
+    said = f"cleared {len(reduction.cleared)} of {len(reduction.before)} failure(s) and added none"
+    if reduction.unmasked:
+        said += f", and ran {len(reduction.unmasked)} failing test(s) the round never reached"
+    if reduction.improved:
+        said += f" ({', '.join(reduction.improved)} got better)"
+    return said
+
+
 def _retest_reduction_of(
-    envelope: TaskEnvelope, result: TaskResult, retest_result: TaskResult
+    envelope: TaskEnvelope,
+    result: TaskResult,
+    retest_result: TaskResult,
+    verified_criteria: frozenset[tuple[str, str]] = frozenset(),
 ) -> RetestReduction | None:
     """The round's failures against its retest's, both read through the evidence builder the
     correction runner's own signature reads (#1522). A check counts as evaluated by the retest
     when one of its rows names it, and ``tests_pass`` also when its suite executed, since a
-    passing suite leaves no failure row."""
+    passing suite leaves no failure row.
+
+    #2306: a row that skipped is no evidence, so it doesn't count. And a typed criterion the
+    patch's verification ran and passed counts (``verified_criteria``), criterion by criterion.
+    The retest runs only the suite and its rows, so a round that also failed a typed check was
+    refused as unevaluated, although the candidate the retest ran had already passed it."""
     retest_outputs = retest_result.outputs or {}
     rows = (retest_outputs.get("validation_result") or {}).get("checks") or []
-    evaluated = {str(row["check"]) for row in rows if isinstance(row, dict) and row.get("check")}
+    evaluated = {
+        str(row["check"])
+        for row in rows
+        if isinstance(row, dict) and row.get("check") and _executed(row)
+    }
     test_result = retest_outputs.get("test_result")
     if isinstance(test_result, dict) and test_result.get("executed") is True:
         evaluated.add(CHECK_TESTS_PASS)
@@ -195,17 +238,19 @@ def _retest_reduction_of(
     round_evidence = build_failure_evidence(envelope, result, prior_plan_deltas_count=0)
     retest_evidence = build_failure_evidence(envelope, retest_result, prior_plan_deltas_count=0)
     reduction, refusal = retest_reduction_or_refusal(
-        round_evidence, retest_evidence, frozenset(evaluated), probe_ids
+        round_evidence, retest_evidence, frozenset(evaluated), probe_ids, verified_criteria
     )
     if reduction is None:
         # #2340: why a retest that failed was not taken as progress, readable without a replay.
         logger.info(
-            "progress_not_kept task=%s why=%s round=[%s] retest=[%s] evaluated=%s (#1522)",
+            "progress_not_kept task=%s why=%s round=[%s] retest=[%s] evaluated=%s "
+            "verified_criteria=%d (#1522, #2306)",
             envelope.task_id,
             refusal,
             "; ".join(render_signature(failure_signature(round_evidence) or frozenset())),
             "; ".join(render_signature(failure_signature(retest_evidence) or frozenset())),
             ",".join(sorted(evaluated)),
+            len(verified_criteria),
         )
     return reduction
 
@@ -281,8 +326,8 @@ class _RetestOutcome:
     corrected_outputs: dict[str, Any]
     rows: list[dict[str, Any]]
     evidence: list[dict[str, Any]] | None
-    #: #1522: set when the retest did not pass but cleared some of the round's failures
-    #: and added none. The repair is kept, whole, rather than discarded, and
+    #: #1522: set when the retest did not pass but made progress and broke nothing
+    #: (``retest_reduction``, #2306). The repair is kept, whole, rather than discarded, and
     #: ``failed_retest`` (the retest's own result) is the next round's failure.
     reduction: RetestReduction | None = None
     failed_retest: TaskResult | None = None
@@ -344,7 +389,7 @@ class PatchAcceptance:
         compliance_counter: dict[str, int] | None = None,
     ) -> str:
         """Behaviorally verify a patch (#389); return "accept_patch", "continue", or
-        ``KEEP_PROGRESS`` for a repair whose retest cleared some failures and added none (#1522).
+        ``KEEP_PROGRESS`` for a repair whose retest made progress and broke nothing (#1522, #2306).
 
         Verification itself is the pure ``patch_verification`` module; this
         method only assembles its inputs from the failed task and renders the
@@ -420,6 +465,7 @@ class PatchAcceptance:
             enriched_envelope=enriched_envelope,
             budget_guard=budget_guard,
             repair_rejection_carry=repair_rejection_carry,
+            verified_criteria=_verified_criteria(verdict.verification),
         )
         if retest is None:
             return "continue"
@@ -784,6 +830,7 @@ class PatchAcceptance:
         enriched_envelope: TaskEnvelope | None,
         budget_guard: Callable[[], None] | None,
         repair_rejection_carry: dict[str, list[str]] | None,
+        verified_criteria: frozenset[tuple[str, str]] = frozenset(),
     ) -> _RetestOutcome | None:
         """Block 5 — the retest, keyed on what the patch contains.
 
@@ -884,10 +931,10 @@ class PatchAcceptance:
                 retest_reason or "-",
             )
             if not retest_passed:
-                # #1522: a retest that cleared some of the round's failures and added none is
+                # #1522: a retest that made progress and broke nothing (#2306's comparison) is
                 # progress the next round must build on, not a repair to throw away.
                 reduction = (
-                    _retest_reduction_of(envelope, result, retest_result)
+                    _retest_reduction_of(envelope, result, retest_result, verified_criteria)
                     if retest_result is not None
                     else None
                 )
@@ -896,8 +943,7 @@ class PatchAcceptance:
                         repair_rejection_carry,
                         envelope.task_id,
                         f"correction attempt {correction_attempts}: repaired suite retest "
-                        f"cleared {len(reduction.cleared)} of {len(reduction.before)} failure(s) "
-                        "and added none — the repair is kept, and the next round "
+                        f"{_progress_made(reduction)} — the repair is kept, and the next round "
                         f"starts from its retest (#1522): {retest_reason or 'no verdict detail'}",
                     )
                     return _RetestOutcome(
@@ -1136,7 +1182,7 @@ class PatchAcceptance:
         *,
         correction_attempts: int,
     ) -> str:
-        """#1522: keep a repair whose retest cleared some of the round's failures and added none.
+        """#1522: keep a repair whose retest made progress on its round and broke nothing (#2306).
 
         The kept set is the candidate that was verified, proven as an accepted patch is
         (SIP-0107 §20), less the failed attempt's evidence: the re-dispatch writes its own, and a
@@ -1159,12 +1205,14 @@ class PatchAcceptance:
         )
         logger.info(
             "progress_kept task=%s round=%d failing_before=%d failing_after=%d cleared=%s "
-            "persisted_revision_id=%s (#1522)",
+            "unmasked=%d improved=%s persisted_revision_id=%s (#1522, #2306)",
             envelope.task_id,
             correction_attempts,
             len(reduction.before),
             len(reduction.after),
             "; ".join(render_signature(reduction.cleared)),
+            len(reduction.unmasked),
+            ",".join(reduction.improved) or "-",
             persisted_revision_id,
         )
         patched_result_holder[KEPT_ARTIFACTS_KEY] = artifacts

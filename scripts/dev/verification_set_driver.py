@@ -2613,7 +2613,7 @@ _RUNTIME_LINE_KEYS = (
     "task_timeout task=",
     # SIP-0096 §17a change 5: each round's disputes as the analyzer ruled them.
     "contested_rows task=",
-    # #1522: a repair kept, its retest having cleared some failures and added none.
+    # #1522: a repair kept, its retest having made progress and broken nothing (#2306).
     "progress_kept task=",
 )
 
@@ -3131,16 +3131,16 @@ RUNTIME_MARKER_SAMPLES: dict[str, tuple[str, ...]] = {
         "attempt 0 refunded (round s01): the repair emitted no content (signature unreported), "
         "so the round is re-taken rather than spent (refund 2 of 3, #1053/#998)",
     ),
-    # Rendered: #1522 is new, so no deploy has emitted it. The line is the format string in
-    # `PatchAcceptance._keep_progress`, filled by the real `retest_reduction` and
-    # `render_signature` over a three-to-one reduction.
+    # Rendered: the format string in `PatchAcceptance._keep_progress` as #2306 left it, filled by
+    # the real `retest_reduction` and `render_signature` over a three-to-one reduction. A cleared
+    # test renders as check|file|title since #2306; the row's facts are judged apart.
     "progress_kept": (
-        "2026-09-30 09:00:00,000 INFO squadops.execution.patch_acceptance: progress_kept task=task"
+        "2026-10-22 09:00:00,000 INFO squadops.execution.patch_acceptance: progress_kept task=task"
         "-run_b6a8121c-m006-qa.test round=0 failing_before=3 failing_after=1 cleared=tests_pass"
-        "|frontend/src/__tests__/runViews.test.jsx|failed;runner=vitest;exit=1;test=renders the"
-        " list; tests_pass|frontend/src/__tests__/runViews.test.jsx|failed;runner=vitest;exit=1"
-        ";test=shows the join error persisted_revision_id=57ed944cf457ad772da339b65a9404e42a0c5"
-        "cb4ed2e4dd7f2d34cad73bfd4a1 (#1522)",
+        "|frontend/src/__tests__/runViews.test.jsx|renders the list; tests_pass|frontend/src/"
+        "__tests__/runViews.test.jsx|shows the join error unmasked=0 improved=- "
+        "persisted_revision_id=57ed944cf457ad772da339b65a9404e42a0c5cb4ed2e4dd7f2d34cad73bfd4a1 "
+        "(#1522, #2306)",
     ),
     "evidence_superseded": (
         "2026-09-23 13:45:20,213 INFO squadops.execution.patch_acceptance: patch "

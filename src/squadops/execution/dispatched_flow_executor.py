@@ -579,7 +579,7 @@ class _TaskOutcomeRouter:
             record_absent_emission(ledger, result, _envelope)
         action = await _next_action(result, _envelope, _enriched, _holder)
         while action == KEEP_PROGRESS:
-            # #1522: the repair cleared some of the round's failures and added none. It
+            # #1522: the repair made progress and broke nothing (``retest_reduction``). It
             # becomes accepted state, and the retest's failure (the task run on the kept
             # tree) is routed as the next round's: nothing is re-dispatched. Every round
             # draws on the correction budget, so this ends when a round accepts, discards,
@@ -3258,8 +3258,8 @@ class DispatchedFlowExecutor(FlowExecutionPort):
                 re-rolls its artifacts and clobbers the repair).
             "break_correction" — correction handled without re-run (governance
                 "continue": advance without repair), advance to next task.
-            ``KEEP_PROGRESS`` — (#1522) a ``patch`` correction whose retest cleared some of
-                the round's failures and added none; ``_route_outcome`` stores the kept
+            ``KEEP_PROGRESS`` — (#1522) a ``patch`` correction whose retest made progress
+                and broke nothing (``retest_reduction``, #2306); ``_route_outcome`` stores the kept
                 repair and routes the retest's failure as the next round's, so the
                 dispatcher never sees this token.
 

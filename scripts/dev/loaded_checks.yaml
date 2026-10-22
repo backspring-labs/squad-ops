@@ -982,11 +982,16 @@ checks:
     what: "a declared contract probe compares without its reason when a failed retest is weighed as progress"
     container: squadops-runtime-api
     code: |
-      from squadops.cycles.correction_signature import RetestReduction
-      before = frozenset({("p", "", "missing id"), ("tests_pass", "t.ts", "failed;test=a")})
-      after = frozenset({("p", "", "not ordered")})
-      print(sorted(RetestReduction(before, after, frozenset({"p"})).cleared), len(RetestReduction(before, after).cleared))
-    expect: "[('tests_pass', 't.ts', 'failed;test=a')] 2"
+      # #2306 (SIP-0086 §12e) moved the comparison into retest_reduction_or_refusal; the probe still
+      # compares without its reason, and an undeclared one is a check failing for a new reason.
+      from squadops.cycles.correction_signature import retest_reduction_or_refusal as judge
+      ev = lambda *rows: {"validation_result": {"checks": list(rows)}}
+      probe = lambda reason: {"check": "p", "status": "failed", "reason": reason}
+      suite = {"check": "tests_pass", "passed": False, "failing_tests": ["t.ts::a"]}
+      seen = frozenset({"p", "tests_pass"})
+      kept = judge(ev(probe("missing id"), suite), ev(probe("not ordered")), seen, frozenset({"p"}))[0]
+      print(sorted(kept.cleared), judge(ev(probe("missing id"), suite), ev(probe("not ordered")), seen)[1])
+    expect: "[('tests_pass', 't.ts', 'a')] added=p"
   - id: "2341-runtime"
     what: "the retest's verdict text names a failed probe, whose row carries a status and no passed"
     container: squadops-runtime-api
@@ -1543,3 +1548,12 @@ checks:
       t = pathlib.Path(p.__file__).parent / "request_templates"
       print((t / "request.proposal_unapproved_proposals.md").is_file(), "unapproved_proposals_section" in (t / "request.strategy_propose_increment.md").read_text())
     expect: "True True"
+  - id: "2306"
+    what: a red retest is judged by the tests that fail, so a repair that cleared the app's error is kept rather than read as a shift (#2306, SIP-0086 §12e)
+    container: squadops-runtime-api
+    code: |
+      from squadops.cycles.correction_signature import retest_reduction_or_refusal
+      row = {"check": "tests_pass", "passed": False, "executed": True, "exit_code": 1, "suite_broken": False, "failing_tests": ["t.py::a"]}
+      erroring = {"validation_result": {"checks": [row]}, "app_tracebacks": [{"check": "tests_pass", "traceback": "x"}]}
+      print(retest_reduction_or_refusal(erroring, {"validation_result": {"checks": [row]}}, frozenset({"tests_pass"}))[1] or "kept")
+    expect: kept
