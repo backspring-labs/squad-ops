@@ -29,9 +29,10 @@ Kept by the rule in CLAUDE.md ("SIP System"): one row per part, updated in the P
 | §10.3 economics metric | *unverified* | — |
 | stack #1 parity (#1122) | **dropped** (closed `not_planned` 2026-09-29, the owner's 1.9.0 ruling) | — |
 | §4.3's "any role", re-read by SIP-0107 §46d item 4 (a dev edit to slot bodies is dropped) | **recorded** (§13c) | SIP-0107 §46d |
-| a failing slot assertion routed by demonstrated defect ownership, its location only saying who wrote it (§13d) | **placed** | 2.4.0, #2153: built after Outcome Evaluation's measurement window and measured on its yardstick (the 2.4 plan's D8, ruled 2026-10-17). SIP-0110's window, which held it, closed at the 2.2 cut |
+| a failing slot assertion routed by demonstrated defect ownership, its location only saying who wrote it (§13d) | **dropped** (§13e, 2026-10-22): the shell's construction already routes it, and 37 days of runs show no route it would change | — |
+| §13d's ambiguous case: both readings recorded, and no repair resolving it by weakening the assertion | *unplaced* | #2664 |
 
-**What closes this SIP:** **Closed: promoted to implemented at the v2.0.0 cut's SIP sweep (2026-10-04),** by §13c's reading. Nothing remains placed. The §10.3 economics metric is unverified and is not a promotion criterion. §13d's routing (#2153) is a follow-on to an implemented SIP, recorded so it does not read as shipped.
+**What closes this SIP:** **Closed: promoted to implemented at the v2.0.0 cut's SIP sweep (2026-10-04),** by §13c's reading. Nothing remains placed. The §10.3 economics metric is unverified and is not a promotion criterion. §13d's routing (#2153) was a follow-on to an implemented SIP; §13e drops it, and the one part of §13d left unbuilt (#2664) is unplaced, recorded so it does not read as shipped.
 
 ## 1. Abstract
 
@@ -127,7 +128,7 @@ The author may add whole new test files beside the scaffold. Normative bounds: d
 |---|---|---|
 | Scaffold import unresolvable, invocation underivable, scaffold won't collect | **scaffold-invalid** | generator defect; fails run setup (§4.4), never an LLM round |
 | Frozen shell executes; app violates the declared contract | **app-contract** | dev repair — and a shell status failure and its bound probe's failure are **the same defect observed twice**: the correction router deduplicates on the shared criterion id rather than burning a round on each |
-| Authored slot assertion wrong or failing | **fill failure** | qa repair, slot-scoped. **Amended by §13d (2026-10-09):** a failing assertion's location says who wrote it, not what is wrong. It is routed by demonstrated defect ownership |
+| Authored slot assertion wrong or failing | **fill failure** | qa repair, slot-scoped. **Amended by §13d (2026-10-09):** a failing assertion's location says who wrote it, not what is wrong. It is routed by demonstrated defect ownership. **§13e (2026-10-22):** the frozen spine asserts the contract before the slot runs, so a failing slot assertion always has an app that met the contract, and qa is §13d's route for it |
 | Harness/runtime cannot execute | **test-infrastructure** | environment triage, not a work-product round |
 | Wrong import / invocation signature / status assertion in a *frozen* region | scaffold-generation defect (impossible unless enforcement failed — a §4.3 violation) |
 | Live-server assumption or undeclared dependency in a fill or additive test | prohibited-fill violation — qa repair with the violation named |
@@ -302,3 +303,45 @@ decides the route.
 **Who ruled it.** The owner's review of the 2.2 shakeout (2026-10-09, point 8): "Assertion location identifies who wrote
 the assertion, not whether the assertion or the application is wrong … Route based on demonstrated defect ownership,
 and preserve legitimate requirements during test repairs. Amend the location-implies-QA design wording."
+
+### 13e. §13d's routing is met by the shell's construction; its build is dropped, and its ambiguous-case guard is unplaced (2026-10-22)
+
+**What §13d said.** Today's vitest classifier can't place a slot assertion, because it reads the declaration line, which
+vitest doesn't report. So every vitest slot failure routes as `app-contract`, to dev. Routing by demonstrated defect
+ownership was to be #2153's build, placed in 2.4 by the plan's D8.
+
+**What the evidence says.** This is #2153's read of every qa run's stored report from 2026-09-15 to 10-22: the vault's
+`test_report.md` files, the merged shells, the scaffold manifests, and the probe and routing lines in the runtime's log.
+- **Only the Next.js stack emits shells** (`src/squadops/stacks/verification_scaffold_emission.py:77`).
+  - It pins vitest 1.6.0 (`stack_nextjs_ts.py`), and its report places a failure at the line that failed. The 2.4
+    window's `cyc_83412d24d2ba` recorded its ten in-slot failures as `fill`, as did four August cycles. All 21 stored
+    observation lines equal the first frame in their report.
+  - #2153's fixture came from the React stack, which emits no shells.
+  - So §13d's "every vitest slot failure is routed to dev" described no stored run. An in-slot failure has routed to qa.
+- **The frozen spine asserts the contract before the slot runs** (`stack_nextjs_ts_tests.py`, the shell body): the
+  declared status, the error code, the response shape and the declared order.
+  - An application that breaks the contract therefore fails the spine, routes to dev, and its slot never runs. That is
+    §13d's first case (a correct assertion, a broken application), met by construction.
+  - In the 37 days, 22 shell assertions failed in the spine. Each one's own probe failed, and each routed to dev.
+- **An in-slot failure always has an application that met the contract** for that request.
+  - In the 37 days, 19 failed in a slot: 9 assertions qa wrote, and 10 missing-fill placeholders. Each one's own probe
+    passed, and each was classed `fill`.
+  - That is §13d's second case (a wrong assertion, which goes to qa) or its ambiguous one (today's route, qa).
+  - Routing by demonstrated ownership would have changed no route.
+
+**What changes.** The routing build is dropped. #2153 closes with this amendment. §5's table reads as §13d and this section
+amend it.
+
+**What stays unbuilt.** §13d's ambiguous case asks for two things:
+- both readings recorded beside the failure;
+- a repair never allowed to resolve the failure by deleting or weakening the assertion.
+
+Neither is built. `measure_assertion_strength` (#980) records how much the fills assert; it refuses nothing. Every in-slot
+failure is the second or the ambiguous case, so this guard is the one place §13d still acts. It is #2664, **unplaced**.
+Whether any of the 9 qa-written failures was repaired by weakening isn't read yet; the slot bodies before and after are
+in the vault.
+
+**Who ruled it.** The supervisor, 2026-10-22, under the owner's grant of 2026-10-19 ("autonomy to use good judgement to
+approve cycles, PRs, issue choices etc." on the 2.4 feature set). D8 placed the build. This drops it on the evidence above,
+and it is reported to the owner, whose ruling can restore it.
+
