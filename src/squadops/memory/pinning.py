@@ -99,7 +99,9 @@ def removed_since_read(
     entries = tuple(e for e in snapshot.entries if e.approval.approval_id not in revoked)
     if (instructions, entries) == (snapshot.instructions, snapshot.entries):
         return None
-    return replace(snapshot, instructions=instructions, entries=entries)
+    return replace(
+        snapshot, instructions=instructions, entries=entries, version=snapshot.version + 1
+    )
 
 
 async def _settled(
@@ -110,16 +112,22 @@ async def _settled(
     records: MemoryRecordsPort | None,
 ) -> Snapshot:
     """The snapshot as the unit's admission ends it: read again once stored, so a revocation or a
-    withdrawal that landed while the pin was being taken is honoured. Nothing has dispatched yet,
-    since both admissions pin before they launch, so this is the admission's own correction, not
-    a re-binding. A read that fails keeps the snapshot as stored, and is logged."""
+    withdrawal that landed while the pin was being taken is honoured. Nothing has dispatched yet:
+    a standalone cycle pins before its run is queued, and a campaign pins under the launch lock
+    every drain launches under, with its calibration's intent (§5ad, #2545). So this is the
+    admission's own correction, not a re-binding, and its write is the snapshot's next version,
+    which a re-binding that read this one can't land over. A unit that declares
+    ``memory_context: none`` pinned neither, and reads neither. A read that fails keeps the
+    snapshot as stored, and is logged."""
+    if snapshot.context_withheld:
+        return snapshot
     try:
         now_records = await records.list_project(project_id) if records is not None else []
         approvals = [] if snapshot.disabled else await store.list_approvals(project_id)
         corrected = removed_since_read(snapshot, now_records, approvals)
         if corrected is None:
             return snapshot
-        await store.rebind_snapshot(corrected, after=len(snapshot.rebindings))
+        await store.rebind_snapshot(corrected)
     except Exception:  # noqa: BLE001 — the stored pin stands; the miss is logged
         logger.warning(
             "memory_snapshot_not_settled unit=%s:%s", snapshot.unit_kind, snapshot.unit_id,

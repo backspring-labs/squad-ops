@@ -351,10 +351,15 @@ async def start_campaign(
     except FileNotFoundError as e:
         # The policy names a request profile that does not exist: nothing can launch.
         raise HTTPException(status_code=422, detail=_validation(str(e))) from e
-    result = await apply_control(request, campaign_id, transition, identity)
     # SIP-0110 §0.7: the campaign pins its memory snapshot at admission, before its calibration
-    # launches, so every proposal and cycle of it selects from one snapshot.
-    await _pin_memory(request, result.campaign)
+    # launches, so every proposal and cycle of it selects from one snapshot. #2545: the start's row
+    # writes the calibration's launch intent, and any drain (the sweep's, another campaign's, a
+    # route's) could launch it while the pin is still being taken. Every drain launches under this
+    # lock (§5ad), so none does until the pin is stored. A refused start pins nothing, and a pin
+    # that fails is logged and the campaign launches, as before.
+    async with get_campaign_launch(request).launches_held():
+        result = await apply_control(request, campaign_id, transition, identity)
+        await _pin_memory(request, result.campaign)
     return await _after_drain(request, result, await launch_pending(request, result))
 
 

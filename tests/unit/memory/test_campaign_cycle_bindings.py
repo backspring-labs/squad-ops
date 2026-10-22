@@ -353,8 +353,7 @@ async def test_the_sweep_fills_a_cycle_a_rebinding_could_not_reach(world):  # no
     snapshot = await store.get_snapshot(UnitKind.CAMPAIGN, CID)
     replacement = dataclasses.replace(pinned_of(second), unbound=((REF, "pins no source commit"),))
     await store.rebind_snapshot(
-        rebound(snapshot, second, by="ada", at=T0, why="the spec moved", replacement=replacement),
-        after=0,
+        rebound(snapshot, second, by="ada", at=T0, why="the spec moved", replacement=replacement)
     )  # the campaign is re-bound, and this cycle's binding isn't reached
 
     with pytest.raises(TaskInstructionsUnavailable, match=f"required reference {REF}"):
@@ -537,10 +536,10 @@ async def test_a_rebinding_holds_launches_and_stores_each_cycles_entry_before_it
         seen["listed_held"] = lock.locked()
         return await listed(campaign_id)
 
-    async def rebind_snapshot(snapshot, *, after):
+    async def rebind_snapshot(snapshot):
         held = (await api.store.get_cycle_binding(running.cycle_id)).instructions
         seen["at_commit"] = (lock.locked(), sorted(p.revision for p in held))
-        await commit(snapshot, after=after)
+        await commit(snapshot)
 
     api.campaigns.launch_intents, api.store.rebind_snapshot = launch_intents, rebind_snapshot
 
@@ -711,8 +710,7 @@ async def test_a_repeated_launch_fills_the_cycle_it_finds_before_its_first_run(w
     snapshot = await store.get_snapshot(UnitKind.CAMPAIGN, CID)
     replacement = dataclasses.replace(pinned_of(second), unbound=((REF, "pins no source commit"),))
     await store.rebind_snapshot(
-        rebound(snapshot, second, by="ada", at=T0, why="the spec moved", replacement=replacement),
-        after=0,
+        rebound(snapshot, second, by="ada", at=T0, why="the spec moved", replacement=replacement)
     )  # the re-binding lists no launched cycle of the campaign, so it reaches none
 
     started = await launcher.drain()

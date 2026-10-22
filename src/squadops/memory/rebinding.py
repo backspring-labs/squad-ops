@@ -97,7 +97,10 @@ def rebound(
         why=why,
     )
     return replace(
-        snapshot, instructions=instructions, rebindings=(*snapshot.rebindings, rebinding)
+        snapshot,
+        instructions=instructions,
+        rebindings=(*snapshot.rebindings, rebinding),
+        version=snapshot.version + 1,
     )
 
 

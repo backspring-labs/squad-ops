@@ -155,10 +155,10 @@ class InMemoryCrossCycleMemoryStore(CrossCycleMemoryStorePort):
     ) -> AbstractAsyncContextManager[None]:
         return self._turns.held(unit_kind, unit_id, wait_seconds=wait_seconds)
 
-    async def rebind_snapshot(self, snapshot: Snapshot, *, after: int) -> None:
+    async def rebind_snapshot(self, snapshot: Snapshot) -> None:
         key = (snapshot.unit_kind.value, snapshot.unit_id)
         held = self._snapshots[key]
-        if held.snapshot_id != snapshot.snapshot_id or len(held.rebindings) != after:
+        if held.snapshot_id != snapshot.snapshot_id or held.version != snapshot.version - 1:
             raise SnapshotMoved(f"{key[0]} {key[1]} was re-bound since it was read")
         self._snapshots[key] = snapshot
 
@@ -462,18 +462,18 @@ class PostgresCrossCycleMemoryStore(CrossCycleMemoryStorePort):
     ) -> AbstractAsyncContextManager[None]:
         return self._turns.held(unit_kind, unit_id, wait_seconds=wait_seconds)
 
-    async def rebind_snapshot(self, snapshot: Snapshot, *, after: int) -> None:
-        # One statement, so two re-bindings read from the same snapshot can't both land.
+    async def rebind_snapshot(self, snapshot: Snapshot) -> None:
+        # One statement, so two writes read from the same version can't both land (#2545).
         async with self._pool.acquire() as conn:
             status = await conn.execute(
                 "UPDATE memory_snapshots SET snapshot_body = $3 "
                 "WHERE unit_kind = $1 AND unit_id = $2 AND snapshot_id = $4 AND "
-                "json_array_length(coalesce(snapshot_body->'rebindings', '[]'::json)) = $5",
+                "coalesce((snapshot_body->>'version')::int, 0) = $5",
                 snapshot.unit_kind.value,
                 snapshot.unit_id,
                 snapshot.to_dict(),
                 snapshot.snapshot_id,
-                after,
+                snapshot.version - 1,
             )
             if status == "UPDATE 1":
                 return

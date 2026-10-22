@@ -84,10 +84,10 @@ async def test_the_store_keeps_every_rebinding_and_refuses_one_read_from_a_stale
     late = rebound(read, withdrawn(record, by="bo", at=T0, why="x"), by="bo", at=T0, why="x")
 
     with pytest.raises(SnapshotMoved):  # another pin's snapshot, at the right count
-        await store.rebind_snapshot(replace(first, snapshot_id="snap_other"), after=0)
-    await store.rebind_snapshot(first, after=0)
+        await store.rebind_snapshot(replace(first, snapshot_id="snap_other"))
+    await store.rebind_snapshot(first)
     with pytest.raises(SnapshotMoved):
-        await store.rebind_snapshot(late, after=0)
+        await store.rebind_snapshot(late)
 
     held = await store.get_snapshot(UnitKind.CYCLE, "cyc_recall")
     assert Snapshot.from_dict(held.to_dict()) == held == first

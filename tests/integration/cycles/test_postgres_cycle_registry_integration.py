@@ -596,11 +596,11 @@ class TestMemoryLessons:
                 read, withdrawn(record, by="bo", at=_NOW, why="x"), by="bo", at=_NOW, why="x"
             )
 
-            await store.rebind_snapshot(first, after=0)
+            await store.rebind_snapshot(first)
             with pytest.raises(SnapshotMoved):
-                await store.rebind_snapshot(late, after=0)
+                await store.rebind_snapshot(late)
             with pytest.raises(KeyError):
-                await store.rebind_snapshot(replace(first, unit_id=f"cyc_none_{tag}"), after=0)
+                await store.rebind_snapshot(replace(first, unit_id=f"cyc_none_{tag}"))
 
             assert await store.get_snapshot(UnitKind.CYCLE, unit_id) == first
         finally:
