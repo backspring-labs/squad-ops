@@ -19,7 +19,7 @@ from pathlib import Path
 import pytest
 
 from squadops.cycles.failure_records import FailureRecord
-from squadops.cycles.models import Cycle, GateDecision, Run, SquadProfile
+from squadops.cycles.models import BindingHold, Cycle, GateDecision, Run, SquadProfile
 
 MIGRATIONS_DIR = Path(__file__).resolve().parents[3] / "infra" / "migrations"
 
@@ -61,9 +61,11 @@ _REGISTRY = [
     # source_launch_id (SIP-0109 §12b, 1610): the launch a campaign cycle was created from, written
     # and read only by create_cycle_for_launch as its idempotency key, never a Cycle field
     ("cycle_registry", Cycle, {"source_launch_id"}, set()),
-    ("cycle_runs", Run, set(), {"gate_decisions"}),  # gate_decisions -> child table
+    # gate_decisions and binding_holds (#2178) -> child tables
+    ("cycle_runs", Run, set(), {"gate_decisions", "binding_holds"}),
     # run_id = parent FK; id = SERIAL surrogate PK (both DB-only, not model fields)
     ("cycle_gate_decisions", GateDecision, {"run_id", "id"}, set()),
+    ("run_binding_holds", BindingHold, {"run_id"}, set()),  # run_id = parent FK
     ("squad_profiles", SquadProfile, {"is_active", "updated_at"}, set()),  # DB-managed
     # set_index (SIP-0109 §14, 1620): which ending's set a record belongs to; the registry
     # assigns it on write and reads only the latest set back
