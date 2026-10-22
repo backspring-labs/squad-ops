@@ -407,3 +407,38 @@ class TestRunsCheckpoints:
         )
         assert result.exit_code == 0
         assert "checkpoint_index" in result.output
+
+
+class TestRunsShowHalt:
+    @patch("squadops.cli.commands.runs._get_client")
+    def test_a_halted_run_says_who_halted_it_why_and_where_it_restarted(self, mock_get_client):
+        """SIP-0110 §A.3.8 (T13, #2178), from the registry's run through the API's response.
+        Bugs caught: a halted run reading as an operator's cancel, with no word of the withdrawal
+        or of the run that carries its work on; the halt dumped as a raw dict."""
+        from datetime import UTC, datetime
+
+        from squadops.api.routes.cycles.mapping import run_to_response
+        from squadops.cycles.models import Run, RunHalt
+
+        run = Run(
+            run_id="run_1", cycle_id="cyc_1", run_number=1, status="cancelled",
+            initiated_by="api", resolved_config_hash="h",
+            halt=RunHalt("mrec_b", "ada", "it names the wrong table",
+                         datetime(2026, 10, 22, tzinfo=UTC),
+                         restart_from_task_id="task-run_1-002-development.design_plan",
+                         restart_run_id="run_2"),
+        )  # fmt: skip
+        mock_get_client.return_value = _mock_client(
+            get_val=run_to_response(run).model_dump(mode="json")
+        )
+
+        result = runner.invoke(app, ["runs", "show", "proj1", "cyc_1", "run_1"])
+
+        assert result.exit_code == 0, result.output
+        assert "halted_by: ada's emergency withdrawal of mrec_b: it names the wrong table" in (
+            result.output
+        )
+        assert "restart: restarted as run_2 from task-run_1-002-development.design_plan" in (
+            result.output
+        )
+        assert "{'record_id'" not in result.output

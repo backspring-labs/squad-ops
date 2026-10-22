@@ -76,6 +76,7 @@ from squadops.cycles.models import (
     FlowMode,
     GateDecision,
     GateDecisionValue,
+    IllegalStateTransitionError,
     InheritedBaselineNotFoundError,
     Run,
     RunStatus,
@@ -146,6 +147,7 @@ from squadops.execution.source_delivery import SourceDeliveryRefused, deliver_so
 from squadops.execution.task_dispatcher import TaskDispatcher
 from squadops.execution.task_naming import build_task_name
 from squadops.execution.workload_gate import GateOutcome, WorkloadGate, stored_change_request
+from squadops.memory.emergency import EMERGENCY_RESTART_OVERRIDE, restart_checkpoint
 from squadops.ports.comms.queue import QueueError
 from squadops.ports.cycles.flow_execution import FlowExecutionPort
 from squadops.ports.events.noop import NoOpCycleEventBus
@@ -1118,12 +1120,21 @@ class DispatchedFlowExecutor(FlowExecutionPort):
 
         # Single-workload fast path (D7)
         if len(workload_sequence) <= 1:
-            await self.execute_run(cycle_id, first_run_id, profile_id)
-            await self._cycle_completion.end(
-                cycle_id,
-                await self._cycle_registry.get_run(first_run_id),
-                CycleStopReason.SINGLE_WORKLOAD_ENDED,
-            )
+            run_id, overrides = first_run_id, None
+            while True:
+                if overrides is None:
+                    await self.execute_run(cycle_id, run_id, profile_id)
+                else:  # an emergency withdrawal's restart (T13)
+                    await self.execute_run(
+                        cycle_id, run_id, profile_id, forwarding_overrides=overrides
+                    )
+                ended = await self._cycle_registry.get_run(run_id)
+                entry = workload_sequence[0] if workload_sequence else {"type": ended.workload_type}
+                restart = await self._emergency_restart(cycle, ended, entry, overrides)
+                if restart is None:
+                    break
+                run_id, overrides = restart
+            await self._cycle_completion.end(cycle_id, ended, CycleStopReason.SINGLE_WORKLOAD_ENDED)
             return
 
         # #257: support resuming mid-sequence. first_run_id may be a later
@@ -1191,6 +1202,13 @@ class DispatchedFlowExecutor(FlowExecutionPort):
             # completed run stops the sequence. A paused run read as completed was gated, its
             # empty plan rejected, and each framing re-roll cancelled it.
             run = await self._cycle_registry.get_run(current_run_id)
+            # T13 (#2178): a run halted by an emergency withdrawal restarts in its own place.
+            restart = await self._emergency_restart(
+                cycle, run, workload_entry, forwarding_overrides
+            )
+            if restart is not None:
+                current_run_id, forwarding_overrides = restart
+                continue  # same index: the restart runs this workload again
             if run.status != RunStatus.COMPLETED.value:
                 self._cycle_event_bus.emit(
                     EventType.WORKLOAD_COMPLETED,
@@ -1531,6 +1549,103 @@ class DispatchedFlowExecutor(FlowExecutionPort):
 
         return overrides
 
+    async def _emergency_restart(
+        self, cycle: Cycle, run: Run, workload_entry: dict, forwarding_overrides: dict | None
+    ) -> tuple[str, dict] | None:
+        """SIP-0110 §A.3.8 (T13, #2178): a run halted by a task instruction's emergency withdrawal
+        restarts as a new run in its place, from the first of its tasks that received the
+        instruction: the run takes the halted run's checkpoint before that task
+        (``_resolve_restart_checkpoint``) and reads its bindings again, so the instruction is
+        absent. ``None`` for any other run, a halt with nothing to restart, one restarted
+        already (the halt records its restart once), or a cycle cancelled since: an abort or a
+        cycle cancel ends it, and nothing runs after it (SIP-0109 §12a)."""
+        halt = run.halt
+        registry = self._cycle_registry
+        assert registry is not None  # the run was just read from it
+        if (
+            run.status != RunStatus.CANCELLED.value
+            or halt is None
+            or halt.restart_from_task_id is None
+            or halt.restart_run_id is not None
+            or (await registry.get_cycle(cycle.cycle_id)).cancelled
+        ):
+            return None
+        try:
+            restart = await self._create_next_workload_run(
+                cycle, run, workload_entry, config_hash=run.resolved_config_hash
+            )
+        except IllegalStateTransitionError:
+            return None  # cancelled since the read: the registry refuses a run on it
+        if not await registry.record_restart(run.run_id, restart.run_id):
+            await self._cancel_unstarted(restart.run_id)
+            return None
+        # A cycle's cancel sets its flag before it lists the runs to cancel, so one that listed
+        # them before this restart existed is read here, and the restart never starts.
+        if (await registry.get_cycle(cycle.cycle_id)).cancelled:
+            await self._cancel_unstarted(restart.run_id)
+            return None
+        self._cycle_event_bus.emit(
+            EventType.WORKLOAD_ADVANCED,
+            entity_type="workload",
+            entity_id=restart.run_id,
+            context={"cycle_id": cycle.cycle_id, "run_id": restart.run_id},
+            payload={
+                "workload_type": workload_entry.get("type"),
+                "reason": "emergency_withdrawal_restart",
+                "halted_run_id": run.run_id,
+                "record_id": halt.record_id,
+                "restart_from_task_id": halt.restart_from_task_id,
+            },
+        )
+        logger.warning(
+            "run_restarted_after_emergency_withdrawal cycle=%s halted=%s restart=%s from=%s",
+            cycle.cycle_id,
+            run.run_id,
+            restart.run_id,
+            halt.restart_from_task_id,
+        )
+        return restart.run_id, {
+            **(forwarding_overrides or {}),
+            EMERGENCY_RESTART_OVERRIDE: {
+                "source_run_id": run.run_id,
+                "before_task_id": halt.restart_from_task_id,
+            },
+        }
+
+    async def _cancel_unstarted(self, run_id: str) -> None:
+        """Cancel a restart that never started; one a cycle's cancel already reached stays so."""
+        registry = self._cycle_registry
+        assert registry is not None  # it created the run
+        try:
+            await registry.cancel_run(run_id)
+        except IllegalStateTransitionError:
+            logger.info("emergency_restart_already_cancelled run=%s", run_id)
+
+    async def _resolve_restart_checkpoint(self, cycle: Cycle, run_id: str) -> RunCheckpoint | None:
+        """T13 (#2178): the halted run's accepted work before the first task that received the
+        withdrawn instruction, translated onto its restart. Degrades, as a framing revision's
+        does (#811): a checkpoint that can't be read or translated runs the whole workload again,
+        which is the slower correct answer, never one that keeps work built on the instruction."""
+        restart = (cycle.execution_overrides or {}).get(EMERGENCY_RESTART_OVERRIDE)
+        if not restart:
+            return None
+        source = restart["source_run_id"]
+        registry = self._cycle_registry
+        assert registry is not None  # it created this run
+        try:
+            boundary = restart_checkpoint(
+                await registry.list_checkpoints(source), restart["before_task_id"]
+            )
+            return translate_checkpoint_for_replay(boundary, run_id) if boundary else None
+        except Exception:  # noqa: BLE001 — the full re-run is correct, only slower
+            logger.warning(
+                "emergency_restart_checkpoint_unused run=%s source=%s: re-running the workload",
+                run_id,
+                source,
+                exc_info=True,
+            )
+            return None
+
     async def _create_next_workload_run(
         self,
         cycle: Cycle,
@@ -1834,6 +1949,10 @@ class DispatchedFlowExecutor(FlowExecutionPort):
             # does not invalidate. Distinct from replay above: replay fails closed, a
             # revision degrades to the full re-run it used to do.
             checkpoint = await self._resolve_revision_checkpoint(cycle, run_id)
+        if checkpoint is None:
+            # T13 (#2178): an emergency withdrawal's restart keeps the halted run's work before
+            # the first task that received the instruction.
+            checkpoint = await self._resolve_restart_checkpoint(cycle, run_id)
         if checkpoint:
             await self._restore_checkpoint_state(
                 checkpoint,

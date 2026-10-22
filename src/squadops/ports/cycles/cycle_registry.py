@@ -18,6 +18,7 @@ from squadops.cycles.models import (
     CycleStatus,
     GateDecision,
     Run,
+    RunHalt,
     RunStatus,
 )
 from squadops.cycles.pulse_models import PulseVerificationRecord
@@ -175,6 +176,16 @@ class CycleRegistryPort(ABC):
         """Release the hold, once: whether this release landed. A hold already released (by a
         re-supply, a cancel, or the Campaign's ruling bound) is left as it was, and ``False``
         tells the caller another release won."""
+
+    @abstractmethod
+    async def record_run_halt(self, run_id: str, halt: RunHalt) -> bool:
+        """Record that ``run_id`` is halted by an emergency withdrawal (SIP-0110 §A.3.8, #2178),
+        once: whether this one landed. A run halted already keeps its first halt."""
+
+    @abstractmethod
+    async def record_restart(self, run_id: str, restart_run_id: str) -> bool:
+        """Record the run a halted run was restarted as, once: whether this one landed, so a
+        halted run is restarted at most once."""
 
     @abstractmethod
     async def record_gate_decision(self, run_id: str, decision: GateDecision) -> Run:

@@ -39,6 +39,7 @@ from squadops.cycles.models import (
     GateDecision,
     IllegalStateTransitionError,
     Run,
+    RunHalt,
     RunNotFoundError,
     RunStatus,
     RunTerminalError,
@@ -309,7 +310,8 @@ class PostgresCycleRegistry(CycleRegistryPort):
                 run_id,
             )
             holds = await self._holds_by_run(conn, [run_id])
-        return self._assemble_run(row, gate_rows, holds.get(run_id, []))
+            halts = await self._halts_by_run(conn, [run_id])
+        return self._assemble_run(row, gate_rows, holds.get(run_id, []), halts.get(run_id))
 
     async def list_runs(
         self,
@@ -348,13 +350,19 @@ class PostgresCycleRegistry(CycleRegistryPort):
                 run_ids,
             )
             holds = await self._holds_by_run(conn, run_ids)
+            halts = await self._halts_by_run(conn, run_ids)
 
         gates_by_run: dict[str, list] = {}
         for g in gate_rows:
             gates_by_run.setdefault(g["run_id"], []).append(g)
 
         return [
-            self._assemble_run(r, gates_by_run.get(r["run_id"], []), holds.get(r["run_id"], []))
+            self._assemble_run(
+                r,
+                gates_by_run.get(r["run_id"], []),
+                holds.get(r["run_id"], []),
+                halts.get(r["run_id"]),
+            )
             for r in run_rows
         ]
 
@@ -377,10 +385,13 @@ class PostgresCycleRegistry(CycleRegistryPort):
             )
             gates_by_run = await self._gates_by_run(conn, [r["run_id"] for r in run_rows])
             holds = await self._holds_by_run(conn, [r["run_id"] for r in run_rows])
+            halts = await self._halts_by_run(conn, [r["run_id"] for r in run_rows])
         for row in run_rows:
             gates = gates_by_run.get(row["run_id"], [])
             runs[row["cycle_id"]].append(
-                self._assemble_run(row, gates, holds.get(row["run_id"], []))
+                self._assemble_run(
+                    row, gates, holds.get(row["run_id"], []), halts.get(row["run_id"])
+                )
             )
         return runs
 
@@ -412,6 +423,42 @@ class PostgresCycleRegistry(CycleRegistryPort):
         for h in rows:
             holds.setdefault(h["run_id"], []).append(h)
         return holds
+
+    async def _halts_by_run(self, conn: Any, run_ids: list[str]) -> dict[str, Any]:
+        """The emergency halt of each of ``run_ids`` that has one (#2178, T13)."""
+        if not run_ids:
+            return {}
+        rows = await conn.fetch(
+            "SELECT run_id, record_id, requested_by, why, requested_at, restart_from_task_id, "
+            "restart_run_id FROM run_halts WHERE run_id = ANY($1)",
+            run_ids,
+        )
+        return {h["run_id"]: h for h in rows}
+
+    async def record_run_halt(self, run_id: str, halt: RunHalt) -> bool:
+        async with self._retry.acquire(self._pool) as conn:
+            status = await conn.execute(
+                "INSERT INTO run_halts (run_id, record_id, requested_by, why, requested_at, "
+                "restart_from_task_id) VALUES ($1, $2, $3, $4, $5, $6) "
+                "ON CONFLICT (run_id) DO NOTHING",
+                run_id,
+                halt.record_id,
+                halt.requested_by,
+                halt.why,
+                halt.requested_at,
+                halt.restart_from_task_id,
+            )
+        return status.endswith(" 1")
+
+    async def record_restart(self, run_id: str, restart_run_id: str) -> bool:
+        async with self._retry.acquire(self._pool) as conn:
+            status = await conn.execute(
+                "UPDATE run_halts SET restart_run_id = $2 "
+                "WHERE run_id = $1 AND restart_run_id IS NULL",
+                run_id,
+                restart_run_id,
+            )
+        return status.endswith(" 1")
 
     async def record_binding_hold(self, run_id: str, hold: BindingHold) -> None:
         async with self._retry.acquire(self._pool) as conn:
@@ -918,7 +965,11 @@ class PostgresCycleRegistry(CycleRegistryPort):
         )
 
     def _assemble_run(
-        self, row: asyncpg.Record, gate_rows: list, hold_rows: Sequence[Any] = ()
+        self,
+        row: asyncpg.Record,
+        gate_rows: list,
+        hold_rows: Sequence[Any] = (),
+        halt_row: Any = None,
     ) -> Run:
         """Reconstruct frozen Run from row + gate decision rows."""
         gate_decisions = tuple(
@@ -961,6 +1012,18 @@ class PostgresCycleRegistry(CycleRegistryPort):
                     sections=tuple(h["sections"]),
                 )
                 for h in hold_rows
+            ),
+            halt=(
+                RunHalt(
+                    record_id=halt_row["record_id"],
+                    requested_by=halt_row["requested_by"],
+                    why=halt_row["why"],
+                    requested_at=halt_row["requested_at"],
+                    restart_from_task_id=halt_row["restart_from_task_id"],
+                    restart_run_id=halt_row["restart_run_id"],
+                )
+                if halt_row is not None
+                else None
             ),
         )
 

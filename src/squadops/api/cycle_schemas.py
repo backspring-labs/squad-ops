@@ -446,6 +446,19 @@ class BindingHoldResponse(BaseModel):
     cause: str | None = None
 
 
+class RunHaltResponse(BaseModel):
+    """A run halted by a task instruction's emergency withdrawal (SIP-0110 §A.3.8, T13; #2178)."""
+
+    record_id: str
+    requested_by: str
+    why: str
+    requested_at: datetime
+    #: The task its restart runs again from; ``None``: nothing in it restarts.
+    restart_from_task_id: str | None = None
+    #: The run its cycle restarted it as, once it has.
+    restart_run_id: str | None = None
+
+
 class RunResponse(BaseModel):
     run_id: str
     cycle_id: str
@@ -462,6 +475,8 @@ class RunResponse(BaseModel):
     failure_reason: str | None = None
     #: #2178: each time the run was held on a task's bindings, oldest first.
     binding_holds: list[BindingHoldResponse] = Field(default_factory=list)
+    #: #2178 (T13): the emergency withdrawal that halted it, if one did.
+    halt: RunHaltResponse | None = None
 
 
 class WorkloadProgressEntry(BaseModel):

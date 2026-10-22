@@ -29,6 +29,7 @@ from squadops.cycles.models import (
     GateDecision,
     IllegalStateTransitionError,
     Run,
+    RunHalt,
     RunNotFoundError,
     RunStatus,
     RunTerminalError,
@@ -222,6 +223,24 @@ class MemoryCycleRegistry(CycleRegistryPort):
                 hold["released_at"], hold["cause"] = released_at, cause
                 return True
         return False
+
+    async def record_run_halt(self, run_id: str, halt: RunHalt) -> bool:
+        if run_id not in self._runs:
+            raise RunNotFoundError(f"Run not found: {run_id}")
+        data = self._runs[run_id]
+        if data.get("halt") is not None:
+            return False
+        data["halt"] = dataclasses.asdict(halt)
+        return True
+
+    async def record_restart(self, run_id: str, restart_run_id: str) -> bool:
+        if run_id not in self._runs:
+            raise RunNotFoundError(f"Run not found: {run_id}")
+        halt = self._runs[run_id].get("halt")
+        if halt is None or halt["restart_run_id"] is not None:
+            return False
+        halt["restart_run_id"] = restart_run_id
+        return True
 
     async def record_gate_decision(self, run_id: str, decision: GateDecision) -> Run:
         """Record a gate decision (T11: single enforcement point)."""
@@ -418,6 +437,7 @@ class MemoryCycleRegistry(CycleRegistryPort):
             )
             for h in d.get("binding_holds", ())
         )
+        d["halt"] = RunHalt(**d["halt"]) if d.get("halt") else None
         return Run(**d)
 
     # --- Checkpoint (SIP-0079) ---

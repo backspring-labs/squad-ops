@@ -547,6 +547,21 @@ class BindingHold:
 
 
 @dataclass(frozen=True)
+class RunHalt:
+    """A run halted by a task instruction's emergency withdrawal (SIP-0110 §A.3.8, T13; #2178):
+    the instruction, who withdrew it and why, and the task the restart runs again from. ``None``
+    there means the run only built on work that received it, in an earlier run of its cycle, so
+    nothing in it restarts. ``restart_run_id`` is the run its cycle restarted it as."""
+
+    record_id: str
+    requested_by: str
+    why: str
+    requested_at: datetime
+    restart_from_task_id: str | None = None
+    restart_run_id: str | None = None
+
+
+@dataclass(frozen=True)
 class Run:
     """Single execution attempt of a Cycle. SIP-0064 §8.4."""
 
@@ -567,6 +582,8 @@ class Run:
     failure_reason: str | None = None
     #: #2178: each time the run was held on a task's bindings, oldest first.
     binding_holds: tuple[BindingHold, ...] = ()
+    #: #2178 (T13): the emergency withdrawal that halted it, if one did.
+    halt: RunHalt | None = None
 
     @property
     def open_hold(self) -> BindingHold | None:

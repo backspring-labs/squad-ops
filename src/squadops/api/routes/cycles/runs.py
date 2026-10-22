@@ -216,34 +216,14 @@ async def cancel_run(
         raise IllegalStateTransitionError(
             f"Cannot transition Run from '{existing.status}' to 'cancelled'"
         )
-    await registry.cancel_run(run_id)
-
     # Cancellation bypasses the executor's finalize path, so everything
     # finalize would have torn down has to be torn down here: the Prefect
     # flow run (#77), the focus leases the run holds (#529), and the cycle's
     # open activity rows (#561).
     # deferred (cycle): api.routes.cycles.cancellation loads this module
-    from squadops.api.routes.cycles.cancellation import (
-        abort_cancelled_cycle_activities,
-        cancel_orphaned_flow_runs,
-        notify_agents_of_cancel,
-        release_cancelled_run_leases,
-    )
+    from squadops.api.routes.cycles.cancellation import cancel_run_by_the_existing_path
 
-    # #1648: first, while the activities and leases still say who holds the run's tasks.
-    agents_notified = await notify_agents_of_cancel(request, cycle_id, [run_id])
-    cancelled = await cancel_orphaned_flow_runs(request, project_id, cycle_id, [run_id])
-    leases_released = await release_cancelled_run_leases(request, cycle_id, [run_id])
-    activities_ended = await abort_cancelled_cycle_activities(request, cycle_id)
-
-    return RunCancelResponse(
-        status="cancelled",
-        run_id=run_id,
-        prefect_flow_runs_cancelled=cancelled,
-        focus_leases_released=leases_released,
-        activities_ended=activities_ended,
-        agents_notified=agents_notified,
-    )
+    return await cancel_run_by_the_existing_path(request, project_id, cycle_id, run_id)
 
 
 async def _gate_scopes(request: Request, gate_name: str) -> Identity | None:
