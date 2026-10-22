@@ -82,7 +82,7 @@ One row per part that ships separately. Statuses as CLAUDE.md defines them. The 
 | phase 1: the scenario store, its suites and the campaign's suite pin (§4.1, §4.7) | **shipped** (§10a) | 2.4.0, PR #2448, issue #2413 |
 | phase 1: the runner, outside the squad's containers, on a disposable copy, and each campaign cycle evaluated at its end (§4.1, §10c) | **shipped** | 2.4.0, PRs #2450 (X-3b's start) and #2472 (the cycle-end hook) |
 | phase 1: the declared start at the cycle-end hook, read from a repository-backed Project's Development Configuration (§4.1, contract 7; §10l) | **placed**, re-placed from 2.4 on 2026-10-21: its only consumer is a Campaign on such a Project, which SIP-0112 H.4 places in 2.5 (#2619). The browser runner moved to #2564 (§10k) | 2.5.0, #2414 |
-| phase 1: the browser runner and page scenarios, in the evaluator's image (§4.1, A2, A3; §10k, proposed; its design review before it is built) | **placed** | 2.4.0, after the window, #2564 |
+| phase 1: the browser runner and page scenarios, in the evaluator's image (§4.1, A2, A3; §10k, reviewed in §10p: eight steps, revision 5's page scenarios approved by the supervisor under the owner's delegation) | **placed** | 2.4.0, after the window, #2564 |
 | phase 1: the evaluation record and its reference (§4.1, contract 5) | **shipped** (§10b) | 2.4.0, PR #2449, issue #2415 |
 | phase 1: the quality baselines, Lighthouse, axe and lint, in the evaluator's image (§4.2) | **shipped** (§10f): Lighthouse and axe on each evaluated instance's declared pages, and #1937's lint. Prediction 4, the done-when, read at the window's close: **holds** (spread 0 within a session, at most 0.03 between sessions) | 2.4.0, PRs #2474 and #2479, issue #2416 |
 | phase 1: the intervention ledger's classifications (§4.3) | **shipped** (§10d) | 2.4.0, PR #2454, issue #2417 |
@@ -1529,3 +1529,229 @@ unlabelled field or an image with no alt, and none of the 20 trees did.
 
 **Who ruled.** The supervisor read the pre-registered predictions and placed #2637, under the owner's grant of
 2026-10-19. D4 and every quality gate stay the owner's.
+
+### 10p. §10k's design review: the rulings it settles, before any of it is built (2026-10-21, §10k; #2564; the supervisor's, by the owner's assignment of 2026-10-20 and delegation of 2026-10-21)
+
+**How it was reviewed.** A fresh reviewer that saw none of the drafting read §10k against `main` at `5a03c528` (early
+on 2026-10-22, UTC). It read code only and opened nothing held out. The supervisor checked the claims the rulings rest
+on, at the cited lines:
+- `run_scenario` runs every step, then every check (`scenarios/steps.py:177-218`). A check reads `responses[step - 1]`
+  (`:117-119`), and only an HTTP step appends to that list.
+- The evaluator's tag is the version of the quality and lint readings (`adapters/sandbox/scenario_runner.py:267`,
+  `:500`; the tag guard hashes the image's sources, `tests/unit/sandbox/test_evaluator_image.py:17-43`). A delta or a
+  spread across two tags is refused (`outcomes/quality_deltas.py:116-117`, `outcomes/quality_spread.py:77-78`).
+- The image's Chromium is installed unversioned (`infra/evaluator/Dockerfile:14`).
+- The sweep's markers come from a step's `json`, `headers` and path query, and a check's `equals`, `in`, `contains`
+  and `where` only (`scripts/dev/heldout_sweep.py:121-142`).
+- `ScenarioOutcome` has no detail or evidence field (`scenarios/evaluation.py:56-69`), and `evaluate._outcome` drops
+  the run's detail (`scenarios/evaluate.py:257-265`). No route reads an evaluation record.
+- `surface_absent` on both trees takes no part in contribution (`outcomes/contribution.py:60-64`, `:83-86`), and
+  outcomes are matched by `scenario_id` alone (`:100`).
+- Only `http_endpoint` surfaces are checked against the delivery (`scenarios/evaluate.py:309-319`).
+- The wire reads `ScenarioRun(**r)` (`scenarios/runner.py:273`), which refuses an unknown key.
+- A sandbox request that raises `ValueError` answers 400 with the exception's text (`sandbox/api.py:209-210`).
+- The reference detail page has two name inputs, the join form's and the leave form's
+  (`examples/03_group_run/interface_manifest.yaml:96-97`).
+- The package reads only its pinned suite's records (`outcomes/campaign_package.py:44-48`).
+
+The owner's approved answers (§10k) stand. Where the review found one couldn't be built as written, the ruling below
+says how it is built instead.
+
+**Four corrections to §10k:**
+1. **Revision numbering.** Revision 4 was spent on 2026-10-21 on prediction 2's remedy: three scenarios' values,
+   approved as `cb2ac464…`. The page scenarios are **revision 5**. It keeps revision 4's 25 scenarios unchanged and
+   appends the page scenarios after them.
+2. **Its approval is the supervisor's.** The owner, 2026-10-21 at 22:13 ET, verbatim: "I delegate the page-scenario
+   suite approval to you". That covers revision 5 only.
+3. **"Prediction 2's sweep covers both" doesn't hold today:** no browser value is a marker. Ruling 9 extends the sweep.
+4. **Evidence has no home yet:** no table, port method, route or CLI command. Ruling 8 builds it.
+
+**The rulings:**
+1. **A mixed scenario runs in the sandbox's runner** (item 7).
+   - `run_scenario(scenario, send, browse=None)` stays pure in `squadops.scenarios.steps`. It splits the steps into
+     segments, each a maximal run of browser steps, and hands each to `browse`. With no `browse` (no app network or
+     no evaluator image), a browser step reads `browser_unavailable`, as today.
+   - **Each segment is one run of the evaluator's container,** `docker run --rm -i`, with its request on its input.
+     Each launches its own Chromium, so each segment starts in a fresh browser context.
+   - **Each segment begins with `visit`.** A user's flow stays within one segment, and a fresh load is a second
+     `visit` inside it.
+   - **Values flow one way in this build, from HTTP to the browser.** Python renders each segment with `_render`
+     before sending it, so substitution keeps one implementation. A value substituted into a pattern is escaped
+     (`re.escape`).
+   - §10k's "receiving the values the browser steps save" is **dropped**. A record created on the page is read back
+     over HTTP with a `where` check (§10h).
+   - **The evaluator's output never reaches a stored detail.** That rule differs from `_quality`'s failures
+     (`scenario_runner.py:490-494`), because a segment's output holds held-out values.
+   - **The request and answer:**
+     - `{"browse": {"base_url", "first_step", "steps", "checks", "deadline_s"}}` goes in;
+     - `{"browse": {"browser", "steps", "checks", "evidence", "timings"}}` comes out;
+     - each step's outcome is `done`, `not_found`, `action_failed`, `timeout` or `page_broken`.
+2. **A check reads the page after its own step.**
+   - A browser check travels with the segment that holds its step, and the evaluator reads it right after that step.
+   - An HTTP check reads a per-step results list keyed by step number, not the responses' list index.
+   - Checks are still reported in check order after every step has run, so a step's failure still ends the scenario
+     first.
+   - At draft time a browser check must name a browser step, and an HTTP check an HTTP step.
+   - A revision-4-shaped scenario gives a byte-identical `ScenarioRun`, held by a test.
+3. **The locator rule: role and candidate names only** (item 1).
+   - **The match is exact,** after case-folding and collapsing whitespace. Candidates are tried in order. The first
+     candidate with any match wins, and its first match in document order is used.
+   - **The record keeps** which candidate matched and how many elements did.
+   - **The driver resolves names itself,** querying by role and filtering the computed names, so the rule doesn't
+     depend on a library selector's matching.
+   - **Two qualifiers:**
+     - `near` names another target, and the control must be in the same form as it, or else under their nearest
+       common ancestor. The detail page's two name inputs need it.
+     - `text` is a substring the element's text must contain, for a link named by its content.
+   - **No resolution against the delivery's labels.** The manifest declares none: a route carries a path, a view, a
+     purpose and test ids, and §4.1 rules test ids out.
+   - **Revision 5's candidate names** are drafted from an inventory of the names on the window's delivered trees,
+     taken by the supervisor and kept outside every repository with the suite.
+4. **A control not found is `blocked_unverified`, `control_absent`** (item 2): the page's counterpart of
+   `surface_absent`, with a reason of its own. Five limits:
+   - **An action's target only.** A check never reads absent. A new `control` check reads whether a target is
+     `unavailable` (absent, hidden or disabled) or `enabled`. So a delivery that hides Join at capacity has that
+     outcome checked, not read as an absence.
+   - **A broken page fails.** An uncaught page exception, an empty accessibility tree, or a non-2xx answer on a
+     declared route fails the scenario at that step.
+   - **Page surfaces are checked against the delivery before anything runs,** as endpoints are
+     (`evaluate.py:309-319`). A route's parameters are normalised by `campaigns.increment_tree.route_param`, and a
+     route the manifest doesn't declare is `surface_absent`, as an undeclared endpoint is.
+   - **So the kind of absence is in the reason:**
+     - `surface_absent` is a declared endpoint or page the delivery doesn't have, which the scenario's surfaces say;
+     - `control_absent` is a control none of a step's names found.
+     - In contribution, `control_absent` reads `unverified`, even on both trees: it isn't `surface_absent`, so
+       `_absent` doesn't take it out of the reading. Otherwise a page scenario whose names match no delivery would
+       vanish from every reading.
+     - An endpoint or a page absent on both trees keeps today's rule.
+   - **The not-found rate** (k of n page scenarios reading `control_absent`) is in the package and the digest. The
+     evidence lists the names found for that role.
+5. **The waits** (item 3).
+   - **Navigation:** `networkidle0`, at most 30 s, as `_quality` uses.
+   - **Locating a control:** at most 10 s, then it's not found. Before acting, the driver waits for the control to be
+     visible, enabled and stable, so a click before hydration isn't lost.
+   - **Checks:** `text`, `count`, `order` and `control` poll until they hold, for at most 10 s, then they fail.
+     `absent` is read once, after the settle.
+   - **The settle after an action** is the network idle for 500 ms, within 5 s. It's best effort: one that runs out
+     is recorded, never a failure, so an app that polls isn't read as broken.
+   - **The bounds are final once measured:** max(5 s, three times the longest wait observed in B2's runs), recorded
+     with the tag that carries them.
+   - **The time limits nest:** each wait, then the driver's own deadline (so it always answers with the step it
+     reached), then the container's timeout (the deadline plus a margin, killed by name), then the evaluation call's
+     1800 s.
+   - **The browser's setting is pinned:** `TZ=UTC`, `--lang=en-US`, and a 1280×800 viewport, Lighthouse's desktop
+     setting. `browser.version()` is on every result. Retries stay 0.
+   - **The cost** per evaluation is measured when built, with each phase's duration recorded (as §10n ruling 8 does
+     for the seeded instance), and the record names it before a series runs.
+6. **The evaluator's tag stays the version of every measure the image runs,** so the build's driver change ends the
+   quality and lint series at that deploy.
+   - **The break is named** in the record and in the next window's pre-registration, as §10m names W292.
+   - **Why not version each measure separately:**
+     - the break can't mislead, because deltas and spreads refuse two tags;
+     - Lighthouse's and axe's series carry no phase-2 weight (§10o), and #2637 breaks them in 2.5 anyway;
+     - lint's deltas compare trees inside one campaign, which runs on one deploy (G7), so nothing reads lint across
+       the break.
+   - **The unpinned Chromium:**
+     - a page scenario's outcome records the browser version beside the tag, and a different version is a
+       methodology break;
+     - the same gap in the quality readings goes to #2637.
+7. **The outcome records its runner.**
+   - `ScenarioOutcome` gains the runner's version (the tag and the browser's, or none for HTTP only) and each step's
+     timing. Both are additive to the record this SIP produces.
+   - The wire stays strict. The runtime API and the sandbox service are deployed together on that PR, so a mismatch
+     fails loudly rather than dropping fields.
+   - The review found no change to contract 5's reference (`OutcomeEvaluationRef`), contract 7 or the runner port's
+     signature. A PR that changes one takes G4.
+8. **Evidence** (item 5).
+   - **Every step:** its timing, on the outcome.
+   - **A failed or blocked step:**
+     - a viewport screenshot;
+     - the target role's nodes and their names (at most 200 nodes or 64 KB);
+     - uncaught exceptions and console errors (at most 50, each at most 500 characters);
+     - failed requests (at most 50).
+   - **Caps:** 512 KB a scenario and 4 MB an evaluation.
+   - **Where it's kept:** a new held-out table, `scenario_evidence`, behind the scenario store's port, with Postgres
+     and memory adapters. Never the artifact vault. Each item's sha256 and size stay on the record.
+   - **Who reads it:** only a route under `scenarios:approve`, and `squadops scenarios evidence <evaluation> --out
+     <dir>`. The CLI refuses a directory inside any Git working tree (`cli/commands/scenarios.py:45-57`'s rule), so
+     evidence can't reach a checkout's `var/` and from there the public Release's records.
+   - **Secrets:** text evidence passes `_redacted`. An evaluation that resolved any evaluation secret keeps no
+     screenshot, since a secret is never written to a record.
+   - **How long it's kept:** for the line. The cut's housekeeping (step 8) purges it and records the count.
+   - It never reaches phase 2's proposer. A console view comes later.
+9. **Held out, evidence included** (B3).
+   - **The sweep's markers** gain fill values, target names, `text` qualifiers, and the literal runs inside patterns.
+   - **`scenario_evidence` joins the held-out tables:** in the sweep, in the held-out guard
+     (`test_held_out_scenarios_stay_out_of_the_squads_reach.py`) with its migration check, and in the package's guard.
+   - **A screenshot is pixels,** which no text sweep reads, so its B3 is structural: where it's stored and who can
+     read it.
+   - **A malformed browser step is refused at draft and approval,** never at run time, where the error's text would
+     be an HTTP answer. Nothing validates on read, so a new rule can't make an approved revision unreadable.
+10. **`page` and `browser` read `no_runner`** once a browser runs. `_BROWSER_ACTIONS` keeps `visit`, `fill` and
+    `click` (`steps.py:32`).
+11. **Comparison across revisions** (item 6).
+    - `_comparable` stays strict for contribution, since a campaign reads one suite.
+    - The reader that compares the versions two suites share is built when the first cross-suite reading needs it.
+      None of B1 to B3 does. It keys outcomes by id and version.
+    - **How it reports:**
+      - a small shared set as "k of n", never as a bare percentage;
+      - new scenarios apart, with their own counts;
+      - a withdrawn scenario listed, never counted;
+      - no pooling across stacks.
+    - **A scenario whose surfaces changed but whose steps didn't is a different scenario,** as its content hash
+      says. Its surfaces decide its applicability.
+    - **The shared instance:**
+      - revision 5 appends, so revision 4's scenarios run in their old order and see the state they saw;
+      - every page check is scoped to the scenario's own records;
+      - revision 5's approval confirms that revision 4's checks read only their own records.
+12. **Revision 5's outcomes** (item 4): at least
+    - capacity's indicator: k of N, in either written form;
+    - capacity on the page: Join `unavailable` at capacity, or a join from the page at capacity that leaves the count
+      unchanged when read back over HTTP;
+    - the list's order on the page: runs created out of date order, with the order read on the scenario's own
+      titles;
+    - joining from the page: read back over HTTP and on a fresh `visit`.
+
+    Its values are written apart and held out.
+13. **B1 and B2's readings.**
+    - **B1's pairs:**
+      - capacity: `cyc_413e75801797` → `cyc_840e72247f38` (FastAPI) and `cyc_23232c9e72da` → `cyc_e5370cec344f`
+        (Next.js);
+      - sorting: `cyc_f9930df7c925` → `cyc_b7432a9633a5` and `cyc_e5370cec344f` → `cyc_679608d64edc`;
+      - §10c's reference pair, if its delivery shows the indicator.
+    - **What each tree has or lacks** is settled by a diagnostic pre-registered before B1 is read. §10o already found
+      three calibrations with no capacity field, both capacity pairs' bases among them.
+    - **Joining from the page has no tree that lacks it,** so it's read on a fault-injected tree: a calibration with
+      its join submit removed, built by the supervisor, its identity recorded, and named as a diagnostic (#1251's
+      rule).
+    - **B1's falsifier is widened:** a scenario that fails on the tree known to have its outcome is withdrawn too.
+    - **B2's "same result"** is an equal result, blocked reason and first failing step, read per stack.
+    - **The reading tool:** a script evaluates named cycles against a named suite N times, writing records with no
+      campaign. It's safe because the package reads only its pinned suite's records.
+14. **Revision 5's review** is done as revision 3's was (the window's pre-registration, item 1). An agent that saw none
+    of the drafting reads the suite file and does nothing else. It writes only its review, outside every repository.
+    No agent that writes code or repository text opens the suite. The supervisor approves it under the delegation,
+    and the window log records that the drafter and the approver are the same actor.
+
+**The build order, each a PR:**
+1. the vocabulary, as pure code (rulings 1, 2, 3's qualifiers and 10, and the draft-time refusals);
+2. the evaluator's browser driver behind its small interface, with the `browse` request, its pins, bounds and evidence,
+   and the new tag (ruling 6). It's read live on both stacks with an invented, public scenario;
+3. the runner's segments, the page-surface check, and the outcome's runner version and timings, deployed together, with
+   a wiring test entering at `evaluate_cycle`. The bounds and the cost are measured on the Spark;
+4. evidence: the migration, the port and adapters, the redaction, the route and CLI, the guards, the sweep and the
+   purge;
+5. the readers: the not-found rate, and contribution's rule for a control not found;
+6. the reading tool, the ground-truth diagnostic and the fault-injected tree;
+7. revision 5, drafted, reviewed and approved outside the repository;
+8. B1 to B3 read, recorded as an amendment.
+
+**Not verified by the review, read when built:**
+- the browser library's own name matching, which ruling 3 doesn't rely on;
+- whether Vite's preview answers 200 on a route the app doesn't declare. §10o's diagnostic saw it answer 200 on
+  declared client routes;
+- whether Chromium's debugging port binds loopback only;
+- a screenshot's size and a launch's cost.
+
+**Who ruled.** The supervisor, by the owner's assignment of 2026-10-20 ("Approve your recommendations") and
+delegation of 2026-10-21. D4 and every quality gate stay the owner's.
