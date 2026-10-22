@@ -254,6 +254,10 @@ async def test_an_evaluation_reads_back_whole_and_the_table_refuses_a_commit_for
     assert await scenarios.evidence_for(records[0].evaluation_id) == [item]
     with pytest.raises(asyncpg.ForeignKeyViolationError):
         await scenarios.save_evidence("evl_nothing000", [item])
+    # The cut's purge: strictly before, and the count of scenarios removed.
+    assert await scenarios.purge_evidence(records[0].evaluated_at) == 0
+    assert await scenarios.purge_evidence(datetime(2100, 1, 1, tzinfo=UTC)) == 1
+    assert await scenarios.evidence_for(records[0].evaluation_id) == []
     with pytest.raises(asyncpg.CheckViolationError):
         async with pool.acquire() as conn:
             await conn.execute(

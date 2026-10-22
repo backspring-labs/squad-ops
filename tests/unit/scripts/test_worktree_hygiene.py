@@ -271,3 +271,36 @@ def test_recording_a_release_needs_an_applied_run(cleanup):
     with pytest.raises(SystemExit):
         hygiene.main(["--record-release", "v2.1.0"], cwd=main, pr_lookup=lookup)
     assert not (main / "site").exists()
+
+
+def test_the_cuts_page_evidence_purge_is_recorded_with_its_count(cleanup, tmp_path):
+    """SIP-0113 §10p ruling 8 (#2564): cut step 8 records how many scenarios' evidence the purge
+    removed, which ``check_release_packages.py`` asks of every release from 2.4.0. Bug caught: the
+    count dropped between the flag and the record."""
+    import yaml
+
+    main, _, lookup = cleanup
+
+    hygiene.main(
+        ["--apply", "--archive-root", str(tmp_path / "archive"), "--record-release", "v2.4.0",
+         "--evidence-purged", "7"],
+        cwd=main, pr_lookup=lookup,
+    )  # fmt: skip
+
+    record = yaml.safe_load(
+        (main / "site/content/releases/v2.4.0/housekeeping.yaml").read_text(encoding="utf-8")
+    )
+    assert record["scenario_evidence_purged"] == 7
+
+
+@pytest.mark.parametrize(
+    "argv",
+    [["--evidence-purged", "3"], ["--apply", "--archive-root", "/x", "--record-release", "v2.4.0",
+                                  "--evidence-purged", "-1"]],
+    ids=["without-a-record", "a-negative-count"],
+)  # fmt: skip
+def test_a_purge_count_is_refused_without_a_record_or_below_zero(cleanup, argv):
+    main, _, lookup = cleanup
+    with pytest.raises(SystemExit):
+        hygiene.main(argv, cwd=main, pr_lookup=lookup)
+    assert not (main / "site").exists()

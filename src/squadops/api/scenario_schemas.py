@@ -65,3 +65,14 @@ class ScenarioEvidenceResponse(BaseModel):
     withheld: list[str]
     sha256: str
     size: int
+
+
+class EvidencePurgeRequest(BaseModel):
+    """The cut's purge (§10p ruling 8, cut step 8): every evaluation made before ``before``."""
+
+    before: datetime
+
+
+class EvidencePurgeResponse(BaseModel):
+    before: datetime
+    purged: int

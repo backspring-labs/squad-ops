@@ -173,3 +173,19 @@ def test_evidence_is_written_per_scenario_outside_every_repository(mock_get_clie
     assert shot.read_bytes().startswith(b"\x89PNG")
     details = (out / "join-from-the-page" / "step-3.json").read_text()
     assert '"errors"' in details and "png_b64" not in details
+
+
+@patch("squadops.cli.commands.scenarios._get_client")
+def test_the_purge_sends_its_cut_and_prints_the_count_for_the_record(mock_get_client):
+    """Cut step 8. Bug caught: the cut's time not sent, so everything is purged, or the count
+    the housekeeping record needs never shown."""
+    client = MagicMock()
+    client.post.return_value = {"before": "2026-12-01T00:00:00Z", "purged": 4}
+    mock_get_client.return_value = client
+
+    result = runner.invoke(app, ["scenarios", "purge-evidence", "--before", "2026-12-01T00:00:00Z"])
+
+    assert result.exit_code == 0, result.output
+    assert client.post.call_args.args[0] == "/api/v1/scenario-evaluations/evidence/purge"
+    assert client.post.call_args.kwargs["json"] == {"before": "2026-12-01T00:00:00Z"}
+    assert "purged 4" in result.output

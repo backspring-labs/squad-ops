@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Sequence
+from datetime import datetime
 
 from squadops.ports.scenarios import ScenarioStorePort
 from squadops.scenarios.evaluation import EvaluationRecord, QualityRemeasure
@@ -71,3 +72,9 @@ class MemoryScenarioStore(ScenarioStorePort):
 
     async def evidence_for(self, evaluation_id: str) -> list[ScenarioEvidence]:
         return [e for (eid, _), e in sorted(self._evidence.items()) if eid == evaluation_id]
+
+    async def purge_evidence(self, before: datetime) -> int:
+        gone = [k for k in self._evidence if self._evaluations[k[0]].evaluated_at < before]
+        for key in gone:
+            del self._evidence[key]
+        return len(gone)

@@ -197,3 +197,17 @@ def evidence(
         print_json({"evaluation_id": evaluation_id, "written": written})
         return
     print_success(f"{len(data)} scenarios' evidence written under {out}")
+
+
+@app.command("purge-evidence")
+def purge_evidence(
+    ctx: typer.Context,
+    before: str = typer.Option(..., "--before", help="ISO time: the line's cut, e.g. the tag's"),
+):
+    """Cut step 8 (§10p ruling 8): delete the page evidence of every evaluation made before
+    ``--before``, and print the count for ``worktree_hygiene.py --evidence-purged``."""
+    data = _call(ctx, "post", f"{_EVALUATIONS}/evidence/purge", json={"before": before})
+    if _json(ctx):
+        print_json(data)
+        return
+    print_success(f"purged {data['purged']} scenarios' evidence from before {data['before']}")

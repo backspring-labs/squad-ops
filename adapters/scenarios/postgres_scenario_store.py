@@ -9,6 +9,7 @@ refused rather than served.
 from __future__ import annotations
 
 from collections.abc import Sequence
+from datetime import datetime
 
 import asyncpg
 
@@ -182,6 +183,15 @@ class PostgresScenarioStore(ScenarioStorePort):
                 evaluation_id,
             )
         return [_row_to_evidence(row) for row in rows]
+
+    async def purge_evidence(self, before: datetime) -> int:
+        async with self._pool.acquire() as conn:
+            status = await conn.execute(
+                "DELETE FROM scenario_evidence e USING scenario_evaluations v "
+                "WHERE e.evaluation_id = v.evaluation_id AND v.evaluated_at < $1",
+                before,
+            )
+        return int(status.split()[-1])
 
 
 def _row_to_record(row: asyncpg.Record) -> SuiteRecord:
