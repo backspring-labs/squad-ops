@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from squadops.ports.scenarios import ScenarioStorePort
-from squadops.scenarios.evaluation import EvaluationRecord
+from squadops.scenarios.evaluation import EvaluationRecord, QualityRemeasure
 from squadops.scenarios.models import CampaignSuitePin, SuiteRecord
 
 
@@ -12,6 +12,7 @@ class MemoryScenarioStore(ScenarioStorePort):
         self._suites: dict[str, SuiteRecord] = {}
         self._pins: dict[str, CampaignSuitePin] = {}
         self._evaluations: dict[str, EvaluationRecord] = {}
+        self._remeasures: dict[tuple[str, str, int], QualityRemeasure] = {}
 
     async def save_suite(self, record: SuiteRecord) -> None:
         self._suites[record.digest] = record
@@ -45,3 +46,15 @@ class MemoryScenarioStore(ScenarioStorePort):
     async def evaluations_for_cycle(self, cycle_id: str) -> list[EvaluationRecord]:
         found = [r for r in self._evaluations.values() if r.cycle_id == cycle_id]
         return sorted(found, key=lambda r: r.evaluated_at)
+
+    async def save_remeasure(self, remeasure: QualityRemeasure) -> None:
+        if remeasure.evaluation_id not in self._evaluations:
+            raise ValueError(f"no evaluation {remeasure.evaluation_id} to re-measure")
+        key = (remeasure.evaluation_id, remeasure.provenance, remeasure.round)
+        if key in self._remeasures:
+            raise ValueError(f"re-measure {key} is already written")
+        self._remeasures[key] = remeasure
+
+    async def remeasures_for_cycle(self, cycle_id: str) -> list[QualityRemeasure]:
+        found = [r for r in self._remeasures.values() if r.cycle_id == cycle_id]
+        return sorted(found, key=lambda r: (r.provenance, r.round))

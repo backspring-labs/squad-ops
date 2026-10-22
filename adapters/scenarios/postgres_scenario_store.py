@@ -11,7 +11,7 @@ from __future__ import annotations
 import asyncpg
 
 from squadops.ports.scenarios import ScenarioStorePort
-from squadops.scenarios.evaluation import EvaluationRecord, ScenarioOutcome
+from squadops.scenarios.evaluation import EvaluationRecord, QualityRemeasure, ScenarioOutcome
 from squadops.scenarios.models import (
     CampaignSuitePin,
     SuiteRecord,
@@ -25,6 +25,11 @@ _EVALUATION_COLUMNS = (
     "evaluation_id, project_id, campaign_id, cycle_id, evaluated_tree_identity, "
     "previous_accepted_tree_identity, suite_digest, outcomes, evaluated_at, quality, lint, "
     "quality_seeded"
+)
+
+_REMEASURE_COLUMNS = (
+    "remeasure_id, evaluation_id, project_id, campaign_id, cycle_id, evaluated_tree_identity, "
+    "previous_accepted_tree_identity, provenance, round, measured_at, quality, lint, quality_seeded"
 )
 
 
@@ -117,6 +122,38 @@ class PostgresScenarioStore(ScenarioStorePort):
             )
         return [_row_to_evaluation(r) for r in rows]
 
+    async def save_remeasure(self, remeasure: QualityRemeasure) -> None:
+        def reading(r):
+            return r.as_dict() if r is not None else None
+
+        async with self._pool.acquire() as conn:
+            await conn.execute(
+                f"INSERT INTO quality_remeasures ({_REMEASURE_COLUMNS}) "
+                "VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)",
+                remeasure.remeasure_id,
+                remeasure.evaluation_id,
+                remeasure.project_id,
+                remeasure.campaign_id,
+                remeasure.cycle_id,
+                remeasure.evaluated_tree_identity,
+                remeasure.previous_accepted_tree_identity,
+                remeasure.provenance,
+                remeasure.round,
+                remeasure.measured_at,
+                reading(remeasure.quality),
+                reading(remeasure.lint),
+                reading(remeasure.quality_seeded),
+            )
+
+    async def remeasures_for_cycle(self, cycle_id: str) -> list[QualityRemeasure]:
+        async with self._pool.acquire() as conn:
+            rows = await conn.fetch(
+                f"SELECT {_REMEASURE_COLUMNS} FROM quality_remeasures WHERE cycle_id = $1 "
+                "ORDER BY provenance, round",
+                cycle_id,
+            )
+        return [_row_to_remeasure(row) for row in rows]
+
 
 def _row_to_record(row: asyncpg.Record) -> SuiteRecord:
     suite = parse_suite(row["content"])
@@ -143,3 +180,12 @@ def _row_to_evaluation(row: asyncpg.Record) -> EvaluationRecord:
     seeded = row["quality_seeded"]
     values["quality_seeded"] = QualityReading.from_dict(seeded) if seeded else None
     return EvaluationRecord(**values)
+
+
+def _row_to_remeasure(row: asyncpg.Record) -> QualityRemeasure:
+    values = dict(row)
+    values["quality"] = QualityReading.from_dict(row["quality"]) if row["quality"] else None
+    values["lint"] = LintReading.from_dict(row["lint"]) if row["lint"] else None
+    seeded = row["quality_seeded"]
+    values["quality_seeded"] = QualityReading.from_dict(seeded) if seeded else None
+    return QualityRemeasure(**values)

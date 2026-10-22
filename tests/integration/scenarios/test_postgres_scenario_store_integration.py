@@ -59,7 +59,8 @@ async def store():
     await apply_migrations(pool, Path(__file__).parents[3] / "infra" / "migrations")
     async with pool.acquire() as conn:
         await conn.execute(
-            "TRUNCATE TABLE scenario_evaluations, campaign_scenario_suites, scenario_suites"
+            "TRUNCATE TABLE quality_remeasures, scenario_evaluations, campaign_scenario_suites, "
+            "scenario_suites"
         )
     yield PostgresScenarioStore(pool=pool), pool
     await pool.close()
@@ -209,6 +210,35 @@ async def test_an_evaluation_reads_back_whole_and_the_table_refuses_a_commit_for
 
     assert await scenarios.evaluations_for_cycle("cyc_pg0000000001") == records[::-1]
     assert await scenarios.get_evaluation(records[0].evaluation_id) == records[0]
+
+    # §10j, §10n ruling 1 (#2562): a re-measure is its own row, a series written once, and only
+    # of an evaluation that exists.
+    from squadops.scenarios.evaluation import QualityRemeasure
+
+    remeasure = QualityRemeasure(
+        remeasure_id="rmq_pg00000001",
+        evaluation_id=records[0].evaluation_id,
+        project_id="group_run",
+        campaign_id=None,
+        cycle_id="cyc_pg0000000001",
+        evaluated_tree_identity="a" * 64,
+        previous_accepted_tree_identity=None,
+        provenance="2.4 window, seeded",
+        round=1,
+        measured_at=T0,
+        quality=readings[22],
+        lint=lints[22],
+        quality_seeded=seeded[22],
+    )
+    await scenarios.save_remeasure(remeasure)
+    assert await scenarios.remeasures_for_cycle("cyc_pg0000000001") == [remeasure]
+    assert await scenarios.evaluations_for_cycle("cyc_pg0000000001") == records[::-1]
+    with pytest.raises(asyncpg.UniqueViolationError):
+        await scenarios.save_remeasure(replace(remeasure, remeasure_id="rmq_pg00000002"))
+    with pytest.raises(asyncpg.ForeignKeyViolationError):
+        await scenarios.save_remeasure(
+            replace(remeasure, remeasure_id="rmq_pg00000003", evaluation_id="evl_nothing000")
+        )
     with pytest.raises(asyncpg.CheckViolationError):
         async with pool.acquire() as conn:
             await conn.execute(

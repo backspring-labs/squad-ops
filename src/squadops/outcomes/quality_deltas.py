@@ -24,7 +24,7 @@ from collections.abc import Mapping
 from dataclasses import dataclass
 
 from squadops.outcomes.contribution import NotComparable
-from squadops.scenarios.evaluation import EvaluationRecord
+from squadops.scenarios.evaluation import EvaluationRecord, QualityRemeasure
 from squadops.scenarios.quality import (
     AXE_IMPACTS,
     LIGHTHOUSE_CATEGORIES,
@@ -69,7 +69,25 @@ class QualityDeltas:
     not_compared: tuple[tuple[str, str], ...]
 
 
-def _check(current: EvaluationRecord, other: EvaluationRecord, against: str) -> None:
+#: What a delta reads: an evaluation's readings, or a re-measure's (§10n ruling 1).
+Measured = EvaluationRecord | QualityRemeasure
+
+
+def _check(current: Measured, other: Measured, against: str) -> None:
+    if type(current) is not type(other):
+        # §10n ruling 1: a re-measure is taken later, on another deploy; read against an
+        # evaluation, it would measure the deploys, not the increment.
+        raise NotComparable(
+            "a re-measure compares with a re-measure, and an evaluation with an evaluation"
+        )
+    if (
+        isinstance(current, QualityRemeasure)
+        and isinstance(other, QualityRemeasure)
+        and current.provenance != other.provenance
+    ):
+        raise NotComparable(
+            f"re-measures of two series: {other.provenance!r} and {current.provenance!r}"
+        )
     if against == Against.PREVIOUS:
         if other.evaluated_tree_identity != current.previous_accepted_tree_identity:
             raise NotComparable(
@@ -152,9 +170,7 @@ def _lint_deltas(
     return deltas, []
 
 
-def quality_deltas(
-    current: EvaluationRecord, other: EvaluationRecord, *, against: str
-) -> QualityDeltas:
+def quality_deltas(current: Measured, other: Measured, *, against: str) -> QualityDeltas:
     """``current``'s measures against ``other``'s: the tree it was built on (``previous``), or
     the campaign's calibration (``baseline``). Refused when ``other`` isn't that record."""
     _check(current, other, against)
