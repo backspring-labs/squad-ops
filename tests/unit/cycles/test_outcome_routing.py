@@ -1214,16 +1214,16 @@ class TestAcceptPatchRetest:
         return result
 
     @pytest.mark.parametrize(
-        "declared, changed_row, kept",
+        "declared, changed_row, kept, why",
         [
-            (True, "probe", True),
-            (False, "probe", False),
-            (True, "typed", False),
+            (True, "probe", True, ""),
+            (False, "probe", False, "added=vc-probe-api-runs-ordered"),
+            (True, "typed", False, "added=acceptance:endpoint_defined"),
         ],
         ids=["declared-probe-kept", "undeclared-probe-discarded", "typed-check-discarded"],
     )
     async def test_a_check_still_failing_for_a_new_reason_is_progress_only_for_a_probe(
-        self, executor, cycle, caplog, declared, changed_row, kept
+        self, executor, cycle, caplog, declared, changed_row, kept, why
     ):
         """Bug caught (#2340, R5's Next.js `cyc_8174805a98ca`): the repair added the run's id and
         cleared six of seven failures, but the ordering probe it half-fixed then failed for its
@@ -1269,7 +1269,107 @@ class TestAcceptPatchRetest:
             [refused] = [
                 r.getMessage() for r in caplog.records if "progress_not_kept" in r.getMessage()
             ]
-            assert refused.startswith("progress_not_kept task=task_9 why=movement=shifted round=[")
+            # #2306: the refusal names the check that changed.
+            assert refused.startswith(f"progress_not_kept task=task_9 why={why} round=[")
+
+    @staticmethod
+    def _rows_result(*rows: dict, retest: bool) -> TaskResult:
+        """A qa result whose ``validation_result`` carries exactly ``rows``."""
+        return TaskResult(
+            task_id="retest-run_001-00-qa.test" if retest else "task_9",
+            status="FAILED",
+            outputs={
+                "artifacts": []
+                if retest
+                else [
+                    {
+                        "name": "tests/test_api.py",
+                        "content": "def test_x():\n    assert 0\n",
+                        "type": "test",
+                    },
+                ],
+                "test_result": {"executed": True, "exit_code": 1, "tests_passed": False},
+                "validation_result": {"passed": False, "checks": list(rows)},
+                "outcome_class": TaskOutcome.SEMANTIC_FAILURE,
+            },
+            error="tests failed",
+        )
+
+    @staticmethod
+    def _suite(*titles: str, broken: bool = False, traceback: str = "") -> dict:
+        row = {
+            "check": "tests_pass",
+            "passed": False,
+            "executed": True,
+            "exit_code": 2 if broken else 1,
+            "runner": "pytest",
+            "suite_broken": broken,
+            "failing_tests": [
+                f"tests/test_api.py::{t}" if t else "tests/test_api.py" for t in titles
+            ],
+        }
+        if traceback:
+            row["app_traceback"] = traceback
+        return row
+
+    _TYPED_ROW = {
+        "check": "acceptance:regex_match",
+        "passed": False,
+        "reason": "match_count=0",
+        "file": "tests/test_api.py",
+    }
+
+    @pytest.mark.parametrize(
+        "shape, retest_titles, said",
+        [
+            # be3caea2's shape: the app errored on every test, and the repair fixed that.
+            (
+                "app-error",
+                ("a", "b"),
+                "cleared 0 of 2 failure(s) and added none "
+                "(category:app_error->executed_and_failed got better)",
+            ),
+            # 56d6ead9's shape: the suite never loaded, and a typed check failed beside it.
+            (
+                "unloaded",
+                ("a", "b", "c"),
+                "cleared 2 of 2 failure(s) and added none, and ran 3 failing test(s) the round "
+                "never reached (suite:tests_pass got better)",
+            ),
+        ],
+        ids=["the-app-stopped-erroring", "the-suite-loads-and-a-typed-check-passed-verification"],
+    )
+    async def test_progress_the_row_facts_hid_is_kept_at_the_acceptance_entry(
+        self, executor, cycle, shape, retest_titles, said
+    ):
+        """Bug caught (#2306): the round's category rode every test's element and a test the
+        round never ran read as one the repair added, so a repair that cleared an app error, or
+        made a suite load, was discarded and the task re-rolled. The typed check is the
+        envelope's own criterion: patch verification passed it before the retest ran, so the
+        retest, which runs only the suite, still counts it as evaluated."""
+        from squadops.execution.patch_acceptance import KEEP_PROGRESS
+
+        if shape == "app-error":
+            round_rows = [self._suite("a", "b", traceback="Traceback: AttributeError")]
+        else:
+            round_rows = [self._suite("", broken=True), self._TYPED_ROW]
+        executor._correction_runner.reexecute_repaired_suite = AsyncMock(
+            return_value=self._rows_result(self._suite(*retest_titles), retest=True)
+        )
+        holder: dict = {}
+        carry: dict = {}
+        action = await executor._try_accept_patch(
+            self._qa_envelope(),
+            self._rows_result(*round_rows, retest=False),
+            self._repair(),
+            holder,
+            repair_rejection_carry=carry,
+            **self._kwargs(cycle),
+        )
+
+        assert action == KEEP_PROGRESS
+        [entry] = carry["task_9"]
+        assert entry.startswith(f"correction attempt 0: repaired suite retest {said} — the repair")
 
     async def test_the_retest_line_names_a_failed_probe(self, executor, cycle, caplog):
         """Bug caught (#2341): the retest's verdict text listed only rows carrying

@@ -1,0 +1,1157 @@
+[
+ {
+  "case": "d34a3039 r1",
+  "assumption": null,
+  "main_verdict": "movement=repeat",
+  "verdict": "no_progress",
+  "probe_ids": [],
+  "evaluated": [
+   "tests_pass"
+  ],
+  "round": [
+   {
+    "check": "tests_pass",
+    "passed": false,
+    "executed": true,
+    "runner": "vitest",
+    "file": "",
+    "exit_code": 1,
+    "suite_broken": false,
+    "failing_tests": [
+     "file1::test1"
+    ]
+   }
+  ],
+  "retest": [
+   {
+    "check": "tests_pass",
+    "passed": false,
+    "executed": true,
+    "runner": "vitest",
+    "file": "",
+    "exit_code": 1,
+    "suite_broken": false,
+    "failing_tests": [
+     "file1::test1"
+    ]
+   }
+  ]
+ },
+ {
+  "case": "5ccf4266 r0",
+  "assumption": null,
+  "main_verdict": "movement=repeat",
+  "verdict": "no_progress",
+  "probe_ids": [],
+  "evaluated": [
+   "tests_pass"
+  ],
+  "round": [
+   {
+    "check": "tests_pass",
+    "passed": false,
+    "executed": true,
+    "runner": "vitest",
+    "file": "",
+    "exit_code": 1,
+    "suite_broken": false,
+    "failing_tests": [
+     "file1::test1",
+     "file1::test2",
+     "file1::test3",
+     "file1::test4",
+     "file1::test5"
+    ]
+   }
+  ],
+  "retest": [
+   {
+    "check": "tests_pass",
+    "passed": false,
+    "executed": true,
+    "runner": "vitest",
+    "file": "",
+    "exit_code": 1,
+    "suite_broken": false,
+    "failing_tests": [
+     "file1::test1",
+     "file1::test2",
+     "file1::test3",
+     "file1::test4",
+     "file1::test5"
+    ]
+   }
+  ]
+ },
+ {
+  "case": "a5756a56 r0",
+  "assumption": null,
+  "main_verdict": "movement=repeat",
+  "verdict": "no_progress",
+  "probe_ids": [],
+  "evaluated": [
+   "tests_pass"
+  ],
+  "round": [
+   {
+    "check": "tests_pass",
+    "passed": false,
+    "executed": true,
+    "runner": "vitest",
+    "file": "",
+    "exit_code": 1,
+    "suite_broken": false,
+    "failing_tests": [
+     "file1::test1"
+    ]
+   }
+  ],
+  "retest": [
+   {
+    "check": "tests_pass",
+    "passed": false,
+    "executed": true,
+    "runner": "vitest",
+    "file": "",
+    "exit_code": 1,
+    "suite_broken": false,
+    "failing_tests": [
+     "file1::test1"
+    ]
+   }
+  ]
+ },
+ {
+  "case": "714109be r0",
+  "assumption": null,
+  "main_verdict": "movement=repeat",
+  "verdict": "no_progress",
+  "probe_ids": [],
+  "evaluated": [
+   "tests_pass"
+  ],
+  "round": [
+   {
+    "check": "tests_pass",
+    "passed": false,
+    "executed": true,
+    "runner": "vitest",
+    "file": "",
+    "exit_code": 1,
+    "suite_broken": false,
+    "failing_tests": [
+     "file1::test1",
+     "file1::test2",
+     "file1::test3",
+     "file1::test4",
+     "file1::test5",
+     "file1::test6"
+    ]
+   }
+  ],
+  "retest": [
+   {
+    "check": "tests_pass",
+    "passed": false,
+    "executed": true,
+    "runner": "vitest",
+    "file": "",
+    "exit_code": 1,
+    "suite_broken": false,
+    "failing_tests": [
+     "file1::test1",
+     "file1::test2",
+     "file1::test3",
+     "file1::test4",
+     "file1::test5",
+     "file1::test6"
+    ]
+   }
+  ]
+ },
+ {
+  "case": "6492fa2d r0",
+  "assumption": null,
+  "main_verdict": "movement=repeat",
+  "verdict": "no_progress",
+  "probe_ids": [],
+  "evaluated": [
+   "tests_pass"
+  ],
+  "round": [
+   {
+    "check": "tests_pass",
+    "passed": false,
+    "executed": true,
+    "runner": "vitest",
+    "file": "",
+    "exit_code": 1,
+    "suite_broken": false,
+    "failing_tests": [
+     "file1::test1",
+     "file1::test2",
+     "file1::test3",
+     "file1::test4"
+    ]
+   }
+  ],
+  "retest": [
+   {
+    "check": "tests_pass",
+    "passed": false,
+    "executed": true,
+    "runner": "vitest",
+    "file": "",
+    "exit_code": 1,
+    "suite_broken": false,
+    "failing_tests": [
+     "file1::test1",
+     "file1::test2",
+     "file1::test3",
+     "file1::test4"
+    ]
+   }
+  ]
+ },
+ {
+  "case": "6492fa2d r1",
+  "assumption": null,
+  "main_verdict": "movement=expansion",
+  "verdict": "regressed=1",
+  "probe_ids": [],
+  "evaluated": [
+   "tests_pass"
+  ],
+  "round": [
+   {
+    "check": "tests_pass",
+    "passed": false,
+    "executed": true,
+    "runner": "vitest",
+    "file": "",
+    "exit_code": 1,
+    "suite_broken": false,
+    "failing_tests": [
+     "file1::test1",
+     "file1::test2"
+    ]
+   }
+  ],
+  "retest": [
+   {
+    "check": "tests_pass",
+    "passed": false,
+    "executed": true,
+    "runner": "vitest",
+    "file": "",
+    "exit_code": 1,
+    "suite_broken": false,
+    "failing_tests": [
+     "file1::test1",
+     "file1::test3",
+     "file1::test2"
+    ]
+   }
+  ]
+ },
+ {
+  "case": "b56f8bff r0",
+  "assumption": null,
+  "main_verdict": "movement=shifted",
+  "verdict": "kept",
+  "probe_ids": [],
+  "evaluated": [
+   "tests_pass"
+  ],
+  "round": [
+   {
+    "check": "tests_pass",
+    "passed": false,
+    "executed": true,
+    "runner": "vitest",
+    "file": "",
+    "exit_code": 1,
+    "suite_broken": true,
+    "failing_tests": [
+     "file1::test1"
+    ]
+   }
+  ],
+  "retest": [
+   {
+    "check": "tests_pass",
+    "passed": false,
+    "executed": true,
+    "runner": "vitest",
+    "file": "",
+    "exit_code": 1,
+    "suite_broken": false,
+    "failing_tests": [
+     "file1::test1"
+    ]
+   }
+  ]
+ },
+ {
+  "case": "1e4027d1 r0",
+  "assumption": null,
+  "main_verdict": "movement=repeat",
+  "verdict": "no_progress",
+  "probe_ids": [],
+  "evaluated": [
+   "tests_pass"
+  ],
+  "round": [
+   {
+    "check": "tests_pass",
+    "passed": false,
+    "executed": true,
+    "runner": "pytest",
+    "file": "",
+    "exit_code": 1,
+    "suite_broken": false,
+    "failing_tests": [
+     "file1::test1"
+    ]
+   }
+  ],
+  "retest": [
+   {
+    "check": "tests_pass",
+    "passed": false,
+    "executed": true,
+    "runner": "pytest",
+    "file": "",
+    "exit_code": 1,
+    "suite_broken": false,
+    "failing_tests": [
+     "file1::test1"
+    ]
+   }
+  ]
+ },
+ {
+  "case": "a1e8f6da r1",
+  "assumption": "probes passed",
+  "main_verdict": "movement=shifted",
+  "verdict": "kept",
+  "probe_ids": [
+   "vc-probe-runs",
+   "vc-probe-runs-join",
+   "vc-probe-runs-join-duplicate",
+   "vc-probe-runs-leave"
+  ],
+  "evaluated": [
+   "tests_pass",
+   "vc-probe-runs",
+   "vc-probe-runs-join",
+   "vc-probe-runs-join-duplicate",
+   "vc-probe-runs-leave"
+  ],
+  "round": [
+   {
+    "check": "vc-probe-runs-join-duplicate",
+    "status": "failed",
+    "reason": "reason1",
+    "criterion_id": "vc-probe-runs-join-duplicate",
+    "app_traceback": "Traceback (most recent call last): replayed"
+   },
+   {
+    "check": "vc-probe-runs-join",
+    "status": "failed",
+    "reason": "reason1",
+    "criterion_id": "vc-probe-runs-join"
+   },
+   {
+    "check": "vc-probe-runs-leave",
+    "status": "failed",
+    "reason": "reason1",
+    "criterion_id": "vc-probe-runs-leave"
+   },
+   {
+    "check": "vc-probe-runs",
+    "status": "failed",
+    "reason": "reason2",
+    "criterion_id": "vc-probe-runs"
+   },
+   {
+    "check": "tests_pass",
+    "passed": false,
+    "executed": true,
+    "runner": "pytest",
+    "file": "",
+    "exit_code": 1,
+    "suite_broken": false,
+    "failing_tests": [
+     "file1::test1",
+     "file1::test2",
+     "file1::test3",
+     "file1::test4",
+     "file1::test5",
+     "file1::test6",
+     "file1::test7",
+     "file1::test8",
+     "file1::test9"
+    ]
+   }
+  ],
+  "retest": [
+   {
+    "check": "tests_pass",
+    "passed": false,
+    "executed": true,
+    "runner": "pytest",
+    "file": "",
+    "exit_code": 1,
+    "suite_broken": false,
+    "failing_tests": [
+     "file1::test9"
+    ]
+   }
+  ]
+ },
+ {
+  "case": "a1e8f6da r1 (alternative)",
+  "assumption": "probes still failing (alternative)",
+  "main_verdict": "kept",
+  "verdict": "kept",
+  "probe_ids": [
+   "vc-probe-runs",
+   "vc-probe-runs-join",
+   "vc-probe-runs-join-duplicate",
+   "vc-probe-runs-leave"
+  ],
+  "evaluated": [
+   "tests_pass",
+   "vc-probe-runs",
+   "vc-probe-runs-join",
+   "vc-probe-runs-join-duplicate",
+   "vc-probe-runs-leave"
+  ],
+  "round": [
+   {
+    "check": "vc-probe-runs-join-duplicate",
+    "status": "failed",
+    "reason": "reason1",
+    "criterion_id": "vc-probe-runs-join-duplicate",
+    "app_traceback": "Traceback (most recent call last): replayed"
+   },
+   {
+    "check": "vc-probe-runs-join",
+    "status": "failed",
+    "reason": "reason1",
+    "criterion_id": "vc-probe-runs-join"
+   },
+   {
+    "check": "vc-probe-runs-leave",
+    "status": "failed",
+    "reason": "reason1",
+    "criterion_id": "vc-probe-runs-leave"
+   },
+   {
+    "check": "vc-probe-runs",
+    "status": "failed",
+    "reason": "reason2",
+    "criterion_id": "vc-probe-runs"
+   },
+   {
+    "check": "tests_pass",
+    "passed": false,
+    "executed": true,
+    "runner": "pytest",
+    "file": "",
+    "exit_code": 1,
+    "suite_broken": false,
+    "failing_tests": [
+     "file1::test1",
+     "file1::test2",
+     "file1::test3",
+     "file1::test4",
+     "file1::test5",
+     "file1::test6",
+     "file1::test7",
+     "file1::test8",
+     "file1::test9"
+    ]
+   }
+  ],
+  "retest": [
+   {
+    "check": "vc-probe-runs-join-duplicate",
+    "status": "failed",
+    "reason": "reason1",
+    "criterion_id": "vc-probe-runs-join-duplicate",
+    "app_traceback": "Traceback (most recent call last): replayed"
+   },
+   {
+    "check": "vc-probe-runs-join",
+    "status": "failed",
+    "reason": "reason1",
+    "criterion_id": "vc-probe-runs-join"
+   },
+   {
+    "check": "vc-probe-runs-leave",
+    "status": "failed",
+    "reason": "reason1",
+    "criterion_id": "vc-probe-runs-leave"
+   },
+   {
+    "check": "vc-probe-runs",
+    "status": "failed",
+    "reason": "reason2",
+    "criterion_id": "vc-probe-runs"
+   },
+   {
+    "check": "tests_pass",
+    "passed": false,
+    "executed": true,
+    "runner": "pytest",
+    "file": "",
+    "exit_code": 1,
+    "suite_broken": false,
+    "failing_tests": [
+     "file1::test9"
+    ]
+   }
+  ]
+ },
+ {
+  "case": "642c6086 r0",
+  "assumption": "no probe newly failed (qa-only repair)",
+  "main_verdict": "kept",
+  "verdict": "kept",
+  "probe_ids": [],
+  "evaluated": [
+   "tests_pass"
+  ],
+  "round": [
+   {
+    "check": "tests_pass",
+    "passed": false,
+    "executed": true,
+    "runner": "vitest",
+    "file": "",
+    "exit_code": 1,
+    "suite_broken": false,
+    "failing_tests": [
+     "file1::test1",
+     "file1::test2",
+     "file1::test3",
+     "file1::test4",
+     "file1::test5",
+     "file2::test6",
+     "file3::test7",
+     "file4::test8"
+    ]
+   }
+  ],
+  "retest": [
+   {
+    "check": "tests_pass",
+    "passed": false,
+    "executed": true,
+    "runner": "vitest",
+    "file": "",
+    "exit_code": 1,
+    "suite_broken": false,
+    "failing_tests": [
+     "file1::test1",
+     "file1::test2",
+     "file1::test3",
+     "file1::test4",
+     "file1::test5"
+    ]
+   }
+  ]
+ },
+ {
+  "case": "56d6ead9 r0",
+  "assumption": "probe reason+traceback same as termination rounds",
+  "main_verdict": "movement=shifted",
+  "verdict": "kept",
+  "probe_ids": [
+   "vc-probe-dev-seed"
+  ],
+  "evaluated": [
+   "acceptance:assertion_kinds_match",
+   "acceptance:contract_assertions_match",
+   "acceptance:function_defined",
+   "acceptance:harness_boundary",
+   "tests_pass",
+   "vc-probe-dev-seed"
+  ],
+  "round": [
+   {
+    "check": "acceptance:assertion_kinds_match",
+    "passed": false,
+    "reason": "reason1",
+    "file": "",
+    "app_traceback": "Traceback (most recent call last): replayed"
+   },
+   {
+    "check": "acceptance:contract_assertions_match",
+    "passed": false,
+    "reason": "reason1",
+    "file": ""
+   },
+   {
+    "check": "acceptance:function_defined",
+    "passed": false,
+    "reason": "reason2",
+    "file": ""
+   },
+   {
+    "check": "acceptance:harness_boundary",
+    "passed": false,
+    "reason": "reason2",
+    "file": ""
+   },
+   {
+    "check": "vc-probe-dev-seed",
+    "status": "failed",
+    "reason": "reason3",
+    "criterion_id": "vc-probe-dev-seed"
+   },
+   {
+    "check": "tests_pass",
+    "passed": false,
+    "executed": true,
+    "runner": "pytest",
+    "file": "",
+    "exit_code": 2,
+    "suite_broken": true,
+    "failing_tests": [
+     "file1"
+    ]
+   }
+  ],
+  "retest": [
+   {
+    "check": "vc-probe-dev-seed",
+    "status": "failed",
+    "reason": "reason3",
+    "criterion_id": "vc-probe-dev-seed",
+    "app_traceback": "Traceback (most recent call last): replayed"
+   },
+   {
+    "check": "tests_pass",
+    "passed": false,
+    "executed": true,
+    "runner": "pytest",
+    "file": "",
+    "exit_code": 1,
+    "suite_broken": false,
+    "failing_tests": [
+     "file1::test1",
+     "file1::test2",
+     "file1::test3",
+     "file1::test4",
+     "file1::test5"
+    ]
+   }
+  ]
+ },
+ {
+  "case": "aea9baa7 r0",
+  "assumption": null,
+  "main_verdict": "movement=repeat",
+  "verdict": "no_progress",
+  "probe_ids": [],
+  "evaluated": [
+   "tests_pass"
+  ],
+  "round": [
+   {
+    "check": "tests_pass",
+    "passed": false,
+    "executed": true,
+    "runner": "vitest",
+    "file": "",
+    "exit_code": 1,
+    "suite_broken": false,
+    "failing_tests": [
+     "file1::test1",
+     "file1::test2",
+     "file1::test3",
+     "file1::test4"
+    ]
+   }
+  ],
+  "retest": [
+   {
+    "check": "tests_pass",
+    "passed": false,
+    "executed": true,
+    "runner": "vitest",
+    "file": "",
+    "exit_code": 1,
+    "suite_broken": false,
+    "failing_tests": [
+     "file1::test1",
+     "file1::test2",
+     "file1::test3",
+     "file1::test4"
+    ]
+   }
+  ]
+ },
+ {
+  "case": "7b9430c9 r0",
+  "assumption": null,
+  "main_verdict": "kept",
+  "verdict": "kept",
+  "probe_ids": [
+   "vc-probe-api-runs-join"
+  ],
+  "evaluated": [
+   "tests_pass",
+   "vc-probe-api-runs-join"
+  ],
+  "round": [
+   {
+    "check": "vc-probe-api-runs-join",
+    "status": "failed",
+    "reason": "reason1",
+    "criterion_id": "vc-probe-api-runs-join"
+   },
+   {
+    "check": "tests_pass",
+    "passed": false,
+    "executed": true,
+    "runner": "vitest",
+    "file": "",
+    "exit_code": 1,
+    "suite_broken": true,
+    "failing_tests": [
+     "file1",
+     "file2::test1"
+    ]
+   }
+  ],
+  "retest": [
+   {
+    "check": "tests_pass",
+    "passed": false,
+    "executed": true,
+    "runner": "vitest",
+    "file": "",
+    "exit_code": 1,
+    "suite_broken": true,
+    "failing_tests": [
+     "file1"
+    ]
+   }
+  ]
+ },
+ {
+  "case": "2765fc51 r0",
+  "assumption": null,
+  "main_verdict": "movement=repeat",
+  "verdict": "no_progress",
+  "probe_ids": [],
+  "evaluated": [
+   "tests_pass"
+  ],
+  "round": [
+   {
+    "check": "tests_pass",
+    "passed": false,
+    "executed": true,
+    "runner": "vitest",
+    "file": "",
+    "exit_code": 1,
+    "suite_broken": false,
+    "failing_tests": [
+     "file1::test1",
+     "file1::test2"
+    ]
+   }
+  ],
+  "retest": [
+   {
+    "check": "tests_pass",
+    "passed": false,
+    "executed": true,
+    "runner": "vitest",
+    "file": "",
+    "exit_code": 1,
+    "suite_broken": false,
+    "failing_tests": [
+     "file1::test1",
+     "file1::test2"
+    ]
+   }
+  ]
+ },
+ {
+  "case": "be3caea2 r0",
+  "assumption": "probes passed",
+  "main_verdict": "movement=shifted",
+  "verdict": "kept",
+  "probe_ids": [
+   "vc-probe-runs",
+   "vc-probe-runs-join",
+   "vc-probe-runs-join-duplicate",
+   "vc-probe-runs-leave"
+  ],
+  "evaluated": [
+   "tests_pass",
+   "vc-probe-runs",
+   "vc-probe-runs-join",
+   "vc-probe-runs-join-duplicate",
+   "vc-probe-runs-leave"
+  ],
+  "round": [
+   {
+    "check": "vc-probe-runs-join-duplicate",
+    "status": "failed",
+    "reason": "reason1",
+    "criterion_id": "vc-probe-runs-join-duplicate",
+    "app_traceback": "Traceback (most recent call last): replayed"
+   },
+   {
+    "check": "vc-probe-runs-join",
+    "status": "failed",
+    "reason": "reason1",
+    "criterion_id": "vc-probe-runs-join"
+   },
+   {
+    "check": "vc-probe-runs-leave",
+    "status": "failed",
+    "reason": "reason1",
+    "criterion_id": "vc-probe-runs-leave"
+   },
+   {
+    "check": "vc-probe-runs",
+    "status": "failed",
+    "reason": "reason2",
+    "criterion_id": "vc-probe-runs"
+   },
+   {
+    "check": "tests_pass",
+    "passed": false,
+    "executed": true,
+    "runner": "pytest",
+    "file": "",
+    "exit_code": 1,
+    "suite_broken": false,
+    "failing_tests": [
+     "file1::test1",
+     "file1::test2",
+     "file1::test3",
+     "file1::test4",
+     "file1::test5"
+    ]
+   }
+  ],
+  "retest": [
+   {
+    "check": "tests_pass",
+    "passed": false,
+    "executed": true,
+    "runner": "pytest",
+    "file": "",
+    "exit_code": 1,
+    "suite_broken": false,
+    "failing_tests": [
+     "file1::test1",
+     "file1::test2",
+     "file1::test3",
+     "file1::test4",
+     "file1::test5"
+    ]
+   }
+  ]
+ },
+ {
+  "case": "be3caea2 r0 (alternative)",
+  "assumption": "probes still failing (alternative)",
+  "main_verdict": "movement=repeat",
+  "verdict": "no_progress",
+  "probe_ids": [
+   "vc-probe-runs",
+   "vc-probe-runs-join",
+   "vc-probe-runs-join-duplicate",
+   "vc-probe-runs-leave"
+  ],
+  "evaluated": [
+   "tests_pass",
+   "vc-probe-runs",
+   "vc-probe-runs-join",
+   "vc-probe-runs-join-duplicate",
+   "vc-probe-runs-leave"
+  ],
+  "round": [
+   {
+    "check": "vc-probe-runs-join-duplicate",
+    "status": "failed",
+    "reason": "reason1",
+    "criterion_id": "vc-probe-runs-join-duplicate",
+    "app_traceback": "Traceback (most recent call last): replayed"
+   },
+   {
+    "check": "vc-probe-runs-join",
+    "status": "failed",
+    "reason": "reason1",
+    "criterion_id": "vc-probe-runs-join"
+   },
+   {
+    "check": "vc-probe-runs-leave",
+    "status": "failed",
+    "reason": "reason1",
+    "criterion_id": "vc-probe-runs-leave"
+   },
+   {
+    "check": "vc-probe-runs",
+    "status": "failed",
+    "reason": "reason2",
+    "criterion_id": "vc-probe-runs"
+   },
+   {
+    "check": "tests_pass",
+    "passed": false,
+    "executed": true,
+    "runner": "pytest",
+    "file": "",
+    "exit_code": 1,
+    "suite_broken": false,
+    "failing_tests": [
+     "file1::test1",
+     "file1::test2",
+     "file1::test3",
+     "file1::test4",
+     "file1::test5"
+    ]
+   }
+  ],
+  "retest": [
+   {
+    "check": "vc-probe-runs-join-duplicate",
+    "status": "failed",
+    "reason": "reason1",
+    "criterion_id": "vc-probe-runs-join-duplicate",
+    "app_traceback": "Traceback (most recent call last): replayed"
+   },
+   {
+    "check": "vc-probe-runs-join",
+    "status": "failed",
+    "reason": "reason1",
+    "criterion_id": "vc-probe-runs-join"
+   },
+   {
+    "check": "vc-probe-runs-leave",
+    "status": "failed",
+    "reason": "reason1",
+    "criterion_id": "vc-probe-runs-leave"
+   },
+   {
+    "check": "vc-probe-runs",
+    "status": "failed",
+    "reason": "reason2",
+    "criterion_id": "vc-probe-runs"
+   },
+   {
+    "check": "tests_pass",
+    "passed": false,
+    "executed": true,
+    "runner": "pytest",
+    "file": "",
+    "exit_code": 1,
+    "suite_broken": false,
+    "failing_tests": [
+     "file1::test1",
+     "file1::test2",
+     "file1::test3",
+     "file1::test4",
+     "file1::test5"
+    ]
+   }
+  ]
+ },
+ {
+  "case": "1809eeec r0",
+  "assumption": null,
+  "main_verdict": "movement=repeat",
+  "verdict": "no_progress",
+  "probe_ids": [
+   "vc-probe-api-runs-join-duplicate"
+  ],
+  "evaluated": [
+   "tests_pass",
+   "vc-probe-api-runs-join-duplicate"
+  ],
+  "round": [
+   {
+    "check": "vc-probe-api-runs-join-duplicate",
+    "status": "failed",
+    "reason": "reason1",
+    "criterion_id": "vc-probe-api-runs-join-duplicate"
+   },
+   {
+    "check": "tests_pass",
+    "passed": false,
+    "executed": true,
+    "runner": "vitest",
+    "file": "",
+    "exit_code": 1,
+    "suite_broken": false,
+    "failing_tests": [
+     "file1::test1",
+     "file1::test2",
+     "file1::test3",
+     "file1::test4",
+     "file1::test5",
+     "file1::test6",
+     "file1::test7",
+     "file2::test8",
+     "file3::test9"
+    ]
+   }
+  ],
+  "retest": [
+   {
+    "check": "vc-probe-api-runs-join-duplicate",
+    "status": "failed",
+    "reason": "reason1",
+    "criterion_id": "vc-probe-api-runs-join-duplicate"
+   },
+   {
+    "check": "tests_pass",
+    "passed": false,
+    "executed": true,
+    "runner": "vitest",
+    "file": "",
+    "exit_code": 1,
+    "suite_broken": false,
+    "failing_tests": [
+     "file1::test1",
+     "file1::test2",
+     "file1::test3",
+     "file1::test4",
+     "file1::test5",
+     "file1::test6",
+     "file1::test7",
+     "file2::test8",
+     "file3::test9"
+    ]
+   }
+  ]
+ },
+ {
+  "case": "6f518c27 r1",
+  "assumption": null,
+  "main_verdict": "movement=repeat",
+  "verdict": "no_progress",
+  "probe_ids": [],
+  "evaluated": [
+   "tests_pass"
+  ],
+  "round": [
+   {
+    "check": "tests_pass",
+    "passed": false,
+    "executed": true,
+    "runner": "vitest",
+    "file": "",
+    "exit_code": 1,
+    "suite_broken": false,
+    "failing_tests": [
+     "file1::test1"
+    ]
+   }
+  ],
+  "retest": [
+   {
+    "check": "tests_pass",
+    "passed": false,
+    "executed": true,
+    "runner": "vitest",
+    "file": "",
+    "exit_code": 1,
+    "suite_broken": false,
+    "failing_tests": [
+     "file1::test1"
+    ]
+   }
+  ]
+ },
+ {
+  "case": "2f14e827 r0",
+  "assumption": "probe reason changed",
+  "main_verdict": "kept",
+  "verdict": "kept",
+  "probe_ids": [
+   "vc-probe-api-runs",
+   "vc-probe-api-runs-ordered",
+   "vc-probe-api-runs-participants",
+   "vc-probe-api-runs-participants-duplicate"
+  ],
+  "evaluated": [
+   "tests_pass",
+   "vc-probe-api-runs",
+   "vc-probe-api-runs-ordered",
+   "vc-probe-api-runs-participants",
+   "vc-probe-api-runs-participants-duplicate"
+  ],
+  "round": [
+   {
+    "check": "vc-probe-api-runs-ordered",
+    "status": "failed",
+    "reason": "reason1",
+    "criterion_id": "vc-probe-api-runs-ordered"
+   },
+   {
+    "check": "vc-probe-api-runs-participants-duplicate",
+    "status": "failed",
+    "reason": "reason2",
+    "criterion_id": "vc-probe-api-runs-participants-duplicate"
+   },
+   {
+    "check": "vc-probe-api-runs-participants",
+    "status": "failed",
+    "reason": "reason2",
+    "criterion_id": "vc-probe-api-runs-participants"
+   },
+   {
+    "check": "vc-probe-api-runs",
+    "status": "failed",
+    "reason": "reason1",
+    "criterion_id": "vc-probe-api-runs"
+   },
+   {
+    "check": "tests_pass",
+    "passed": false,
+    "executed": true,
+    "runner": "vitest",
+    "file": "",
+    "exit_code": 1,
+    "suite_broken": false,
+    "failing_tests": [
+     "file1::test1",
+     "file2::test2",
+     "file3::test3"
+    ]
+   }
+  ],
+  "retest": [
+   {
+    "check": "vc-probe-api-runs-ordered",
+    "status": "failed",
+    "reason": "reason3",
+    "criterion_id": "vc-probe-api-runs-ordered"
+   },
+   {
+    "check": "tests_pass",
+    "passed": false,
+    "executed": true,
+    "runner": "vitest",
+    "file": "",
+    "exit_code": 1,
+    "suite_broken": false,
+    "failing_tests": [
+     "file2::test2"
+    ]
+   }
+  ]
+ }
+]

@@ -8,6 +8,9 @@ reduction counts as progress. shk-4 is the canonical true positive.
 
 from __future__ import annotations
 
+import json
+from pathlib import Path
+
 import pytest
 
 from squadops.cycles.correction_signature import (
@@ -23,6 +26,7 @@ from squadops.cycles.correction_signature import (
     failure_signature,
     render_signature,
     repair_not_applied_in_round,
+    retest_reduction_or_refusal,
     should_terminate_plan_defect,
 )
 
@@ -458,3 +462,188 @@ class TestRefusedRound:
     @pytest.mark.parametrize("carry", [None, [], ["correction attempt 00: something else"]])
     def test_absent_or_foreign_entries_never_match(self, carry):
         assert repair_not_applied_in_round(carry, 0) is False
+
+
+def _suite(*titles: str, broken: bool | None = False, file: str = "tests/test_api.py") -> dict:
+    """A failing ``tests_pass`` row as the runner writes it. An empty title is a file that never
+    loaded: the runner names the file and no test."""
+    return {
+        "check": "tests_pass",
+        "passed": False,
+        "executed": True,
+        "exit_code": 2 if broken else 1,
+        "runner": "pytest",
+        "suite_broken": broken,
+        "failing_tests": [f"{file}::{t}" if t else file for t in titles],
+    }
+
+
+def _app_error(evidence: dict) -> dict:
+    """The round's category made an application error, as ``build_failure_evidence`` hoists a
+    row's traceback (#687)."""
+    return {**evidence, "app_tracebacks": [{"check": "tests_pass", "traceback": "Traceback ..."}]}
+
+
+_REPLAYS = Path(__file__).parents[2] / "fixtures" / "roll_replays" / "2306-red-retests.json"
+
+
+class TestRetestProgress:
+    """#2306: a red retest is judged by the tests that fail on each side, with the row's facts
+    judged apart, by their direction. ``failure_signature`` folds the facts into every test's
+    element, so a repair that cleared the app's error read as a shift and was discarded."""
+
+    def _judge(self, round_evidence, retest_evidence, evaluated=("tests_pass",), probes=()):
+        return retest_reduction_or_refusal(
+            round_evidence, retest_evidence, frozenset(evaluated), frozenset(probes)
+        )
+
+    @pytest.mark.parametrize(
+        "round_evidence, retest_evidence, cleared, unmasked, improved",
+        [
+            # be3caea2's shape: the same tests fail once the app stops erroring.
+            (
+                _app_error(_evidence([_suite("a", "b", "c")])),
+                _evidence([_suite("a", "b")]),
+                1,
+                0,
+                ("category:app_error->executed_and_failed",),
+            ),
+            # b56f8bff's shape: the same test, its suite now running.
+            (
+                _evidence([_suite("a", broken=True)]),
+                _evidence([_suite("a")]),
+                0,
+                0,
+                ("suite:tests_pass",),
+            ),
+            # 56d6ead9's shape: the file never loaded, and now its tests run and fail.
+            (
+                _evidence([_suite("", broken=True)]),
+                _evidence([_suite("a", "b", "c")]),
+                1,
+                3,
+                ("suite:tests_pass",),
+            ),
+        ],
+        ids=["app-error-cleared", "suite-runs-again", "file-loads-and-its-tests-fail"],
+    )
+    def test_progress_the_row_facts_hid_is_kept(
+        self, round_evidence, retest_evidence, cleared, unmasked, improved
+    ):
+        reduction, why = self._judge(round_evidence, retest_evidence)
+        assert why == ""
+        assert (len(reduction.cleared), len(reduction.unmasked), reduction.improved) == (
+            cleared,
+            unmasked,
+            improved,
+        )
+
+    @pytest.mark.parametrize(
+        "round_evidence, retest_evidence, evaluated, why",
+        [
+            # A test the round ran, now failing, is one the repair broke (6492fa2d r1).
+            (_evidence([_suite("a", "b")]), _evidence([_suite("a", "c")]), (), "regressed=1"),
+            # A file that never loaded excuses its own tests only: a new failure in a file
+            # that did load is still one the repair broke.
+            (
+                _evidence([_suite("", broken=True, file="tests/test_x.py"), _suite("a")]),
+                _evidence([_suite("a", "b")]),
+                (),
+                "regressed=1",
+            ),
+            (_evidence([_suite("a", "b")]), _evidence([_suite("a", "b")]), (), "no_progress"),
+            # Fewer failures, but the app now errors, or the suite no longer runs.
+            (
+                _evidence([_suite("a", "b")]),
+                _app_error(_evidence([_suite("a")])),
+                (),
+                "worse=category:executed_and_failed->app_error",
+            ),
+            (
+                _evidence([_suite("a", "b")]),
+                _evidence([_suite("a", broken=True)]),
+                (),
+                "worse=suite:tests_pass",
+            ),
+            # The two suite verdicts the runner can't settle are never read as better.
+            (
+                _evidence([_suite("a", "b")]),
+                _evidence([_suite("a", broken=None)]),
+                (),
+                "worse=suite:tests_pass",
+            ),
+            # A typed check failing for a new reason may be one the repair broke (§12d).
+            (
+                _evidence(
+                    [_suite("a", "b"), {"check": "acceptance:x", "passed": False, "reason": "m"}]
+                ),
+                _evidence([_suite("a"), {"check": "acceptance:x", "passed": False, "reason": "n"}]),
+                ("acceptance:x",),
+                "added=acceptance:x",
+            ),
+            # The retest never looked at a typed check the round failed.
+            (
+                _evidence(
+                    [_suite("a", "b"), {"check": "acceptance:x", "passed": False, "reason": "m"}]
+                ),
+                _evidence([_suite("a")]),
+                (),
+                "unevaluated=acceptance:x",
+            ),
+        ],
+        ids=[
+            "a-test-the-round-ran-now-fails",
+            "unmasking-is-per-file",
+            "repeat",
+            "the-app-now-errors",
+            "the-suite-no-longer-runs",
+            "an-ambiguous-suite-verdict",
+            "a-typed-check-fails-a-new-way",
+            "unevaluated",
+        ],
+    )
+    def test_a_retest_that_broke_something_or_moved_nothing_is_refused(
+        self, round_evidence, retest_evidence, evaluated, why
+    ):
+        reduction, refusal = self._judge(
+            round_evidence, retest_evidence, evaluated=("tests_pass", *evaluated)
+        )
+        assert (reduction, refusal) == (None, why)
+
+    def test_a_side_with_no_product_failure_is_never_compared(self):
+        reduction, why = self._judge(_evidence([_suite("a")]), _evidence([]))
+        assert (reduction, why) == (None, "no_signature")
+
+    def test_the_stored_red_retests_get_the_verdicts_the_pre_registration_names(self):
+        """Bug caught: a rule change that silently moves a verdict on the evidence #2306 read.
+        Each red retest of the 19 plan-defect runs (2026-09-14 to 10-22), rebuilt as rows from
+        the stored reports and logs with its free text replaced by labels, through the rule.
+        Main's rule before #2306 reproduced every one of the replay's own verdicts on these
+        rows (``main_verdict``); this rule keeps four more and refuses no repair main kept."""
+        cases = json.loads(_REPLAYS.read_text())
+        verdicts = {}
+        for case in cases:
+            reduction, why = self._judge(
+                case_evidence(case["round"]),
+                case_evidence(case["retest"]),
+                evaluated=case["evaluated"],
+                probes=case["probe_ids"],
+            )
+            verdicts[case["case"]] = "kept" if reduction is not None else why
+        assert verdicts == {case["case"]: case["verdict"] for case in cases}
+        newly_kept = sorted(
+            c["case"] for c in cases if c["verdict"] == "kept" and c["main_verdict"] != "kept"
+        )
+        assert newly_kept == ["56d6ead9 r0", "a1e8f6da r1", "b56f8bff r0", "be3caea2 r0"]
+        assert not [c for c in cases if c["main_verdict"] == "kept" and c["verdict"] != "kept"]
+
+
+def case_evidence(rows: list[dict]) -> dict:
+    """A replayed side's rows as ``build_failure_evidence`` assembles them (#687)."""
+    evidence = _evidence(rows)
+    tracebacks = [
+        {"check": row["check"], "traceback": row["app_traceback"]}
+        for row in rows
+        if row.get("app_traceback")
+    ]
+    return {**evidence, "app_tracebacks": tracebacks} if tracebacks else evidence
