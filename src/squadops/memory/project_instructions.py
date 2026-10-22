@@ -16,6 +16,12 @@ from typing import Any
 from squadops.memory.context import Disposition, Need, RecordRef, Section, SectionKind
 from squadops.memory.lessons import Snapshot
 from squadops.memory.records import MemoryRecord, PinnedInstruction, RecordKind, RecordScope
+from squadops.memory.reference_reading import (
+    ReferencesRead,
+    handed_references,
+    holding,
+    measured,
+)
 from squadops.memory.task_instructions import binding_section
 
 #: Where a dispatch is handed its project instructions, between the task instructions and lessons.
@@ -55,46 +61,72 @@ def applicable(
     ]
 
 
-def section_of(pinned: list[PinnedInstruction], *, budget: int, framing: int = 0) -> Section:
+def section_of(
+    pinned: list[PinnedInstruction],
+    *,
+    budget: int,
+    framing: int = 0,
+    read: ReferencesRead | None = None,
+) -> Section:
     """The project instructions' binding section, within what the task instructions left, measured
-    with its framing. An instruction whose required reference admission couldn't bind leaves it
-    incomplete, naming the reference: the task is held, never handed it half-bound (§3.6, T16)."""
-    held = [(p, ref, why) for p in pinned for ref, why in p.held_by]
+    with its framing and the content of each reference it is handed (#2179). An instruction whose
+    required reference admission couldn't bind, or that can't be read at its bound revision, leaves
+    it incomplete, naming the reference: the task is held, never handed it half-bound (§3.6, T16)."""
+    read = read or ReferencesRead()
+    held = [(p, f"required reference {ref} unbound: {why}", False)
+            for p in pinned for ref, why in p.held_by]  # fmt: skip
+    held += [
+        (
+            p,
+            f"required reference {ref} can't be read at its bound revision: {u.why}",
+            u.store_failed,
+        )
+        for p in pinned
+        for ref, u in holding(_handed(p), read)
+    ]
     if held:
         return Section(
             SectionKind.PROJECT_INSTRUCTIONS,
             Need.BINDING,
             Disposition.INCOMPLETE,
-            unresolved=tuple(
-                (
-                    RecordRef(p.record_id, str(p.revision)),
-                    f"required reference {ref} unbound: {why}",
-                )
-                for p, ref, why in held
-            ),
+            unresolved=tuple((RecordRef(p.record_id, str(p.revision)), why) for p, why, _ in held),
+            store_failed=any(store for *_, store in held),
         )
     return binding_section(
         SectionKind.PROJECT_INSTRUCTIONS,
-        [(RecordRef(p.record_id, str(p.revision)), p.text) for p in pinned],
+        [
+            (RecordRef(p.record_id, str(p.revision)), measured(p.text, _handed(p), read))
+            for p in pinned
+        ],  # fmt: skip
         budget=budget,
         framing=framing,
     )
 
 
-def handed(pinned: list[PinnedInstruction]) -> dict[str, Any] | None:
-    """What a task is handed on ``PROJECT_INSTRUCTIONS_INPUT``, or ``None`` when none applies."""
+def _handed(p: PinnedInstruction) -> list:
+    """The references a dispatch is handed with ``p``: every one admission bound."""
+    return [r for r in p.references if r.ref not in dict(p.unbound)]
+
+
+def handed(
+    pinned: list[PinnedInstruction], read: ReferencesRead | None = None
+) -> dict[str, Any] | None:
+    """What a task is handed on ``PROJECT_INSTRUCTIONS_INPUT``, or ``None`` when none applies. Each
+    reference read is handed with its content, and an optional one that couldn't be is omitted
+    and named (#2179)."""
     if not pinned:
         return None
+    read = read or ReferencesRead()
     return {
         "instructions": [
             {
                 "record_id": p.record_id,
                 "revision": p.revision,
                 "text": p.text,
-                # §3.6: an optional reference admission couldn't bind is omitted whole and
-                # disclosed, never handed as written (the second read of T16); a required one
-                # holds the task before it is handed anything.
-                "references": [r.to_dict() for r in p.references if r.ref not in dict(p.unbound)],
+                # §3.6: an optional reference admission couldn't bind, or that can't be read at its
+                # bound revision, is omitted whole and disclosed, never handed as written (the
+                # second read of T16); a required one holds the task before it is handed anything.
+                **handed_references(_handed(p), read),
                 **(
                     {"unbound": [{"ref": ref, "why": why} for ref, why in p.unbound]}
                     if p.unbound

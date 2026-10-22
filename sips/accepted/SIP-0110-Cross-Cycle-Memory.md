@@ -83,7 +83,7 @@ re-places it.
 | entry points: the context-assembly port, inert, at the four seams (§A.3.6) | **shipped** | 2.3.0, #2257 (closes #2176; §5j records where it departs from §A.3.6's text) |
 | entry points: the typed records (notes, preferences, project and task instructions), permissions by kind, provenance (§A.3.2–§A.3.4) | **shipped** (§5l) | 2.4.0, PR #2508, issue #2177 |
 | entry points: task instructions, with the work target, retries, references bound with the cycle, binding holds and emergency withdrawal (§A.3.5–§A.3.8) | **shipped** | 2.4.0, closes #2178: stage 1 (the records reach the tasks they name, binding, the task held when incomplete) shipped in PR #2513 (§5m), stage 2's interventions after admission with `squadops instructions` in PR #2549 (§5w), and `carries_into: continuations` with the increment gate's structured `task_instructions` field in PR #2556 (§5aa), and a task instruction's `@current` bound with its cycle (T16's task part) in PR #2559 (§5ab), the hold and its release in PR #2636 (§5ag), and emergency withdrawal after dispatch (T13) in the PR that wrote this row (§5ah) |
-| entry points: project instructions in the snapshot with references bound, re-binding, the effective lesson budget, the comparison arms and disclosure (§A.3.6, §A.3.7) | **placed** | 2.4.0, #2179: stage 1 (pinned at admission, binding on the tasks they apply to, the lesson budget after them) shipped in PR #2515 (§5n), stage 2's effective lesson budget (T17) in PR #2526 (§5r), the `memory_context: none` arm with the lesson-text diagnostic in PR #2528 (§5s), a counted roll's pinned instruction set in PR #2533 (§5t), and a project instruction's emergency withdrawal in PR #2544 (§5u), re-binding a running unit's project instruction in PR #2546 (§5v), and `@current` bound at admission, the project part of T16, in PR #2555 (§5z), with the write-time refusal of a reference no unit of its project can bind in PR #2567 (§5ac); re-binding a reference's revision and reading a reference's content at dispatch (the MacBook lane, with the hold) remain; a campaign's repository references, bound per cycle against the campaign's snapshot (the owner's ruling of 2026-10-20, §5ad), shipped in the PR that wrote this row (§5ae) |
+| entry points: project instructions in the snapshot with references bound, re-binding, the effective lesson budget, the comparison arms and disclosure (§A.3.6, §A.3.7) | **placed** | 2.4.0, #2179: stage 1 (pinned at admission, binding on the tasks they apply to, the lesson budget after them) shipped in PR #2515 (§5n), stage 2's effective lesson budget (T17) in PR #2526 (§5r), the `memory_context: none` arm with the lesson-text diagnostic in PR #2528 (§5s), a counted roll's pinned instruction set in PR #2533 (§5t), and a project instruction's emergency withdrawal in PR #2544 (§5u), re-binding a running unit's project instruction in PR #2546 (§5v), and `@current` bound at admission, the project part of T16, in PR #2555 (§5z), with the write-time refusal of a reference no unit of its project can bind in PR #2567 (§5ac); reading a reference's content at dispatch shipped in the PR that wrote this row (§5ai); re-binding a reference's revision (the MacBook lane) remains; a campaign's repository references, bound per cycle against the campaign's snapshot (the owner's ruling of 2026-10-20, §5ad), shipped in the PR that wrote this row (§5ae) |
 | entry points: chat on the substrate, with capture confirmed, chat exposures, server-side project binding and provenance authorized (§A.3.5) | **shipped** | 2.4.0, issue #2180: stage A (the binding, each turn's context and exposure, confirmed capture of notes and preferences, authorized provenance, Q29's deletion) in PR #2517, stage B's project-instruction capture in PR #2525 (§5o), and its task-instruction capture in PR #2550 (§5x) |
 | entry points: lesson inspection from chat; a conversational claim never becomes a lesson (§A.3.5) | **shipped** | 2.4.0, PR #2518, issue #2181 (§5p) |
 | entry points: the console's memory record view (§A.3.11) | **placed** | 2.4.0, #2182: the view and its uses route shipped in PR #2524 (§5q); the page's capture test remains, live with #2183 |
@@ -3315,6 +3315,61 @@ for every change that checks a unit's dispatches.
   - unreadable dispatches read as none;
   - the Campaign row without its halts;
   - the restart handed nothing new.
+
+## 5ai. A bound reference's content, read at a dispatch, as built (2026-10-22, #2179; the MacBook lane, under the owner's delegation of 2026-10-18, with #2178's hold, as §5z and §5ab placed it)
+
+**What shipped:** §A.3.6's binding section now includes what its instructions reference.
+- **Each reference is read at each dispatch, at the revision bound.** The composer reads every reference the dispatch
+  would be handed, once per reference, through its family's resolver: a task instruction's (bound with its cycle, or
+  written with its revision), and each that a project instruction's admission bound. The read goes through the recall
+  (`FailurePatternRecallPort.read_reference`), built with the runtime's resolvers. The resolver refuses content that
+  no longer matches the digest bound (§3.7). A reference written with its revision carries no digest, and is read at
+  that revision, since a commit's content can't change.
+- **The content is handed and shown.** The task is handed each reference's content beside it (`content`). Its author
+  shows it under the instruction that names it, in a fence longer than any in the content
+  (`request.instruction_reference`, a new managed asset). An instruction with no reference renders as it did.
+- **It is measured.** A binding section's size includes each reference's content and framing. So an instruction that
+  fits, beside a reference that doesn't, holds rather than being cut (§3.6).
+- **A required reference that can't be read holds its task** (§5ag):
+  - a refusal is the operator's input (`input`), released by a re-binding or a revision;
+  - a resolver that failed is the store's (`store`).
+- **An optional one is omitted whole and disclosed,** as one admission couldn't bind is: `unread` on the instruction,
+  `omitted_references` in the exposure.
+- **A required reference no resolver can read is refused at write,** when it's written with its revision, since every
+  task its instruction applies to would hold. An optional one is stored.
+- **The exposure keeps the reference and its digest** (`bound_references`), never its content.
+
+**Where it narrows §A.3.6:**
+- **The content is read for each dispatch,** and nothing is kept between dispatches. A re-dispatch reads again, under
+  the family's time bound (#2575).
+- **The repository family reads through the managed clone.** A commit or path that isn't one is a refusal. A clone
+  that can't answer is a fault, so its task holds as `store` until it does.
+- **Re-binding a reference's bound revision (§3.7) remains** #2179's last piece.
+- **A deploy uploads the new asset to Langfuse** before its agents start, as any new prompt asset needs.
+
+**Evidence:**
+- **`tests/unit/memory/test_reference_content.py`,** entered at the live composer (`supply_lessons` through
+  `SnapshotRecall`) and at the design author's real `handle()` on the shipped assets:
+  - a project instruction's bound reference and a task instruction's are each read at their revision and shown under
+    their instruction, in a fence the file's own block doesn't close;
+  - a required reference refused, or with its resolver failing, holds the task, as `input` or `store`. An optional one
+    is omitted, named on the instruction and in the exposure;
+  - a reference's content counts toward its section's budget;
+  - a required reference no resolver reads is refused at write, and an optional one is stored.
+- **The binding tests** (`test_reference_binding.py`, `test_task_reference_binding.py`,
+  `test_campaign_cycle_bindings.py`) now compose with the resolvers, and read each reference's content at the
+  revision their unit or cycle bound.
+- **Ten mutants, each caught:**
+  - the composer reading nothing;
+  - the content not handed;
+  - a required unread reference not holding;
+  - a resolver's failure read as the operator's input;
+  - the content not measured;
+  - a fixed fence;
+  - an optional unread reference not disclosed;
+  - no write refusal;
+  - a read at the current revision;
+  - the content shown before its instruction.
 
 ## 6. Mode neutrality: cycle, duty, and ambient utilization
 

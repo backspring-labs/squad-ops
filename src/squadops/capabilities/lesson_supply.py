@@ -64,6 +64,13 @@ from squadops.memory.project_instructions import applicable as project_applicabl
 from squadops.memory.project_instructions import handed as project_handed
 from squadops.memory.project_instructions import section_of as project_section_of
 from squadops.memory.recall import LESSONS_INPUT, RecallQuery, UnitKind
+from squadops.memory.reference_reading import (
+    ReferencesRead,
+    measured,
+    read_references,
+    unread_references,
+)
+from squadops.memory.references import BindingContext
 from squadops.memory.task_instructions import (
     TASK_INSTRUCTIONS_INPUT,
     TaskInstructionsUnavailable,
@@ -86,6 +93,8 @@ logger = logging.getLogger(__name__)
 _TASK_SLOT = "request.task_instructions_section"
 _PROJECT_SLOT = "request.project_instructions_section"
 _LESSON_SLOT = "request.cross_cycle_lessons_section"
+#: How a reference's content is shown under its instruction (#2179), its framing measured per reference.
+_REFERENCE_SLOT = "request.instruction_reference"
 
 
 @functools.cache
@@ -102,6 +111,13 @@ def _framing(template_id: str) -> int:
 def _binding_size(template_id: str, texts: list[str]) -> int:
     """A binding section's size, framing included; 0 for a section with nothing to show."""
     return _framing(template_id) + sum(_tokens(t) for t in texts) if texts else 0
+
+
+def _references_framing(references, read) -> int:
+    """The framing of each reference read (its slot's heading and fence), which its section's size
+    includes beside the content (#2179); nothing when none was read."""
+    shown = {r.ref for r in references if r.ref in read.contents}
+    return _framing(_REFERENCE_SLOT) * len(shown)
 
 
 def _available_for_lessons(prompt_budget: int, binding: int) -> int | None:
@@ -419,14 +435,36 @@ class LessonContextAssembly(ContextAssemblyPort):
         if isinstance(request.consumer, ChatTurn):
             lessons = Section(SectionKind.LESSONS, Need.OPTIONAL, Disposition.NOT_APPLICABLE)
             return ContextBundle(request, (lessons,), complete=True)
-        instructions, bound = await self._task_instructions(request)
-        # #2179: the project instructions take what the task instructions leave (§3.6), each
-        # binding section measured with its slot's framing.
+        task_unread, bound = await self._task_instructions(request)
+        project_unread, pinned = await self._project_instructions(request)
+        # #2179: each reference either section hands, read at its bound revision, once.
+        read = await self._read_references(request, bound, pinned)
+        # The project instructions take what the task instructions leave (§3.6), each binding
+        # section measured with its slot's framing and the content of the references it hands.
         budget = request.consumer.prompt_budget
-        task_size = _binding_size(_TASK_SLOT, [b.text for b in bound])
+        task_refs = [r for b in bound for r in b.references]
+        task_size = _binding_size(
+            _TASK_SLOT, [measured(b.text, b.references, read) for b in bound]
+        ) + _references_framing(task_refs, read)
+        instructions = task_unread or section_of(
+            bound,
+            budget=budget,
+            framing=_framing(_TASK_SLOT) + _references_framing(task_refs, read),
+            read=read,
+        )
         left = max(0, budget - task_size) if budget >= 0 else -1
-        project, pinned = await self._project_instructions(request, budget=left)
-        project_size = _binding_size(_PROJECT_SLOT, [p.text for p in pinned])
+        project_refs = [r for p in pinned for r in p.references if r.ref not in dict(p.unbound)]
+        project = project_unread or project_section_of(
+            pinned,
+            budget=left,
+            framing=_framing(_PROJECT_SLOT) + _references_framing(project_refs, read),
+            read=read,
+        )
+        project_size = _binding_size(
+            _PROJECT_SLOT,
+            [measured(p.text, [r for r in p.references if r.ref not in dict(p.unbound)], read)
+             for p in pinned],
+        ) + _references_framing(project_refs, read)  # fmt: skip
         available = _available_for_lessons(budget, task_size + project_size)
         try:
             recalled = await self._recall.recall(
@@ -461,14 +499,33 @@ class LessonContextAssembly(ContextAssemblyPort):
             (instructions, project, lessons),
             complete=Disposition.INCOMPLETE not in (instructions.disposition, project.disposition),
             recalled=recalled,
-            task_instructions=handed(bound),
-            project_instructions=project_handed(pinned),
+            task_instructions=handed(bound, read),
+            project_instructions=project_handed(pinned, read),
         )
 
-    async def _project_instructions(self, request: ContextRequest, *, budget: int):
-        """The project instructions' binding section (#2179): the snapshot owner's pinned
-        revisions that apply to this dispatch. A snapshot that can't be read leaves it
-        incomplete: it binds, so it never reads as none (§3.6)."""
+    async def _read_references(self, request: ContextRequest, bound, pinned) -> ReferencesRead:
+        """Each reference the dispatch would be handed, read at its bound revision through the
+        unit's recall (#2179): a task instruction's, and each a project instruction's admission
+        bound."""
+        task = request.consumer
+        if not isinstance(task, TaskInvocation) or not isinstance(request.binding, ProjectBound):
+            return ReferencesRead()
+        ctx = BindingContext(
+            project_id=request.binding.project_id,
+            unit_kind=task.snapshot_owner.kind.value,
+            unit_id=task.snapshot_owner.unit_id,
+        )
+        references = [r for b in bound for r in b.references] + [
+            r for p in pinned for r in p.references if r.ref not in dict(p.unbound)
+        ]
+        return await read_references(
+            references, lambda reference: self._recall.read_reference(reference, ctx)
+        )
+
+    async def _project_instructions(self, request: ContextRequest):
+        """The snapshot owner's pinned project instructions that apply to this dispatch (#2179),
+        with no section, or the section that stands for them: not applicable, or incomplete when
+        the snapshot can't be read, since it binds and never reads as none (§3.6)."""
         task = request.consumer
         kind = SectionKind.PROJECT_INSTRUCTIONS
         if not isinstance(task, TaskInvocation) or not isinstance(request.binding, ProjectBound):
@@ -507,11 +564,12 @@ class LessonContextAssembly(ContextAssemblyPort):
         chosen = project_applicable(
             pinned, task_type=task.task_type, role=task.role, stack=task.stack
         )
-        return project_section_of(chosen, budget=budget, framing=_framing(_PROJECT_SLOT)), chosen
+        return None, chosen
 
     async def _task_instructions(self, request: ContextRequest):
-        """The task instructions' binding section (#2178), and what applies. A store that can't be
-        read leaves the section incomplete: it never reads as none (§3.6)."""
+        """The task instructions that apply (#2178), with no section, or the section that stands
+        for them: not applicable, or incomplete when the store can't be read, since it never
+        reads as none (§3.6)."""
         task = request.consumer
         if not isinstance(task, TaskInvocation) or not isinstance(request.binding, ProjectBound):
             kind, need = SectionKind.TASK_INSTRUCTIONS, Need.BINDING
@@ -543,7 +601,7 @@ class LessonContextAssembly(ContextAssemblyPort):
             cycle_id=task.target_cycle_id,
             reaches=lambda selector: reaches(selector, task.task_type),
         )
-        return section_of(bound, budget=task.prompt_budget, framing=_framing(_TASK_SLOT)), bound
+        return None, bound
 
     async def disclose(self, bundle: ContextBundle) -> None:
         task = bundle.request.consumer
@@ -567,11 +625,13 @@ class LessonContextAssembly(ContextAssemblyPort):
                     bundle.section(SectionKind.TASK_INSTRUCTIONS),
                     marked=interventions(bundle.task_instructions),
                     bound=bound_references(bundle.task_instructions),
+                    omitted=unread_references(bundle.task_instructions),
                 ),
                 project_instructions=_section_record(
                     bundle.section(SectionKind.PROJECT_INSTRUCTIONS),
                     bound=bound_references(bundle.project_instructions),
-                    omitted=unbound_references(bundle.project_instructions),
+                    omitted=unbound_references(bundle.project_instructions)
+                    + unread_references(bundle.project_instructions),
                 ),
             )
         )

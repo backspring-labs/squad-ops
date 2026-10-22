@@ -50,6 +50,12 @@ from squadops.memory.records import (
     reference_of,
 )
 from squadops.memory.reference_binding import with_bindings
+from squadops.memory.reference_reading import (
+    ReferencesRead,
+    handed_references,
+    holding,
+    measured,
+)
 from squadops.memory.references import BoundReference
 
 #: Where a dispatch is handed its task instructions, beside ``LESSONS_INPUT``.
@@ -204,11 +210,28 @@ def binding_section(
     return Section(kind, Need.BINDING, Disposition.SUPPLIED, supplied=tuple(r for r, _ in entries))
 
 
-def section_of(bound: list[Bound], *, budget: int, framing: int = 0) -> Section:
-    """The task instructions' binding section for what applies, measured with its framing."""
+def section_of(
+    bound: list[Bound], *, budget: int, framing: int = 0, read: ReferencesRead | None = None
+) -> Section:
+    """The task instructions' binding section for what applies, measured with its framing and the
+    content of each reference it is handed (#2179). A required reference that couldn't be read at
+    its bound revision leaves it incomplete, naming the reference (§3.6)."""
+    read = read or ReferencesRead()
+    held = [(b, ref, unread) for b in bound for ref, unread in holding(b.references, read)]
+    if held:
+        return Section(
+            SectionKind.TASK_INSTRUCTIONS,
+            Need.BINDING,
+            Disposition.INCOMPLETE,
+            unresolved=tuple(
+                (b.ref, f"required reference {ref} can't be read at its bound revision: {u.why}")
+                for b, ref, u in held
+            ),
+            store_failed=any(u.store_failed for _, _, u in held),
+        )
     return binding_section(
         SectionKind.TASK_INSTRUCTIONS,
-        [(b.ref, b.text) for b in bound],
+        [(b.ref, measured(b.text, b.references, read)) for b in bound],
         budget=budget,
         framing=framing,
     )
@@ -218,13 +241,17 @@ def tokens_of(bound: list[Bound]) -> int:
     return sum(_tokens(b.text) for b in bound)
 
 
-def handed(bound: list[Bound]) -> dict[str, Any] | None:
+def handed(bound: list[Bound], read: ReferencesRead | None = None) -> dict[str, Any] | None:
     """What a task is handed on ``TASK_INSTRUCTIONS_INPUT``, or ``None`` when none applies, so its
-    inputs are exactly what they were without instructions."""
+    inputs are exactly what they were without instructions. Each reference read is handed with its
+    content, and an optional one that couldn't be is omitted and named (#2179)."""
     if not bound:
         return None
-    return {
-        "instructions": [
+    read = read or ReferencesRead()
+    instructions = []
+    for b in bound:
+        shown = handed_references(b.references, read)
+        instructions.append(
             {
                 "record_id": b.record_id,
                 "revision": b.revision,
@@ -233,18 +260,19 @@ def handed(bound: list[Bound]) -> dict[str, Any] | None:
                 # what it was.
                 "references": [
                     {
-                        "ref": r.ref,
-                        "required": r.required,
-                        **({"digest": r.digest} if r.digest else {}),
+                        "ref": r["ref"],
+                        "required": r["required"],
+                        **({"digest": r["digest"]} if r.get("digest") else {}),
+                        **({"content": r["content"]} if "content" in r else {}),
                     }
-                    for r in b.references
+                    for r in shown["references"]
                 ],
+                **({"unread": shown["unread"]} if "unread" in shown else {}),
                 # Only when it is one, so an admitted instruction's envelope is what it was.
                 **({"intervention": True} if b.intervention else {}),
             }
-            for b in bound
-        ]
-    }
+        )
+    return {"instructions": instructions}
 
 
 def interventions(handed_input: Mapping[str, Any] | None) -> list[str]:

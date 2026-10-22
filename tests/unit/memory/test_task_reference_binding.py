@@ -44,7 +44,10 @@ def _instruct(world: _World, cycle_id: str, *, required: bool = True):
 
 async def _dispatch(world: _World, cycle, run_id: str):
     envelopes = await supply_lessons(
-        _plan(cycle), recall=SnapshotRecall(world.store, records=world.records),
+        _plan(cycle), recall=SnapshotRecall(
+            world.store, records=world.records,
+            resolvers=world.client.app.state.reference_resolvers,
+        ),
         unit=unit_of(cycle), stack="fullstack_fastapi_react", run_id=run_id, now=NOW,
     )  # fmt: skip
     [design] = [e for e in envelopes if str(e.task_type) == DESIGN]
@@ -69,7 +72,7 @@ async def test_every_dispatch_of_the_cycle_reads_the_revision_bound_when_it_was_
     again = await _dispatch(world, cycle, "run_ref000002")
 
     assert written.status_code == 201, written.text
-    bound = [{"ref": "fake:doc:spec@r1", "required": True, "digest": "sha256:r1"}]
+    bound = [{"ref": "fake:doc:spec@r1", "required": True, "digest": "sha256:r1", "content": "r1"}]
     assert first[0] == again[0] == bound
     assert again[1]["bound_references"] == [
         {"record_id": record_id, "ref": "fake:doc:spec@r1", "digest": "sha256:r1"}
@@ -94,7 +97,9 @@ async def test_a_revision_before_dispatch_binds_again():
     handed, _ = await _dispatch(world, cycle, "run_ref000001")
 
     assert revised.status_code == 201, revised.text
-    assert handed == [{"ref": "fake:doc:spec@r2", "required": True, "digest": "sha256:r2"}]
+    assert handed == [
+        {"ref": "fake:doc:spec@r2", "required": True, "digest": "sha256:r2", "content": "r2"}
+    ]
 
 
 async def test_a_resolver_that_fails_is_a_fault_not_the_writers_mistake():
@@ -149,7 +154,9 @@ async def test_a_revision_echoing_the_references_a_read_returned_binds_them_agai
     handed, _ = await _dispatch(world, cycle, "run_ref000001")
 
     assert revised.status_code == 201, revised.text
-    assert handed == [{"ref": "fake:doc:spec@r2", "required": True, "digest": "sha256:r2"}]
+    assert handed == [
+        {"ref": "fake:doc:spec@r2", "required": True, "digest": "sha256:r2", "content": "r2"}
+    ]
     assert mismatched.status_code == 422
 
 
@@ -170,6 +177,9 @@ async def test_an_instruction_for_a_dispatched_task_is_refused_as_such_before_an
 
 async def _dispatch_plain(world: _World, cycle) -> None:
     await supply_lessons(
-        _plan(cycle), recall=SnapshotRecall(world.store, records=world.records),
+        _plan(cycle), recall=SnapshotRecall(
+            world.store, records=world.records,
+            resolvers=world.client.app.state.reference_resolvers,
+        ),
         unit=unit_of(cycle), stack="fullstack_fastapi_react", run_id="run_ref000000", now=NOW,
     )  # fmt: skip

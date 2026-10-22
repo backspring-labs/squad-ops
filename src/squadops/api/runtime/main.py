@@ -675,7 +675,11 @@ async def _init_cycle_subsystem(state, config, pool) -> None:
         # SIP-0110 §0.8: each consuming task's lessons, from its unit's pinned snapshot in the
         # memory store (built before this subsystem, `_startup`).
         failure_recall=create_failure_recall(
-            "snapshot", store=state.memory_store, records=state.memory_records
+            "snapshot",
+            store=state.memory_store,
+            records=state.memory_records,
+            # #2179: each bound reference's content, read at a dispatch by its family's resolver.
+            resolvers=state.reference_resolvers,
         ),
         # SIP-0112 E.4.3: the managed clones a source-backed run starts from and is captured to,
         # and the sandbox its candidate is verified in.

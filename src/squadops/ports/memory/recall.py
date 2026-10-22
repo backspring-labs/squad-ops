@@ -13,7 +13,8 @@ from contextlib import AbstractAsyncContextManager
 from squadops.memory.exposures import Exposure
 from squadops.memory.lessons import Recalled
 from squadops.memory.recall import RecallQuery, UnitKind
-from squadops.memory.records import MemoryRecord, PinnedInstruction
+from squadops.memory.records import MemoryRecord, PinnedInstruction, Reference
+from squadops.memory.references import BindingContext
 
 
 class FailurePatternRecallPort(ABC):
@@ -53,3 +54,11 @@ class FailurePatternRecallPort(ABC):
         For a campaign's cycle (``cycle_id``), each pinned instruction naming an ``@current``
         reference is read as that cycle bound it at its launch (§5ad). A binding that can't be read
         raises, so the task holds."""
+
+    @abstractmethod
+    async def read_reference(self, reference: Reference, ctx: BindingContext) -> str:
+        """A bound reference's content at its bound revision, through its family's resolver
+        (Appendix A §3.6; #2179): what a dispatch is handed beside the instruction naming it.
+        Raises ``ReferenceUnresolved`` when it can't be read there, its content no longer matches
+        the digest bound, or no resolver reads its family; any other error when the resolver
+        failed, which says nothing of the reference."""
