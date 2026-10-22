@@ -29,6 +29,8 @@ _CUT = {
     "squadops-evaluator:lighthouse13.5-axe4.14-ruff0.16-eslint10.12-2": "ed170cddc62fe9f3",
     # SIP-0113 §10p ruling 6: the browser runner's driver. The quality and lint series end here.
     "squadops-evaluator:lighthouse13.5-axe4.14-ruff0.16-eslint10.12-3": "3c87fc625505fd42",
+    # §10p ruling 1: the driver's error text kept to the evidence. Nothing was measured on -3.
+    "squadops-evaluator:lighthouse13.5-axe4.14-ruff0.16-eslint10.12-4": "fe21f8ea911a4e61",
 }
 
 

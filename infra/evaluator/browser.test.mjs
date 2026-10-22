@@ -200,3 +200,25 @@ test("a value Python escaped reads as the character it escapes", async () => {
 
   assert.equal(answer.checks[0].holds, true);
 });
+
+test("a check or a step that throws says so in its reading and keeps the error's text in the evidence", async () => {
+  const secret = "Moonrise(Relay";
+  const answer = await runSegment(
+    fakePage({ text: "x" }),
+    segment([{ action: "visit", path: "/" }], [{ index: 0, check: { check: "text", step: 1, pattern: secret } }]),
+    FAST,
+  );
+
+  assert.deepEqual([answer.checks[0].holds, answer.checks[0].seen], [false, "the check couldn't be read"]);
+  assert.ok(!JSON.stringify(answer.checks).includes("Moonrise"));
+  assert.ok(answer.evidence.errors[0].startsWith("driver: ") && answer.evidence.errors[0].includes("Moonrise"));
+
+  const throwing = fakePage({ elements: { button: [{ name: "Join" }] } });
+  throwing.click = async () => {
+    throw new Error(`Node is detached: ${secret}`);
+  };
+  const failed = await runSegment(throwing, segment([{ action: "visit", path: "/" }, { action: "click", target: { role: "button", names: ["Join"] } }]), FAST);
+
+  assert.deepEqual([failed.steps[1].outcome, failed.steps[1].detail], ["action_failed", "Error"]);
+  assert.ok(failed.evidence.errors[0].includes("Moonrise"));
+});
