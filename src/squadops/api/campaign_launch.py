@@ -252,6 +252,16 @@ class CampaignLaunchService:
                 "cycle_binding_launch_fill_failed cycle=%s", cycle.cycle_id, exc_info=True
             )
 
+    async def fill_held(self, cycle_id: str) -> None:
+        """§5ad for a run held on its bindings (SIP-0110 §A.3.6, #2178): its cycle's missing
+        entries filled now, by the fill a launch uses and under the launch lock, so the hold's
+        release never waits on the sweep and binds exactly as the launch would have. One that
+        can't be filled is logged, and the run stays held."""
+        async with self._lock:
+            await self._fill_before_first_run(
+                await self._creation.cycle_registry.get_cycle(cycle_id)
+            )
+
     def launches_held(self) -> asyncio.Lock:
         """§5ad: what a campaign's re-binding holds from listing its launched cycles until its
         snapshot names the new revision, the lock every drain launches under. No cycle launches in

@@ -21,12 +21,8 @@ from datetime import datetime
 from typing import Any
 
 from squadops.memory.chat import ChatExposure
-from squadops.memory.context import Disposition
-from squadops.memory.exposures import Exposure
+from squadops.memory.exposures import INSTRUCTION_SECTIONS, Exposure
 from squadops.memory.records import MemoryRecord, RecordStatus
-
-#: The exposure fields a record is handed through (#2178, #2179): a task's binding sections.
-INSTRUCTION_SECTIONS = ("task_instructions", "project_instructions")
 
 #: §A.3.11's effect for a record no experiment reads, said with its reason.
 NO_EFFECT_MEASURED = (
@@ -77,13 +73,8 @@ class WithdrawnUse:
 
 
 def _incomplete(exposure: Exposure) -> list[str]:
-    """The binding sections that couldn't be completed. Any one holds the task undispatched (§3.6:
-    the bundle is held), so nothing in its sections reached the model."""
-    return [
-        name
-        for name in INSTRUCTION_SECTIONS
-        if (getattr(exposure, name, None) or {}).get("disposition") == Disposition.INCOMPLETE.value
-    ]
+    """The binding sections that couldn't be completed (``Exposure.incomplete_sections``)."""
+    return list(exposure.incomplete_sections)
 
 
 def handed_instructions(exposure: Exposure) -> bool:

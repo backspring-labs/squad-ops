@@ -107,13 +107,14 @@ def runs_handed(
     """Each ``(cycle_id, run_id)`` of the unit whose dispatch was handed the revision of
     ``record_id`` the unit binds now, in the order first seen. Any one sends the re-binding down the
     restart path: the unit's later work would build on what it made. Read from the exposures, so a
-    dispatch whose exposure wasn't recorded isn't seen (§5v)."""
+    dispatch whose exposure wasn't recorded isn't seen (§5v). A held task's exposure handed nothing
+    (#2178): the re-binding that releases it goes forward."""
     held = next((p for p in snapshot.instructions if p.record_id == record_id), None)
     if held is None:
         return []
     runs: list[tuple[str, str]] = []
     for e in exposures:
-        if (e.query.unit_kind, e.query.unit_id) != (snapshot.unit_kind, snapshot.unit_id):
+        if e.held or (e.query.unit_kind, e.query.unit_id) != (snapshot.unit_kind, snapshot.unit_id):
             continue
         supplied = (e.project_instructions or {}).get("supplied") or ()
         if (

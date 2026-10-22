@@ -1365,6 +1365,7 @@ class TestRunCompletionActivityWiring:
             campaign_progress=None,
             box_verdict=None,
             failure_recall=NoOpFailurePatternRecall(),
+            binding_fill=None,
             focus_lease_port=focus_lease_port,
         )
 

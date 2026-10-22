@@ -30,7 +30,6 @@ from squadops.cycles.models import Cycle, RunStatus, WorkloadType
 from squadops.cycles.task_plan import generate_task_plan
 from squadops.events.types import EventType
 from squadops.execution.execution_errors import _ExecutionError
-from squadops.memory.task_instructions import TaskInstructionsUnavailable
 from squadops.stacks.scaffold import frozen_paths
 
 
@@ -66,6 +65,7 @@ class RunProvisioning:
     #: bodies below already used — the whole of its dependency on the executor.
     BORROWED = (
         "_artifact_vault",
+        "_binding_holds",
         "_cycle_event_bus",
         "_cycle_registry",
         "_failure_recall",
@@ -187,17 +187,19 @@ class RunProvisioning:
         # for the lessons approved for it, and every answer is disclosed. A task handed none keeps
         # the inputs it had before memory existed, so its prompt is unchanged.
         # #2178: the same answer carries each task's instructions, binding. One that can't be read
-        # or fitted holds its task (§3.6): the run doesn't start, and its error says which and why.
-        try:
-            plan = await supply_for_cycle(
-                plan,
+        # or fitted holds its task (§3.6), and the run with it, before its first dispatch: it is
+        # paused, says which and why, and starts when re-supply completes the binding.
+        plan = await self._binding_holds.supplied(
+            run.run_id,
+            cycle,
+            lambda planned=plan: supply_for_cycle(
+                planned,
                 recall=self._failure_recall,
                 cycle=cycle,
                 run_id=run.run_id,
                 now=datetime.now(UTC),
-            )
-        except TaskInstructionsUnavailable as e:
-            raise _ExecutionError(str(e)) from e
+            ),
+        )
         state.plan = plan
         participating_agent_ids = {e.agent_id for e in plan}
         return ProvisionedRun(

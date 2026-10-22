@@ -82,7 +82,7 @@ re-places it.
 | entry points: chat's conversation history reaching the agent, with session ownership checked (SIP-0085 §4, §9; §A.3.3) | **shipped** | 2.3.0, PR #2247, issue #2175: resuming or reading a session checks its owner and agent first, refused as a missing session; each turn carries its bounded history, the drop counted |
 | entry points: the context-assembly port, inert, at the four seams (§A.3.6) | **shipped** | 2.3.0, #2257 (closes #2176; §5j records where it departs from §A.3.6's text) |
 | entry points: the typed records (notes, preferences, project and task instructions), permissions by kind, provenance (§A.3.2–§A.3.4) | **shipped** (§5l) | 2.4.0, PR #2508, issue #2177 |
-| entry points: task instructions, with the work target, retries, references bound with the cycle, binding holds and emergency withdrawal (§A.3.5–§A.3.8) | **placed** | 2.4.0, #2178: stage 1 (the records reach the tasks they name, binding, the task held when incomplete) shipped in PR #2513 (§5m), stage 2's interventions after admission with `squadops instructions` in PR #2549 (§5w), and `carries_into: continuations` with the increment gate's structured `task_instructions` field in PR #2556 (§5aa), and a task instruction's `@current` bound with its cycle (T16's task part) in PR #2559 (§5ab); the hold and its release, and emergency withdrawal after dispatch remain |
+| entry points: task instructions, with the work target, retries, references bound with the cycle, binding holds and emergency withdrawal (§A.3.5–§A.3.8) | **placed** | 2.4.0, #2178: stage 1 (the records reach the tasks they name, binding, the task held when incomplete) shipped in PR #2513 (§5m), stage 2's interventions after admission with `squadops instructions` in PR #2549 (§5w), and `carries_into: continuations` with the increment gate's structured `task_instructions` field in PR #2556 (§5aa), and a task instruction's `@current` bound with its cycle (T16's task part) in PR #2559 (§5ab), and the hold and its release in the PR that wrote this row (§5ag); emergency withdrawal after dispatch remains |
 | entry points: project instructions in the snapshot with references bound, re-binding, the effective lesson budget, the comparison arms and disclosure (§A.3.6, §A.3.7) | **placed** | 2.4.0, #2179: stage 1 (pinned at admission, binding on the tasks they apply to, the lesson budget after them) shipped in PR #2515 (§5n), stage 2's effective lesson budget (T17) in PR #2526 (§5r), the `memory_context: none` arm with the lesson-text diagnostic in PR #2528 (§5s), a counted roll's pinned instruction set in PR #2533 (§5t), and a project instruction's emergency withdrawal in PR #2544 (§5u), re-binding a running unit's project instruction in PR #2546 (§5v), and `@current` bound at admission, the project part of T16, in PR #2555 (§5z), with the write-time refusal of a reference no unit of its project can bind in PR #2567 (§5ac); re-binding a reference's revision and reading a reference's content at dispatch (the MacBook lane, with the hold) remain; a campaign's repository references, bound per cycle against the campaign's snapshot (the owner's ruling of 2026-10-20, §5ad), shipped in the PR that wrote this row (§5ae) |
 | entry points: chat on the substrate, with capture confirmed, chat exposures, server-side project binding and provenance authorized (§A.3.5) | **shipped** | 2.4.0, issue #2180: stage A (the binding, each turn's context and exposure, confirmed capture of notes and preferences, authorized provenance, Q29's deletion) in PR #2517, stage B's project-instruction capture in PR #2525 (§5o), and its task-instruction capture in PR #2550 (§5x) |
 | entry points: lesson inspection from chat; a conversational claim never becomes a lesson (§A.3.5) | **shipped** | 2.4.0, PR #2518, issue #2181 (§5p) |
@@ -3042,6 +3042,87 @@ for every change that checks a unit's dispatches.
   - a change waiting the dispatch's bound;
   - every ruling taking the turn;
   - a change's bound past the CLI's.
+
+## 5ag. A run held on its binding sections, and its release, as built (2026-10-21, #2178; the MacBook lane, under the owner's delegation of 2026-10-18, with the Spark lane's G4 of the same day on the Campaign half, SIP-0109 §24bw)
+
+**What shipped:** §A.3.6's hold and its release, replacing §5m's narrowing, where a held task failed its run.
+- **Held, not failed.** A run is held where a task's binding sections are incomplete
+  (`squadops.execution.binding_holds`). Each of a run's supply sites goes through it: provisioning, which supplies
+  every authoring task before the first dispatch (§5w), a re-dispatch, a correction repair and a pulse repair.
+  - The run goes `PAUSED`, and `RUN_PAUSED` carries the hold.
+  - The hold is recorded on the run (`Run.binding_holds`, migration 1793): the task, each record it couldn't bind as
+    `(ref, reason, kind)`, the sections that held, `held_at`, and later `released_at` and `cause`.
+  - **A record's kind is `store` or `input`.** `store` means the records, the unit's snapshot or its pin couldn't be
+    read, or the dispatch turn wasn't given (`Section.store_failed`). `input` means an operator's input can't be
+    bound: an instruction over its budget, or a required reference its cycle couldn't bind. SIP-0109 §24bw ends an
+    expired Campaign hold by it.
+- **Released by re-supply alone.** The held step composes again every 5 s, as a gate polls. When the binding is
+  complete, the hold is released and the run goes `RUNNING` (`RUN_RESUMED` carries the cause), and the step carries on
+  with what the re-supply composed. The cause is read from what held it:
+  - `store_answered`, when the store failed any record;
+  - `rebound`, when only project instructions held (a §5v re-binding, or the campaign cycle's own binding filled,
+    §5ad);
+  - `instruction_changed` otherwise (a §5w revision, narrowing or withdrawal).
+- **One ending per hold.** The release is the registry's compare-and-set (`release_binding_hold`). A cancel releases
+  it `cancelled`. The Campaign's ruling bound releases it `expired`, then cancels the run (SIP-0109 §24bw). A re-supply
+  that loses the race to an expiry doesn't resume the run.
+- **A held task's exposure is no dispatch.** It is recorded alone, marked by its sections (`Exposure.held`), under its
+  attempt's id with `:held` appended, so the dispatch after the release records its own.
+  - §5w's dispatched check (`task_instructions.dispatched`) and §5v's handed check (`rebinding.runs_handed`) leave it
+    out, so they allow the revision or re-binding that releases it.
+  - A run's composition takes one dispatch turn for all its tasks (`_composed`, which replaces §5af's
+    `_ask_and_disclose`). Its tasks are disclosed only when all are complete: disclosed beside a held one, they would
+    read as dispatched and refuse the change that releases it.
+- **A Campaign cycle's hold** opens SIP-0109 §24bw's `binding_hold` escalation (`open_binding_hold`), so the owner sees
+  it and the ruling bound ends it. Each re-supply first fills the cycle's missing bindings through the launcher's own
+  fill, under the launch lock (`CampaignLaunchService.fill_held`), so a release never waits on the sweep. The fill is
+  required at the flow-executor factory (`binding_fill`), as the box verdict is.
+- **The box.** A held run holds no lease: it is `PAUSED`, so it isn't in flight (`runs_in_flight`), and a supervisor
+  may take the box while it waits. Its release is its start, so it waits on the box as a run start does
+  (`await_box`) before it dispatches anything. This answers the G4's question about renewing a lease: there is none to
+  renew.
+- **A run resumed while held** re-enters its hold. A supply that now completes releases it, the same records holding
+  the same task reuse it, and different ones release it and record a new one, with its own escalation.
+
+**Where it narrows §A.3.6, §5m and §5af:**
+- **A hold at provisioning holds the whole run before its first task,** as the design proposed (the 2026-10-21
+  comment on #2178). Earlier tasks don't run first.
+- **§5af's "a turn not given in time ... its run fails"** now holds the run, as a `store` record.
+- **The cause is read from what held it, not from what changed.** A project-only hold released by withdrawing a task
+  instruction that crowded it out of the budget reads `rebound`.
+- **A re-supply that loses the release to an expiry** has already recorded its tasks' exposures. They then read as
+  dispatches of a cancelled run. The window is from the poll's read of the hold to the release.
+- **A run held when its process stops is left `PAUSED`:** the startup re-attach takes up no paused run (SIP-0109
+  §12a). A Campaign's ruling bound ends it. A standalone cycle's is resumed (`runs resume`) or cancelled.
+- **Emergency withdrawal after dispatch (§A.3.8, T13) remains,** designed on #2178 with the Spark lane's G4.
+
+**Evidence:**
+- **`tests/unit/cycles/test_binding_hold.py`:**
+  - entered at `execute_run` over the memory registry, with the snapshot recall over the typed records: a framing run
+    whose design-plan instruction is too big for the prompt is held before any dispatch, its held exposure leaves
+    §5w's check empty, and the instruction's withdrawal releases it (`instruction_changed`) and completes the run;
+  - entered at `BindingHolds.supplied`: the store answering, a cancel, an expiry winning the race, and a resumed run
+    whose supply now completes, each one ending with the box read only on a resume;
+  - a held exposure is neither a dispatch nor a handing;
+  - a Campaign cycle's hold opens its escalation, fills through the launcher's binder, and releases `rebound`.
+- **`tests/unit/memory/test_task_instructions.py`:** the hold's kinds at the supply. An oversized instruction is
+  `input`, and the records store down is `store` in both sections.
+- **The Postgres registry's batch read** carries each run's holds (`test_postgres_cycle_registry.py`), and the DDL
+  guard reads the table against `BindingHold`.
+- **Thirteen mutants, each caught:**
+  - a held run failing;
+  - its exposure counted as dispatched;
+  - its exposure counted as handed;
+  - its exposure under the attempt's id;
+  - every task disclosed while one is held;
+  - the release ignoring the compare-and-set;
+  - every release read as an instruction change;
+  - a cancel leaving the hold open;
+  - a resumed run keeping its hold;
+  - no escalation for a Campaign cycle;
+  - the re-supply skipping the launcher's fill;
+  - a resume before the box is read;
+  - a store failure read as input.
 
 ## 6. Mode neutrality: cycle, duty, and ambient utilization
 

@@ -28,6 +28,8 @@ _UNWIRED = {
     "box_verdict": None,
     # #1964: required, and inert in 2.1; it has no ``None`` meaning, so the fixture passes it.
     "failure_recall": NoOpFailurePatternRecall(),
+    # #2178: the launcher's fill a held campaign cycle calls; ``None``, no launcher runs.
+    "binding_fill": None,
 }
 _REQUIRED = (*_UNWIRED, "task_timeout")
 

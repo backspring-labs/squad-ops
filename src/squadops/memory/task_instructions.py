@@ -58,7 +58,24 @@ TASK_INSTRUCTIONS_INPUT = "task_instructions"
 
 class TaskInstructionsUnavailable(RuntimeError):
     """A task's binding section is incomplete: an instruction that applies to it couldn't be read or
-    fitted. The task is not dispatched, and this says why (§3.6)."""
+    fitted. The task is not dispatched, and this says why (§3.6). The run holds on it (#2178): the
+    task, each record as ``(ref, reason, kind)`` with ``kind`` ``store`` or ``input``, and the
+    sections that held."""
+
+    def __init__(
+        self,
+        message: str,
+        *,
+        task_id: str = "",
+        task_type: str = "",
+        unresolved: tuple[tuple[str, str, str], ...] = (),
+        sections: tuple[str, ...] = (),
+    ) -> None:
+        super().__init__(message)
+        self.task_id = task_id
+        self.task_type = task_type
+        self.unresolved = unresolved
+        self.sections = sections
 
 
 @dataclass(frozen=True)
@@ -151,10 +168,11 @@ def dispatched(
     """Each ``(run_id, task_id)`` of ``cycle_id`` that dispatched a selected task type, in any run,
     in the order first seen. An instruction added or revised for one is refused: the task, its
     re-takes, its repairs and the work built on its output would mix a binding it never had (§3.5).
-    Read from the exposures, which every dispatch of an authoring task records."""
+    Read from the exposures, which every dispatch of an authoring task records. A held task's
+    exposure isn't a dispatch (#2178): the revision that releases it is allowed."""
     seen: list[tuple[str, str]] = []
     for e in exposures:
-        if e.cycle_id == cycle_id and e.query.task_type in selector:
+        if e.cycle_id == cycle_id and e.query.task_type in selector and not e.held:
             if (e.run_id, e.task_id) not in seen:
                 seen.append((e.run_id, e.task_id))
     return seen

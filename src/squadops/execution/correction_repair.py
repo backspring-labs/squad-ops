@@ -20,7 +20,7 @@ is the inconsistency Scoped Code Revision exists to remove.
 from __future__ import annotations
 
 import logging
-from collections.abc import Callable
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any
@@ -55,6 +55,7 @@ from squadops.cycles.scaffold_evidence import CLASS_APP_CONTRACT, CLASS_FILL
 from squadops.cycles.task_plan import own_artifact_role, repair_steps_for
 from squadops.cycles.verification_contract import Probe
 from squadops.cycles.write_authorization import normalize_ws_path
+from squadops.execution.binding_holds import held_or_supplied
 from squadops.execution.correction_ids import correction_task_id
 from squadops.stacks.development_profiles import matches_test_file_patterns, test_file_patterns_for
 from squadops.tasks.models import TaskEnvelope
@@ -909,13 +910,21 @@ class CorrectionRepair:
     """
 
     def __init__(
-        self, *, dispatch_step: Callable[..., Any], failure_recall: FailurePatternRecallPort
+        self,
+        *,
+        dispatch_step: Callable[..., Any],
+        failure_recall: FailurePatternRecallPort,
+        hold: Callable[..., Awaitable[Any]] | None = None,
     ) -> None:
         self._dispatch_step = dispatch_step
         # SIP-0110 §0.9: each repair asks its unit's pinned snapshot for the lessons approved for
         # it, composed here as the plan's tasks are at provisioning. Required: a repair that is
         # never asked records no exposure, which no measurement can tell from memory disabled.
         self._failure_recall = failure_recall
+        # #2178: the executor's ``BindingHolds.supplied``, which holds the run while a repair's
+        # binding sections are incomplete. ``None`` outside an executor: there is no run to hold,
+        # and an incomplete binding raises.
+        self._hold = hold
 
     async def dispatch(
         self,
@@ -1090,12 +1099,17 @@ class CorrectionRepair:
                     metadata={"role": role, "step_index": step_idx},
                 )
                 # SIP-0110 §0.9: the lessons approved for this repair, if any, and its exposure.
-                [repair_envelope] = await supply_for_cycle(
-                    [repair_envelope],
-                    recall=self._failure_recall,
-                    cycle=cycle,
-                    run_id=run_id,
-                    now=datetime.now(UTC),
+                [repair_envelope] = await held_or_supplied(
+                    self._hold,
+                    run_id,
+                    cycle,
+                    lambda unsupplied=repair_envelope: supply_for_cycle(
+                        [unsupplied],
+                        recall=self._failure_recall,
+                        cycle=cycle,
+                        run_id=run_id,
+                        now=datetime.now(UTC),
+                    ),
                 )
 
                 # Dispatch the repair step (task_run creation + task events
