@@ -85,11 +85,14 @@ class BrowseRequest:
 
 @dataclass(frozen=True)
 class BrowseStep:
-    """How one step ended: one of ``STEP_OUTCOMES``, and what the browser saw when it didn't."""
+    """How one step ended: one of ``STEP_OUTCOMES``, what the browser saw when it didn't, and how
+    long it took. The detail is the browser's own text, so it goes to the evidence only, never to
+    a scenario's detail (§10p ruling 1)."""
 
     step: int
     outcome: str
     detail: str | None = None
+    seconds: float = 0.0
 
 
 @dataclass(frozen=True)
@@ -105,6 +108,8 @@ class BrowseCheck:
 class BrowseAnswer:
     steps: tuple[BrowseStep, ...]
     checks: tuple[BrowseCheck, ...] = ()
+    #: The runner that answered: the evaluator's tag and the browser's version (§10p ruling 6).
+    browser: str | None = None
 
 
 class BrowserUnavailable(Exception):
@@ -127,6 +132,10 @@ class ScenarioRun:
     first_failing_step: int | None = None
     elapsed_seconds: float = 0.0
     detail: str | None = None
+    #: §10p ruling 7: what ran the browser steps (the evaluator's tag and the browser's version),
+    #: or ``None`` for a scenario with none, and each step's seconds, in step order.
+    runner: str | None = None
+    step_seconds: tuple[float, ...] = ()
 
     def as_dict(self) -> dict[str, Any]:
         return {
@@ -137,6 +146,8 @@ class ScenarioRun:
             "first_failing_step": self.first_failing_step,
             "elapsed_seconds": self.elapsed_seconds,
             "detail": self.detail,
+            "runner": self.runner,
+            "step_seconds": list(self.step_seconds),
         }
 
 
@@ -281,6 +292,8 @@ class _Run:
         #: A browser check's reading, by its index: ``None`` when it held, else what it saw.
         self.read: dict[int, str | None] = {}
         self.taken = 0
+        self.seconds: list[float] = []
+        self.runner: str | None = None
 
     def ended(self, result: str, **kw) -> ScenarioRun:
         return ScenarioRun(
@@ -288,6 +301,8 @@ class _Run:
             result,
             steps_taken=self.taken,
             elapsed_seconds=round(time.monotonic() - self.started, 3),
+            runner=self.runner,
+            step_seconds=tuple(self.seconds),
             **kw,
         )
 
@@ -310,10 +325,13 @@ class _Run:
             )
         except (_Missing, KeyError) as e:
             return self.failed(number, f"step {number}: {e}")
+        sent = time.monotonic()
         try:
             response = await send(request)
         except OSError as e:
             return self.failed(number, f"step {number}: {e}")
+        finally:
+            self.seconds.append(round(time.monotonic() - sent, 3))
         self.responses[number] = response
         self.taken += 1
         expected = step.get("expect_status")
@@ -336,6 +354,7 @@ class _Run:
             answer = await browse(request)
         except BrowserUnavailable as e:
             return self.blocked("browser_unavailable", f"step {segment.start}: {e}")
+        self.runner = self.runner or answer.browser
         outcomes = {o.step: o for o in answer.steps}
         for n in segment:
             outcome = outcomes.get(n)
@@ -343,11 +362,12 @@ class _Run:
                 return self.blocked(
                     "browser_unavailable", f"step {n}: the browser didn't answer it"
                 )
+            self.seconds.append(round(outcome.seconds, 3))
             if outcome.outcome == "not_found":
                 return self.blocked("control_absent", f"step {n}")
             if outcome.outcome != "done":
-                seen = f": {outcome.detail}" if outcome.detail else ""
-                return self.failed(n, f"step {n} {outcome.outcome}{seen}")
+                # The browser's own text stays in the evidence: it can quote the page (ruling 1).
+                return self.failed(n, f"step {n} {outcome.outcome}")
             self.taken += 1
         for c in answer.checks:
             self.read[c.index] = None if c.holds else (c.seen or f"check {c.index + 1} didn't hold")
@@ -384,6 +404,12 @@ class _Run:
             if seen is not None:
                 return self.failed(int(check["step"]), seen)
         return self.ended("passed")
+
+
+def drives_a_browser(steps: Sequence[Mapping[str, Any]]) -> bool:
+    """Whether a scenario has a browser step, so its page surfaces are checked against the
+    delivery's routes before anything runs (§10p ruling 4)."""
+    return any(step.get("action") in _BROWSER_ACTIONS for step in steps)
 
 
 def vocabulary_refusals(

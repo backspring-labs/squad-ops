@@ -70,6 +70,11 @@ class ScenarioOutcome:
     first_failing_step: int | None = None
     elapsed_seconds: float | None = None
     retries: int = 0
+    #: §10p ruling 7: what ran its browser steps, the evaluator's tag and the browser's version
+    #: (``None`` for HTTP alone), so a change of runner is a methodology break; and each step's
+    #: seconds. Written only when set, so an outcome stored before them reads back as it was.
+    runner: str | None = None
+    step_seconds: tuple[float, ...] = ()
 
     def __post_init__(self) -> None:
         where = f"scenario {self.scenario_id!r}"
@@ -99,6 +104,8 @@ class ScenarioOutcome:
             "first_failing_step": self.first_failing_step,
             "elapsed_seconds": self.elapsed_seconds,
             "retries": self.retries,
+            **({"runner": self.runner} if self.runner else {}),
+            **({"step_seconds": list(self.step_seconds)} if self.step_seconds else {}),
         }
 
     @classmethod
@@ -114,6 +121,8 @@ class ScenarioOutcome:
             first_failing_step=d.get("first_failing_step"),
             elapsed_seconds=d.get("elapsed_seconds"),
             retries=d.get("retries", 0),
+            runner=d.get("runner"),
+            step_seconds=tuple(d.get("step_seconds") or ()),
         )
 
 
