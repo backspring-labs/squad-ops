@@ -223,7 +223,7 @@ async def test_a_pin_with_no_removal_is_written_once_and_a_settle_read_that_fail
     from adapters.memory.records import InMemoryMemoryRecords
     from tests.unit.memory.test_project_instructions import _instruction
 
-    class _FailsSecondRead(InMemoryMemoryRecords):
+    class _FailsAfterOneRead(InMemoryMemoryRecords):
         reads = 0
 
         async def list_project(self, project_id: str):
@@ -239,7 +239,7 @@ async def test_a_pin_with_no_removal_is_written_once_and_a_settle_read_that_fail
             self.writes += 1
             await super().rebind_snapshot(snapshot)
 
-    for records in (InMemoryMemoryRecords(), _FailsSecondRead()):
+    for records in (InMemoryMemoryRecords(), _FailsAfterOneRead()):
         await records.create(_instruction("mrec_k", "qa.test"))
         store = _CountsRebinds()
 
