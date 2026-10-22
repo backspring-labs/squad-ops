@@ -59,8 +59,8 @@ async def store():
     await apply_migrations(pool, Path(__file__).parents[3] / "infra" / "migrations")
     async with pool.acquire() as conn:
         await conn.execute(
-            "TRUNCATE TABLE quality_remeasures, scenario_evaluations, campaign_scenario_suites, "
-            "scenario_suites"
+            "TRUNCATE TABLE scenario_evidence, quality_remeasures, scenario_evaluations, "
+            "campaign_scenario_suites, scenario_suites"
         )
     yield PostgresScenarioStore(pool=pool), pool
     await pool.close()
@@ -239,6 +239,21 @@ async def test_an_evaluation_reads_back_whole_and_the_table_refuses_a_commit_for
         await scenarios.save_remeasure(
             replace(remeasure, remeasure_id="rmq_pg00000003", evaluation_id="evl_nothing000")
         )
+
+    # SIP-0113 §10p ruling 8 (#2564): a page scenario's evidence, once per scenario, its bytes and
+    # details whole, and only of an evaluation that exists.
+    from squadops.scenarios.evidence import ScenarioEvidence
+
+    item = ScenarioEvidence(
+        first.scenario_id, 3, b"\x89PNG\x00bytes", "button",
+        ({"name": "Join", "visible": True, "disabled": False},), ("console: 404",), (),
+        ("screenshot: over the evaluation's cap",),
+    )  # fmt: skip
+    await scenarios.save_evidence(records[0].evaluation_id, [item])
+    await scenarios.save_evidence(records[0].evaluation_id, [replace(item, step=4)])
+    assert await scenarios.evidence_for(records[0].evaluation_id) == [item]
+    with pytest.raises(asyncpg.ForeignKeyViolationError):
+        await scenarios.save_evidence("evl_nothing000", [item])
     with pytest.raises(asyncpg.CheckViolationError):
         async with pool.acquire() as conn:
             await conn.execute(
