@@ -86,7 +86,8 @@ async def _handed(store, records, cycle_id: str):
     """What a campaign cycle's design task is handed, as the live composer hands it."""
     cycle = dataclasses.replace(_framing_cycle(), cycle_id=cycle_id, campaign_id=CID)
     envelopes = await supply_lessons(
-        _plan(cycle), recall=SnapshotRecall(store, records=records), unit=unit_of(cycle),
+        _plan(cycle), recall=SnapshotRecall(store, records=records, resolvers={"fake": _PerCycle()}),
+        unit=unit_of(cycle),
         stack="fullstack_fastapi_react", run_id=f"run_{cycle_id[-10:]}", now=T0,
     )  # fmt: skip
     [design] = [e for e in envelopes if str(e.task_type) == DESIGN]
@@ -112,7 +113,7 @@ async def test_each_cycle_reads_the_references_it_bound_at_its_launch(world):  #
     for cycle in (first, second):
         assert await _handed(store, records, cycle.cycle_id) == [
             {"ref": f"fake:doc:spec@{cycle.cycle_id}", "required": True,
-             "digest": f"sha256:{cycle.cycle_id}"},
+             "digest": f"sha256:{cycle.cycle_id}", "content": cycle.cycle_id},
         ]  # fmt: skip
 
 
@@ -167,7 +168,8 @@ async def test_a_campaign_naming_no_current_reference_records_and_reads_no_bindi
     cycle = await _launcher(world, records, store)._build_cycle(intent)
     handed = await _handed(store, records, cycle.cycle_id)
 
-    assert handed == [{"ref": "fake:doc:spec@r9", "required": True}]
+    # Written with its revision, so it carries no digest; it is still read for its content (#2179).
+    assert handed == [{"ref": "fake:doc:spec@r9", "required": True, "content": "r9"}]
     assert (store.reads, store.writes) == (0, 0)
 
 
@@ -361,7 +363,12 @@ async def test_the_sweep_fills_a_cycle_a_rebinding_could_not_reach(world):  # no
     await _one_sweep(launcher)
 
     assert await _handed(store, records, cycle_id) == [
-        {"ref": f"fake:doc:spec@{cycle_id}", "required": True, "digest": f"sha256:{cycle_id}"}
+        {
+            "ref": f"fake:doc:spec@{cycle_id}",
+            "required": True,
+            "digest": f"sha256:{cycle_id}",
+            "content": cycle_id,
+        }
     ]
 
 
@@ -720,5 +727,5 @@ async def test_a_repeated_launch_fills_the_cycle_it_finds_before_its_first_run(w
     assert [r.cycle_id for r in started] == [stored.cycle_id]
     assert await _handed(store, records, stored.cycle_id) == [
         {"ref": f"fake:doc:spec@{stored.cycle_id}", "required": True,
-         "digest": f"sha256:{stored.cycle_id}"},
+         "digest": f"sha256:{stored.cycle_id}", "content": stored.cycle_id},
     ]  # fmt: skip

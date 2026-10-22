@@ -94,7 +94,8 @@ class RepositoryReferenceResolver(ReferenceResolverPort):
     async def read(self, bound: BoundReference, ctx: BindingContext) -> str:
         path = _path_of(bound.ref)
         content = await self._file(ctx, bound.revision, path)
-        if _digest(content) != bound.digest:
+        # A reference written with its commit carries no digest: a commit's content can't change.
+        if bound.digest and _digest(content) != bound.digest:
             raise ReferenceUnresolved(
                 f"{bound.ref}: the content at {bound.revision[:12]} no longer matches the digest "
                 f"bound ({bound.digest})"

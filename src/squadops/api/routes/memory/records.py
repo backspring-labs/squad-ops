@@ -95,6 +95,7 @@ from squadops.memory.records import (
     revision_document,
     shown_source,
     unbindable,
+    unreadable,
     visible,
     withdrawn,
 )
@@ -143,6 +144,15 @@ async def _refuse_unbindable(request: Request, revision: Revision, project_id: s
             422,
             "VALIDATION_ERROR",
             f"no resolver binds @current for {', '.join(unbound)}: name the revision it means",
+        )
+    unread = unreadable(revision, resolvers.keys())
+    if unread:
+        raise http_error(
+            422,
+            "VALIDATION_ERROR",
+            f"no resolver reads {', '.join(unread)}, and a dispatch reads each reference it is "
+            "handed, so every task this applies to would hold: make it optional, or name a "
+            "family a resolver reads",
         )
     if not project_id:
         return

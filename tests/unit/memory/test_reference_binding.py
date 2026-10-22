@@ -71,7 +71,8 @@ async def _admit(store, records, resolver, unit_id: str):
 
 async def _handed(store, records, cycle):
     envelopes = await supply_lessons(
-        _plan(cycle), recall=SnapshotRecall(store, records=records), unit=unit_of(cycle),
+        _plan(cycle), recall=SnapshotRecall(store, records=records, resolvers={"fake": _Resolver()}),
+        unit=unit_of(cycle),
         stack="fullstack_fastapi_react", run_id="run_ref000001", now=T0,
     )  # fmt: skip
     [design] = [e for e in envelopes if str(e.task_type) == DESIGN]
@@ -95,7 +96,10 @@ async def test_a_unit_keeps_the_revision_bound_at_admission_and_a_later_unit_bin
     handed, exposure = await _handed(store, records, cycle)
     later = await _admit(store, records, resolver, "cyc_later")
 
-    assert handed == [{"ref": "fake:doc:spec@r1", "required": True, "digest": "sha256:r1"}]
+    # #2179: handed with its content, read at the revision bound (the fake reads its revision).
+    assert handed == [
+        {"ref": "fake:doc:spec@r1", "required": True, "digest": "sha256:r1", "content": "r1"}
+    ]
     assert exposure.project_instructions["bound_references"] == [
         {"record_id": "mrec_ref", "ref": "fake:doc:spec@r1", "digest": "sha256:r1"}
     ]

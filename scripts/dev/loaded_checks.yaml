@@ -1469,7 +1469,7 @@ checks:
       from adapters.memory.recall import create_failure_recall
       from squadops.memory.dispatch_turns import CHANGE_WAIT_SECONDS, DispatchTurnUnavailable, TURN_WAIT_SECONDS
       store = PostgresCrossCycleMemoryStore(None)
-      recall = create_failure_recall("snapshot", store=store, records=None)
+      recall = create_failure_recall("snapshot", store=store, records=None, resolvers={})
       async def contended():
           async with store.dispatch_turn("cycle", "cyc_loaded"):
               try:

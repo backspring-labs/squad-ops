@@ -147,6 +147,17 @@ def unbindable(revision: Revision, families: Collection[str]) -> list[str]:
     return [r.ref for r in revision.references if is_current(r.ref) and r.family not in families]
 
 
+def unreadable(revision: Revision, families: Collection[str]) -> list[str]:
+    """The required references of ``revision``, written with their revision, no registered resolver
+    can read: their family has none. A dispatch reads each reference it is handed (#2179), so every
+    task such an instruction applies to would hold; the records refuse it."""
+    return [
+        r.ref
+        for r in revision.references
+        if r.required and not is_current(r.ref) and r.family not in families
+    ]
+
+
 def reference_of(doc: Mapping[str, Any]) -> Reference:
     """A submitted reference. One that carries the target's content is refused, naming where
     that fact is changed: memory keeps a reference, never a second copy."""

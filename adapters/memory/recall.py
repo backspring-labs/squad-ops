@@ -10,6 +10,7 @@ eligible, and neither stops the task: memory is beside execution (§0.3).
 from __future__ import annotations
 
 import logging
+from collections.abc import Mapping
 from contextlib import AbstractAsyncContextManager
 from typing import Any
 
@@ -18,10 +19,12 @@ from squadops.memory.exposures import Exposure
 from squadops.memory.lessons import RecallDisposition, Recalled, recall
 from squadops.memory.project_instructions import PinUnknown, none_could_be_pinned
 from squadops.memory.recall import RecallQuery, UnitKind
-from squadops.memory.records import MemoryRecord, PinnedInstruction, RecordScope
+from squadops.memory.records import MemoryRecord, PinnedInstruction, RecordScope, Reference
+from squadops.memory.references import BindingContext, BoundReference, ReferenceUnresolved
 from squadops.ports.memory.cross_cycle import CrossCycleMemoryStorePort, RecordIncompatible
 from squadops.ports.memory.recall import FailurePatternRecallPort
 from squadops.ports.memory.records import MemoryRecordsPort
+from squadops.ports.memory.references import ReferenceResolverPort
 
 logger = logging.getLogger(__name__)
 
@@ -36,12 +39,16 @@ class SnapshotRecall(FailurePatternRecallPort):
         *,
         records: MemoryRecordsPort | None = None,
         attempts: int = READ_ATTEMPTS,
+        resolvers: Mapping[str, ReferenceResolverPort] | None = None,
     ) -> None:
         self._store = store
         #: The typed records (#2178): a deploy's recall is built with them
         #: (``create_failure_recall``); a unit test of the lessons alone may hold none.
         self._records = records
         self._attempts = attempts
+        #: The reference resolvers by family (#2179), which read a bound reference's content at a
+        #: dispatch. A family with none can't be read, so a required reference of it holds.
+        self._resolvers = resolvers or {}
 
     def dispatch_turn(self, unit_kind: UnitKind, unit_id: str) -> AbstractAsyncContextManager[None]:
         return self._store.dispatch_turn(unit_kind, unit_id)
@@ -127,6 +134,17 @@ class SnapshotRecall(FailurePatternRecallPort):
             return recall(snapshot, query)
         return Recalled(None, RecallDisposition.FAILED)
 
+    async def read_reference(self, reference: Reference, ctx: BindingContext) -> str:
+        resolver = self._resolvers.get(reference.family)
+        if resolver is None:
+            raise ReferenceUnresolved(
+                f"{reference.ref}: no resolver reads the {reference.family} family"
+            )
+        revision = reference.ref.rsplit("@", 1)[1]
+        return await resolver.read(
+            BoundReference(reference.ref, revision, reference.digest or ""), ctx
+        )
+
     async def disclose(self, exposure: Exposure) -> None:
         try:
             await self._store.record_exposure(exposure)
@@ -141,11 +159,14 @@ class SnapshotRecall(FailurePatternRecallPort):
 
 def create_failure_recall(kind: str, **kwargs: Any) -> FailurePatternRecallPort:
     """The recall for ``kind``. Required, never defaulted (#1568): ``snapshot`` answers from the
-    store's pinned snapshots and the typed records' task instructions (a deploy: both ``store``
-    and ``records`` are required); ``disabled`` answers every task as memory disabled (a
-    composition with no store)."""
+    store's pinned snapshots and the typed records' task instructions (a deploy: ``store``,
+    ``records`` and ``resolvers`` are required, the last reading each bound reference's content at a
+    dispatch, #2179); ``disabled`` answers every task as memory disabled (a composition with no
+    store)."""
     if kind == "snapshot":
-        return SnapshotRecall(kwargs["store"], records=kwargs["records"])
+        return SnapshotRecall(
+            kwargs["store"], records=kwargs["records"], resolvers=kwargs["resolvers"]
+        )
     if kind == "disabled":
         from adapters.noop.ports import NoOpFailurePatternRecall
 

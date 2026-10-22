@@ -129,6 +129,12 @@ class NoOpFailurePatternRecall(FailurePatternRecallPort):
         """No store, so nothing changes what a dispatch is handed, and there is nothing to order."""
         return nullcontext()
 
+    async def read_reference(self, reference, ctx) -> str:
+        """No store, so no instruction names a reference to read: one asked for is unreadable."""
+        from squadops.memory.references import ReferenceUnresolved
+
+        raise ReferenceUnresolved(f"{reference.ref}: memory is disabled, so no resolver reads it")
+
 
 class NoOpPromptService(PromptService):
     """Hard-fail prompt stub. Cycle task handlers never assemble prompts."""
