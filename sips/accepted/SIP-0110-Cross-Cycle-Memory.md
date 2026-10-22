@@ -3049,7 +3049,8 @@ for every change that checks a unit's dispatches.
 - **Held, not failed.** A run is held where a task's binding sections are incomplete
   (`squadops.execution.binding_holds`). Each of a run's supply sites goes through it: provisioning, which supplies
   every authoring task before the first dispatch (§5w), a re-dispatch, a correction repair and a pulse repair.
-  - The run goes `PAUSED`, and `RUN_PAUSED` carries the hold.
+  - The run goes `PAUSED`, and `RUN_PAUSED` carries the hold. The run's response carries its holds
+    (`binding_holds`), and `squadops runs show` lists them with what holds each and why.
   - The hold is recorded on the run (`Run.binding_holds`, migration 1793): the task, each record it couldn't bind as
     `(ref, reason, kind)`, the sections that held, `held_at`, and later `released_at` and `cause`.
   - **A record's kind is `store` or `input`.** `store` means the records, the unit's snapshot or its pin couldn't be
@@ -3110,6 +3111,8 @@ for every change that checks a unit's dispatches.
   - a Campaign cycle's hold opens its escalation, fills through the launcher's binder, and releases `rebound`.
 - **`tests/unit/memory/test_task_instructions.py`:** the hold's kinds at the supply. An oversized instruction is
   `input`, and the records store down is `store` in both sections.
+- **`tests/unit/cli/test_commands_runs.py`:** a run with a released hold and a standing one, mapped to the API's
+  response and shown by `runs show`, lists both with their records, kinds and causes.
 - **The Postgres registry's batch read** carries each run's holds (`test_postgres_cycle_registry.py`), and the DDL
   guard reads the table against `BindingHold`.
 - **Sixteen mutants, each caught:**

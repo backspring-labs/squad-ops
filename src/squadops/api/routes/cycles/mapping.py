@@ -8,6 +8,7 @@ from squadops.api.cycle_schemas import (
     AgentProfileEntryResponse,
     ArtifactRefResponse,
     AttributionReadingDTO,
+    BindingHoldResponse,
     ContributionDTO,
     CycleAssessmentResponse,
     CycleOutcomeDTO,
@@ -23,6 +24,7 @@ from squadops.api.cycle_schemas import (
     RunResponse,
     SquadProfileResponse,
     TaskFlowPolicyDTO,
+    UnresolvedRecordResponse,
     UnverifiedCheckDTO,
     WaivedCheckDTO,
     WorkloadProgressEntry,
@@ -104,6 +106,22 @@ def run_to_response(run: Run) -> RunResponse:
         artifact_refs=list(run.artifact_refs),
         workload_type=run.workload_type,
         failure_reason=run.failure_reason,
+        binding_holds=[
+            BindingHoldResponse(
+                hold_id=h.hold_id,
+                task_id=h.task_id,
+                task_type=h.task_type,
+                unresolved=[
+                    UnresolvedRecordResponse(ref=ref, reason=reason, kind=str(kind))
+                    for ref, reason, kind in h.unresolved
+                ],
+                sections=list(h.sections),
+                held_at=h.held_at,
+                released_at=h.released_at,
+                cause=h.cause,
+            )
+            for h in run.binding_holds
+        ],
     )
 
 

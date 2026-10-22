@@ -424,6 +424,28 @@ class GateDecisionResponse(BaseModel):
     waiver_reason: str | None = None
 
 
+class UnresolvedRecordResponse(BaseModel):
+    """One record a binding hold couldn't bind (SIP-0110 §A.3.6, #2178)."""
+
+    ref: str
+    reason: str
+    #: ``store``: the store didn't answer. ``input``: an operator's input can't be bound.
+    kind: str
+
+
+class BindingHoldResponse(BaseModel):
+    """A run held on a task's binding sections, and its release (SIP-0110 §5ag, #2178)."""
+
+    hold_id: str
+    task_id: str
+    task_type: str
+    unresolved: list[UnresolvedRecordResponse]
+    sections: list[str]
+    held_at: datetime
+    released_at: datetime | None = None
+    cause: str | None = None
+
+
 class RunResponse(BaseModel):
     run_id: str
     cycle_id: str
@@ -438,6 +460,8 @@ class RunResponse(BaseModel):
     artifact_refs: list[str] = Field(default_factory=list)
     workload_type: str | None = None
     failure_reason: str | None = None
+    #: #2178: each time the run was held on a task's bindings, oldest first.
+    binding_holds: list[BindingHoldResponse] = Field(default_factory=list)
 
 
 class WorkloadProgressEntry(BaseModel):
