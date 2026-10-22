@@ -21,6 +21,8 @@ from squadops.api.errors import http_error
 from squadops.api.middleware.auth import require_scopes
 from squadops.api.runtime.deps import get_scenario_store
 from squadops.api.scenario_schemas import (
+    EvidencePurgeRequest,
+    EvidencePurgeResponse,
     ScenarioEvidenceResponse,
     ScenarioSummaryDTO,
     SuiteContentResponse,
@@ -159,3 +161,16 @@ async def get_evidence(
         )
         for item in await store.evidence_for(evaluation_id)
     ]
+
+
+@evaluations_router.post("/evidence/purge")
+async def purge_evidence(
+    request: Request,
+    body: EvidencePurgeRequest,
+    identity: Identity | None = Depends(require_scopes(Scope.SCENARIOS_APPROVE)),
+) -> EvidencePurgeResponse:
+    """The line's cut purges the page evidence its evaluations kept (§10p ruling 8, cut step 8):
+    every evaluation made before ``before``. The count goes into the release's housekeeping record
+    (``worktree_hygiene.py --evidence-purged``). The owner's alone, as reading it is."""
+    purged = await _store(request).purge_evidence(body.before)
+    return EvidencePurgeResponse(before=body.before, purged=purged)

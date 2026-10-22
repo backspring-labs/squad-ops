@@ -9,6 +9,7 @@ from __future__ import annotations
 
 from abc import ABC, abstractmethod
 from collections.abc import Collection, Mapping, Sequence
+from datetime import datetime
 from typing import TYPE_CHECKING, Any
 
 from squadops.scenarios.evaluation import EvaluationRecord, QualityRemeasure
@@ -67,6 +68,11 @@ class ScenarioStorePort(ABC):
     @abstractmethod
     async def evidence_for(self, evaluation_id: str) -> list[ScenarioEvidence]:
         """The evaluation's evidence, by scenario. Read under ``scenarios:approve`` alone."""
+
+    @abstractmethod
+    async def purge_evidence(self, before: datetime) -> int:
+        """Delete the evidence of every evaluation made before ``before``, and say how many
+        scenarios' it was: the line's cut purges what the line kept (§10p ruling 8, cut step 8)."""
 
 
 class ScenarioRunnerPort(ABC):

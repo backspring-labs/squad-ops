@@ -188,3 +188,18 @@ def test_only_the_owner_reads_an_evaluations_page_evidence():
         404,
         "EVALUATION_NOT_FOUND",
     )
+
+
+def test_only_the_owner_purges_the_lines_page_evidence_and_is_told_how_much():
+    """§10p ruling 8, cut step 8. Bug caught: the supervisor's seat able to destroy the evidence
+    of the suite it drafted, or a purge whose count isn't the number removed."""
+    w = _World()
+    before = {"before": "2026-12-01T00:00:00+00:00"}
+
+    refused = w.as_(Role.CAMPAIGN_SUPERVISOR).post(
+        "/api/v1/scenario-evaluations/evidence/purge", json=before
+    )
+    done = w.as_(Role.ADMIN).post("/api/v1/scenario-evaluations/evidence/purge", json=before)
+
+    assert refused.status_code == 403
+    assert (done.status_code, done.json()["purged"]) == (200, 0)
