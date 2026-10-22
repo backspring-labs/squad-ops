@@ -51,6 +51,7 @@ from squadops.ports.tools.container import ContainerPort
 from squadops.sandbox.environment import get_environment_contract
 from squadops.sandbox.models import OperationName, content_bytes, declared_argv
 from squadops.sandbox.workspace import WorkspaceEscapeError, tree_path, working_directory
+from squadops.scenarios.evidence import ScenarioEvidence, kept
 from squadops.scenarios.quality import (
     LintReading,
     NotMeasured,
@@ -220,7 +221,7 @@ class ContainerScenarioRunner(ScenarioRunnerPort):
             if snapshot is not None:
                 shutil.rmtree(snapshot, ignore_errors=True)
         evaluation = dataclasses.replace(evaluation, lint=await self._lint(tree, declared))
-        return _redacted(evaluation, environment.values())
+        return _redacted(_evidence_kept(evaluation, environment.values()), environment.values())
 
     async def _lint(
         self, tree: Mapping[str, bytes | str], declared: DeclaredStart | None
@@ -723,6 +724,7 @@ def browse_answer(answer: Mapping[str, Any], tag: str) -> BrowseAnswer:
             for c in answer.get("checks") or ()
         ),
         browser=f"{tag} {answer.get('browser') or 'an unnamed browser'}",
+        evidence=answer.get("evidence"),
     )
 
 
@@ -777,6 +779,31 @@ async def _seed_record(client: httpx.AsyncClient, base: str, record: SeedRecord)
         if isinstance(joined, str):
             return {"label": record.label, "seeded": False, "refusal": joined}
     return {"label": record.label, "seeded": True, "id": ident, "members": len(record.members)}
+
+
+def _evidence_kept(evaluation: TreeEvaluation, secrets: Collection[str]) -> TreeEvaluation:
+    """Each run's evidence as it may leave the sandbox (§10p ruling 8): its text scrubbed of the
+    evaluation's secrets, no screenshot when the evaluation resolved one, and within the caps.
+    ``squadops.scenarios.evidence.kept`` decides; this only applies it."""
+    raw = [(i, run, run.evidence) for i, run in enumerate(evaluation.runs) if run.evidence]
+    if not raw:
+        return evaluation
+    values = sorted({v for v in secrets if v}, key=len, reverse=True)
+
+    def scrub(text: str) -> str:
+        for secret in values:
+            text = text.replace(secret, _REDACTED)
+        return text
+
+    items = kept(
+        [ScenarioEvidence.from_wire(run.scenario_id, evidence) for _, run, evidence in raw],
+        scrub=scrub,
+        secret_resolved=bool(values),
+    )
+    runs = list(evaluation.runs)
+    for (i, run, _), item in zip(raw, items, strict=True):
+        runs[i] = dataclasses.replace(run, evidence=item.to_wire())
+    return dataclasses.replace(evaluation, runs=tuple(runs))
 
 
 def _redacted(evaluation: TreeEvaluation, secrets: Collection[str]) -> TreeEvaluation:

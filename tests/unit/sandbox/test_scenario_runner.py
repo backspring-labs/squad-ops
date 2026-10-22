@@ -1074,3 +1074,89 @@ async def test_a_browser_scenario_travels_from_the_suite_to_the_record_through_t
     assert len(outcome.step_seconds) == 3
     assert len(container.browsed) == 1
     assert await store.get_evaluation(record.evaluation_id) == record
+
+
+_FAILED_ON_THE_PAGE = {
+    "browse": {
+        "browser": "HeadlessChrome/155.0",
+        "steps": [
+            {"step": 2, "outcome": "done", "seconds": 1.0},
+            {"step": 3, "outcome": "action_failed", "detail": "Error", "seconds": 0.5},
+        ],
+        "checks": [],
+        "evidence": {
+            "step": 3,
+            "png_b64": "iVBORw0KGgo=",
+            "role": "button",
+            "nodes": [{"name": "Join", "visible": True, "disabled": True}],
+            "errors": ["driver: Node is detached; header evaluation-token"],
+            "failed_requests": [],
+        },
+    }
+}
+
+
+async def test_a_failed_page_steps_evidence_leaves_the_sandbox_scrubbed_with_no_screenshot(
+    tmp_path,
+):
+    """§10p ruling 8, with Q40. Bug caught: the browser's evidence leaving the sandbox with an
+    evaluation secret in an error it logged, or with a screenshot of a page that could show one."""
+    container = _Browsing(ContainerResult("", 0, json.dumps(_FAILED_ON_THE_PAGE) + "\n", ""))
+
+    result = await _browse(tmp_path, container)
+
+    [run] = result.runs
+    assert (run.result, run.first_failing_step) == ("failed", 3)
+    assert run.evidence["png_b64"] is None
+    assert run.evidence["withheld"] == ["screenshot: the evaluation resolved a secret"]
+    assert run.evidence["errors"] == ["driver: Node is detached; header [redacted]"]
+    assert "evaluation-token" not in json.dumps(run.as_dict())
+
+
+async def test_a_failed_page_scenarios_evidence_is_stored_beside_its_record_never_on_it(
+    tmp_path, monkeypatch
+):
+    """§10p ruling 8, wired: entered at ``evaluate_cycle`` with the real runner. Bug caught: the
+    evidence dropped between the runner and the store, so a page failure can't be read; or written
+    onto the outcome, which the package and the digest read."""
+    from adapters.scenarios.memory_scenario_store import MemoryScenarioStore
+    from squadops.scenarios import evaluate
+    from squadops.scenarios.models import parse_suite
+    from squadops.scenarios.suites import approve_suite, draft_suite
+    from tests.unit.scenarios.test_quality_evaluation import _MANIFEST, _Cycle, _Vault
+
+    async def tree_refs(vault, cycle):
+        return {"backend/main.py": "tree"}
+
+    monkeypatch.setattr(evaluate, "evaluated_tree_refs", tree_refs)
+    scenario = {
+        **BROWSING,
+        "goal": "A runner joins a run from its page.",
+        "surfaces": [
+            {"kind": "http_endpoint", "method": "POST", "path": "/runs"},
+            {"kind": "page", "path": "/runs/{id}"},
+        ],
+    }
+    store, suite = MemoryScenarioStore(), parse_suite({"name": "pages", "scenarios": [scenario]})
+    await draft_suite(store, suite, actor="supervisor", at=_T0)
+    await approve_suite(store, suite.digest, actor="owner", at=_T0)
+    container = _Browsing(ContainerResult("", 0, json.dumps(_FAILED_ON_THE_PAGE) + "\n", ""))
+
+    record = await evaluate.evaluate_cycle(
+        store=store,
+        runner=_runner(tmp_path, container, app=_runs_app(), app_network="squadops-sandbox-apps"),
+        vault=_Vault(_MANIFEST),
+        cycle=_Cycle(),
+        suite_digest=suite.digest,
+        campaign_id=None,
+        previous_accepted_tree_identity=None,
+        evaluated_at=_T0,
+    )
+
+    [evidence] = await store.evidence_for(record.evaluation_id)
+    assert (evidence.scenario_id, evidence.step, evidence.role) == (
+        "join-from-the-page",
+        3,
+        "button",
+    )
+    assert "evidence" not in record.outcomes[0].as_dict()

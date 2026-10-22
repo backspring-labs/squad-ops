@@ -45,6 +45,8 @@ from collections.abc import Awaitable, Callable, Mapping, Sequence
 from dataclasses import dataclass
 from typing import Any
 
+from squadops.scenarios.evaluation import ScenarioResult
+
 _VAR = re.compile(r"\{([A-Za-z_][A-Za-z0-9_]*)\}")
 #: §10p ruling 10: ``page`` and ``browser`` were reserved for a browser and are no runner's.
 _BROWSER_ACTIONS = frozenset({"visit", "fill", "click"})
@@ -110,6 +112,9 @@ class BrowseAnswer:
     checks: tuple[BrowseCheck, ...] = ()
     #: The runner that answered: the evaluator's tag and the browser's version (§10p ruling 6).
     browser: str | None = None
+    #: The first failed or blocked step's or check's evidence, as the browser keeps it (§10p
+    #: ruling 8; ``squadops.scenarios.evidence``): held out, so never in a detail.
+    evidence: Mapping[str, Any] | None = None
 
 
 class BrowserUnavailable(Exception):
@@ -136,6 +141,9 @@ class ScenarioRun:
     #: or ``None`` for a scenario with none, and each step's seconds, in step order.
     runner: str | None = None
     step_seconds: tuple[float, ...] = ()
+    #: §10p ruling 8: a run that didn't pass carries its browser's evidence to the store, held out
+    #: and capped by the sandbox (``squadops.scenarios.evidence.kept``). Never an outcome's.
+    evidence: Mapping[str, Any] | None = None
 
     def as_dict(self) -> dict[str, Any]:
         return {
@@ -148,6 +156,7 @@ class ScenarioRun:
             "detail": self.detail,
             "runner": self.runner,
             "step_seconds": list(self.step_seconds),
+            "evidence": dict(self.evidence) if self.evidence is not None else None,
         }
 
 
@@ -294,6 +303,7 @@ class _Run:
         self.taken = 0
         self.seconds: list[float] = []
         self.runner: str | None = None
+        self.evidence: Mapping[str, Any] | None = None
 
     def ended(self, result: str, **kw) -> ScenarioRun:
         return ScenarioRun(
@@ -303,6 +313,7 @@ class _Run:
             elapsed_seconds=round(time.monotonic() - self.started, 3),
             runner=self.runner,
             step_seconds=tuple(self.seconds),
+            evidence=None if result == ScenarioResult.PASSED else self.evidence,
             **kw,
         )
 
@@ -355,6 +366,7 @@ class _Run:
         except BrowserUnavailable as e:
             return self.blocked("browser_unavailable", f"step {segment.start}: {e}")
         self.runner = self.runner or answer.browser
+        self.evidence = self.evidence or answer.evidence
         outcomes = {o.step: o for o in answer.steps}
         for n in segment:
             outcome = outcomes.get(n)
