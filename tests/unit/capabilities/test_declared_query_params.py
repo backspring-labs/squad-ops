@@ -110,11 +110,13 @@ def test_a_well_formed_query_lints_clean():
 
 
 def test_the_fastapi_stub_seeds_each_query_parameter_and_imports_query_only_when_one_is_declared():
-    routes = _routes(_raw({"name": "string", "page": {"type": "integer", "required": False}}))
+    routes = _routes(
+        _raw({"name": "string", "limit": "integer", "page": {"type": "integer", "required": False}})
+    )
     assert "from fastapi import APIRouter, HTTPException, Query" in routes
     assert (
         "def delete_runs_run_id_participants(run_id: str, name: str = Query(...), "
-        "page: int | None = Query(None)):" in routes
+        "limit: int = Query(...), page: int | None = Query(None)):" in routes
     )
     assert "from fastapi import APIRouter, HTTPException\n" in _routes(_raw())
 
