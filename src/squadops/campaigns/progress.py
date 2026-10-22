@@ -797,6 +797,7 @@ class CampaignProgress:
         written = await self._end_binding_holds(
             campaign, log, [e for e in open_ if e.kind is EscalationKind.BINDING_HOLD]
         )
+        await self._finish_expired_holds(campaign, log)
         pending = [e for e in open_ if e.kind is EscalationKind.PLAN_REVIEW]
         if not pending:
             return written
@@ -878,6 +879,30 @@ class CampaignProgress:
         if not landed:
             logger.info("campaign_binding_hold_released_first", extra={"run_id": run_id})
             return
+        await self._cancel_expired(run_id)
+
+    async def _finish_expired_holds(self, campaign: Campaign, log: list[ControlLogEntry]) -> None:
+        """#2642: an expired hold's run that is still paused on the release the sweep recorded,
+        cancelled now. An expiry is three writes (the escalation's close, the release, the
+        cancel), and the close takes it out of the pending ones, so a cancel that raised is retried
+        here on the next sweep, or the run would stay paused for good with the executor waiting on
+        a cancellation nothing sends."""
+        for esc in escalations(log, campaign.state):
+            if (
+                esc.kind is not EscalationKind.BINDING_HOLD
+                or esc.state is not EscalationState.EXPIRED
+            ):
+                continue
+            run = await self._cycles.get_run(esc.run_id)
+            hold = next((h for h in run.binding_holds if h.hold_id == esc.hold_id), None)
+            if (
+                run.status == RunStatus.PAUSED.value
+                and hold is not None
+                and hold.cause == binding_hold.EXPIRED_CAUSE
+            ):
+                await self._cancel_expired(esc.run_id)
+
+    async def _cancel_expired(self, run_id: str) -> None:
         try:
             await self._cycles.update_run_status(
                 run_id, RunStatus.CANCELLED, failure_reason=binding_hold.HOLD_EXPIRED_REASON
