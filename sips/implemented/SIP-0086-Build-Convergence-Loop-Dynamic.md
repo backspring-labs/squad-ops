@@ -1462,3 +1462,61 @@ element, and the retest reads as `shifted`.
 
 On the code before the change, the kept case is discarded, and the two discarded cases log no
 refusal.
+
+### 12e. 2026-10-22 — a red retest is judged by the tests that fail, with the row's facts judged by their direction (#2306)
+
+**Ruled by the supervisor, 2026-10-22,** under the owner's grant of 2026-10-19, on #2306 (question 1, part 1:
+issuecomment-6340246074). Part 2, a kept repair surviving a later refused round, is ruled in principle and waits for this
+part's reading.
+
+**What §12b and §12d said.** A repair is kept when its retest's failure signature is `MOVEMENT_PROGRESS` against the
+round's: fewer failures and none new. An element is `(check_id, subject, reason_token)`, and `_reason_token` adds the
+row's suite health and exit code, and the round's failure category (`;cat=app_error`), to every test's element.
+
+**The evidence.** #2306's replay: every red retest of the 19 runs terminated as `plan_defect` from 2026-09-14 to 10-22,
+20 in all. Each was rebuilt as rows from the stored reports and the runtime's log lines, and main's rule reproduces all
+20 of the replay's verdicts on them. Main keeps 5 and refuses 15:
+- 10 are repeats: the same tests fail with the same facts;
+- 1 is a regression: a test that passed in the round fails after the repair (6492fa2d r1);
+- 4 made progress and were refused for it:
+  - **a round-level fact on every test.** be3caea2 r0 and a1e8f6da r1 cleared an application error, so every remaining
+    test's element lost `;cat=app_error` and the retest read as `shifted`. b56f8bff r0's one test was unchanged, but its
+    suite went from broken to ran;
+  - **a test the round never ran, read as added.** 56d6ead9 r0's round failed at collection. Its retest ran the file's
+    tests, which failed, and they counted as new failures. Its typed `acceptance:*` checks were also unevaluated by the
+    suite-only retest, although patch verification had passed them before the retest was dispatched.
+
+**What changes** (`retest_reduction_or_refusal`, `correction_signature.py`). Each side is split: failing tests by
+`(check, file, title)`, every other failing row by `(check, subject, reason)` (a declared probe without its reason, as
+§12d), and the facts apart. A repair is kept when all of these hold:
+- **no fact got worse.** A suite that ran now can't, or now gets a verdict the runner can't settle; a suite that
+  wasn't broken now is; or the category rises (assertions failing, then an application error, then a subject that
+  didn't boot);
+- **no other check is newly failing, or failing for a new reason** (pf-31 Fix E, unchanged);
+- **no test the round ran fails in the retest.** A test whose file never loaded in the round, which the runner names
+  without a title, was never run, so its failure is unmasked, not added. The runner records only which tests failed, so
+  any other new failure is read as one the repair broke;
+- **something cleared, or a fact got better;**
+- **the retest evaluated every check the round failed.** A typed check that patch verification ran and passed counts
+  (`_verified_checks`); a row it skipped does not.
+
+A refusal logs `progress_not_kept … why=…` with `no_signature`, `worse=<facts>`, `added=<checks>`, `regressed=<n>`,
+`no_progress` or `unevaluated=<checks>`; §12d's `movement=<class>` is gone. A kept repair's line adds
+`unmasked=<n> improved=<facts>`, and the next round's carry says what was unmasked and what got better.
+
+**What does not change.** The round-over-round signature and the termination rule (`failure_signature`,
+`carried_failures`) still fold the facts into every element. Whether they should is #2306's question 2.
+
+**On the replay,** the rule keeps the 4 and every repair main kept, and refuses every repeat (`no_progress`) and the
+regression (`regressed=1`). Two of the 4 rest on an inference: be3caea2's and a1e8f6da's retest probe outcomes were not
+logged, and their suites show the create answering 201. If the probes still failed, be3caea2 is a repeat.
+
+**Verified by:**
+- `tests/fixtures/roll_replays/2306-red-retests.json`: the 20 retests as rows, free text replaced by labels, read by
+  `test_the_stored_red_retests_get_the_verdicts_the_pre_registration_names`;
+- the rule's edges, kept and refused (`test_correction_signature.py`, `TestRetestProgress`);
+- at the executor's acceptance entry, an app error cleared and a suite that loads with a typed check verification
+  passed (`test_outcome_routing.py`);
+- twelve mutations, each caught;
+- a before-and-after pair on the yardstick, pre-registered in
+  `docs/plans/verification-sets/2-4-0-retest-progress-comparison-preregistration.md`.
