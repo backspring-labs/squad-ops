@@ -34,6 +34,7 @@ from squadops.scenarios.evaluation import (
     ScenarioResult,
     evaluation_record,
 )
+from squadops.scenarios.evidence import ScenarioEvidence
 from squadops.scenarios.fields import resolve
 from squadops.scenarios.models import Scenario, SurfaceKind
 from squadops.scenarios.quality import (
@@ -396,4 +397,13 @@ async def evaluate_cycle(
         quality_seeded=seeded_of(planned, blocked, evaluated),
     )
     await store.save_evaluation(record)
+    # §10p ruling 8: a failed or blocked page scenario's evidence, beside its record and held out:
+    # never on the outcome, which the package and the digest read.
+    evidence = [
+        ScenarioEvidence.from_wire(scenario_id, run.evidence)
+        for scenario_id, run in runs.items()
+        if run.evidence
+    ]
+    if evidence:
+        await store.save_evidence(record.evaluation_id, evidence)
     return record

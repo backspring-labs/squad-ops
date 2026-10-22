@@ -294,3 +294,19 @@ async def test_the_run_records_its_runner_and_each_steps_seconds_and_never_the_b
     assert len(passed.step_seconds) == 5 and passed.step_seconds[1:4] == (0.25, 0.25, 0.25)
     assert (failed.first_failing_step, failed.detail) == (4, "step 4 action_failed")
     assert len(failed.step_seconds) == 4
+
+
+async def test_a_run_that_didnt_pass_keeps_its_segments_evidence_and_one_that_passed_none():
+    """§10p ruling 8. Bug caught: evidence kept for a passing scenario, which the store would hold
+    for nothing, or lost for the one that failed, so its failure can't be read."""
+
+    class _WithEvidence(_Browser):
+        async def __call__(self, request):
+            answer = await super().__call__(request)
+            return BrowseAnswer(answer.steps, answer.checks, answer.browser, {"step": 4})
+
+    failed = await run_scenario(_joining(), _app, _WithEvidence(outcomes={4: "action_failed"}))
+    passed = await run_scenario(_joining(), _app, _WithEvidence())
+
+    assert (failed.result, failed.evidence) == ("failed", {"step": 4})
+    assert (passed.result, passed.evidence) == ("passed", None)

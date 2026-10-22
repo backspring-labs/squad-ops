@@ -12,6 +12,7 @@ from collections.abc import Collection, Mapping, Sequence
 from typing import TYPE_CHECKING, Any
 
 from squadops.scenarios.evaluation import EvaluationRecord, QualityRemeasure
+from squadops.scenarios.evidence import ScenarioEvidence
 from squadops.scenarios.models import CampaignSuitePin, SuiteRecord
 from squadops.scenarios.runner import DeclaredStart, TreeEvaluation
 
@@ -57,6 +58,15 @@ class ScenarioStorePort(ABC):
     @abstractmethod
     async def remeasures_for_cycle(self, cycle_id: str) -> list[QualityRemeasure]:
         """The cycle's re-measures, by series, then round."""
+
+    @abstractmethod
+    async def save_evidence(self, evaluation_id: str, evidence: Sequence[ScenarioEvidence]) -> None:
+        """Keep each failed or blocked page scenario's evidence for its evaluation (SIP-0113 §10p
+        ruling 8), once per scenario: held out, in the store's own table, never the vault."""
+
+    @abstractmethod
+    async def evidence_for(self, evaluation_id: str) -> list[ScenarioEvidence]:
+        """The evaluation's evidence, by scenario. Read under ``scenarios:approve`` alone."""
 
 
 class ScenarioRunnerPort(ABC):

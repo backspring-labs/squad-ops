@@ -26,9 +26,11 @@ pytestmark = [pytest.mark.domain_contracts]
 ROOT = Path(__file__).resolve().parents[3]
 SQUAD_SIDE = ("agents", "capabilities", "prompts", "execution")
 HELD_OUT = ("squadops.scenarios", "squadops.ports.scenarios", "adapters.scenarios")
-#: The held-out tables (``infra/migrations/1900_scenario_suites.sql``): a suite's content, steps
-#: included, and each campaign's pin.
-HELD_OUT_TABLES = ("scenario_suites", "campaign_scenario_suites")
+#: The held-out tables: a suite's content, steps included, and each campaign's pin
+#: (``1900_scenario_suites.sql``); and a page scenario's evidence, whose screenshot shows a step's
+#: values (``1970_scenario_evidence.sql``, SIP-0113 §10p ruling 9).
+HELD_OUT_TABLES = ("scenario_suites", "campaign_scenario_suites", "scenario_evidence")
+_HELD_OUT_MIGRATIONS = ("1900_scenario_suites.sql", "1970_scenario_evidence.sql")
 
 
 def _imports(path: Path) -> set[str]:
@@ -77,8 +79,13 @@ def test_no_squad_side_file_names_a_held_out_table():
 def test_the_held_out_tables_are_the_migrations_own():
     """Bug caught: a table renamed in the migration, leaving the guard above matching a name no
     longer used, and passing."""
-    migration = (ROOT / "infra" / "migrations" / "1900_scenario_suites.sql").read_text()
-    created = set(re.findall(r"CREATE TABLE IF NOT EXISTS (\w+)", migration))
+    created = {
+        table
+        for name in _HELD_OUT_MIGRATIONS
+        for table in re.findall(
+            r"CREATE TABLE IF NOT EXISTS (\w+)", (ROOT / "infra" / "migrations" / name).read_text()
+        )
+    }
     assert created == set(HELD_OUT_TABLES)
 
 
