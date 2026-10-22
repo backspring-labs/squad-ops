@@ -184,3 +184,17 @@ def test_a_required_reference_no_resolver_reads_is_refused_at_write(required, st
         assert (
             "no resolver reads nobody:doc:spec@3" in response.json()["detail"]["error"]["message"]
         )
+
+
+async def test_a_reference_never_bound_says_so_when_read():
+    """The Spark lane's note on #2668. Bug caught: an ``@current`` reference asked to be read
+    answering with its resolver's "'current' is not a commit", which reads as a bad commit rather
+    than a reference nothing bound."""
+    from squadops.memory.references import BindingContext
+
+    recall = SnapshotRecall(InMemoryCrossCycleMemoryStore(), resolvers={"fake": _Reading()})
+
+    with pytest.raises(ReferenceUnresolved, match="never bound"):
+        await recall.read_reference(
+            Reference("fake:doc:spec@current", True), BindingContext("group_run", "cycle", "c")
+        )

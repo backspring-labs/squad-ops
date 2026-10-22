@@ -142,32 +142,37 @@ numpy==2.5.3
     # via
     #   -c /tmp/tmp.Ji4egIHQ7Y
     #   lancedb
-opentelemetry-api==1.44.0
+opentelemetry-api==1.45.1
     # via
     #   -c /tmp/tmp.Ji4egIHQ7Y
     #   google-api-core
     #   opentelemetry-exporter-otlp-proto-grpc
     #   opentelemetry-sdk
     #   opentelemetry-semantic-conventions
-opentelemetry-exporter-otlp-proto-common==1.44.0
+opentelemetry-exporter-otlp-common==0.66b1
     # via
     #   -c /tmp/tmp.Ji4egIHQ7Y
     #   opentelemetry-exporter-otlp-proto-grpc
-opentelemetry-exporter-otlp-proto-grpc==1.44.0
+opentelemetry-exporter-otlp-proto-common==1.45.1
+    # via
+    #   -c /tmp/tmp.Ji4egIHQ7Y
+    #   opentelemetry-exporter-otlp-proto-grpc
+opentelemetry-exporter-otlp-proto-grpc==1.45.1
     # via
     #   -c /tmp/tmp.Ji4egIHQ7Y
     #   -r requirements/agent.txt
-opentelemetry-proto==1.44.0
+opentelemetry-proto==1.45.1
     # via
     #   -c /tmp/tmp.Ji4egIHQ7Y
     #   opentelemetry-exporter-otlp-proto-common
     #   opentelemetry-exporter-otlp-proto-grpc
-opentelemetry-sdk==1.44.0
+opentelemetry-sdk==1.45.1
     # via
     #   -c /tmp/tmp.Ji4egIHQ7Y
     #   -r requirements/agent.txt
+    #   opentelemetry-exporter-otlp-common
     #   opentelemetry-exporter-otlp-proto-grpc
-opentelemetry-semantic-conventions==0.65b0
+opentelemetry-semantic-conventions==0.66b1
     # via
     #   -c /tmp/tmp.Ji4egIHQ7Y
     #   opentelemetry-sdk
