@@ -83,7 +83,7 @@ re-places it.
 | entry points: the context-assembly port, inert, at the four seams (§A.3.6) | **shipped** | 2.3.0, #2257 (closes #2176; §5j records where it departs from §A.3.6's text) |
 | entry points: the typed records (notes, preferences, project and task instructions), permissions by kind, provenance (§A.3.2–§A.3.4) | **shipped** (§5l) | 2.4.0, PR #2508, issue #2177 |
 | entry points: task instructions, with the work target, retries, references bound with the cycle, binding holds and emergency withdrawal (§A.3.5–§A.3.8) | **shipped** | 2.4.0, closes #2178: stage 1 (the records reach the tasks they name, binding, the task held when incomplete) shipped in PR #2513 (§5m), stage 2's interventions after admission with `squadops instructions` in PR #2549 (§5w), and `carries_into: continuations` with the increment gate's structured `task_instructions` field in PR #2556 (§5aa), and a task instruction's `@current` bound with its cycle (T16's task part) in PR #2559 (§5ab), the hold and its release in PR #2636 (§5ag), and emergency withdrawal after dispatch (T13) in the PR that wrote this row (§5ah) |
-| entry points: project instructions in the snapshot with references bound, re-binding, the effective lesson budget, the comparison arms and disclosure (§A.3.6, §A.3.7) | **placed** | 2.4.0, #2179: stage 1 (pinned at admission, binding on the tasks they apply to, the lesson budget after them) shipped in PR #2515 (§5n), stage 2's effective lesson budget (T17) in PR #2526 (§5r), the `memory_context: none` arm with the lesson-text diagnostic in PR #2528 (§5s), a counted roll's pinned instruction set in PR #2533 (§5t), and a project instruction's emergency withdrawal in PR #2544 (§5u), re-binding a running unit's project instruction in PR #2546 (§5v), and `@current` bound at admission, the project part of T16, in PR #2555 (§5z), with the write-time refusal of a reference no unit of its project can bind in PR #2567 (§5ac); reading a reference's content at dispatch shipped in the PR that wrote this row (§5ai); re-binding a reference's revision (the MacBook lane) remains; a campaign's repository references, bound per cycle against the campaign's snapshot (the owner's ruling of 2026-10-20, §5ad), shipped in the PR that wrote this row (§5ae) |
+| entry points: project instructions in the snapshot with references bound, re-binding, the effective lesson budget, the comparison arms and disclosure (§A.3.6, §A.3.7) | **shipped** | 2.4.0, #2179: stage 1 (pinned at admission, binding on the tasks they apply to, the lesson budget after them) shipped in PR #2515 (§5n), stage 2's effective lesson budget (T17) in PR #2526 (§5r), the `memory_context: none` arm with the lesson-text diagnostic in PR #2528 (§5s), a counted roll's pinned instruction set in PR #2533 (§5t), and a project instruction's emergency withdrawal in PR #2544 (§5u), re-binding a running unit's project instruction in PR #2546 (§5v), and `@current` bound at admission, the project part of T16, in PR #2555 (§5z), with the write-time refusal of a reference no unit of its project can bind in PR #2567 (§5ac); a campaign's repository references, bound per cycle against the campaign's snapshot (the owner's ruling of 2026-10-20, §5ad), in PR #2570 (§5ae), reading a reference's content at dispatch in PR #2668 (§5ai), and re-binding a reference's revision in the PR that wrote this row (§5aj, closes #2179); re-binding the unit's total budget waits for a budget the snapshot holds (§5v, §5aj) |
 | entry points: chat on the substrate, with capture confirmed, chat exposures, server-side project binding and provenance authorized (§A.3.5) | **shipped** | 2.4.0, issue #2180: stage A (the binding, each turn's context and exposure, confirmed capture of notes and preferences, authorized provenance, Q29's deletion) in PR #2517, stage B's project-instruction capture in PR #2525 (§5o), and its task-instruction capture in PR #2550 (§5x) |
 | entry points: lesson inspection from chat; a conversational claim never becomes a lesson (§A.3.5) | **shipped** | 2.4.0, PR #2518, issue #2181 (§5p) |
 | entry points: the console's memory record view (§A.3.11) | **placed** | 2.4.0, #2182: the view and its uses route shipped in PR #2524 (§5q); the page's capture test remains, live with #2183 |
@@ -3379,6 +3379,44 @@ for every change that checks a unit's dispatches.
   - no write refusal;
   - a read at the current revision;
   - the content shown before its instruction.
+
+## 5aj. A reference's bound revision, re-bound, as built (2026-10-22, #2179; the MacBook lane, under the owner's delegation of 2026-10-18)
+
+**What shipped:** §3.7's re-binding of a reference's bound revision, through §5v's route.
+- **A re-binding may keep the instruction's revision** and replace only how its references bind
+  (`rebinding.rebound`). The unit's pinned instruction is bound again for the unit (`bound_instruction`, as §5v's
+  replacement is). When a reference binds differently now, the re-binding is recorded, with the same revision on both
+  sides. The main case is a reference its admission couldn't bind.
+- **That is the release §3.6 names for a pinned project instruction held on a reference.** A task held on a required
+  reference that admission left unbound (§5z) is released by re-binding the unit once the reference binds, with no
+  revision of an instruction nothing was wrong with. The held dispatch handed nothing (§5ag), so the re-binding goes
+  forward. The hold releases as `rebound`.
+- **A re-binding that would change nothing is refused** (422): the unit already binds the revision and every
+  reference as they bind now.
+- **A read of a reference never bound** says so (the Spark lane's note on #2668). It no longer reads as the resolver's
+  "not a commit".
+
+**Where it narrows §3.7:**
+- **A standalone cycle only.** A campaign's references are bound by each of its cycles at the cycle's own commit,
+  and a cycle keeps its binding for its life (§5ad, the owner's ruling of 2026-10-20). So a campaign's reference is
+  re-bound by a revision of its instruction, and §5v's re-binding binds that revision for its running cycles. A
+  re-binding of the same revision for a campaign is refused, naming why.
+- **A repository reference binds at the unit's pinned commit** (SIP-0112 §B.5.1). Re-binding one at the same commit
+  changes it only where admission couldn't bind it.
+- **Re-binding the unit's total budget still waits** for a budget the snapshot holds (§5v). It's the owner's, and no
+  snapshot holds one in 2.4.
+- **The restart path is §5v's:** a unit a dispatch was handed the binding is refused (`RESTART_REQUIRED`).
+
+**Evidence:**
+- **`tests/unit/api/test_reference_rebinding.py`,** entered at the re-binding route and the live composer:
+  - a task held on a reference its admission couldn't bind is released by re-binding the unit, with the same revision
+    recorded on both sides, the reference bound, and the next dispatch handed it;
+  - a re-binding that would change nothing is refused, with the snapshot unchanged;
+  - a campaign's same-revision re-binding is refused, naming §5ad.
+- **Three mutants, each caught:**
+  - the same revision always refused;
+  - an unchanged binding re-bound;
+  - a campaign's reference re-bound in place.
 
 ## 6. Mode neutrality: cycle, duty, and ambient utilization
 

@@ -19,7 +19,13 @@ from squadops.memory.exposures import Exposure
 from squadops.memory.lessons import RecallDisposition, Recalled, recall
 from squadops.memory.project_instructions import PinUnknown, none_could_be_pinned
 from squadops.memory.recall import RecallQuery, UnitKind
-from squadops.memory.records import MemoryRecord, PinnedInstruction, RecordScope, Reference
+from squadops.memory.records import (
+    MemoryRecord,
+    PinnedInstruction,
+    RecordScope,
+    Reference,
+    is_current,
+)
 from squadops.memory.references import BindingContext, BoundReference, ReferenceUnresolved
 from squadops.ports.memory.cross_cycle import CrossCycleMemoryStorePort, RecordIncompatible
 from squadops.ports.memory.recall import FailurePatternRecallPort
@@ -139,6 +145,12 @@ class SnapshotRecall(FailurePatternRecallPort):
         if resolver is None:
             raise ReferenceUnresolved(
                 f"{reference.ref}: no resolver reads the {reference.family} family"
+            )
+        if is_current(reference.ref):
+            # The Spark lane's note on #2668: an @current reference was never bound, so it has
+            # no revision to read at; say that rather than the resolver's "not a commit".
+            raise ReferenceUnresolved(
+                f"{reference.ref}: never bound, so it has no revision to read"
             )
         revision = reference.ref.rsplit("@", 1)[1]
         return await resolver.read(
