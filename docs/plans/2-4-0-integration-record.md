@@ -25,7 +25,26 @@ read from its records.
 | IR-7 | both | **not run** | see below | not run in 2.4 |
 | IR-8 | MacBook | **run, in part** | PR #2452's live check: `prj-e41-check`, registered after the cutover, was read by `projects show` at once, and `cycles create` refused it as `REGISTERING` (seen, not missing). The Campaign launcher reads a Project registered after the cutover: IR-2's `cmp_e616b0a78aa6` on `prj-shelfnote`, and IR-3's two Campaigns on `prj-z-continuum`, each launched. Outcome Evaluation's read of a registered Project isn't shown: see below. | register, show, create and launch on the cut deploy; the evaluation's read not run |
 | IR-9 | both | **run, the native check's half**; **not run, the evaluation's half** | The brownfield demonstration on the Spark (`docs/plans/2-4-0-demonstrations-readout.md`). At stage 3, `prj-z-continuum`'s inherited `lint` FAIL stayed `inherited`, with 59 findings before and after, while `tests` passed (60) and the change was accepted (`art_0d17c83b411c`). At stage 6 it also read `inherited`, though its findings grew from 59 to 62 (#2609). H.5 (#2630) now reads a check with a declared reader finding by finding: growth is `introduced`, and an unchanged set stays `inherited`. On the Mac (`dep_539b1736d144`, #2630's live check), `prj-continuum`'s baseline lint read 59 findings in 42 keys under its declared reader. A check with no reader is held by the shared fixture's contract test and H.5. | the native half as run; the evaluation's half not run |
-| IR-10 | both | **not yet run** | The counted regression pair with `lessons: disabled`, on a deploy carrying both lanes. The executor's supply sites and its cycle loop change with #2636 (the hold, SIP-0110 §5ag) and #2639 (the emergency withdrawal, §5ah), so the pair runs once they merge. | the Spark lane's counted pair on the cut deploy |
+| IR-10 | both | **run, passed** on the Spark | The counted pair, pre-registered in `docs/plans/verification-sets/2-4-0-ir10-preregistration.md` (#2649) on `dep_1b38de8af6b4` from `23ed15f3`, which carries both lanes' work through #2647, #2636 and #2639 included. FastAPI + React `cyc_00f7cec8da9b`: accepted, 21/21, 0 correction rounds, boot audit PASS. Next.js `cyc_17dcac259f6f`: accepted, 24/24, 3 correction rounds, boot audit PASS. All six predictions held (below). | the same pair on the cut deploy |
+
+## IR-10, the counted pair (the Spark lane, 2026-10-22)
+
+Run as pre-registered, one roll per stack: `group_run` on `full-38-tf` (TensorFold) with `validated-fullstack`,
+launched by the verification-set driver from `bf3270a3`. That commit's `src/` and `adapters/` match the deploy's, which
+is what the driver's drift check holds. Every launch declared memory disabled, and nothing deployed between the rolls.
+The records are in `var/verification_sets/2-4-0-ir10/`, and each config hash matches its 2.3.1 baseline roll's.
+
+| # | prediction | read |
+|---|---|---|
+| R1 | the FastAPI + React roll is accepted, every criterion verified, boot audit PASS | **held**: accepted, 21/21, 0 correction rounds, 24 min, boot audit PASS. The baseline took 27 min and 1 round |
+| R2 | the Next.js roll is accepted, boot audit PASS, #2395's signature absent | **held**: accepted, 24/24, 49 min, boot audit PASS, no unverified or adverse criterion. The baseline was rejected for #2395 alone (16/17, 115 min) |
+| R3 | the cadence policy and pulse checks unchanged: none declared, no pulse record | **held**: neither cycle's applied defaults declare a cadence policy or pulse checks, and `pulse_verification_records` holds no row for their runs |
+| R4 | the correction paths unchanged, and none of 2.4's new executor paths firing | **held**: the Next.js roll's 3 rounds went through the baseline's two handlers (`development_correction_repair_handler`, `governance_correction_decision_handler`). No run carries a binding hold or a halt, and each cycle has its 2 runs (framing, implementation): no restart |
+| R5 | every tracked loaded check answers as expected | **held**: 170 of 170 rows observed in each roll (all 166 of `loaded_checks.yaml`, and the services' own) |
+| R6 | memory stays disabled, nothing supplied | **held**: all 29 exposures (10 and 19) are `memory_disabled`, and none supplied a task or project instruction |
+
+**Declared, not a prediction:** while the rolls ran, the box also ran single-process unit test runs (up to about 2
+minutes each) and node tests in a container, for #2551 and #2564. No measure of IR-10 reads wall-clock time.
 
 ## The *not run* records
 
@@ -49,4 +68,6 @@ SIP-0113 §10l (the declared start at the cycle-end hook, re-placed to 2.5 on 20
 - **One Campaign's two cycles at different commits** (IR-3). #2619 blocks it, so IR-3 used two Campaigns'
   calibrations from one instruction revision.
 - **IR-1 on the Spark,** until the cut deploy runs it.
-- **IR-10,** until the Spark lane runs the pair.
+- **IR-10 on the cut deploy.** The pair ran on `dep_1b38de8af6b4` (`23ed15f3`), and later 2.4 work changes the
+  deploy: #2564's later steps and #2551. The regression profile declares no pulse check, so IR-10 reads the pulse path
+  as inert, and can't read a change in how a pulse check behaves (the pre-registration's §4).
