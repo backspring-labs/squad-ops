@@ -209,3 +209,51 @@ async def test_a_halted_run_restarts_once(stubbed):
     assert first is not None and again is None
     live = [r for r in await registry.list_runs("cyc_001") if r.status != "cancelled"]
     assert [r.run_id for r in live] == [first[0]]
+
+
+@pytest.mark.parametrize("cancelled", ["after the halt", "after the restart is recorded"])
+async def test_a_cycle_cancelled_around_the_restart_starts_nothing(stubbed, cancelled):
+    """SIP-0109 §12a: nothing runs after an abort. A campaign's abort or a cycle cancel sets the
+    cycle's flag, then cancels the runs it lists. Bugs caught: the restart created on a cycle
+    already cancelled; or created just after the cancel listed its runs, so nothing cancels it and
+    it executes after the campaign is aborted."""
+    executor, registry = stubbed
+    cycle = _framing_cycle(cycle_id="cyc_001")
+    await registry.create_cycle(cycle)
+    await registry.create_run(
+        Run(run_id="run_001", cycle_id="cyc_001", run_number=1, status="queued",
+            initiated_by="api", resolved_config_hash="h", workload_type="framing")
+    )  # fmt: skip
+    started: list[str] = []
+
+    async def run_it(cycle_id, run_id, profile_id=None, *, forwarding_overrides=None):
+        started.append(run_id)
+        await registry.update_run_status(run_id, RunStatus.RUNNING)
+        await registry.record_run_halt(
+            run_id, RunHalt("mrec_1", "ada", "wrong", T0, restart_from_task_id="task-x-002-d")
+        )
+        await registry.cancel_run(run_id)
+        if cancelled == "after the halt":
+            await registry.cancel_cycle(cycle_id)
+
+    recorded = registry.record_restart
+
+    async def record_then_cancel(run_id, restart_run_id):
+        landed = await recorded(run_id, restart_run_id)
+        await registry.cancel_cycle("cyc_001")  # the cancel listed the runs before this one existed
+        return landed
+
+    if cancelled == "after the restart is recorded":
+        registry.record_restart = record_then_cancel
+    executor.execute_run = run_it
+    executor._cycle_completion = AsyncMock()
+
+    await executor.execute_cycle("cyc_001", "run_001")
+
+    assert started == ["run_001"]
+    runs = sorted(await registry.list_runs("cyc_001"), key=lambda r: r.run_number)
+    if cancelled == "after the halt":
+        assert [(r.run_id, r.status) for r in runs] == [("run_001", "cancelled")]
+    else:
+        assert [r.status for r in runs] == ["cancelled", "cancelled"]
+        assert runs[0].halt.restart_run_id == runs[1].run_id

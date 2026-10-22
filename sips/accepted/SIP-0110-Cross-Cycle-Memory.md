@@ -3168,6 +3168,11 @@ for every change that checks a unit's dispatches.
 
   The restart reads its bindings again at provisioning, so the withdrawn instruction is absent and the replacement, if
   any, is present. The unit's pinned snapshot is unchanged.
+- **Nothing restarts on a cancelled cycle** (the Spark lane's G4 on #2639, 2026-10-22; SIP-0109 §12a: nothing runs
+  after an abort). The cycle's `cancelled` flag is read before the restart is created, and a run the registry refuses
+  on a cancelled cycle creates nothing. It is read again after the restart is recorded: a cycle's cancel sets its flag
+  before it lists the runs to cancel, so a cancel that listed them before the restart existed is read there, and the
+  restart is cancelled unstarted.
 - **The replacement is a new task instruction** for the same tasks of the same cycle. It carries the references its
   cycle bound, has the source `corrects: <record>`, and was given after admission, so it is an intervention, marked in
   the restart's envelope and exposure. It isn't refused by §5w's dispatched check, because the emergency is the
@@ -3178,7 +3183,10 @@ for every change that checks a unit's dispatches.
 - **Measurements set apart:**
   - **A Campaign cycle's emergency** is its `instruct` row (`action: emergency_withdraw`), naming each run halted and
     where it restarts. It's an intervention the ledger counts (SIP-0113 §10d). Its class, reason and severity, is the
-    supervisor's classification, as every row's is.
+    supervisor's classification, as every row's is. The Spark lane ruled it so in its G4: a default class on the row
+    would meet prediction 5 by construction and read as a judgement nobody made, so it reads `unclassified` until the
+    supervisor classifies it. It ruled the restart staying inside its cycle right for SIP-0109 too: no Campaign limit
+    counts runs, and `continuation` reads the cycle's last run, the restart.
   - **A standalone cycle's** is read from the withdrawn record, as §5w's is.
 - **Shown:** the run's response carries `halt`, and `squadops runs show` says who halted it, why, and the run it
   restarted as.
@@ -3207,7 +3215,9 @@ for every change that checks a unit's dispatches.
   - the multi-workload loop restarts the halted run in its own place, before the next workload, and tells the
     restart what it restarts from;
   - a halt with nothing to restart ends the cycle;
-  - a run is restarted once.
+  - a run is restarted once;
+  - a cycle cancelled after the halt creates no restart, and one cancelled after the restart is recorded cancels it
+    unstarted.
 - **`tests/unit/api/test_emergency_withdrawal.py`,** at the route:
   - the run that received it is halted (its halt recorded before its cancel), and the restart's dispatch is handed
     the replacement, marked an intervention;
@@ -3227,7 +3237,9 @@ for every change that checks a unit's dispatches.
   - that design task's exposure (`exp_63d9e56cd2316476`) was supplied the replacement alone, marked an intervention;
   - `runs show` on the halted run named the withdrawal and the run it restarted as. The restart was then cancelled,
     its check done.
-- **Fifteen mutants, each caught:**
+- **Seventeen mutants, each caught:**
+  - the cycle's flag not read again after the restart is recorded;
+  - not read before, with the registry's refusal not caught;
   - an emergency halting nothing;
   - the halt recorded after the cancel;
   - a restart from the last task received;

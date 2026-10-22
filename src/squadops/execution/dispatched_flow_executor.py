@@ -76,6 +76,7 @@ from squadops.cycles.models import (
     FlowMode,
     GateDecision,
     GateDecisionValue,
+    IllegalStateTransitionError,
     InheritedBaselineNotFoundError,
     Run,
     RunStatus,
@@ -1555,8 +1556,9 @@ class DispatchedFlowExecutor(FlowExecutionPort):
         restarts as a new run in its place, from the first of its tasks that received the
         instruction: the run takes the halted run's checkpoint before that task
         (``_resolve_restart_checkpoint``) and reads its bindings again, so the instruction is
-        absent. ``None`` for any other run, a halt with nothing to restart, or one restarted
-        already (the halt records its restart once)."""
+        absent. ``None`` for any other run, a halt with nothing to restart, one restarted
+        already (the halt records its restart once), or a cycle cancelled since: an abort or a
+        cycle cancel ends it, and nothing runs after it (SIP-0109 §12a)."""
         halt = run.halt
         registry = self._cycle_registry
         assert registry is not None  # the run was just read from it
@@ -1565,13 +1567,22 @@ class DispatchedFlowExecutor(FlowExecutionPort):
             or halt is None
             or halt.restart_from_task_id is None
             or halt.restart_run_id is not None
+            or (await registry.get_cycle(cycle.cycle_id)).cancelled
         ):
             return None
-        restart = await self._create_next_workload_run(
-            cycle, run, workload_entry, config_hash=run.resolved_config_hash
-        )
+        try:
+            restart = await self._create_next_workload_run(
+                cycle, run, workload_entry, config_hash=run.resolved_config_hash
+            )
+        except IllegalStateTransitionError:
+            return None  # cancelled since the read: the registry refuses a run on it
         if not await registry.record_restart(run.run_id, restart.run_id):
-            await registry.cancel_run(restart.run_id)
+            await self._cancel_unstarted(restart.run_id)
+            return None
+        # A cycle's cancel sets its flag before it lists the runs to cancel, so one that listed
+        # them before this restart existed is read here, and the restart never starts.
+        if (await registry.get_cycle(cycle.cycle_id)).cancelled:
+            await self._cancel_unstarted(restart.run_id)
             return None
         self._cycle_event_bus.emit(
             EventType.WORKLOAD_ADVANCED,
@@ -1600,6 +1611,15 @@ class DispatchedFlowExecutor(FlowExecutionPort):
                 "before_task_id": halt.restart_from_task_id,
             },
         }
+
+    async def _cancel_unstarted(self, run_id: str) -> None:
+        """Cancel a restart that never started; one a cycle's cancel already reached stays so."""
+        registry = self._cycle_registry
+        assert registry is not None  # it created the run
+        try:
+            await registry.cancel_run(run_id)
+        except IllegalStateTransitionError:
+            logger.info("emergency_restart_already_cancelled run=%s", run_id)
 
     async def _resolve_restart_checkpoint(self, cycle: Cycle, run_id: str) -> RunCheckpoint | None:
         """T13 (#2178): the halted run's accepted work before the first task that received the
