@@ -9,13 +9,14 @@ original, so a unit's guidance never changes while it runs.
 from __future__ import annotations
 
 import logging
-from collections.abc import Mapping
+from collections.abc import Iterable, Mapping
+from dataclasses import replace
 from datetime import datetime
 from typing import TYPE_CHECKING, Any
 
 from squadops.memory.declarations import memory_context_none, memory_disabled
-from squadops.memory.lessons import RecallPolicy, Snapshot, UnitKind, pin
-from squadops.memory.records import PinnedInstruction, in_force
+from squadops.memory.lessons import Approval, RecallPolicy, Snapshot, UnitKind, pin
+from squadops.memory.records import MemoryRecord, PinnedInstruction, RecordStatus, in_force
 from squadops.memory.reference_binding import bound_instruction
 from squadops.memory.references import BindingContext
 
@@ -79,7 +80,65 @@ async def pin_unit(
         instructions_unread=unread,
         context_withheld=context_withheld,
     )
-    return await store.record_snapshot(snapshot)
+    recorded = await store.record_snapshot(snapshot)
+    if recorded.snapshot_id != snapshot.snapshot_id:
+        return recorded  # another pin of the unit landed first; it is the unit's
+    return await _settled(store, recorded, project_id=project_id, records=records)
+
+
+def removed_since_read(
+    snapshot: Snapshot, records: Iterable[MemoryRecord], approvals: Iterable[Approval]
+) -> Snapshot | None:
+    """``snapshot`` without the project instructions withdrawn, and the lessons whose approval was
+    revoked, after the pin read them; ``None`` when nothing was. A withdrawal or a revocation
+    answered between the pin's read and its write found no snapshot to name, and told the
+    operator that units admitted from then pin without it (#2545). This makes that true."""
+    gone = {r.record_id for r in records if r.status == RecordStatus.WITHDRAWN}
+    revoked = {a.approval_id for a in approvals if a.revoked_at is not None}
+    instructions = tuple(p for p in snapshot.instructions if p.record_id not in gone)
+    entries = tuple(e for e in snapshot.entries if e.approval.approval_id not in revoked)
+    if (instructions, entries) == (snapshot.instructions, snapshot.entries):
+        return None
+    return replace(
+        snapshot, instructions=instructions, entries=entries, version=snapshot.version + 1
+    )
+
+
+async def _settled(
+    store: CrossCycleMemoryStorePort,
+    snapshot: Snapshot,
+    *,
+    project_id: str,
+    records: MemoryRecordsPort | None,
+) -> Snapshot:
+    """The snapshot as the unit's admission ends it: read again once stored, so a revocation or a
+    withdrawal that landed while the pin was being taken is honoured. Nothing has dispatched yet:
+    a standalone cycle pins before its run is queued, and a campaign pins under the launch lock
+    every drain launches under, with its calibration's intent (§5ad, #2545). So this is the
+    admission's own correction, not a re-binding, and its write is the snapshot's next version,
+    which a re-binding that read this one can't land over. A unit that declares
+    ``memory_context: none`` pinned neither, and reads neither. A read that fails keeps the
+    snapshot as stored, and is logged."""
+    if snapshot.context_withheld:
+        return snapshot
+    try:
+        now_records = await records.list_project(project_id) if records is not None else []
+        approvals = [] if snapshot.disabled else await store.list_approvals(project_id)
+        corrected = removed_since_read(snapshot, now_records, approvals)
+        if corrected is None:
+            return snapshot
+        await store.rebind_snapshot(corrected)
+    except Exception:  # noqa: BLE001 — the stored pin stands; the miss is logged
+        logger.warning(
+            "memory_snapshot_not_settled unit=%s:%s", snapshot.unit_kind, snapshot.unit_id,
+            exc_info=True,
+        )  # fmt: skip
+        return snapshot
+    logger.info(
+        "memory_snapshot_settled unit=%s:%s removed_after_read", snapshot.unit_kind,
+        snapshot.unit_id,
+    )  # fmt: skip
+    return corrected
 
 
 def source_commit_of(cycle: Any) -> str | None:

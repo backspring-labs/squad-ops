@@ -588,3 +588,27 @@ async def test_a_launch_for_a_project_that_is_not_ready_escalates_as_the_create_
     assert refused.binding["refusal"].startswith("PROJECT_NOT_READY: Project group_run is ")
     assert (await world.campaigns.get_campaign(CID)).state is CampaignState.ESCALATED
     assert await world.cycles.list_cycles("group_run") == []
+
+
+async def test_a_start_pins_its_campaign_under_the_launch_lock_so_no_drain_launches_first(world):
+    """SIP-0110 #2545, the second reader's finding 2. The start's row writes the calibration's
+    launch intent, and the pin came after it outside any lock, so a drain from the sweep, another
+    campaign or a route could launch the calibration before its campaign's snapshot existed. Every
+    drain launches under the launch service's lock (§5ad). Bug caught: the pin taken outside it.
+    Entered at the start route; a refused start pins nothing."""
+    at_pin: list[tuple[bool, list[str]]] = []
+
+    class _Store(InMemoryCrossCycleMemoryStore):
+        async def record_snapshot(self, snapshot):
+            intents = await world.campaigns.launch_intents(CID)
+            at_pin.append((world.launch.launches_held().locked(), [i.state.value for i in intents]))
+            return await super().record_snapshot(snapshot)
+
+    world.client.app.state.memory_store = _Store()
+
+    started = world.start()
+    await asyncio.sleep(0)
+    refused = world.start(key="start-2")  # not a draft any more: stale
+
+    assert started.status_code == 200 and refused.status_code == 409
+    assert at_pin == [(True, [LaunchIntentState.PENDING.value])]

@@ -264,6 +264,10 @@ class Snapshot:
     #: Each re-binding of the running unit, in order (§3.7; #2179): ``instructions`` is what the unit
     #: binds now, and these say what it bound before and who changed it.
     rebindings: tuple[Rebinding, ...] = ()
+    #: #2545: one more for every write after the pin, a re-binding's or the pin's settle, and the
+    #: store's compare-and-swap key. A writer that read the snapshot before another's write can't
+    #: land over it, which a re-binding count can't promise: the settle changes none.
+    version: int = 0
 
     def to_dict(self) -> dict[str, Any]:
         """The whole pin, self-contained: a stored snapshot never depends on rows read later."""
@@ -296,6 +300,7 @@ class Snapshot:
             # Only when declared, so every other snapshot is stored as it was.
             **({"memory_context": "none"} if self.context_withheld else {}),
             **({"rebindings": [r.to_dict() for r in self.rebindings]} if self.rebindings else {}),
+            **({"version": self.version} if self.version else {}),
         }
 
     @classmethod
@@ -319,6 +324,7 @@ class Snapshot:
             instructions_unread=data.get("instructions_unread"),
             context_withheld=data.get("memory_context") == "none",
             rebindings=tuple(Rebinding.from_dict(r) for r in data.get("rebindings") or ()),
+            version=int(data.get("version") or 0),
         )
 
 

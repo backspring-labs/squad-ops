@@ -89,11 +89,11 @@ re-places it.
 | entry points: the console's memory record view (§A.3.11) | **placed** | 2.4.0, #2182: the view and its uses route shipped in PR #2524 (§5q); the page's capture test remains, live with #2183 |
 | entry points: the acceptance matrix, T1–T17, live on a deploy (§A.5) | **placed** | 2.4.0, #2183 |
 | entry points: the legacy agent store retired (§A.4.3), on the owner's OK for its compose change | **placed** | 2.5.0, #2184 |
-| a unit pinned while a revocation or a withdrawal is answered, missed by its answer (§0.7, §A.3.8) | **placed** | 2.4.0, #2545: found by the second reader on PR #2544 (§5u); its dispatch half, a dispatch between a change's check and its write (§5v, §5w), shipped in the PR that wrote this (§5af); the pin half remains, on #2551 |
+| a unit pinned while a revocation or a withdrawal is answered, missed by its answer (§0.7, §A.3.8) | **shipped** | 2.4.0, PRs #2603 (the dispatch half, §5af) and #2551 (the pin half, §5y), issue #2545: found by the second reader on PR #2544 (§5u) |
 
 **What closes this SIP:** Phase 1's four slices shipped in 2.2.0 with the window's finding recorded (§0.13), Phase 2's
 gate ruled by the owner on that finding (both done, §5h), the next build-side experiment shipped or dropped, and the
-entry points' eleven rows (§5g, Appendix A) shipped or dropped, and the pin's race with a revocation (#2545) fixed.
+entry points' eleven rows (§5g, Appendix A) shipped or dropped, and #2545's two windows closed.
 
 ## 0. The Phase-1 contract (normative, revision 6)
 
@@ -2358,6 +2358,66 @@ lesson-effectiveness control.
 
   Six mutants are now each caught: those three, the agent's cycle kept, the row's id dropped, and a project
   instruction carrying a lesson.
+
+## 5y. A pin settled against a removal made while it was taken, as built (2026-10-22, #2545's pin half; the supervisor, under the owner's grant of 2026-10-19)
+
+**What shipped:** the pin's half of #2545. The dispatch's half shipped first, as §5af. A first build of this section
+(2026-10-20) was found incomplete by a second reader in four places. Each is answered below, and the first build's
+claim that nothing could have dispatched before a campaign's pin is corrected.
+
+- **The race.** `pin_unit` reads the project's instructions and approvals, then stores the snapshot. A withdrawal
+  (§5u) or a revocation (§0.7) answered in between found no snapshot to name, and told the operator that units
+  admitted from then pin without it. The unit being admitted pinned it anyway, unnamed.
+- **The settle.** Once a fresh pin is stored, it reads the records and approvals again (`_settled`).
+  - It drops any instruction withdrawn, and any lesson whose approval was revoked, since its first read
+    (`removed_since_read`), and writes the correction with the store's compare-and-swap.
+  - So the answer's "units admitted from now pin without it" holds for the unit being admitted.
+  - A pin that another pin of the unit beat to the store returns that pin as it stands, and never settles.
+  - A unit that declares `memory_context: none` pinned neither lessons nor instructions, and reads neither.
+- **The compare-and-swap key is the snapshot's version** (the second reader's first finding).
+  - `Snapshot.version` is one more for every write after the pin, a re-binding's (§5v) or the settle's, and both
+    adapters compare it. It is stored in the snapshot's JSON body, so no migration: a snapshot stored before it reads
+    as version 0.
+  - The key used to be the snapshot id and the re-binding count. The settle changes neither, so a re-binding that
+    read the unsettled pin could land after the settle and restore the withdrawn instruction.
+  - The re-binding route reads the snapshot before it takes the unit's dispatch turn (§5af), so the turn alone
+    doesn't order the two. Now the later write is refused (`SnapshotMoved`, 409), and the re-binding can be sent
+    again.
+  - `rebind_snapshot` takes the successor alone: a caller still passing a count fails loudly.
+- **A campaign pins under the launch lock** (the second reader's second finding).
+  - The start's row writes the calibration's launch intent, and the pin came after it outside any lock. So a drain
+    (the sweep's, another campaign's, a route's) could launch the calibration while the pin was being taken, before
+    the snapshot its cycles select from existed.
+  - The start transition and the pin now run under the launch service's lock, which every drain launches under
+    (§5ad). No drain launches until the pin is stored.
+  - A refused start pins nothing. A pin that fails is logged and the campaign launches, as before.
+  - A standalone cycle pins before its run is queued, as the first build said.
+- **Why the settle isn't a re-binding.** Nothing has dispatched: a standalone cycle pins before its run is queued, and
+  a campaign pins under the launch lock with its calibration's intent pending. So the snapshot is corrected as part of
+  admission, its `rebindings` stay empty, and the unit's measurements aren't set apart.
+- **When the answer names one too many.** A removal answered after the store but before the settle names the unit,
+  which then no longer holds the record. Naming one unit too many is the direction §0.7's revocation already takes
+  with a unit it can't read.
+- **A settle read that fails** keeps the snapshot as stored and logs it (`memory_snapshot_not_settled`). The window
+  stays open in that case only.
+
+**Evidence:**
+- **`tests/unit/memory/test_pinning.py`,** through `pin_unit`:
+  - an instruction withdrawn between the pin's read and its write is held by neither the returned nor the stored
+    snapshot, and the holder query finds no unit; a revoked lesson likewise;
+  - a re-binding built from the unsettled pin is refused after the settle, and the stored snapshot still lacks the
+    withdrawn instruction;
+  - a pin another pin beat to the store is returned at version 0, with the records read once;
+  - a `memory_context: none` unit reads neither the records nor the approvals;
+  - a pin with no removal is written once, and a settle read that fails keeps the snapshot.
+- **`tests/unit/api/test_campaign_start.py`,** through the start route: the pin is stored with the launch lock held
+  and the calibration's intent pending, and a refused start pins nothing.
+- **Mutants, each caught:**
+  - the key back to the re-binding count;
+  - the pin outside the launch lock;
+  - a withheld unit settling;
+  - the settle not bumping the version;
+  - the first build's three: no settle, revocations ignored, and withdrawals ignored.
 
 ## 5z. A project instruction's `@current` reference, bound at admission, as built (2026-10-20, #2179 T16; the supervisor, under the owner's grant of 2026-10-19, with the MacBook lane's agreement on the port)
 

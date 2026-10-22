@@ -193,7 +193,7 @@ async def rebind_unit(
         try:
             if kind is UnitKind.CAMPAIGN:
                 await _bind_running_cycles(request, store, unit_id, replacement, now)
-            await store.rebind_snapshot(updated, after=len(snapshot.rebindings))
+            await store.rebind_snapshot(updated)
         except SnapshotMoved as e:
             raise http_error(409, "CONFLICT", str(e)) from e
         except _CyclesUnbound as e:
