@@ -4,6 +4,8 @@
   the same suite, so a retry replays.
 - **Approved** by the owner (``scenarios:approve``) before any campaign can pin it. Approval is
   once: an approved suite's content is frozen by its digest.
+- **Refused, at either, when a browser step or check is malformed** (§10p ruling 9), and never
+  when a stored suite is read.
 - **Pinned** on a campaign at its creation, once. The same pin again replays; a different suite
   for a pinned campaign is refused.
 """
@@ -14,6 +16,7 @@ from datetime import datetime
 from typing import TYPE_CHECKING
 
 from squadops.scenarios.models import CampaignSuitePin, ScenarioSuite, SuiteRecord, SuiteState
+from squadops.scenarios.steps import vocabulary_refusals
 
 if TYPE_CHECKING:  # the port names this package's models; the rules only take one
     from squadops.ports.scenarios import ScenarioStorePort
@@ -27,9 +30,26 @@ class SuiteRefused(Exception):
         self.code = code
 
 
+def malformed(suite: ScenarioSuite) -> list[str]:
+    """§10p ruling 9: every malformed browser step and check in ``suite``, by its scenario, step
+    and check, never by a value."""
+    return [
+        f"scenario {s.scenario_id!r}: {why}"
+        for s in suite.scenarios
+        for why in vocabulary_refusals(s.steps, s.checks)
+    ]
+
+
+def _refuse_malformed(suite: ScenarioSuite) -> None:
+    problems = malformed(suite)
+    if problems:
+        raise SuiteRefused("SUITE_INVALID", "; ".join(problems))
+
+
 async def draft_suite(
     store: ScenarioStorePort, suite: ScenarioSuite, *, actor: str, at: datetime
 ) -> SuiteRecord:
+    _refuse_malformed(suite)
     held = await store.get_suite(suite.digest)
     if held is not None:
         return held
@@ -46,6 +66,7 @@ async def approve_suite(
         raise SuiteRefused("SUITE_NOT_FOUND", f"no suite {digest}")
     if held.state is SuiteState.APPROVED:
         return held
+    _refuse_malformed(held.suite)
     approved = SuiteRecord(
         suite=held.suite,
         state=SuiteState.APPROVED,

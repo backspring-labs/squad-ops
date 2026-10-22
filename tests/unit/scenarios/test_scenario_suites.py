@@ -7,14 +7,14 @@ from datetime import UTC, datetime
 import pytest
 
 from adapters.scenarios.memory_scenario_store import MemoryScenarioStore
-from squadops.scenarios.models import SuiteState, parse_suite
+from squadops.scenarios.models import SuiteRecord, SuiteState, parse_suite
 from squadops.scenarios.suites import (
     SuiteRefused,
     approve_suite,
     draft_suite,
     pin_campaign_suite,
 )
-from tests.unit.scenarios.suite_fixtures import SUITE, suite_doc
+from tests.unit.scenarios.suite_fixtures import HELD_OUT, SUITE, suite_doc
 
 T0 = datetime(2026, 10, 18, 20, 0, tzinfo=UTC)
 
@@ -83,3 +83,34 @@ async def test_past_its_draft_a_campaign_keeps_its_pin_and_takes_no_new_one():
     assert again == pinned
     assert refused.value.code == "SUITE_PIN_PAST_DRAFT"
     assert await store.get_pin("cmp_2") is None
+
+
+def _with_a_click_before_any_visit() -> dict:
+    doc = suite_doc()
+    doc["scenarios"][0]["steps"] = [
+        {"action": "click", "target": {"role": "button", "names": ["Join"]}, "note": HELD_OUT}
+    ]
+    return doc
+
+
+async def test_a_malformed_browser_step_is_refused_at_draft_and_again_at_approval():
+    """§10p ruling 9. Bug caught: a malformed browser step stored and approved, so it surfaces
+    only when it runs inside a window; a draft stored before the rule approved without it; or a
+    refusal that carries a held-out value back to the caller."""
+    store = MemoryScenarioStore()
+    suite = parse_suite(_with_a_click_before_any_visit())
+    # Stored as an older draft would be, before the rule existed.
+    await store.save_suite(
+        SuiteRecord(suite=suite, state=SuiteState.DRAFT, drafted_by="supervisor", drafted_at=T0)
+    )
+
+    with pytest.raises(SuiteRefused) as at_draft:
+        await draft_suite(MemoryScenarioStore(), suite, actor="supervisor", at=T0)
+    with pytest.raises(SuiteRefused) as at_approval:
+        await approve_suite(store, suite.digest, actor="owner", at=T0)
+
+    for refused in (at_draft.value, at_approval.value):
+        assert refused.code == "SUITE_INVALID"
+        assert "step 1: a run of browser steps begins with visit" in str(refused)
+        assert HELD_OUT not in str(refused)
+    assert (await store.get_suite(suite.digest)).state is SuiteState.DRAFT

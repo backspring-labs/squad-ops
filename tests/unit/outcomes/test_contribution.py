@@ -55,6 +55,7 @@ def _record(tree: str, built_on: str | None, suite: str = "s" * 64, **states) ->
 
 
 ABSENT, START = BlockedReason.SURFACE_ABSENT, BlockedReason.START_FAILED
+CONTROL = BlockedReason.CONTROL_ABSENT
 
 
 @pytest.mark.parametrize(
@@ -98,6 +99,12 @@ ABSENT, START = BlockedReason.SURFACE_ABSENT, BlockedReason.START_FAILED
             Reading.UNVERIFIED,
             {"newly_passing": ("join",), "unverified": ("cap",)},
         ),
+        (
+            {"join": P, "page": CONTROL},
+            {"join": P, "page": CONTROL},
+            Reading.UNVERIFIED,
+            {"unverified": ("page",)},
+        ),
     ],
     ids=[
         "accepted-and-nothing-moved",
@@ -108,13 +115,15 @@ ABSENT, START = BlockedReason.SURFACE_ABSENT, BlockedReason.START_FAILED
         "a-surface-that-disappears-is-unverified",
         "not-applicable-takes-no-part",
         "a-contribution-it-couldnt-check-isnt-claimed",
+        "a-control-not-found-on-both-trees-is-unverified-never-no-part",
     ],
 )
 def test_an_increment_reads_as_its_scenarios_moved(before, after, reading, moved):
     """§4.4. Bug caught: an accepted increment that moved no scenario read as contributing (the
     window's prediction 3 needs some to read neutral); a regression hidden by a new pass; a feature
     the product never had counted against it; or a contribution claimed while a scenario was
-    blocked."""
+    blocked; or a page scenario whose names match no delivery vanishing from every reading, as an
+    absent surface does (§10p ruling 4)."""
     result = contribution(_record(INCREMENT, BASE, **after), _record(BASE, None, **before))
 
     assert result.reading == reading

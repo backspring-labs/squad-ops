@@ -51,6 +51,9 @@ class BlockedReason(StrEnum):
     SECRET_NOT_AVAILABLE = "secret_not_available"
     SURFACE_ABSENT = "surface_absent"
     BROWSER_UNAVAILABLE = "browser_unavailable"
+    #: §10p ruling 4: a control none of a page step's names found. Its own reason, so contribution
+    #: reads it unverified even on both trees, where ``surface_absent`` takes no part.
+    CONTROL_ABSENT = "control_absent"
 
 
 @dataclass(frozen=True)

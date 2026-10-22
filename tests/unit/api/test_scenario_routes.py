@@ -112,17 +112,29 @@ def test_a_squad_agents_identity_is_refused_on_every_scenario_route():
     assert not any(HELD_OUT in r.text for r in answers.values())
 
 
+def _with_a_malformed_browser_step() -> dict:
+    doc = suite_doc()
+    doc["scenarios"][0]["steps"] = [
+        {"action": "visit", "path": "/runs"},
+        {"action": "fill", "target": {"role": "textbox", "names": ["Name"]}, "value": HELD_OUT,
+         "note": 7},
+        {"action": "click", "target": {"role": "button"}, "note": HELD_OUT},
+    ]  # fmt: skip
+    return doc
+
+
 @pytest.mark.parametrize(
     ("body", "status", "code"),
     [
         (suite_doc(scenarios=[]), 422, "SUITE_INVALID"),
+        (_with_a_malformed_browser_step(), 422, "SUITE_INVALID"),
         (None, 404, "SUITE_NOT_FOUND"),
     ],
-    ids=["an-invalid-suite", "approving-what-nothing-holds"],
+    ids=["an-invalid-suite", "a-malformed-browser-step", "approving-what-nothing-holds"],
 )
 def test_a_suite_the_store_cannot_take_is_refused_with_its_code(body, status, code):
-    """Bug caught: an invalid draft stored, or an approval of a digest nothing holds read as a
-    success."""
+    """Bug caught: an invalid draft stored, a malformed browser step stored (§10p ruling 9), or an
+    approval of a digest nothing holds read as a success. No refusal carries a held-out value."""
     w = _World()
     client = w.as_(Role.ADMIN)
     if body is not None:
@@ -131,3 +143,5 @@ def test_a_suite_the_store_cannot_take_is_refused_with_its_code(body, status, co
         resp = client.post(f"/api/v1/scenario-suites/{'0' * 64}/approval")
 
     assert (resp.status_code, resp.json()["detail"]["error"]["code"]) == (status, code)
+    assert HELD_OUT not in resp.text
+    assert client.get("/api/v1/scenario-suites").json() == []
