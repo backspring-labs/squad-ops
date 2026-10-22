@@ -1312,11 +1312,13 @@ class TestAcceptPatchRetest:
             row["app_traceback"] = traceback
         return row
 
+    #: The envelope's own criterion, failing, as ``acceptance_evaluation`` writes its row.
     _TYPED_ROW = {
         "check": "acceptance:regex_match",
+        "status": "failed",
         "passed": False,
         "reason": "match_count=0",
-        "file": "tests/test_api.py",
+        "params": {"file": "tests/test_api.py", "pattern": "def test_"},
     }
 
     @pytest.mark.parametrize(
@@ -1371,24 +1373,94 @@ class TestAcceptPatchRetest:
         [entry] = carry["task_9"]
         assert entry.startswith(f"correction attempt 0: repaired suite retest {said} — the repair")
 
-    def test_only_a_typed_check_verification_ran_and_passed_counts_as_evaluated(self):
-        """Bug caught (#2306): a typed check counts as evaluated by the retest when the patch's
-        verification passed it. A row verification skipped (the runtime API can't execute it,
-        so the retest decides) or failed at warning severity is no evidence the check now
-        holds, and counting it would read the round's failure of it as cleared."""
+    def test_only_a_criterion_verification_ran_and_passed_counts_as_evaluated(self):
+        """Bug caught (#2306): a typed criterion counts as evaluated by the retest when the
+        patch's verification passed it. A row verification skipped (a file the patch doesn't
+        carry, or a check the runtime API can't execute) or failed at warning severity is no
+        evidence it now holds, and two criteria of one check on two files are two criteria."""
+        from squadops.cycles.correction_signature import criterion_identity
         from squadops.cycles.patch_verification import PatchCheckRecord, PatchVerification
-        from squadops.execution.patch_acceptance import _verified_checks
+        from squadops.execution.patch_acceptance import _verified_criteria
 
+        on = {"file": "app/a.py", "pattern": "x"}
         verification = PatchVerification(
             status="passed",
             checks=(
-                PatchCheckRecord(check="regex_match", severity="error", status="passed"),
+                PatchCheckRecord(check="regex_match", severity="error", status="passed", params=on),
+                PatchCheckRecord(
+                    check="regex_match",
+                    severity="error",
+                    status="skipped",
+                    params={"file": "app/b.py", "pattern": "x"},
+                ),
                 PatchCheckRecord(check="frontend_compiles", severity="error", status="skipped"),
                 PatchCheckRecord(check="import_present", severity="warning", status="failed"),
             ),
         )
-        assert _verified_checks(verification) == {"acceptance:regex_match"}
-        assert _verified_checks(None) == frozenset()
+        assert _verified_criteria(verification) == {
+            criterion_identity("acceptance:regex_match", on)
+        }
+        assert _verified_criteria(None) == frozenset()
+
+    async def test_a_criterion_verification_skipped_is_not_read_as_cleared(self, executor, cycle):
+        """Bug caught (#2306's second reader): the round failed one check's criterion on a file
+        the patch doesn't carry, so verification skipped it, and passed the same check's
+        criterion on a file it does carry. Keyed by the check alone, the skipped failure read as
+        evaluated, its absence from the suite-only retest read as cleared, and a repair that left
+        it failing was kept as accepted state. The carry shows the retest ran: the refusal is the
+        comparison's, not verification's."""
+        from squadops.cycles.implementation_plan import TypedCheck
+
+        envelope = self._qa_envelope()
+        absent = {"file": "app/b.py", "pattern": "def handler"}
+        envelope.inputs["acceptance_criteria"].append(
+            TypedCheck(check="regex_match", params=absent, severity="error", description="b")
+        )
+        failing_b = {**self._TYPED_ROW, "reason": "file_not_found", "params": absent}
+        executor._correction_runner.reexecute_repaired_suite = AsyncMock(
+            return_value=self._rows_result(self._suite("a"), retest=True)
+        )
+        holder: dict = {}
+        carry: dict = {}
+        action = await executor._try_accept_patch(
+            envelope,
+            self._rows_result(self._suite("a", "b"), failing_b, retest=False),
+            self._repair(),
+            holder,
+            repair_rejection_carry=carry,
+            **self._kwargs(cycle),
+        )
+
+        assert (action, holder) == ("continue", {})
+        [entry] = carry["task_9"]
+        assert "repaired suite retest FAILED" in entry
+
+    async def test_a_probe_the_retest_skipped_is_not_read_as_cleared(self, executor, cycle):
+        """Bug caught (#2306's second reader, on main as well): a retest row that skipped counted
+        as its check evaluated. A probe skipped because its subject never launched looked at
+        nothing, but it read as cleared, and a repair that left it failing was kept."""
+        probe = "vc-probe-api-runs"
+        envelope = self._qa_envelope()
+        envelope.inputs["contract_probes"] = [{"id": probe}]
+        failed = {"check": probe, "status": "failed", "reason": "500", "criterion_id": probe}
+        skipped = {**failed, "status": "skipped", "reason": "could not launch subject"}
+        executor._correction_runner.reexecute_repaired_suite = AsyncMock(
+            return_value=self._rows_result(self._suite("a"), skipped, retest=True)
+        )
+        holder: dict = {}
+        carry: dict = {}
+        action = await executor._try_accept_patch(
+            envelope,
+            self._rows_result(self._suite("a", "b"), failed, retest=False),
+            self._repair(),
+            holder,
+            repair_rejection_carry=carry,
+            **self._kwargs(cycle),
+        )
+
+        assert (action, holder) == ("continue", {})
+        [entry] = carry["task_9"]
+        assert "repaired suite retest FAILED" in entry
 
     async def test_the_retest_line_names_a_failed_probe(self, executor, cycle, caplog):
         """Bug caught (#2341): the retest's verdict text listed only rows carrying

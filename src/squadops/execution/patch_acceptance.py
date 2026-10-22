@@ -38,6 +38,7 @@ from squadops.cycles.check_registry import (
 from squadops.cycles.correction_signature import (
     REPAIR_REFUSED_MARKER,
     RetestReduction,
+    criterion_identity,
     failure_signature,
     render_signature,
     retest_reduction_or_refusal,
@@ -174,14 +175,23 @@ def _prove_candidate_identity(
     return persisted_revision_id
 
 
-def _verified_checks(verification: Any) -> frozenset[str]:
-    """The typed checks the patch's verification executed and passed, by their row's check id
-    (#2306)."""
+def _verified_criteria(verification: Any) -> frozenset[tuple[str, str]]:
+    """The typed criteria the patch's verification executed and passed (#2306), each as
+    ``criterion_identity``: its check and params. A criterion verification skipped, such as one on
+    a file the patch doesn't carry, or failed at warning severity, isn't among them."""
+    rows = (record.to_check_row() for record in getattr(verification, "checks", ()) or ())
     return frozenset(
-        str(record.to_check_row()["check"])
-        for record in getattr(verification, "checks", ()) or ()
-        if record.status == ResultStatus.PASSED
+        criterion_identity(str(row["check"]), row.get("params"))
+        for row in rows
+        if row["status"] == ResultStatus.PASSED
     )
+
+
+def _executed(row: Mapping[str, Any]) -> bool:
+    """Whether a retest row is evidence its check was evaluated: not one that skipped (#2306). A
+    probe skipped because its subject never launched looked at nothing."""
+    status = row.get("status")
+    return status != ResultStatus.SKIPPED if status is not None else "passed" in row
 
 
 def _progress_made(reduction: RetestReduction) -> str:
@@ -198,21 +208,24 @@ def _retest_reduction_of(
     envelope: TaskEnvelope,
     result: TaskResult,
     retest_result: TaskResult,
-    verified_checks: frozenset[str] = frozenset(),
+    verified_criteria: frozenset[tuple[str, str]] = frozenset(),
 ) -> RetestReduction | None:
     """The round's failures against its retest's, both read through the evidence builder the
     correction runner's own signature reads (#1522). A check counts as evaluated by the retest
     when one of its rows names it, and ``tests_pass`` also when its suite executed, since a
     passing suite leaves no failure row.
 
-    #2306: a typed check the patch's verification passed counts as evaluated too
-    (``verified_checks``). The retest runs only the suite and its rows, so a round that also
-    failed a typed check was refused as unevaluated, although the candidate the retest ran had
-    already passed that check before the retest was dispatched."""
+    #2306: a row that skipped is no evidence, so it doesn't count. And a typed criterion the
+    patch's verification ran and passed counts (``verified_criteria``), criterion by criterion.
+    The retest runs only the suite and its rows, so a round that also failed a typed check was
+    refused as unevaluated, although the candidate the retest ran had already passed it."""
     retest_outputs = retest_result.outputs or {}
     rows = (retest_outputs.get("validation_result") or {}).get("checks") or []
-    evaluated = {str(row["check"]) for row in rows if isinstance(row, dict) and row.get("check")}
-    evaluated |= verified_checks
+    evaluated = {
+        str(row["check"])
+        for row in rows
+        if isinstance(row, dict) and row.get("check") and _executed(row)
+    }
     test_result = retest_outputs.get("test_result")
     if isinstance(test_result, dict) and test_result.get("executed") is True:
         evaluated.add(CHECK_TESTS_PASS)
@@ -225,17 +238,19 @@ def _retest_reduction_of(
     round_evidence = build_failure_evidence(envelope, result, prior_plan_deltas_count=0)
     retest_evidence = build_failure_evidence(envelope, retest_result, prior_plan_deltas_count=0)
     reduction, refusal = retest_reduction_or_refusal(
-        round_evidence, retest_evidence, frozenset(evaluated), probe_ids
+        round_evidence, retest_evidence, frozenset(evaluated), probe_ids, verified_criteria
     )
     if reduction is None:
         # #2340: why a retest that failed was not taken as progress, readable without a replay.
         logger.info(
-            "progress_not_kept task=%s why=%s round=[%s] retest=[%s] evaluated=%s (#1522)",
+            "progress_not_kept task=%s why=%s round=[%s] retest=[%s] evaluated=%s "
+            "verified_criteria=%d (#1522, #2306)",
             envelope.task_id,
             refusal,
             "; ".join(render_signature(failure_signature(round_evidence) or frozenset())),
             "; ".join(render_signature(failure_signature(retest_evidence) or frozenset())),
             ",".join(sorted(evaluated)),
+            len(verified_criteria),
         )
     return reduction
 
@@ -450,7 +465,7 @@ class PatchAcceptance:
             enriched_envelope=enriched_envelope,
             budget_guard=budget_guard,
             repair_rejection_carry=repair_rejection_carry,
-            verified_checks=_verified_checks(verdict.verification),
+            verified_criteria=_verified_criteria(verdict.verification),
         )
         if retest is None:
             return "continue"
@@ -815,7 +830,7 @@ class PatchAcceptance:
         enriched_envelope: TaskEnvelope | None,
         budget_guard: Callable[[], None] | None,
         repair_rejection_carry: dict[str, list[str]] | None,
-        verified_checks: frozenset[str] = frozenset(),
+        verified_criteria: frozenset[tuple[str, str]] = frozenset(),
     ) -> _RetestOutcome | None:
         """Block 5 — the retest, keyed on what the patch contains.
 
@@ -919,7 +934,7 @@ class PatchAcceptance:
                 # #1522: a retest that cleared some of the round's failures and added none is
                 # progress the next round must build on, not a repair to throw away.
                 reduction = (
-                    _retest_reduction_of(envelope, result, retest_result, verified_checks)
+                    _retest_reduction_of(envelope, result, retest_result, verified_criteria)
                     if retest_result is not None
                     else None
                 )

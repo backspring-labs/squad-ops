@@ -21,6 +21,7 @@ artifacts, and the abort.
 
 from __future__ import annotations
 
+import json
 from dataclasses import dataclass
 from typing import Any
 
@@ -206,6 +207,16 @@ _CATEGORY_RANK: dict[str, int] = {
     FailureEvidenceCategory.SANDBOX_PREEXEC_FAILURE: 2,
 }
 
+#: A suite row's ``suite_broken`` verdict, worst first, for merging two rows of one check:
+#: could not run, then ambiguous, then ran.
+_SUITE_VERDICT_RANK: dict[bool | None, int] = {True: 2, None: 1, False: 0}
+
+
+def criterion_identity(check_id: str, params: Any) -> tuple[str, str]:
+    """A failing row's criterion: its check and its params, the identity a typed criterion keeps
+    across environments (#2306). Two criteria of one check on two files are two identities."""
+    return check_id, json.dumps(params or {}, sort_keys=True, default=str)
+
 
 @dataclass(frozen=True)
 class _RetestSide:
@@ -224,8 +235,11 @@ class _RetestSide:
     #: Every other failing row, ``(check, subject, reason)``; a declared probe without its
     #: reason (#2340).
     checks: frozenset[tuple[str, str, str]]
-    #: Each suite row's ``suite_broken`` verdict: True could not run, False ran, None ambiguous.
-    suites: tuple[tuple[str, bool | None], ...]
+    #: Each check element's criteria (``criterion_identity``): the rows it stands for.
+    criteria: dict[tuple[str, str, str], frozenset[tuple[str, str]]]
+    #: Each suite row's verdict and exit code: ``suite_broken`` (True could not run, False ran,
+    #: None ambiguous), the worst of a check's rows.
+    suites: dict[str, tuple[bool | None, Any]]
     category: str
 
     @property
@@ -239,7 +253,8 @@ def _retest_side(evidence: dict[str, Any], probe_ids: frozenset[str]) -> _Retest
         return None
     tests: set[tuple[str, str, str]] = set()
     checks: set[tuple[str, str, str]] = set()
-    suites: dict[str, bool | None] = {}
+    criteria: dict[tuple[str, str, str], set[tuple[str, str]]] = {}
+    suites: dict[str, tuple[bool | None, Any]] = {}
     for row in (evidence.get("validation_result") or {}).get("checks") or []:
         if not isinstance(row, dict) or not row_is_blocking_failure(row):
             continue
@@ -250,9 +265,10 @@ def _retest_side(evidence: dict[str, Any], probe_ids: frozenset[str]) -> _Retest
         failing_tests = row.get("failing_tests") or ()
         if failing_tests or check_id == CHECK_TESTS_PASS:
             broken = row.get("suite_broken")
-            # Two rows of one suite: the worse verdict stands.
-            if suites.get(check_id) is not True:
-                suites[check_id] = broken if isinstance(broken, bool) else None
+            verdict = (broken if isinstance(broken, bool) else None, row.get("exit_code"))
+            held = suites.get(check_id)
+            if held is None or _SUITE_VERDICT_RANK[verdict[0]] > _SUITE_VERDICT_RANK[held[0]]:
+                suites[check_id] = verdict
             for identity in failing_tests:
                 test_file, _, title = str(identity).partition("::")
                 tests.add((check_id, test_file, title))
@@ -264,11 +280,14 @@ def _retest_side(evidence: dict[str, Any], probe_ids: frozenset[str]) -> _Retest
                 if check_id in probe_ids
                 else _reason_token(row, FailureEvidenceCategory.EXECUTED_AND_FAILED)
             )
-            checks.add((check_id, subject, reason))
+            element = (check_id, subject, reason)
+            checks.add(element)
+            criteria.setdefault(element, set()).add(criterion_identity(check_id, row.get("params")))
     return _RetestSide(
         tests=frozenset(tests),
         checks=frozenset(checks),
-        suites=tuple(sorted(suites.items())),
+        criteria={element: frozenset(keys) for element, keys in criteria.items()},
+        suites=suites,
         category=derive_failure_category(evidence),
     )
 
@@ -276,27 +295,29 @@ def _retest_side(evidence: dict[str, Any], probe_ids: frozenset[str]) -> _Retest
 def _fact_moves(before: _RetestSide, after: _RetestSide) -> tuple[list[str], list[str]]:
     """The row facts that got worse and better between a round and its retest (#2306).
 
-    A suite that could not run is worse than one that ran, and an ambiguous verdict is never
-    read as better. The category is ranked by ``_CATEGORY_RANK``; one it doesn't rank is worse.
+    A suite's verdict and exit code: a suite that could not run and now runs is better; one that
+    was ambiguous and now runs is neither; any other change is worse, including an exit code that
+    moved under the same verdict, since nothing says which way it went. The category is ranked by
+    ``_CATEGORY_RANK``, and a move to one it doesn't rank is worse.
     """
     worse: list[str] = []
     better: list[str] = []
-    was = dict(before.suites)
-    for check, now in after.suites:
-        if check not in was:
+    for check, now in sorted(after.suites.items()):
+        then = before.suites.get(check)
+        if then is None or then == now:
             continue
-        then = was[check]
-        if (then is False and now is not False) or (then is not True and now is True):
-            worse.append(f"suite:{check}")
-        elif then is True and now is False:
+        if then[0] is True and now[0] is False:
             better.append(f"suite:{check}")
-    then_rank = _CATEGORY_RANK.get(before.category)
-    now_rank = _CATEGORY_RANK.get(after.category)
-    if then_rank is None or now_rank is None or now_rank > then_rank:
-        if before.category != after.category:
-            worse.append(f"category:{before.category}->{after.category}")
-    elif now_rank < then_rank:
-        better.append(f"category:{before.category}->{after.category}")
+        elif not (then[0] is None and now[0] is False):
+            worse.append(f"suite:{check}")
+    if before.category != after.category:
+        then_rank = _CATEGORY_RANK.get(before.category)
+        now_rank = _CATEGORY_RANK.get(after.category)
+        move = f"category:{before.category}->{after.category}"
+        if then_rank is None or now_rank is None or now_rank > then_rank:
+            worse.append(move)
+        else:
+            better.append(move)
     return worse, better
 
 
@@ -320,6 +341,7 @@ def retest_reduction(
     retest_evidence: dict[str, Any],
     retest_evaluated: frozenset[str],
     probe_ids: frozenset[str] = frozenset(),
+    verified_criteria: frozenset[tuple[str, str]] = frozenset(),
 ) -> RetestReduction | None:
     """The retest as progress on its round, or ``None`` (#1522, #2306).
 
@@ -334,14 +356,16 @@ def retest_reduction(
       was never run, so its failure is unmasked, not added. The round records only which tests
       failed, so any other test that fails now is read as one the repair broke;
     - **something cleared, or a fact got better;**
-    - **the retest evaluated every check the round failed** (``retest_evaluated``). A failure
-      the retest never looked at would otherwise read as cleared.
+    - **every failure of the round was evaluated:** its check by the retest (``retest_evaluated``,
+      the check ids the retest's executed rows carry), or each of its criteria by the patch's
+      verification (``verified_criteria``, ``criterion_identity`` of the rows it ran and passed).
+      A failure nothing looked at would otherwise read as cleared.
 
     ``None`` too when either side has no product signature: an infra round, or a retest with no
     failing row.
     """
     return retest_reduction_or_refusal(
-        round_evidence, retest_evidence, retest_evaluated, probe_ids
+        round_evidence, retest_evidence, retest_evaluated, probe_ids, verified_criteria
     )[0]
 
 
@@ -350,16 +374,18 @@ def retest_reduction_or_refusal(
     retest_evidence: dict[str, Any],
     retest_evaluated: frozenset[str],
     probe_ids: frozenset[str] = frozenset(),
+    verified_criteria: frozenset[tuple[str, str]] = frozenset(),
 ) -> tuple[RetestReduction | None, str]:
     """``retest_reduction``, with why a retest was not taken as progress when it wasn't (#2340).
 
     The refusal is a machine reason for the log, empty for a reduction:
     - ``no_signature``: a side has no product failure;
-    - ``worse=<facts>``: a suite that ran no longer does, or the category got worse;
+    - ``worse=<facts>``: a suite's verdict or exit code moved the wrong way, or the category did;
     - ``added=<checks>``: a check is newly failing or failing for a new reason;
     - ``regressed=<n>``: tests the round ran now fail;
     - ``no_progress``: nothing cleared and nothing got better, a repeat;
-    - ``unevaluated=<checks>``: the retest did not look at a check the round failed.
+    - ``unevaluated=<checks>``: neither the retest nor the patch's verification looked at a
+      failure of the round.
     """
     before = _retest_side(round_evidence, probe_ids)
     after = _retest_side(retest_evidence, probe_ids)
@@ -379,7 +405,12 @@ def retest_reduction_or_refusal(
     cleared = before.elements - after.elements
     if not cleared and not better:
         return None, "no_progress"
-    unevaluated = {check for check, _, _ in before.elements} - retest_evaluated
+
+    def evaluated(element: tuple[str, str, str]) -> bool:
+        criteria = before.criteria.get(element)
+        return element[0] in retest_evaluated or bool(criteria and criteria <= verified_criteria)
+
+    unevaluated = {element[0] for element in before.elements if not evaluated(element)}
     if unevaluated:
         return None, "unevaluated=" + ",".join(sorted(unevaluated))
     return (

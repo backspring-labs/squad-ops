@@ -478,6 +478,23 @@ def _suite(*titles: str, broken: bool | None = False, file: str = "tests/test_ap
     }
 
 
+def _suite_row(identities: list[str], broken: bool | None = False, exit_code: int = 1) -> dict:
+    """One run's ``tests_pass`` row with the runner's own identities: ``file::title`` per failing
+    test, and a bare ``file`` for one that never loaded."""
+    return {
+        "check": "tests_pass",
+        "passed": False,
+        "executed": True,
+        "exit_code": exit_code,
+        "runner": "pytest",
+        "suite_broken": broken,
+        "failing_tests": identities,
+    }
+
+
+_TYPED_X = {"check": "acceptance:x", "status": "failed", "passed": False, "reason": "m"}
+
+
 def _app_error(evidence: dict) -> dict:
     """The round's category made an application error, as ``build_failure_evidence`` hoists a
     row's traceback (#687)."""
@@ -543,11 +560,27 @@ class TestRetestProgress:
         [
             # A test the round ran, now failing, is one the repair broke (6492fa2d r1).
             (_evidence([_suite("a", "b")]), _evidence([_suite("a", "c")]), (), "regressed=1"),
-            # A file that never loaded excuses its own tests only: a new failure in a file
-            # that did load is still one the repair broke.
+            # A file that never loaded excuses its own tests only. One run, as the runner writes
+            # it: test_x.py didn't load and test_api.py's ``a`` failed. A new failure in
+            # test_api.py, which loaded, is one the repair broke.
             (
-                _evidence([_suite("", broken=True, file="tests/test_x.py"), _suite("a")]),
-                _evidence([_suite("a", "b")]),
+                _evidence([_suite_row(["tests/test_x.py", "tests/test_api.py::a"], broken=True)]),
+                _evidence(
+                    [
+                        _suite_row(
+                            ["tests/test_x.py::x", "tests/test_api.py::a", "tests/test_api.py::b"]
+                        )
+                    ]
+                ),
+                (),
+                "regressed=1",
+            ),
+            # Not built (§12e): a pytest session a collection error interrupted ran no test at
+            # all, but the round records only the file that failed to collect, so a new failure
+            # in another file still reads as one the repair broke.
+            (
+                _evidence([_suite_row(["tests/test_a.py"], broken=True)]),
+                _evidence([_suite_row(["tests/test_a.py::x", "tests/test_b.py::y"])]),
                 (),
                 "regressed=1",
             ),
@@ -569,6 +602,20 @@ class TestRetestProgress:
             (
                 _evidence([_suite("a", "b")]),
                 _evidence([_suite("a", broken=None)]),
+                (),
+                "worse=suite:tests_pass",
+            ),
+            # A suite that couldn't run, now ambiguous: nothing says it got better.
+            (
+                _evidence([_suite("", broken=True), _TYPED_X]),
+                _evidence([_suite("", broken=None)]),
+                ("acceptance:x",),
+                "worse=suite:tests_pass",
+            ),
+            # The same verdict under another exit code: nothing says which way it went.
+            (
+                _evidence([_suite_row(["t.py::a", "t.py::b"], broken=None, exit_code=4)]),
+                _evidence([_suite_row(["t.py::a"], broken=None, exit_code=3)]),
                 (),
                 "worse=suite:tests_pass",
             ),
@@ -594,10 +641,13 @@ class TestRetestProgress:
         ids=[
             "a-test-the-round-ran-now-fails",
             "unmasking-is-per-file",
+            "an-interrupted-session-is-not-read-as-unrun",
             "repeat",
             "the-app-now-errors",
             "the-suite-no-longer-runs",
             "an-ambiguous-suite-verdict",
+            "broken-to-ambiguous",
+            "the-exit-code-moved",
             "a-typed-check-fails-a-new-way",
             "unevaluated",
         ],
@@ -609,6 +659,53 @@ class TestRetestProgress:
             round_evidence, retest_evidence, evaluated=("tests_pass", *evaluated)
         )
         assert (reduction, refusal) == (None, why)
+
+    def test_an_ambiguous_suite_that_now_runs_is_neither_better_nor_worse(self):
+        """Exit 4 (an app-import failure, ambiguous) then a run whose suite ran: not refused as
+        worse, and not credited as an improvement either, so it is kept only on what cleared."""
+        round_evidence = _evidence([_suite_row(["t.py::a", "t.py::b"], broken=None, exit_code=4)])
+        reduction, why = self._judge(round_evidence, _evidence([_suite("a", file="t.py")]))
+        assert (why, reduction.improved, len(reduction.cleared)) == ("", (), 1)
+        reduction, why = self._judge(round_evidence, _evidence([_suite("a", "b", file="t.py")]))
+        assert (reduction, why) == (None, "no_progress")
+
+    @pytest.mark.parametrize(
+        "verified, why",
+        [
+            ({"b.py"}, ""),
+            ({"a.py"}, "unevaluated=acceptance:x"),
+            ({"a.py", "b.py"}, ""),
+            (set(), "unevaluated=acceptance:x"),
+        ],
+        ids=["its-criterion", "another-file", "both", "none"],
+    )
+    def test_a_typed_failure_is_evaluated_by_its_own_criterion(self, verified, why):
+        """Bug caught (#2306's second reader): verification credited by the check alone counted a
+        criterion it skipped. A round failing ``x`` on b.py is evaluated only by a verified
+        ``x`` on b.py; ``x`` passing on a.py says nothing about it."""
+        from squadops.cycles.correction_signature import criterion_identity
+
+        row = {**_TYPED_X, "params": {"file": "b.py"}}
+        criteria = frozenset(criterion_identity("acceptance:x", {"file": f}) for f in verified)
+        reduction, refusal = retest_reduction_or_refusal(
+            _evidence([_suite("a", "b"), row]),
+            _evidence([_suite("a")]),
+            frozenset({"tests_pass"}),
+            verified_criteria=criteria,
+        )
+        assert refusal == why
+        assert (reduction is not None) == (why == "")
+
+    def test_two_rows_of_one_suite_merge_to_the_worse_verdict_in_either_order(self):
+        """Bug caught: the merge kept the first row's verdict unless a later one was broken, so
+        ``[ran, ambiguous]`` and ``[ambiguous, ran]`` read differently."""
+        ran, ambiguous = _suite("a"), _suite("b", broken=None)
+        retest = _evidence([_suite("a"), _suite("b", broken=None)])
+        first, _ = self._judge(_evidence([ran, ambiguous]), retest)
+        second, _ = self._judge(_evidence([ambiguous, ran]), retest)
+        # Both orders read the round as ambiguous, so the identical retest is a repeat.
+        assert (first, second) == (None, None)
+        assert self._judge(_evidence([ambiguous, ran]), retest)[1] == "no_progress"
 
     def test_a_side_with_no_product_failure_is_never_compared(self):
         reduction, why = self._judge(_evidence([_suite("a")]), _evidence([]))
