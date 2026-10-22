@@ -712,10 +712,11 @@ class TestRetestProgress:
 
     def test_the_stored_red_retests_get_the_verdicts_the_pre_registration_names(self):
         """Bug caught: a rule change that silently moves a verdict on the evidence #2306 read.
-        Each red retest of the 19 plan-defect runs (2026-09-14 to 10-22), rebuilt as rows from
-        the stored reports and logs with its free text replaced by labels, through the rule.
-        Main's rule before #2306 reproduced every one of the replay's own verdicts on these
-        rows (``main_verdict``); this rule keeps four more and refuses no repair main kept."""
+        The 18 red retests of the 19 plan-defect runs (2026-09-14 to 10-22) whose rows could be
+        rebuilt from the stored reports and logs, free text replaced by labels, plus two
+        alternative readings where a probe outcome wasn't logged. Main's rule before #2306
+        reproduced every one of the replay's own verdicts on these rows (``main_verdict``); this
+        rule keeps four more and refuses no repair main kept."""
         cases = json.loads(_REPLAYS.read_text())
         verdicts = {}
         for case in cases:
