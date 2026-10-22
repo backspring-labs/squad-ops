@@ -36,8 +36,9 @@ def _instructed(world: _World, resolver: _Resolver) -> str:
 
 
 async def _handed(world: _World, cycle, run_id: str):
+    resolvers = world.client.app.state.reference_resolvers
     envelopes = await supply_lessons(
-        _plan(cycle), recall=SnapshotRecall(world.store, records=world.records),
+        _plan(cycle), recall=SnapshotRecall(world.store, records=world.records, resolvers=resolvers),
         unit=unit_of(cycle), stack="fullstack_fastapi_react", run_id=run_id, now=NOW,
     )  # fmt: skip
     [design] = [e for e in envelopes if str(e.task_type) == DESIGN]
@@ -74,7 +75,8 @@ async def test_a_task_held_on_a_reference_admission_couldnt_bind_is_released_by_
         (),
     )
     [handed] = await _handed(world, cycle, "run_after0001")
-    assert [r["ref"] for r in handed["references"]] == ["fake:doc:spec@r1"]
+    # #2179 §5ai: and read at that revision (the fake reads its revision).
+    assert [(r["ref"], r["content"]) for r in handed["references"]] == [("fake:doc:spec@r1", "r1")]
 
 
 async def test_a_rebinding_that_would_change_nothing_is_refused():
