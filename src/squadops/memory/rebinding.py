@@ -22,6 +22,7 @@ from datetime import datetime
 
 from squadops.memory.exposures import Exposure
 from squadops.memory.lessons import Snapshot
+from squadops.memory.recall import UnitKind
 from squadops.memory.records import (
     MemoryRecord,
     PinnedInstruction,
@@ -83,7 +84,7 @@ def rebound(
                 "for the unit before it is re-bound, never stored verbatim"
             )
     if replacement is not None and replacement.revision == held.revision:
-        raise RebindRefused(f"{unit} already binds revision {held.revision} of {record.record_id}")
+        _refuse_unless_references_rebind(snapshot, held, replacement, unit)
     kept = [p for p in snapshot.instructions if p is not held]
     if replacement is not None:
         kept.insert(snapshot.instructions.index(held), replacement)
@@ -102,6 +103,26 @@ def rebound(
         rebindings=(*snapshot.rebindings, rebinding),
         version=snapshot.version + 1,
     )
+
+
+def _refuse_unless_references_rebind(
+    snapshot: Snapshot, held: PinnedInstruction, replacement: PinnedInstruction, unit: str
+) -> None:
+    """§3.7: a re-binding may replace a reference's bound revision alone, the record unrevised,
+    which releases a task held on a reference its admission couldn't bind (§3.6). Refused when the
+    references bind as they did, and for a campaign, whose cycles each bind their references at
+    their own commit for their life (§5ad)."""
+    if (replacement.references, replacement.unbound) == (held.references, held.unbound):
+        raise RebindRefused(
+            f"{unit} already binds revision {held.revision} of {held.record_id}, with its "
+            "references bound as they bind now"
+        )
+    if snapshot.unit_kind is UnitKind.CAMPAIGN:
+        raise RebindRefused(
+            f"{unit}'s references are bound by each of its cycles at the cycle's own commit "
+            "(§5ad), and a cycle keeps its binding for its life: revise the instruction to change "
+            "what it names"
+        )
 
 
 def runs_handed(
