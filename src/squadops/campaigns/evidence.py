@@ -315,6 +315,12 @@ def _outcome_lines(outcomes: dict | None) -> list[str]:
         for moved in ("newly_passing", "regressed", "unverified"):
             if read.get(moved):
                 lines.append(f"  - {moved.replace('_', ' ')}: {', '.join(read[moved])}")
+        if controls := cyc.get("page_controls"):
+            # SIP-0113 §10p ruling 4: a page scenario whose names matched no control.
+            lines.append(
+                f"  - page scenarios: {controls['control_absent']} of "
+                f"{controls['read_in_a_browser']} found no control by any of their names"
+            )
         lines.append(
             f"  - quality: {_measure_line(cyc.get('quality'))}; lint: {_lint_line(cyc.get('lint'))}"
         )
