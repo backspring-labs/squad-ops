@@ -666,6 +666,9 @@ async def _init_cycle_subsystem(state, config, pool) -> None:
         # SIP-0109 §9.3 (#1928): a run start waits on the launch's own verdict. The box reader
         # is built below, from the LLM port; read when a run starts, as the drain is above.
         box_verdict=lambda: state.box_reader.verdict(),
+        # #2178: a run held on a campaign cycle's bindings fills them by the launcher's own fill
+        # (§5ad) before it composes again. The launch service is built below, as the box reader.
+        binding_fill=lambda cycle_id: state.campaign_launch.fill_held(cycle_id),
         # SIP-0110 §0.8: each consuming task's lessons, from its unit's pinned snapshot in the
         # memory store (built before this subsystem, `_startup`).
         failure_recall=create_failure_recall(

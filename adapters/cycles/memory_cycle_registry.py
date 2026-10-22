@@ -21,6 +21,7 @@ from squadops.cycles.lifecycle import (
     validate_run_transition,
 )
 from squadops.cycles.models import (
+    BindingHold,
     Cycle,
     CycleNotFoundError,
     CycleStatus,
@@ -202,6 +203,25 @@ class MemoryCycleRegistry(CycleRegistryPort):
                 existing_set.add(aid)
         data["artifact_refs"] = existing
         return self._to_run(data)
+
+    async def record_binding_hold(self, run_id: str, hold: BindingHold) -> None:
+        if run_id not in self._runs:
+            raise RunNotFoundError(f"Run not found: {run_id}")
+        data = self._runs[run_id]
+        holds = list(data.get("binding_holds", ()))
+        if all(h["hold_id"] != hold.hold_id for h in holds):
+            data["binding_holds"] = [*holds, dataclasses.asdict(hold)]
+
+    async def release_binding_hold(
+        self, run_id: str, hold_id: str, *, released_at: datetime, cause: str
+    ) -> bool:
+        if run_id not in self._runs:
+            raise RunNotFoundError(f"Run not found: {run_id}")
+        for hold in self._runs[run_id].get("binding_holds", []):
+            if hold["hold_id"] == hold_id and hold["released_at"] is None:
+                hold["released_at"], hold["cause"] = released_at, cause
+                return True
+        return False
 
     async def record_gate_decision(self, run_id: str, decision: GateDecision) -> Run:
         """Record a gate decision (T11: single enforcement point)."""
@@ -388,6 +408,16 @@ class MemoryCycleRegistry(CycleRegistryPort):
             for g in gds
         )
         d["artifact_refs"] = tuple(d.get("artifact_refs", ()))
+        d["binding_holds"] = tuple(
+            BindingHold(
+                **{
+                    **h,
+                    "unresolved": tuple(tuple(u) for u in h["unresolved"]),
+                    "sections": tuple(h["sections"]),
+                }
+            )
+            for h in d.get("binding_holds", ())
+        )
         return Run(**d)
 
     # --- Checkpoint (SIP-0079) ---

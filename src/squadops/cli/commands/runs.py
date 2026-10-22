@@ -130,7 +130,30 @@ def show_run(
     if fmt == "json":
         print_json(data)
     else:
+        holds = data.pop("binding_holds", None) or []
         print_detail(data, quiet=quiet)
+        if holds:
+            # SIP-0110 §5ag (#2178): each time the run was held on a task's bindings, and why.
+            print_table(
+                ["Hold", "Task", "Unresolved", "Held at", "Released", "Cause"],
+                [_hold_row(h) for h in holds],
+                quiet=quiet,
+                title="Binding holds",
+            )
+
+
+def _hold_row(hold: dict) -> list[str]:
+    unresolved = "; ".join(
+        f"{u.get('ref')} ({u.get('kind')}): {u.get('reason')}" for u in hold.get("unresolved", [])
+    )
+    return [
+        hold.get("hold_id", ""),
+        hold.get("task_type", ""),
+        unresolved,
+        hold.get("held_at", ""),
+        hold.get("released_at") or "held",
+        hold.get("cause") or "",
+    ]
 
 
 @app.command("cat", hidden=True)

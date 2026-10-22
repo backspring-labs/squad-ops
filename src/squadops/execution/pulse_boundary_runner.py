@@ -29,11 +29,9 @@ from __future__ import annotations
 
 import logging
 import time
-from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any
 
 from squadops.capabilities.acceptance import AcceptanceCheckEngine
-from squadops.capabilities.lesson_supply import supply_for_cycle
 from squadops.capabilities.models import AcceptanceContext
 from squadops.cycles.agent_config import build_agent_resolver, resolve_agent_config
 from squadops.cycles.pulse_models import (
@@ -51,6 +49,7 @@ from squadops.cycles.pulse_verification import (
     run_pulse_verification,
 )
 from squadops.events.types import EventType
+from squadops.execution.binding_holds import supplied_or_held
 from squadops.execution.execution_errors import _ExecutionError
 from squadops.tasks.models import TaskResultStatus
 from squadops.telemetry.models import StructuredEvent
@@ -90,10 +89,14 @@ class PulseBoundaryRunner:
         task_dispatcher: TaskDispatcher,
         store_artifact: Callable[..., Awaitable[ArtifactRef]],
         failure_recall: FailurePatternRecallPort,
+        hold: Callable[..., Awaitable[Any]] | None = None,
     ) -> None:
         self._cycle_registry = cycle_registry
         # SIP-0110 §0.9: the chain's repair asks its unit's pinned snapshot for its lessons.
         self._failure_recall = failure_recall
+        # #2178: the executor's ``BindingHolds.supplied``; ``None`` outside an executor, where
+        # an incomplete binding raises (``supplied_or_held``).
+        self._hold = hold
         self._event_bus = event_bus
         self._llm_observability = llm_observability
         self._task_dispatcher = task_dispatcher
@@ -601,12 +604,12 @@ class PulseBoundaryRunner:
                     },
                 )
                 # SIP-0110 §0.9: the chain's repair is supplied its approved lessons, if any.
-                [enriched_repair] = await supply_for_cycle(
+                [enriched_repair] = await supplied_or_held(
+                    self._hold,
                     [enriched_repair],
                     recall=self._failure_recall,
                     cycle=cycle,
                     run_id=run_id,
-                    now=datetime.now(UTC),
                 )
 
                 # SIP-0087 B2: create the Prefect task_run before dispatch so

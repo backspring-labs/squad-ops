@@ -152,6 +152,10 @@ class Section:
     effective_budget: int | None = None
     #: Binding sections only: what could not be loaded, resolved or fitted.
     unresolved: tuple[tuple[RecordRef, str], ...] = ()
+    #: Binding sections only: incomplete because the store didn't answer, so nothing an operator
+    #: gave can be judged. Otherwise an incomplete section is the operator's input: over its
+    #: budget, or naming a reference its cycle couldn't bind. A held run ends by which (#2178).
+    store_failed: bool = False
 
 
 @dataclass(frozen=True)

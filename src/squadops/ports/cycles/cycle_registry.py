@@ -13,6 +13,7 @@ from squadops.cycles.checkpoint import RunCheckpoint
 from squadops.cycles.cycle_end import RecordedEnd
 from squadops.cycles.failure_records import FailureRecord
 from squadops.cycles.models import (
+    BindingHold,
     Cycle,
     CycleStatus,
     GateDecision,
@@ -161,6 +162,19 @@ class CycleRegistryPort(ABC):
         Raises:
             RunNotFoundError: If the run_id is not found.
         """
+
+    @abstractmethod
+    async def record_binding_hold(self, run_id: str, hold: BindingHold) -> None:
+        """Record that ``run_id`` is held on ``hold``'s task's bindings (SIP-0110 §A.3.6, #2178),
+        once per ``hold_id``: recording it again changes nothing."""
+
+    @abstractmethod
+    async def release_binding_hold(
+        self, run_id: str, hold_id: str, *, released_at: datetime, cause: str
+    ) -> bool:
+        """Release the hold, once: whether this release landed. A hold already released (by a
+        re-supply, a cancel, or the Campaign's ruling bound) is left as it was, and ``False``
+        tells the caller another release won."""
 
     @abstractmethod
     async def record_gate_decision(self, run_id: str, decision: GateDecision) -> Run:

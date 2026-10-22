@@ -36,6 +36,7 @@ from typing import TYPE_CHECKING
 from squadops.capabilities.context_assembly import authoring_seam_of
 from squadops.capabilities.handlers.fault_injection import PRIOR_ATTEMPTS_KEY
 from squadops.cycles.benchmark_registry import cycle_stack
+from squadops.cycles.models import HoldKind
 from squadops.llm.model_registry import get_model_spec, model_family_of
 from squadops.memory.context import (
     ChatTurn,
@@ -251,27 +252,33 @@ async def supply_lessons(
     now: datetime,
 ) -> list[TaskEnvelope]:
     """``envelopes``, each consuming task's with the lessons it is supplied, in order. Every
-    consuming task's answer is disclosed; a task that consumes nothing is passed through as is."""
-    supplied: list[TaskEnvelope] = []
-    for envelope in envelopes:
-        seam = authoring_seam_of(str(envelope.task_type))
-        if seam is None:
-            supplied.append(envelope)
-            continue
-        lessons, instructions, project = await _ask_and_disclose(
-            envelope, recall=recall, unit=unit, stack=stack, run_id=run_id, now=now
-        )
+    consuming task's answer is disclosed; a task that consumes nothing is passed through as is.
+
+    #2178: composed in one dispatch turn, and disclosed only when every task's binding sections are
+    complete. A run supplies its authoring tasks before its first dispatch, so one held task holds
+    the run, and the rest are composed again at its release: disclosed now, their answers would
+    read as dispatched (§5w) and handed (§5v), and refuse the very change that releases it."""
+    consuming = [
+        (i, envelope)
+        for i, envelope in enumerate(envelopes)
+        if authoring_seam_of(str(envelope.task_type)) is not None
+    ]
+    bundles = await _composed(
+        [envelope for _, envelope in consuming],
+        recall=recall,
+        unit=unit,
+        stack=stack,
+        run_id=run_id,
+        now=now,
+    )
+    supplied = list(envelopes)
+    for (i, envelope), bundle in zip(consuming, bundles, strict=True):
         inputs = dict(envelope.inputs)
-        for key, value in (
-            (LESSONS_INPUT, lessons),
-            (TASK_INSTRUCTIONS_INPUT, instructions),
-            (PROJECT_INSTRUCTIONS_INPUT, project),
-        ):
+        for key, value in _handed(bundle):
             if value is not None:
                 inputs[key] = value
-        supplied.append(
-            envelope if inputs == envelope.inputs else dataclasses.replace(envelope, inputs=inputs)
-        )
+        if inputs != envelope.inputs:
+            supplied[i] = dataclasses.replace(envelope, inputs=inputs)
     return supplied
 
 
@@ -298,8 +305,8 @@ async def supply_the_redispatch(
         return
     if authoring_seam_of(str(held[0].task_type)) is None:
         return
-    lessons, instructions, project = await _ask_and_disclose(
-        held[0],
+    [bundle] = await _composed(
+        [held[0]],
         recall=recall,
         unit=unit_of(cycle),
         stack=cycle_stack(cycle) or "",
@@ -309,55 +316,89 @@ async def supply_the_redispatch(
     # #2178: each dispatch reads its task instructions again, so one withdrawn since the attempt
     # before is gone from this one, and nothing is copied from that attempt.
     for envelope in held:
-        for key, value in (
-            (LESSONS_INPUT, lessons),
-            (TASK_INSTRUCTIONS_INPUT, instructions),
-            (PROJECT_INSTRUCTIONS_INPUT, project),
-        ):
+        for key, value in _handed(bundle):
             if value is None:
                 envelope.inputs.pop(key, None)
             else:
                 envelope.inputs[key] = value
 
 
-async def _ask_and_disclose(
-    envelope: TaskEnvelope,
+def _handed(bundle: ContextBundle) -> tuple[tuple[str, dict | None], ...]:
+    """What a task is handed on each supplied input, ``None`` where nothing is supplied."""
+    task, project = bundle.task_instructions, bundle.project_instructions
+    return (
+        (LESSONS_INPUT, lessons_input(bundle.recalled)),
+        (TASK_INSTRUCTIONS_INPUT, dict(task) if task else None),
+        (PROJECT_INSTRUCTIONS_INPUT, dict(project) if project else None),
+    )
+
+
+async def _composed(
+    envelopes: Sequence[TaskEnvelope],
     *,
     recall: FailurePatternRecallPort,
     unit: tuple[UnitKind, str],
     stack: str,
     run_id: str,
     now: datetime,
-) -> tuple[dict | None, dict | None, dict | None]:
-    """One invocation's context, through the port: assembled with the task's trusted scope, disclosed
-    under its attempt, and what it is handed: its lessons and its task instructions, each ``None``
-    when nothing is supplied. A binding section that is incomplete is disclosed, then refused with
-    why: the task is not dispatched (§3.6).
+) -> list[ContextBundle]:
+    """Each invocation's context, through the port, assembled with its task's trusted scope and
+    disclosed under its attempt. A binding section that is incomplete holds its task (§3.6): only
+    the first held task's answer is disclosed, marked held, and the hold is raised with why.
 
     #2545: read and disclosed in the unit's dispatch turn, so a re-binding or an instruction added
-    after admission lands before the read or after the exposure, never between them. A turn that
-    isn't given holds the task, as an unreadable section does."""
+    after admission lands before the reads or after the exposures, never between them. A turn that
+    isn't given holds the first task, as an unreadable store does."""
+    if not envelopes:
+        return []
     assembly = LessonContextAssembly(recall, now=now)
     try:
         async with recall.dispatch_turn(*unit):
-            bundle = await assembly.assemble(
-                request_for(envelope, unit=unit, stack=stack, run_id=run_id)
-            )
-            await assembly.disclose(bundle)
+            bundles = [
+                await assembly.assemble(request_for(e, unit=unit, stack=stack, run_id=run_id))
+                for e in envelopes
+            ]
+            held = next((b for b in bundles if not b.complete), None)
+            for bundle in [held] if held is not None else bundles:
+                await assembly.disclose(bundle)
     except DispatchTurnUnavailable as e:
-        raise TaskInstructionsUnavailable(f"task {envelope.task_id} is held: {e}") from e
-    if not bundle.complete:
-        why = "; ".join(
-            unresolved_reason(s)
-            for s in bundle.sections
-            if s.need is Need.BINDING and s.disposition is Disposition.INCOMPLETE
-        )
-        raise TaskInstructionsUnavailable(f"task {envelope.task_id} is held: {why}")
-    task, project = bundle.task_instructions, bundle.project_instructions
-    return (
-        lessons_input(bundle.recalled),
-        dict(task) if task else None,
-        dict(project) if project else None,
+        first = envelopes[0]
+        raise TaskInstructionsUnavailable(
+            f"task {first.task_id} is held: {e}",
+            task_id=first.task_id,
+            task_type=str(first.task_type),
+            unresolved=((f"dispatch_turn:{unit[0].value}:{unit[1]}", str(e), HoldKind.STORE),),
+        ) from e
+    if held is not None:
+        raise _unavailable(held)
+    return bundles
+
+
+def _unavailable(bundle: ContextBundle) -> TaskInstructionsUnavailable:
+    """The hold an incomplete bundle raises: its task, each record it couldn't bind with why and
+    whether the store failed it, and the sections that held."""
+    task = bundle.request.consumer
+    assert isinstance(task, TaskInvocation)  # only a task invocation's bundle binds
+    incomplete = [
+        s
+        for s in bundle.sections
+        if s.need is Need.BINDING and s.disposition is Disposition.INCOMPLETE
+    ]
+    why = "; ".join(unresolved_reason(s) for s in incomplete)
+    return TaskInstructionsUnavailable(
+        f"task {task.task_id} is held: {why}",
+        task_id=task.task_id,
+        task_type=task.task_type,
+        unresolved=tuple(
+            (
+                f"{ref.record_id}@{ref.revision}" if ref.revision else ref.record_id,
+                reason,
+                HoldKind.STORE if s.store_failed else HoldKind.INPUT,
+            )
+            for s in incomplete
+            for ref, reason in s.unresolved
+        ),
+        sections=tuple(s.kind.value for s in incomplete),
     )
 
 
@@ -453,7 +494,16 @@ class LessonContextAssembly(ContextAssemblyPort):
             )
             unread = RecordRef(f"snapshot:{owner.kind}:{owner.unit_id}", "")
             unresolved = ((unread, why),)
-            return Section(kind, Need.BINDING, Disposition.INCOMPLETE, unresolved=unresolved), []
+            return (
+                Section(
+                    kind,
+                    Need.BINDING,
+                    Disposition.INCOMPLETE,
+                    unresolved=unresolved,
+                    store_failed=True,
+                ),
+                [],
+            )
         chosen = project_applicable(
             pinned, task_type=task.task_type, role=task.role, stack=task.stack
         )
@@ -484,6 +534,7 @@ class LessonContextAssembly(ContextAssemblyPort):
                     Need.BINDING,
                     Disposition.INCOMPLETE,
                     unresolved=((unread, "the memory records could not be read"),),
+                    store_failed=True,
                 ),
                 [],
             )

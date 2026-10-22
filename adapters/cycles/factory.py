@@ -17,6 +17,7 @@ from squadops.ports.cycles.squad_profile import SquadProfilePort
 if TYPE_CHECKING:
     from squadops.campaigns.launcher import BoxVerdict
     from squadops.campaigns.progress import CampaignProgress
+    from squadops.execution.binding_holds import BindingFill
     from squadops.execution.reply_router import ReplyRouter
     from squadops.ports.comms.queue import QueuePort
     from squadops.ports.cycles.workflow_tracker import WorkflowTrackerPort
@@ -143,6 +144,7 @@ def create_flow_executor(
     box_verdict: BoxVerdict | None,
     failure_recall: FailurePatternRecallPort,
     task_timeout: float,
+    binding_fill: BindingFill | None,
     llm_observability: LLMObservabilityPort | None = None,
     workflow_tracker: WorkflowTrackerPort | None = None,
     prefect_api_url: str | None = None,
@@ -195,6 +197,7 @@ def create_flow_executor(
         box_verdict=box_verdict,
         failure_recall=failure_recall,
         task_timeout=task_timeout,
+        binding_fill=binding_fill,
         llm_observability=llm_observability,
         workflow_tracker=workflow_tracker,
         event_bus=event_bus,

@@ -77,6 +77,55 @@ class TestRunsShow:
         assert result.exit_code == 0
         assert "run_1" in result.output
 
+    @patch("squadops.cli.commands.runs._get_client")
+    def test_a_held_run_names_its_hold_and_why(self, mock_get_client):
+        """SIP-0110 §5ag (#2178), from the registry's run through the API's response to the table.
+        Bugs caught: a paused run that says nothing of what holds it, so an operator can't tell a
+        binding hold from a gate; a released hold still read as held; the hold dumped as raw JSON
+        in the detail."""
+        from datetime import UTC, datetime
+
+        from squadops.api.routes.cycles.mapping import run_to_response
+        from squadops.cycles.models import BindingHold, Run
+
+        held_at = datetime(2026, 10, 21, 12, tzinfo=UTC)
+        run = Run(
+            run_id="run_1", cycle_id="cyc_1", run_number=1, status="paused",
+            initiated_by="api", resolved_config_hash="h",
+            binding_holds=(
+                BindingHold("hold_1", "t_1", "qa.test", (("mrec_a@1", "unread", "store"),),
+                            held_at, released_at=held_at, cause="store_answered"),
+                BindingHold("hold_2", "t_2", "development.design_plan",
+                            (("mrec_b@3", "takes 900 tokens and the prompt has 500", "input"),),
+                            held_at, sections=("task_instructions",)),
+            ),
+        )  # fmt: skip
+        mock_get_client.return_value = _mock_client(
+            get_val=run_to_response(run).model_dump(mode="json")
+        )
+
+        from rich.console import Console
+
+        # A console wide enough that no cell wraps, whatever width an earlier test left.
+        with patch("squadops.cli.output._console", Console(width=240)):
+            result = runner.invoke(app, ["runs", "show", "proj1", "cyc_1", "run_1"])
+
+        assert result.exit_code == 0, result.output
+        detail, table = result.output.split("Binding holds", 1)
+        assert "binding_holds" not in detail
+        rows = {
+            cells[0]: cells[1:]
+            for line in table.splitlines()
+            if (cells := [c.strip() for c in line.split("│")[1:-1]] or [""])[0].startswith("hold_")
+        }
+        assert rows == {
+            "hold_1": ["qa.test", "mrec_a@1 (store): unread", "2026-10-21T12:00:00Z",
+                       "2026-10-21T12:00:00Z", "store_answered"],
+            "hold_2": ["development.design_plan",
+                       "mrec_b@3 (input): takes 900 tokens and the prompt has 500",
+                       "2026-10-21T12:00:00Z", "held", ""],
+        }  # fmt: skip
+
 
 class TestRunsRetry:
     @patch("squadops.cli.commands.runs._get_client")

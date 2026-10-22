@@ -17,8 +17,15 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Any
 
+from squadops.memory.context import Disposition
 from squadops.memory.lessons import Recalled
 from squadops.memory.recall import RecallQuery, UnitKind
+
+#: What a held task's exposure id ends with (#2178).
+HELD_SUFFIX = ":held"
+
+#: The exposure fields a record is handed through (#2178, #2179): a task's binding sections.
+INSTRUCTION_SECTIONS = ("task_instructions", "project_instructions")
 
 
 def exposure_id_for(run_id: str, task_id: str, attempt: int = 1) -> str:
@@ -55,9 +62,25 @@ class Exposure:
 
     def __post_init__(self) -> None:
         if not self.exposure_id:
-            object.__setattr__(
-                self, "exposure_id", exposure_id_for(self.run_id, self.task_id, self.attempt)
-            )
+            exposure_id = exposure_id_for(self.run_id, self.task_id, self.attempt)
+            # #2178: a held task's answer is its own record, so the dispatch after its release
+            # records the attempt's exposure rather than finding this one in its place.
+            object.__setattr__(self, "exposure_id", exposure_id + HELD_SUFFIX * self.held)
+
+    @property
+    def incomplete_sections(self) -> tuple[str, ...]:
+        """The binding sections that couldn't be completed. Any one holds the task undispatched
+        (§3.6: the bundle is held), so nothing in its sections reached the model."""
+        return tuple(
+            name
+            for name in INSTRUCTION_SECTIONS
+            if (getattr(self, name) or {}).get("disposition") == Disposition.INCOMPLETE.value
+        )
+
+    @property
+    def held(self) -> bool:
+        """Whether the task was held, not dispatched: it counts as no dispatch (#2178)."""
+        return bool(self.incomplete_sections)
 
     @classmethod
     def of(

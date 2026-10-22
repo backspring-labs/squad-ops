@@ -509,6 +509,43 @@ class Cycle:
         return resolve_config(self.applied_defaults, self.execution_overrides)
 
 
+class HoldCause(StrEnum):
+    """Why a binding hold was released (SIP-0110 §A.3.6, #2178)."""
+
+    STORE_ANSWERED = "store_answered"
+    INSTRUCTION_CHANGED = "instruction_changed"
+    REBOUND = "rebound"
+    CANCELLED = "cancelled"
+    EXPIRED = "expired"
+
+
+class HoldKind(StrEnum):
+    """Why one record of a binding hold couldn't be bound: the store didn't answer, or an
+    operator's input can't be bound (a required reference at the cycle's commit, an instruction
+    over its budget, or one withdrawn or narrowed to nothing). A Campaign's hold ends by it."""
+
+    STORE = "store"
+    INPUT = "input"
+
+
+@dataclass(frozen=True)
+class BindingHold:
+    """A run held on its task's binding sections (SIP-0110 §A.3.6, #2178): its task, each record
+    it couldn't bind as ``(ref, reason, kind)``, and when and why the hold was released. The run is
+    held while its last hold has no ``released_at`` and it is PAUSED."""
+
+    hold_id: str
+    task_id: str
+    task_type: str
+    unresolved: tuple[tuple[str, str, str], ...]
+    held_at: datetime
+    released_at: datetime | None = None
+    cause: str | None = None
+    #: The binding sections that held (``task_instructions``, ``project_instructions``), which
+    #: say what an operator's change to release it was: none for a dispatch turn not given.
+    sections: tuple[str, ...] = ()
+
+
 @dataclass(frozen=True)
 class Run:
     """Single execution attempt of a Cycle. SIP-0064 §8.4."""
@@ -528,6 +565,14 @@ class Run:
     # #427: why the run reached FAILED, written once at finalize alongside the
     # terminal transition. None for non-failed runs and pre-1.4.4 history.
     failure_reason: str | None = None
+    #: #2178: each time the run was held on a task's bindings, oldest first.
+    binding_holds: tuple[BindingHold, ...] = ()
+
+    @property
+    def open_hold(self) -> BindingHold | None:
+        """The hold the run waits on, if its last one has no release."""
+        last = self.binding_holds[-1] if self.binding_holds else None
+        return last if last is not None and last.released_at is None else None
 
 
 @dataclass(frozen=True)

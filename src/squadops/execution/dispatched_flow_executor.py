@@ -119,6 +119,7 @@ from squadops.cycles.verification_contract import VerificationContract
 from squadops.cycles.verification_normalize import normalize_task_checks
 from squadops.cycles.wrapup_models import verification_evidence_summary
 from squadops.events.types import EventType
+from squadops.execution.binding_holds import BindingFill, BindingHolds
 from squadops.execution.correction_repair import CorrectionRepair
 from squadops.execution.correction_runner import CorrectionRunner
 from squadops.execution.cycle_completion import CycleCompletion
@@ -145,7 +146,6 @@ from squadops.execution.source_delivery import SourceDeliveryRefused, deliver_so
 from squadops.execution.task_dispatcher import TaskDispatcher
 from squadops.execution.task_naming import build_task_name
 from squadops.execution.workload_gate import GateOutcome, WorkloadGate, stored_change_request
-from squadops.memory.task_instructions import TaskInstructionsUnavailable
 from squadops.ports.comms.queue import QueueError
 from squadops.ports.cycles.flow_execution import FlowExecutionPort
 from squadops.ports.events.noop import NoOpCycleEventBus
@@ -599,18 +599,19 @@ class _TaskOutcomeRouter:
             # SIP-0110 §0.2 (#2162): the re-dispatch is another authoring invocation. It asks
             # its unit's snapshot again and records its own exposure under its attempt;
             # before, it rode the first attempt's envelope and had none.
-            try:
-                await supply_the_redispatch(
+            # §3.6: a re-dispatch whose binding sections are incomplete holds the run here, at
+            # the task's boundary, until re-supply completes it (#2178).
+            await executor._binding_holds.supplied(
+                run_id,
+                cycle,
+                lambda: supply_the_redispatch(
                     (_envelope, _enriched),
                     recall=executor._failure_recall,
                     cycle=cycle,
                     run_id=run_id,
                     now=datetime.now(UTC),
-                )
-            except TaskInstructionsUnavailable as e:
-                # §3.6: a re-dispatch whose binding sections are incomplete is held, as the first
-                # dispatch is at provisioning; stage 1's hold fails the run, naming why (#2179).
-                raise _ExecutionError(str(e)) from e
+                ),
+            )
         if action == "accept_patch":
             # #994: remember that THIS task now has accepted, stored repaired
             # state. A later round's rewind re-authors from the checkpoint and
@@ -701,6 +702,11 @@ class DispatchedFlowExecutor(FlowExecutionPort):
         # 1.8.2 item 15: the per-task wait is declared by the composition root, never
         # defaulted here — a default is the hung-agent detector nobody chose.
         task_timeout: float,
+        # #2178: the launcher's fill of a campaign cycle's own bindings, which a run held on them
+        # calls before it composes again (§5ad). Required at the factory, which is the roots'
+        # seam. ``None``: no launcher runs here, so a held campaign cycle's missing binding
+        # waits on the sweep's fill (``reconcile_bindings``).
+        binding_fill: BindingFill | None = None,
         llm_observability: LLMObservabilityPort | None = None,
         workflow_tracker: WorkflowTrackerPort | None = None,
         event_bus: CycleEventBusPort | None = None,
@@ -728,6 +734,7 @@ class DispatchedFlowExecutor(FlowExecutionPort):
         # SIP-0109 §9.3 (#1802, #1928): whether a launch is allowed now, which a run start
         # also waits on. ``None`` reads no box.
         self._box_verdict = box_verdict
+        self._binding_fill = binding_fill
         # #1929: set when the process begins to stop. A run interrupted from then on is left
         # as it was, for the startup re-attach (SIP-0109 §24am), never recorded as ended.
         self._stopping = False
@@ -812,6 +819,7 @@ class DispatchedFlowExecutor(FlowExecutionPort):
                 *args, **kw
             ),
             failure_recall=failure_recall,
+            hold=lambda *args, **kw: self._binding_holds.supplied(*args, **kw),
         )
         self._correction_runner = correction_runner or CorrectionRunner(
             cycle_registry=cycle_registry,
@@ -851,6 +859,7 @@ class DispatchedFlowExecutor(FlowExecutionPort):
             task_dispatcher=self._task_dispatcher,
             store_artifact=lambda *args, **kw: self._store_artifact(*args, **kw),
             failure_recall=failure_recall,
+            hold=lambda *args, **kw: self._binding_holds.supplied(*args, **kw),
         )
         # SIP-0097 §6.6: per-run pulse summaries live on the RunLedger created
         # in execute_run() and passed explicitly; multi-workload forwarding
@@ -4241,6 +4250,19 @@ class DispatchedFlowExecutor(FlowExecutionPort):
                             )
 
             await asyncio.sleep(poll_interval)
+
+    @functools.cached_property
+    def _binding_holds(self) -> BindingHolds:
+        """#2178: a run held on a task's binding sections, and its release. Built on first use,
+        as the collaborators below are, and reading the executor late."""
+        return BindingHolds(
+            cycle_registry=self._cycle_registry,
+            campaign_registry=self._campaign_registry,
+            event_bus=self._cycle_event_bus,
+            is_cancelled=lambda run_id: self._is_cancelled(run_id),
+            await_box=lambda run_id, cycle_id: self._run_admission.await_box(run_id, cycle_id),
+            fill=self._binding_fill,
+        )
 
     @functools.cached_property
     def _run_provisioning(self) -> RunProvisioning:

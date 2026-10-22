@@ -158,20 +158,28 @@ async def test_a_withdrawn_instruction_is_gone_from_the_next_dispatch():
 
 
 async def test_a_binding_that_cant_fit_or_cant_be_read_holds_the_task_with_why():
-    """§3.6: a binding section is never cut and never read as none. Bug caught: an oversized
+    """§3.6: a binding section is never cut and never read as none. Bugs caught: an oversized
     instruction truncated into the prompt, or a store failure dispatching the task without the
-    instruction it was given."""
+    instruction it was given; and (#2178) a store failure held as the operator's input, so a
+    Campaign's expiry escalates an outage to the owner instead of retrying it, or the reverse."""
     records = InMemoryMemoryRecords()
     await records.create(_instruction("cyc_recall", DESIGN, text="x" * 2_000_000))
-    with pytest.raises(TaskInstructionsUnavailable, match="tokens and the prompt has"):
+    with pytest.raises(TaskInstructionsUnavailable, match="tokens and the prompt has") as over:
         await _supplied(records, _framing_cycle())
 
     class Down(InMemoryMemoryRecords):
         async def list_project(self, project_id):
             raise ConnectionError("store down")
 
-    with pytest.raises(TaskInstructionsUnavailable, match="could not be read"):
+    with pytest.raises(TaskInstructionsUnavailable, match="could not be read") as down:
         await _supplied(Down(), _framing_cycle())
+
+    assert [(e.value.task_type, [k for *_, k in e.value.unresolved], e.value.sections)
+            for e in (over, down)] == [
+        (DESIGN, ["input"], ("task_instructions",)),
+        # The project section's pin check reads the same records, so it holds for the store too.
+        (DESIGN, ["store", "store"], ("task_instructions", "project_instructions")),
+    ]  # fmt: skip
 
 
 def test_an_instruction_for_a_task_that_authors_nothing_is_refused_at_admission():
