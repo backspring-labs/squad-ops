@@ -744,6 +744,7 @@ class TestPostgresCycleRegistry:
                 }
             ],
             [],  # their binding holds (#2178)
+            [],  # their emergency halts (#2178, T13)
         ]
 
         runs = await registry.list_runs_for_cycles(["cyc_a", "cyc_b", "cyc_c"], limit_per_cycle=2)
@@ -794,10 +795,21 @@ class TestPostgresCycleRegistry:
             "sections": ["task_instructions"],
         }
 
+        halt_row = {
+            "run_id": "run_001",
+            "record_id": "mrec_1",
+            "requested_by": "ada",
+            "why": "it named the wrong table",
+            "requested_at": NOW,
+            "restart_from_task_id": "task-run_001-002-development.design_plan",
+            "restart_run_id": None,
+        }
+
         conn.fetch.side_effect = [
             [run_row_1, run_row_2],  # run rows
             [gate_row],  # gate decisions batch query
             [hold_row],  # binding holds batch query (#2178)
+            [halt_row],  # emergency halts batch query (#2178, T13)
         ]
 
         runs = await registry.list_runs("cyc_001")
@@ -826,6 +838,12 @@ class TestPostgresCycleRegistry:
         assert (runs[0].binding_holds, runs[0].open_hold) == ((), None)
         assert runs[1].open_hold.unresolved == (("mrec_1@2", "over budget", "input"),)
         assert runs[1].open_hold.sections == ("task_instructions",)
+        # T13: each run's halt reaches it, and only it
+        assert (runs[0].halt.record_id, runs[0].halt.restart_from_task_id, runs[1].halt) == (
+            "mrec_1",
+            "task-run_001-002-development.design_plan",
+            None,
+        )
 
 
 class TestRecordRunVerificationSummary:
