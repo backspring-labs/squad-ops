@@ -3490,6 +3490,41 @@ which were already composed at their own dispatch.
   - the budget counting inputs alone;
   - the thinking dropped from the reserve.
 
+## 5al. A paired comparison's arms, read as one, as built (2026-10-23, #2183 T16; the MacBook lane, under the owner's delegation of 2026-10-18)
+
+**What was missing.** §3.7 reads "a pair whose arms carry different bound revisions is invalid", and T16's last read
+is "a pair built with different bound revisions is reported invalid". Nothing read a pair. The verification-set
+driver records each roll's pinned instruction set and compares a counted roll with the one before it (§5t), never the
+two arms of a pair, and no unit records which unit it is paired with.
+
+**What shipped:** the reading, from what each arm's unit pinned and bound (`squadops.memory.pairs`).
+- **An arm's bindings** are its pinned project instructions by record and revision, the task instructions its cycle
+  was given by text and task types, and every reference either binds, by what it names, at the revision and digest it
+  was bound to. A campaign's cycle reads its campaign's snapshot with its own bindings of the `@current` references
+  (§5ad). An arm whose unit pinned no snapshot is refused, never read as one that pinned nothing.
+- **A pair is valid only when both arms were handed the same bindings.** Every difference is named.
+- **It's read by the exposure report:** `memory_exposure_report.py --project P --pair CYCLE_A CYCLE_B` prints the pair
+  as valid or invalid, with each difference, and an invalid pair exits 1. It's maintainers' tooling, read-only against
+  the deploy's Postgres, and nothing in a cycle reads it.
+
+**Where it narrows §3.7.** Which units form a pair is still the caller's to name. No unit records its pairing, so a
+pair the caller doesn't name is never read.
+
+**Evidence:**
+- **`tests/unit/memory/test_pairs.py`,** entered at `read_arm` over the in-memory store and records:
+  - the same bindings read valid; another revision of a project instruction, a project reference bound to another
+    revision, and a task instruction's reference bound to another revision each read invalid;
+  - every difference is named, not only the first;
+  - a campaign's cycles are read by their own bindings;
+  - an arm with no snapshot is refused.
+- **Four mutants, each caught:** references not compared; a campaign cycle's own binding ignored; an arm with no
+  snapshot read as pinning nothing; task instructions not compared.
+- **Live on the Mac** (#2183):
+  - T16's U1 (`cyc_167c3d287ea7`, admitted before z_shelfnote's CONTRIBUTING.md changed) and U2 (`cyc_4091c14f7a56`,
+    admitted after) read **invalid**, naming the guide bound at `433f6c51` with one digest and at `0abef4ea` with
+    another.
+  - T9's lessons-on and lessons-disabled arms (`cyc_8a3aece426d3`, `cyc_7cb718e789f8`) read **valid**.
+
 ## 6. Mode neutrality: cycle, duty, and ambient utilization
 
 Phase 1 implements the cycle-mode loop, but the substrate is designed so duty- and
