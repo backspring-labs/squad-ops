@@ -120,3 +120,32 @@ def test_loading_the_executor_or_the_proposal_loads_none_of_the_held_out_store()
     ).stdout.strip()
 
     assert loaded == "[]", f"loading the executor or the proposal loads: {loaded}"
+
+
+def test_no_role_is_handed_the_stored_change_request_as_an_artifact():
+    """The request names the goals it means to move (SIP-0109 §24by), and the framing is shown it
+    only through ``role_view``. Bug caught: a context contract's filter selecting the stored
+    ``change_request.yaml``, by its type or by the proposal that produced it, so a build role's
+    artifact contents carry the goals whole (the MacBook lane's review of #2686)."""
+    from squadops.capabilities import context_assembly
+    from squadops.capabilities.context_assembly import CONTEXT_CONTRACTS, ArtifactFilter
+    from squadops.capabilities.handlers.planning.proposal import CHANGE_REQUEST_ARTIFACT_TYPE
+
+    filters = {
+        f"contract {task_type}": c.artifact_filter
+        for task_type, c in CONTEXT_CONTRACTS.items()
+        if c.artifact_filter is not None
+    } | {
+        name: value
+        for name, value in vars(context_assembly).items()
+        if isinstance(value, ArtifactFilter)
+    }
+    selecting = sorted(
+        name
+        for name, f in filters.items()
+        if CHANGE_REQUEST_ARTIFACT_TYPE in (*f.by_type, *f.by_type_fallback)
+        or TaskType.STRATEGY_PROPOSE_INCREMENT in f.by_producing_task
+    )
+
+    assert len(filters) > 5  # the contracts were read
+    assert selecting == []
