@@ -87,10 +87,10 @@ def pair_differences(a: ArmBindings, b: ArmBindings) -> list[str]:
                 f"task instruction for {', '.join(types)} given to {arm.cycle_id} only: {text[:80]}"
             )
     for named in sorted(set(a.references) | set(b.references)):
-        mine, theirs = a.references.get(named, frozenset()), b.references.get(named, frozenset())
-        if mine != theirs:
+        in_a, in_b = a.references.get(named, frozenset()), b.references.get(named, frozenset())
+        if in_a != in_b:
             found.append(
-                f"{named}: bound {_bound(mine)} in {a.cycle_id}, {_bound(theirs)} in {b.cycle_id}"
+                f"{named}: bound {_bound(in_a)} in {a.cycle_id}, {_bound(in_b)} in {b.cycle_id}"
             )
     return found
 
