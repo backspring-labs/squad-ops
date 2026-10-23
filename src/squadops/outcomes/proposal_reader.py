@@ -145,7 +145,7 @@ class StoredProposalEvidence(ProposalEvidencePort):
             if carries_a_marker(outcome.goal, markers):
                 held_back += 1
                 continue
-            result = _SHOWN.get(outcome.result, GoalResult.NOT_VERIFIED)
+            result = GoalResult.NOT_VERIFIED if outcome.result is None else _SHOWN[outcome.result]
             goals.append(GoalEvidence(outcome.scenario_id, outcome.goal, result))
         quality: tuple[QualityMove, ...] = ()
         if calibration is not None and calibration != accepted_cycle_id:

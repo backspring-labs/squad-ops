@@ -65,7 +65,9 @@ def _literal_runs(pattern: Any) -> list[str]:
     if not isinstance(pattern, str):
         return []
     pattern = _GROUP_PREFIX.sub("(", pattern)  # (?: (?= (?! (?<= (?<! open a group, nothing else
-    runs, run, i = [], [], 0
+    runs: list[str] = []
+    run: list[str] = []
+    i = 0
     while i < len(pattern):
         c = pattern[i]
         if c == "\\" and i + 1 < len(pattern):
