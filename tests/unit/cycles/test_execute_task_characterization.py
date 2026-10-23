@@ -16,7 +16,7 @@ scripted:
 - ``_handle_task_outcome``, which returns each case's actions.
 
 Every other collaborator the method calls is a recorder on the instance, or on this module's name
-for ``supply_the_redispatch``. The steps keep calling each of them through the executor and this
+for ``supply_the_dispatch``. The steps keep calling each of them through the executor and this
 module, so the move can't need a test edit.
 
 Bug caught: a router that hands the routing decision a different failure count than the run held
@@ -359,10 +359,8 @@ class _Recorders:
         )
         return self._kept.pop(0)
 
-    async def supply_the_redispatch(self, pair, *, recall, cycle, run_id, now):
-        self._trace.add(
-            "supply_the_redispatch", pair=pair, recall=recall, cycle=cycle, run_id=run_id
-        )
+    async def supply_the_dispatch(self, pair, *, recall, cycle, run_id, now):
+        self._trace.add("supply_the_dispatch", pair=pair, recall=recall, cycle=cycle, run_id=run_id)
 
     async def collect_artifacts_and_checkpoint(self, **kwargs):
         self._trace.add("collect_artifacts_and_checkpoint", **kwargs)
@@ -415,7 +413,7 @@ def _executor(trace: _Trace, case: _Case, monkeypatch) -> DispatchedFlowExecutor
     executor._collect_artifacts_and_checkpoint = rec.collect_artifacts_and_checkpoint
     executor._bind_authored_manifest = rec.bind_authored_manifest
     executor._handle_gate = rec.handle_gate
-    monkeypatch.setattr(dfe, "supply_the_redispatch", rec.supply_the_redispatch)
+    monkeypatch.setattr(dfe, "supply_the_dispatch", rec.supply_the_dispatch)
     return executor
 
 

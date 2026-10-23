@@ -8,13 +8,20 @@ on ``LESSONS_INPUT``; a task handed none has exactly the inputs it had before me
 prompt renders byte-identical (§0.9).
 
 Which task types consume is their context-assembly contract's declaration (``authoring_seam_of``),
-never a branch on the type. Plan writing and build authoring are supplied here, when the run's plan
-is composed; repair when the correction runner composes a repair, and proposal writing when a
-campaign composes its proposal, each through the same function.
+never a branch on the type. Plan writing and build authoring are supplied at each dispatch, on the
+envelope as the executor sends it (:func:`supply_the_dispatch`); repair when the correction runner
+composes a repair, and proposal writing when a campaign composes its proposal.
 
-An exposure is one authoring invocation's (§0.2), so a task the loop dispatches again (a correction
-round's re-take, an emission retry) asks again and discloses its own answer, under its attempt
-(:func:`supply_the_redispatch`, #2162).
+An exposure is one authoring invocation's (§0.2), recorded when it is dispatched, so a task the
+loop dispatches again (a correction round's re-take, an emission retry) asks again and discloses
+its own answer, under its attempt (#2162).
+
+#2681: the prompt budget is measured on the dispatched envelope, as its handler renders it
+(``squadops.capabilities.prompt_budget``). The executor adds a task's upstream outputs, the
+accepted tree and the product's repository at dispatch (``_enrich_envelope``), so a measure taken
+when the plan is composed can't see them. The plan is checked then (:func:`check_the_plan`): a
+binding that can't fit even without them holds the run before its first dispatch, and nothing
+else is disclosed or handed.
 
 Every seam asks through the context-assembly port (Appendix A §3.6, #2176). In 2.3 the port is
 :class:`LessonContextAssembly`: one optional section, the lessons today's recall supplies from the snapshot
@@ -25,7 +32,6 @@ from __future__ import annotations
 
 import dataclasses
 import functools
-import json
 import logging
 import re
 from collections.abc import Collection, Sequence
@@ -35,9 +41,10 @@ from typing import TYPE_CHECKING
 
 from squadops.capabilities.context_assembly import authoring_seam_of
 from squadops.capabilities.handlers.fault_injection import PRIOR_ATTEMPTS_KEY
+from squadops.capabilities.prompt_budget import prompt_budget
 from squadops.cycles.benchmark_registry import cycle_stack
 from squadops.cycles.models import HoldKind
-from squadops.llm.model_registry import get_model_spec, model_family_of
+from squadops.llm.model_registry import model_family_of
 from squadops.memory.context import (
     ChatTurn,
     ContextBundle,
@@ -130,9 +137,6 @@ def _available_for_lessons(prompt_budget: int, binding: int) -> int | None:
     return prompt_budget - binding - _framing(_LESSON_SLOT)
 
 
-#: What memory supplies a dispatch, which is never the task's own input (``prompt_budget_of``).
-_SUPPLIED_INPUTS = frozenset({LESSONS_INPUT, TASK_INSTRUCTIONS_INPUT, PROJECT_INSTRUCTIONS_INPUT})
-
 #: Recall's outcomes, as the lesson section's dispositions (§3.6).
 _SECTION_DISPOSITION = {
     RecallDisposition.SUPPLIED: Disposition.SUPPLIED,
@@ -162,27 +166,18 @@ def unit_of(cycle: Cycle) -> tuple[UnitKind, str]:
     return UnitKind.CYCLE, cycle.cycle_id
 
 
-def prompt_budget_of(envelope: TaskEnvelope) -> int:
-    """§3.6's total prompt budget: the model's context window (SIP-0073's registry) less its completion
-    reserve and the task's own inputs, measured as recall measures lessons. The reserve is the registry's
-    default completion budget. A model the registry does not know has ``-1``, since an unknown never means
-    room, apart from a known window the inputs fill (``0``), so a hold says which. What memory supplied is
-    not the task's own input: a re-dispatch carries its attempt's sections, and counting them would charge
-    the instructions twice."""
-    spec = get_model_spec(str(envelope.inputs.get("agent_model") or ""))
-    if spec is None:
-        return -1
-    own_inputs = {k: v for k, v in envelope.inputs.items() if k not in _SUPPLIED_INPUTS}
-    own = _tokens(json.dumps(own_inputs, sort_keys=True, default=str))
-    return max(0, spec.context_window - spec.default_max_completion - own)
-
-
 def request_for(
-    envelope: TaskEnvelope, *, unit: tuple[UnitKind, str], stack: str, run_id: str
+    envelope: TaskEnvelope,
+    *,
+    unit: tuple[UnitKind, str],
+    stack: str,
+    run_id: str,
+    measured: TaskEnvelope | None = None,
 ) -> ContextRequest:
     """The task's context request, from trusted context only: its project and cycle from the envelope,
     the role the plan step names and the model the plan resolved, both written by the framework, never
-    by an agent (§0.8 step 1), and the unit whose snapshot answers."""
+    by an agent (§0.8 step 1), and the unit whose snapshot answers. Its prompt budget is measured on
+    ``measured``, the envelope as it is dispatched, when that is another copy (#2681)."""
     return ContextRequest(
         binding=ProjectBound(envelope.project_id),
         consumer=TaskInvocation(
@@ -196,7 +191,7 @@ def request_for(
             stack=stack,
             model_family=model_family_of(str(envelope.inputs.get("agent_model") or "")),
             agent_id=envelope.agent_id,
-            prompt_budget=prompt_budget_of(envelope),
+            prompt_budget=prompt_budget(measured or envelope),
         ),
     )
 
@@ -269,11 +264,10 @@ async def supply_lessons(
 ) -> list[TaskEnvelope]:
     """``envelopes``, each consuming task's with the lessons it is supplied, in order. Every
     consuming task's answer is disclosed; a task that consumes nothing is passed through as is.
+    For envelopes about to be dispatched as they are: a repair, a pulse repair.
 
     #2178: composed in one dispatch turn, and disclosed only when every task's binding sections are
-    complete. A run supplies its authoring tasks before its first dispatch, so one held task holds
-    the run, and the rest are composed again at its release: disclosed now, their answers would
-    read as dispatched (§5w) and handed (§5v), and refuse the very change that releases it."""
+    complete, since a disclosed answer reads as dispatched (§5w) and handed (§5v)."""
     consuming = [
         (i, envelope)
         for i, envelope in enumerate(envelopes)
@@ -298,7 +292,34 @@ async def supply_lessons(
     return supplied
 
 
-async def supply_the_redispatch(
+async def check_the_plan(
+    envelopes: Sequence[TaskEnvelope],
+    *,
+    recall: FailurePatternRecallPort,
+    cycle: Cycle,
+    run_id: str,
+    now: datetime,
+) -> list[TaskEnvelope]:
+    """The run's plan, checked before its first dispatch (#2681): each consuming task is composed
+    on its plan envelope, and a binding that can't be read, bound or fitted holds the run there,
+    its answer disclosed as held. Nothing else is disclosed or handed: each task is composed again
+    at its own dispatch (:func:`supply_the_dispatch`), on the envelope as it goes out.
+
+    The plan envelope lacks what the executor adds at dispatch, so its budget is at least the
+    dispatch's: a task held here is one its dispatch would hold too, never one it would pass."""
+    await _composed(
+        [e for e in envelopes if authoring_seam_of(str(e.task_type)) is not None],
+        recall=recall,
+        unit=unit_of(cycle),
+        stack=cycle_stack(cycle) or "",
+        run_id=run_id,
+        now=now,
+        disclose=False,
+    )
+    return list(envelopes)
+
+
+async def supply_the_dispatch(
     envelopes: Sequence[TaskEnvelope | None],
     *,
     recall: FailurePatternRecallPort,
@@ -306,15 +327,15 @@ async def supply_the_redispatch(
     run_id: str,
     now: datetime,
 ) -> None:
-    """A task the loop is about to dispatch again is another authoring invocation (§0.2, #2162):
-    it asks its unit's snapshot again and discloses its own exposure, under its attempt.
+    """A task about to be dispatched, the first time or again, is one authoring invocation (§0.2,
+    #2162): it asks its unit's snapshot and discloses its own exposure, under its attempt.
 
-    The loop re-dispatches the envelopes it already holds, so what this attempt is handed replaces
-    what the one before it was handed, in place, on each of them: a lesson the earlier answer
-    supplied and this one does not is taken off, or the envelope would carry a lesson its exposure
-    says it never got. The first of ``envelopes`` is the task's own; the rest (the enriched copy the
-    loop dispatches) are kept equal to it. A task at no consuming seam is left as it is.
-    """
+    What this dispatch is handed replaces, in place, what any before it was handed, on each of
+    ``envelopes``: a lesson an earlier answer supplied and this one does not is taken off, or the
+    envelope would carry a lesson its exposure says it never got. The first of ``envelopes`` is the
+    task's own and names its attempt; the last is the copy the executor dispatches, enriched with
+    what the task is shown, and its prompt is measured on it (#2681). A task at no consuming seam is
+    left as it is."""
 
     held = [e for e in envelopes if e is not None]
     if not held:
@@ -328,6 +349,7 @@ async def supply_the_redispatch(
         stack=cycle_stack(cycle) or "",
         run_id=run_id,
         now=now,
+        measured=[held[-1]],
     )
     # #2178: each dispatch reads its task instructions again, so one withdrawn since the attempt
     # before is gone from this one, and nothing is copied from that attempt.
@@ -357,10 +379,14 @@ async def _composed(
     stack: str,
     run_id: str,
     now: datetime,
+    measured: Sequence[TaskEnvelope] | None = None,
+    disclose: bool = True,
 ) -> list[ContextBundle]:
     """Each invocation's context, through the port, assembled with its task's trusted scope and
     disclosed under its attempt. A binding section that is incomplete holds its task (§3.6): only
     the first held task's answer is disclosed, marked held, and the hold is raised with why.
+    ``measured`` are the envelopes each prompt is measured on, when they are other copies (#2681),
+    and ``disclose=False`` discloses a held answer alone (:func:`check_the_plan`).
 
     #2545: read and disclosed in the unit's dispatch turn, so a re-binding or an instruction added
     after admission lands before the reads or after the exposures, never between them. A turn that
@@ -368,14 +394,17 @@ async def _composed(
     if not envelopes:
         return []
     assembly = LessonContextAssembly(recall, now=now)
+    sizes = list(measured) if measured is not None else list(envelopes)
     try:
         async with recall.dispatch_turn(*unit):
             bundles = [
-                await assembly.assemble(request_for(e, unit=unit, stack=stack, run_id=run_id))
-                for e in envelopes
+                await assembly.assemble(
+                    request_for(e, unit=unit, stack=stack, run_id=run_id, measured=m)
+                )
+                for e, m in zip(envelopes, sizes, strict=True)
             ]
             held = next((b for b in bundles if not b.complete), None)
-            for bundle in [held] if held is not None else bundles:
+            for bundle in [held] if held is not None else bundles if disclose else []:
                 await assembly.disclose(bundle)
     except DispatchTurnUnavailable as e:
         first = envelopes[0]

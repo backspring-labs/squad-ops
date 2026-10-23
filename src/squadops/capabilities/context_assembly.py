@@ -75,6 +75,13 @@ SURFACE_FROZEN = "frozen_surface"
 SURFACE_RESPONSE = "response_surface"
 
 
+#: #2681: the supplement a seam's handler adds to its system prompt, which the composer counts
+#: (``squadops.capabilities.prompt_budget``): the development profile's (develop) or the build
+#: profile's (the builder).
+SUPPLEMENT_DEVELOPMENT_PROFILE = "development_profile"
+SUPPLEMENT_BUILD_PROFILE = "build_profile"
+
+
 @dataclass(frozen=True)
 class ArtifactFilter:
     """A stored-artifact selection spec (the shape ``_resolve_artifact_contents``
@@ -153,6 +160,22 @@ class ContextAssemblyContract:
     #: here: it is the #2058 call site, read from ``plan_rejection_context``
     #: (:func:`authoring_seam_of`), so the fact has one author.
     authoring_seam: AuthoringSeam | None = None
+    #: #2681: what an authoring seam's prompt is made of besides its inputs and memory's sections,
+    #: so the composer counts what the handler renders (``squadops.capabilities.prompt_budget``).
+    #: Every request template the handler may render, each counted whole: an appendix renders only
+    #: with its input, so the count is an upper bound. A tuple inside is a set of alternatives, of
+    #: which a prompt renders one (a path's main template, a stack's fill-only appendix), counted at
+    #: its largest. Memory's own section templates aren't here, since the composer measures those
+    #: sections itself.
+    prompt_templates: tuple[str | tuple[str, ...], ...] = ()
+    #: The inputs the task carries that its handler never renders, so they aren't counted. Anything
+    #: not named here is counted, so a new input reads as rendered until it's declared otherwise.
+    unrendered_inputs: frozenset[str] = frozenset()
+    #: The supplement the handler adds to the system prompt (``SUPPLEMENT_*``), or none.
+    system_supplement: str = ""
+    #: Whether the handler renders its development profile's fill-only appendix, which the profile
+    #: names (``DevelopmentProfile.fill_only_template``), so it's counted at the largest shipped.
+    fill_only_appendix: bool = False
 
 
 _EMPTY_CONTRACT = ContextAssemblyContract()
@@ -193,6 +216,55 @@ _DEV_SURFACES = (
     SURFACE_RESPONSE,
 )
 
+# --- #2681: what each authoring seam's prompt is made of, as its handler renders it --------
+#: The context slots every build and plan author shares (``context_sections``): the product a
+#: source-backed run changes and a retry's prior cycle. Memory's own slots are measured apart.
+_SHARED_CONTEXT_TEMPLATES = (
+    "request.source_repository_appendix",
+    "request.source_repository_checks_block",
+    "request.source_repository_existing_files_block",
+    "request.source_repository_instructions_block",
+    "request.prior_cycle_brief_appendix",
+)
+#: What a cycle task's re-dispatch appends: the emission retry's feedback and the disputes.
+_CYCLE_TASK_RETRY_TEMPLATES = (
+    "request.cycle_emission_retry_feedback",
+    "request.cycle_cap_exhausted_retry",
+    "request.cycle_cap_truncated_retry",
+    "request.disputed_checks_appendix",
+)
+_DEVELOP_APPENDIX_TEMPLATES = (
+    "request.development_develop_error_contract_appendix",
+    "request.development_develop_frozen_surface_appendix",
+    "request.development_develop_model_surface_appendix",
+    "request.development_develop_response_surface_appendix",
+    "request.development_develop_testid_surface_appendix",
+)
+_PLANNING_TEMPLATES = (
+    "request.planning_task_base",
+    "request.increment_framing_section",
+    "request.plan_reroll_rejected_plan_appendix",
+    "request.plan_reroll_rejection_appendix",
+    "request.target_stack_section",
+    "request.design_revision_request_appendix",
+    *_SHARED_CONTEXT_TEMPLATES,
+)
+_PLAN_PROPOSAL_TEMPLATES = (
+    "request.plan_authoring_rules_appendix",
+    "request.plan_bind_criteria_appendix",
+    "request.plan_frozen_surface_appendix",
+    "request.plan_increment_criteria_appendix",
+    "request.plan_increment_footprint_appendix",
+    "request.plan_increment_frozen_appendix",
+    "request.plan_increment_regenerated_appendix",
+    "request.increment_test_scope_appendix",
+    *_SHARED_CONTEXT_TEMPLATES,
+)
+#: Inputs a build author carries for its evaluation, never shown in its prompt.
+_EVALUATION_ONLY_INPUTS = frozenset(
+    {"acceptance_workspace_files", "workspace_revision_id", "artifact_refs"}
+)
+
 CONTEXT_CONTRACTS: dict[str, ContextAssemblyContract] = {
     # --- build tasks (D3): curated prompt context + acceptance workspace ----
     TaskType.DEVELOPMENT_DEVELOP: ContextAssemblyContract(
@@ -211,6 +283,21 @@ CONTEXT_CONTRACTS: dict[str, ContextAssemblyContract] = {
         manifest_surfaces=_DEV_SURFACES,
         prior_cycle_brief=True,
         authoring_seam=AuthoringSeam.BUILD_AUTHORING,
+        prompt_templates=(
+            (
+                "request.development_develop.code_generate",
+                "request.development_develop.focused_build_task",
+            ),
+            "request.development_develop_narrative_criteria_appendix",
+            "request.development_develop_prior_artifacts_appendix",
+            "request.cycle_repair_contract_expectations_appendix",
+            *_DEVELOP_APPENDIX_TEMPLATES,
+            *_SHARED_CONTEXT_TEMPLATES,
+            *_CYCLE_TASK_RETRY_TEMPLATES,
+        ),
+        unrendered_inputs=_EVALUATION_ONLY_INPUTS | {"resolved_config"},
+        system_supplement=SUPPLEMENT_DEVELOPMENT_PROFILE,
+        fill_only_appendix=True,
     ),
     TaskType.BUILDER_ASSEMBLE: ContextAssemblyContract(
         artifact_filter=ArtifactFilter(
@@ -221,6 +308,13 @@ CONTEXT_CONTRACTS: dict[str, ContextAssemblyContract] = {
         acceptance_workspace=True,
         prior_cycle_brief=True,
         authoring_seam=AuthoringSeam.BUILD_AUTHORING,
+        prompt_templates=(
+            "request.builder_assemble.build_assemble",
+            *_SHARED_CONTEXT_TEMPLATES,
+            *_CYCLE_TASK_RETRY_TEMPLATES,
+        ),
+        unrendered_inputs=_EVALUATION_ONLY_INPUTS,
+        system_supplement=SUPPLEMENT_BUILD_PROFILE,
     ),
     # qa.test's prompt context IS the full accepted tree (#644); in bind mode
     # it additionally carries the contract's behavioral surface at PLAN time.
@@ -242,6 +336,24 @@ CONTEXT_CONTRACTS: dict[str, ContextAssemblyContract] = {
         prior_cycle_brief=True,
         increment_test_scope=True,
         authoring_seam=AuthoringSeam.BUILD_AUTHORING,
+        prompt_templates=(
+            "request.qa_test.test_validate",
+            "request.qa_test_assembly_notes_appendix",
+            "request.qa_test_behavior_contract_appendix",
+            "request.qa_test_client_surface_appendix",
+            "request.qa_test_dom_anchor_appendix",
+            "request.qa_test_frozen_surface_appendix",
+            "request.qa_test_proposed_behaviours_appendix",
+            "request.qa_test_retained_cases_appendix",
+            "request.qa_test_retake_appendix",
+            "request.qa_test_fill_mode_appendix",
+            "request.cycle_repair_anchored_edit_appendix",
+            "request.cycle_repair_current_files",
+            "request.increment_test_scope_appendix",
+            *_SHARED_CONTEXT_TEMPLATES,
+            *_CYCLE_TASK_RETRY_TEMPLATES,
+        ),
+        unrendered_inputs=_EVALUATION_ONLY_INPUTS,
     ),
     # --- planning chain (#657): upstream documents on an envelope-local
     # prior_outputs copy; all four authoring types receive a re-roll's
@@ -277,12 +389,15 @@ CONTEXT_CONTRACTS: dict[str, ContextAssemblyContract] = {
         artifact_landing=LANDING_PRIOR_OUTPUTS,
         plan_rejection_context=True,
         prior_cycle_brief=True,
+        prompt_templates=_PLANNING_TEMPLATES,
     ),
     # #811: the technical design answers an operator's revision request too. A note about
     # the interface is a note about the design, and a revision that changed only the manifest
     # would leave `technical_design.md` describing an interface that no longer exists.
     TaskType.DEVELOPMENT_DESIGN_PLAN: ContextAssemblyContract(
-        plan_rejection_context=True, prior_cycle_brief=True
+        plan_rejection_context=True,
+        prior_cycle_brief=True,
+        prompt_templates=_PLANNING_TEMPLATES,
     ),
     # #1692: an increment's test strategy covers its new criteria, and a retry's is written
     # knowing which of them failed before.
@@ -303,6 +418,13 @@ CONTEXT_CONTRACTS: dict[str, ContextAssemblyContract] = {
         ),
         artifact_landing=LANDING_PRIOR_OUTPUTS,
         plan_rejection_context=True,
+        prompt_templates=(
+            "request.development_author_manifest",
+            "request.manifest_authoring_rules_appendix",
+            "request.manifest_revision_feedback",
+            "request.manifest_revision_request_appendix",
+            *_SHARED_CONTEXT_TEMPLATES,
+        ),
     ),
     TaskType.DEVELOPMENT_PROPOSE_PLAN_TASKS: ContextAssemblyContract(
         artifact_filter=ArtifactFilter(
@@ -315,6 +437,7 @@ CONTEXT_CONTRACTS: dict[str, ContextAssemblyContract] = {
         plan_rejection_context=True,
         bind_criteria_index=True,
         prior_cycle_brief=True,
+        prompt_templates=("request.development_propose_plan_tasks", *_PLAN_PROPOSAL_TEMPLATES),
     ),
     TaskType.QA_PROPOSE_PLAN_TASKS: ContextAssemblyContract(
         artifact_filter=ArtifactFilter(
@@ -329,6 +452,7 @@ CONTEXT_CONTRACTS: dict[str, ContextAssemblyContract] = {
         plan_rejection_context=True,
         bind_criteria_index=True,
         prior_cycle_brief=True,
+        prompt_templates=("request.qa_propose_plan_tasks", *_PLAN_PROPOSAL_TEMPLATES),
     ),
     TaskType.STRATEGY_PROPOSE_PLAN_GUIDANCE: ContextAssemblyContract(
         artifact_filter=ArtifactFilter(
@@ -340,6 +464,7 @@ CONTEXT_CONTRACTS: dict[str, ContextAssemblyContract] = {
         artifact_landing=LANDING_PRIOR_OUTPUTS,
         plan_rejection_context=True,
         prior_cycle_brief=True,
+        prompt_templates=("request.strategy_propose_plan_guidance", *_PLAN_PROPOSAL_TEMPLATES),
     ),
     # --- wrap-up pipeline (#683): the run-level verification_evidence
     # injection fires when any planned task carries the flag.
@@ -352,9 +477,26 @@ CONTEXT_CONTRACTS: dict[str, ContextAssemblyContract] = {
     # threads other context through this registry: the proposal's arrives on its launch
     # (SIP-0109 §9.1), and the pulse repair chain composes its own (SIP-0070).
     TaskType.STRATEGY_PROPOSE_INCREMENT: ContextAssemblyContract(
-        authoring_seam=AuthoringSeam.PROPOSAL_WRITING
+        authoring_seam=AuthoringSeam.PROPOSAL_WRITING,
+        # SIP-0113 §4.5: its ``proposal_evidence`` input is rendered, so it's counted as its own.
+        prompt_templates=(
+            "request.strategy_propose_increment",
+            # SIP-0113 §4.5: what the proposal is shown of its accepted tree, from its evidence.
+            "request.proposal_accepted_prd",
+            "request.proposal_outcome_goals",
+            "request.proposal_quality_moves",
+            "request.proposal_abandoned_increment",
+            "request.proposal_frozen_conventions",
+            "request.proposal_prd_section",
+            "request.proposal_qa_proposed_behaviours",
+            "request.proposal_supervisor_revision",
+            "request.proposal_unapproved_proposals",
+            "request.change_request_revision_feedback",
+        ),
     ),
-    TaskType.DEVELOPMENT_REPAIR: ContextAssemblyContract(authoring_seam=AuthoringSeam.REPAIR),
+    TaskType.DEVELOPMENT_REPAIR: ContextAssemblyContract(
+        authoring_seam=AuthoringSeam.REPAIR, prompt_templates=("request.repair_task_base",)
+    ),
     TaskType.DATA_GATHER_EVIDENCE: ContextAssemblyContract(wrapup_evidence=True),
     TaskType.QA_ASSESS_OUTCOMES: ContextAssemblyContract(wrapup_evidence=True),
     TaskType.DATA_CLASSIFY_UNRESOLVED: ContextAssemblyContract(wrapup_evidence=True),
@@ -435,6 +577,39 @@ DECLARED_NO_CONTEXT: frozenset[str] = frozenset(
 #: asking for parity is what produced two inert renderers.
 REPAIR_CONTEXT_CONTRACT = ContextAssemblyContract(
     authoring_seam=AuthoringSeam.REPAIR,
+    prompt_templates=(
+        ("request.cycle_repair_task", "request.cycle_task_base"),
+        "request.cycle_repair_anchored_edit_appendix",
+        "request.cycle_repair_anchored_edit_retry",
+        "request.cycle_repair_app_traceback_appendix",
+        ("request.cycle_repair_closing_scoped", "request.cycle_repair_closing_whole_file"),
+        "request.cycle_repair_contract_expectations_appendix",
+        "request.cycle_repair_current_files",
+        "request.cycle_repair_decision_lead",
+        "request.cycle_repair_decision_rule",
+        "request.cycle_repair_loop_state",
+        ("request.cycle_repair_output_scoped", "request.cycle_repair_output_whole_file"),
+        "request.qa_test_client_surface_appendix",
+        "request.qa_test_dom_anchor_appendix",
+        "request.qa_test_frozen_surface_appendix",
+        "request.qa_test_repair_failing_cases_appendix",
+        "request.qa_test_repair_fill_appendix",
+        "request.disputed_checks_appendix",
+        *_DEVELOP_APPENDIX_TEMPLATES,
+    ),
+    # The repair shows the failed task's named files from the accepted tree (its current-files
+    # section), so that tree is counted whole, an upper bound. It never shows the curated context
+    # or the product's repository, and has no shared context slots.
+    unrendered_inputs=frozenset(
+        {
+            "workspace_revision_id",
+            "artifact_refs",
+            "artifact_contents",
+            "source_repository",
+            "resolved_config",
+        }
+    ),
+    fill_only_appendix=True,
     manifest_surfaces=(
         SURFACE_ERROR_CONTRACT,
         SURFACE_MODEL,
@@ -583,6 +758,19 @@ def get_context_contract(task_type: str) -> ContextAssemblyContract:
     """The task type's declared contract; the empty contract for undeclared
     types (base enrichment only — chain context and artifact refs)."""
     return CONTEXT_CONTRACTS.get(task_type, _EMPTY_CONTRACT)
+
+
+def prompt_contract_of(task_type: str) -> ContextAssemblyContract:
+    """The contract that declares ``task_type``'s prompt (#2681): its own, or for a correction
+    loop's repair type the shared ``REPAIR_CONTEXT_CONTRACT``, as :func:`authoring_seam_of` reads
+    its seam."""
+    contract = get_context_contract(task_type)
+    if contract.authoring_seam is not None or contract.plan_rejection_context:
+        return contract
+    # deferred (cycle): cycles.task_plan loads this module
+    from squadops.cycles.task_plan import REPAIR_TASK_TYPES
+
+    return REPAIR_CONTEXT_CONTRACT if task_type in REPAIR_TASK_TYPES else contract
 
 
 def authoring_seam_of(task_type: str) -> AuthoringSeam | None:

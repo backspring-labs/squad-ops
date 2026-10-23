@@ -3418,6 +3418,78 @@ for every change that checks a unit's dispatches.
   - an unchanged binding re-bound;
   - a campaign's reference re-bound in place.
 
+## 5ak. A task composed at its own dispatch, its prompt measured as its handler renders it (2026-10-22, #2681, #2684; the MacBook lane, under the owner's delegation of 2026-10-18, with the Spark lane's G4 of the same day)
+
+**What was wrong**, found by #2183's T17 and T12 on the Mac:
+- **The budget missed most of the prompt.** §5r's measure counted a task's inputs as JSON when the run's plan was
+  composed. But the executor adds a task's upstream outputs, the accepted tree and the product's repository at
+  dispatch (`_enrich_envelope`), and the agent renders a system prompt and templates around them. On a develop task the
+  composer counted 1,094 tokens outside memory's sections, and the agent rendered 2,338. So a binding the composer
+  admitted could be refused at the agent's guard instead of held. T17's case A left 300 tokens of lesson text by the
+  composer's count, and the guard refused the prompt at 29,877 tokens against 28,672.
+- **The two reserves differed.** The composer reserved the model's default completion. The guard adds the thinking a
+  reasoning level buys: 6,144 on a toggle model.
+- **Every task read as dispatched from the run's start (#2684).** Each authoring task's exposure was recorded when the
+  plan was, and §5w reads exposures as dispatches. So §3.5's instruction added after admission was refused for every
+  task, including one in a run that had never dispatched anything.
+
+**What changed:**
+- **Each task is composed at its own dispatch.** The executor composes a task after `_enrich_envelope`
+  (`supply_the_dispatch`, at the first dispatch and every later one), measured on the copy it sends, under
+  `BindingHolds`. A binding that can't be read, bound or fitted holds the run at the task's boundary, as a re-dispatch's
+  already did (§5ag).
+- **The plan is only checked before the first dispatch** (`check_the_plan`). A binding that can't be read, bound or
+  fitted even on the plan envelope holds the run there, and its held answer is disclosed. The plan envelope lacks what
+  enrichment adds, so its budget is at least the dispatch's: a task held at provisioning is one its dispatch would hold
+  too. Nothing else is disclosed or handed there.
+- **The prompt is measured as rendered** (`capabilities/prompt_budget.py`). The budget is the window less the
+  completion reserve and the prompt outside memory's sections, each part at an upper bound:
+  - the system prompt from the shipped fragments: the largest identity, the global constraints, the `agent_start`
+    lifecycle, the task's own fragment and the seam's supplement at its largest;
+  - every template the seam's handler may render, as the seam's contract declares them
+    (`ContextAssemblyContract.prompt_templates`), alternatives at their largest, and the development profile's
+    fill-only appendix at the largest shipped;
+  - the raw text of each input the task carries, except memory's sections and those the contract declares unrendered.
+- **One reserve.** `completion_reserve` is the guard's own computation (`_resolve_model_budget` calls it), and the
+  composer calls it with no capability ceiling: equal to the guard's wherever a capability's ceiling is at least its
+  model's default, and larger where it isn't. Neither can change without the other.
+- **An exposure is a dispatch.** §5w refuses only a task that has actually been dispatched, which is what §5w meant, so
+  #2684 is a fix, not a change. #2545's one recording turn per run is one per task. Each exposure names the snapshot it
+  read and the revisions it was handed, so a re-binding between two tasks of a run shows in that run's exposures.
+
+**How conservative it is.** Each part is an upper bound, so a binding the composer admits always fits the guard.
+`tests/unit/memory/test_prompt_budget_parity.py` renders each seam through its own handler and holds the composer's
+count at or above the rendered prompt. The over-count runs from about 300 tokens (the increment proposal) to about
+9,400 (a correction repair, which declares many appendices and carries the whole accepted tree it shows files from).
+Against the Spark's models (65,536 to 262,144 tokens) that is at most 14%. Against the Mac's 32,768-token models it
+is up to about 29%, so a task within that of the window that carries binding sections may be held where its guard
+would have passed it. If such a hold is seen, the next step is rendering each seam exactly.
+
+**What stays:** the lesson selection (§5r), the hold and its release causes (§5ag), the exposure's form, and repairs,
+which were already composed at their own dispatch.
+
+**Evidence:**
+- **`test_prompt_budget_parity.py`:** twelve cases through each seam's own handler (develop on both paths, `qa.test`
+  on both paths, the builder, a plan writer, each plan proposer, the increment proposal, a correction repair and the
+  manifest author), with the shipped fragments and templates.
+- **`tests/unit/capabilities/test_prompt_budget.py`:**
+  - the composer's reserve equals the guard's on a toggle model at every reasoning level, and the thinking is
+    reserved;
+  - the budget's arithmetic, with an unregistered model at `-1`;
+  - every authoring seam declares its templates.
+- **`tests/unit/cycles/test_failure_recall.py`:**
+  - provisioning, entered at `RunProvisioning.prepare`, hands and discloses nothing;
+  - a dispatch, entered at `execute_run`, carries the lessons its own exposure names;
+  - a binding that fits the plan envelope but not the enriched one holds at the dispatch.
+- **The execute-task characterization golden** gains one `supply_the_dispatch(envelope, enriched)` call per case,
+  before the dispatch.
+- **Mutants, each caught:**
+  - no supply at the first dispatch;
+  - the budget measured on the plan envelope;
+  - provisioning disclosing every answer;
+  - the budget counting inputs alone;
+  - the thinking dropped from the reserve.
+
 ## 6. Mode neutrality: cycle, duty, and ambient utilization
 
 Phase 1 implements the cycle-mode loop, but the substrate is designed so duty- and

@@ -27,7 +27,7 @@ from squadops.campaigns.increment_tree import approved_change_request, starting_
 from squadops.cycles.models import Cycle, RunStatus, WorkloadType
 from squadops.cycles.task_plan import generate_task_plan
 from squadops.events.types import EventType
-from squadops.execution.binding_holds import supplied_or_held
+from squadops.execution.binding_holds import checked_or_held
 from squadops.execution.execution_errors import _ExecutionError
 from squadops.execution.proposal_evidence import with_proposal_evidence
 from squadops.stacks.scaffold import frozen_paths
@@ -189,12 +189,11 @@ class RunProvisioning:
         # holds them.
         plan = await with_proposal_evidence(self._proposal_evidence, plan, cycle=cycle)
         # SIP-0110 §0.9: each plan-writing and build-authoring task asks its unit's pinned snapshot
-        # for the lessons approved for it, and every answer is disclosed. A task handed none keeps
-        # the inputs it had before memory existed, so its prompt is unchanged.
-        # #2178: the same answer carries each task's instructions, binding. One that can't be read
-        # or fitted holds its task (§3.6), and the run with it, before its first dispatch: it is
-        # paused, says which and why, and starts when re-supply completes the binding.
-        plan = await supplied_or_held(
+        # for its lessons and instructions at its own dispatch, where its prompt can be measured
+        # (#2681). Before the first, the plan is checked: an instruction that can't be read, bound
+        # or fitted even now holds its task (§3.6), and the run with it. It is paused, says which and
+        # why, and starts when re-supply completes the binding. Nothing else is disclosed here.
+        plan = await checked_or_held(
             self._binding_holds.supplied,
             plan,
             recall=self._failure_recall,

@@ -17,6 +17,7 @@ from squadops.capabilities.handlers.base import (
     HandlerEvidence,
     HandlerResult,
 )
+from squadops.capabilities.prompt_budget import completion_reserve
 from squadops.capabilities.reasoning_policy import resolve_reasoning_level
 from squadops.cycles.acceptance_check_spec import (
     CHECK_SPECS,
@@ -504,28 +505,20 @@ class _CycleTaskHandler(CapabilityHandler):
 
         Returns (model_name, max_tokens, context_window).
         """
-        agent_overrides = inputs.get("agent_config_overrides", {})
         agent_model = inputs.get("agent_model") or None
         model_name = agent_model or default_model
         model_spec = get_model_spec(model_name)
-
-        max_tokens = capability_max_tokens
-        context_window = None
-        if model_spec is not None:
-            max_tokens = min(max_tokens, model_spec.default_max_completion)
-            context_window = model_spec.context_window
-        # #1173: the clamp above is an OUTPUT budget; thinking is billed against the
-        # same wire budget and the framework discards it. Add room for the level this
-        # capability declared, so declaring HIGH does not silently shrink the answer.
-        max_tokens += thinking_headroom(
-            resolve_reasoning_level(
-                self._task_type, agent_overrides=agent_overrides, model_name=agent_model
-            ),
-            model_spec,
+        # #2681: one reserve, the composer's and this guard's, so a binding the composer admits is
+        # one the guard passes. It clamps the capability's ceiling to the model's completion
+        # budget, then adds the thinking its reasoning level buys (#1173).
+        max_tokens = completion_reserve(
+            self._task_type,
+            model_name=model_name,
+            agent_model=agent_model,
+            agent_overrides=inputs.get("agent_config_overrides", {}),
+            capability_max_tokens=capability_max_tokens,
         )
-        if "max_completion_tokens" in agent_overrides:
-            max_tokens = agent_overrides["max_completion_tokens"]
-
+        context_window = model_spec.context_window if model_spec is not None else None
         return model_name, max_tokens, context_window
 
     def _capability_ceiling(self) -> int | None:

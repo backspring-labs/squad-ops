@@ -43,7 +43,7 @@ from squadops.capabilities.context_assembly import (
     wrapup_evidence_applies,
 )
 from squadops.capabilities.handlers.build_profiles import get_profile
-from squadops.capabilities.lesson_supply import supply_the_redispatch
+from squadops.capabilities.lesson_supply import supply_the_dispatch
 from squadops.cycles.build_completeness import compute_missing_required_files
 from squadops.cycles.checkpoint import RunCheckpoint
 from squadops.cycles.contract_derivation import (
@@ -607,7 +607,7 @@ class _TaskOutcomeRouter:
             await executor._binding_holds.supplied(
                 run_id,
                 cycle,
-                lambda: supply_the_redispatch(
+                lambda: supply_the_dispatch(
                     (_envelope, _enriched),
                     recall=executor._failure_recall,
                     cycle=cycle,
@@ -2098,6 +2098,7 @@ class DispatchedFlowExecutor(FlowExecutionPort):
             run_derived_contract=authored_contract,
         )
 
+        await self._supply_the_dispatch(envelope, enriched, cycle, run_id)
         task_run_id = await self._announce_dispatch(envelope, cycle, run_id, flow_run_id)
 
         # Dispatch + retry loop for retryable failures (SIP-0079). The routing of a failed
@@ -2154,6 +2155,24 @@ class DispatchedFlowExecutor(FlowExecutionPort):
             obs_ctx=obs_ctx,
             ledger=ledger,
             pulse=pulse,
+        )
+
+    async def _supply_the_dispatch(
+        self, envelope: TaskEnvelope, enriched: TaskEnvelope, cycle: Cycle, run_id: str
+    ) -> None:
+        """SIP-0110 §0.9, §3.6 (#2681): memory's sections composed for this dispatch, on the envelope
+        as it goes out (``enriched``), and disclosed as its exposure. One that can't be read, bound
+        or fitted holds the run here, at the task's boundary, until re-supply completes it."""
+        await self._binding_holds.supplied(
+            run_id,
+            cycle,
+            lambda: supply_the_dispatch(
+                (envelope, enriched),
+                recall=self._failure_recall,
+                cycle=cycle,
+                run_id=run_id,
+                now=datetime.now(UTC),
+            ),
         )
 
     async def _announce_dispatch(

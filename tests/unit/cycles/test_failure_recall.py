@@ -21,7 +21,7 @@ from adapters.memory.recall import SnapshotRecall
 from adapters.noop.ports import NoOpFailurePatternRecall, NoOpProposalEvidence
 from squadops.capabilities.context_assembly import authoring_seam_of
 from squadops.capabilities.handlers.fault_injection import PRIOR_ATTEMPTS_KEY
-from squadops.capabilities.lesson_supply import supply_lessons, supply_the_redispatch, unit_of
+from squadops.capabilities.lesson_supply import supply_lessons, supply_the_dispatch, unit_of
 from squadops.cycles.models import (
     AgentProfileEntry,
     Cycle,
@@ -310,7 +310,7 @@ async def test_a_redispatched_task_records_its_own_exposure_and_its_first_keeps_
     other = next(e for e in supplied if authoring_seam_of(str(e.task_type)) is None)
 
     for task in (design, other):
-        await supply_the_redispatch(
+        await supply_the_dispatch(
             _redispatched(task),
             recall=SnapshotRecall(store),
             cycle=_framing_cycle(),
@@ -344,7 +344,7 @@ async def test_a_redispatch_answered_with_nothing_carries_no_earlier_lesson():
         async def recall(self, query):
             return Recalled(None, RecallDisposition.FAILED)
 
-    await supply_the_redispatch(
+    await supply_the_dispatch(
         held,
         recall=_LessonsUnread(store),
         cycle=_framing_cycle(),
@@ -412,10 +412,15 @@ async def test_a_task_the_run_dispatches_again_records_an_exposure_per_dispatch(
     assert recorded == {(t, a) for t, a in dispatched if t in consuming}
 
 
-async def test_provisioning_supplies_the_plan_it_builds():
+_DESIGN_TASK = "development.design_plan"
+
+
+async def test_provisioning_checks_the_plan_and_hands_nothing():
     """Wiring, entered at ``RunProvisioning.prepare``, the step ``execute_run`` takes before
-    dispatch, with the real plan generation and the snapshot recall over a store. Bug caught: the
-    call site off the run's path, so an approved lesson would reach no envelope."""
+    dispatch, with the real plan generation and the snapshot recall over a store. Bug caught
+    (#2684): every authoring task's exposure recorded before any dispatched, so each read as
+    dispatched and an instruction added for a task that never ran was refused. The plan is only
+    checked here; each task is composed at its own dispatch."""
     from squadops.execution.dispatched_flow_executor import DispatchedFlowExecutor
     from squadops.execution.run_provisioning import RunInProgress
 
@@ -448,9 +453,92 @@ async def test_provisioning_supplies_the_plan_it_builds():
         state, cycle.cycle_id, run.run_id, "full", forwarding_overrides=None
     )
 
-    [design] = [e for e in state.plan if str(e.task_type) == "development.design_plan"]
-    assert design.inputs[LESSONS_INPUT]["lessons"][0]["revision_id"].endswith("@1")
-    assert await store.list_exposures(run.run_id)
+    [design] = [e for e in state.plan if str(e.task_type) == _DESIGN_TASK]
+    assert LESSONS_INPUT not in design.inputs
+    assert await store.list_exposures(run.run_id) == []
+
+
+async def test_a_dispatch_carries_the_lessons_its_own_exposure_names(reply_router):
+    """Wiring, entered at ``execute_run`` with the snapshot recall over a store holding a lesson for
+    the design writer. Bug caught (#2681): the lessons composed when the plan was, not at the
+    dispatch, so they never reached the envelope the agent received, or reached it without the
+    exposure that discloses them."""
+    from squadops.execution.dispatched_flow_executor import DispatchedFlowExecutor
+    from squadops.tasks.models import TaskResult
+
+    store = await _store_with(("Name the manifest element each criterion checks.", _DESIGN))
+    await _pinned(store, UnitKind.CYCLE, "cyc_recall")
+    cycle, run = _framing_cycle(), _framing_run()
+    registry = AsyncMock()
+    registry.get_cycle.return_value = cycle
+    registry.get_run.return_value = run
+    registry.get_latest_checkpoint.return_value = None
+    profiles = AsyncMock()
+    profiles.resolve_snapshot.return_value = (_PROFILE, "sha")
+    executor = DispatchedFlowExecutor(
+        cycle_registry=registry,
+        artifact_vault=AsyncMock(),
+        queue=reply_router.bind(AsyncMock()),
+        squad_profile=profiles,
+        task_timeout=5.0,
+        reply_router=reply_router,
+        project_registry=None,
+        campaign_registry=None,
+        campaign_progress=None,
+        box_verdict=None,
+        failure_recall=SnapshotRecall(store),
+        proposal_evidence=NoOpProposalEvidence(),
+    )
+    received: dict[str, dict] = {}
+
+    def responder(env):
+        received[env["task_type"]] = env.get("inputs") or {}
+        return TaskResult(task_id=env["task_id"], status="SUCCEEDED", outputs={"summary": "ok"})
+
+    reply_router.responder = responder
+    await executor.execute_run(cycle_id=cycle.cycle_id, run_id=run.run_id)
+
+    [exposure] = [
+        x for x in await store.list_exposures(run.run_id) if x.query.task_type == _DESIGN_TASK
+    ]
+    handed = received[_DESIGN_TASK][LESSONS_INPUT]["lessons"]
+    assert [lesson["revision_id"] for lesson in handed] == [
+        e["revision_id"] for e in exposure.recalled["intervention"]
+    ]
+
+
+async def test_a_binding_that_fits_the_plan_but_not_the_dispatch_holds_at_the_dispatch():
+    """#2681, entered at the two seams the executor calls: ``check_the_plan`` on the plan envelope
+    and ``supply_the_dispatch`` on it and the copy the executor enriched. Bug caught: the budget
+    measured on the plan envelope alone, so a project instruction that fit before the executor
+    added the task's upstream outputs was handed to a prompt the guard then refused."""
+    from adapters.memory.records import InMemoryMemoryRecords
+    from squadops.capabilities.lesson_supply import check_the_plan
+    from squadops.capabilities.prompt_budget import prompt_budget
+    from squadops.memory.task_instructions import TaskInstructionsUnavailable
+    from tests.unit.memory.test_project_instructions import _instruction
+
+    records = InMemoryMemoryRecords()
+    store = await _store_with()
+    cycle = _framing_cycle()
+    [design] = [e for e in _plan(cycle) if str(e.task_type) == _DESIGN_TASK]
+    room = prompt_budget(design)
+    await records.create(_instruction("mrec_fits", _DESIGN_TASK, text="x" * (room * 4 // 2)))
+    await pin_unit(store, unit_kind=UnitKind.CYCLE, unit_id=cycle.cycle_id, project_id="group_run",
+                   pinned_at=_NOW, disabled=False, records=records)  # fmt: skip
+    recall = SnapshotRecall(store, records=records)
+    enriched = dataclasses.replace(
+        design, inputs={**design.inputs, "prior_outputs": {"strat": "y" * (room * 4)}}
+    )
+
+    await check_the_plan([design], recall=recall, cycle=cycle, run_id="run_fit", now=_NOW)
+    with pytest.raises(TaskInstructionsUnavailable):
+        await supply_the_dispatch(
+            (design, enriched), recall=recall, cycle=cycle, run_id="run_fit", now=_NOW
+        )
+
+    [held] = await store.list_exposures("run_fit")
+    assert held.held and held.task_id == design.task_id
 
 
 async def test_a_correction_repair_is_supplied_its_lessons_when_it_is_composed():
