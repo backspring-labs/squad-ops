@@ -36,6 +36,7 @@ _SLOTTED = {
     "request.qa_propose_plan_tasks": "prior_cycle_section",
     "request.strategy_propose_plan_guidance": "prior_cycle_section",
     "request.development_develop.focused_build_task": "prior_cycle_section",
+    "request.development_develop.code_generate": "prior_cycle_section",
     "request.builder_assemble.build_assemble": "prior_cycle_section",
     "request.strategy_propose_increment": "prd_section",
     "request.cycle_repair_task": "disputed_checks_section",
@@ -456,6 +457,54 @@ async def test_the_test_author_shows_its_instructions_on_its_monolithic_path():
     ]
     assert order == sorted(order)
     assert "INSTRUCTIONS FOR THIS TASK" not in plain and "STANDING INSTRUCTIONS" not in plain
+
+
+async def test_the_developer_shows_its_memory_sections_on_its_monolithic_path():
+    """#2682, entered at ``DevelopmentDevelopHandler.handle`` with the shipped assets, on the path a
+    ``development.develop`` without a subtask focus takes (``request.development_develop
+    .code_generate``). Bug caught: the task's instructions, its project's and its lessons on the
+    envelope, and the exposure saying supplied, while this path's prompt showed none of them, as
+    ``qa.test``'s didn't (#2674, #2509). Handed none, the prompt is the one it rendered before."""
+    from squadops.capabilities.handlers.cycle.develop import DevelopmentDevelopHandler
+    from squadops.memory.project_instructions import PROJECT_INSTRUCTIONS_INPUT
+    from squadops.memory.task_instructions import TASK_INSTRUCTIONS_INPUT
+
+    task = {
+        "instructions": [
+            {
+                "record_id": "mrec_t",
+                "revision": 1,
+                "text": "Keep the board in memory.",
+                "references": [],
+            }
+        ]
+    }
+    project = {"instructions": [{"record_id": "mrec_p", "revision": 2,
+                                 "text": "Keep every function under forty lines.",
+                                 "references": []}]}  # fmt: skip
+    shown: list = []
+    plain: list = []
+
+    await DevelopmentDevelopHandler().handle(
+        _author_context(shown),
+        {"prd": "the PRD", TASK_INSTRUCTIONS_INPUT: task, PROJECT_INSTRUCTIONS_INPUT: project,
+         LESSONS_INPUT: _LESSONS},
+    )  # fmt: skip
+    await DevelopmentDevelopHandler().handle(_author_context(plain), {"prd": "the PRD"})
+
+    prompt = "\n".join(str(m.content) for m in shown[0])
+    order = [
+        prompt.index("## INSTRUCTIONS FOR THIS TASK"),
+        prompt.index("1. Keep the board in memory."),
+        prompt.index("## THIS PROJECT'S STANDING INSTRUCTIONS"),
+        prompt.index("1. Keep every function under forty lines."),
+        prompt.index(_HEADING),
+    ]
+    assert order == sorted(order)
+    assert _shows_the_lessons(prompt)
+    unchanged = "\n".join(str(m.content) for m in plain[0])
+    assert "INSTRUCTIONS FOR THIS TASK" not in unchanged and _HEADING not in unchanged
+    assert prompt.index("the PRD") < order[0]
 
 
 def test_every_template_showing_lessons_shows_both_instruction_slots_before_them():

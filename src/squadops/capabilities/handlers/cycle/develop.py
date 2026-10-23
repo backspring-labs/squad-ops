@@ -665,6 +665,11 @@ class DevelopmentDevelopHandler(_CycleTaskHandler):
             fill_only = await self._fill_only_section(renderer, inputs)
             if fill_only:
                 variables["fill_only_section"] = fill_only
+            # #2682: the context slots the focused path shows, on this path too: the product a
+            # source-backed run changes, the failed cycle a retry continues, this task's
+            # instructions and its project's, then the lessons. None handed renders the prompt
+            # unchanged.
+            variables.update(await context_sections(renderer, inputs or {}))
             rendered = await renderer.render(
                 "request.development_develop.code_generate",
                 variables,
