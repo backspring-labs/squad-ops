@@ -139,6 +139,18 @@ _REPAIR_CHAIN_LIMIT = 8
 #: queued or running was not an ending at all (#1754).
 _NOT_ENDED = frozenset({CycleStopReason.RUN_PAUSED, CycleStopReason.RUN_NOT_TERMINAL})
 
+#: Stops at an inter-workload gate. After a framing run, each one stops the cycle before its build
+#: (§24cb, #2704).
+_GATE_STOPS = frozenset(
+    {
+        CycleStopReason.PLAN_REJECTED,
+        CycleStopReason.GATE_REJECTED,
+        CycleStopReason.REVISION_UNAVAILABLE,
+        CycleStopReason.GATE_DECISION_UNRECOGNIZED,
+        CycleStopReason.GATE_FAILED,
+    }
+)
+
 #: The states a launched cycle runs in; its end moves the campaign to evaluating first (§17).
 _RUNNING_STATES = frozenset(
     {CampaignState.BUILDING, CampaignState.REPAIRING, CampaignState.RETRYING}
@@ -154,11 +166,13 @@ def cycle_ending(
 ) -> CycleEnding:
     """How the cycle ended, for the decision. The increment gate's rejection — and a proposal
     whose revisions were spent, which §9.5 counts as rejected — is ``rejected_at_gate``; a
-    proposal run that failed, or whose proposal the increment gate failed to submit (#2213), is
-    ``proposal_failed``; a plan gate whose escalation expired, its run cancelled for it, is
-    ``parked`` (§24bj; ``parked`` is read from the control log by ``escalation.parked_run``); a run
-    whose binding hold expired, cancelled for it, is ``held_store`` or ``held_input`` by the hold's
-    cause class (§24bw; ``binding_hold.held_expiry``); everything else reached its assessment."""
+    proposal run that failed, whose proposal the increment gate failed to submit (#2213), or whose
+    gate returned a decision it doesn't know (#2704), is ``proposal_failed``; a plan gate whose
+    escalation expired, its run cancelled for it, is ``parked`` (§24bj; ``parked`` is read from
+    the control log by ``escalation.parked_run``); a run whose binding hold expired, cancelled for
+    it, is ``held_store`` or ``held_input`` by the hold's cause class (§24bw;
+    ``binding_hold.held_expiry``); a framing run stopped at its plan gate is
+    ``stopped_at_plan_gate`` (§24cb, #2704); everything else reached its assessment."""
     if parked and last_run.status == RunStatus.CANCELLED.value:
         return CycleEnding.PARKED
     if held is not None and last_run.status == RunStatus.CANCELLED.value:
@@ -170,11 +184,13 @@ def cycle_ending(
     if last_run.workload_type == WorkloadType.PROPOSAL:
         if stopped_because in (CycleStopReason.GATE_REJECTED, CycleStopReason.REVISION_UNAVAILABLE):
             return CycleEnding.REJECTED_AT_GATE
-        if (
-            last_run.status == RunStatus.FAILED.value
-            or stopped_because is CycleStopReason.GATE_FAILED
+        if last_run.status == RunStatus.FAILED.value or stopped_because in (
+            CycleStopReason.GATE_FAILED,
+            CycleStopReason.GATE_DECISION_UNRECOGNIZED,
         ):
             return CycleEnding.PROPOSAL_FAILED
+    if last_run.workload_type == WorkloadType.FRAMING and stopped_because in _GATE_STOPS:
+        return CycleEnding.STOPPED_AT_PLAN_GATE
     return CycleEnding.ASSESSED
 
 
