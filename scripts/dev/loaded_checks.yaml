@@ -1648,3 +1648,14 @@ checks:
       from squadops.campaigns.launch_requests import CONTINUED_KEYS
       print(len(CONTINUED_KEYS), "repair_of" in CONTINUED_KEYS, "abandoned_increment" in CONTINUED_KEYS)
     expect: "9 False False"
+  - id: "1966"
+    what: QA plans and writes its tests by the faults a change could have, and writing no further test beyond the criteria is a correct answer (#1966's qa half, adopted)
+    container: squadops-eve
+    code: |
+      import pathlib, squadops.prompts as prompts
+      root = pathlib.Path(prompts.__file__).parent
+      plan = (root / "request_templates" / "request.qa_propose_plan_tasks.md").read_text()
+      task = (root / "fragments" / "shared" / "task_type" / "task_type.qa.test.md").read_text()
+      role = (root / "fragments" / "roles" / "qa" / "identity.md").read_text()
+      print("Plan by fault, not by count." in plan, "writing no further test is a correct answer" in task, "comprehensive test cases" in role)
+    expect: "True True False"
