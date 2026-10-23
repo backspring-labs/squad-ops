@@ -253,5 +253,7 @@ def test_the_windows_launches_resolve_to_the_hashes_main_recorded(path):
 
 
 def test_the_window_definitions_are_read():
-    """Bug caught: the frozen-hash test above passing on no definition (a moved directory)."""
-    assert len(_WINDOW_DEFINITIONS) == 6
+    """Bug caught: the frozen-hash test above passing on no definition (a moved directory). Seven:
+    the window's four, its two shakeouts, and SIP-0113 §4.5's reading, whose launches the window's
+    hashes pin too."""
+    assert len(_WINDOW_DEFINITIONS) == 7
