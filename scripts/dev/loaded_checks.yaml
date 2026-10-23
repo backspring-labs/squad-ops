@@ -1269,15 +1269,15 @@ checks:
       print("release_workspace" in ExecutionSandboxPort.__abstractmethods__, workspace._STORE_ENTRIES)
     expect: "True ('workspace', 'copies', 'revisions', 'lease.json')"
   - id: "2418-package-readings"
-    what: the campaign's evidence package (version 4) carries its outcome readings, from the runtime's scenario store
+    what: the campaign's evidence package (version 4 and on) carries its outcome readings, from the runtime's scenario store
     container: squadops-runtime-api
     code: |
       import inspect
       from squadops.campaigns.evidence import PACKAGE_VERSION
       from squadops.campaigns.progress import CampaignProgress
       param = inspect.signature(CampaignProgress).parameters["outcome_section"]
-      print(PACKAGE_VERSION, param.default is inspect.Parameter.empty)
-    expect: 4 True
+      print(PACKAGE_VERSION >= 4, param.default is inspect.Parameter.empty)
+    expect: True True
   - id: "2416-lint"
     what: the scenario runner lints each evaluated tree in the evaluator's image, by #1937's command
     container: squadops-sandbox-service
