@@ -14,11 +14,15 @@ import yaml
 
 from squadops.campaigns.change_request import (
     ChangeKind,
+    ChangeRequestError,
     ProposalContext,
     RefusalKind,
     apply_manifest_delta,
     content_hash,
+    load_stored_change_request,
     parse_change_request,
+    role_view,
+    stored_change_request,
     validate_proposal,
 )
 
@@ -354,3 +358,109 @@ def test_an_entity_fields_undefined_key_is_named_with_its_field():
 
     [refusal] = [r for r in verdict.refusals if r.kind is RefusalKind.UNDEFINED_KEY]
     assert f"fields[{op['definition']['fields'][0]['name']}].label" in refusal.detail
+
+
+# =============================================================================
+# The goals a proposal means to move (SIP-0113 §10t ruling 4)
+# =============================================================================
+
+_STORED_REQUESTS = sorted(_FIXTURES.glob("change-request-*.yaml"))
+
+
+@pytest.mark.parametrize("stored", _STORED_REQUESTS, ids=lambda p: p.stem)
+def test_a_request_naming_no_goal_keeps_the_identity_it_was_ruled_on(stored):
+    """Three requests stored and ruled on before §4.5. Bug caught: an empty ``moves_goals`` written
+    into the document or its hash, so every stored request is refused on load and every ruling
+    binds to a hash no request has."""
+    document = stored.read_text()
+    request = load_stored_change_request(document)
+    authored = {**yaml.safe_load(document), "moves_goals": []}
+    for derived in ("footprint", "content_hash", "proposal_id", "version", "baseline_tree"):
+        authored.pop(derived)
+
+    reparsed = parse_change_request(
+        authored,
+        proposal_id=request.proposal_id,
+        version=request.version,
+        baseline_tree=request.baseline_tree,
+    )
+
+    assert content_hash(reparsed) == request.content_hash
+    assert stored_change_request(request) == document
+    assert role_view(document) is document
+
+
+def test_the_goals_a_request_names_are_bound_by_its_ruling_and_kept_from_every_other_role():
+    """Bugs caught: the goals left out of the hash, so a request whose named goals were changed
+    after its ruling still loads as ruled; and the framing shown them, so a build role learns
+    which held-out goal its work is aimed at."""
+    verdict = validate_proposal(
+        _authored(moves_goals=["goal_export"]), _context(shown_goals=("goal_export", "goal_sort"))
+    )
+    assert verdict.accepted, verdict.refusals
+    request = verdict.change_request
+    document = stored_change_request(request)
+    unnamed = validate_proposal(_authored(), _context()).change_request
+
+    assert load_stored_change_request(document).moves_goals == ("goal_export",)
+    assert request.content_hash != unnamed.content_hash
+    stripped = yaml.safe_dump(
+        {k: v for k, v in yaml.safe_load(document).items() if k != "moves_goals"}, sort_keys=False
+    )
+    with pytest.raises(ChangeRequestError, match="does not match its hash"):
+        load_stored_change_request(stripped)
+    view = role_view(document)
+    assert "goal_export" not in view
+    assert yaml.safe_load(view) == {
+        k: v for k, v in yaml.safe_load(document).items() if k != "moves_goals"
+    }
+
+
+@pytest.mark.parametrize(
+    ("shown", "named", "unknown"),
+    [
+        ((), ["goal_export"], "goal_export"),
+        (("goal_export", "goal_sort"), ["goal_sort"], None),
+        # Ruling 5: a goal already passing is still one it was shown, so it is not refused here.
+        (("goal_export",), ["goal_export", "goal_other", "goal_other"], "goal_other"),
+        (("goal_export",), ["goal_a", "goal_export", "goal_b", "goal_b"], "goal_a, goal_b"),
+    ],
+)
+def test_a_proposal_may_name_only_the_goals_it_was_shown(shown, named, unknown):
+    """Bugs caught: an invented goal id accepted, so the ledger reads a prediction against a goal
+    no proposal could see; a shown goal refused; or only the first unknown id named, so a
+    revision fixes one per round."""
+    verdict = validate_proposal(_authored(moves_goals=named), _context(shown_goals=shown))
+
+    refused = [r.detail for r in verdict.refusals if r.kind is RefusalKind.UNKNOWN_GOAL]
+    if unknown is None:
+        assert verdict.accepted and refused == []
+    else:
+        assert refused == [
+            f"moves_goals names {unknown}, which is not the id of a goal this proposal was "
+            "shown; name only goals its evidence lists"
+        ]
+
+
+def test_an_unknown_goal_is_refused_with_every_other_refusal():
+    """Every refusal, never only the first. Bug caught: the goal rail returning early, so the
+    model fixes one reason per revision and spends its budget."""
+    verdict = validate_proposal(
+        _authored(moves_goals=["goal_x"], must_not_break=["Z9"]), _context()
+    )
+
+    assert {r.kind for r in verdict.refusals} >= {
+        RefusalKind.UNKNOWN_GOAL,
+        RefusalKind.UNKNOWN_PRIOR_CRITERION,
+    }
+
+
+@pytest.mark.parametrize("named", ["goal_export", [""], [3], {"goal_export": True}])
+def test_moves_goals_that_is_not_a_list_of_ids_is_malformed(named):
+    """Bug caught: a string read as its characters, or a blank id carried to the ledger."""
+    verdict = validate_proposal(
+        _authored(moves_goals=named), _context(shown_goals=("goal_export",))
+    )
+
+    [refusal] = verdict.refusals
+    assert refusal.kind is RefusalKind.MALFORMED and "moves_goals" in refusal.detail

@@ -41,6 +41,7 @@ from squadops.capabilities.handlers.task_instructions import (
     project_instructions_section,
     task_instructions_section,
 )
+from squadops.outcomes.proposal_evidence import PROPOSAL_EVIDENCE_INPUT, shown_goal_ids
 from squadops.stacks.scaffold import frozen_conventions_for
 from squadops.tasks.task_types import TaskType
 
@@ -61,8 +62,12 @@ class ProposalContextMissing(ValueError):
     """The cycle's configuration does not carry the campaign's proposal context."""
 
 
-def proposal_context_from(resolved_config: dict, baseline_manifest: str) -> ProposalContext:
-    """The rails' context from the cycle's ``campaign_proposal`` block and the fetched manifest."""
+def proposal_context_from(
+    resolved_config: dict, baseline_manifest: str, *, shown_goals: tuple[str, ...]
+) -> ProposalContext:
+    """The rails' context from the cycle's ``campaign_proposal`` block and the fetched manifest,
+    and the goals the task's evidence showed it (SIP-0113 §4.5), which its ``moves_goals`` may
+    name."""
     block = resolved_config.get("campaign_proposal")
     if not isinstance(block, dict):
         raise ProposalContextMissing(
@@ -84,6 +89,7 @@ def proposal_context_from(resolved_config: dict, baseline_manifest: str) -> Prop
             expected_stack=str(resolved_config.get("build_profile") or ""),
             allowed_scope=tuple(str(s) for s in objective["allowed_scope"]),
             prior_criteria=tuple(str(c) for c in block.get("prior_criteria") or ()),
+            shown_goals=shown_goals,
         )
     except (KeyError, TypeError, ValueError) as e:
         raise ProposalContextMissing(f"campaign_proposal is incomplete: {e!r}") from e
@@ -179,7 +185,9 @@ class StrategyProposeIncrementHandler(_PlanningTaskHandler):
         block = resolved_config.get("campaign_proposal") or {}
         try:
             proposal_context = proposal_context_from(
-                resolved_config, str(block.get("baseline_manifest") or "")
+                resolved_config,
+                str(block.get("baseline_manifest") or ""),
+                shown_goals=shown_goal_ids(inputs.get(PROPOSAL_EVIDENCE_INPUT)),
             )
         except ProposalContextMissing as e:
             return self._failure(start_time, inputs, str(e))

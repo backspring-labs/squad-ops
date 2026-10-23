@@ -838,7 +838,12 @@ def _increment_inputs(
     change request, its framed objective (§7.3); each ``increment_evaluation`` task what its
     judgement needs (§8)."""
     if change_request is not None and run.workload_type == WorkloadType.FRAMING:
-        return {"increment_change_request": change_request}
+        # deferred (cycle): campaigns.change_request's package loads this module
+        from squadops.campaigns.change_request import role_view
+
+        # SIP-0113 §10t ruling 4: without the goals it means to move, which only its proposer and
+        # the supervisor see.
+        return {"increment_change_request": role_view(change_request)}
     if get_context_contract(task_type).increment_evaluation:
         return dict(evaluation.inputs)
     # #1884: the suite's author is handed what its tests may assert. WHO is the registry's

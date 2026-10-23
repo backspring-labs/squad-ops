@@ -129,6 +129,10 @@ class ChangeRequest:
     must_not_break: tuple[str, ...]
     retires: tuple[Retirement, ...] = ()
     replaces_verifiers: tuple[Retirement, ...] = ()
+    #: SIP-0113 §10t ruling 4: the goals the proposal means to move, by the ids it was shown. Read
+    #: after the build by the ledger; left out of the document and its hash when empty, so every
+    #: request stored before §4.5 keeps its identity. Only the proposer and the supervisor see it.
+    moves_goals: tuple[str, ...] = ()
     footprint: tuple[str, ...] = ()
     content_hash: str = ""
 
@@ -147,6 +151,7 @@ class RefusalKind(StrEnum):
     NOTHING_TO_BUILD = "nothing_to_build"
     UNDEFINED_KEY = "undefined_key"
     SURFACE_OUTSIDE_FOOTPRINT = "surface_outside_footprint"
+    UNKNOWN_GOAL = "unknown_goal"
 
 
 @dataclass(frozen=True)
@@ -228,6 +233,7 @@ def parse_change_request(
             must_not_break=tuple(str(i) for i in authored.get("must_not_break") or ()),
             retires=_retirements(authored.get("retires")),
             replaces_verifiers=_retirements(authored.get("replaces_verifiers")),
+            moves_goals=_goal_ids(authored.get("moves_goals")),
         )
     except (KeyError, TypeError, ValueError) as e:
         if isinstance(e, ChangeRequestError):
@@ -245,8 +251,28 @@ def parse_change_request(
 def stored_change_request(request: ChangeRequest) -> str:
     """The document the proposal run stores (``change_request.yaml``), which
     ``load_stored_change_request`` reads back: every field, the derived ones included, as plain
-    YAML data."""
-    return yaml.safe_dump(_plain(dataclasses.asdict(request)), sort_keys=False, allow_unicode=True)
+    YAML data. ``moves_goals`` only when it names a goal (§10t ruling 4)."""
+    return _dumped(_authored_fields(dataclasses.asdict(request)))
+
+
+def role_view(document: str) -> str:
+    """A stored change request as every role but its proposer is shown it: without the goals it
+    means to move (SIP-0113 §10t ruling 4), so no framing or build role is told which held-out
+    goal its work is aimed at. A document that names none is returned as it is. For showing only:
+    its hash is the whole request's, so it is never loaded back."""
+    data = yaml.safe_load(document)
+    if not isinstance(data, dict) or "moves_goals" not in data:
+        return document
+    return _dumped({k: v for k, v in data.items() if k != "moves_goals"})
+
+
+def _authored_fields(payload: dict) -> dict:
+    """``payload`` without an empty ``moves_goals``: absent, as in every request before §4.5."""
+    return {k: v for k, v in payload.items() if k != "moves_goals" or v}
+
+
+def _dumped(data: dict) -> str:
+    return yaml.safe_dump(_plain(data), sort_keys=False, allow_unicode=True)
 
 
 def _plain(value: Any) -> Any:
@@ -291,6 +317,17 @@ def _text(raw: Any, key: str) -> str:
     return value
 
 
+def _goal_ids(raw: Any) -> tuple[str, ...]:
+    if raw is None:
+        return ()
+    if not isinstance(raw, list):
+        raise ChangeRequestError("moves_goals is a list of the goal ids the proposal was shown")
+    ids = tuple(raw)
+    if not all(isinstance(i, str) and i.strip() for i in ids):
+        raise ChangeRequestError("each of moves_goals is a goal id, as the evidence shows it")
+    return ids
+
+
 def _retirements(raw: Any) -> tuple[Retirement, ...]:
     return tuple(
         Retirement(criterion_id=_text(r, "criterion_id"), reason=_text(r, "reason"))
@@ -301,7 +338,7 @@ def _retirements(raw: Any) -> tuple[Retirement, ...]:
 def content_hash(request: ChangeRequest) -> str:
     """The hash a ruling binds to (§9.2): the authored content, not the derived fields or the
     proposal's identity."""
-    payload = dataclasses.asdict(request)
+    payload = _authored_fields(dataclasses.asdict(request))
     for derived in ("footprint", "content_hash", "proposal_id", "version", "baseline_tree"):
         payload.pop(derived)
     canonical = json.dumps(payload, sort_keys=True, separators=(",", ":"), default=str)
@@ -460,6 +497,8 @@ class ProposalContext:
     allowed_scope: tuple[str, ...]
     #: The ids of the criteria frozen by earlier accepted increments.
     prior_criteria: tuple[str, ...] = field(default_factory=tuple)
+    #: The ids of the goals the proposal was shown (SIP-0113 §4.5): what ``moves_goals`` may name.
+    shown_goals: tuple[str, ...] = field(default_factory=tuple)
 
 
 def outside_allowed_scope(paths: Iterable[str], allowed_scope: Sequence[str]) -> list[str]:
@@ -493,7 +532,11 @@ def validate_proposal(authored: dict, context: ProposalContext) -> ProposalVerdi
         )
         return ProposalVerdict(None, (ProposalRefusal(kind, str(e)),))
 
-    refusals = _criteria_refusals(request, context) + _undefined_key_refusals(request)
+    refusals = (
+        _criteria_refusals(request, context)
+        + _undefined_key_refusals(request)
+        + _goal_refusals(request, context)
+    )
     try:
         candidate = apply_manifest_delta(context.baseline_manifest, request.manifest_delta)
     except DeltaDoesNotFit as e:
@@ -582,6 +625,21 @@ def _criteria_refusals(request: ChangeRequest, context: ProposalContext) -> list
             )
         )
     return refusals
+
+
+def _goal_refusals(request: ChangeRequest, context: ProposalContext) -> list[ProposalRefusal]:
+    """SIP-0113 §10t ruling 4: a goal the proposal means to move is one it was shown. Naming one
+    that already passes is not refused; the ledger reads it as ``already passing`` (ruling 5)."""
+    unknown = [g for g in dict.fromkeys(request.moves_goals) if g not in set(context.shown_goals)]
+    if not unknown:
+        return []
+    return [
+        ProposalRefusal(
+            RefusalKind.UNKNOWN_GOAL,
+            f"moves_goals names {', '.join(unknown)}, which is not the id of a goal this proposal "
+            "was shown; name only goals its evidence lists",
+        )
+    ]
 
 
 def _undefined_key_refusals(request: ChangeRequest) -> list[ProposalRefusal]:
