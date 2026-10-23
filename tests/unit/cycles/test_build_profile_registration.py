@@ -29,7 +29,7 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from adapters.noop.ports import NoOpFailurePatternRecall
+from adapters.noop.ports import NoOpFailurePatternRecall, NoOpProposalEvidence
 from squadops.capabilities.handlers.build_profiles import BUILD_PROFILES
 from squadops.stacks import scaffold
 from squadops.stacks.scaffold import InterfaceManifest, ScaffoldStack
@@ -59,6 +59,7 @@ def _executor():
         campaign_progress=None,
         box_verdict=None,
         failure_recall=NoOpFailurePatternRecall(),
+        proposal_evidence=NoOpProposalEvidence(),
     )
 
 

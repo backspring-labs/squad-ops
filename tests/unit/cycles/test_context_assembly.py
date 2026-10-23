@@ -15,7 +15,7 @@ from unittest.mock import AsyncMock
 
 import pytest
 
-from adapters.noop.ports import NoOpFailurePatternRecall
+from adapters.noop.ports import NoOpFailurePatternRecall, NoOpProposalEvidence
 from squadops.capabilities import context_assembly as ca
 from squadops.cycles.models import ArtifactRef
 from squadops.tasks.models import TaskEnvelope
@@ -69,6 +69,7 @@ async def test_new_enrichment_is_a_registry_edit_only(reply_router, monkeypatch)
         campaign_progress=None,
         box_verdict=None,
         failure_recall=NoOpFailurePatternRecall(),
+        proposal_evidence=NoOpProposalEvidence(),
     )
     envelope = TaskEnvelope(
         task_id="t1",
@@ -207,6 +208,7 @@ def _executor_with(reply_router, universe):
         campaign_progress=None,
         box_verdict=None,
         failure_recall=NoOpFailurePatternRecall(),
+        proposal_evidence=NoOpProposalEvidence(),
     )
 
 

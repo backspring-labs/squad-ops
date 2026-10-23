@@ -25,10 +25,12 @@ from squadops.memory.exposures import Exposure
 from squadops.memory.lessons import RecallDisposition, Recalled
 from squadops.memory.models import MemoryEntry, MemoryQuery, MemoryResult
 from squadops.memory.recall import RecallQuery
+from squadops.outcomes.proposal_evidence import ProposalEvidence
 from squadops.ports.comms.queue import QueuePort
 from squadops.ports.llm.provider import LLMPort
 from squadops.ports.memory.recall import FailurePatternRecallPort
 from squadops.ports.memory.store import MemoryPort
+from squadops.ports.outcomes import ProposalEvidencePort
 from squadops.ports.prompts.service import PromptService
 from squadops.ports.telemetry.events import EventPort
 from squadops.ports.telemetry.metrics import MetricsPort
@@ -104,6 +106,15 @@ class NoOpMemoryPort(MemoryPort):
 
     async def delete(self, memory_id: str) -> bool:
         raise NotImplementedError("NoOpMemoryPort: memory not expected in cycle task handlers")
+
+
+class NoOpProposalEvidence(ProposalEvidencePort):
+    """Evidence for a composition with no evaluation store (tests and tools, and the runtime until
+    SIP-0113 §10t step 3's reader): nothing to show, so a proposal task keeps the inputs it had
+    before §4.5."""
+
+    async def for_proposal(self, *, campaign_id: str, accepted_cycle_id: str) -> ProposalEvidence:
+        return ProposalEvidence()
 
 
 class NoOpFailurePatternRecall(FailurePatternRecallPort):

@@ -23,6 +23,7 @@ if TYPE_CHECKING:
     from squadops.ports.cycles.workflow_tracker import WorkflowTrackerPort
     from squadops.ports.events.cycle_event_bus import CycleEventBusPort
     from squadops.ports.memory.recall import FailurePatternRecallPort
+    from squadops.ports.outcomes import ProposalEvidencePort
     from squadops.ports.projects.source_repository import SourceRepositoryPort
     from squadops.ports.runtime.activity import RuntimeActivityPort
     from squadops.ports.runtime.assignments import AssignmentPort
@@ -143,6 +144,7 @@ def create_flow_executor(
     campaign_progress: CampaignProgress | None,
     box_verdict: BoxVerdict | None,
     failure_recall: FailurePatternRecallPort,
+    proposal_evidence: ProposalEvidencePort,
     task_timeout: float,
     binding_fill: BindingFill | None,
     llm_observability: LLMObservabilityPort | None = None,
@@ -196,6 +198,7 @@ def create_flow_executor(
         campaign_progress=campaign_progress,
         box_verdict=box_verdict,
         failure_recall=failure_recall,
+        proposal_evidence=proposal_evidence,
         task_timeout=task_timeout,
         binding_fill=binding_fill,
         llm_observability=llm_observability,

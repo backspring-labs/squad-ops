@@ -15,6 +15,7 @@ import pytest
 from adapters.memory.cross_cycle import InMemoryCrossCycleMemoryStore
 from adapters.memory.recall import SnapshotRecall
 from adapters.memory.records import InMemoryMemoryRecords
+from adapters.noop.ports import NoOpProposalEvidence
 from squadops.capabilities.lesson_supply import (
     reaches,
     supply_lessons,
@@ -260,6 +261,7 @@ async def test_the_run_dispatches_the_instruction_with_its_task_and_its_redispat
         squad_profile=profiles, task_timeout=5.0, reply_router=reply_router, project_registry=None,
         campaign_registry=None, campaign_progress=None, box_verdict=None,
         failure_recall=SnapshotRecall(store, records=records),
+        proposal_evidence=NoOpProposalEvidence(),
     )  # fmt: skip
     handed: list[tuple[str, int, list[str]]] = []
 

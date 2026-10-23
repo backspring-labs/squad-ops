@@ -19,7 +19,7 @@ from adapters.cycles.memory_cycle_registry import MemoryCycleRegistry
 from adapters.memory.cross_cycle import InMemoryCrossCycleMemoryStore
 from adapters.memory.recall import SnapshotRecall
 from adapters.memory.records import InMemoryMemoryRecords
-from adapters.noop.ports import NoOpFailurePatternRecall
+from adapters.noop.ports import NoOpFailurePatternRecall, NoOpProposalEvidence
 from squadops.cycles.models import Run, RunHalt, RunStatus
 from squadops.memory.emergency import EMERGENCY_RESTART_OVERRIDE, halts_for, tasks_received
 from squadops.memory.records import withdrawn
@@ -75,6 +75,7 @@ async def test_a_halted_run_restarts_from_the_task_that_received_the_instruction
         squad_profile=profiles, task_timeout=5.0, reply_router=reply_router, project_registry=None,
         campaign_registry=None, campaign_progress=None, box_verdict=None,
         failure_recall=SnapshotRecall(store, records=records),
+        proposal_evidence=NoOpProposalEvidence(),
     )  # fmt: skip
     dispatched: list[tuple[str, str, bool]] = []
     halted = asyncio.Event()
@@ -127,6 +128,7 @@ def stubbed():
         squad_profile=AsyncMock(), task_timeout=5.0, project_registry=None,
         campaign_registry=None, campaign_progress=None, box_verdict=None,
         failure_recall=NoOpFailurePatternRecall(),
+        proposal_evidence=NoOpProposalEvidence(),
     )  # fmt: skip
     executor._cycle_event_bus = MagicMock()
     return executor, registry

@@ -19,7 +19,7 @@ import pytest
 import yaml
 
 from adapters.cycles.memory_campaign_registry import MemoryCampaignRegistry
-from adapters.noop.ports import NoOpFailurePatternRecall
+from adapters.noop.ports import NoOpFailurePatternRecall, NoOpProposalEvidence
 from squadops.campaigns.escalation import (
     EscalationIdentity,
     EscalationState,
@@ -279,6 +279,7 @@ async def _reach_the_gate(
         campaign_progress=None,
         box_verdict=None,
         failure_recall=NoOpFailurePatternRecall(),
+        proposal_evidence=NoOpProposalEvidence(),
     )
     executor._cycle_event_bus = MagicMock()
     executor._reject_invalid_plan_before_workload_gate = AsyncMock(return_value=[])

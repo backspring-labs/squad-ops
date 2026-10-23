@@ -30,7 +30,7 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 import yaml
 
-from adapters.noop.ports import NoOpFailurePatternRecall
+from adapters.noop.ports import NoOpFailurePatternRecall, NoOpProposalEvidence
 from squadops.capabilities.handlers.fenced_parser import extract_fenced_files
 from squadops.cycles.manifest_authoring import MANIFEST_ARTIFACT_TYPE
 from squadops.cycles.manifest_gates import assess_schema, assess_winnability
@@ -197,6 +197,7 @@ def _executor_for(manifest_yaml: str | None) -> tuple[DispatchedFlowExecutor, An
         campaign_progress=None,
         box_verdict=None,
         failure_recall=NoOpFailurePatternRecall(),
+        proposal_evidence=NoOpProposalEvidence(),
     )
     run = MagicMock()
     run.artifact_refs = refs
@@ -276,6 +277,7 @@ async def _forwarded(*artifacts: Any) -> dict[str, Any]:
         campaign_progress=None,
         box_verdict=None,
         failure_recall=NoOpFailurePatternRecall(),
+        proposal_evidence=NoOpProposalEvidence(),
     )
 
     cycle = MagicMock()

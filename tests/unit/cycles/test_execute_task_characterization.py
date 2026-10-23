@@ -45,7 +45,7 @@ from unittest.mock import AsyncMock
 
 import pytest
 
-from adapters.noop.ports import NoOpFailurePatternRecall
+from adapters.noop.ports import NoOpFailurePatternRecall, NoOpProposalEvidence
 from squadops.cycles.emission_integrity import EMISSION_FAILURE_KEY
 from squadops.cycles.models import Cycle, Gate, TaskFlowPolicy
 from squadops.cycles.run_ledger import RunLedger
@@ -400,6 +400,7 @@ def _executor(trace: _Trace, case: _Case, monkeypatch) -> DispatchedFlowExecutor
         campaign_progress=None,
         box_verdict=None,
         failure_recall=NoOpFailurePatternRecall(),
+        proposal_evidence=NoOpProposalEvidence(),
     )
     trace.name(executor._failure_recall, "failure_recall")
     executor._task_dispatcher = _ScriptedDispatcher(trace, case.attempts)

@@ -34,7 +34,7 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from adapters.noop.ports import NoOpFailurePatternRecall
+from adapters.noop.ports import NoOpFailurePatternRecall, NoOpProposalEvidence
 from adapters.tools.git_source import GitSourceRepository
 from squadops.campaigns.evaluator_trees import FileTree
 from squadops.capabilities.handlers.cycle.develop import DevelopmentDevelopHandler
@@ -149,6 +149,7 @@ def world(tmp_path):
         campaign_progress=None,
         box_verdict=None,
         failure_recall=NoOpFailurePatternRecall(),
+        proposal_evidence=NoOpProposalEvidence(),
         source_repository=GitSourceRepository(
             tmp_path / "cache",
             LocatorPolicy.of([], [str(tmp_path / "sources")]),

@@ -18,7 +18,7 @@ import pytest
 
 from adapters.memory.cross_cycle import InMemoryCrossCycleMemoryStore
 from adapters.memory.recall import SnapshotRecall
-from adapters.noop.ports import NoOpFailurePatternRecall
+from adapters.noop.ports import NoOpFailurePatternRecall, NoOpProposalEvidence
 from squadops.capabilities.context_assembly import authoring_seam_of
 from squadops.capabilities.handlers.fault_injection import PRIOR_ATTEMPTS_KEY
 from squadops.capabilities.lesson_supply import supply_lessons, supply_the_redispatch, unit_of
@@ -388,6 +388,7 @@ async def test_a_task_the_run_dispatches_again_records_an_exposure_per_dispatch(
         campaign_progress=None,
         box_verdict=None,
         failure_recall=SnapshotRecall(store),
+        proposal_evidence=NoOpProposalEvidence(),
     )
     dispatched: list[tuple[str, int]] = []
 
@@ -430,6 +431,7 @@ async def test_provisioning_supplies_the_plan_it_builds():
         campaign_progress=None,
         box_verdict=None,
         failure_recall=SnapshotRecall(store),
+        proposal_evidence=NoOpProposalEvidence(),
         task_timeout=5.0,
     )
     cycle, run = _framing_cycle(), _framing_run()

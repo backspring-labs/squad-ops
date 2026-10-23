@@ -114,6 +114,13 @@ class TaskType(StrEnum):
         return self in (TaskType.GOVERNANCE_DEFINE_DONE, TaskType.STRATEGY_PROPOSE_INCREMENT)
 
     @property
+    def shown_outcome_evidence(self) -> bool:
+        """The one step shown its campaign's outcome evidence: the increment's proposal, which
+        chooses the gap the next increment closes (SIP-0113 §4.5). No other role is shown a goal
+        (§10t ruling 1)."""
+        return self is TaskType.STRATEGY_PROPOSE_INCREMENT
+
+    @property
     def domain(self) -> str:
         """The dotted prefix — the role family that owns the step."""
         return self.value.split(".", 1)[0]
@@ -153,6 +160,12 @@ def fails_without_correction(task_type: object) -> bool:
     """``TaskType.fails_without_correction`` for a value that may be a raw string."""
     member = _member_or_none(task_type)
     return bool(member and member.fails_without_correction)
+
+
+def shown_outcome_evidence(task_type: object) -> bool:
+    """``TaskType.shown_outcome_evidence`` for a value that may be a raw string."""
+    member = _member_or_none(task_type)
+    return bool(member and member.shown_outcome_evidence)
 
 
 def emits_required_files(task_type: object) -> bool:

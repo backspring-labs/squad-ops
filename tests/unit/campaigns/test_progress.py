@@ -18,7 +18,7 @@ import yaml
 
 from adapters.cycles.memory_campaign_registry import MemoryCampaignRegistry
 from adapters.cycles.memory_cycle_registry import MemoryCycleRegistry
-from adapters.noop.ports import NoOpFailurePatternRecall
+from adapters.noop.ports import NoOpFailurePatternRecall, NoOpProposalEvidence
 from squadops.campaigns.continuation import CycleEnding
 from squadops.campaigns.evaluator_trees import FileTree
 from squadops.campaigns.launch_requests import start_transition
@@ -151,6 +151,7 @@ class _World:
             project_registry=None,
             box_verdict=None,
             failure_recall=NoOpFailurePatternRecall(),
+            proposal_evidence=NoOpProposalEvidence(),
         )
         self.executor._cycle_event_bus = MagicMock()
 

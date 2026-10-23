@@ -11,7 +11,7 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 
 from adapters.cycles.factory import create_flow_executor
-from adapters.noop.ports import NoOpFailurePatternRecall
+from adapters.noop.ports import NoOpFailurePatternRecall, NoOpProposalEvidence
 
 pytestmark = pytest.mark.domain_cycles
 
@@ -28,6 +28,8 @@ _UNWIRED = {
     "box_verdict": None,
     # #1964: required, and inert in 2.1; it has no ``None`` meaning, so the fixture passes it.
     "failure_recall": NoOpFailurePatternRecall(),
+    # SIP-0113 §10t: required with no ``None`` meaning, as the recall is.
+    "proposal_evidence": NoOpProposalEvidence(),
     # #2178: the launcher's fill a held campaign cycle calls; ``None``, no launcher runs.
     "binding_fill": None,
 }

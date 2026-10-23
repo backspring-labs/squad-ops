@@ -13,7 +13,7 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 import yaml
 
-from adapters.noop.ports import NoOpFailurePatternRecall
+from adapters.noop.ports import NoOpFailurePatternRecall, NoOpProposalEvidence
 from squadops.campaigns.change_request import (
     ProposalContext,
     apply_manifest_delta,
@@ -213,6 +213,7 @@ async def test_the_evaluation_is_handed_the_accepted_tree_as_the_increment_seede
         campaign_progress=None,
         box_verdict=None,
         failure_recall=NoOpFailurePatternRecall(),
+        proposal_evidence=NoOpProposalEvidence(),
     )
     executor._cycle_event_bus = MagicMock()
     [evaluation] = [
@@ -258,6 +259,7 @@ async def test_the_evaluation_is_handed_the_bundles_its_launch_pinned():
         campaign_progress=None,
         box_verdict=None,
         failure_recall=NoOpFailurePatternRecall(),
+        proposal_evidence=NoOpProposalEvidence(),
     )
     executor._cycle_event_bus = MagicMock()
     [evaluation] = [
@@ -382,6 +384,7 @@ async def test_the_evaluation_judges_the_candidate_with_its_qa_suites():
         campaign_progress=None,
         box_verdict=None,
         failure_recall=NoOpFailurePatternRecall(),
+        proposal_evidence=NoOpProposalEvidence(),
     )
     executor._cycle_event_bus = MagicMock()
     plan = _implementation(True, STORED)
