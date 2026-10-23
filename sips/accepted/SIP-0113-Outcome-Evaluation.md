@@ -433,7 +433,7 @@ Project Lifecycle Management (SIP-0112) states the seven contracts in its §8.2 
 | contract | this SIP |
 |---|---|
 | 1. Project identity and source revision | records the Project ID and the evaluated tree's identity; resolves a Git revision only through contract 4's mapping |
-| 2. `prepare_cycle()` and Campaign admission | adds nothing at `prepare_cycle()`; adds `scenario_suite` at Campaign creation (§4.7). **Amended by §10t:** §4.5's evidence is a key inside a proposal launch's admitted `campaign_proposal` block, stripped from every task envelope but the proposal's |
+| 2. `prepare_cycle()` and Campaign admission | adds nothing at `prepare_cycle()` or in a launch request; adds `scenario_suite` at Campaign creation (§4.7). §4.5's evidence never enters a cycle's config: it is composed into the proposal task's own inputs at dispatch (§10t) |
 | 3. `WorkspaceStore` | evaluates a disposable copy, never the live tree; no scenario file enters a workspace; names trees by identity, never by sandbox revision |
 | 4. Campaign accepted trees | reads regression against the previous accepted tree, by SIP-0109's identity |
 | 5. evaluation references | produces the evaluation record and its reference (`OutcomeEvaluationRef`), with the campaign ID nullable (§4.1); its names follow §0 |
@@ -1940,15 +1940,25 @@ further than §4.5 allows. These rulings settle the design before the first PR, 
   (`campaigns/change_request.py`). A new field would break every stored request unless it's left out when empty.
 
 **The rulings:**
-1. **The boundary is built first, before any evidence exists.**
-   - The evidence travels on the proposal launch, as `campaign_proposal.proposal_evidence`.
-   - One function, `squad_view(resolved_config, task_type)` in `cycles/`, strips it from every task's config except
-     `strategy.propose_increment`'s. It is applied where the plan and the correction runner compose envelopes, and again,
-     as a backstop, where `TaskDispatcher` publishes them.
-   - `bound_launch` drops the key from retries and repairs.
-   - An AST guard requires every envelope's `resolved_config` to pass through `squad_view`.
-   - Its tests push a synthetic block through the proposal, framing and implementation runs and a correction round:
-     the key is on the proposal's envelope only.
+1. **The evidence never enters a cycle's config.** A cycle's resolved config isn't only on every task's envelope:
+   - it is stored in the cycle registry and served by the cycles API;
+   - it is copied by `bound_launch` into retries and repairs;
+   - it is carried into the campaign's records, which a release attaches to its public Release (CLAUDE.md, the release
+     cut's step 7).
+
+   A goal statement there would reach every role and could be published.
+
+   **So the evidence is composed into one task's inputs at dispatch:** `inputs["proposal_evidence"]` on the proposal
+   run's `strategy.propose_increment` task, and nowhere else.
+   - It is read through a port in `ports/outcomes.py`, implemented in `squadops/outcomes/` over the evaluation store, and
+     injected by the composition root. `execution` imports the port, never `squadops.scenarios`, so the import guard
+     holds as it is.
+   - It is stored only where that task's inputs are: its authoring envelope and its generation, both local to the
+     deploy. It is never in a run artifact, a cycle record or a launch request.
+   - **This is built first, before any goal text exists:**
+     - a test pushes a proposal, a framing and an implementation run and a correction round through the executor, with
+       a fake port, and finds the key on the proposal task's inputs only;
+     - an AST guard keeps the key out of `resolved_config` and out of every launch request builder.
 2. **What the proposer is shown.**
    - **Each goal:** its id, its statement and its result, one of `passed`, `failed` or `not verified`. A
      `blocked_unverified` outcome is shown as `not verified` without its reason, since a reason such as
@@ -1976,9 +1986,9 @@ further than §4.5 allows. These rulings settle the design before the first PR, 
    - **The supervisor's gate notes never quote a goal.** That is the ruling-notes rule already. Memory observations take
      ruling reasons, so a quoted goal would reach them.
    - The live reading measures both with a `--goals` mode of the sweep.
-8. **Contract 2.** Nothing changes at `prepare_cycle()` or Campaign admission. The evidence is a key inside an already
-   admitted `campaign_proposal` block, as #2593's unapproved proposals are. §4.8's row 2 is amended here, and the launch
-   request's change takes the MacBook lane's review (G4).
+8. **Contract 2 is untouched.** Nothing changes at `prepare_cycle()`, at Campaign admission or in a launch request,
+   since the evidence goes to the task's inputs (ruling 1). §4.8's row 2 says so. The executor's change, a port injected
+   where the plan's tasks are composed, still goes to the MacBook lane for review, since `execution` is their ground.
 9. **The live reading** is pre-registered on its own: one `group_run` campaign of three increments on the 2.4 deploy,
    with nothing else changed (§10s, #1966).
    - Each proposal is approved as it stands, at version 1, unless the rails refuse it. The window's rule followed the
@@ -1988,7 +1998,7 @@ further than §4.5 allows. These rulings settle the design before the first PR, 
      envelopes and generations, the evaluator's records and the package.
 
 **The build order:** six PRs, each with a wiring test that enters where the live campaign does.
-1. the boundary;
+1. the port and its one injection point, with an empty implementation, and the boundary's tests;
 2. `moves_goals`;
 3. the evidence on the launch;
 4. the prompt's three sections (`request.strategy_propose_increment.md`, through the real renderer per
