@@ -132,3 +132,32 @@ class TestFillsAreEmittedFirst:
         additive = text.index("The plan also asked for the file(s) below.")
         assert rule < additive
         assert "lands on an additive file" in text
+
+
+class TestNoFurtherTestKeepsTheCriterionBound:
+    """#1966's adopted qa half. "No further test" is legal only beside SIP-0109 §8.2's rule
+    that every acceptance criterion still gets a test that fails without its behaviour. Bug
+    caught: an edit that keeps the permission and drops its bound, so QA leaves a criterion
+    untested and reads that as a correct answer."""
+
+    _PLAN_REQUEST = (
+        Path(__file__).resolve().parents[3]
+        / "src/squadops/prompts/request_templates/request.qa_propose_plan_tasks.md"
+    )
+
+    def test_the_criterion_rule_precedes_the_permission_and_is_never_optional(self):
+        criterion = _FRAGMENT.index(
+            "Each acceptance criterion your task carries still gets its test"
+        )
+        permission = _FRAGMENT.index("writing no further test is a correct answer")
+        assert criterion < permission
+        assert "That is never optional." in _FRAGMENT[criterion:permission]
+        assert _FRAGMENT.count("no further test") == 1
+
+    def test_the_planning_request_permits_no_task_only_where_criteria_already_verify(self):
+        text = self._PLAN_REQUEST.read_text()
+        assert (
+            "When the development tasks' acceptance criteria already verify a requirement, "
+            "proposing no further qa task for it is a correct answer."
+        ) in text
+        assert text.count("no further qa task") == 1

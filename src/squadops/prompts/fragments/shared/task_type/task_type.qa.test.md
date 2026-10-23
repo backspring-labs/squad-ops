@@ -1,7 +1,7 @@
 ---
 fragment_id: task_type.qa.test
 layer: task_type
-version: "0.9.26"
+version: "0.9.27"
 roles: ["qa"]
 ---
 # Task: Generate and Execute Tests (qa.test)
@@ -105,3 +105,10 @@ declare vitest), frontend UI tests are real deliverables:
   script, generate no frontend test files; the frontend build check covers
   compile-level integrity.
 - Prefer fewer tests that exercise real code paths over many shallow ones.
+- **Each test you add catches a fault.** Before writing one, name the wrong implementation of the
+  behaviour your task asks for that it would fail on: a requirement your task states, done wrong.
+  A test you can't name such a fault for protects nothing; leave it out.
+- **Each acceptance criterion your task carries still gets its test,** one that fails on an
+  implementation without the behaviour the criterion states. That is never optional.
+- **Beyond those, writing no further test is a correct answer.** A test that asserts what another
+  already asserts costs a run and catches nothing new.
