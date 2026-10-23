@@ -1603,3 +1603,12 @@ checks:
       root = (pathlib.Path(runtime.__file__).parent / "main.py").read_text()
       print("StoredProposalEvidence(" in root, carries_a_marker('the \\"Abcdef\\" one', ['"Abcdef"']))
     expect: "True True"
+  - id: "2677-prompt"
+    what: the strategy role is shown its campaign's goals, quality and accepted PRD from their own assets, and the rails refuse a request that repeats a goal (SIP-0113 §10t step 4)
+    container: squadops-nat
+    code: |
+      import pathlib, yaml, squadops.prompts as prompts
+      from squadops.campaigns.change_request import RefusalKind
+      asset = (pathlib.Path(prompts.__file__).parent / "request_templates" / "request.proposal_outcome_goals.md").read_text()
+      print(RefusalKind.GOAL_TEXT_COPIED.value, yaml.safe_load(asset.split("---")[1])["template_id"])
+    expect: "goal_text_copied request.proposal_outcome_goals"

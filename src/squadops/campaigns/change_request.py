@@ -152,6 +152,7 @@ class RefusalKind(StrEnum):
     UNDEFINED_KEY = "undefined_key"
     SURFACE_OUTSIDE_FOOTPRINT = "surface_outside_footprint"
     UNKNOWN_GOAL = "unknown_goal"
+    GOAL_TEXT_COPIED = "goal_text_copied"
 
 
 @dataclass(frozen=True)
@@ -499,6 +500,8 @@ class ProposalContext:
     prior_criteria: tuple[str, ...] = field(default_factory=tuple)
     #: The ids of the goals the proposal was shown (SIP-0113 §4.5): what ``moves_goals`` may name.
     shown_goals: tuple[str, ...] = field(default_factory=tuple)
+    #: Each shown goal's id and statement, which nothing every role reads may copy (§10t ruling 7).
+    shown_goal_statements: tuple[tuple[str, str], ...] = field(default_factory=tuple)
 
 
 def outside_allowed_scope(paths: Iterable[str], allowed_scope: Sequence[str]) -> list[str]:
@@ -536,6 +539,7 @@ def validate_proposal(authored: dict, context: ProposalContext) -> ProposalVerdi
         _criteria_refusals(request, context)
         + _undefined_key_refusals(request)
         + _goal_refusals(request, context)
+        + _goal_copy_refusals(request, context)
     )
     try:
         candidate = apply_manifest_delta(context.baseline_manifest, request.manifest_delta)
@@ -640,6 +644,34 @@ def _goal_refusals(request: ChangeRequest, context: ProposalContext) -> list[Pro
             "was shown; name only goals its evidence lists",
         )
     ]
+
+
+def _normalized(text: str) -> str:
+    return " ".join(text.casefold().split()).strip(" .;:,")
+
+
+def _goal_copy_refusals(request: ChangeRequest, context: ProposalContext) -> list[ProposalRefusal]:
+    """SIP-0113 §10t ruling 7: a goal's statement copied into what every role reads (a PRD
+    section, a criterion's statement or observable) would show the framing and build roles the
+    held-out goal the proposal was shown. Each copy is refused by the goal's id and where it is,
+    never by its text."""
+    places = [(f"prd_delta {s.id}", s.text) for s in request.prd_delta] + [
+        (f"criterion {c.id}", f"{c.statement} {c.observable}") for c in request.criteria
+    ]
+    refusals = []
+    for goal_id, statement in context.shown_goal_statements:
+        goal = _normalized(statement)
+        copied = [where for where, text in places if goal and goal in _normalized(text)]
+        if copied:
+            refusals.append(
+                ProposalRefusal(
+                    RefusalKind.GOAL_TEXT_COPIED,
+                    f"{', '.join(copied)} repeats goal {goal_id}'s statement word for word; every "
+                    "role reads them, and the goal is the evaluator's. State what your change "
+                    "does in your own words",
+                )
+            )
+    return refusals
 
 
 def _undefined_key_refusals(request: ChangeRequest) -> list[ProposalRefusal]:

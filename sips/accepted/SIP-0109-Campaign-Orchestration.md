@@ -3925,3 +3925,28 @@ that comes with the evidence it names (§10t step 4).
 
 **Who ruled.** The supervisor's design (SIP-0113 §10t ruling 4), under the owner's 2.4 delegation and D4's ruling of
 2026-10-22. For the owner's review.
+
+### 24bz. A campaign's proposal is shown its accepted tree's outcomes, and a request that repeats a goal is refused (2026-10-22, §9.1, §7.2, §24by; SIP-0113 §4.5, §10t rulings 2 and 7, #2677; the supervisor's design, for the owner)
+
+**What changed.** §9.1's proposal run is shown three more parts of its context, beside the PRD. Each is read by
+SIP-0113's reader from the campaign's own records, and each renders only when it holds something:
+- **the PRD as the accepted increments left it:** their `prd_delta` sections, folded by id in promotion order;
+- **the campaign's goals:** each goal of its pinned suite with its result on the accepted tree (`failed`, `not
+  verified`, `passed`, the gaps first), and how to name the ones the change aims at in `moves_goals` (§24by);
+- **the quality moves:** each measure against the first accepted build.
+
+A proposal outside a campaign, or one with nothing to show, renders as before and is never told of `moves_goals`.
+
+**One more rail, `goal_text_copied`.** A PRD section, or a criterion's statement or observable, that repeats a shown
+goal's statement word for word is refused by the goal's id and where, never by its text. Every framing and build role
+reads those fields, and the goal is the evaluator's (SIP-0113 §10t ruling 7). The goals asset tells the model to write
+them in the change's own words.
+
+**Evidence.** `request.strategy_propose_increment` v15 rendered through the real handler on a live proposal's stored
+inputs (`run_970b65eddddc`, `cmp_263d1e49aca8`), with the reader's evidence for the tree it proposed on. Without the
+evidence it reproduces the stored prompt exactly. With it, the request adds the three sections and 25 goal lines, from
+6,809 to 8,058 estimated tokens. The handler and rails tests: `tests/unit/capabilities/test_strategy_propose_increment.py`
+and `tests/unit/campaigns/test_change_request.py`.
+
+**Who ruled.** The supervisor's design (SIP-0113 §10t), under the owner's 2.4 delegation and D4's ruling of 2026-10-22.
+For the owner's review.
