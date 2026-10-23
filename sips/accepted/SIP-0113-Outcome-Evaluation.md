@@ -90,7 +90,7 @@ contribution separates from acceptance.
 | phase 1: the quality baselines, Lighthouse, axe and lint, in the evaluator's image (§4.2) | **shipped** (§10f): Lighthouse and axe on each evaluated instance's declared pages, and #1937's lint. Prediction 4, the done-when, read at the window's close: **holds** (spread 0 within a session, at most 0.03 between sessions) | 2.4.0, PRs #2474 and #2479, issue #2416 |
 | phase 1: the intervention ledger's classifications (§4.3) | **shipped** (§10d) | 2.4.0, PR #2454, issue #2417 |
 | phase 1: contribution and the derived metrics in the digest (§4.4, §4.6) | **shipped** (§10e): contribution per increment, the package's and digest's readings, the work class, the seven safety guarantees, and AOR's four inputs with the work envelope. Prediction 3 read at the window's close: **falsified as written** (all six counted increments read `contributed`). AOR's "every quality baseline held" input takes prediction 4's tolerance, which phase 2 reads (unplaced, D4) | 2.4.0, PRs #2470, #2481, #2485, #2487 and #2489, issue #2418 |
-| phase 2: the proposer sees each goal's result (§4.5), with SIP-0109 §24ap's `prd_delta` | **placed** by D4 (§10s) | 2.4.0, #2677 |
+| phase 2: the proposer sees each goal's result (§4.5), with SIP-0109 §24ap's `prd_delta` | **shipped** (§10t, §10u, §10v): built in six steps and read live on `cmp_ca24f3776ef8`. E0, E2, E3, E4 and E5 **hold**; E1 is **falsified as written** by one proposal shown only goals the evaluator couldn't check (§10v) | 2.4.0, PRs #2683, #2686, #2687, #2688, #2689, #2690 and #2691, issue #2677 |
 | phase 2: the objective's scenario measure, read by SIP-0109 §10 row 3, as a SIP-0109 amendment (§4.7) | **unplaced**, held by D4 (§10s) until a reading shows contribution separating from acceptance (prediction 3 was falsified as written at the window's close) | the next even release at the earliest, on that reading |
 | quality gates where phase 1's data supports a threshold (§4.2, §6) | **unplaced** | with §4.7, each with its phase-1 evidence (§10s) |
 | phase 1 amendment: Lighthouse and axe on a seeded instance, parameterised pages included (§10j; reviewed in §10n) | **shipped** (§10n, §10o): a second instance of each evaluated tree, seeded through its own API and measured on every page the seed names, and the window's 20 trees re-measured as their own series. S1 **holds**, S2 **falsified** (§10o) | 2.4.0, PRs #2632, #2633, #2634 and #2635, issue #2562 |
@@ -2068,3 +2068,53 @@ its task rows and its LangFuse generations) and the evaluator's records.* The pr
 on a deploy carrying all six steps, each proposal approved as it stands unless the rails refuse it. The delivery
 ledger's §4.5 row stays **placed** until that reading is recorded, since #2677 asks for it.
 
+### 10v. §4.5's live reading, recorded: five predictions hold, and E1 is falsified as written (2026-10-23; #2677; the supervisor's record, for the owner)
+
+Pre-registered in `docs/plans/verification-sets/2-4-0-proposal-evidence-preregistration.md` (#2691) and read by its
+rules. The record (counts and ids only) is `var/verification_sets/2-4-0-proposal-evidence/`.
+
+**The run:**
+- **The campaign:** `cmp_ca24f3776ef8`, one `group_run` campaign of three increments, FastAPI + React, revision 5
+  pinned, on `dep_1aa6d6f1c4e0` (c6e6e56c, all six of §10t's steps; 174 of 174 loaded checks).
+- **When:** started 2026-10-23 02:28Z and completed with success at 04:32Z, about two hours.
+- **The cycles:**
+  - a calibration;
+  - increment 1, promoted;
+  - increment 2, rejected because its criteria already held on the accepted app, then abandoned for a new proposal
+    (SIP-0109 §10 row 16);
+  - its replacement, promoted;
+  - increment 3, promoted.
+- **The rulings:** four proposals, each approved as it stood at version 1 with the note `Approved as proposed.`. The
+  rails refused one attempt inside a proposal run, `manifest_gates`, and revised it. None was `unknown_goal` or
+  `goal_text_copied`.
+
+**The predictions:**
+
+| | reading | result |
+|---|---|---|
+| E0, the evidence reaches the proposal | all 4 proposals carried `proposal_evidence` with goals, and rendered the goals section | **holds** |
+| E1, the proposals aim at gaps | 3 of 4 named only goals shown `failed` or `not verified`. The fourth was shown none failing (17 passed, 14 `not verified`) and named none | **falsified as written** |
+| E2, the named goals move | the promoted increments named 10 goals: 6 `moved`, 4 `not verified` after the build, none `still failing` | **holds**, 6 of 10 |
+| E5, the base rate | of the goals that weren't passing on each promoted increment's base tree, 6 of 10 named moved, and 0 of 40 unnamed did | **holds** |
+| E3, no step value leaks (P2) | 164 places hold a step value, every one a marker the baseline already held (9 of 59 by provenance). No new marker, no place unsearched | **holds** |
+| E4, the goals stay on the proposal | no goal outside the proposal's envelopes and generations and the evaluator's records. The positive control found all 17 goal markers there | **holds** |
+
+**What E1's falsification reads.** The fourth proposal's gaps were all `not verified`: 14 goals the evaluator
+couldn't check on that application, shown without their reason, by ruling 2. Proposal 1 named four of them beside four
+`failed` goals, and all four were still `not verified` after its build. A goal blocked by the evaluator offers a
+proposal nothing it can see to aim at. The prediction counted it as a gap, and the model didn't. It isn't amended
+after the fact: it was falsified as written, and this is why.
+
+**Counted beside them:**
+- **The abandoned increment's named goals moved.** On its own evaluation, both goals increment 2 named read `moved`,
+  though it was rejected because its criteria already held on the accepted app. Its build made the held-out goals pass
+  where its own criteria couldn't discriminate. Its replacement moved the same two, and was promoted.
+- **The named goals' `before` agrees** with what each proposal was shown, for all 12 (counting the abandoned
+  increment's).
+- Nothing read `already passing` or `regressed`.
+
+**What it doesn't cover:** one stack, one model, three increments, and no arm with the evidence withheld. E5 compares
+named goals with unnamed ones on the same increments, which isn't the same thing (the pre-registration's §7).
+
+**Who ruled:** the supervisor's record, under the owner's 2.4 delegation and D4's ruling of 2026-10-22. §4.5's ledger
+row is shipped, and phase 2's other two parts stay held by §10s.
