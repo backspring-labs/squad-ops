@@ -86,7 +86,7 @@ by* any new hit, or any place §6 names that couldn't be searched.
 **E4, the goals stay on the proposal.** `heldout_sweep.py --goals` finds nothing new against its baseline outside the
 excused places. Those are exactly the proposal's authoring envelopes, its LangFuse generations (attributed by the
 `task-…` span each hangs under) and the evaluator's records. *Falsified by* any new hit anywhere else, by an
-`unattributed` LangFuse row the campaign wrote, or by any place that couldn't be searched.
+`no_task_span` LangFuse row (one hanging under no task span) the campaign wrote, or by any place that couldn't be searched.
 - **Its positive control:** every goal the proposals were shown is found in the excused places
   (`goals_not_found_in_proposals` lists none of them). If any isn't, E4 is void, not held: the sweep didn't find what it
   looks for.
