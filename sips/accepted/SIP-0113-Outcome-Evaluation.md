@@ -433,7 +433,7 @@ Project Lifecycle Management (SIP-0112) states the seven contracts in its §8.2 
 | contract | this SIP |
 |---|---|
 | 1. Project identity and source revision | records the Project ID and the evaluated tree's identity; resolves a Git revision only through contract 4's mapping |
-| 2. `prepare_cycle()` and Campaign admission | adds nothing at `prepare_cycle()` or in a launch request; adds `scenario_suite` at Campaign creation (§4.7). §4.5's evidence never enters a cycle's config: it is composed into the proposal task's own inputs at dispatch (§10t) |
+| 2. `prepare_cycle()` and Campaign admission | adds nothing at `prepare_cycle()` or in a launch request; adds `scenario_suite` at Campaign creation (§4.7). §4.5's evidence never enters a cycle's config: it is composed into the proposal task's own inputs when the run's plan is composed (§10t) |
 | 3. `WorkspaceStore` | evaluates a disposable copy, never the live tree; no scenario file enters a workspace; names trees by identity, never by sandbox revision |
 | 4. Campaign accepted trees | reads regression against the previous accepted tree, by SIP-0109's identity |
 | 5. evaluation references | produces the evaluation record and its reference (`OutcomeEvaluationRef`), with the campaign ID nullable (§4.1); its names follow §0 |
@@ -1948,8 +1948,9 @@ further than §4.5 allows. These rulings settle the design before the first PR, 
 
    A goal statement there would reach every role and could be published.
 
-   **So the evidence is composed into one task's inputs at dispatch:** `inputs["proposal_evidence"]` on the proposal
-   run's `strategy.propose_increment` task, and nowhere else.
+   **So the evidence is composed into one task's inputs when the run's plan is composed** (`RunProvisioning.prepare`,
+   before the first dispatch): `inputs["proposal_evidence"]` on the proposal run's `strategy.propose_increment` task,
+   and nowhere else.
    - It is read through a port in `ports/outcomes.py`, implemented in `squadops/outcomes/` over the evaluation store, and
      injected by the composition root. `execution` imports the port, never `squadops.scenarios`, so the import guard
      holds as it is.
@@ -1980,7 +1981,7 @@ further than §4.5 allows. These rulings settle the design before the first PR, 
    - The SIP-0109 §7.2 row is a numbered amendment in the PR that builds it.
 5. **Naming a goal that already passes is not refused.** The ledger reads it as `already passing`. Refusing it would
    make the first live prediction true by construction.
-6. **A failed read of the evidence raises** at the proposal run's dispatch. The run fails, and the campaign proposes
+6. **A failed read of the evidence raises** when the proposal run's plan is composed. The run fails, and the campaign proposes
    again, as it does after any failed proposal run (SIP-0109 §24bn's `max_proposal_run_retries`). A proposal is never
    dispatched without its evidence: require, don't default.
 7. **Two channels that go round the boundary:**

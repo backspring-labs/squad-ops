@@ -1,5 +1,5 @@
-"""The proposal task's outcome evidence, composed into its inputs at dispatch (SIP-0113 §4.5; §10t
-ruling 1).
+"""The proposal task's outcome evidence, composed into its inputs with the run's plan, before the first
+dispatch (SIP-0113 §4.5; §10t ruling 1).
 
 A campaign's increment proposal is shown each goal of the pinned suite with its result on the
 accepted tree, so it can choose the gap to close. Only that one task is shown it. A cycle's resolved

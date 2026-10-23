@@ -6,7 +6,7 @@ move against the calibration baseline, and the accepted increments' ``prd_delta`
 (§10t ruling 2). A goal's steps, checks and values are never read, so they can never be shown.
 
 **One task's inputs carry it** (§10t ruling 1): ``PROPOSAL_EVIDENCE_INPUT`` on the proposal run's
-``strategy.propose_increment``, composed at dispatch (``squadops.execution.proposal_evidence``). A
+``strategy.propose_increment``, composed with the run's plan (``squadops.execution.proposal_evidence``). A
 cycle's resolved config is stored, served, copied into retries and repairs and released with the
 campaign's records, so the evidence never enters it.
 
