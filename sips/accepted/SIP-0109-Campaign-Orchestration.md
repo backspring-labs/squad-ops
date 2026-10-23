@@ -118,7 +118,7 @@ Kept by the rule in CLAUDE.md ("SIP System"): one row per part, updated in the P
 | an increment rejected only for criteria the accepted application already meets is abandoned for a new proposal told which, not repaired (§24bq, row 16) | **shipped** | 2.3.0, PR #2319, issue #2315 |
 | a successor's brief carries the increment's evaluation (frozen breaks, unmet criteria, routes not held, blocked judgements), not only its cycle's checks (§24br, rows 12, 13 and 16) | **shipped** | 2.3.0, PR #2375, issue #2318 |
 | a late answer on a closed campaign re-materializes its stored digest, and an agent's late answer is recorded as an agent's | **shipped** | 2.3.1, PR #2389, issue #2305 |
-| accepted increments' `prd_delta` text to the proposer | **placed** with SIP-0113 §4.5, by the owner's D4 ruling of 2026-10-22 (SIP-0113 §10s): the same seam, what the proposer is shown | 2.4.0, #2677 |
+| accepted increments' `prd_delta` text to the proposer | **shipped** with SIP-0113 §4.5 (SIP-0113 §10u, §10v): the accepted PRD folded by section, read through the promotion's own lookup, shown in its own asset | 2.4.0, PRs #2687 and #2688, issue #2677 |
 | escalating a launch the cycle-create preflight refuses | **shipped** (§24ba) | 2.1.0, PR #2052, issue #1971 |
 | re-hearing an ended cycle between restarts | **shipped**: the campaign sweep re-hears on its interval, and a cycle is heard by one hearer at a time | 2.1.0, PR #2038, issue #1972 (§24as) |
 | a Next.js render profile (a route-declaring Next.js increment is always `blocked_unverified`) | **shipped** (§24bd) | 2.1.0, PR #2059, issue #1973 |
