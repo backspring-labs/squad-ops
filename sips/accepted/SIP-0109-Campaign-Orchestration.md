@@ -3970,3 +3970,50 @@ again fails it, and #2558's test.
 
 **What stays.** #2578's other parts (an `increment_id` on each cycle, Prefect tags, a per-increment view in the
 ledger) await a ruling.
+
+### 24cb. A cycle stopped at its plan gate built nothing: no verdict, row 2 for a calibration, row 18 for an increment (2026-10-23, §8.4, §10 rows 2, 4, 6 and 8, §24bj, §24bp; #2704, after #2303; implementer's correction, for the owner)
+
+**What was wrong.** `cycle_ending` gave a non-assessed ending only to a proposal run, a park or a binding hold. A
+framing run stopped at its plan gate read `assessed`. That covers the plan check's rejection with no re-roll left, a
+person's rejection, a revision none could run, a decision the gate doesn't know, and a gate that failed. #2303 made
+`cycle_verdict` give no verdict to a cycle that never reached its build, but only for an ending other than `assessed`.
+So the framing run's summary, which reads `accepted` with nothing executed, was taken as the cycle's verdict.
+- **A calibration** was promoted as accepted, with an empty tree as the campaign's baseline, and row 5 proposed an
+  increment against it.
+- **An increment** whose approved change's plan was refused had no increment evaluation, so it read
+  `blocked_unverified`. Row 8 then repaired a candidate that was never built, and spent the increment's repair.
+
+**What changed.**
+- **A new ending, `stopped_at_plan_gate`.** A framing run stopped at its gate for any of those five reasons ends the
+  cycle this way. Like every ending other than `assessed`, it has no verdict, and the outcome evaluation (SIP-0113
+  §4.1) doesn't run on it.
+- **A calibration** with it ends the campaign on row 2: `stop_failure`, cause `calibration`.
+- **An increment, repair or retry** with it is **row 18**, asked before row 6, as row 15 is: `abandon_and_propose`.
+  - It counts toward `max_unaccepted_increments` at its own decision, as a park's abandonment does (§24bp). So the
+    plan stop that reaches the limit ends the campaign on row 4 instead of proposing once more.
+  - It spends nothing of `max_repair_cycles_per_increment`. No repair or retry is launched, since nothing was built
+    to repair. The next cycle is a fresh proposal.
+- **A proposal run stopped by a decision the increment gate doesn't know** is `proposal_failed`, as a gate that failed
+  already was (#2213). The plan check never judges a proposal run (`PLAN_JUDGED_WORKLOADS`), so no proposal stops on
+  `plan_rejected`.
+
+**Evidence.** Live on the Mac, deploy `dep_c412e3a206f8`, #2183's campaign `cmp_889af0a98b6d` on lite-14b:
+- Calibration `cyc_a807ab739918`'s three plans were auto-rejected at `progress_plan_review`. Twice two tasks declared
+  `backend/routes.py`; once a regex check named a source file.
+- The control log then recorded `promote` with "its 0 delivered files" and identity `e3b0c44298fc…`
+  (`FileTree.of({}).identity`), then `decide` with row 5, `ending: assessed` and `verdict: accepted`. Increment
+  `cyc_6ee156954613` launched on it. The campaign was aborted.
+
+Tests enter at the completion hook (`CycleCompletion.end`):
+- A calibration whose framing run stops for the plan check, a rejection or a failed gate ends the campaign on row 2,
+  promoted nothing, and was never evaluated.
+- An increment whose plan stops is abandoned on row 18, with a fresh proposal launched and no repair. With
+  `max_unaccepted_increments` at 1 it ends on row 4.
+- Reverting `cycle_ending` fails 10 of the tests. Leaving the abandonment uncounted fails the limit test. Dropping row
+  18 fails 3.
+
+**What stays, deliberately.** A framing run that ended `run_failed`, or `run_cancelled` without being parked, stopped on
+its own run, not at its gate. It stays `assessed` on purpose, so its assessment decides it, attribution included. A
+failure outside the work still routes to a retry on rows 10 and 11, which a no-verdict ending would skip. This
+correction changes only the stops at a gate. Nobody has seen a failed framing run's assessment read `accepted`, and
+this correction doesn't change that path.

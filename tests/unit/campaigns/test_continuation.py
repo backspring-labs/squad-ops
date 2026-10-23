@@ -167,6 +167,24 @@ _GO = Guard.PROCEED
             dict(ending=CycleEnding.PARKED, kind=CycleKind.CALIBRATION),
             (2, CampaignOutcome.FAILURE),
         ),
+        # §24cb (#2704): a cycle stopped at its plan gate built nothing, whatever its framing
+        # summary reads (here ``accepted``). An increment or repair is abandoned, counted, on row
+        # 18, asked before row 6; a calibration ends on row 2.
+        (
+            _ACC,
+            dict(ending=CycleEnding.STOPPED_AT_PLAN_GATE),
+            (18, PendingAction.ABANDON_AND_PROPOSE, _GO),
+        ),
+        (
+            _ACC,
+            dict(ending=CycleEnding.STOPPED_AT_PLAN_GATE, kind=CycleKind.REPAIR),
+            (18, PendingAction.ABANDON_AND_PROPOSE, _GO),
+        ),
+        (
+            _ACC,
+            dict(ending=CycleEnding.STOPPED_AT_PLAN_GATE, kind=CycleKind.CALIBRATION),
+            (2, CampaignOutcome.FAILURE),
+        ),
         # A run of parks ends at the no-progress rule, the park that reaches the limit (2) counted
         # at its own decision, as a rejection's abandonment is (#2294): one prior park and this one.
         (

@@ -51,6 +51,11 @@ class CycleEnding(StrEnum):
     #: §24bw: held on an operator's input that can't be bound (a required reference at the
     #: cycle's commit, an instruction withdrawn or narrowed to nothing). Row 17 escalates.
     HELD_INPUT = "held_input"
+    #: §24cb (#2704): the framing run's plan gate stopped the cycle before its build. Its plan was
+    #: rejected (by the plan check with no re-roll left, by a person, or for a revision none could
+    #: run), or the gate failed. Nothing was built, so there is no verdict: a calibration ends on
+    #: row 2, and an increment, repair or retry is abandoned on row 18.
+    STOPPED_AT_PLAN_GATE = "stopped_at_plan_gate"
 
 
 @dataclass(frozen=True)
@@ -72,10 +77,11 @@ def cycle_verdict(latest: CycleAssessment, cycle: EndedCycle) -> RunVerdict | No
     accepted only when the cycle's acceptance and its own (§8) both accepted: either rejecting
     rejects it, and anything unread leaves it ``blocked_unverified``, never accepted.
 
-    A cycle that never reached its assessment has none (#2303): parked at its plan gate,
-    rejected at the increment gate, or its proposal failed. Its last run's summary judged a
-    framing or a proposal, never a build, and a framing run's reads ``accepted`` with nothing
-    executed. Read as the cycle's, it promoted a parked increment and met the objective with it."""
+    A cycle that never reached its assessment has none (#2303): parked at its plan gate, stopped
+    there (#2704), rejected at the increment gate, or its proposal failed. Its last run's summary
+    judged a framing or a proposal, never a build, and a framing run's reads ``accepted`` with
+    nothing executed. Read as the cycle's, it promoted a parked increment and met the objective
+    with it, and promoted a calibration whose plan was rejected three times as an empty tree."""
     if cycle.ending is not CycleEnding.ASSESSED:
         return None
     verdict = latest_verdict(latest)
@@ -198,6 +204,17 @@ def latest_primary(latest: CycleAssessment) -> AttributionClass | None:
     return reading.attribution.primary
 
 
+#: The endings at which an increment, repair or retry built nothing and is abandoned, counting as
+#: unaccepted, by their row. Each spends no repair, since there is no candidate to repair. A
+#: calibration with either was not accepted, so row 2 ends the campaign before these are asked.
+#: - §24bj, row 15: parked, its plan gate's escalation expired with nobody deciding it.
+#: - §24cb, row 18 (#2704): stopped at its plan gate, its plan refused or the gate failed.
+_ABANDONED_UNBUILT: dict[CycleEnding, int] = {
+    CycleEnding.PARKED: 15,
+    CycleEnding.STOPPED_AT_PLAN_GATE: 18,
+}
+
+
 def campaign_continuation_decision(
     campaign: Campaign,
     counters: CampaignCounters,
@@ -223,11 +240,12 @@ def campaign_continuation_decision(
         and cycle.rejected_only_as_already_met
         and latest_verdict(latest) is RunVerdict.ACCEPTED
     )
-    # Rows 13, 15 and 16: this decision abandons the increment, and the abandonment counts as
+    # Rows 13, 15, 16 and 18: this decision abandons the increment, and the abandonment counts as
     # unaccepted at this decision, so the one that reaches the limit stops rather than proposing
-    # once more (#2294). A parked calibration never reaches row 4: row 2 ends the campaign.
+    # once more (#2294). A parked calibration, or one stopped at its plan gate, never reaches row
+    # 4: row 2 ends the campaign.
     abandons = (rejected and not environment and (already_met or not repairs_remain)) or (
-        cycle.ending is CycleEnding.PARKED
+        cycle.ending in _ABANDONED_UNBUILT
     )
 
     def stop(row: int, outcome: CampaignOutcome, cause: TerminalCause) -> ContinuationDecision:
@@ -275,11 +293,9 @@ def _pending(
 ) -> tuple[int, PendingAction]:
     if cycle.kind is CycleKind.CALIBRATION:
         return 5, PendingAction.PROPOSE
-    # §24bj, row 15, asked before row 6: a parked increment, repair or retry counts as unaccepted,
-    # so a run of parks ends at the no-progress rule. A parked calibration never reaches here: it
-    # was not accepted, so row 2 ended the campaign.
-    if cycle.ending is CycleEnding.PARKED:
-        return 15, PendingAction.ABANDON_AND_PROPOSE
+    # Rows 15 and 18, asked before row 6, which would propose without counting the increment.
+    if cycle.ending in _ABANDONED_UNBUILT:
+        return _ABANDONED_UNBUILT[cycle.ending], PendingAction.ABANDON_AND_PROPOSE
     # §24bw, asked before row 6: a hold that expired said nothing about the squad's work. The
     # store's reads as the environment's (rows 10 and 11); an operator's input escalates (row 17),
     # so the owner re-binds or withdraws it and resumes. Neither is an abandonment.

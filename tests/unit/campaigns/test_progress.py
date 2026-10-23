@@ -208,7 +208,14 @@ class _World:
 
 @pytest.fixture
 async def calibrating() -> _World:
-    async def make(verdict, objective=None, evaluator=None, overrides=None, **policy_overrides):
+    async def make(
+        verdict,
+        objective=None,
+        evaluator=None,
+        overrides=None,
+        workload="implementation",
+        **policy_overrides,
+    ):
         w = _World(verdict, evaluator)
         draft = campaign(
             CID,
@@ -227,9 +234,7 @@ async def calibrating() -> _World:
                 draft, actor="owner", actor_role="admin", reason="go", idempotency_key="start"
             ),
         )
-        return w, await w.launched_cycle(
-            "calibration", "cyc_cal", "implementation", "completed", overrides
-        )
+        return w, await w.launched_cycle("calibration", "cyc_cal", workload, "completed", overrides)
 
     return make
 
@@ -453,6 +458,75 @@ async def test_a_rejected_calibration_stops_the_campaign_and_promotes_nothing(ca
     w.launches.assert_not_awaited()
 
 
+@pytest.mark.parametrize(
+    "stopped",
+    [CycleStopReason.PLAN_REJECTED, CycleStopReason.GATE_REJECTED, CycleStopReason.GATE_FAILED],
+)
+async def test_a_calibration_stopped_at_its_plan_gate_fails_the_campaign_and_promotes_nothing(
+    calibrating, stopped
+):
+    """§10 row 2, §24cb (#2704, live: ``cmp_889af0a98b6d``). The calibration's plan was rejected
+    three times, so it built nothing, and its framing run's summary reads ``accepted`` with nothing
+    executed. Bugs caught: that summary read as the calibration's verdict, so the empty tree was
+    promoted as the campaign's baseline and an increment launched on it; and the outcome
+    evaluation, which only a build has, run on one that never happened."""
+    w, run = await calibrating(RunVerdict.ACCEPTED, workload="framing")
+
+    await w.end("cyc_cal", run, stopped)
+
+    stored = await w.campaigns.get_campaign(CID)
+    log = await w.campaigns.control_log(CID)
+    assert (stored.state, stored.outcome, stored.accepted) == (
+        CampaignState.COMPLETED,
+        CampaignOutcome.FAILURE,
+        None,
+    )
+    assert [e for e in log if e.operation is ControlOperation.PROMOTE] == []
+    assert {k: log[-1].binding[k] for k in ("row", "ending", "verdict", "cause")} == {
+        "row": 2,
+        "ending": "stopped_at_plan_gate",
+        "verdict": None,
+        "cause": "calibration",
+    }
+    w.evaluations.assert_not_awaited()
+    w.launches.assert_not_awaited()
+
+
+@pytest.mark.parametrize(
+    ("limit", "expected"),
+    [
+        (2, {"row": 18, "action": "abandon_and_propose", "guard": "proceed"}),
+        (1, {"row": 4, "outcome": "failure", "cause": "unaccepted_increments"}),
+    ],
+    ids=["abandoned-for-a-new-proposal", "counted-to-the-no-progress-limit"],
+)
+async def test_an_increment_stopped_at_its_plan_gate_is_abandoned_and_counted_never_repaired(
+    calibrating, limit, expected
+):
+    """§10 rows 18 and 4, §24cb (#2704), entered at the completion hook as the increment's framing
+    run stops at its plan gate. Bugs caught: its framing summary's ``accepted`` with no increment
+    evaluation read as ``blocked_unverified``, so row 8 launched a repair of a candidate that was
+    never built and spent the increment's repair; and the abandonment not counted as unaccepted,
+    so increments whose plans keep failing never reach the no-progress limit."""
+    w, run = await calibrating(RunVerdict.ACCEPTED, max_unaccepted_increments=limit)
+    await w.end("cyc_cal", run, CycleStopReason.SEQUENCE_COMPLETED)
+    framing = await w.launched_cycle("increment", "cyc_inc", "framing", "completed")
+
+    await w.end("cyc_inc", framing, CycleStopReason.PLAN_REJECTED)
+
+    log = await w.campaigns.control_log(CID)
+    decision = log[-1].binding
+    assert {k: decision.get(k) for k in expected} == expected
+    assert (decision["ending"], decision["verdict"]) == ("stopped_at_plan_gate", None)
+    assert [e.target for e in log if e.operation is ControlOperation.PROMOTE] == ["cyc_cal"]
+    assert [i.cycle_kind for i in await w.campaigns.launch_intents(CID)] == [
+        CycleKind.CALIBRATION,
+        CycleKind.INCREMENT,
+        *([CycleKind.INCREMENT] if limit == 2 else []),
+    ]
+    assert [c.args[0].cycle_id for c in w.evaluations.await_args_list] == ["cyc_cal"]
+
+
 async def test_a_cycle_ending_after_an_abort_decides_and_launches_nothing(calibrating):
     """§12a: an abort is terminal — no continuation follows, whatever arrives after. Bug
     caught: the cancelled cycle's completion, arriving after the abort committed, writing a
@@ -510,10 +584,29 @@ async def test_a_cycle_that_can_still_continue_is_not_decided(calibrating, stopp
         ("proposal", "failed", CycleStopReason.RUN_FAILED, CycleEnding.PROPOSAL_FAILED, False),
         # #2213: the increment gate failed to submit the proposal; never read as reaching a build.
         ("proposal", "completed", CycleStopReason.GATE_FAILED, CycleEnding.PROPOSAL_FAILED, False),
-        # A plan gate that failed after framing ends the cycle unbuilt, read like a rejected plan.
-        ("framing", "completed", CycleStopReason.GATE_FAILED, CycleEnding.ASSESSED, False),
+        # #2704: a decision the increment gate doesn't know is never read as reaching a build.
+        (
+            "proposal",
+            "completed",
+            CycleStopReason.GATE_DECISION_UNRECOGNIZED,
+            CycleEnding.PROPOSAL_FAILED,
+            False,
+        ),
+        # §24cb (#2704): a framing run stopped at its plan gate ended the cycle unbuilt, however
+        # the gate stopped it. Read as assessed, its framing summary's ``accepted`` promoted it.
+        *[
+            ("framing", "completed", stop, CycleEnding.STOPPED_AT_PLAN_GATE, False)
+            for stop in (
+                CycleStopReason.PLAN_REJECTED,
+                CycleStopReason.GATE_REJECTED,
+                CycleStopReason.REVISION_UNAVAILABLE,
+                CycleStopReason.GATE_DECISION_UNRECOGNIZED,
+                CycleStopReason.GATE_FAILED,
+            )
+        ],
         ("implementation", "failed", CycleStopReason.RUN_FAILED, CycleEnding.ASSESSED, False),
-        ("framing", "completed", CycleStopReason.GATE_REJECTED, CycleEnding.ASSESSED, False),
+        # A framing run that failed stopped on its own run, not its gate: its summary judges it.
+        ("framing", "failed", CycleStopReason.RUN_FAILED, CycleEnding.ASSESSED, False),
         # §24bj: the expired escalation's run, cancelled for it.
         ("framing", "cancelled", CycleStopReason.RUN_CANCELLED, CycleEnding.PARKED, True),
         # An expiry a person's decision beat: the run went on, so the cycle was not parked.
