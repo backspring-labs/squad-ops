@@ -53,7 +53,10 @@ Each even-minor consumer sits strictly behind the release that earns its trust: 
 - the shakeout campaign met its exit rule in its second round, with the tier deciding every plan gate and no step
   value or goal reaching a squad role.
 
-<!-- TODO: IR-1/2/8 and #2183 after their runs -->
+**Beside the set, on the same deploy:** IR-1, IR-2 and IR-8's registry half passed
+(`docs/plans/2-4-0-integration-record.md`, "At the cut"), and #2183's memory acceptance matrix passed, T1–T17, with T12
+and T6's campaign half run there. Outcome Evaluation of an external Project (IR-4 to IR-7, and the evaluation halves of
+IR-8 and IR-9) is not run, waiting on #2619 in 2.5.
 
 **Not in this release:** a Campaign on a repository-backed Project (#2619, SIP-0112 H.4), in 2.5 with the declared start
 at the cycle-end hook; the outcome target and quality gates (SIP-0113 §4.7), held; the finer seeded reading (#2637)

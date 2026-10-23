@@ -31,8 +31,15 @@ in §13). It was read on the final deploy (`b3acbc82`, `dep_d7ff50b9b39c`):
 - **the shakeout campaign met its exit rule in its second round:** the tier decided every plan gate, no increment
   regressed a scenario, the proposal evidence reached every proposal, and no step value or goal reached a squad role.
   Round 1, a diagnostic on a superseded deploy, found #2706;
+- **beside the set, on the same deploy:** IR-1 (a cycle of each of the five seeded projects), IR-2 (a standalone cycle
+  and a Campaign's on an external Project reading one source context, each unit with its own snapshot) and IR-8's
+  registry half passed. #2183's memory acceptance matrix passed, T1–T17: T12 and T6's campaign half on the Spark's cut
+  deploy, the rest on the Mac's deploys of main, with five sub-cases held by unit tests and named on the issue;
 - **what it does not cover:** the tagged tree differs from the validated deploy only by documents and the version
-  string. Nothing under `src/`, `adapters/`, `infra/`, `agents/`, `config/` or `scripts/` differs. <!-- TODO IR + #2183 -->
+  string. Nothing under `src/`, `adapters/`, `infra/`, `agents/`, `config/` or `scripts/` differs. Outcome Evaluation
+  of an external Project (IR-4 to IR-7, and the evaluation halves of IR-8 and IR-9) is not run, waiting on #2619 in
+  2.5. #1966 is read on Next.js greenfield builds only, and the memory matrix's Mac cycles ran on `lite-14b`, so they are
+  machinery evidence, not quality.
 
 **Project Lifecycle Management (SIP-0112).**
 - **The shared fixture landed first:** a small product with one failing check and one binary file, and each lane's
@@ -261,10 +268,10 @@ engine candidate redirected to the upgrade to TensorFold 1.x, still unplaced (#2
 rule's no-data alert placed in 2.5 (#2433; #2439). Outcome Evaluation's design records: the safety guarantees
 Autonomous Outcome Reliability reads (#2486), the seeded reading and the browser runner proposed (#2563) and reviewed
 (#2631, #2641), the owner's rulings of 2026-10-20 (#2569), the ledgers re-read before the cut (#2629), and a Campaign
-on a repository-backed Project designed for 2.5 (#2624, #2626). <!-- TODO after IR-1/2/8 on the cut deploy --> The integration record
-(`docs/plans/2-4-0-integration-record.md`): of the ten cross-lane scenarios, four passed (one on three of its four
-points), the counted regression pair on a deploy carrying both lanes among them; two ran in part; and four were not
-run, each waiting on #2619 (#2640, #2649, #2654). The cut's pre-registration and registration (#2703, #2707, #2708),
+on a repository-backed Project designed for 2.5 (#2624, #2626). The integration record
+(`docs/plans/2-4-0-integration-record.md`): of the ten cross-lane scenarios, four passed (IR-1, IR-2 and IR-10, each
+on the cut deploy too, and IR-3 on three of its four points); two ran in part (IR-8, whose registry half passed on the
+cut deploy, and IR-9); and four were not run, each waiting on #2619 (#2640, #2649, #2654). The cut's pre-registration and registration (#2703, #2707, #2708),
 and the v2.3.1 package (#2404).
 
 **Not in this release:**

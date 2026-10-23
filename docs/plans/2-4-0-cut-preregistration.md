@@ -460,6 +460,13 @@ that stack's 2.4 baselines (0–1), which is data, as §3 says.
   build-to-build spread. It's the first thing a Next.js campaign under #1966 would read.
 - **FastAPI + React 1 passed both soonest-first scenarios,** which failed on every baseline tree.
 
+**Beside the set, uncounted, on the same deploy** (each after the set's last reading):
+- **#2183's memory acceptance matrix passed, T1–T17** (its summary, issuecomment-6376996254). As §9 asks, each case
+  is named there as passed, with where it ran. T12 and T6's campaign half ran on this deploy (issuecomment-6376598961):
+  the first campaign parked at an escalated plan gate that went unanswered, and the second read all five cases as
+  planned. Five sub-cases are held by unit tests instead of a live run, each named with its reason;
+- **IR-1, IR-2 and IR-8's registry half passed** (`docs/plans/2-4-0-integration-record.md`, "At the cut").
+
 **What it doesn't cover,** beside §9:
 - **The tagged tree differs from the registered deploy** only by documents and the version string: this registration
   and its two set configs (in `c3f6ec2a`), and the release PR's version bump, CHANGELOG, ROADMAP, README, CLAUDE.md,
