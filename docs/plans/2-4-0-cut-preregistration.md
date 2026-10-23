@@ -1,7 +1,8 @@
 # 2.4.0 — pre-registration of the cut's set (the plan's §6.2, "the release evidence")
 
 **Status: DRAFT, not registered.** Written 2026-10-23 by the Spark lane, which runs the line under D11, before anything
-in it launches, and revised the same day on a second reader's findings (§11). It registers when the conditions below
+in it launches, and revised the same day on a second reader's findings (§11) and on shakeout round 1, a diagnostic
+round (§12). It registers when the conditions below
 hold, and nothing in the set launches before then. The plan leaves the cut's numbers to this document (§8: "each is
 written as a pre-registration when its batch is built"):
 - **the set's size is 2.3's,** carried as 2.3 carried 2.2's;
@@ -11,7 +12,7 @@ written as a pre-registration when its batch is built"):
 **What must be true before the shakeout's first launch:**
 1. **Both lanes' last 2.4 code is merged and deployed.** That means #2700 (#1966's qa half, merged as `551c9388`) and
    the MacBook lane's #2702 (#2183's T16 pair report). It also covers any other PR the MacBook lane names, in writing, as
-   2.4 code the cut needs. The Spark is rebuilt from main at that commit, and that rebuild is **the final deploy** (§6).
+   2.4 code the cut needs: #2705 (#2704, a cycle stopped at its plan gate promoted as accepted), named on 2026-10-23. The Spark is rebuilt from main at that commit, and that rebuild is **the final deploy** (§6).
 2. **Every tracked loaded check answers its expected value on the final deploy,** `1966` among them
    (`verify_loaded.py`, run from the main checkout), and the deploy record is ok.
 3. **This document is merged, as a draft,** so the shakeout's predictions (P4, Q3–Q5) are fixed before it launches.
@@ -160,7 +161,7 @@ on the release claim. They don't change the set's verdict.
 | P2 | every tracked loaded check answers its expected value in every roll, `1966` among them | each roll's record, its "Loaded, not built" section | any tracked row unanswered, or answering a value other than its `expect` |
 | P3 | **memory stays disabled** (2.3's P3 and IR-10's R6): every roll's cycle declares memory disabled and pins only a disabled snapshot with no entries; every consuming task records a `memory_disabled` exposure; no instruction is supplied; every captured envelope reconstructs byte for byte | each roll's cycle row, `memory_exposures`, and `verify_authoring_envelopes.py` | a pinned snapshot that is enabled or holds an entry; a consuming task with **no exposure** or another status; a supplied instruction; or an envelope that does not reconstruct |
 | P5 | **the cadence and pulse paths stay inert, and the correction paths are the baseline's** (IR-10's R3 and R4) | each roll's applied defaults, `pulse_verification_records`, the record's "repair responses by revision form" row and its emissions by handler, and the runs' rows | any of the four falsifiers below |
-| **Q1** | **no held-out scenario is lost** (#1966): on each roll's tree, every scenario in its stack's always-pass set (§4.1) reads `passed` | each roll's revision-5 reading, against §4.1 | any always-pass scenario reading anything but `passed`, `blocked_unverified` included, on a reading that started its tree |
+| **Q1** | **no held-out scenario is lost** (#1966): on each roll's tree, every **HTTP** scenario in its stack's always-pass set (§4.1) reads `passed`. The set's browser scenario is reported beside it, not predicted (§12) | each roll's revision-5 reading, against §4.1 | any always-pass HTTP scenario reading anything but `passed`, `blocked_unverified` included, on a reading that started its tree |
 | **Q2** | **no extra rounds from QA's own tests** (#1966): no roll has more than **one** `qa.test_repair` round whose retest passed. That is the most any of §2's seven baselines had, and the most the A/B's arm A had on any increment | each roll's flow-run log, read by `qa_rounds.sh` (§2) | a roll with two or more such rounds |
 
 **P5's falsifiers:**
@@ -199,7 +200,7 @@ build, and it's left out.
 
 **If the final deploy's `EVALUATOR_IMAGE` differs from the baselines'** (`…eslint10.12-5`), every baseline tree is
 re-read on the final deploy before registration, so a roll and its baselines are always read by one evaluator. 2.4
-has no evaluator change left to land: #2659's driver change is placed with suite revision 6.
+has no evaluator change left to land: #2659's and #2706's driver changes are placed with suite revision 6.
 
 **The counts,** all seven trees on `…eslint10.12-5` (`var/verification_sets/2-4-0-cut/always-pass.json`, which names
 each tree, its evaluation and the set's scenario ids):
@@ -211,6 +212,11 @@ each tree, its evaluation and the set's scenario ids):
 
 The re-read changed no result on either tree against B1. Condition 6 holds unless the final deploy moves the
 evaluator's tag.
+
+**What Q1 reads** (amended before registration, §12): the always-pass sets' HTTP scenarios, **4 on each stack**.
+FastAPI + React's fifth, `a-runner-joins-from-the-run-page`, runs in the browser, and the browser driver can read a
+correctly built field as absent (#2706). Its result on each roll is reported, with its blocked reason, and
+falsifies nothing.
 
 **The spread between builds is wide:**
 - IR-10's FastAPI + React tree passed 6 scenarios where each calibration passed 11;
@@ -336,3 +342,40 @@ A fresh agent read the first draft before anything ran.
 **Found outside this document:** the integration record's IR-10 R4 reading named two correction handlers. The Next.js
 roll's record shows `qa_test_repair_handler` ran too, and the baseline used it as well, so R4 still holds. The reading
 is corrected in this PR.
+
+## 12. Before registration: shakeout round 1, a diagnostic round
+
+**Why it can't meet the exit rule.** Round 1 ran on `dep_7daa36f7adb9`, from main at `f8309507`, which is #2703's merge,
+13:45–15:11Z on 2026-10-23. All four pre-launch conditions held. At 14:16Z the MacBook lane named #2704 as 2.4 code
+the cut needs: a cycle stopped at its framing run's plan gate fell through `cycle_ending` to `assessed`, and its
+framing summary's empty `accepted` promoted a calibration that built nothing. The fix is #2705. Round 1's deploy is
+superseded, so the round ran to the end as a diagnostic and counts toward the three-round budget.
+
+**What it read:** `cmp_73d227af5da0` completed `success`.
+- **Its cycles:** the calibration `cyc_28da0e568e9f` and both increments (`cyc_d5bd8cd5c8ff`, capacity;
+  `cyc_189b357041b2`, a seeded sample run) were each accepted on their first cycle. There was no repair, retry or
+  escalation, and each proposal was approved as proposed.
+- **P4 holds:** the tier approved all three plan gates, each with its three readings.
+- **Q3 holds:** no cycle's contribution has a `regressed` scenario.
+- **Q4 holds:** both proposals' envelopes carried the evidence, and their requests rendered the goals section.
+- **Q5 holds:** E3 found no marker whose provenance the baseline didn't find (8 provenances before and after). E4
+  found no goal outside the excused places, and the positive control held. No place went unsearched.
+
+**What it found: #2706.** On every cycle, two browser scenarios read `control_absent`:
+- **The app built the field.** It labels the join field with a trailing colon. The driver matches a field's name
+  exactly after folding, and the scenario accepts a name that differs only by that colon.
+- **The evaluator works:** on the same deploy, a baseline tree whose label has no colon passes the same scenario.
+- **The cost:** each cycle's contribution reads `unverified` where it would read `contributed`. That's reporting only
+  in 2.4.
+
+**Why it changes Q1.** Under the reader's rule (§11), any always-pass reading other than `passed` falsifies Q1, and a
+falsification reverts #1966. A roll whose app labels its field the same way would revert #1966 on a measurement
+artifact, not on QA's work. So, before registration, Q1 reads the always-pass sets' HTTP scenarios (4 per stack). The
+browser scenario is reported beside it.
+
+**Why the driver isn't fixed for the cut.** Fixing it moves the evaluator's tag (SIP-0113 §10p ruling 6), so every
+2.4 reading, the window's, §4.5's and §4.1's baselines among them, would sit on the other side of the move from the
+cut's. #2706 is placed in 2.5 with #2659 and suite revision 6, which move the tag together.
+
+**The next round** runs on the rebuild after #2705 merges, which is the final deploy, with the sweeps' baselines taken
+again.
