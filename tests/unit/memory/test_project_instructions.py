@@ -284,15 +284,15 @@ def test_a_redispatch_is_not_charged_for_what_its_attempt_was_handed():
     """The second read of PR #2515. Bug caught: the attempt before's instructions counted as the
     task's own input and again as its section, so a binding that fit attempt 1 holds attempt 2;
     and an unknown model reading as a spent window."""
-    from squadops.capabilities.lesson_supply import prompt_budget_of
+    from squadops.capabilities.prompt_budget import prompt_budget
     from squadops.memory.recall import LESSONS_INPUT
 
     first = _plan(_framing_cycle())[0]
-    budget = prompt_budget_of(first)
+    budget = prompt_budget(first)
     for key in (TASK_INSTRUCTIONS_INPUT, PROJECT_INSTRUCTIONS_INPUT, LESSONS_INPUT):
         first.inputs[key] = {"instructions": [{"text": "x" * 40_000}]}
 
     assert budget > 0
-    assert prompt_budget_of(first) == budget
+    assert prompt_budget(first) == budget
     first.inputs["agent_model"] = "no-such-model"
-    assert prompt_budget_of(first) == -1
+    assert prompt_budget(first) == -1

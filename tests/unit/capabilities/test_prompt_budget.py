@@ -58,6 +58,30 @@ def test_the_composer_reserves_what_the_guard_reserves_at_every_reasoning_level(
     assert composers == guards
 
 
+@pytest.mark.parametrize(
+    ("level", "thinking"),
+    [
+        (ReasoningLevel.NONE, 0),
+        (ReasoningLevel.LOW, 6144),
+        (ReasoningLevel.MEDIUM, 6144),
+        (ReasoningLevel.HIGH, 6144),
+    ],
+)
+def test_a_toggle_model_reserves_its_thinking_beside_its_answer(level, thinking):
+    """#1173 at the one reserve both budgets take. A toggle model thinks as long at any level but
+    ``none``, and the thinking is billed against the same window. Bug caught: the reserve dropping
+    it, which the equality test above can't see, since the guard and the composer would drop it
+    together."""
+    reserve = completion_reserve(
+        "development.develop",
+        model_name=_TOGGLE,
+        agent_model=_TOGGLE,
+        agent_overrides={REASONING_OVERRIDE_KEY: level},
+    )
+
+    assert reserve - get_model_spec(_TOGGLE).default_max_completion == thinking
+
+
 def test_a_capability_below_the_models_limit_reserves_less_than_the_composer_counts():
     """The composer passes no ceiling, so it reserves the most any capability of the model can:
     never less than the guard, so it never admits what the guard refuses."""

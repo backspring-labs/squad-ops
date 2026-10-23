@@ -173,6 +173,9 @@ class ContextAssemblyContract:
     unrendered_inputs: frozenset[str] = frozenset()
     #: The supplement the handler adds to the system prompt (``SUPPLEMENT_*``), or none.
     system_supplement: str = ""
+    #: Whether the handler renders its development profile's fill-only appendix, which the profile
+    #: names (``DevelopmentProfile.fill_only_template``), so it's counted at the largest shipped.
+    fill_only_appendix: bool = False
 
 
 _EMPTY_CONTRACT = ContextAssemblyContract()
@@ -236,10 +239,6 @@ _DEVELOP_APPENDIX_TEMPLATES = (
     "request.development_develop_model_surface_appendix",
     "request.development_develop_response_surface_appendix",
     "request.development_develop_testid_surface_appendix",
-    (
-        "request.development_develop_fill_only_appendix",
-        "request.development_develop_fill_only_appendix_nextjs_ts",
-    ),
 )
 _PLANNING_TEMPLATES = (
     "request.planning_task_base",
@@ -298,6 +297,7 @@ CONTEXT_CONTRACTS: dict[str, ContextAssemblyContract] = {
         ),
         unrendered_inputs=_EVALUATION_ONLY_INPUTS | {"resolved_config"},
         system_supplement=SUPPLEMENT_DEVELOPMENT_PROFILE,
+        fill_only_appendix=True,
     ),
     TaskType.BUILDER_ASSEMBLE: ContextAssemblyContract(
         artifact_filter=ArtifactFilter(
@@ -605,6 +605,7 @@ REPAIR_CONTEXT_CONTRACT = ContextAssemblyContract(
             "resolved_config",
         }
     ),
+    fill_only_appendix=True,
     manifest_surfaces=(
         SURFACE_ERROR_CONTRACT,
         SURFACE_MODEL,

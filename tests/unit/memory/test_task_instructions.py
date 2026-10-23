@@ -1,7 +1,7 @@
 """Task instructions reach the tasks they name, and only those (SIP-0110 Appendix A §3.5–§3.7; #2178).
 
 Entered where the live cycle supplies them: ``supply_lessons`` at plan composition and
-``supply_the_redispatch`` at each dispatch after the first, with the snapshot recall over the typed
+``supply_the_dispatch`` at each dispatch after the first, with the snapshot recall over the typed
 records' store.
 """
 
@@ -19,7 +19,7 @@ from adapters.noop.ports import NoOpProposalEvidence
 from squadops.capabilities.lesson_supply import (
     reaches,
     supply_lessons,
-    supply_the_redispatch,
+    supply_the_dispatch,
     unit_of,
 )
 from squadops.memory.records import (
@@ -151,7 +151,7 @@ async def test_a_withdrawn_instruction_is_gone_from_the_next_dispatch():
     gone = withdrawn(record, by="ada", at=T0, why="the plan doesn't need it")
     await records.append_status(record.record_id, gone.status_changes[-1])
     held = _redispatched(design)
-    await supply_the_redispatch(
+    await supply_the_dispatch(
         held, recall=recall, cycle=_framing_cycle(), run_id="run_recall0001", now=T0
     )
 

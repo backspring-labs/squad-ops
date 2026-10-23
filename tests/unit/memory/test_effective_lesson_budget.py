@@ -106,7 +106,8 @@ async def test_the_composer_hands_recall_what_the_binding_sections_leave_and_not
     from adapters.memory.cross_cycle import InMemoryCrossCycleMemoryStore
     from adapters.memory.records import InMemoryMemoryRecords
     from squadops.capabilities import lesson_supply
-    from squadops.capabilities.lesson_supply import prompt_budget_of, supply_lessons, unit_of
+    from squadops.capabilities.lesson_supply import supply_lessons, unit_of
+    from squadops.capabilities.prompt_budget import prompt_budget
     from squadops.memory.lessons import UnitKind
     from squadops.memory.pinning import pin_unit
     from tests.unit.cycles.test_failure_recall import _framing_cycle, _plan
@@ -143,7 +144,7 @@ async def test_the_composer_hands_recall_what_the_binding_sections_leave_and_not
 
     design = next(e for e in plan if str(e.task_type) == "development.design_plan")
     expected = (
-        prompt_budget_of(design)
+        prompt_budget(design)
         - (lesson_supply._framing(lesson_supply._PROJECT_SLOT) + 100)
         - lesson_supply._framing(lesson_supply._LESSON_SLOT)
     )

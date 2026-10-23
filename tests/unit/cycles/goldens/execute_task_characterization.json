@@ -20,6 +20,16 @@
         "stored_artifacts": "state.produced.stored_artifacts"
       },
       {
+        "call": "supply_the_dispatch",
+        "cycle": "cycle",
+        "pair": [
+          "envelope",
+          "enriched"
+        ],
+        "recall": "failure_recall",
+        "run_id": "run_char"
+      },
+      {
         "call": "create_task_run_if_enabled",
         "envelope": "envelope",
         "flow_run_id": "flow_char"
@@ -166,6 +176,16 @@
         "stored_artifacts": "state.produced.stored_artifacts"
       },
       {
+        "call": "supply_the_dispatch",
+        "cycle": "cycle",
+        "pair": [
+          "envelope",
+          "enriched"
+        ],
+        "recall": "failure_recall",
+        "run_id": "run_char"
+      },
+      {
         "call": "create_task_run_if_enabled",
         "envelope": "envelope",
         "flow_run_id": "flow_char"
@@ -288,6 +308,16 @@
         "prior_outputs": "state.produced.prior_outputs",
         "run_derived_contract": null,
         "stored_artifacts": "state.produced.stored_artifacts"
+      },
+      {
+        "call": "supply_the_dispatch",
+        "cycle": "cycle",
+        "pair": [
+          "envelope",
+          "enriched"
+        ],
+        "recall": "failure_recall",
+        "run_id": "run_char"
       },
       {
         "call": "create_task_run_if_enabled",
@@ -431,6 +461,16 @@
         "prior_outputs": "state.produced.prior_outputs",
         "run_derived_contract": null,
         "stored_artifacts": "state.produced.stored_artifacts"
+      },
+      {
+        "call": "supply_the_dispatch",
+        "cycle": "cycle",
+        "pair": [
+          "envelope",
+          "enriched"
+        ],
+        "recall": "failure_recall",
+        "run_id": "run_char"
       },
       {
         "call": "create_task_run_if_enabled",
@@ -654,6 +694,16 @@
         "stored_artifacts": "state.produced.stored_artifacts"
       },
       {
+        "call": "supply_the_dispatch",
+        "cycle": "cycle",
+        "pair": [
+          "envelope",
+          "enriched"
+        ],
+        "recall": "failure_recall",
+        "run_id": "run_char"
+      },
+      {
         "call": "create_task_run_if_enabled",
         "envelope": "envelope",
         "flow_run_id": "flow_char"
@@ -726,7 +776,7 @@
         "task_attempt_counts": "state.routing.task_attempt_counts"
       },
       {
-        "call": "supply_the_redispatch",
+        "call": "supply_the_dispatch",
         "cycle": "cycle",
         "pair": [
           "envelope",
@@ -863,6 +913,16 @@
         "prior_outputs": "state.produced.prior_outputs",
         "run_derived_contract": null,
         "stored_artifacts": "state.produced.stored_artifacts"
+      },
+      {
+        "call": "supply_the_dispatch",
+        "cycle": "cycle",
+        "pair": [
+          "envelope",
+          "enriched"
+        ],
+        "recall": "failure_recall",
+        "run_id": "run_char"
       },
       {
         "call": "create_task_run_if_enabled",

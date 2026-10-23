@@ -38,12 +38,14 @@ from squadops.capabilities.context_assembly import (
     SUPPLEMENT_DEVELOPMENT_PROFILE,
     prompt_contract_of,
 )
+from squadops.capabilities.handlers.build_profiles import BUILD_PROFILES
 from squadops.capabilities.reasoning_policy import resolve_reasoning_level
 from squadops.llm.model_registry import get_model_spec, thinking_headroom
 from squadops.memory.lessons import _tokens
 from squadops.memory.project_instructions import PROJECT_INSTRUCTIONS_INPUT
 from squadops.memory.recall import LESSONS_INPUT
 from squadops.memory.task_instructions import TASK_INSTRUCTIONS_INPUT
+from squadops.stacks.development_profiles import DEVELOPMENT_PROFILES
 
 if TYPE_CHECKING:
     from squadops.tasks.models import TaskEnvelope
@@ -133,9 +135,25 @@ def rendered_input_tokens(envelope: TaskEnvelope) -> int:
 def template_prose_tokens(task_type: str) -> int:
     """Every template the seam's handler may render, each whole with its variables taken out, and
     a set of alternatives at its largest."""
-    return sum(
+    contract = prompt_contract_of(task_type)
+    declared = sum(
         max(_prose(t) for t in entry) if isinstance(entry, tuple) else _prose(entry)
-        for entry in prompt_contract_of(task_type).prompt_templates
+        for entry in contract.prompt_templates
+    )
+    return declared + (_fill_only_prose() if contract.fill_only_appendix else 0)
+
+
+@functools.cache
+def _fill_only_prose() -> int:
+    """The largest fill-only appendix a development profile names: the one a handler renders is
+    its stack's, never named outside the profile (``DevelopmentProfile.fill_only_template``)."""
+    return max(
+        (
+            _prose(p.fill_only_template)
+            for p in DEVELOPMENT_PROFILES.values()
+            if p.fill_only_template
+        ),
+        default=0,
     )
 
 
@@ -190,11 +208,7 @@ def _supplement(kind: str) -> int:
     """The largest supplement a seam's handler adds to the system prompt: a development profile's
     (develop) or a build profile's (the builder), across every profile shipped."""
     if kind == SUPPLEMENT_DEVELOPMENT_PROFILE:
-        from squadops.stacks.development_profiles import DEVELOPMENT_PROFILES
-
         return max(_tokens(p.system_prompt_supplement) for p in DEVELOPMENT_PROFILES.values())
     if kind == SUPPLEMENT_BUILD_PROFILE:
-        from squadops.capabilities.handlers.build_profiles import BUILD_PROFILES
-
         return max(_tokens(p.system_prompt_for_files(None)) for p in BUILD_PROFILES.values())
     return 0

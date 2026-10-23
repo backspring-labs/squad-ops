@@ -564,11 +564,32 @@ checks:
     what: SIP-0110 §0.2 - a re-dispatched authoring records its own exposure under its attempt, and a first attempt keeps the id the deploy already stored
     container: squadops-runtime-api
     code: |
-      from squadops.capabilities.lesson_supply import supply_the_redispatch
+      from squadops.capabilities.lesson_supply import supply_the_dispatch
       from squadops.memory.exposures import exposure_id_for
       run, task = "run_7fabca91826f", "task-run_7fabca91-m007-qa.test"
       print(exposure_id_for(run, task), exposure_id_for(run, task, 2) != exposure_id_for(run, task))
     expect: exp_dcf598a011e0244f True
+  - id: "2681"
+    what: SIP-0110 §3.6 - the composer measures a prompt as its handler renders it (system prompt and templates counted), reserving what the guard reserves, and the plan is only checked before the first dispatch
+    container: squadops-runtime-api
+    code: |
+      from types import SimpleNamespace
+      from squadops.capabilities.lesson_supply import check_the_plan, supply_the_dispatch
+      from squadops.capabilities.prompt_budget import completion_reserve, prompt_without_memory_tokens
+      e = SimpleNamespace(task_type="development.develop", inputs={"prd": "x" * 400})
+      r = completion_reserve("qa.test", model_name="qwen3.8:27b", agent_model="qwen3.8:27b", agent_overrides={"reasoning": "medium"})
+      print(prompt_without_memory_tokens(e) > 1000, r)
+    expect: True 14336
+  - id: "2681-guard"
+    what: SIP-0110 §3.6 - an agent's prompt guard takes its completion reserve from the composer's own function
+    container: squadops-neo
+    code: |
+      from squadops.capabilities.handlers.cycle.develop import DevelopmentDevelopHandler
+      from squadops.capabilities.prompt_budget import completion_reserve
+      inputs = {"agent_model": "qwen3.8:27b", "agent_config_overrides": {"reasoning": "medium"}}
+      guard = DevelopmentDevelopHandler()._resolve_model_budget(inputs, 8192, "unused")[1]
+      print(guard == completion_reserve("development.develop", model_name="qwen3.8:27b", agent_model="qwen3.8:27b", agent_overrides={"reasoning": "medium"}))
+    expect: "True"
   - id: "2165"
     what: SIP-0110 §0.2 - the exposures table holds one row per authoring invocation, not per task, so a re-dispatch's own exposure is stored (reads the live table's constraint kinds; writes nothing)
     container: squadops-runtime-api

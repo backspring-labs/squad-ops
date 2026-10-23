@@ -2,9 +2,9 @@
 
 A task whose task or project instructions can't be read or fitted is never dispatched on a partial
 binding (§3.6). Its run is held where the binding failed, not failed: at provisioning, before its
-first dispatch, since a run supplies every authoring task then (§5w), or where the loop dispatches
-a task again or composes a repair. The run goes ``PAUSED``, the hold is recorded on it
-(``Run.binding_holds``), and ``RUN_PAUSED`` carries it.
+first dispatch, when its plan is checked; or at a task's boundary, when the task is composed for its
+dispatch, the first or a later one, or a repair is composed (#2681). The run goes ``PAUSED``, the
+hold is recorded on it (``Run.binding_holds``), and ``RUN_PAUSED`` carries it.
 
 It is released by re-supply alone. The held step polls, as a gate does, and composes again; when
 the binding is complete the hold is released with its cause, the run goes ``RUNNING`` and the step
@@ -34,7 +34,7 @@ from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any
 
 from squadops.campaigns.binding_hold import open_binding_hold
-from squadops.capabilities.lesson_supply import supply_for_cycle
+from squadops.capabilities.lesson_supply import check_the_plan, supply_for_cycle
 from squadops.cycles.models import BindingHold, Cycle, HoldCause, HoldKind, RunStatus
 from squadops.events.types import EventType
 from squadops.execution.execution_errors import _CancellationError
@@ -74,6 +74,25 @@ async def supplied_or_held(
     if hold is None:
         return await supply()
     return await hold(run_id, cycle, supply)
+
+
+async def checked_or_held(
+    hold: Callable[..., Awaitable[list[TaskEnvelope]]],
+    envelopes: list[TaskEnvelope],
+    *,
+    recall: FailurePatternRecallPort,
+    cycle: Cycle,
+    run_id: str,
+) -> list[TaskEnvelope]:
+    """The run's plan, checked before its first dispatch through the executor's hold
+    (``check_the_plan``, #2681), checked again at each attempt with its own time."""
+
+    async def check() -> list[TaskEnvelope]:
+        return await check_the_plan(
+            envelopes, recall=recall, cycle=cycle, run_id=run_id, now=datetime.now(UTC)
+        )
+
+    return await hold(run_id, cycle, check)
 
 
 def release_cause(hold: BindingHold) -> HoldCause:
