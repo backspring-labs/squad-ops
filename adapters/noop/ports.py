@@ -109,9 +109,8 @@ class NoOpMemoryPort(MemoryPort):
 
 
 class NoOpProposalEvidence(ProposalEvidencePort):
-    """Evidence for a composition with no evaluation store (tests and tools, and the runtime until
-    SIP-0113 §10t step 3's reader): nothing to show, so a proposal task keeps the inputs it had
-    before §4.5."""
+    """Evidence for a composition with no evaluation store (tests and tools): nothing to show, so
+    a proposal task keeps the inputs it had before SIP-0113 §4.5."""
 
     async def for_proposal(self, *, campaign_id: str, accepted_cycle_id: str) -> ProposalEvidence:
         return ProposalEvidence()

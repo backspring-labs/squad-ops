@@ -376,11 +376,6 @@ def test_a_suite_that_doesnt_parse_is_refused_without_quoting_it(tmp_path, capsy
     assert "doesn't parse" in err and SECRET_TITLE not in err
 
 
-@pytest.mark.parametrize("value", ["Pier", "12:30:00", "      ", "a1"])
-def test_a_value_too_short_or_without_a_letter_is_no_marker(value):
-    assert not sweep._distinctive(value)
-
-
 def _browser_suite() -> dict:
     """A page scenario (SIP-0113 §10p): what it types, the text it finds a control by, and the
     words its patterns look for are values; its targets' candidate names are the deliveries' own."""

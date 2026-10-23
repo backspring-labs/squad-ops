@@ -214,6 +214,26 @@ async def increment_seed(vault: Any, registry: Any, cycle: Any, completed_run: A
     )
 
 
+async def built_change_request(vault: Any, registry: Any, cycle: Any, run: Any) -> str | None:
+    """The approved change request an increment-family cycle built, as stored: its proposal's
+    promoted seed (``increment_seed``), or for a repair or a retry, which runs no proposal, the
+    increment's approved seeds its launch carries (#2595). ``None`` when the cycle is no increment
+    or stored none. One lookup for the promotion, which freezes each criterion's statement from it
+    (#1938), and the next proposal's evidence, which folds what the accepted increments added to
+    the PRD (SIP-0113 §10t ruling 2). A read that fails raises."""
+    seed = await increment_seed(vault, registry, cycle, run)
+    if seed is not None:
+        if seed.change_request_ref is None:
+            return None
+        _ref, content = await vault.retrieve(seed.change_request_ref)
+        return content.decode("utf-8")
+    if increment_baseline(cycle.resolved_config()) is not None:
+        # Read through the proposal only, an accepted repair froze its criteria without their
+        # statements.
+        return await forwarded_change_request(vault, cycle)
+    return None
+
+
 async def proposal_change_request(vault: Any, run: Any) -> str | None:
     """The change request a proposal run stored, or ``None`` when it stored none (SIP-0109 §9.1):
     read from the run's own artifacts, the document the gate submitted and a ruling bound to.

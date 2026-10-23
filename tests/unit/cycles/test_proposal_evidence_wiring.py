@@ -324,3 +324,43 @@ async def test_an_increments_framing_is_shown_its_request_without_the_goals_it_m
     assert len(shown) == len(plan) > 1
     assert not [d for d in shown if "goal_export" in d or "moves_goals" in d]
     assert yaml.safe_load(shown[0])["criteria"] == yaml.safe_load(named)["criteria"]
+
+
+async def test_a_proposal_is_shown_its_accepted_trees_goals_through_the_reader():
+    """§10t step 3, entered at ``RunProvisioning.prepare`` for the proposal run with the reader the
+    runtime root builds, over a store holding the campaign's pinned suite and its accepted tree's
+    evaluation. Bugs caught: the reader asked for another campaign or tree than the proposal's
+    launch names, and a step's value or a blocked reason on any envelope."""
+    from squadops.campaigns.models import CycleKind
+    from squadops.outcomes.proposal_reader import StoredProposalEvidence
+    from squadops.scenarios.models import CampaignSuitePin
+    from tests.unit.outcomes.test_proposal_reader import (
+        REASON,
+        STEP_VALUE,
+        SUITE,
+        T0,
+        _Campaigns,
+        _record,
+        _store,
+    )
+
+    store = await _store(pin=False)
+    await store.save_pin(CampaignSuitePin("cmp_1", SUITE.digest, pinned_by="owner", pinned_at=T0))
+    await store.save_evaluation(_record("cyc_accepted", "a" * 64, None, campaign_id="cmp_1"))
+    campaigns = _Campaigns()
+    campaigns.promote("cyc_accepted", CycleKind.CALIBRATION)
+    reader = StoredProposalEvidence(
+        scenarios=store, campaigns=campaigns, cycles=AsyncMock(), vault=AsyncMock()
+    )
+
+    [proposal] = await _prepare(reader, _increment(), _run("proposal", 1))
+
+    shown = proposal.inputs[PROPOSAL_EVIDENCE_INPUT]
+    assert [(g["goal_id"], g["result"]) for g in shown["goals"]] == [
+        ("export", "failed"),
+        ("search", "passed"),
+        ("totals", "not verified"),
+    ]
+    assert shown["held_back"] == 1
+    envelope = json.dumps(proposal.inputs, default=str)
+    assert STEP_VALUE not in envelope and REASON not in envelope
