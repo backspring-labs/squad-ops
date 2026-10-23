@@ -1,6 +1,6 @@
 # 2.4.0 — pre-registration of the cut's set (the plan's §6.2, "the release evidence")
 
-**Status: REGISTERED** on 2026-10-23 at 13:50 ET (§6), when all seven conditions below held. Written the same day by the
+**Status: REGISTERED** on 2026-10-23 at 13:42 ET (§6), when all seven conditions below held. Written the same day by the
 Spark lane, which runs the line under D11, before anything in it launched, and revised on a second reader's findings
 (§11) and on shakeout round 1, a diagnostic round (§12). The exit rule held in round 2 (§12b). Nothing in the set
 launched before registration. The plan leaves the cut's numbers to this document (§8: "each is
@@ -28,7 +28,7 @@ written as a pre-registration when its batch is built"):
    **Met in round 2** (§12b): `cmp_78442938b5ec`, 16:05–17:35Z. The loop took two rounds.
 6. **The always-pass sets are fixed** (§4.1): every baseline tree is read on the final deploy's evaluator, and the
    counts are in §4.1. **Met:** the final deploy's `EVALUATOR_IMAGE` is `…eslint10.12-5`, the baselines'.
-7. **The pins are read** (§6), and nothing in the set has launched. **Met** at 17:50Z (13:50 ET).
+7. **The pins are read** (§6), and nothing in the set has launched. **Met** at 17:42Z (13:42 ET).
 
 ---
 
@@ -278,7 +278,7 @@ falsify. For E4, any goal outside the excused places that the baseline didn't fi
 
 ## 6. Pins (read at registration)
 
-Read at 17:50Z on 2026-10-23, when conditions 1–6 held:
+Read at 17:42Z on 2026-10-23, when conditions 1–6 held:
 
 | pin | value |
 |---|---|
@@ -289,8 +289,8 @@ Read at 17:50Z on 2026-10-23, when conditions 1–6 held:
 | model | `qwen3.8-27b-tf-nvfp4` in every agent (`SQUADOPS__LLM__MODEL`), served by `squadops-tensorfold:0.6.6-cb2ebf05`, the frozen NVFP4 recipe |
 | squad snapshot | `a1280ff8ed4398b3` (`full-38-tf`), read from the deploy's API by the driver's `live_squad_snapshot` |
 | loaded checks | 179 tracked rows in each config, every row of `loaded_checks.yaml`. On the deploy, 179 loaded, 0 not |
-| set configs | `2-4-0-cut-regression-fastapi-react.yaml` and `2-4-0-cut-regression-nextjs.yaml`, carried from IR-10's by `make_cut_configs.py`'s rules: name, records home, this pre-registration, notes, two rolls, every row tracked, and these pins. sha256: *PREFLIGHT_SHAS* |
-| HEAD at preflight | *PREFLIGHT_HEAD*, this registration's branch, at both counting preflights (*PREFLIGHT_RESULT*). The preflight only reads it; roll 1 pins the HEAD it launches from, this registration's merge. Its difference from the deploy commit is the set's configs and this document. Nothing under `src/` or `adapters/` differs |
+| set configs | `2-4-0-cut-regression-fastapi-react.yaml` and `2-4-0-cut-regression-nextjs.yaml`, carried from IR-10's by `make_cut_configs.py`'s rules: name, records home, this pre-registration, notes, two rolls, every row tracked, and these pins. sha256: fastapi-react **`04bab3b2278a9518…`**, nextjs **`c5f5663d8f3af9c7…`** |
+| HEAD at preflight | **`93b06ff4`**, this registration's branch, at both counting preflights (17:41Z), both clean. The preflight only reads it; roll 1 pins the HEAD it launches from, this registration's merge. Its difference from the deploy commit is the set's configs and this document. Nothing under `src/` or `adapters/` differs |
 
 ---
 
