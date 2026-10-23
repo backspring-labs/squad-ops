@@ -4012,6 +4012,8 @@ Tests enter at the completion hook (`CycleCompletion.end`):
 - Reverting `cycle_ending` fails 10 of the tests. Leaving the abandonment uncounted fails the limit test. Dropping row
   18 fails 3.
 
-**What stays.** A framing run that failed or was cancelled stopped on its own run, not at its gate. It still reads
-`assessed`, and its assessment decides it as before. This correction changes only the stops at a gate. Nobody has seen
-a failed framing run's assessment read `accepted`, and this correction doesn't change that path.
+**What stays, deliberately.** A framing run that ended `run_failed`, or `run_cancelled` without being parked, stopped on
+its own run, not at its gate. It stays `assessed` on purpose, so its assessment decides it, attribution included. A
+failure outside the work still routes to a retry on rows 10 and 11, which a no-verdict ending would skip. This
+correction changes only the stops at a gate. Nobody has seen a failed framing run's assessment read `accepted`, and
+this correction doesn't change that path.
