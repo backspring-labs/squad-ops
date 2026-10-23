@@ -1,0 +1,36 @@
+# SIP-0113 §4.5's live reading (§10t ruling 9, §10u; #2677; docs/plans/verification-sets/2-4-0-proposal-evidence-preregistration.md):
+# one campaign, three increments, on a deploy carrying all six of §10t's steps, so each proposal is shown its accepted
+# tree's goals, quality moves and accepted PRD, and may name the goals it means to move. FastAPI + React, from the policy
+# (#2443). The held-out suite's revision 5 is pinned, and each cycle is evaluated at its end. Every proposal is approved
+# as it stands, at version 1, unless the rails refuse it: the rule the window used would decide whether a goal-aimed
+# proposal survives, not the evidence. Memory observes and supplies nothing. Policy as the window's FastAPI campaigns.
+project_id: group_run
+objective:
+  statement: "evolve group_run toward its PRD's expansion scope, one increment at a time"
+  allowed_scope: ["backend/**", "frontend/**"]
+  measurement: "three accepted increments"
+  target_accepted_increments: 3
+  work_class:
+    prd_tier: tier-1
+    attendance: unattended
+policy:
+  # 1 calibration + 3 increments + one repair or retry each (3) + 2 replacements for abandoned ones.
+  max_cycles: 9
+  max_elapsed_s: 64800
+  budget_tokens: 6000000
+  max_repair_cycles_per_increment: 1
+  max_retry_cycles_per_increment: 1
+  max_proposal_run_retries: 1
+  max_proposal_revisions: 2
+  max_rejected_proposals_in_row: 2
+  max_unaccepted_increments: 2
+  ruling_bound_s: 1800
+  lease_expiry_s: 3600
+  launch_blocked_interval_s: 300
+  launch_blocked_attempts: 6
+  calibration_profile: validated-fullstack
+  proposal_profile: campaign-increment
+  squad_profile: full-38-tf
+  plan_gate: tier
+  stack: fullstack_fastapi_react
+scenario_suite: 92a26ad00f26a822458e18f4864853adb431aecd5706ed4e4146232ad9eb67fd
