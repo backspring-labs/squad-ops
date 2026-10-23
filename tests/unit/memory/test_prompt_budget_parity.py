@@ -160,9 +160,12 @@ def _proposer_inputs() -> dict:
 
 
 def _proposal_inputs() -> dict:
-    from tests.unit.capabilities.test_strategy_propose_increment import _inputs
+    """The increment proposal's inputs with the evidence it is shown (SIP-0113 §4.5), so the
+    sections that render it are in the prompt measured."""
+    from squadops.outcomes.proposal_evidence import PROPOSAL_EVIDENCE_INPUT
+    from tests.unit.capabilities.test_strategy_propose_increment import _EVIDENCE, _inputs
 
-    return {**_inputs(), "agent_model": "qwen2.5:14b"}
+    return {**_inputs(), "agent_model": "qwen2.5:14b", PROPOSAL_EVIDENCE_INPUT: _EVIDENCE}
 
 
 @pytest.mark.parametrize(

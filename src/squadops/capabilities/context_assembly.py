@@ -481,6 +481,10 @@ CONTEXT_CONTRACTS: dict[str, ContextAssemblyContract] = {
         # SIP-0113 §4.5: its ``proposal_evidence`` input is rendered, so it's counted as its own.
         prompt_templates=(
             "request.strategy_propose_increment",
+            # SIP-0113 §4.5: what the proposal is shown of its accepted tree, from its evidence.
+            "request.proposal_accepted_prd",
+            "request.proposal_outcome_goals",
+            "request.proposal_quality_moves",
             "request.proposal_abandoned_increment",
             "request.proposal_frozen_conventions",
             "request.proposal_prd_section",

@@ -146,3 +146,55 @@ def test_every_authoring_seam_declares_what_its_prompt_is_made_of():
     undeclared = sorted(t for t in seams if not prompt_contract_of(t).prompt_templates)
 
     assert undeclared == []
+
+
+#: Each authoring seam's own handler modules, under ``capabilities/handlers``. The shared cycle base
+#: (``cycle/base.py``) is left out: its templates serve the base handler's path and the follow-up
+#: calls after the first (self-evaluation), which the composer's budget is not for. A module serving
+#: several seams (the plan proposers) is read against all of theirs.
+_SEAM_MODULES = {
+    ("development.develop",): ("cycle/develop.py",),
+    ("qa.test",): ("cycle/qa_test.py",),
+    ("builder.assemble",): ("cycle/builder.py",),
+    ("development.design_plan", "governance.prepare_plan_authoring_brief"): (
+        "planning/base.py",
+        "planning/framing.py",
+    ),
+    ("development.author_manifest",): ("planning/manifest.py",),
+    (
+        "development.propose_plan_tasks",
+        "qa.propose_plan_tasks",
+        "strategy.propose_plan_guidance",
+    ): ("planning/propose.py", "_plan_authoring.py"),
+    ("strategy.propose_increment",): ("planning/proposal.py",),
+    ("development.correction_repair",): ("impl/repair_handlers.py",),
+    ("development.repair",): ("repair_tasks.py",),
+}
+
+
+@pytest.mark.parametrize("seams", sorted(_SEAM_MODULES))
+def test_every_template_a_seams_handler_names_is_declared(seams):
+    """Bug caught: a template added to a seam's handler and not to its contract (SIP-0113 §10t
+    step 4 added three to the proposal's), so the composer counts the prompt short. The parity
+    test can't see a small one: the bound's margin elsewhere covers it."""
+    import re
+    from pathlib import Path
+
+    handlers = Path(__file__).resolve().parents[3] / "src/squadops/capabilities/handlers"
+    named = {
+        t
+        for module in _SEAM_MODULES[seams]
+        for t in re.findall(r'"(request\.[a-z_.]+)"', (handlers / module).read_text())
+    }
+    declared: set[str] = set()
+    for seam in seams:
+        for entry in prompt_contract_of(seam).prompt_templates:
+            declared |= set(entry) if isinstance(entry, tuple) else {entry}
+    memory = {
+        "request.task_instructions_section",
+        "request.project_instructions_section",
+        "request.cross_cycle_lessons_section",
+        "request.instruction_reference",
+    }
+
+    assert sorted(named - declared - memory) == []
