@@ -2029,7 +2029,7 @@ places the build refined it.
 | 3. the reader | `StoredProposalEvidence` (`outcomes/proposal_reader.py`), injected by the runtime root: goals from the accepted tree's latest evaluation by the campaign, a goal carrying a marker held back; quality against the calibration; the accepted PRD folded through `built_change_request`, the promotion's own lookup | #2687 |
 | 4. the prompt | `request.strategy_propose_increment` v15 and three assets, each rendered only when its part holds something; the `goal_text_copied` rail (SIP-0109 §24bz) | #2688 |
 | 5. the ledger reading | each named goal `moved`, `still failing`, `already passing`, `regressed`, `not verified` or `not evaluated`, in the package's outcome section by id (package version 5) and in the digest | #2689 |
-| 6. the record and the sweep | this section; `heldout_sweep.py --goals` | this PR |
+| 6. the record and the sweep | this section; `heldout_sweep.py --goals` | #2690 |
 
 **Where the build refined a ruling:**
 1. **Ruling 1, when:** the evidence is composed with the run's plan in `RunProvisioning.prepare`, before the first
