@@ -18,6 +18,8 @@ import pytest
 
 from adapters.cycles.memory_deploy_registry import MemoryDeployRegistry
 from squadops.api.runtime import record_deploy as recorder
+from squadops.campaigns.box import EngineReading, Model, box_quietness
+from squadops.campaigns.box_reading import declared_models
 from squadops.cycles.deploy_record import DeployFactsError, DeployRecord, ModelWeights, ServiceImage
 from squadops.llm.models import ModelInfo
 
@@ -70,7 +72,7 @@ async def test_the_record_holds_each_service_and_each_named_models_weights():
     )
 
     record = await recorder.record_deploy(
-        FACTS, registry=registry, profiles=profiles, llm=llm, now=NOW
+        FACTS, registry=registry, profiles=profiles, llm=llm, instances=[], now=NOW
     )
 
     assert await registry.latest() == record
@@ -97,12 +99,43 @@ async def test_a_provider_that_cannot_be_listed_records_every_digest_unknown(cap
         registry=registry,
         profiles=_profiles([("qwen3.8:27b", True)]),
         llm=_llm(ConnectionError("ollama unreachable")),
+        instances=[],
         now=NOW,
     )
 
     assert record.models == (ModelWeights("qwen3.8:27b", None),)
     assert len(record.services) == 4
     assert "model digests unavailable (ollama unreachable)" in capsys.readouterr().err
+
+
+@pytest.mark.parametrize(
+    ("instance", "quiet"),
+    [
+        ({"id": "joi", "model": "llama3.1:8b", "enabled": True}, True),
+        ({"id": "joi", "model": "llama3.1:8b", "enabled": False}, False),
+        ({"id": "curator-agent", "model": "llama3.1:8b", "enabled": True}, False),
+    ],
+    ids=["the-deploys-chat-agent", "disabled", "an-agent-the-deploy-does-not-run"],
+)
+async def test_the_model_of_an_agent_the_deploy_runs_leaves_the_box_quiet(instance, quiet):
+    """#2676, entered at ``record_deploy`` and read by the quiet-box check. Joi is no squad
+    profile's member and answers chat on its instance's model. A record that left it out read a
+    chat turn's resident model as foreign, and refused every launch until the engine unloaded it."""
+    facts = {
+        **FACTS,
+        "services": [*FACTS["services"], {"service": "joi", "image_id": "sha256:joi"}],
+    }
+    record = await recorder.record_deploy(
+        facts,
+        registry=MemoryDeployRegistry(),
+        profiles=_profiles([("qwen3.8:27b", True)]),
+        llm=_llm([ModelInfo("llama3.1:8b", digest="46e0c10c039e")]),
+        instances=[instance],
+        now=NOW,
+    )
+    resident = EngineReading("ollama", (Model("llama3.1:8b", "46e0c10c039e"),), in_flight=0)
+
+    assert box_quietness(declared_models(record), [resident]).quiet is quiet
 
 
 @pytest.mark.parametrize(
@@ -119,7 +152,7 @@ async def test_facts_that_cannot_describe_a_deploy_are_refused_unwritten(facts, 
 
     with pytest.raises(DeployFactsError, match=refusal):
         await recorder.record_deploy(
-            facts, registry=registry, profiles=_profiles([]), llm=_llm([]), now=NOW
+            facts, registry=registry, profiles=_profiles([]), llm=_llm([]), instances=[], now=NOW
         )
 
     assert await registry.latest() is None
@@ -146,13 +179,8 @@ def test_the_command_exits_non_zero_so_the_deploy_reports_the_record_failed(
     assert "record_deploy: refused" in capsys.readouterr().err
 
 
-async def test_the_one_off_loads_the_deploys_config_as_the_runtime_does(monkeypatch):
-    """Wiring, entered at ``_compose_and_record``, the command's own composition. Bug caught: the
-    config loaded without the secret provider every root passes, so on a real deploy — whose
-    configuration carries ``secret://`` references — the record failed before it began (the
-    1.9 deploy's first record, ``ConfigValidationError``)."""
-    from squadops.bootstrap.secrets import secret_provider_for
-
+def _one_off(monkeypatch, instances_file):
+    """The command's composition over stand-in ports, its config loader recording its arguments."""
     seen = {}
 
     def load_config(**kwargs):
@@ -163,6 +191,7 @@ async def test_the_one_off_loads_the_deploys_config_as_the_runtime_does(monkeypa
             llm=SimpleNamespace(
                 provider="ollama", url="http://ollama:11434", timeout=5, api_key=None, model=None
             ),
+            agent=SimpleNamespace(instances_file=instances_file),
         )
 
     pool = AsyncMock()
@@ -172,11 +201,42 @@ async def test_the_one_off_loads_the_deploys_config_as_the_runtime_does(monkeypa
         "adapters.cycles.factory.create_squad_profile_port", lambda *a, **k: _profiles([])
     )
     monkeypatch.setattr("adapters.llm.factory.create_llm_provider", lambda **k: _llm([]))
+    return seen, pool
+
+
+async def test_the_one_off_loads_the_deploys_config_as_the_runtime_does(monkeypatch, tmp_path):
+    """Wiring, entered at ``_compose_and_record``, the command's own composition. Bugs caught: the
+    config loaded without the secret provider every root passes, so on a real deploy — whose
+    configuration carries ``secret://`` references — the record failed before it began (the
+    1.9 deploy's first record, ``ConfigValidationError``); and the configured agent instances
+    file left unread, so an agent's own model went undeclared (#2676)."""
+    from squadops.bootstrap.secrets import secret_provider_for
+
+    instances_file = tmp_path / "instances.yaml"
+    instances_file.write_text(
+        "instances:\n  - {id: neo, model: qwen2.5:7b, enabled: true}\n"
+        "  - {id: joi, model: llama3.1:8b, enabled: true}\n"
+    )
+    seen, pool = _one_off(monkeypatch, instances_file)
 
     record = await recorder._compose_and_record(FACTS)
 
     assert seen.get("secret_provider_factory") is secret_provider_for
     assert len(record.services) == 4
+    assert record.models == (ModelWeights("qwen2.5:7b", None),)  # FACTS runs neo, not joi
+    pool.close.assert_awaited_once()
+
+
+async def test_a_deploy_without_its_agent_instances_file_is_refused_unrecorded(
+    monkeypatch, tmp_path
+):
+    """Bug caught: a missing file read as no agents, so the record declared none of their models
+    and the box refused launches beside them, with nothing saying why (#2676)."""
+    _seen, pool = _one_off(monkeypatch, tmp_path / "absent.yaml")
+
+    with pytest.raises(DeployFactsError, match="agent instances file .* is missing"):
+        await recorder._compose_and_record(FACTS)
+
     pool.close.assert_awaited_once()
 
 

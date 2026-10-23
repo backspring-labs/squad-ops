@@ -1,4 +1,4 @@
-"""What a deploy put in service: each service's image, and the model weights the profiles name (#1720).
+"""What a deploy put in service: each service's image, and the model weights it serves (#1720).
 
 #80 stamps a cycle with the runtime API's own commit. That names one service. On 1.8.2's deploy
 A′ the agents ran another commit's images while every cycle recorded the runtime's, and nothing
@@ -18,7 +18,7 @@ reports without a digest, record ``None``, never a guess.
 
 from __future__ import annotations
 
-from collections.abc import Mapping
+from collections.abc import Iterable, Mapping
 from dataclasses import dataclass
 from datetime import datetime
 from typing import Any
@@ -41,7 +41,8 @@ class ServiceImage:
 
 @dataclass(frozen=True)
 class ModelWeights:
-    """A model a squad profile names, and the weights the provider served under that name."""
+    """A model the deploy serves (a squad profile's or an agent's own), and the weights the provider
+    served under that name."""
 
     model: str
     #: ``None`` when the provider does not report a digest, or does not serve the model at all.
@@ -89,8 +90,26 @@ def services_from_facts(facts: Mapping[str, Any]) -> tuple[ServiceImage, ...]:
     return tuple(sorted(services, key=lambda s: s.service))
 
 
+def instance_models(
+    instances: Iterable[Mapping[str, Any]], services: Iterable[ServiceImage]
+) -> set[str]:
+    """The model each enabled agent instance names, when the deploy runs that agent (#2676).
+
+    An agent no squad profile names still serves from the deploy: Joi answers chat on its
+    instance's model. Left undeclared, a chat turn left a model resident that the quiet box read
+    as foreign, and every launch was refused until the engine unloaded it. An instance is the
+    service of its name, as each agent's service sets ``SQUADOPS__AGENT__ID`` to its own.
+    """
+    running = {s.service for s in services}
+    return {
+        i["model"]
+        for i in instances
+        if i.get("enabled") and i.get("model") and i.get("id") in running
+    }
+
+
 def model_weights(named: set[str], digests: Mapping[str, str | None]) -> tuple[ModelWeights, ...]:
-    """Each model a profile names, with the digest the provider reported for it, if any."""
+    """Each model the deploy names, with the digest the provider reported for it, if any."""
     return tuple(ModelWeights(model=m, digest=digests.get(m)) for m in sorted(named))
 
 

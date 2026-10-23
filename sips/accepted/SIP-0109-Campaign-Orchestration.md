@@ -3862,3 +3862,34 @@ registry's release stood in for until #2178's run side lands. Its cases:
 
 **Who ruled.** Proposed by the supervisor (the Spark lane) on #2178 (issuecomment-6327598642), and the MacBook lane
 agreed to the split and the hold record the same day. Not yet the owner's: it's for the owner's review.
+
+### 24bx. The deploy declares its agents' own models, and an instrument that holds the box names a model no deploy declares (2026-10-22, §9.3, §24an, #2676; implementer's correction, for the owner)
+
+**What was wrong.** §24an read before building that nothing on the deploy loads an undeclared model mid-cycle. Chat
+does. Joi, the deploy's chat agent, is in no squad profile and answers on its instance's model, `llama3.1:8b`. The
+deploy record (#1720) declared only the squad profiles' models. So after any chat turn the box read Joi's model as
+foreign, and every launch was refused `box_not_quiet` until the engine unloaded it, five minutes by Ollama's default.
+SIP-0110 makes chat the way a note is saved and an instruction confirmed, so a chat before a launch is its normal path.
+
+**Evidence.** #2183's acceptance run on the Mac (`dep_33612d484ee7`). T5's chat turns, then T13's cycle create, refused:
+"engine ollama has llama3.1:8b (46e0c10c039e) loaded, which the deploy record does not declare". Unloading the model
+cleared it, and the same create went through.
+
+**What changed:**
+- **The record declares the model of each enabled agent instance whose service the deploy runs** (`instance_models`,
+  from the configured agent instances file), as well as the profiles'. A deploy whose instances file is missing is
+  refused, unrecorded.
+- **The two instruments that hold the box name their model.** The 2.0 lease proof and blocked legs used `llama3.1:8b` as
+  the model no deploy declares, and it's Joi's, declared now.
+  - `campaign_lease_proof.py --stand-in-model` is required.
+  - `campaign_recovery_diagnostics.py --foreign-model` is required for `restart-queued-successor` and
+    `box-held-past-the-lease`.
+  - A model the active record declares is refused before any step or injection.
+  - The records those runs left stand, since the model was undeclared then.
+
+**What stays.** The rule: every engine read, every loaded model declared, and none serving (SIP-0111 §5.5). A model a
+person loads by hand is still undeclared and still refuses a launch. A chat request being served still makes the engine
+busy.
+
+**Who ruled.** The MacBook lane's correction, under the owner's 2.4 delegation. The instruments are the Spark lane's, and
+its review is asked on the PR. For the owner's review.

@@ -85,6 +85,35 @@ def test_the_lease_proof_names_every_step_that_did_not_hold(change, failed_step)
         assert any(f.startswith(failed_step) for f in failures)
 
 
+@pytest.mark.parametrize(
+    ("stand_in", "refused"),
+    [("llama3.1:8b", True), ("phi3:mini", False)],
+    ids=["declared-by-the-deploy", "undeclared"],
+)
+def test_a_stand_in_the_deploy_declares_is_refused_before_the_first_step(
+    stand_in, refused, monkeypatch, tmp_path
+):
+    """#2676. Bug caught: steps 2 and 4 run with a stand-in that leaves the box quiet, so the
+    creates they expect refused go through and the proof fails for a reason it never states. The
+    2.0 proof's ``llama3.1:8b`` is declared since #2676, as Joi's own model."""
+    monkeypatch.setattr(lease, "_declared_models", lambda: {"llama3.1:8b", "qwen3.8:27b"})
+    monkeypatch.setattr(lease, "REPO_ROOT", tmp_path)  # where the proof writes its log
+    steps: list[tuple[str, ...]] = []
+
+    def first_step(*args: str) -> str:
+        steps.append(args)
+        raise SystemExit(3)  # stops the proof at its first CLI call
+
+    monkeypatch.setattr(lease, "_sq", first_step)
+    required = ["--campaign", "c", "--cycle", "y", "--proposal-run", "r", "--change-request"]
+    required += ["cr.yaml", "--idempotency-key", "k", "--notes", "n"]
+
+    with pytest.raises(SystemExit) as exit_:
+        lease.main([*required, "--stand-in-model", stand_in])
+
+    assert (exit_.value.code, bool(steps)) == ((2, False) if refused else (3, True))
+
+
 def test_the_binding_replay_reports_each_criterion_that_recomputes_differently():
     frozen = [
         {"criterion_id": "T1", "statement": "sorted by date", "surface": "GET /runs"},

@@ -14,10 +14,13 @@ for the crew and releases it only when the box is quiet:
 
 The refused creates are also read from the audit sink (#560). Each observation goes to the log,
 and ``verdict`` names every step that did not hold. Needs a logged-in ``squadops`` CLI, a campaign
-paused at an increment's ruling, and the box otherwise idle.
+paused at an increment's ruling, the box otherwise idle, and a stand-in model the engine serves
+and no deploy record declares: a declared one leaves the box quiet when resident, so it is refused
+before step 1 (#2676; the 2.0 proof's ``llama3.1:8b`` is Joi's own model now).
 
     python scripts/dev/campaign_lease_proof.py --campaign CMP --cycle CYC --proposal-run RUN \\
-        --change-request change_request.yaml --idempotency-key KEY --notes "…"
+        --change-request change_request.yaml --idempotency-key KEY --notes "…" \\
+        --stand-in-model MODEL
 """
 
 from __future__ import annotations
@@ -89,6 +92,12 @@ def _psql(sql: str) -> str:
     )
 
 
+def _declared_models() -> set[str]:
+    """The models the active deploy record declares (#1720)."""
+    out = _psql("select models::text from deploy_records order by recorded_at desc limit 1")
+    return {m["model"] for m in json.loads(out)} if out else set()
+
+
 def _ollama(url: str, body: dict) -> None:
     req = urllib.request.Request(
         f"{url}/api/generate", data=json.dumps(body).encode(), method="POST"
@@ -112,9 +121,16 @@ def main(argv: list[str]) -> int:
     p.add_argument("--project", default="group_run")
     p.add_argument("--squad-profile", default="full-38")
     p.add_argument("--request-profile", default="validated-fullstack")
-    p.add_argument("--stand-in-model", default="llama3.1:8b")
+    p.add_argument(
+        "--stand-in-model", required=True, help="a model the engine serves and no deploy declares"
+    )
     p.add_argument("--ollama", default="http://localhost:11434")
     a = p.parse_args(argv)
+    if a.stand_in_model in _declared_models():
+        p.error(
+            f"{a.stand_in_model} is declared by the active deploy record: resident, it leaves the "
+            "box quiet, so steps 2 and 4 could not be refused (#2676)"
+        )
     out = REPO_ROOT / "var" / "campaigns" / a.campaign / "proofs" / "1802-live-lease-proof.log"
     out.parent.mkdir(parents=True, exist_ok=True)
     log: list[str] = []
