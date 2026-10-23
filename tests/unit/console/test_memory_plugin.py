@@ -59,3 +59,20 @@ def test_the_page_calls_only_routes_the_runtime_api_serves():
 
     assert called, "the page names no API route: the pattern no longer reads it"
     assert {p for p in called if not any(matches(p, r) for r in served)} == set()
+
+
+def _rule(selector: str) -> str:
+    """The declarations of ``selector``'s one rule in the page's style block."""
+    style = _PAGE.split("<style>", 1)[1].split("</style>", 1)[0]
+    match = re.search(rf"^\s*{re.escape(selector)}\s*\{{([^}}]*)\}}", style, re.MULTILINE)
+    assert match, f"no rule for {selector}"
+    return match.group(1)
+
+
+def test_a_long_record_never_stretches_the_list():
+    """#2692, seen by the owner: the panes stretched their children to the tallest, so the list's
+    table took the record panel's height and shared it among its rows, and a long record left one
+    row in view. Bug caught: the panes stretching again, or a pane that can't scroll on its own."""
+    assert "align-items: flex-start" in _rule(".panes")
+    assert "overflow-y: auto" in _rule(".list") and "max-height: 100%" in _rule(".list")
+    assert "overflow-y: auto" in _rule(".record")

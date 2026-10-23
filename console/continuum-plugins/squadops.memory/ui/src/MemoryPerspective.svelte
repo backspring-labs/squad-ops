@@ -233,12 +233,15 @@
   .memory { display: flex; flex-direction: column; gap: 8px; padding: 12px 16px; height: 100%; color: var(--continuum-text-primary, #e0e0e8); }
   .filters { display: flex; gap: 8px; flex-wrap: wrap; }
   select { background: var(--continuum-bg-secondary, #252540); color: inherit; border: 1px solid var(--continuum-border, #2d2d44); border-radius: 4px; padding: 4px 6px; }
-  .panes { display: flex; gap: 16px; min-height: 0; flex: 1; }
+  /* #2692: the panes don't stretch their children to the tallest. A stretched table shares the
+     record's height out among its rows, so a long record left the list showing one row. Each pane
+     scrolls on its own instead. */
+  .panes { display: flex; gap: 16px; min-height: 0; flex: 1; align-items: flex-start; overflow: hidden; }
   table { border-collapse: collapse; font-size: var(--continuum-font-size-xs, 12px); width: 100%; }
   th, td { text-align: left; padding: 4px 6px; border-bottom: 1px solid var(--continuum-border, #2d2d44); vertical-align: top; }
-  .list { flex: 1; cursor: pointer; }
+  .list { flex: 1; cursor: pointer; display: block; align-self: stretch; max-height: 100%; overflow-y: auto; }
   .list tr.active { background: var(--continuum-bg-secondary, #252540); }
-  .record { flex: 1.4; overflow-y: auto; font-size: var(--continuum-font-size-sm, 13px); }
+  .record { flex: 1.4; align-self: stretch; overflow-y: auto; font-size: var(--continuum-font-size-sm, 13px); }
   .header { display: grid; grid-template-columns: max-content 1fr; gap: 2px 12px; }
   dt { color: var(--continuum-text-secondary, #a0a0b8); }
   .muted { color: var(--continuum-text-secondary, #a0a0b8); }
