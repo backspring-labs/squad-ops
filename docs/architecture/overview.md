@@ -133,7 +133,8 @@ ledger (§4.3): each person's or supervisor's action on a campaign, projected fr
 and classified by its reason and severity, plus declared entries for actions outside the interface.
 Also what a campaign's proposal run is shown of its accepted tree (§4.5): the goals with their results,
 the quality moves and the accepted PRD, read through `ProposalEvidencePort` and composed onto that one
-task's inputs by `squadops.execution.proposal_evidence`.
+task's inputs by `squadops.execution.proposal_evidence`. `StoredProposalEvidence` reads them from the
+campaign's evaluations, promotions and approved requests; the executor never imports it.
 
 ### `squadops.ports`
 The port interfaces, the contracts between the domain and external systems: secrets, queue, cycle
@@ -160,7 +161,9 @@ Outcome Evaluation's held-out scenarios (SIP-0113 §4.1, §4.7): a scenario's go
 checks and surfaces, content-addressed, and a suite of them that the supervisor drafts and the owner
 approves before a campaign pins it. No squad-side package imports it (IR-4). An evaluation run's
 record, and apart from it in `squadops.scenarios.reference`, the reference SIP-0112's Project history
-stores (contract 5), which imports only the standard library.
+stores (contract 5), which imports only the standard library. A suite's markers
+(`squadops.scenarios.markers`), the step values the P2 sweep searches for and a proposal's goals are
+held back by.
 
 ### `squadops.sandbox`
 The execution sandbox domain (SIP-0102): the service that builds and runs a delivered app in
