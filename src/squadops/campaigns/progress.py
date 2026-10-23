@@ -61,9 +61,8 @@ from squadops.campaigns.increment_tree import (
     INCREMENT_EVALUATION_ARTIFACT_TYPE,
     VERIFIER_BUNDLE_ARTIFACT_TYPE,
     accepted_cycle_of,
+    built_change_request,
     compose_accepted_tree,
-    forwarded_change_request,
-    increment_baseline,
     increment_seed,
     proposal_change_request,
 )
@@ -1212,19 +1211,7 @@ class CampaignProgress:
         re-hearing retries it. It never degrades to ids only: a degraded first attempt and a
         complete replay were one key with two bindings, refused, and the campaign never decided."""
 
-        seed = await increment_seed(self._vault, self._cycles, cycle, run)
-        if seed is not None:
-            if seed.change_request_ref is None:
-                return {}
-            _ref, content = await self._vault.retrieve(seed.change_request_ref)
-            document: str | None = content.decode("utf-8")
-        elif increment_baseline(cycle.resolved_config()) is not None:
-            # A repair or a retry runs no proposal: its launch carries the increment's approved
-            # seeds, and its workloads bind the change request from there (#2595). Read through
-            # the proposal only, an accepted repair froze its criteria without their statements.
-            document = await forwarded_change_request(self._vault, cycle)
-        else:
-            document = None
+        document = await built_change_request(self._vault, self._cycles, cycle, run)
         if document is None:
             return {}
         request = load_stored_change_request(document)
