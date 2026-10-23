@@ -2118,3 +2118,28 @@ named goals with unnamed ones on the same increments, which isn't the same thing
 
 **Who ruled:** the supervisor's record, under the owner's 2.4 delegation and D4's ruling of 2026-10-22. §4.5's ledger
 row is shipped, and phase 2's other two parts stay held by §10s.
+
+### 10w. A suite is checked for values already public before it's drafted (2026-10-23; #2617; the supervisor's, for the owner)
+
+**What was wrong.** The P2 sweep's marker rule makes every step and check value of six characters or more, with a
+letter in it, a marker. Some of those values were public before the suite was written: in the repository's files or
+history, or in deliveries the squad had already stored. A sweep that finds one says nothing about the suite. The 2.4
+window's close set nine such hits apart by hand, post hoc (`docs/plans/2-4-0-window-close.md`). §10v's reading needed
+a pre-launch baseline compared by provenance for the same reason.
+
+**What changed:** `scripts/dev/heldout_public_check.py`, run where the suite lives, before `squadops scenarios draft`.
+- **It reads the markers as the sweep does,** never a goal, and searches for each in every form a store writes it in:
+  - every file the repository tracks;
+  - the repository's whole history;
+  - every file in the vault.
+- **It names each one it finds** by keyed id, scenario and step, never by value, so the author replaces the value
+  before the owner reviews the suite. A vault that isn't there fails the check unless `--no-vault` declares it.
+
+**The rule:** a suite revision drafted from now on passes the check first, or the draft names each value it keeps
+and why. Every marker of a suite that passes is then one the squad couldn't produce from what it sees, so a sweep's or
+a pre-push scan's hit is always a real exposure.
+
+**Evidence:** on revision 5, approved before this, the check finds 8 of 59 markers already public, across 7 of its
+scenarios. §10v's baseline found 9 by its wider reach, which includes the images and caches. The next revision
+replaces them. Revision 5 stands as approved, since revising it is the owner's.
+

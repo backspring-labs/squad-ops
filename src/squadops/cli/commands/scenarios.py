@@ -6,7 +6,9 @@ approves exactly the content reviewed under it. ``list`` and ``show`` give goals
 never steps or checks.
 
 A suite's file is held out: it never lives in a repository the squad's images or prompts are built
-from, so ``draft`` refuses one inside a Git working tree.
+from, so ``draft`` refuses one inside a Git working tree. Before a draft, the supervisor checks the
+file for values already public (``scripts/dev/heldout_public_check.py``, SIP-0113 §10w): one the
+repository or the vault already holds can't tell a leak apart.
 """
 
 from __future__ import annotations
