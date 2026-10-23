@@ -1,8 +1,11 @@
 # 2.4.0: the proposal shown its outcomes, read live, pre-registered (SIP-0113 §4.5, §10t ruling 9, §10u; #2677)
 
 **Written** 2026-10-22 by the Spark lane, after §10t's six steps were built (#2683, #2686, #2687, #2688, #2689 and
-the step 6 PR) and before the campaign below is created. It fixes the campaign, the ruling rule, the predictions and
-how each is read. Nothing here is a suite value: the suite is named by its digest, goals by id, and the readings count.
+#2690) and before the campaign below is created. It fixes the campaign, the ruling rule, the predictions and how each
+is read. **Revised the same day** on a second reader's nine findings, all taken: the places a Release attaches went
+unsearched; LangFuse had no reading; the excused places were a column test; there was no positive control, no
+baseline, no base rate; and E1 and E2 didn't say which records they read. Nothing here is a suite value: the suite is
+named by its digest, goals by id, and the readings count.
 
 ## 1. The deploy
 
@@ -12,7 +15,7 @@ how each is read. Nothing here is a suite value: the suite is named by its diges
 - **Model:** `full-38-tf`'s `qwen3.8-27b-tf-nvfp4`, served by TensorFold, as the 2.4 window's.
 - **Frozen while the campaign runs:** no deploy, no other campaign, no cycle outside it. A defect found mid-campaign is
   filed and fixed after it; a seam defect that voids a reading ends the campaign, and the reading is run again as a new
-  campaign on the fixed deploy (§5).
+  campaign on the fixed deploy (§5, E0's budget).
 
 ## 2. The campaign
 
@@ -32,46 +35,90 @@ there with the note `§4.5 reading: approved as proposed`. The window's rule (th
 would decide whether a goal-aimed proposal survives, not the evidence. **No ruling note quotes a goal**, and none reads
 a scenario. Plan gates are the tier's.
 
-## 4. The predictions: each names a mechanism and how it is falsified
+## 4. Before launch: the baselines
 
-Read from the campaign's own records after it ends. Each counts non-execution beside failure: a proposal run that
-failed, an increment never evaluated, a goal `not verified` or `not evaluated`.
+On the deploy of §1, before the campaign is created, both sweeps run over every place §5 names, and their reports are
+kept: `heldout_sweep.py` (the step values, revision 5) and `heldout_sweep.py --goals`. E3 and E4 judge only what is new
+against them: a hit the baseline holds is not the campaign's. **Known before launch:**
+- §10r B3's one hit, a value already public before the suite, in the sandbox service's package cache;
+- whatever the `--goals` baseline finds, such as a goal that repeats a PRD sentence, or rows of proposals from before
+  #1934 that no task span names. The baseline's report is the list.
 
-- **E0, the evidence reaches the proposal (mechanism, read first).** Every increment's proposal task carries
-  `inputs["proposal_evidence"]` with goals, and its rendered request carries the goals section. *Read from* each
-  proposal's authoring envelope (`seam = proposal_writing`), by counts. *Falsified by* any proposal task without it.
-  If E0 fails, E1 and E2 are not read: the reading is void, not a result.
-- **E1, the proposals aim at gaps.** Every proposal after the calibration names at least one goal in `moves_goals`,
-  and every goal it names was not passing (`failed` or `not verified`) in the evidence it was shown. *Read from* each
-  version 1 change request and the same task's envelope, by id. *Falsified by* a proposal naming none, or naming a goal
-  shown `passed`.
-- **E2, the named goals move.** Of the goals named by accepted increments, at least half read `moved` in the package's
-  `named_goals`. *Falsified by* fewer than half. `not verified` and `not evaluated` are counted apart and are in the
-  denominator: a goal that couldn't be read did not move.
-- **E3, no step value leaks (P2, unchanged).** `heldout_sweep.py` with revision 5 finds no marker outside the suite's
-  own store and the evaluator's records, over the campaign's cycles. *Falsified by* any found or unsearched place.
-- **E4, the goals stay on the proposal.** `heldout_sweep.py --goals` finds no goal statement outside the proposal
-  task's rows and the evaluator's records, and each LangFuse row it reports (`langfuse_unattributed`) belongs to a
-  proposal generation, read by trace. *Falsified by* any other place, or a LangFuse row of another task.
+## 5. The predictions: each names a mechanism and how it is falsified
 
-**Counted beside them, with no threshold:** each `unknown_goal` and `goal_text_copied` refusal inside the proposal
-runs, and each `already passing` and `regressed` reading.
+Read from the campaign's own records after it ends, by id and count. Each counts non-execution beside failure.
 
-## 5. Reading rules
+**Which records:**
+- **A proposal** is the proposal run whose change request the increment gate ruled on: the run that stored it. That
+  run's authoring envelope (`seam = proposal_writing`) is what it was shown. A proposal run that failed or was retried
+  is counted under E0, never read for E1.
+- **An increment's result** is its promoted cycle's evaluation: the increment's own, or the repair or retry that
+  was promoted. The family's other cycles, and increments abandoned unpromoted, are reported beside it and never read
+  for E2 or E5.
 
-- **The record** goes to `var/verification_sets/2-4-0-proposal-evidence/` (counts and ids only), and its summary to
+**E0, the evidence reaches the proposal (mechanism, read first).** Each proposal's envelope carries
+`inputs["proposal_evidence"]` with goals, and its rendered request carries the goals section. *Falsified by* a proposal
+without them. Counted apart, and not a falsification: a proposal shown no goals because the tree it proposed on has no
+evaluation by the campaign (the evaluator failed, or is reporting-only and wrote none).
+- **Void, and the budget.** The campaign's reading is void if fewer than two of its proposals carried the evidence,
+  or a seam defect voided a reading. A void campaign is fixed and run again once, as a second campaign on the fixed
+  deploy. At most two campaigns are run, and the record reports how many it took.
+
+**E1, the proposals aim at gaps.** Every proposal shown at least one goal that wasn't passing names at least one goal
+in `moves_goals`, and every goal it names was shown `failed` or `not verified`. *Falsified by* such a proposal naming
+none, or naming a goal shown `passed`. A proposal shown no goal that wasn't passing is excluded and counted.
+`held_back` is reported beside it.
+
+**E2, the named goals move.** Of the goals the promoted increments named, at least half read `moved` in the package's
+`named_goals`. `not verified` and `not evaluated` are in the denominator, since a goal that couldn't be read didn't
+move, and they're counted apart. *Falsified by* fewer than half.
+
+**E5, the base rate (E2's comparison).** On the same promoted increments, of the goals that weren't passing on the
+tree each was built on, the share of the named ones that moved is higher than the share of the unnamed ones that
+moved. *Read from* the package's per-cycle scenario results against the tree each was built on. *Falsified by* a
+named share at or below the unnamed share. With three increments this is a direction, not a rate: the 2.4 window's
+increments all read `contributed` (§10e), so goals move without being named.
+
+**E3, no step value leaks (P2).** `heldout_sweep.py` with revision 5 finds nothing new against its baseline. *Falsified
+by* any new hit, or any place §6 names that couldn't be searched.
+
+**E4, the goals stay on the proposal.** `heldout_sweep.py --goals` finds nothing new against its baseline outside the
+excused places. Those are exactly the proposal's authoring envelopes, its LangFuse generations (attributed by the
+`task-…` span each hangs under) and the evaluator's records. *Falsified by* any new hit anywhere else, by an
+`unattributed` LangFuse row the campaign wrote, or by any place that couldn't be searched.
+- **Its positive control:** every goal the proposals were shown is found in the excused places
+  (`goals_not_found_in_proposals` lists none of them). If any isn't, E4 is void, not held: the sweep didn't find what it
+  looks for.
+
+**Counted beside them, with no threshold:** each `unknown_goal` and `goal_text_copied` refusal in the proposal runs,
+each `already passing` and `regressed` reading. Also each named goal whose `before` in the package disagrees with
+what its proposal was shown. They should agree, since both read the accepted tree's latest evaluation, and a
+disagreement is reported as a defect.
+
+## 6. Reading rules
+
+- **The places searched** for E3 and E4:
+  - the three databases (`squadops`, `langfuse`, `postgres`);
+  - the vault's artifacts for the campaign's cycles, and its `_unattached` ones (where the campaign's package and
+    digest are kept);
+  - every agent container and the runtime and sandbox services;
+  - on the host, the campaign's log archive (`--host-root var/campaigns/<campaign>`), written by
+    `campaign_log_archive.py --follow` for the whole campaign.
+
+  A Release attaches the package and the archive.
+- **The record** goes to `var/verification_sets/2-4-0-proposal-evidence/`, counts and ids only. Its summary goes to
   #2677 and SIP-0113's next amendment. The delivery ledger's §4.5 row moves to **shipped** with that amendment, whatever
-  E1 and E2 read: the predictions measure the mechanism, not whether it is delivered.
-- **The exit rule:** the campaign's run counts if E0 holds and no seam defect voided a reading. A seam defect found
-  ends the campaign; it is fixed and the reading runs again as a new campaign. The record reports how many runs that
-  took.
-- **Small N.** Three increments read a mechanism, not a rate. E2's half is a direction, and a reading of one or two
-  named goals says so.
+  E1, E2 and E5 read: they measure the mechanism, not whether it is delivered.
+- **Small N.** Three increments read a mechanism, not a rate.
 
-## 6. What this doesn't cover
+## 7. What this doesn't cover
 
-- **No control arm.** Nothing here compares proposals shown the evidence with proposals not shown it. E1 and E2 say
-  whether the mechanism works as built, not how much it adds.
+- **No control arm.** Nothing compares proposals shown the evidence with proposals not shown it. E5 compares named
+  goals with unnamed ones on the same increments, which isn't the same thing.
+- **E1 partly measures instruction-following:** the goals asset tells the proposal that gaps are what an increment can
+  close.
+- **A copy that isn't word for word** goes uncaught. The rail ignores case and spacing, and the sweep matches exactly,
+  so a paraphrased goal in a PRD section reaches every role unrefused and unfound.
 - **One stack, one model, three increments.**
-- **The PRD's priority order** is not enforced (§3), so an approved proposal may skip it.
+- **The PRD's priority order** isn't enforced (§3), so an approved proposal may skip it.
 - **Campaign success:** §4.5's results change nothing a campaign decides. That's §4.7's, held by §10s.
