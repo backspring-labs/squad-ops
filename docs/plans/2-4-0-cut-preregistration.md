@@ -1,9 +1,9 @@
 # 2.4.0 — pre-registration of the cut's set (the plan's §6.2, "the release evidence")
 
-**Status: DRAFT, not registered.** Written 2026-10-23 by the Spark lane, which runs the line under D11, before anything
-in it launches, and revised the same day on a second reader's findings (§11) and on shakeout round 1, a diagnostic
-round (§12). It registers when the conditions below
-hold, and nothing in the set launches before then. The plan leaves the cut's numbers to this document (§8: "each is
+**Status: REGISTERED** on 2026-10-23 at 13:42 ET (§6), when all seven conditions below held. Written the same day by the
+Spark lane, which runs the line under D11, before anything in it launched, and revised on a second reader's findings
+(§11) and on shakeout round 1, a diagnostic round (§12). The exit rule held in round 2 (§12b). Nothing in the set
+launched before registration. The plan leaves the cut's numbers to this document (§8: "each is
 written as a pre-registration when its batch is built"):
 - **the set's size is 2.3's,** carried as 2.3 carried 2.2's;
 - **Q1's and Q2's thresholds are new.** The supervisor set them under D11, from §2's baselines, for the owner's revert
@@ -13,16 +13,22 @@ written as a pre-registration when its batch is built"):
 1. **Both lanes' last 2.4 code is merged and deployed.** That means #2700 (#1966's qa half, merged as `551c9388`) and
    the MacBook lane's #2702 (#2183's T16 pair report). It also covers any other PR the MacBook lane names, in writing, as
    2.4 code the cut needs: #2705 (#2704, a cycle stopped at its plan gate promoted as accepted), named on 2026-10-23. The Spark is rebuilt from main at that commit, and that rebuild is **the final deploy** (§6).
+   **Met:** #2705 merged as `b3acbc82`, the MacBook lane's last 2.4 code by its own word, and the Spark was rebuilt from
+   it at 16:04Z: `dep_d7ff50b9b39c`.
 2. **Every tracked loaded check answers its expected value on the final deploy,** `1966` among them
-   (`verify_loaded.py`, run from the main checkout), and the deploy record is ok.
+   (`verify_loaded.py`, run from the main checkout), and the deploy record is ok. **Met:** 179 loaded, 0 not, `1966` and
+   `2704` among them; "dep_d7ff50b9b39c describes what runs: 25 services".
 3. **This document is merged, as a draft,** so the shakeout's predictions (P4, Q3–Q5) are fixed before it launches.
-4. **The sweeps' baselines are taken** on the final deploy (§4.2).
+   **Met:** #2703 (`f8309507`) and #2707 (`6ce753bd`), both before round 2's launch.
+4. **The sweeps' baselines are taken** on the final deploy (§4.2). **Met** from 16:04Z, before round 2's launch at
+   16:05:53Z: 9 markers from 8 provenances, all known; no goal outside the excused places; nothing unsearched.
 
 **What must be true before the set is registered:**
 5. **The shakeout loop's exit rule holds on the final deploy** (§3): one shakeout campaign with no new seam finding.
+   **Met in round 2** (§12b): `cmp_78442938b5ec`, 16:05–17:35Z. The loop took two rounds.
 6. **The always-pass sets are fixed** (§4.1): every baseline tree is read on the final deploy's evaluator, and the
-   counts are in §4.1.
-7. **The pins are read** (§6), and nothing in the set has launched.
+   counts are in §4.1. **Met:** the final deploy's `EVALUATOR_IMAGE` is `…eslint10.12-5`, the baselines'.
+7. **The pins are read** (§6), and nothing in the set has launched. **Met** at 17:42Z (13:42 ET).
 
 ---
 
@@ -272,14 +278,19 @@ falsify. For E4, any goal outside the excused places that the baseline didn't fi
 
 ## 6. Pins (read at registration)
 
-*Read when conditions 1–6 hold:*
-- the deploy commit and record;
-- the image ids, read from the running containers and equal to both configs' `frozen_image_ids`;
-- `EVALUATOR_IMAGE`;
-- the model;
-- the tracked loaded checks and both counting preflights;
-- the set configs' sha256;
-- HEAD at preflight.
+Read at 17:42Z on 2026-10-23, when conditions 1–6 held:
+
+| pin | value |
+|---|---|
+| deploy commit | **`b3acbc82`**: #2705 on #2703's and #2707's tree, rebuilt 2026-10-23 at 16:04Z |
+| deploy record | **`dep_d7ff50b9b39c`**, "describes what runs: 25 services" (`verify_loaded.py` from the main checkout) |
+| image ids | **runtime-api `ecafe05f1602`, max `32c25e3674a4`, neo `6b6c629a960b`, nat `9edcefaf33c4`, bob `05a43fa38cbc`, eve `b726a7c8b6df`, data `d2708ea504ea`**: read from the running containers, equal to both configs' `frozen_image_ids` |
+| `EVALUATOR_IMAGE` | `squadops-evaluator:lighthouse13.5-axe4.14-ruff0.16-eslint10.12-5`, the §4.1 baselines' |
+| model | `qwen3.8-27b-tf-nvfp4` in every agent (`SQUADOPS__LLM__MODEL`), served by `squadops-tensorfold:0.6.6-cb2ebf05`, the frozen NVFP4 recipe |
+| squad snapshot | `a1280ff8ed4398b3` (`full-38-tf`), read from the deploy's API by the driver's `live_squad_snapshot` |
+| loaded checks | 179 tracked rows in each config, every row of `loaded_checks.yaml`. On the deploy, 179 loaded, 0 not |
+| set configs | `2-4-0-cut-regression-fastapi-react.yaml` and `2-4-0-cut-regression-nextjs.yaml`, carried from IR-10's by `make_cut_configs.py`'s rules: name, records home, this pre-registration, notes, two rolls, every row tracked, and these pins. sha256: fastapi-react **`04bab3b2278a9518…`**, nextjs **`c5f5663d8f3af9c7…`** |
+| HEAD at preflight | **`93b06ff4`**, this registration's branch, at both counting preflights (17:41Z), both clean. The preflight only reads it; roll 1 pins the HEAD it launches from, this registration's merge. Its difference from the deploy commit is the set's configs and this document. Nothing under `src/` or `adapters/` differs |
 
 ---
 
@@ -379,3 +390,29 @@ cut's. #2706 is placed in 2.5 with #2659 and suite revision 6, which move the ta
 
 **The next round** runs on the rebuild after #2705 merges, which is the final deploy, with the sweeps' baselines taken
 again.
+
+### 12b. Shakeout round 2: the exit rule holds
+
+**On the final deploy:** `cmp_78442938b5ec` on `dep_d7ff50b9b39c` (main `b3acbc82`), 16:05:53–17:35Z on 2026-10-23,
+completed `success`, with its objective met on row 3.
+- **The calibration and the first increment were accepted on their first cycle:** `cyc_c9879d4bccb5` and
+  `cyc_ba83158459d9` (a run capacity limit).
+- **The second increment was abandoned on row 16** (#2315, §24bq): `cyc_a603999456c8`, a datetime sort on the
+  list. The build passed its own verification, and its increment was rejected only for criteria the accepted app
+  already met, so no repair could change it. The proposer was told which, in its rendered request. Its replacement,
+  `cyc_3785ef1f301f` (the run list's datetime sort), was accepted on its first cycle. It's data, not a seam finding:
+  the rule ran as designed.
+- **No repair, retry or escalation.** Each proposal was approved as proposed.
+- **P4 holds:** the tier approved all four plan gates, each with its three readings.
+- **Q3 holds:** no cycle's contribution has a `regressed` scenario. Every cycle reads `contributed`. This app's labels
+  didn't trigger #2706.
+- **Q4 holds:** all three proposals' envelopes carried the evidence, and their requests rendered the goals section.
+- **Q5 holds:**
+  - **E3:** no marker whose provenance the baseline didn't find (8 provenances before and after, over 66 cycles);
+  - **E4:** no goal outside the excused places, no `no_task_span` row, and the positive control held;
+  - no place went unsearched.
+- **The logs:** no `ERROR` or traceback in the runtime API, any agent or the sandbox service over the round.
+
+The records are in `var/verification_sets/2-4-0-cut/shakeout-r2/`. **The loop took two rounds:**
+1. round 1, a diagnostic on a superseded deploy, found #2706, and the MacBook lane named #2704's fix;
+2. round 2 met the rule.
