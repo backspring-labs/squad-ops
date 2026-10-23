@@ -29,7 +29,8 @@ from squadops.campaigns.scorecard import scorecard_lines
 #: Bumped when the package's shape changes; a reader checks it before reading further.
 #: 2: each cycle carries its runs' revision forms (#1710).
 #: 3: and its runs' lint readings, evidence only (#1937).
-PACKAGE_VERSION = 4
+#: 5: an increment's outcome section reads the goals its change request named (SIP-0113 §4.5).
+PACKAGE_VERSION = 5
 
 #: The size bound (#1710: "bounded, so a frontier triage of one night fits a metered model
 #: budget"). A package holds records only, never logs or prompts, so it grows only with the cycles
@@ -286,6 +287,14 @@ def _work_class_line(objective: dict) -> str:
     )
 
 
+def _named_goal_lines(cyc: dict) -> list[str]:
+    """SIP-0113 §4.5: what became of each goal the increment's request named, by id only."""
+    named = cyc.get("named_goals") or {}
+    if not named:
+        return []
+    return ["  - named goals: " + ", ".join(f"{goal} {move}" for goal, move in named.items())]
+
+
 def _outcome_lines(outcomes: dict | None) -> list[str]:
     """SIP-0113's readings per cycle (#2418), reporting-only: each contribution, its scenarios
     by result, its quality, and what moved against the tree it built on and the baseline. Never
@@ -301,6 +310,7 @@ def _outcome_lines(outcomes: dict | None) -> list[str]:
     for cyc in outcomes["cycles"]:
         if not cyc.get("evaluation"):
             lines.append(f"- `{cyc['cycle_id']}`: not evaluated")
+            lines += _named_goal_lines(cyc)
             continue
         read = cyc.get("contribution") or {}
         reading = read.get("reading") or f"not read ({read.get('unread_because', 'no reading')})"
@@ -315,6 +325,7 @@ def _outcome_lines(outcomes: dict | None) -> list[str]:
         for moved in ("newly_passing", "regressed", "unverified"):
             if read.get(moved):
                 lines.append(f"  - {moved.replace('_', ' ')}: {', '.join(read[moved])}")
+        lines += _named_goal_lines(cyc)
         if controls := cyc.get("page_controls"):
             # SIP-0113 §10p ruling 4: a page scenario whose names matched no control.
             lines.append(

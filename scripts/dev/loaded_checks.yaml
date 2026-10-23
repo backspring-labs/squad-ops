@@ -1612,3 +1612,11 @@ checks:
       asset = (pathlib.Path(prompts.__file__).parent / "request_templates" / "request.proposal_outcome_goals.md").read_text()
       print(RefusalKind.GOAL_TEXT_COPIED.value, yaml.safe_load(asset.split("---")[1])["template_id"])
     expect: "goal_text_copied request.proposal_outcome_goals"
+  - id: "2677-ledger"
+    what: a campaign's package reads what became of each goal an increment's request named, by id, in package version 5 (SIP-0113 §10t step 5)
+    container: squadops-runtime-api
+    code: |
+      from squadops.campaigns.evidence import PACKAGE_VERSION
+      from squadops.outcomes.named_goals import GoalMove
+      print(PACKAGE_VERSION, [m.value for m in GoalMove])
+    expect: "5 ['moved', 'still failing', 'already passing', 'regressed', 'not verified', 'not evaluated']"

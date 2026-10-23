@@ -129,7 +129,9 @@ async def test_each_cycle_carries_its_contribution_quality_and_moves_against_bot
     ):
         await store.save_evaluation(record)
 
-    section = await campaign_outcomes(store, CID, ["cyc_cal", "cyc_inc1", "cyc_inc2", "cyc_none"])
+    section = await campaign_outcomes(
+        store, CID, ["cyc_cal", "cyc_inc1", "cyc_inc2", "cyc_none"], named_goals={}
+    )
 
     cal, inc1, inc2, none = section["cycles"]
     assert section["suite_digest"] == SUITE.digest
@@ -161,7 +163,7 @@ async def test_the_package_never_carries_a_scenarios_goal_or_steps(store):
     all, into a project artifact."""
     await store.save_evaluation(_record("cyc_cal", CAL, None, ScenarioResult.PASSED))
 
-    text = json.dumps(await campaign_outcomes(store, CID, ["cyc_cal"]))
+    text = json.dumps(await campaign_outcomes(store, CID, ["cyc_cal"], named_goals={}))
 
     assert GOAL not in text and "held-out-step" not in text and "capacity" in text
 
@@ -182,7 +184,7 @@ async def test_a_reading_with_nothing_to_read_against_says_so(store, records, ex
     for record in records:
         await store.save_evaluation(record)
 
-    [section] = (await campaign_outcomes(store, CID, ["cyc_inc1"]))["cycles"]
+    [section] = (await campaign_outcomes(store, CID, ["cyc_inc1"], named_goals={}))["cycles"]
 
     assert section["contribution"] == expected
     assert "vs_previous" not in section
@@ -198,13 +200,13 @@ async def test_a_reading_written_with_no_campaign_never_stands_in_for_the_campai
     for record in (own, reading):
         await store.save_evaluation(record)
 
-    [section] = (await campaign_outcomes(store, CID, ["cyc_cal"]))["cycles"]
+    [section] = (await campaign_outcomes(store, CID, ["cyc_cal"], named_goals={}))["cycles"]
 
     assert (section["evaluation"], section["tree"]) == (own.evaluation_id, "a" * 64)
 
 
 async def test_a_campaign_with_no_suite_pinned_has_no_section():
-    assert await campaign_outcomes(MemoryScenarioStore(), CID, ["cyc_cal"]) is None
+    assert await campaign_outcomes(MemoryScenarioStore(), CID, ["cyc_cal"], named_goals={}) is None
 
 
 async def test_a_not_measured_side_is_named_not_moved(store):
@@ -220,7 +222,9 @@ async def test_a_not_measured_side_is_named_not_moved(store):
     ):
         await store.save_evaluation(record)
 
-    [_, inc1] = (await campaign_outcomes(store, CID, ["cyc_cal", "cyc_inc1"]))["cycles"]
+    [_, inc1] = (await campaign_outcomes(store, CID, ["cyc_cal", "cyc_inc1"], named_goals={}))[
+        "cycles"
+    ]
 
     assert inc1["vs_previous"]["not_compared"] == [
         ["lighthouse and axe", "lighthouse and axe: not_measured after (start_failed)"]
@@ -253,10 +257,36 @@ async def test_a_cycle_says_how_many_of_its_page_scenarios_found_no_control(stor
     await store.save_evaluation(paged)
     await store.save_evaluation(_record("cyc_inc1", INC1, CAL, ScenarioResult.PASSED))
 
-    section = await campaign_outcomes(store, CID, ["cyc_cal", "cyc_inc1"])
+    section = await campaign_outcomes(store, CID, ["cyc_cal", "cyc_inc1"], named_goals={})
 
     cal, inc1 = section["cycles"]
     assert cal["page_controls"] == {"read_in_a_browser": 2, "control_absent": 1}
     assert "page_controls" not in inc1
     lines = _outcome_lines({"suite_digest": SUITE.digest, "cycles": section["cycles"]})
     assert "  - page scenarios: 1 of 2 found no control by any of their names" in lines
+
+
+async def test_an_increments_named_goals_are_read_against_the_tree_it_was_built_on(store):
+    """SIP-0113 §4.5, at the package's section. Bugs caught: a named goal read against the
+    baseline or a later tree, a goal's statement carried beside its id, and a cycle that named
+    none given the key."""
+    for record in (
+        _record("cyc_cal", CAL, None, ScenarioResult.FAILED),
+        _record("cyc_inc1", INC1, CAL, ScenarioResult.PASSED),
+        _record("cyc_inc2", INC2, INC1, ScenarioResult.FAILED),
+    ):
+        await store.save_evaluation(record)
+
+    section = await campaign_outcomes(
+        store,
+        CID,
+        ["cyc_cal", "cyc_inc1", "cyc_inc2", "cyc_none"],
+        named_goals={"cyc_inc1": ("capacity",), "cyc_inc2": ("capacity",), "cyc_none": ("x",)},
+    )
+
+    cal, inc1, inc2, none = section["cycles"]
+    assert "named_goals" not in cal
+    assert inc1["named_goals"] == {"capacity": "moved"}
+    assert inc2["named_goals"] == {"capacity": "regressed"}
+    assert none["named_goals"] == {"x": "not evaluated"}
+    assert GOAL not in json.dumps(section)
