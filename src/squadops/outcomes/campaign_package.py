@@ -5,7 +5,9 @@ cycle's latest record against the campaign's pinned suite, with
 - its scenarios' results, by id;
 - its contribution, read against the record of the tree it built on (§4.4);
 - its quality readings, and their deltas against that tree and against the calibration's reading,
-  the campaign's baseline (§4.2).
+  the campaign's baseline (§4.2);
+- for an increment whose change request named goals in ``moves_goals``, what became of each, by id
+  (§4.5, ``named_goals``).
 
 Never a scenario's goal, steps or checks: the store keeps those, held out. The package is a
 project-level artifact that no squad task's inputs list (``test_held_out_packages.py``).
@@ -18,12 +20,13 @@ gaps §7 prediction 5 reads. AOR reads *no intervention above advisory* from it 
 
 from __future__ import annotations
 
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from typing import TYPE_CHECKING
 
 from squadops.campaigns.models import ControlLogEntry
 from squadops.outcomes.contribution import NotComparable, contribution
 from squadops.outcomes.ledger import LedgerEntry, ledger
+from squadops.outcomes.named_goals import named_goal_moves
 from squadops.outcomes.quality_deltas import Against, QualityDeltas, quality_deltas
 from squadops.scenarios.evaluation import BlockedReason, EvaluationRecord
 
@@ -33,9 +36,15 @@ if TYPE_CHECKING:
 
 
 async def campaign_outcomes(
-    store: ScenarioStorePort, campaign_id: str, cycle_ids: list[str]
+    store: ScenarioStorePort,
+    campaign_id: str,
+    cycle_ids: list[str],
+    *,
+    named_goals: Mapping[str, Sequence[str]],
 ) -> dict | None:
-    """The campaign's outcome readings for its package, ``None`` when no suite is pinned."""
+    """The campaign's outcome readings for its package, ``None`` when no suite is pinned.
+    ``named_goals`` is each increment's ``moves_goals``, by cycle, as its approved request names
+    them."""
     pin = await store.get_pin(campaign_id)
     if pin is None:
         return None
@@ -55,7 +64,9 @@ async def campaign_outcomes(
     return {
         "suite_digest": pin.suite_digest,
         "cycles": [
-            _cycle_section(cycle_id, latest.get(cycle_id), by_tree, baseline)
+            _cycle_section(
+                cycle_id, latest.get(cycle_id), by_tree, baseline, named_goals.get(cycle_id, ())
+            )
             for cycle_id in cycle_ids
         ],
     }
@@ -104,12 +115,18 @@ def _cycle_section(
     record: EvaluationRecord | None,
     by_tree: dict[str, EvaluationRecord],
     baseline: EvaluationRecord | None,
+    named: Sequence[str],
 ) -> dict:
     if record is None:
-        return {"cycle_id": cycle_id, "evaluation": None}
+        section: dict = {"cycle_id": cycle_id, "evaluation": None}
+        if named:
+            section["named_goals"] = {
+                k: str(v) for k, v in named_goal_moves(named, None, None).items()
+            }
+        return section
     built_on = record.previous_accepted_tree_identity
     previous = by_tree.get(built_on) if built_on else None
-    section: dict = {
+    section = {
         "cycle_id": cycle_id,
         "evaluation": record.evaluation_id,
         "tree": record.evaluated_tree_identity,
@@ -127,6 +144,10 @@ def _cycle_section(
         "contribution": _contribution(record, previous),
         **_page_controls(record),
     }
+    if named:
+        # §4.5: the goals its request named, against the tree its proposal was shown.
+        moves = named_goal_moves(named, record, previous)
+        section["named_goals"] = {goal: str(move) for goal, move in moves.items()}
     if previous is not None:
         section["vs_previous"] = _deltas(quality_deltas(record, previous, against=Against.PREVIOUS))
     if baseline is not None and baseline is not record:

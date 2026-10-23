@@ -513,7 +513,8 @@ class CampaignProgress:
         assess: Assess,
         launch: Callable[[], Awaitable[object]],
         evaluate_outcome: Callable[[Cycle], Awaitable[object]] | None,
-        outcome_section: Callable[[str, list[str]], Awaitable[dict | None]] | None,
+        #: ``(campaign_id, cycle_ids, *, named_goals)``: SIP-0113's section (``campaign_outcomes``).
+        outcome_section: Callable[..., Awaitable[dict | None]] | None,
         intervention_section: Callable[[str, list[ControlLogEntry]], Awaitable[dict]] | None,
         clock: Callable[[], datetime] = lambda: datetime.now(UTC),
     ) -> None:
@@ -1064,10 +1065,27 @@ class CampaignProgress:
         if self._outcome_section is None:
             return None
         try:
-            return await self._outcome_section(campaign_id, cycle_ids)
+            named = await self._named_goals(cycle_ids)
+            return await self._outcome_section(campaign_id, cycle_ids, named_goals=named)
         except Exception as e:  # noqa: BLE001 — the package says what it could not read
             logger.exception("campaign_outcomes_unreadable", extra={"campaign_id": campaign_id})
             return {"unreadable": f"{type(e).__name__}: {e}"}
+
+    async def _named_goals(self, cycle_ids: list[str]) -> dict[str, tuple[str, ...]]:
+        """SIP-0113 §4.5: each increment's ``moves_goals``, read from the approved change request it
+        built, by the lookup its promotion reads (``built_change_request``). A cycle that named none
+        is left out."""
+        named: dict[str, tuple[str, ...]] = {}
+        for cycle_id in cycle_ids:
+            runs = await self._cycles.list_runs(cycle_id)
+            if not runs:
+                continue
+            cycle = await self._cycles.get_cycle(cycle_id)
+            last = max(runs, key=lambda r: r.run_number)
+            document = await built_change_request(self._vault, self._cycles, cycle, last)
+            if document is not None and (goals := load_stored_change_request(document).moves_goals):
+                named[cycle_id] = goals
+        return named
 
     async def _interventions(self, campaign_id: str, log: list) -> dict | None:
         """SIP-0113 §4.3 (#2418): the package's intervention section, as ``_outcomes`` is read."""
