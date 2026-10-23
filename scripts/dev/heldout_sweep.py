@@ -40,6 +40,14 @@ Run on the Spark after the window's last campaign, before any later deploy, as t
 
 Exits 0 when no marker is found outside the suite's own store and the evaluator's records and every
 place was searched, 1 otherwise, and 2 when the suite isn't the pinned one or doesn't parse.
+
+**``--goals`` searches for the goals instead** (SIP-0113 §10t ruling 7). A campaign's proposal is
+shown each goal's statement (§4.5), so a statement belongs only in the proposal task's own records
+and the evaluator's. Each goal is a marker, and a table with a ``task_type`` column is counted by
+task type, so the proposal's rows (``strategy.propose_increment``) are told from any other role's.
+Those rows and the evaluator's records aren't counted as found. LangFuse's rows carry no task to
+attribute a goal to, so they're reported apart (``langfuse_unattributed``) for the reading to read
+by trace, and never judged here.
 """
 
 from __future__ import annotations
@@ -59,7 +67,7 @@ from collections.abc import Iterable
 from pathlib import Path
 from typing import Any
 
-from squadops.scenarios.markers import forms, suite_markers
+from squadops.scenarios.markers import distinctive, forms, suite_markers
 
 ROOT = Path(__file__).resolve().parents[2]
 #: The suite's own store: where the values are supposed to be. A page scenario's evidence is held
@@ -77,6 +85,12 @@ SERVICE_ROOTS = {
 _KEY = secrets.token_bytes(32)
 
 _COPY = re.compile(r"^COPY (?:public\.)?\"?([A-Za-z0-9_]+)\"? ")
+_COPY_COLUMNS = re.compile(r"\(([^)]*)\) FROM stdin")
+#: --goals: the task whose inputs and prompt show the goals (§4.5), and the column that names it.
+PROPOSAL_TASK = "strategy.propose_increment"
+TASK_COLUMN = "task_type"
+#: LangFuse's rows can't be attributed to a task from the dump, so --goals reports them apart.
+LANGFUSE = "langfuse"
 _FULL_TEXT = re.compile(r'"data"\s*:\s*"([A-Za-z0-9+/=]{16,})"')
 
 
@@ -94,6 +108,15 @@ def markers(suite: Any) -> dict[str, dict[str, str]]:
     }
 
 
+def goal_markers(suite: Any) -> dict[str, dict[str, str]]:
+    """--goals: each scenario's goal, by its id, as ``markers`` gives each step value."""
+    return {
+        marker_id(s.goal): {"value": s.goal, "scenario": s.scenario_id, "where": "goal"}
+        for s in suite.scenarios
+        if distinctive(s.goal)
+    }
+
+
 def _full_texts(line: str) -> list[str]:
     """Each gzip+base64 full prompt in ``line`` (#1756), decoded; a blob that isn't one is skipped."""
     if "gzip+base64" not in line:
@@ -107,26 +130,35 @@ def _full_texts(line: str) -> list[str]:
     return texts
 
 
-def match_dump(lines: Iterable[str], values: dict[str, str]) -> dict[str, Counter]:
+def match_dump(
+    lines: Iterable[str], values: dict[str, str], *, split_by: str | None = None
+) -> dict[str, Counter]:
     """Each table of a ``pg_dump --data-only`` stream, and how often each marker id occurs in its
     rows, in any of its forms, and in any full prompt a row holds. A row is attributed to the
-    ``COPY`` block it sits in."""
+    ``COPY`` block it sits in, and to ``table[value]`` when the table has the ``split_by`` column."""
     searched = {mid: forms(v) for mid, v in values.items()}
     hits: dict[str, Counter] = {}
-    table = "-"
+    table, at = "-", None
     for line in lines:
         start = _COPY.match(line)
         if start:
             table = start.group(1)
+            listed = _COPY_COLUMNS.search(line)
+            columns = [c.strip().strip('"') for c in listed.group(1).split(",")] if listed else []
+            at = columns.index(split_by) if split_by in columns else None
             continue
         if line.startswith("\\."):
-            table = "-"
+            table, at = "-", None
             continue
+        key = table
+        if at is not None:
+            fields = line.rstrip("\n").split("\t")
+            key = f"{table}[{fields[at]}]" if at < len(fields) else table
         texts = [line, *_full_texts(line)]
         for mid, variants in searched.items():
             n = sum(text.count(f) for text in texts for f in variants)
             if n:
-                hits.setdefault(table, Counter())[mid] += n
+                hits.setdefault(key, Counter())[mid] += n
     return hits
 
 
@@ -201,7 +233,7 @@ def dump_command(db: str) -> list[str]:
             "--data-only", *[f"--exclude-table=public.{t}" for t in sorted(OWN_STORE)]]  # fmt: skip
 
 
-def sweep_databases(values: dict[str, str]) -> dict:
+def sweep_databases(values: dict[str, str], *, split_by: str | None = None) -> dict:
     out: dict[str, Any] = {}
     for db in DATABASES:
         try:
@@ -210,7 +242,7 @@ def sweep_databases(values: dict[str, str]) -> dict:
                 encoding="utf-8", errors="replace",
             )  # fmt: skip
             assert dump.stdout is not None
-            hits = match_dump(dump.stdout, values)
+            hits = match_dump(dump.stdout, values, split_by=split_by)
             code = dump.wait()
         except OSError as e:
             out[db] = {"error": f"pg_dump didn't run: {type(e).__name__}"}
@@ -262,15 +294,19 @@ def running_containers() -> set[str]:
     return {line.strip() for line in done.stdout.splitlines() if line.strip()}
 
 
-def found_outside(report: dict) -> list[str]:
-    """Every place a marker was found that it shouldn't be, or that couldn't be searched."""
+def found_outside(report: dict, *, goals: bool = False) -> list[str]:
+    """Every place a marker was found that it shouldn't be, or that couldn't be searched. With
+    ``goals``, the proposal's own rows aren't, and LangFuse's are reported apart."""
     bad = list(report.get("unsearched", []))
     for db, result in report["databases"].items():
         if "error" in result:
             bad.append(f"database {db}: not searched ({result['error']})")
             continue
+        if goals and db == LANGFUSE:
+            continue
         for table, counts in result["tables"].items():
-            if table not in EVALUATOR_RECORDS and counts:
+            proposals = goals and table.endswith(f"[{PROPOSAL_TASK}]")
+            if table not in EVALUATOR_RECORDS and not proposals and counts:
                 bad.append(f"database {db}, table {table}: {sorted(counts)}")
     for container, result in report["containers"].items():
         if "error" in result:
@@ -284,10 +320,12 @@ def found_outside(report: dict) -> list[str]:
     return bad
 
 
-def sweep(values: dict[str, str], campaigns: list[str]) -> dict[str, Any]:
+def sweep(
+    values: dict[str, str], campaigns: list[str], *, split_by: str | None = None
+) -> dict[str, Any]:
     """Every target searched for ``values``, each failure kept in the report."""
     report: dict[str, Any] = {"unsearched": [], "containers": {}}
-    report["databases"] = sweep_databases(values)
+    report["databases"] = sweep_databases(values, split_by=split_by)
     try:
         cycles = window_cycles(campaigns)
     except (ValueError, OSError, subprocess.CalledProcessError) as e:
@@ -320,6 +358,11 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--suite", type=Path, required=True, help="the held-out suite's YAML")
     p.add_argument("--digest", required=True, help="the pinned suite's digest, or its prefix")
     p.add_argument("--campaign", nargs="*", default=[], help="the window's campaigns")
+    p.add_argument(
+        "--goals",
+        action="store_true",
+        help="search for the goals' statements, not the step values (SIP-0113 §10t ruling 7)",
+    )
     a = p.parse_args(argv)
 
     import yaml
@@ -336,9 +379,12 @@ def main(argv: list[str] | None = None) -> int:
             f"the suite's digest is {suite.digest[:12]}, not the pinned {a.digest}", file=sys.stderr
         )
         return 2
-    found = markers(suite)
+    found = goal_markers(suite) if a.goals else markers(suite)
     values = {mid: m["value"] for mid, m in found.items()}
-    report = sweep(values, a.campaign)
+    report = sweep(values, a.campaign, split_by=TASK_COLUMN if a.goals else None)
+    if a.goals:
+        report["mode"] = "goals"
+        report["langfuse_unattributed"] = report["databases"].get(LANGFUSE, {}).get("tables")
     report |= {
         "suite_digest": suite.digest,
         "markers": len(values),
@@ -349,7 +395,7 @@ def main(argv: list[str] | None = None) -> int:
         "marker_provenance": {mid: {"scenario": m["scenario"], "where": m["where"]}
                               for mid, m in found.items()},
     }  # fmt: skip
-    outside = found_outside(report)
+    outside = found_outside(report, goals=a.goals)
     report["found_outside"] = outside
     print(json.dumps(report, indent=2, sort_keys=True))
     return 1 if outside else 0

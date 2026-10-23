@@ -269,7 +269,7 @@ def test_only_a_place_the_squad_or_product_can_see_counts_as_found_and_unsearche
 def test_the_sweep_walks_every_running_agent_and_names_one_that_isnt(monkeypatch):
     walked: list[str] = []
     clean = {"files": 3, "missing_roots": [], "hits": {}}
-    monkeypatch.setattr(sweep, "sweep_databases", lambda values: {"squadops": {"tables": {}}})
+    monkeypatch.setattr(sweep, "sweep_databases", lambda values, **_: {"squadops": {"tables": {}}})
     monkeypatch.setattr(sweep, "window_cycles", lambda campaigns: [])
     monkeypatch.setattr(sweep, "expected_agents", lambda: ["squadops-joi", "squadops-neo"])
     monkeypatch.setattr(sweep, "running_containers", lambda: {"squadops-neo"})
@@ -289,7 +289,7 @@ def test_the_vault_is_walked_at_each_window_cycles_own_directory(monkeypatch):
     before the zero-files rule, read as clean. Artifacts live at ``data/artifacts/<project>/<cycle>``."""
     walked: dict[str, tuple] = {}
     clean = {"files": 3, "missing_roots": [], "hits": {}}
-    monkeypatch.setattr(sweep, "sweep_databases", lambda values: {"squadops": {"tables": {}}})
+    monkeypatch.setattr(sweep, "sweep_databases", lambda values, **_: {"squadops": {"tables": {}}})
     monkeypatch.setattr(sweep, "window_cycles", lambda campaigns: ["cyc_aaaaaaaaaaaa", "cyc_b0"])
     monkeypatch.setattr(sweep, "expected_agents", lambda: [])
     monkeypatch.setattr(sweep, "running_containers", lambda: set())
@@ -344,7 +344,7 @@ def test_main_exits_by_what_the_sweep_found(tmp_path, monkeypatch, capsys, found
     monkeypatch.setattr(
         sweep,
         "sweep",
-        lambda values, campaigns: {
+        lambda values, campaigns, **_: {
             "unsearched": [],
             "databases": {"squadops": {"tables": {}}},
             "containers": {"squadops-neo": {"files": 2, "missing_roots": [], "hits": found}},
@@ -429,3 +429,102 @@ def test_the_evidence_table_is_searched_as_the_suites_own_store():
         "--exclude-table=public.scenario_evidence",
         "--exclude-table=public.scenario_suites",
     ]
+
+
+# --- --goals (SIP-0113 §10t ruling 7) --------------------------------------------------------
+
+GOAL = "A created run reads back with its whole title"
+
+
+def test_the_goal_markers_are_the_goals_and_none_of_the_steps_values():
+    """Bug caught: --goals searching for the step values, so a goal copied into a build role's
+    prompt passes unfound."""
+    found = sweep.goal_markers(parse_suite(_suite_doc()))
+
+    assert [m["value"] for m in found.values()] == [GOAL]
+    assert list(found) == [sweep.marker_id(GOAL)]
+
+
+def test_a_dump_is_counted_by_task_type_where_its_table_names_one():
+    """Bug caught: the proposal's rows and another role's counted as one table, so a goal in a
+    developer's envelope reads as the proposal's own."""
+    values = {sweep.marker_id(GOAL): GOAL}
+    lines = [
+        "COPY public.authoring_envelopes (envelope_id, run_id, task_id, task_type, seam) FROM stdin;\n",
+        f"e1\tr1\tt1\tstrategy.propose_increment\tproposal_writing {GOAL}\n",
+        f"e2\tr2\tt2\tdevelopment.develop\tbuild_authoring {GOAL} {GOAL}\n",
+        "\\.\n",
+        "COPY public.cycle_runs (run_id, notes) FROM stdin;\n",
+        f"r1\t{GOAL}\n",
+        "\\.\n",
+    ]
+
+    hits = sweep.match_dump(lines, values, split_by="task_type")
+
+    mid = sweep.marker_id(GOAL)
+    assert {t: dict(c) for t, c in hits.items()} == {
+        "authoring_envelopes[strategy.propose_increment]": {mid: 1},
+        "authoring_envelopes[development.develop]": {mid: 2},
+        "cycle_runs": {mid: 1},
+    }
+
+
+def test_with_goals_only_the_proposals_rows_and_the_evaluators_are_not_found():
+    """Bugs caught: the proposal's own rows judged a leak, so every live reading fails; another
+    role's row passed; LangFuse's unattributed rows judged or dropped; and a LangFuse dump that
+    didn't run read as clean."""
+    mid = sweep.marker_id(GOAL)
+    databases = {
+        "squadops": {
+            "tables": {
+                "authoring_envelopes[strategy.propose_increment]": {mid: 2},
+                "authoring_envelopes[development.develop]": {mid: 1},
+                "scenario_evaluations": {mid: 9},
+            }
+        },
+        "langfuse": {"tables": {"observations": {mid: 4}}},
+    }
+    report = {"unsearched": [], "databases": databases, "containers": {}}
+
+    assert sweep.found_outside(report, goals=True) == [
+        f"database squadops, table authoring_envelopes[development.develop]: ['{mid}']"
+    ]
+    assert sweep.found_outside(report) == [
+        f"database squadops, table authoring_envelopes[strategy.propose_increment]: ['{mid}']",
+        f"database squadops, table authoring_envelopes[development.develop]: ['{mid}']",
+        f"database langfuse, table observations: ['{mid}']",
+    ]
+    unrun = {**report, "databases": {**databases, "langfuse": {"error": "pg_dump exited 1"}}}
+    assert "database langfuse: not searched (pg_dump exited 1)" in sweep.found_outside(
+        unrun, goals=True
+    )
+
+
+def test_main_with_goals_reports_langfuse_apart_and_never_prints_a_goal(
+    tmp_path, monkeypatch, capsys
+):
+    path = tmp_path / "suite.yaml"
+    path.write_text(yaml.safe_dump(_suite_doc()))
+    digest = parse_suite(_suite_doc()).digest
+    seen = {}
+
+    def fake_sweep(values, campaigns, *, split_by=None):
+        seen.update(values=set(values.values()), split_by=split_by)
+        mid = next(iter(values))
+        return {
+            "unsearched": [],
+            "databases": {
+                "squadops": {"tables": {}},
+                "langfuse": {"tables": {"observations": {mid: 1}}},
+            },
+            "containers": {"squadops-neo": {"files": 2, "missing_roots": [], "hits": {}}},
+        }
+
+    monkeypatch.setattr(sweep, "sweep", fake_sweep)
+
+    assert sweep.main(["--suite", str(path), "--digest", digest[:8], "--goals"]) == 0
+    out = capsys.readouterr().out
+    report = json.loads(out)
+    assert seen == {"values": {GOAL}, "split_by": "task_type"}
+    assert report["mode"] == "goals" and report["langfuse_unattributed"]["observations"]
+    assert GOAL not in out
