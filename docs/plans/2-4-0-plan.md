@@ -134,6 +134,11 @@ The owner reads the window's record and decides. If the data is late or doesn't 
 next even release with the record. **Project Lifecycle Management is then the release's headline, with phase 1 as the
 yardstick** (D14), and the memory entry points ship as placed (§3).
 
+**Decided 2026-10-22 (SIP-0113 §10s):** the owner chose the split. §4.5 is built in 2.4 (#2677). §4.7 waits, with the quality
+gates, until a reading shows contribution separating from acceptance, since the window falsified P3 as written. P2's
+exposure was remedied by suite revision 4, and revision 5's sweep (B3) found no leak. #1966's adoption comes no
+earlier than the release after §4.5's.
+
 **SIP-0109 §24ap's deferred row joins phase 2:** accepted increments' `prd_delta` text to the proposer ("a 2.4
 question", ruled 2026-10-03). It is the same seam: what the proposer is shown.
 
@@ -521,7 +526,7 @@ reading beside it (Outcome Evaluation §1).
 | D1 | **the headline** | **ruled** 2026-10-16. Q35 added the MacBook lane's feature (2026-10-17) | **ruled 2026-10-16:** Outcome Evaluation leads; its design review comes early; phase 2 is conditional on phase 1's data; the entry points carry 2.4 if it moves. **Since then (2026-10-17):** the owner made Project Lifecycle Management the MacBook lane's 2.4 feature (Q35, PR #2401). D1 stands for the Spark lane's (§2) |
 | D2 | **Outcome Evaluation's five questions** (its §8) | **ruled** 2026-10-17, as recommended. The Spark lane's intent from its #2401 review (the runner, the storage, the surfaces) is for this review; written into SIP-0113, accepted 2026-10-17, where A2 moves (3)'s Lighthouse and axe to the evaluator's image | **(1)** steps held out, goals visible, as drafted. **(2)** The supervisor drafts the first suite and the owner approves it, frozen before the window. **(3)** Lighthouse and axe in the QA image, with the lock files' audit. **(4)** The first work classes: increment count, PRD tier, and attended or unattended, declared in the objective. **(5)** Phase 2 in 2.4, conditional (D1, D4). Also rename the SIP's "outcome" term (§1.1) |
 | D3 | **the window** | **ruled** 2026-10-17, as recommended. G7, ruled, freezes the window's deploy for both lanes | **four campaigns, two per stack, three increments each, on one frozen deploy,** pre-registered. With memory on and no build-side lesson approved, they double as SIP-0110's next build-side experiment |
-| D4 | **phase 2's condition** | **ruled** 2026-10-17, as recommended | **the window's record shows:** the scenarios discriminate, holding out holds, contribution is not the acceptance count, and each measure phase 2 would gate is stable. The owner decides on that record |
+| D4 | **phase 2's condition** | **ruled** 2026-10-17, as recommended; **decided on the record** 2026-10-22 | **the window's record shows:** the scenarios discriminate, holding out holds, contribution is not the acceptance count, and each measure phase 2 would gate is stable. The owner decides on that record. **Decided 2026-10-22, the split** ("I prefer your recommedaiton for the best approach here"): §4.5 in 2.4 (#2677, with SIP-0109 §24ap's `prd_delta`); §4.7 and the quality gates held until a reading shows contribution separating from acceptance (SIP-0113 §10s) |
 | D5 | **the entry points** | **ruled** 2026-10-17, as recommended. The entry points are placed in 2.4.0 (SIP-0110) | **in 2.4 as placed,** in parallel. **Q29: conversation history's retention** is the owner's, set before #2180 ships: **ruled 2026-10-17** (SIP-0110 §A.8) |
 | D6 | **#1966** | **ruled** 2026-10-17, as recommended | **the A/B in 2.4; adoption a separate ruling,** not before phase 2's decision |
 | D7 | **#316** | **ruled** 2026-10-17, as recommended | **in 2.4, after its SIP's design review,** landing before the window's deploy freezes |
