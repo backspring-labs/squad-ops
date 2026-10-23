@@ -19,6 +19,7 @@ from squadops.capabilities.handlers.planning.proposal import StrategyProposeIncr
 from squadops.cycles.models import CycleError, WorkloadType
 from squadops.cycles.task_plan import _resolve_workload_steps
 from squadops.llm.models import ChatMessage
+from squadops.outcomes.proposal_evidence import PROPOSAL_EVIDENCE_INPUT
 from squadops.prompts.assembler import PromptAssembler
 from squadops.prompts.renderer import RequestTemplateRenderer
 from squadops.tasks.task_types import TaskType
@@ -448,3 +449,48 @@ async def test_an_envelope_from_the_runtime_reaches_the_handler_with_no_vault_an
 
     assert str(result.status).lower().endswith("succeeded"), (result.status, result.error)
     assert result.outputs["change_request"]["proposal_id"] == "prop_1"
+
+
+def _naming(*goals: str) -> str:
+    """The reference request, naming the goals it means to move (SIP-0113 §10t ruling 4)."""
+    return yaml.safe_dump(
+        {**yaml.safe_load(_REFERENCE), "moves_goals": list(goals)}, sort_keys=False
+    )
+
+
+#: As the executor composes it onto the task (§10t step 1). The goal is invented.
+_EVIDENCE = {
+    "goals": [
+        {"goal_id": "goal_export", "statement": "A reader exports a list", "result": "failed"}
+    ],
+    "quality": [],
+    "accepted_prd": [],
+    "held_back": 0,
+}
+
+
+async def test_a_proposal_names_the_goals_its_own_evidence_showed_it():
+    """Entered at ``handle()`` with the evidence on the task's inputs. Bugs caught: the rails reading
+    the shown goals from anywhere but the task's own evidence, so a goal it was shown is refused;
+    and the field dropped from the request the supervisor rules on."""
+    ctx = _ctx(_fenced(_naming("goal_export")))
+
+    result = await StrategyProposeIncrementHandler().handle(
+        ctx, {**_inputs(), PROPOSAL_EVIDENCE_INPUT: _EVIDENCE}
+    )
+
+    assert result.success, result.error
+    [artifact] = result.outputs["artifacts"]
+    assert yaml.safe_load(artifact["content"])["moves_goals"] == ["goal_export"]
+
+
+async def test_a_goal_the_proposal_was_not_shown_is_returned_to_it_and_then_refused():
+    """The same emission with no evidence on the task, twice (``proposal_max_attempts`` 2). Bugs
+    caught: an invented goal accepted, and the refusal never reaching the model's revision."""
+    ctx = _ctx(_fenced(_naming("goal_export")), _fenced(_naming("goal_export")))
+
+    result = await StrategyProposeIncrementHandler().handle(ctx, _inputs())
+
+    assert not result.success
+    assert "[unknown_goal] moves_goals names goal_export" in result.error
+    assert "[unknown_goal]" in _prompts(ctx)[1]

@@ -3893,3 +3893,35 @@ busy.
 
 **Who ruled.** The MacBook lane's correction, under the owner's 2.4 delegation. The instruments are the Spark lane's, and
 its review is asked on the PR. For the owner's review.
+
+### 24by. A change request may name the goals it means to move, and only its proposer and the supervisor see them (2026-10-22, §7.2, §9.1, §9.2; SIP-0113 §4.5, §10t ruling 4, #2677; the supervisor's design, for the owner)
+
+**What changed.** §7.2's change request gains one authored field, `moves_goals`: the ids of the goals the proposal means
+to move, from the scenario goals SIP-0113 §4.5 shows the proposal run (§10t step 1). After the build, the ledger reads
+each named goal against the increment's own evaluation (§10t step 5).
+
+| field | type | read by |
+|---|---|---|
+| `moves_goals` | goal ids, each one the proposal run was shown | the rails (§9.1), the supervisor (§9.2), the ledger (SIP-0113 §4.5) |
+
+- **The rails refuse an id the proposal wasn't shown,** as `unknown_goal`, with every other refusal. Naming a goal that
+  already passes is not refused (§10t ruling 5).
+- **An empty list is left out of the stored document and out of `content_hash`.** So every request ruled on before this
+  field existed keeps its hash and loads as it was ruled. A non-empty list is in the hash, so the ruling binds the goals
+  the supervisor saw.
+- **Framing is shown the request without the field** (`role_view`, at `increment_change_request`). No framing or build
+  role learns which held-out goal its work is aimed at. The build roles were never shown the document, only what it
+  derives.
+
+**Evidence.**
+- Every change request stored on the Spark's vault (117) loads, stores back byte for byte and is unchanged by the role
+  view. So do the three stored in `tests/fixtures/campaigns/`.
+- The rails' tests: `tests/unit/campaigns/test_change_request.py`. The handler, entered at `handle()` with the evidence
+  on its inputs: `tests/unit/capabilities/test_strategy_propose_increment.py`. The framing, entered at
+  `RunProvisioning.prepare`: `tests/unit/cycles/test_proposal_evidence_wiring.py`.
+
+**What stays.** Every other field, rail and refusal. The proposal's prompt doesn't yet tell the model the field exists;
+that comes with the evidence it names (§10t step 4).
+
+**Who ruled.** The supervisor's design (SIP-0113 §10t ruling 4), under the owner's 2.4 delegation and D4's ruling of
+2026-10-22. For the owner's review.

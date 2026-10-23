@@ -5,9 +5,10 @@ else: not a framing or build role, and not the cycle's resolved config, which is
 registry, served by the API, copied into retries and repairs by ``bound_launch`` and carried into
 the campaign's records that a cut attaches to the public Release. The wiring test
 (``tests/unit/cycles/test_proposal_evidence_wiring.py``) shows where the executor puts it. This
-holds the code to it: only the executor's composer writes the key, so no launch request builder,
-config writer or correction round's forwarded keys can name it, and loading the executor loads
-none of the held-out store the evidence is read from.
+holds the code to it: only the executor's composer writes the key and only the proposal's handler
+reads it, so no launch request builder, config writer or correction round's forwarded keys can
+name it, and loading the executor or the handler loads none of the held-out store the evidence is
+read from.
 """
 
 from __future__ import annotations
@@ -26,9 +27,11 @@ pytestmark = [pytest.mark.domain_contracts]
 ROOT = Path(__file__).resolve().parents[3]
 _KEY = "proposal_evidence"
 _CONSTANT = "PROPOSAL_EVIDENCE_INPUT"
-#: Where the key is defined, and the one module that writes it onto a task's inputs.
+#: Where the key is defined, the one module that writes it onto a task's inputs, and the one
+#: handler that reads it.
 _DEFINED = "src/squadops/outcomes/proposal_evidence.py"
 _COMPOSER = "src/squadops/execution/proposal_evidence.py"
+_READER = "src/squadops/capabilities/handlers/planning/proposal.py"
 _HELD_OUT = ("squadops.scenarios", "squadops.ports.scenarios", "adapters.scenarios")
 
 
@@ -53,10 +56,10 @@ def _naming(tree: ast.AST) -> tuple[bool, bool]:
     return spelled, named
 
 
-def test_only_the_composer_writes_the_evidence_key():
+def test_only_the_composer_writes_the_evidence_key_and_only_the_proposal_reads_it():
     """Bugs caught: a launch request builder, a resolved-config writer or a correction round's
     forwarded keys naming the key, by its string or its constant, so the evidence reaches every
-    role of the cycle, its stored config or a repair."""
+    role of the cycle, its stored config or a repair; or another handler reading it."""
     spelling, naming = set(), set()
     for rel, tree in _sources():
         spelled, named = _naming(tree)
@@ -66,7 +69,7 @@ def test_only_the_composer_writes_the_evidence_key():
             naming.add(rel)
 
     assert spelling == {_DEFINED}
-    assert naming == {_DEFINED, _COMPOSER}
+    assert naming == {_DEFINED, _COMPOSER, _READER}
 
 
 @pytest.mark.parametrize(
@@ -96,14 +99,16 @@ def test_only_the_proposal_is_shown_its_campaigns_outcomes():
     ]
 
 
-def test_loading_the_executor_loads_none_of_the_held_out_store():
-    """In a fresh interpreter. Bug caught: the store-backed reader imported into the executor, or
-    into a module it reaches, which the per-file import guard
-    (``test_held_out_scenarios_stay_out_of_the_squads_reach.py``) can't see."""
+def test_loading_the_executor_or_the_proposal_loads_none_of_the_held_out_store():
+    """In a fresh interpreter: the runtime's executor and the strategy agent's proposal handler.
+    Bug caught: the store-backed reader imported into either, or into a module one reaches, which
+    the per-file import guard (``test_held_out_scenarios_stay_out_of_the_squads_reach.py``) can't
+    see."""
     code = (
         "import sys\n"
         "import squadops.execution.dispatched_flow_executor\n"
         "import squadops.execution.proposal_evidence\n"
+        "import squadops.capabilities.handlers.planning.proposal\n"
         f"print(sorted(m for m in sys.modules if m.startswith({_HELD_OUT!r})))"
     )
     loaded = subprocess.run(
@@ -114,4 +119,4 @@ def test_loading_the_executor_loads_none_of_the_held_out_store():
         env={"PYTHONPATH": f"{ROOT / 'src'}:{ROOT}"},
     ).stdout.strip()
 
-    assert loaded == "[]", f"loading the executor loads: {loaded}"
+    assert loaded == "[]", f"loading the executor or the proposal loads: {loaded}"

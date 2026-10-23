@@ -16,6 +16,7 @@ packages never load the held-out store (``test_proposal_evidence_stays_on_its_ta
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from dataclasses import dataclass
 from enum import StrEnum
 from typing import Any
@@ -86,3 +87,11 @@ class ProposalEvidence:
             "accepted_prd": [{"id": s.section_id, "text": s.text} for s in self.accepted_prd],
             "held_back": self.held_back,
         }
+
+
+def shown_goal_ids(evidence: Mapping[str, Any] | None) -> tuple[str, ...]:
+    """The ids of the goals a proposal task's evidence shows, read from the wire form its inputs
+    carry; none when it was shown nothing. What its ``moves_goals`` may name (§10t ruling 4)."""
+    if not evidence:
+        return ()
+    return tuple(str(goal["goal_id"]) for goal in evidence.get("goals") or ())

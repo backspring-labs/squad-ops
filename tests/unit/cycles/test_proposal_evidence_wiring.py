@@ -18,6 +18,7 @@ import json
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
+import yaml
 
 from adapters.noop.ports import NoOpFailurePatternRecall
 from squadops.contracts.cycle_request_profiles import load_profile
@@ -96,7 +97,9 @@ def _contract():
     return contract
 
 
-async def _prepare(port: ProposalEvidencePort, cycle, run: Run, plan=None, contract=None) -> list:
+async def _prepare(
+    port: ProposalEvidencePort, cycle, run: Run, plan=None, contract=None, change_request=STORED
+) -> list:
     executor = DispatchedFlowExecutor(
         cycle_registry=AsyncMock(),
         artifact_vault=AsyncMock(),
@@ -121,7 +124,7 @@ async def _prepare(port: ProposalEvidencePort, cycle, run: Run, plan=None, contr
     state = RunInProgress()
     with patch(
         "squadops.execution.run_provisioning.approved_change_request",
-        AsyncMock(return_value=STORED),
+        AsyncMock(return_value=change_request),
     ):
         await executor._run_provisioning.prepare(
             state, cycle.cycle_id, run.run_id, "full", forwarding_overrides=None
@@ -292,3 +295,32 @@ async def test_a_proposal_whose_evidence_cannot_be_read_is_never_dispatched(
 
     with pytest.raises(raised, match=match):
         await _prepare(_Port(answer), cycle, _run("proposal", 1))
+
+
+async def test_an_increments_framing_is_shown_its_request_without_the_goals_it_moves():
+    """§10t ruling 4, entered at ``RunProvisioning.prepare`` for the framing run with the approved
+    request as the vault returns it. Bug caught: the framing handed the stored document whole, so
+    every design and test author learns which held-out goal the increment is aimed at."""
+    from squadops.campaigns.change_request import (
+        content_hash,
+        load_stored_change_request,
+        stored_change_request,
+    )
+
+    request = dataclasses.replace(load_stored_change_request(STORED), moves_goals=("goal_export",))
+    named = stored_change_request(dataclasses.replace(request, content_hash=content_hash(request)))
+    cycle = _increment()
+    approved = dataclasses.replace(
+        cycle, execution_overrides={**cycle.execution_overrides, "contract_ref": "art_contract"}
+    )
+
+    plan = await _prepare(
+        _Port(), approved, _run("framing", 2), contract=_contract(), change_request=named
+    )
+
+    shown = [
+        e.inputs["increment_change_request"] for e in plan if "increment_change_request" in e.inputs
+    ]
+    assert len(shown) == len(plan) > 1
+    assert not [d for d in shown if "goal_export" in d or "moves_goals" in d]
+    assert yaml.safe_load(shown[0])["criteria"] == yaml.safe_load(named)["criteria"]
