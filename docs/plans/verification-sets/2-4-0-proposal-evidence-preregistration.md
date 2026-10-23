@@ -30,10 +30,11 @@ named by its digest, goals by id, and the readings count.
 ## 3. The ruling rule
 
 **Every proposal is approved as it stands, at version 1, unless the rails refused it.** The rails' refusals are the
-proposal task's own revisions inside its run (§9.1); a proposal the rails accept reaches the gate and is approved
-there with the note `§4.5 reading: approved as proposed`. The window's rule (the PRD's priority order) is not used: it
-would decide whether a goal-aimed proposal survives, not the evidence. **No ruling note quotes a goal**, and none reads
-a scenario. Plan gates are the tier's.
+proposal task's own revisions inside its run (§9.1). A proposal the rails accept reaches the gate and is approved
+there with the note `Approved as proposed.`. A note may reach a later proposal (#2598), so it names neither this
+reading nor a goal. The window's rule (the PRD's priority order) isn't used: it would decide whether a goal-aimed
+proposal survives, not the evidence. **No ruling reads a scenario.** Plan gates are the tier's, and a plan review the
+supervisor is asked for is approved as it stands, with the same note.
 
 ## 4. Before launch: the baselines
 
