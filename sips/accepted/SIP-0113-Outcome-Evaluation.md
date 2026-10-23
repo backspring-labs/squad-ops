@@ -2052,7 +2052,7 @@ places the build refined it.
      generation's parent is one.
 
    Only `EXCUSED_FOR_GOALS` (the proposal's authoring envelopes and LangFuse generations) and the evaluator's records
-   aren't counted as found. A row under no task span is `unattributed` and counts: a task id from before #1934 was
+   aren't counted as found. A row under no task span is `no_task_span` and counts: a task id from before #1934 was
    random hex, so the older rows are held by a baseline sweep before launch. Each goal must also be found where the
    proposal was shown it (`goals_not_found_in_proposals`), the positive control. Both modes also walk the vault's
    `_unattached` artifacts, where a campaign's package and digest are kept, and with `--host-root` the campaign's log

@@ -95,6 +95,8 @@ PROPOSAL_TASK = "strategy.propose_increment"
 TASK_COLUMN = "task_type"
 #: LangFuse's observations, attributed to the task span each hangs under: ``(id, name, parent)``.
 SPANS = {"observations": ("id", "name", "parent_observation_id")}
+#: The label of a ``SPANS`` row that hangs under no task span.
+NO_TASK_SPAN = "no_task_span"
 #: Where a goal's statement is the proposal's own (the places the dumps show its prompt is kept):
 #: its authoring envelopes and its LangFuse generations.
 EXCUSED_FOR_GOALS = frozenset(
@@ -142,7 +144,7 @@ def _full_texts(line: str) -> list[str]:
 def _span_task(name: str) -> str | None:
     """The task type a ``task-<task_id>`` span names: its last dotted segment
     (``task-task-<run>-000-strategy.propose_increment``). A task id from before #1934 was random hex
-    and names none, so its rows are unattributed, and a baseline sweep holds them."""
+    and names none, so its rows hang under no task span, and a baseline sweep holds them."""
     if not name.startswith("task-"):
         return None
     return next((part for part in reversed(name.split("-")) if "." in part), None)
@@ -155,7 +157,7 @@ def match_dump(
     rows, in any of its forms, and in any full prompt a row holds. A row is attributed to the
     ``COPY`` block it sits in; with ``split_by``, to ``table[value]`` when the table has that
     column, and a ``SPANS`` table's row to ``table[task]`` by the task span it hangs under
-    (``table[unattributed]`` when it hangs under none)."""
+    (``table[no_task_span]`` when it hangs under none)."""
     searched = {mid: forms(v) for mid, v in values.items()}
     hits: dict[str, Counter] = {}
     names: dict[str, str] = {}
@@ -194,7 +196,7 @@ def match_dump(
             else:
                 hits.setdefault(key, Counter())[mid] += n
     for table, name, parent, mid, n in deferred:
-        task = _span_task(name) or _span_task(names.get(parent, "")) or "unattributed"
+        task = _span_task(name) or _span_task(names.get(parent, "")) or NO_TASK_SPAN
         hits.setdefault(f"{table}[{task}]", Counter())[mid] += n
     return hits
 

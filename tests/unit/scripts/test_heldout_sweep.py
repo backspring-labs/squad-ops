@@ -490,7 +490,7 @@ def test_with_goals_only_the_proposals_places_and_the_evaluators_are_not_found()
             "tables": {
                 "observations[strategy.propose_increment]": {mid: 4},
                 "observations[qa.test]": {mid: 1},
-                "observations[unattributed]": {mid: 1},
+                "observations[no_task_span]": {mid: 1},
             }
         },
     }
@@ -500,7 +500,7 @@ def test_with_goals_only_the_proposals_places_and_the_evaluators_are_not_found()
         f"database squadops, table authoring_envelopes[development.develop]: ['{mid}']",
         f"database squadops, table memory_exposures[strategy.propose_increment]: ['{mid}']",
         f"database langfuse, table observations[qa.test]: ['{mid}']",
-        f"database langfuse, table observations[unattributed]: ['{mid}']",
+        f"database langfuse, table observations[no_task_span]: ['{mid}']",
     ]
     unrun = {**report, "databases": {**databases, "langfuse": {"error": "pg_dump exited 1"}}}
     assert "database langfuse: not searched (pg_dump exited 1)" in sweep.found_outside(
@@ -532,7 +532,7 @@ def test_a_langfuse_row_is_attributed_to_the_task_span_it_hangs_under():
     assert {t: dict(c) for t, c in hits.items()} == {
         "observations[strategy.propose_increment]": {mid: 2},
         "observations[development.develop]": {mid: 1},
-        "observations[unattributed]": {mid: 2},
+        "observations[no_task_span]": {mid: 2},
     }
 
 
