@@ -269,7 +269,7 @@ def test_only_a_place_the_squad_or_product_can_see_counts_as_found_and_unsearche
 def test_the_sweep_walks_every_running_agent_and_names_one_that_isnt(monkeypatch):
     walked: list[str] = []
     clean = {"files": 3, "missing_roots": [], "hits": {}}
-    monkeypatch.setattr(sweep, "sweep_databases", lambda values: {"squadops": {"tables": {}}})
+    monkeypatch.setattr(sweep, "sweep_databases", lambda values, **_: {"squadops": {"tables": {}}})
     monkeypatch.setattr(sweep, "window_cycles", lambda campaigns: [])
     monkeypatch.setattr(sweep, "expected_agents", lambda: ["squadops-joi", "squadops-neo"])
     monkeypatch.setattr(sweep, "running_containers", lambda: {"squadops-neo"})
@@ -285,11 +285,13 @@ def test_the_sweep_walks_every_running_agent_and_names_one_that_isnt(monkeypatch
 
 
 def test_the_vault_is_walked_at_each_window_cycles_own_directory(monkeypatch):
-    """Bug caught: the vault walked at a path its artifacts aren't under, which reads no file and,
-    before the zero-files rule, read as clean. Artifacts live at ``data/artifacts/<project>/<cycle>``."""
+    """Bugs caught: the vault walked at a path its artifacts aren't under, which reads no file and,
+    before the zero-files rule, read as clean. Artifacts live at ``data/artifacts/<project>/<cycle>``;
+    a campaign's package and digest have no cycle, so they're under ``_unattached``, which a
+    Release attaches and the sweep once never walked (the second reader of #2677's reading)."""
     walked: dict[str, tuple] = {}
     clean = {"files": 3, "missing_roots": [], "hits": {}}
-    monkeypatch.setattr(sweep, "sweep_databases", lambda values: {"squadops": {"tables": {}}})
+    monkeypatch.setattr(sweep, "sweep_databases", lambda values, **_: {"squadops": {"tables": {}}})
     monkeypatch.setattr(sweep, "window_cycles", lambda campaigns: ["cyc_aaaaaaaaaaaa", "cyc_b0"])
     monkeypatch.setattr(sweep, "expected_agents", lambda: [])
     monkeypatch.setattr(sweep, "running_containers", lambda: set())
@@ -302,6 +304,7 @@ def test_the_vault_is_walked_at_each_window_cycles_own_directory(monkeypatch):
     assert walked["squadops-runtime-api"] == (
         "/app/data/artifacts/group_run/cyc_aaaaaaaaaaaa",
         "/app/data/artifacts/group_run/cyc_b0",
+        "/app/data/artifacts/group_run/_unattached",
     )
     assert report["unsearched"] == []
 
@@ -344,7 +347,7 @@ def test_main_exits_by_what_the_sweep_found(tmp_path, monkeypatch, capsys, found
     monkeypatch.setattr(
         sweep,
         "sweep",
-        lambda values, campaigns: {
+        lambda values, campaigns, **_: {
             "unsearched": [],
             "databases": {"squadops": {"tables": {}}},
             "containers": {"squadops-neo": {"files": 2, "missing_roots": [], "hits": found}},
@@ -429,3 +432,158 @@ def test_the_evidence_table_is_searched_as_the_suites_own_store():
         "--exclude-table=public.scenario_evidence",
         "--exclude-table=public.scenario_suites",
     ]
+
+
+# --- --goals (SIP-0113 §10t ruling 7) --------------------------------------------------------
+
+GOAL = "A created run reads back with its whole title"
+
+
+def test_the_goal_markers_are_the_goals_and_none_of_the_steps_values():
+    """Bug caught: --goals searching for the step values, so a goal copied into a build role's
+    prompt passes unfound."""
+    found = sweep.goal_markers(parse_suite(_suite_doc()))
+
+    assert [m["value"] for m in found.values()] == [GOAL]
+    assert list(found) == [sweep.marker_id(GOAL)]
+
+
+def test_a_dump_is_counted_by_task_type_where_its_table_names_one():
+    """Bug caught: the proposal's rows and another role's counted as one table, so a goal in a
+    developer's envelope reads as the proposal's own."""
+    values = {sweep.marker_id(GOAL): GOAL}
+    lines = [
+        "COPY public.authoring_envelopes (envelope_id, run_id, task_id, task_type, seam) FROM stdin;\n",
+        f"e1\tr1\tt1\tstrategy.propose_increment\tproposal_writing {GOAL}\n",
+        f"e2\tr2\tt2\tdevelopment.develop\tbuild_authoring {GOAL} {GOAL}\n",
+        "\\.\n",
+        "COPY public.cycle_runs (run_id, notes) FROM stdin;\n",
+        f"r1\t{GOAL}\n",
+        "\\.\n",
+    ]
+
+    hits = sweep.match_dump(lines, values, split_by="task_type")
+
+    mid = sweep.marker_id(GOAL)
+    assert {t: dict(c) for t, c in hits.items()} == {
+        "authoring_envelopes[strategy.propose_increment]": {mid: 1},
+        "authoring_envelopes[development.develop]": {mid: 2},
+        "cycle_runs": {mid: 1},
+    }
+
+
+def test_with_goals_only_the_proposals_places_and_the_evaluators_are_not_found():
+    """Bugs caught: the proposal's own envelopes or generations judged a leak, so every live
+    reading fails; another role's envelope, a LangFuse row under another task or under none, or a
+    task table without the column passed; and a LangFuse dump that didn't run read as clean."""
+    mid = sweep.marker_id(GOAL)
+    databases = {
+        "squadops": {
+            "tables": {
+                "authoring_envelopes[strategy.propose_increment]": {mid: 2},
+                "authoring_envelopes[development.develop]": {mid: 1},
+                "memory_exposures[strategy.propose_increment]": {mid: 1},
+                "scenario_evaluations": {mid: 9},
+            }
+        },
+        "langfuse": {
+            "tables": {
+                "observations[strategy.propose_increment]": {mid: 4},
+                "observations[qa.test]": {mid: 1},
+                "observations[no_task_span]": {mid: 1},
+            }
+        },
+    }
+    report = {"unsearched": [], "databases": databases, "containers": {}}
+
+    assert sweep.found_outside(report, goals=True) == [
+        f"database squadops, table authoring_envelopes[development.develop]: ['{mid}']",
+        f"database squadops, table memory_exposures[strategy.propose_increment]: ['{mid}']",
+        f"database langfuse, table observations[qa.test]: ['{mid}']",
+        f"database langfuse, table observations[no_task_span]: ['{mid}']",
+    ]
+    unrun = {**report, "databases": {**databases, "langfuse": {"error": "pg_dump exited 1"}}}
+    assert "database langfuse: not searched (pg_dump exited 1)" in sweep.found_outside(
+        unrun, goals=True
+    )
+
+
+def test_a_langfuse_row_is_attributed_to_the_task_span_it_hangs_under():
+    """Bug caught: a generation counted under no task, so a goal in a developer's generation
+    reads as the proposal's, or the proposal's own generations read as a leak. A generation is
+    named by its id; its parent is the ``task-<task_id>`` span, which may come after it."""
+    values = {sweep.marker_id(GOAL): GOAL}
+    lines = [
+        "COPY public.observations (id, name, parent_observation_id, input) FROM stdin;\n",
+        f"g1\tgeneration-1a2b\ts1\tprompt with {GOAL}\n",
+        f"g2\tgeneration-3c4d\ts2\t{GOAL}\n",
+        f"s1\ttask-task-run_1a2b3c4d-000-strategy.propose_increment\t\\N\t{GOAL}\n",
+        "s2\ttask-task-run_9f8e7d6c-m004-development.develop\t\\N\t-\n",
+        f"g3\tgeneration-5e6f\t\\N\t{GOAL}\n",
+        # A task id from before #1934 was random hex: its span names no task.
+        f"g4\tgeneration-7a8b\ts3\t{GOAL}\n",
+        "s3\ttask-14be0c2d9f\t\\N\t-\n",
+        "\\.\n",
+    ]
+
+    hits = sweep.match_dump(lines, values, split_by="task_type")
+
+    mid = sweep.marker_id(GOAL)
+    assert {t: dict(c) for t, c in hits.items()} == {
+        "observations[strategy.propose_increment]": {mid: 2},
+        "observations[development.develop]": {mid: 1},
+        "observations[no_task_span]": {mid: 2},
+    }
+
+
+def test_a_host_directory_is_walked_and_judged_as_a_container_is(monkeypatch, tmp_path):
+    """The campaign's log archive, which a Release attaches. Bugs caught: --host-root walked and
+    its hits dropped, or a root that isn't there read as clean."""
+    archive = tmp_path / "cmp_x"
+    (archive / "logs").mkdir(parents=True)
+    (archive / "logs" / "nat.log").write_text(f"a log line quoting {GOAL}\n")
+    monkeypatch.setattr(sweep, "sweep_databases", lambda values, **_: {"squadops": {"tables": {}}})
+    monkeypatch.setattr(sweep, "window_cycles", lambda campaigns: [])
+    monkeypatch.setattr(sweep, "expected_agents", lambda: [])
+    monkeypatch.setattr(sweep, "running_containers", lambda: set())
+    monkeypatch.setattr(
+        sweep, "walk", lambda c, roots, values: {"files": 1, "missing_roots": [], "hits": {}}
+    )
+    values = {sweep.marker_id(GOAL): GOAL}
+
+    report = sweep.sweep(values, [], host_roots=[str(archive), str(tmp_path / "absent")])
+
+    outside = sweep.found_outside(report)
+    assert f"container host: {archive / 'logs' / 'nat.log'} ['{sweep.marker_id(GOAL)}']" in outside
+    assert f"container host: roots not there ['{tmp_path / 'absent'}']" in outside
+    assert GOAL not in json.dumps(report)
+
+
+def test_main_with_goals_reports_each_goal_not_found_where_the_proposal_was_shown_it(
+    tmp_path, monkeypatch, capsys
+):
+    """The positive control. Bugs caught: --goals searching for something other than the goals,
+    so E4 holds having found nothing; and a goal printed in the report."""
+    path = tmp_path / "suite.yaml"
+    path.write_text(yaml.safe_dump(_suite_doc()))
+    digest = parse_suite(_suite_doc()).digest
+    seen = {}
+
+    def fake_sweep(values, campaigns, *, split_by=None, host_roots=()):
+        seen.update(values=set(values.values()), split_by=split_by, host_roots=list(host_roots))
+        return {
+            "unsearched": [],
+            "databases": {"squadops": {"tables": {}}, "langfuse": {"tables": {}}},
+            "containers": {"squadops-neo": {"files": 2, "missing_roots": [], "hits": {}}},
+        }
+
+    monkeypatch.setattr(sweep, "sweep", fake_sweep)
+    argv = ["--suite", str(path), "--digest", digest[:8], "--goals", "--host-root", "/x"]
+
+    assert sweep.main(argv) == 0
+    out = capsys.readouterr().out
+    report = json.loads(out)
+    assert seen == {"values": {GOAL}, "split_by": "task_type", "host_roots": ["/x"]}
+    assert report["mode"] == "goals"
+    assert report["goals_not_found_in_proposals"] == [sweep.marker_id(GOAL)]
+    assert GOAL not in out

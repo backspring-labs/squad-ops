@@ -2015,3 +2015,56 @@ Then the pre-registration and the campaign.
 
 **Not decided here:** whether §4.5's results change campaign success. That is §4.7's, held by §10s.
 
+### 10u. §4.5 as built: what each of §10t's six steps shipped, where the build refined a ruling, and what remains (2026-10-22; #2677; the supervisor's record, for the owner)
+
+§10t ruled the design and its build order. This records what was built against each ruling, with the PRs, and the five
+places the build refined it.
+
+**As built:**
+
+| step | what shipped | PR |
+|---|---|---|
+| 1. the port and its one injection point | `ProposalEvidencePort` (`ports/outcomes.py`); the executor requires it; `RunProvisioning.prepare` composes it onto each task `TaskType.shown_outcome_evidence` names (`strategy.propose_increment` alone), after the plan is generated. A guard holds the key to its composer and its one reader, and loads the executor and the proposal handler in a fresh interpreter to show neither brings the held-out store | #2683 |
+| 2. `moves_goals` | the change request's field and `unknown_goal`; an empty list left out of the document and its hash (all 117 stored requests on the Spark's vault load and store back byte for byte); framing shown the request through `role_view`, without the field (SIP-0109 §24by) | #2686 |
+| 3. the reader | `StoredProposalEvidence` (`outcomes/proposal_reader.py`), injected by the runtime root: goals from the accepted tree's latest evaluation by the campaign, a goal carrying a marker held back; quality against the calibration; the accepted PRD folded through `built_change_request`, the promotion's own lookup | #2687 |
+| 4. the prompt | `request.strategy_propose_increment` v15 and three assets, each rendered only when its part holds something; the `goal_text_copied` rail (SIP-0109 §24bz) | #2688 |
+| 5. the ledger reading | each named goal `moved`, `still failing`, `already passing`, `regressed`, `not verified` or `not evaluated`, in the package's outcome section by id (package version 5) and in the digest | #2689 |
+| 6. the record and the sweep | this section; `heldout_sweep.py --goals` | #2690 |
+
+**Where the build refined a ruling:**
+1. **Ruling 1, when:** the evidence is composed with the run's plan in `RunProvisioning.prepare`, before the first
+   dispatch, not at dispatch. A proposal outside a campaign (the reference's proposal half, §11a) isn't asked, and
+   nothing to show adds no key, so such a task's inputs are the ones it had before §4.5. A campaign proposal whose
+   launch names no accepted cycle raises.
+2. **Ruling 2, quality:** with no page shown, each measure is averaged over the pages both records measured. The seeded
+   reading is left out, and the calibration's own tree shows no moves.
+3. **Ruling 3, one definition:** the markers moved into `squadops.scenarios.markers`, which the P2 sweep now reads
+   too. Replayed over the Spark's live stores, the reader held back no goal and showed no marker on any of the 12
+   campaigns with an accepted tree.
+4. **Ruling 7, the rail:** `goal_text_copied` matches a shown goal's statement word for word, ignoring case and
+   spacing, in a PRD section or a criterion's statement or observable. It reads the statements the task was shown, not
+   the suite's markers. The rails run in the strategy agent's container, which never loads `squadops.scenarios`. The
+   refusal names the goal's id and where, never its text, since it travels into the run's failure reason.
+5. **Ruling 7, the measure:** `heldout_sweep.py --goals` uses each goal's statement as the marker. Where the dumps
+   show a proposal's prompt kept (read on the Spark's records, 2026-10-22), it attributes each hit to its task:
+   - a table with a `task_type` column by that column;
+   - LangFuse's observations by the `task-<task_id>` span each hangs under, its own name or its parent's. Every
+     generation's parent is one.
+
+   Only `EXCUSED_FOR_GOALS` (the proposal's authoring envelopes and LangFuse generations) and the evaluator's records
+   aren't counted as found. A row under no task span is `no_task_span` and counts: a task id from before #1934 was
+   random hex, so the older rows are held by a baseline sweep before launch. Each goal must also be found where the
+   proposal was shown it (`goals_not_found_in_proposals`), the positive control. Both modes also walk the vault's
+   `_unattached` artifacts, where a campaign's package and digest are kept, and with `--host-root` the campaign's log
+   archive. A Release attaches both. A second reader of the pre-registration found all three gaps.
+
+**Ruling 9's fourth prediction, restated as built.** "Goal statements appear only in the proposal's envelopes and
+generations, the evaluator's records and the package" names a place the build keeps them out of. The package and the
+digest carry goals by id only, so the prediction reads: *only in the proposal task's records (its authoring envelope,
+its task rows and its LangFuse generations) and the evaluator's records.* The pre-registration measures it with
+`--goals`.
+
+**What remains:** ruling 9's live reading. It's pre-registered on its own: one `group_run` campaign of three increments
+on a deploy carrying all six steps, each proposal approved as it stands unless the rails refuse it. The delivery
+ledger's §4.5 row stays **placed** until that reading is recorded, since #2677 asks for it.
+
