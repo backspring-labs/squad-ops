@@ -25,7 +25,6 @@ from __future__ import annotations
 
 import dataclasses
 import functools
-import json
 import logging
 import re
 from collections.abc import Collection, Sequence
@@ -35,9 +34,10 @@ from typing import TYPE_CHECKING
 
 from squadops.capabilities.context_assembly import authoring_seam_of
 from squadops.capabilities.handlers.fault_injection import PRIOR_ATTEMPTS_KEY
+from squadops.capabilities.prompt_budget import prompt_budget
 from squadops.cycles.benchmark_registry import cycle_stack
 from squadops.cycles.models import HoldKind
-from squadops.llm.model_registry import get_model_spec, model_family_of
+from squadops.llm.model_registry import model_family_of
 from squadops.memory.context import (
     ChatTurn,
     ContextBundle,
@@ -130,9 +130,6 @@ def _available_for_lessons(prompt_budget: int, binding: int) -> int | None:
     return prompt_budget - binding - _framing(_LESSON_SLOT)
 
 
-#: What memory supplies a dispatch, which is never the task's own input (``prompt_budget_of``).
-_SUPPLIED_INPUTS = frozenset({LESSONS_INPUT, TASK_INSTRUCTIONS_INPUT, PROJECT_INSTRUCTIONS_INPUT})
-
 #: Recall's outcomes, as the lesson section's dispositions (§3.6).
 _SECTION_DISPOSITION = {
     RecallDisposition.SUPPLIED: Disposition.SUPPLIED,
@@ -162,21 +159,6 @@ def unit_of(cycle: Cycle) -> tuple[UnitKind, str]:
     return UnitKind.CYCLE, cycle.cycle_id
 
 
-def prompt_budget_of(envelope: TaskEnvelope) -> int:
-    """§3.6's total prompt budget: the model's context window (SIP-0073's registry) less its completion
-    reserve and the task's own inputs, measured as recall measures lessons. The reserve is the registry's
-    default completion budget. A model the registry does not know has ``-1``, since an unknown never means
-    room, apart from a known window the inputs fill (``0``), so a hold says which. What memory supplied is
-    not the task's own input: a re-dispatch carries its attempt's sections, and counting them would charge
-    the instructions twice."""
-    spec = get_model_spec(str(envelope.inputs.get("agent_model") or ""))
-    if spec is None:
-        return -1
-    own_inputs = {k: v for k, v in envelope.inputs.items() if k not in _SUPPLIED_INPUTS}
-    own = _tokens(json.dumps(own_inputs, sort_keys=True, default=str))
-    return max(0, spec.context_window - spec.default_max_completion - own)
-
-
 def request_for(
     envelope: TaskEnvelope, *, unit: tuple[UnitKind, str], stack: str, run_id: str
 ) -> ContextRequest:
@@ -196,7 +178,7 @@ def request_for(
             stack=stack,
             model_family=model_family_of(str(envelope.inputs.get("agent_model") or "")),
             agent_id=envelope.agent_id,
-            prompt_budget=prompt_budget_of(envelope),
+            prompt_budget=prompt_budget(envelope),
         ),
     )
 
