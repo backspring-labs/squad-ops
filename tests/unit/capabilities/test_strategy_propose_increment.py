@@ -494,3 +494,105 @@ async def test_a_goal_the_proposal_was_not_shown_is_returned_to_it_and_then_refu
     assert not result.success
     assert "[unknown_goal] moves_goals names goal_export" in result.error
     assert "[unknown_goal]" in _prompts(ctx)[1]
+
+
+#: As the reader composes it (§10t step 3), in its wire form. Invented.
+_SHOWN = {
+    "goals": [
+        {"goal_id": "goal_search", "statement": "A reader finds a list", "result": "passed"},
+        {"goal_id": "goal_export", "statement": "A reader exports a list", "result": "failed"},
+        {"goal_id": "goal_totals", "statement": "Totals show by month", "result": "not verified"},
+    ],
+    "quality": [{"measure": "lighthouse:accessibility", "before": 0.91, "after": 0.88}],
+    "accepted_prd": [{"id": "item-tags", "text": "An item may carry tags."}],
+    "held_back": 0,
+}
+
+
+async def _prompt_with(evidence) -> str:
+    ctx = _ctx(_fenced(_REFERENCE))
+    inputs = _inputs() if evidence is None else {**_inputs(), PROPOSAL_EVIDENCE_INPUT: evidence}
+    result = await StrategyProposeIncrementHandler().handle(ctx, inputs)
+    assert result.success, result.error
+    [prompt] = _prompts(ctx)
+    return prompt
+
+
+async def test_a_proposal_reads_its_goals_gaps_first_its_quality_and_what_was_accepted():
+    """SIP-0113 §10t step 4, entered at ``handle()`` with the real renderer. Bugs caught: a section
+    never rendered, the passing goals listed before the gaps, a result or a measure's direction
+    lost, or the goals shown without how to name the ones the change aims at."""
+    prompt = await _prompt_with(_SHOWN)
+
+    goals = [line for line in prompt.splitlines() if line.startswith("- `goal_")]
+    assert goals == [
+        "- `goal_export` (failed): A reader exports a list",
+        "- `goal_totals` (not verified): Totals show by month",
+        "- `goal_search` (passed): A reader finds a list",
+    ]
+    assert "- lighthouse:accessibility: 0.91 → 0.88" in prompt
+    assert "- `item-tags`: An item may carry tags." in prompt
+    assert "under a top-level `moves_goals:` key" in prompt
+    # Each heading a line of its own, in this order: the renderer strips an asset's edges and the
+    # template places the sections side by side, so one not set apart joins the line before it.
+    headings = [line for line in prompt.splitlines() if line.startswith("### ")]
+    start = headings.index("### The product's requirements")
+    assert headings[start : start + 5] == [
+        "### The product's requirements",
+        "### What the accepted increments added to the requirements",
+        "### The campaign's goals, as its evaluator last found them on this application",
+        "### This application's quality against the campaign's first accepted build",
+        "### The accepted application's interface manifest, exactly as it stands",
+    ]
+
+
+@pytest.mark.parametrize("evidence", [None, {}, {"goals": [], "quality": [], "accepted_prd": []}])
+async def test_a_proposal_shown_nothing_is_prompted_as_before_and_never_told_of_the_field(evidence):
+    """Bugs caught: an empty section rendered, and ``moves_goals`` named to a proposal that was
+    shown no goal, which a model copies and the rails then refuse as ``unknown_goal``."""
+    prompt = await _prompt_with(evidence)
+
+    assert prompt == await _prompt_with(None)
+    assert "moves_goals" not in prompt and "### The campaign's goals" not in prompt
+
+
+@pytest.mark.parametrize(
+    ("part", "heading"),
+    [
+        ("goals", "### The campaign's goals"),
+        ("quality", "### This application's quality"),
+        ("accepted_prd", "### What the accepted increments added"),
+    ],
+)
+async def test_each_part_of_the_evidence_renders_alone(part, heading):
+    """Bug caught: one part's section keyed on another's, so a campaign with accepted increments
+    but no pinned suite is shown an empty goals list, or none of what it accepted."""
+    others = [
+        h
+        for h in (
+            "### The campaign's goals",
+            "### This application's quality",
+            "### What the accepted increments added",
+        )
+        if h != heading
+    ]
+
+    prompt = await _prompt_with({part: _SHOWN[part]})
+
+    assert heading in prompt and not [h for h in others if h in prompt]
+
+
+async def test_a_proposal_that_copies_a_goal_is_returned_to_it_with_the_reason():
+    """Entered at ``handle()``, the goal's statement taken from the task's own evidence. Bug caught:
+    the rails given no statements, so a copy reaches the request every role reads."""
+    authored = yaml.safe_load(_REFERENCE)
+    authored["prd_delta"][0]["text"] = "A reader exports a list"
+    copied = yaml.safe_dump(authored, sort_keys=False)
+    ctx = _ctx(_fenced(copied), _fenced(copied))
+
+    result = await StrategyProposeIncrementHandler().handle(
+        ctx, {**_inputs(), PROPOSAL_EVIDENCE_INPUT: _EVIDENCE}
+    )
+
+    assert not result.success and "[goal_text_copied]" in result.error
+    assert "[goal_text_copied]" in _prompts(ctx)[1]

@@ -41,7 +41,14 @@ from squadops.capabilities.handlers.task_instructions import (
     project_instructions_section,
     task_instructions_section,
 )
-from squadops.outcomes.proposal_evidence import PROPOSAL_EVIDENCE_INPUT, shown_goal_ids
+from squadops.outcomes.proposal_evidence import (
+    PROPOSAL_EVIDENCE_INPUT,
+    accepted_prd_lines,
+    goal_lines,
+    quality_lines,
+    shown_goal_ids,
+    shown_goal_statements,
+)
 from squadops.stacks.scaffold import frozen_conventions_for
 from squadops.tasks.task_types import TaskType
 
@@ -63,7 +70,11 @@ class ProposalContextMissing(ValueError):
 
 
 def proposal_context_from(
-    resolved_config: dict, baseline_manifest: str, *, shown_goals: tuple[str, ...]
+    resolved_config: dict,
+    baseline_manifest: str,
+    *,
+    shown_goals: tuple[str, ...],
+    shown_goal_statements: tuple[tuple[str, str], ...],
 ) -> ProposalContext:
     """The rails' context from the cycle's ``campaign_proposal`` block and the fetched manifest,
     and the goals the task's evidence showed it (SIP-0113 §4.5), which its ``moves_goals`` may
@@ -90,9 +101,42 @@ def proposal_context_from(
             allowed_scope=tuple(str(s) for s in objective["allowed_scope"]),
             prior_criteria=tuple(str(c) for c in block.get("prior_criteria") or ()),
             shown_goals=shown_goals,
+            shown_goal_statements=shown_goal_statements,
         )
     except (KeyError, TypeError, ValueError) as e:
         raise ProposalContextMissing(f"campaign_proposal is incomplete: {e!r}") from e
+
+
+#: SIP-0113 §4.5 (§10t step 4): what the proposal is shown of its accepted tree's outcomes, each
+#: part in its own asset, by the request template's variable. A part with nothing in it renders none.
+_EVIDENCE_SECTIONS = (
+    ("goals", "request.proposal_outcome_goals", "goal_lines", goal_lines, "outcome_goals_section"),
+    (
+        "quality",
+        "request.proposal_quality_moves",
+        "quality_lines",
+        quality_lines,
+        "quality_moves_section",
+    ),
+    (
+        "accepted_prd",
+        "request.proposal_accepted_prd",
+        "accepted_prd_lines",
+        accepted_prd_lines,
+        "accepted_prd_section",
+    ),
+)
+
+
+async def _evidence_sections(renderer: Any, evidence: dict[str, Any]) -> dict[str, str]:
+    """Each part's section, set apart as the template's other spliced sections are: the renderer
+    strips an asset's edges, and the template places these side by side."""
+    out: dict[str, str] = {}
+    for key, template_id, variable, lines, section in _EVIDENCE_SECTIONS:
+        if evidence.get(key):
+            rendered = await renderer.render(template_id, {variable: lines(evidence)})
+            out[section] = "\n\n" + rendered.content.strip("\n") + "\n"
+    return out
 
 
 async def _context_sections(
@@ -123,6 +167,7 @@ async def _context_sections(
         # the model is shown them rather than asked to recall them.
         section = await renderer.render("request.proposal_prd_section", {"prd": prd})
         out["prd_section"] = section.content
+    out.update(await _evidence_sections(renderer, inputs.get(PROPOSAL_EVIDENCE_INPUT) or {}))
     note = str(block.get("supervisor_note") or "").strip()
     if note:
         # SIP-0109 §9.2: a revision run is shown the note and the version it revises.
@@ -188,6 +233,7 @@ class StrategyProposeIncrementHandler(_PlanningTaskHandler):
                 resolved_config,
                 str(block.get("baseline_manifest") or ""),
                 shown_goals=shown_goal_ids(inputs.get(PROPOSAL_EVIDENCE_INPUT)),
+                shown_goal_statements=shown_goal_statements(inputs.get(PROPOSAL_EVIDENCE_INPUT)),
             )
         except ProposalContextMissing as e:
             return self._failure(start_time, inputs, str(e))

@@ -464,3 +464,52 @@ def test_moves_goals_that_is_not_a_list_of_ids_is_malformed(named):
 
     [refusal] = verdict.refusals
     assert refusal.kind is RefusalKind.MALFORMED and "moves_goals" in refusal.detail
+
+
+_GOAL = ("goal_export", "A reader exports the run list as a spreadsheet.")
+
+
+def _with_criterion_text(statement: str, observable: str) -> dict:
+    doc = _authored()
+    doc["criteria"] = [{**doc["criteria"][0], "statement": statement, "observable": observable}]
+    return doc
+
+
+@pytest.mark.parametrize(
+    ("authored", "where"),
+    [
+        (
+            _authored(prd_delta=[{"id": "export", "op": "add", "text": f"Now: {_GOAL[1]}"}]),
+            "prd_delta export",
+        ),
+        # Case and spacing differ; the words are the goal's.
+        (
+            _with_criterion_text(
+                "An export works", "a  READER exports the run list as a spreadsheet"
+            ),
+            "criterion C1",
+        ),
+    ],
+)
+def test_a_request_that_repeats_a_goals_statement_is_refused_by_its_id(authored, where):
+    """SIP-0113 §10t ruling 7. Bugs caught: a goal's statement carried in the PRD text or a
+    criterion every framing and build role reads, and the refusal quoting the goal back into the
+    run's failure reason."""
+    verdict = validate_proposal(authored, _context(shown_goal_statements=(_GOAL,)))
+
+    [refusal] = [r for r in verdict.refusals if r.kind is RefusalKind.GOAL_TEXT_COPIED]
+    assert refusal.detail.startswith(f"{where} repeats goal goal_export's statement")
+    assert "spreadsheet" not in refusal.detail
+
+
+def test_a_request_in_its_own_words_is_not_refused_for_its_goal():
+    """Bug caught: the rail refusing any request about the goal's subject, so naming a goal in
+    ``moves_goals`` could never be paired with a criterion that meets it."""
+    authored = _with_criterion_text("The run list downloads as a file", "GET /runs.csv returns 200")
+
+    verdict = validate_proposal(
+        {**authored, "moves_goals": ["goal_export"]},
+        _context(shown_goals=("goal_export",), shown_goal_statements=(_GOAL,)),
+    )
+
+    assert not [r for r in verdict.refusals if r.kind is RefusalKind.GOAL_TEXT_COPIED]

@@ -89,9 +89,43 @@ class ProposalEvidence:
         }
 
 
+def shown_goal_statements(evidence: Mapping[str, Any] | None) -> tuple[tuple[str, str], ...]:
+    """Each shown goal's id and statement, which the rails keep out of the request (§10t ruling 7)."""
+    if not evidence:
+        return ()
+    return tuple((str(g["goal_id"]), str(g["statement"])) for g in evidence.get("goals") or ())
+
+
 def shown_goal_ids(evidence: Mapping[str, Any] | None) -> tuple[str, ...]:
     """The ids of the goals a proposal task's evidence shows, read from the wire form its inputs
     carry; none when it was shown nothing. What its ``moves_goals`` may name (§10t ruling 4)."""
     if not evidence:
         return ()
     return tuple(str(goal["goal_id"]) for goal in evidence.get("goals") or ())
+
+
+#: The order a proposal reads its goals in: the gaps first.
+_GOAL_ORDER = {
+    GoalResult.FAILED.value: 0,
+    GoalResult.NOT_VERIFIED.value: 1,
+    GoalResult.PASSED.value: 2,
+}
+
+
+def goal_lines(evidence: Mapping[str, Any]) -> str:
+    """Each shown goal as a line, ``- `id` (result): statement``, those not passing first, each
+    group in the evaluator's order."""
+    goals = sorted(evidence.get("goals") or (), key=lambda g: _GOAL_ORDER.get(str(g["result"]), 1))
+    return "\n".join(f"- `{g['goal_id']}` ({g['result']}): {g['statement']}" for g in goals)
+
+
+def quality_lines(evidence: Mapping[str, Any]) -> str:
+    """Each quality measure as a line, ``- measure: before → after``."""
+    return "\n".join(
+        f"- {q['measure']}: {q['before']} → {q['after']}" for q in evidence.get("quality") or ()
+    )
+
+
+def accepted_prd_lines(evidence: Mapping[str, Any]) -> str:
+    """Each accepted PRD section as a line, ``- `id`: text``."""
+    return "\n".join(f"- `{s['id']}`: {s['text']}" for s in evidence.get("accepted_prd") or ())
