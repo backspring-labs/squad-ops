@@ -38,12 +38,19 @@ supervisor is asked for is approved as it stands, with the same note.
 
 ## 4. Before launch: the baselines
 
-On the deploy of §1, before the campaign is created, both sweeps run over every place §5 names, and their reports are
-kept: `heldout_sweep.py` (the step values, revision 5) and `heldout_sweep.py --goals`. E3 and E4 judge only what is new
-against them: a hit the baseline holds is not the campaign's. **Known before launch:**
-- §10r B3's one hit, a value already public before the suite, in the sandbox service's package cache;
-- whatever the `--goals` baseline finds, such as a goal that repeats a PRD sentence, or rows of proposals from before
-  #1934 that no task span names. The baseline's report is the list.
+On the deploy of §1, before the campaign is created, both sweeps run over every place §6 names, over the cycles of
+every campaign that pins a suite (15), and their reports are kept in the record's directory. **Taken 2026-10-23 from
+02:14Z on `dep_1aa6d6f1c4e0`:**
+- **`heldout_sweep.py`, the step values:** 9 of revision 5's 59 markers were already found outside the suite's store,
+  spanning 8 of its 31 scenarios. They're in older deliveries and caches, and in every agent image alike. §10r B3's
+  public value is among them.
+- **`heldout_sweep.py --goals`:** no goal outside the excused places. All 17 goal markers are missing from the
+  proposals, as they must be before any proposal is shown them.
+
+**How "new" is read.** A sweep keys its marker ids fresh for each run, so ids don't compare across runs. A marker's
+provenance (its scenario and the step or check it's from) does. For E3, a marker whose provenance the baseline found
+is known (`baseline-p2-public.json`), and only the other 50 can falsify it. For E4, the baseline found nothing, so any
+goal outside the excused places is new.
 
 ## 5. The predictions: each names a mechanism and how it is falsified
 
@@ -80,8 +87,9 @@ moved. *Read from* the package's per-cycle scenario results against the tree eac
 named share at or below the unnamed share. With three increments this is a direction, not a rate: the 2.4 window's
 increments all read `contributed` (§10e), so goals move without being named.
 
-**E3, no step value leaks (P2).** `heldout_sweep.py` with revision 5 finds nothing new against its baseline. *Falsified
-by* any new hit, or any place §6 names that couldn't be searched.
+**E3, no step value leaks (P2).** `heldout_sweep.py` with revision 5, over the campaign's cycles, finds no marker the
+baseline didn't (§4), outside the suite's store and the evaluator's records. *Falsified by* any such marker, or any
+place §6 names that couldn't be searched.
 
 **E4, the goals stay on the proposal.** `heldout_sweep.py --goals` finds nothing new against its baseline outside the
 excused places. Those are exactly the proposal's authoring envelopes, its LangFuse generations (attributed by the
