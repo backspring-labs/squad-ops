@@ -1569,3 +1569,13 @@ checks:
       seed = next(f["content"] for f in expand(InterfaceManifest.from_dict(raw)) if f["name"].endswith("routes.py"))
       print([s["params"] for s in declared_route_signatures(seed) if s["route"] == "DELETE /runs/{run_id}/participants"])
     expect: "[['run_id', 'name']]"
+  - id: "2677-boundary"
+    what: the executor requires the proposal-evidence port, and only the proposal task is shown its campaign's outcomes (SIP-0113 §10t step 1)
+    container: squadops-runtime-api
+    code: |
+      import inspect
+      from squadops.execution.dispatched_flow_executor import DispatchedFlowExecutor
+      from squadops.tasks.task_types import TaskType
+      required = inspect.signature(DispatchedFlowExecutor).parameters["proposal_evidence"].default
+      print([t.value for t in TaskType if t.shown_outcome_evidence], required is inspect.Parameter.empty)
+    expect: "['strategy.propose_increment'] True"
