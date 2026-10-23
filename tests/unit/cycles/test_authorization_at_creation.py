@@ -24,7 +24,7 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from adapters.noop.ports import NoOpFailurePatternRecall
+from adapters.noop.ports import NoOpFailurePatternRecall, NoOpProposalEvidence
 from squadops.cycles.bound_scaffold_record import build_bound_record
 from squadops.cycles.delivered_tree import StoredArtifact, delivered_files
 from squadops.cycles.failure_attribution import TerminalKind
@@ -163,6 +163,7 @@ def executor(reply_router):
         campaign_progress=None,
         box_verdict=None,
         failure_recall=NoOpFailurePatternRecall(),
+        proposal_evidence=NoOpProposalEvidence(),
     )
     ex._store_artifact = AsyncMock(side_effect=lambda art, *a, **k: _ref(art["name"]))
     ex._emit_scaffold_integrity_evidence = MagicMock()

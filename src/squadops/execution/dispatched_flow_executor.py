@@ -195,6 +195,7 @@ if TYPE_CHECKING:
     from squadops.ports.cycles.workflow_tracker import WorkflowTrackerPort
     from squadops.ports.events.cycle_event_bus import CycleEventBusPort
     from squadops.ports.memory.recall import FailurePatternRecallPort
+    from squadops.ports.outcomes import ProposalEvidencePort
     from squadops.ports.projects.source_repository import SourceRepositoryPort
     from squadops.ports.runtime.activity import RuntimeActivityPort
     from squadops.ports.runtime.assignments import AssignmentPort
@@ -701,6 +702,10 @@ class DispatchedFlowExecutor(FlowExecutionPort):
         # Required with no ``None`` meaning: 2.1's roots inject the inert recall that answers
         # empty, so the call site is live and nothing is handed until 2.2's adapter.
         failure_recall: FailurePatternRecallPort,
+        # SIP-0113 §4.5 (§10t ruling 1): what a campaign's proposal task is shown of its accepted
+        # tree, read when the run's plan is composed. Required with no ``None`` meaning: a root
+        # with no evaluation store injects the evidence that has nothing to show.
+        proposal_evidence: ProposalEvidencePort,
         # 1.8.2 item 15: the per-task wait is declared by the composition root, never
         # defaulted here — a default is the hung-agent detector nobody chose.
         task_timeout: float,
@@ -728,6 +733,7 @@ class DispatchedFlowExecutor(FlowExecutionPort):
     ) -> None:
         self._cycle_registry = cycle_registry
         self._failure_recall = failure_recall
+        self._proposal_evidence = proposal_evidence
         # SIP-0109 §9.2: the campaign a cycle belongs to hears its increment gate open. A
         # campaign cycle run by an executor without one fails at that gate, loudly.
         self._campaign_registry = campaign_registry

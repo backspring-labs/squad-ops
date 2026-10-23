@@ -20,6 +20,7 @@ from adapters.cycles.memory_cycle_registry import MemoryCycleRegistry
 from adapters.memory.cross_cycle import InMemoryCrossCycleMemoryStore
 from adapters.memory.recall import SnapshotRecall
 from adapters.memory.records import InMemoryMemoryRecords
+from adapters.noop.ports import NoOpProposalEvidence
 from squadops.campaigns.models import CampaignState
 from squadops.cycles.models import BindingHold, RunStatus
 from squadops.events.types import EventType
@@ -82,6 +83,7 @@ async def test_a_run_held_at_provisioning_waits_then_starts_when_its_instruction
         squad_profile=profiles, task_timeout=5.0, reply_router=reply_router, project_registry=None,
         campaign_registry=None, campaign_progress=None, box_verdict=None,
         failure_recall=SnapshotRecall(store, records=records), event_bus=events,
+        proposal_evidence=NoOpProposalEvidence(),
     )  # fmt: skip
     handed: list[tuple[str, bool]] = []
 
@@ -158,6 +160,7 @@ def _executor(registry, records, reply_router, profile=_PROFILE):
         squad_profile=profiles, task_timeout=5.0, reply_router=reply_router, project_registry=None,
         campaign_registry=None, campaign_progress=None, box_verdict=None,
         failure_recall=SnapshotRecall(InMemoryCrossCycleMemoryStore(), records=records),
+        proposal_evidence=NoOpProposalEvidence(),
     )  # fmt: skip
 
 

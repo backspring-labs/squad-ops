@@ -412,6 +412,7 @@ async def _init_cycle_subsystem(state, config, pool) -> None:
         create_squad_profile_port,
     )
     from adapters.cycles.workflow_tracker_factory import create_workflow_tracker
+    from adapters.noop.ports import NoOpProposalEvidence
 
     project_provider = config.cycles.project_registry_provider
     project_registry = create_project_registry(
@@ -681,6 +682,10 @@ async def _init_cycle_subsystem(state, config, pool) -> None:
             # #2179: each bound reference's content, read at a dispatch by its family's resolver.
             resolvers=state.reference_resolvers,
         ),
+        # SIP-0113 §4.5 (§10t ruling 1): what a campaign's proposal task is shown of its accepted
+        # tree. Nothing yet: §10t step 3's reader over the evaluation store replaces this, and
+        # until then a proposal's inputs are the ones it had before §4.5.
+        proposal_evidence=NoOpProposalEvidence(),
         # SIP-0112 E.4.3: the managed clones a source-backed run starts from and is captured to,
         # and the sandbox its candidate is verified in.
         source_repository=state.source_repository,

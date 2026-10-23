@@ -26,7 +26,7 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 import yaml
 
-from adapters.noop.ports import NoOpFailurePatternRecall
+from adapters.noop.ports import NoOpFailurePatternRecall, NoOpProposalEvidence
 from squadops.cycles.manifest_authoring import (
     GATE_DECIDED_BY_NO_QUESTIONS,
     MANIFEST_ARTIFACT_TYPE,
@@ -99,6 +99,7 @@ def _executor(run_manifest: str | None = None, seeded_manifest: str | None = Non
         campaign_progress=None,
         box_verdict=None,
         failure_recall=NoOpFailurePatternRecall(),
+        proposal_evidence=NoOpProposalEvidence(),
     )
     executor._cycle_registry = AsyncMock()
     executor._cycle_event_bus = MagicMock()

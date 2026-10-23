@@ -29,6 +29,7 @@ from squadops.cycles.task_plan import generate_task_plan
 from squadops.events.types import EventType
 from squadops.execution.binding_holds import supplied_or_held
 from squadops.execution.execution_errors import _ExecutionError
+from squadops.execution.proposal_evidence import with_proposal_evidence
 from squadops.stacks.scaffold import frozen_paths
 
 
@@ -72,6 +73,7 @@ class RunProvisioning:
         "_load_interface_manifest_for_run",
         "_load_plan_for_run",
         "_prepare_cycle_for_run",
+        "_proposal_evidence",
         "_seed_checkout_artifacts",
         "_seed_skeleton_artifacts",
         "_seed_verification_scaffold_artifacts",
@@ -182,6 +184,10 @@ class RunProvisioning:
             interface_manifest=interface_manifest,
             change_request=change_request,
         )
+        # SIP-0113 §4.5 (§10t ruling 1): a campaign's proposal task is shown its accepted tree's
+        # goals and readings, on its own inputs. No other task is, and the cycle's config never
+        # holds them.
+        plan = await with_proposal_evidence(self._proposal_evidence, plan, cycle=cycle)
         # SIP-0110 §0.9: each plan-writing and build-authoring task asks its unit's pinned snapshot
         # for the lessons approved for it, and every answer is disclosed. A task handed none keeps
         # the inputs it had before memory existed, so its prompt is unchanged.

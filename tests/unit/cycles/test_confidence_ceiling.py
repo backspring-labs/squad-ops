@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import pytest
 
-from adapters.noop.ports import NoOpFailurePatternRecall
+from adapters.noop.ports import NoOpFailurePatternRecall, NoOpProposalEvidence
 from squadops.cycles.wrapup_models import (
     CONFIDENCE_RANK,
     ConfidenceClassification,
@@ -155,6 +155,7 @@ class TestExecutorWrapupInjection:
             campaign_progress=None,
             box_verdict=None,
             failure_recall=NoOpFailurePatternRecall(),
+            proposal_evidence=NoOpProposalEvidence(),
         )
 
     async def test_wrapup_plan_gets_evidence(self):
@@ -202,6 +203,7 @@ class TestExecutorWrapupInjection:
             campaign_progress=None,
             box_verdict=None,
             failure_recall=NoOpFailurePatternRecall(),
+            proposal_evidence=NoOpProposalEvidence(),
         )
         prior: dict = {}
         cycle = MagicMock()

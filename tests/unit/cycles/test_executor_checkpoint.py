@@ -18,7 +18,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from adapters.noop.ports import NoOpFailurePatternRecall
+from adapters.noop.ports import NoOpFailurePatternRecall, NoOpProposalEvidence
 from squadops.cycles.checkpoint import RunCheckpoint
 from squadops.cycles.failure_attribution import TerminalKind
 from squadops.cycles.models import (
@@ -168,6 +168,7 @@ def executor(mock_registry, mock_vault, mock_queue, mock_squad_profile, impl_cyc
         campaign_progress=None,
         box_verdict=None,
         failure_recall=NoOpFailurePatternRecall(),
+        proposal_evidence=NoOpProposalEvidence(),
     )
 
 

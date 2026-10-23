@@ -131,6 +131,9 @@ Coordination between agents and handlers: `AgentOrchestrator`, the handler regis
 Outcome Evaluation's readings beside its scenarios (SIP-0113 §4.2–§4.6), starting with the intervention
 ledger (§4.3): each person's or supervisor's action on a campaign, projected from SIP-0109's control log
 and classified by its reason and severity, plus declared entries for actions outside the interface.
+Also what a campaign's proposal run is shown of its accepted tree (§4.5): the goals with their results,
+the quality moves and the accepted PRD, read through `ProposalEvidencePort` and composed onto that one
+task's inputs by `squadops.execution.proposal_evidence`.
 
 ### `squadops.ports`
 The port interfaces, the contracts between the domain and external systems: secrets, queue, cycle
