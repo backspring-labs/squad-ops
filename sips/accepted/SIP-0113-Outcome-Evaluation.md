@@ -1932,8 +1932,8 @@ further than §4.5 allows. These rulings settle the design before the first PR, 
   reaches every role of that cycle, and `bound_launch` (`campaigns/launch_requests.py`) copies the block into retries and
   repairs.
 - **The squad's packages can't read the held-out store.** `capabilities`, `execution`, `agents` and `prompts` may not
-  import `squadops.scenarios` (`test_held_out_scenarios_stay_out_of_the_squads_reach.py`). So the runtime has to put the
-  evidence on the launch.
+  import `squadops.scenarios` (`test_held_out_scenarios_stay_out_of_the_squads_reach.py`). So the runtime has to hand the
+  evidence to the task.
 - **The sweep leaves goals out of its markers** (`scripts/dev/heldout_sweep.py`). A goal that quoted a step value would
   carry a marker into LangFuse, and a goal in the wrong envelope would go unfound.
 - **A change request's `content_hash` covers every authored field,** and a stored document is re-hashed when loaded
@@ -1955,6 +1955,8 @@ further than §4.5 allows. These rulings settle the design before the first PR, 
      holds as it is.
    - It is stored only where that task's inputs are: its authoring envelope and its generation, both local to the
      deploy. It is never in a run artifact, a cycle record or a launch request.
+   - **A proposal outside a campaign gets none.** The reference's proposal half (§11a) has no pinned suite and no
+     evaluated tree, so its task is composed without the key, and the port isn't asked.
    - **This is built first, before any goal text exists:**
      - a test pushes a proposal, a framing and an implementation run and a correction round through the executor, with
        a fake port, and finds the key on the proposal task's inputs only;
@@ -1969,8 +1971,8 @@ further than §4.5 allows. These rulings settle the design before the first PR, 
    - Only `scenario_id`, `goal` and `result` are read from the evaluation records. No step, check, value or evidence is
      read at all.
 3. **A goal that carries a marker is held back.** The suite's markers move into `scenarios/` so the sweep and the
-   runtime share one definition. Before a launch, each goal is checked against the pinned suite's own markers. One that
-   contains a marker is held back and counted on the launch; it is never shown.
+   runtime share one definition. Before the evidence is composed, each goal is checked against the pinned suite's own
+   markers. One that contains a marker is held back and counted in the evidence; it is never shown.
 4. **A change request may name the goals it means to move:** `moves_goals: [goal_id]`.
    - An id that isn't one of the goals shown is refused (`unknown_goal`), with every other refusal.
    - An empty list is left out of the document and its hash, so every stored request keeps its identity.
@@ -1978,8 +1980,9 @@ further than §4.5 allows. These rulings settle the design before the first PR, 
    - The SIP-0109 §7.2 row is a numbered amendment in the PR that builds it.
 5. **Naming a goal that already passes is not refused.** The ledger reads it as `already passing`. Refusing it would
    make the first live prediction true by construction.
-6. **A failed read of the evidence raises,** and the campaign's re-hearing retries, as every other read at a launch does.
-   A proposal is never launched without it: require, don't default.
+6. **A failed read of the evidence raises** at the proposal run's dispatch. The run fails, and the campaign proposes
+   again, as it does after any failed proposal run (SIP-0109 §24bn's `max_proposal_run_retries`). A proposal is never
+   dispatched without its evidence: require, don't default.
 7. **Two channels that go round the boundary:**
    - **A change request that copies a goal's text into what every role sees** (its `prd_delta`, its criteria or its
      statement) is refused at the rails, checked by the same markers: `goal_text_copied`.
@@ -2000,7 +2003,7 @@ further than §4.5 allows. These rulings settle the design before the first PR, 
 **The build order:** six PRs, each with a wiring test that enters where the live campaign does.
 1. the port and its one injection point, with an empty implementation, and the boundary's tests;
 2. `moves_goals`;
-3. the evidence on the launch;
+3. the evidence's reader over the evaluation store;
 4. the prompt's three sections (`request.strategy_propose_increment.md`, through the real renderer per
    PROMPT_AUTHORING_STANDARD rule 8);
 5. the ledger reading (`moved`, `still failing`, `regressed`, `already passing`, `not verified`, `not evaluated`), in the
