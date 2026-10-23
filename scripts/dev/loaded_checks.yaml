@@ -820,8 +820,11 @@ checks:
     container: squadops-runtime-api
     code: |
       import inspect
-      from squadops.campaigns.continuation import campaign_continuation_decision
-      print("cycle.ending is CycleEnding.PARKED" in inspect.getsource(campaign_continuation_decision))
+      from squadops.campaigns import continuation as c
+      src = inspect.getsource(c.campaign_continuation_decision)
+      # §24cb (#2704) tabled the parked row with the plan-gate stop's: either form counts the park.
+      tabled = "cycle.ending in _ABANDONED_UNBUILT" in src and c.CycleEnding.PARKED in getattr(c, "_ABANDONED_UNBUILT", {})
+      print("cycle.ending is CycleEnding.PARKED" in src or tabled)
     expect: "True"
   - id: "2301"
     what: "a run cancelled at its gate stops the cycle run_cancelled and the ending reads it as stored, so an expired escalation parks"
@@ -1659,3 +1662,15 @@ checks:
       role = (root / "fragments" / "roles" / "qa" / "identity.md").read_text()
       print("Plan by fault, not by count." in plan, "writing no further test is a correct answer" in task, "comprehensive test cases" in role)
     expect: "True True False"
+  - id: "2704"
+    what: a framing run stopped at its plan gate ends its cycle unbuilt, with no verdict; a calibration fails on row 2 and an increment is abandoned on row 18 (SIP-0109 §24cb)
+    container: squadops-runtime-api
+    code: |
+      from squadops.campaigns.continuation import _ABANDONED_UNBUILT, CycleEnding
+      from squadops.campaigns.progress import cycle_ending
+      from squadops.cycles.cycle_end import CycleStopReason
+      from squadops.cycles.models import Run
+      run = Run("r", "c", 1, "completed", "system", "cfg", workload_type="framing")
+      ending = cycle_ending(CycleStopReason.PLAN_REJECTED, run, parked=False)
+      print(ending.value, _ABANDONED_UNBUILT[CycleEnding.STOPPED_AT_PLAN_GATE])
+    expect: "stopped_at_plan_gate 18"
