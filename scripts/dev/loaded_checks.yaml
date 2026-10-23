@@ -1594,3 +1594,12 @@ checks:
       from squadops.campaigns.change_request import role_view
       print(sorted(__import__("yaml").safe_load(role_view("kind: feature\nmoves_goals:\n- g1\n"))))
     expect: "['kind']"
+  - id: "2677-reader"
+    what: the runtime root shows a campaign's proposal its accepted tree's goals through the evaluation store's reader, holding back a goal that carries a marker (SIP-0113 §10t step 3)
+    container: squadops-runtime-api
+    code: |
+      import pathlib, squadops.api.runtime as runtime
+      from squadops.scenarios.markers import carries_a_marker
+      root = (pathlib.Path(runtime.__file__).parent / "main.py").read_text()
+      print("StoredProposalEvidence(" in root, carries_a_marker('the \\"Abcdef\\" one', ['"Abcdef"']))
+    expect: "True True"

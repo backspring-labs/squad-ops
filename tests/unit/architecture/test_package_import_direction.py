@@ -42,6 +42,10 @@ KNOWN_MUTUAL: dict[tuple[str, str], str] = {
     ("campaigns", "ports"): "the campaign registry port names campaign models",
     ("capabilities", "ports"): "the capability ports name capability models",
     ("cycles", "events"): "cycle events name cycle models; the bus reads event types",
+    ("outcomes", "ports"): (
+        "the outcomes port names outcome models, and the proposal's evidence reader implements it "
+        "over the stores' ports (SIP-0113 §10t ruling 1)"
+    ),
     ("ports", "prompts"): "the prompt port names prompt models",
     ("ports", "sandbox"): "the sandbox port names sandbox models",
     ("ports", "telemetry"): "the telemetry ports name telemetry models",

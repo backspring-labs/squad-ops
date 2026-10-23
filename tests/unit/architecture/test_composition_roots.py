@@ -160,9 +160,6 @@ _CONSTRUCTION_EXCEPTIONS: dict[str, str] = {
     "AgentCardConfig": "a config dataclass, not an adapter — the CamelCase technique over-matches it",
     "LoggingRuntimeEventPublisher": _NOOP + " (logging sink)",
     "NoOpWorkflowTracker": _NOOP,
-    # SIP-0113 §10t step 1: nothing to show a proposal until step 3's reader over the evaluation
-    # store, which the root then builds instead; the entry goes with it.
-    "NoOpProposalEvidence": _NOOP,
     # The one entry that is a factory-shaped gap rather than a category: a vendor (httpx)
     # reporter built directly inside the root's _create_heartbeat_reporter. Tabled so #301
     # closes on its four bindings, and named on the PR as the follow-on it is.
