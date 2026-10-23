@@ -43,11 +43,15 @@ place was searched, 1 otherwise, and 2 when the suite isn't the pinned one or do
 
 **``--goals`` searches for the goals instead** (SIP-0113 §10t ruling 7). A campaign's proposal is
 shown each goal's statement (§4.5), so a statement belongs only in the proposal task's own records
-and the evaluator's. Each goal is a marker, and a table with a ``task_type`` column is counted by
-task type, so the proposal's rows (``strategy.propose_increment``) are told from any other role's.
-Those rows and the evaluator's records aren't counted as found. LangFuse's rows carry no task to
-attribute a goal to, so they're reported apart (``langfuse_unattributed``) for the reading to read
-by trace, and never judged here.
+and the evaluator's. Each goal is a marker. A table with a ``task_type`` column is counted by task
+type, and LangFuse's observations by the task span each hangs under (its own name, or its
+parent's: every generation's parent is a ``task-…`` span), so the proposal's rows are told from any
+other role's. Only ``EXCUSED_FOR_GOALS`` and the evaluator's records aren't counted as found. Each
+goal must also be found there at least once (``goals_not_found_in_proposals``): a search that finds
+no goal where the proposal was shown them didn't search for what it claims.
+
+**Beyond the deploy,** ``--host-root`` walks a directory on the host with the same walker: the
+campaign's log archive (``var/campaigns/<campaign>/``), which a Release attaches.
 """
 
 from __future__ import annotations
@@ -63,7 +67,7 @@ import secrets
 import subprocess
 import sys
 from collections import Counter
-from collections.abc import Iterable
+from collections.abc import Iterable, Sequence
 from pathlib import Path
 from typing import Any
 
@@ -89,8 +93,13 @@ _COPY_COLUMNS = re.compile(r"\(([^)]*)\) FROM stdin")
 #: --goals: the task whose inputs and prompt show the goals (§4.5), and the column that names it.
 PROPOSAL_TASK = "strategy.propose_increment"
 TASK_COLUMN = "task_type"
-#: LangFuse's rows can't be attributed to a task from the dump, so --goals reports them apart.
-LANGFUSE = "langfuse"
+#: LangFuse's observations, attributed to the task span each hangs under: ``(id, name, parent)``.
+SPANS = {"observations": ("id", "name", "parent_observation_id")}
+#: Where a goal's statement is the proposal's own (the places the dumps show its prompt is kept):
+#: its authoring envelopes and its LangFuse generations.
+EXCUSED_FOR_GOALS = frozenset(
+    {f"authoring_envelopes[{PROPOSAL_TASK}]", f"observations[{PROPOSAL_TASK}]"}
+)
 _FULL_TEXT = re.compile(r'"data"\s*:\s*"([A-Za-z0-9+/=]{16,})"')
 
 
@@ -130,15 +139,28 @@ def _full_texts(line: str) -> list[str]:
     return texts
 
 
+def _span_task(name: str) -> str | None:
+    """The task type a ``task-<task_id>`` span names: its last dotted segment
+    (``task-task-<run>-000-strategy.propose_increment``). A task id from before #1934 was random hex
+    and names none, so its rows are unattributed, and a baseline sweep holds them."""
+    if not name.startswith("task-"):
+        return None
+    return next((part for part in reversed(name.split("-")) if "." in part), None)
+
+
 def match_dump(
     lines: Iterable[str], values: dict[str, str], *, split_by: str | None = None
 ) -> dict[str, Counter]:
     """Each table of a ``pg_dump --data-only`` stream, and how often each marker id occurs in its
     rows, in any of its forms, and in any full prompt a row holds. A row is attributed to the
-    ``COPY`` block it sits in, and to ``table[value]`` when the table has the ``split_by`` column."""
+    ``COPY`` block it sits in; with ``split_by``, to ``table[value]`` when the table has that
+    column, and a ``SPANS`` table's row to ``table[task]`` by the task span it hangs under
+    (``table[unattributed]`` when it hangs under none)."""
     searched = {mid: forms(v) for mid, v in values.items()}
     hits: dict[str, Counter] = {}
-    table, at = "-", None
+    names: dict[str, str] = {}
+    deferred: list[tuple[str, str, str, str, int]] = []
+    table, at, span = "-", None, None
     for line in lines:
         start = _COPY.match(line)
         if start:
@@ -146,19 +168,34 @@ def match_dump(
             listed = _COPY_COLUMNS.search(line)
             columns = [c.strip().strip('"') for c in listed.group(1).split(",")] if listed else []
             at = columns.index(split_by) if split_by in columns else None
+            wanted = SPANS.get(table) if split_by else None
+            span = (
+                tuple(columns.index(c) for c in wanted)
+                if wanted and all(c in columns for c in wanted)
+                else None
+            )
             continue
         if line.startswith("\\."):
-            table, at = "-", None
+            table, at, span = "-", None, None
             continue
+        fields = line.rstrip("\n").split("\t") if (at is not None or span) else []
+        if span and len(fields) > max(span):
+            names[fields[span[0]]] = fields[span[1]]
         key = table
         if at is not None:
-            fields = line.rstrip("\n").split("\t")
             key = f"{table}[{fields[at]}]" if at < len(fields) else table
         texts = [line, *_full_texts(line)]
         for mid, variants in searched.items():
             n = sum(text.count(f) for text in texts for f in variants)
-            if n:
+            if not n:
+                continue
+            if span and len(fields) > max(span):
+                deferred.append((table, fields[span[1]], fields[span[2]], mid, n))
+            else:
                 hits.setdefault(key, Counter())[mid] += n
+    for table, name, parent, mid, n in deferred:
+        task = _span_task(name) or _span_task(names.get(parent, "")) or "unattributed"
+        hits.setdefault(f"{table}[{task}]", Counter())[mid] += n
     return hits
 
 
@@ -211,6 +248,27 @@ def walk(container: str, roots: Iterable[str], values: dict[str, str]) -> dict:
     try:
         done = subprocess.run(
             ["docker", "exec", "-i", "-u", "root", container, "python3", "-", *roots],
+            input=_walker_program(values),
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            timeout=3600,
+        )
+    except (OSError, subprocess.TimeoutExpired) as e:
+        return {"error": f"the walker didn't run: {type(e).__name__}"}
+    if done.returncode != 0:
+        return {"error": f"the walker exited {done.returncode}: {done.stderr.strip()[-300:]}"}
+    try:
+        return json.loads(done.stdout)
+    except json.JSONDecodeError:
+        return {"error": "the walker's answer wasn't JSON"}
+
+
+def walk_host(roots: Iterable[str], values: dict[str, str]) -> dict:
+    """The walker run on the host over ``roots``, as ``walk`` runs it in a container."""
+    try:
+        done = subprocess.run(
+            [sys.executable, "-", *roots],
             input=_walker_program(values),
             capture_output=True,
             text=True,
@@ -296,19 +354,17 @@ def running_containers() -> set[str]:
 
 def found_outside(report: dict, *, goals: bool = False) -> list[str]:
     """Every place a marker was found that it shouldn't be, or that couldn't be searched. With
-    ``goals``, the proposal's own rows aren't, and LangFuse's are reported apart."""
+    ``goals``, ``EXCUSED_FOR_GOALS`` isn't."""
     bad = list(report.get("unsearched", []))
     for db, result in report["databases"].items():
         if "error" in result:
             bad.append(f"database {db}: not searched ({result['error']})")
             continue
-        if goals and db == LANGFUSE:
-            continue
         for table, counts in result["tables"].items():
-            proposals = goals and table.endswith(f"[{PROPOSAL_TASK}]")
+            proposals = goals and table in EXCUSED_FOR_GOALS
             if table not in EVALUATOR_RECORDS and not proposals and counts:
                 bad.append(f"database {db}, table {table}: {sorted(counts)}")
-    for container, result in report["containers"].items():
+    for container, result in {**report["containers"], **report.get("host", {})}.items():
         if "error" in result:
             bad.append(f"container {container}: not searched ({result['error']})")
             continue
@@ -321,10 +377,16 @@ def found_outside(report: dict, *, goals: bool = False) -> list[str]:
 
 
 def sweep(
-    values: dict[str, str], campaigns: list[str], *, split_by: str | None = None
+    values: dict[str, str],
+    campaigns: list[str],
+    *,
+    split_by: str | None = None,
+    host_roots: Sequence[str] = (),
 ) -> dict[str, Any]:
     """Every target searched for ``values``, each failure kept in the report."""
     report: dict[str, Any] = {"unsearched": [], "containers": {}}
+    if host_roots:
+        report["host"] = {"host": walk_host(host_roots, values)}
     report["databases"] = sweep_databases(values, split_by=split_by)
     try:
         cycles = window_cycles(campaigns)
@@ -333,8 +395,13 @@ def sweep(
         report["unsearched"].append(f"the window's cycles: {type(e).__name__}: {e}")
     report["window_cycles"] = cycles
     if cycles:
+        # The cycles' own artifacts, and the project's unattached ones: a campaign's package and
+        # digest have no cycle, and a Release attaches them.
         report["containers"]["squadops-runtime-api (vault)"] = walk(
-            "squadops-runtime-api", [f"/app/data/artifacts/group_run/{c}" for c in cycles], values
+            "squadops-runtime-api",
+            [f"/app/data/artifacts/group_run/{c}" for c in cycles]
+            + ["/app/data/artifacts/group_run/_unattached"],
+            values,
         )
     else:
         report["unsearched"].append("the vault: no window cycle to walk")
@@ -359,6 +426,12 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--digest", required=True, help="the pinned suite's digest, or its prefix")
     p.add_argument("--campaign", nargs="*", default=[], help="the window's campaigns")
     p.add_argument(
+        "--host-root",
+        action="append",
+        default=[],
+        help="a host directory to walk too: the campaign's log archive (var/campaigns/<campaign>)",
+    )
+    p.add_argument(
         "--goals",
         action="store_true",
         help="search for the goals' statements, not the step values (SIP-0113 §10t ruling 7)",
@@ -381,10 +454,20 @@ def main(argv: list[str] | None = None) -> int:
         return 2
     found = goal_markers(suite) if a.goals else markers(suite)
     values = {mid: m["value"] for mid, m in found.items()}
-    report = sweep(values, a.campaign, split_by=TASK_COLUMN if a.goals else None)
+    report = sweep(
+        values, a.campaign, split_by=TASK_COLUMN if a.goals else None, host_roots=a.host_root
+    )
     if a.goals:
         report["mode"] = "goals"
-        report["langfuse_unattributed"] = report["databases"].get(LANGFUSE, {}).get("tables")
+        # The positive control: each goal, where the proposal was shown it.
+        shown = {
+            mid
+            for result in report["databases"].values()
+            for table, counts in (result.get("tables") or {}).items()
+            if table in EXCUSED_FOR_GOALS
+            for mid in counts
+        }
+        report["goals_not_found_in_proposals"] = sorted(set(values) - shown)
     report |= {
         "suite_digest": suite.digest,
         "markers": len(values),

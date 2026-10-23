@@ -2045,10 +2045,18 @@ places the build refined it.
    spacing, in a PRD section or a criterion's statement or observable. It reads the statements the task was shown, not
    the suite's markers. The rails run in the strategy agent's container, which never loads `squadops.scenarios`. The
    refusal names the goal's id and where, never its text, since it travels into the run's failure reason.
-5. **Ruling 7, the measure:** `heldout_sweep.py --goals` uses each goal's statement as the marker, counts a table
-   with a `task_type` column by task type, and doesn't count the proposal's own rows or the evaluator's records as
-   found. LangFuse's rows can't be attributed to a task from a dump, because a generation is named by its id. So
-   they're reported apart (`langfuse_unattributed`) for the reading to read by trace, and never judged by the sweep.
+5. **Ruling 7, the measure:** `heldout_sweep.py --goals` uses each goal's statement as the marker. Where the dumps
+   show a proposal's prompt kept (read on the Spark's records, 2026-10-22), it attributes each hit to its task:
+   - a table with a `task_type` column by that column;
+   - LangFuse's observations by the `task-<task_id>` span each hangs under, its own name or its parent's. Every
+     generation's parent is one.
+
+   Only `EXCUSED_FOR_GOALS` (the proposal's authoring envelopes and LangFuse generations) and the evaluator's records
+   aren't counted as found. A row under no task span is `unattributed` and counts: a task id from before #1934 was
+   random hex, so the older rows are held by a baseline sweep before launch. Each goal must also be found where the
+   proposal was shown it (`goals_not_found_in_proposals`), the positive control. Both modes also walk the vault's
+   `_unattached` artifacts, where a campaign's package and digest are kept, and with `--host-root` the campaign's log
+   archive. A Release attaches both. A second reader of the pre-registration found all three gaps.
 
 **Ruling 9's fourth prediction, restated as built.** "Goal statements appear only in the proposal's envelopes and
 generations, the evaluator's records and the package" names a place the build keeps them out of. The package and the
