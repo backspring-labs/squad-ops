@@ -66,7 +66,7 @@ from squadops.campaigns.increment_tree import (
     increment_seed,
     proposal_change_request,
 )
-from squadops.campaigns.launch_requests import bound_launch, increment_launch
+from squadops.campaigns.launch_requests import CONTINUED_KEYS, bound_launch, increment_launch
 from squadops.campaigns.models import (
     AcceptedTree,
     Campaign,
@@ -1317,6 +1317,9 @@ class CampaignProgress:
         if seeds is None:
             return f"cycle {cycle.cycle_id}'s approved seed cannot be found"
         plan_refs, contract_ref = seeds
+        # #2578: the increment's own keys, and this launch's lineage below, nothing else of the
+        # failed cycle's block (``CONTINUED_KEYS``).
+        block = {k: block[k] for k in CONTINUED_KEYS if k in block}
         # SIP-0110 §3.7 (#2178): the cycle it continues, which carries into it each task
         # instruction given to carry. Named here, whichever row decided the launch: a decision's
         # names it, and the owner's word's (a ``resume``) doesn't.
@@ -1328,16 +1331,11 @@ class CampaignProgress:
             # The failed cycle's candidate is the repair's starting tree (``starting_tree_refs``).
             block = {**block, "repair_of": cycle.cycle_id}
             plan_refs = [*plan_refs, *([plan] if plan not in plan_refs else [])]
-        elif kind is CycleKind.RETRY:
-            # A retry starts a fresh candidate on the accepted tree. A retry of a repair would
-            # otherwise keep the repair's ``repair_of``, and start from the failed candidate the
-            # repair was continuing (#2558). Its plan is already left out (``_bound_seeds``).
-            block = {k: v for k, v in block.items() if k != "repair_of"}
+        # A retry starts a fresh candidate on the accepted tree, so it carries no ``repair_of``
+        # (#2558), and its plan is left out (``_bound_seeds``).
         # #1692: the failed cycle's record, from its typed assessment and its runs' stored
-        # verification summaries, for its successor.
-        # The copied block carries its own launch's brief, of the cycle before it. This launch's is
-        # of ``cycle``, or none when its records can't be read (§24u), never the older one (#2576).
-        block = {k: v for k, v in block.items() if k != "prior_cycle"}
+        # verification summaries, for its successor: of ``cycle``, or none when its records can't
+        # be read (§24u), never the older one the failed cycle carried (#2576).
         brief = await self._prior_cycle_brief(cycle, latest)
         if brief is not None:
             block = {**block, "prior_cycle": brief}

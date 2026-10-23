@@ -1115,6 +1115,7 @@ async def _increment_failed_by_the_environment(
     frozen=(),
     evaluation=None,
     repair_of=None,
+    extra_block=None,
     **policy,
 ):
     """An accepted calibration, an increment proposed against its tree and ruled on, built, and
@@ -1157,6 +1158,7 @@ async def _increment_failed_by_the_environment(
             if repair_of
             else {}
         ),
+        **(extra_block or {}),
     }
     if evaluation is not None:
         stored["art_eval"] = (
@@ -1484,6 +1486,36 @@ async def test_a_retry_of_a_repair_starts_from_the_accepted_tree(calibrating, st
     monkeypatch.setattr(increment_tree, "_delivered", delivered)
     retry_cycle = SimpleNamespace(resolved_config=lambda: overrides)
     assert await increment_tree.starting_tree_refs(None, retry_cycle) == ["art_accepted_routes"]
+
+
+@pytest.mark.parametrize("repair_of", [None, "cyc_first"], ids=["of-an-increment", "of-a-repair"])
+async def test_a_continuation_carries_the_increments_keys_and_its_own_lineage_and_nothing_else(
+    calibrating, stored, repair_of
+):
+    """#2578, entered at the continuation decision. Bug caught: a continuation built by copying the
+    failed cycle's block and deleting from it, so a key only a proposal reads, or a lineage key
+    added later, rides into every repair and retry by default (the class of #2558 and #2576)."""
+    w = await _increment_failed_by_the_environment(
+        calibrating,
+        stored,
+        repair_of=repair_of,
+        extra_block={
+            "abandoned_increment": {"cycle_id": "cyc_old"},
+            "qa_proposed_behaviours": [{"behaviour": "a sorted list"}],
+            "unapproved_proposals": [{"proposal_id": "prop_old"}],
+            "supervisor_note": "narrow it",
+            "a_lineage_key_added_later": "cyc_first",
+        },
+    )
+
+    *_, retry = await w.campaigns.launch_intents(CID)
+    block = retry.cycle_request["body"]["execution_overrides"]["campaign_proposal"]
+    assert retry.cycle_kind is CycleKind.RETRY
+    assert sorted(block) == sorted(
+        ["proposal_id", "version", "baseline_tree", "accepted_cycle_id", "baseline_manifest"]
+        + ["continues", "prior_cycle"]
+    )
+    assert (block["continues"], block["prior_cycle"]["cycle_id"]) == ("cyc_inc", "cyc_inc")
 
 
 async def test_a_retry_whose_failed_cycle_cant_be_read_carries_no_brief_not_an_older_one(

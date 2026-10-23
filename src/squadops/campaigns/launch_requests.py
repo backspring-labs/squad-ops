@@ -128,6 +128,26 @@ def increment_launch(
     )
 
 
+#: What a repair or a retry carries of the increment it continues (§10a): the binding, and what
+#: every increment seam reads of it, as ``increment_launch`` wrote them. A continuation's block is
+#: built from this list and its own lineage (``continues``, ``repair_of``, ``prior_cycle``), never by
+#: copying the failed cycle's block and deleting from it: #2558 and #2576 were lineage keys of one
+#: cycle carried into the next that way, and a key added later would have leaked by default (#2578).
+#: What only a proposal reads (``abandoned_increment``, ``qa_proposed_behaviours``,
+#: ``unapproved_proposals``, a revision's note) stays with the proposal: a continuation runs none.
+CONTINUED_KEYS = (
+    "proposal_id",
+    "version",
+    "baseline_tree",
+    "accepted_cycle_id",
+    "baseline_manifest",
+    "objective",
+    "prior_criteria",
+    "frozen_criteria",
+    "max_revisions",
+)
+
+
 #: The workloads each bound cycle runs (§10a): a retry frames afresh and builds; a repair builds
 #: only, under the failed cycle's approved plan.
 BOUND_WORKLOADS = {
