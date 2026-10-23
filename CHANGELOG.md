@@ -5,6 +5,287 @@ All notable changes to SquadOps are recorded here. Format loosely follows
 
 ## [Unreleased]
 
+## [2.4.0] — 2026-10-23
+
+**The 2.4 line: an even minor, a feature release with one headline per lane. Project Lifecycle Management (SIP-0112,
+the MacBook lane) develops a product SquadOps doesn't own, in that product's repository, by its own checks and through
+its own review process, and starts a greenfield product the same way. Outcome Evaluation's phase 1 (SIP-0113, the
+Spark lane) is the yardstick, reporting only** (plan `docs/plans/2-4-0-plan.md`). Project Lifecycle Management is the
+headline because Outcome Evaluation's feature half didn't ship whole, as the plan ruled it would be then (D14). On the
+measurement window's record the owner split that feature half (D4, 2026-10-22): the proposal is now shown its
+campaign's outcomes, and the outcome target is held. SIP-0110's memory entry points ship beside both, and QA's half of the
+risk-first test instructions (#1966) was adopted on 2026-10-23.
+
+**The cut's evidence: PASS** (`docs/plans/2-4-0-cut-preregistration.md`, registered in #2703, #2707 and #2708, read
+in §13). It was read on the final deploy (`b3acbc82`, `dep_d7ff50b9b39c`):
+- **the counted set:** 4 of 4 regression rolls accepted on TensorFold, two per stack, with memory disabled. Every
+  criterion was verified (22, 17, 21, 19), every boot audit passed, and the rolls took 2, 0, 1 and 1 correction rounds;
+- **every model call was TensorFold's:** 80 of 80, read from the agents' per-call metrics and matched in their logs;
+- **the line's code is what ran:** all 179 tracked loaded checks answered as expected in every roll, `1966` among them;
+- **memory inert where it is disabled:** all 45 exposures read `memory_disabled`, and all 45 captured envelopes
+  reconstruct byte for byte;
+- **#1966's no-loss checks held, so the owner's revert rule wasn't triggered:** every always-pass held-out scenario
+  passed on every roll's tree, and no roll had more than one QA repair whose retest passed. Reported beside them: the
+  Next.js rolls passed 9 and 10 of 31 scenarios against their baselines' 11–12, mostly scenarios only one baseline's
+  surface reaches. One scenario passed on both like-shaped baselines and failed on both rolls;
+- **the shakeout campaign met its exit rule in its second round:** the tier decided every plan gate, no increment
+  regressed a scenario, the proposal evidence reached every proposal, and no step value or goal reached a squad role.
+  Round 1, a diagnostic on a superseded deploy, found #2706;
+- **what it does not cover:** the tagged tree differs from the validated deploy only by documents and the version
+  string. Nothing under `src/`, `adapters/`, `infra/`, `agents/`, `config/` or `scripts/` differs. <!-- TODO IR + #2183 -->
+
+**Project Lifecycle Management (SIP-0112).**
+- **The shared fixture landed first:** a small product with one failing check and one binary file, and each lane's
+  recorded outputs, freezing four shared contracts with their tests (#2407, #2414; #2440, #2507).
+- **One writable Project registry, cut over from `config/projects.yaml` with a guarded rollback.** A required
+  selector, `cycles.project_registry_provider` (`config`, `postgres` or `postgres_read_only`), chooses it. On
+  `postgres` each config project is seeded once as `READY`; a rollback that would hide a registered Project stops the
+  runtime API; and a Project not ready is refused with 409 `PROJECT_NOT_READY` (#2408; #2444).
+- **An existing product is registered** through `POST /api/v1/projects` and `squadops projects import`, idempotent by
+  key, behind the locator rules: `https`, `ssh` or the scp form, no credential or option-like segment, and none of the
+  deploy's own hosts unless allow-listed (#2408, #2459; #2452).
+- **Discovery and the inherited baseline.** `projects validate` mirrors the product into a managed clone no agent tool
+  reaches and moves it to `READY` at its base ref's commit; the Development Configuration is versioned and checked
+  field by field; and `projects baseline --capture` records each of the product's own checks on the pinned source as
+  PASS, FAIL (inherited) or UNVERIFIED with its reason (#2409, #2459; #2468).
+- **A source-backed run** pins its source context before dispatch, starts from the product's tree, and verifies its
+  change by the product's own checks against the inherited baseline, each attributed `inherited`,
+  `introduced/regressed`, `resolved` or unverified. An accepted change is captured as one commit, without the squad's
+  test records, and the owner contributes it as a review request or a patch (#2410, #2591; #2484).
+- **A sync reads the upstream against the approved baseline** and files each changed path by the evidence it
+  invalidates (`instructions`, `command_inputs`, `dependencies`, `toolchain`, `contribution_policy`, `source`). A
+  contribution reads `integrated` once its commit or merged review request reaches upstream, and `validate`
+  re-validates a `READY` Project at the new commit (#2411; #2565).
+- **Greenfield:** `projects initialize` writes a blueprint's layout as the first commit of an empty repository the
+  owner made, pushed with the owner's token for that one act, never stored or forced; `validate` and `sync` take the
+  same token, so a private product can be reached (amendment H.1; #2412; #2584).
+- **What the brownfield demonstration found** (amendment H.2): a sync lists SquadOps's own integrated files apart from
+  outside change (`source-drift/v2`), and relevant drift holds new cycles until the Project is reconciled (#2606,
+  #2608; #2610). An outside instruction change under a running Campaign (amendment H.3) is tested at the launcher: new
+  launches wait for reconciliation, and each later cycle binds the new content at its own commit (#2411; #2616).
+- **A check that already fails is compared finding by finding when it declares a reader** (`ruff`, `pytest` or
+  `lines`; `no-introduced-regression/v2`): a key whose count grew is `introduced/regressed`. The sandbox reads the
+  command's whole output before its tails are cut, and each tail says whether it was cut (amendment H.5; #2609, #2622;
+  #2620, #2623, #2630).
+- **The managed clones are mounted from `./data/repo_cache`,** so a redeploy keeps a captured change not yet
+  contributed (#2588; #2589). A baseline capture waits out each step's own bound, not 30 s (#2586, #2605; #2587,
+  #2627).
+- **The demonstrations, run and read on the Spark** (`docs/plans/2-4-0-demonstrations-readout.md`). A private copy of
+  an existing product went through all six brownfield stages, stage 5 holding once #2610 was deployed; the greenfield
+  product's first contribution turned its failing backend check to PASS and was read back as integrated (#2410, #2412;
+  #2601, #2604, #2611).
+
+**The sandbox (SIP-0102), built by the Spark lane for both.**
+- **A Git checkout's tracked tree round-trips exactly:** a `git_checkout` revision origin (X-1); bytes, line endings
+  and the executable bit, with every existing revision ID unchanged (X-2); and a refused seed or patch leaves the live
+  tree as it was and answers 400, where it had answered 500 (#2419, #2420; #2441, #2442).
+- **A product's declared command runs against a pinned revision in a disposable copy** (X-3a), and a product starts
+  there from its own declaration (X-3b) (#2421; #2447, #2450).
+- **The runtime API reaches the sandbox service through one client** with its own required selector, URL and token;
+  seeding, the pinned read and the workspace release are on the port, and the service's apps run on an internal
+  network with no route out (`squadops-sandbox-apps`), by name with no host port (#2451, #2473; #2456, #2458, #2460,
+  #2461, #2471, #2527).
+
+**Outcome Evaluation (SIP-0113), phase 1: the instruments, reporting only.** No scenario result reaches a squad role,
+a row, a gate or a prompt.
+- **The held-out scenario store** (`/api/v1/scenario-suites`, `squadops scenarios`): a scenario is a goal, held-out
+  steps and checks, content-addressed, and a campaign pins a suite. `scenarios:read` never shows a step, a
+  `squadops-supervisor` user drafts, and only the owner approves; a suite file inside a Git working tree is refused
+  (#2413, #2464; #2448, #2465, #2476).
+- **The runner and the evaluation service:** a cycle's delivered app is started in a disposable copy in the sandbox
+  service and its scenarios run outside every squad container. An `EvaluationRecord` is written whatever happened,
+  `blocked_unverified` with its reason where nothing could run, and each campaign cycle is evaluated at its end
+  (#2414, #2415; #2449, #2450, #2453, #2472).
+- **A scenario reaches each delivery as that delivery built itself:** at the declared `http_base` or the stack's API
+  prefix, with fields named by concept and resolved on the delivery's own manifest and entity names, and a `where`
+  check that finds a listed element by its fields, not its place (#2421, #2464, #2542; #2466, #2467, #2499, #2543).
+- **Quality baselines in the evaluator's image** (`infra/evaluator`): Lighthouse and axe per declared page and #1937's
+  lint over the tree, each with its delta from the tree an increment built on and from its campaign's calibration,
+  like with like only; ESLint now reads `.jsx`. `remeasure_quality.py` reads each measure's spread on an unchanged
+  tree (#2416, #2478; #2455, #2474, #2479, #2480, #2501, #2594).
+- **One evaluator tag is one image:** the base pinned by digest, Debian's archive by a dated snapshot, and the
+  browser's bound measured at 5 s. A deploy builds the image when its pinned tag is absent and never rebuilds under a
+  tag (#2580, #2583; #2581, #2661).
+- **The intervention ledger** is a classified projection of the control log, never a second record of it (#2417;
+  #2454). **Contribution per increment** (`regressed`, `unverified`, `contributed` or `neutral`), read from two
+  evaluation records of one suite. The package and digest carry each cycle's readings, held out of every squad task,
+  and a campaign declares its work class, by which Autonomous Outcome Reliability reads four inputs per campaign, one
+  of them the 2.0 set's seven safety guarantees (#2418; #2470, #2481, #2485, #2487, #2489).
+- **Holding out, checked:** a sweep for the suite's step values across the deploy's databases, the window's vault and
+  every squad container, reported by count and hashed id (#2590); a pre-push scan of what a change adds (#2615,
+  #2650); a draft-time check for values already public (#2617; #2698); and made-up example values in the code (#2614).
+- **The browser runner.** A page scenario's browser steps run in the evaluator, each segment its own container on the
+  app network. A control not found by its role and names reads `control_absent`, unverified, never failed, and the
+  package counts them. A failed page scenario's evidence is scrubbed and readable by the owner alone, and the cut
+  purges it and records the count (#2564; #2646, #2647, #2651–#2653, #2655, #2656).
+- **A seeded quality reading:** a second instance of each evaluated tree, seeded through its own API and measured on
+  every page. Re-measures are their own records, compared only with their own series (#2562; #2632–#2635).
+
+**Outcome Evaluation's readings,** each pre-registered as a mechanism with its falsifier.
+- **The measurement window** (`docs/plans/2-4-0-window-close.md`): four campaigns, two per stack, on one frozen
+  deploy. The scenarios discriminated on its pairs, each quality measure spread at most 0.03, the ledger matched the
+  control log, no evaluation changed its tree, and memory supplied nothing. Two readings were falsified as written:
+  one held-out step value was in every agent image (suite revision 4 retired it), and all six counted accepted
+  increments read `contributed` (#2502, #2568, #2596).
+- **The seeded reading:** stable, and falsified on seeing the increments. No pair moved a seeded measure on a page it
+  changed, because the measures are coarser than the change; a finer reading, #2637, is placed in 2.5 (#2562; #2638).
+- **The page scenarios, on suite revision 5,** read with a tool whose fault-injected diagnostic runs the same path:
+  each main page scenario discriminates on every pair, the fault-injected tree fails where its source passes, and
+  three rounds on two trees agreed. The leak check is falsified as written by a value already public, not by a leak
+  (#2564; #2657, #2658, #2660).
+
+**Outcome Evaluation's phase 2, its first half: the proposal is shown its outcomes** (SIP-0113 §4.5, #2677; the
+owner's split #2678, its design review #2680).
+- **The evidence goes on the proposal task's own inputs through a port, and nowhere else,** never into the cycle's
+  resolved config, which the registry stores and a retry copies (#2683).
+- **What it shows:** the pinned suite's goals as `passed`, `failed` or `not verified` on the accepted tree, each
+  quality measure against the calibration, and the accepted increments' PRD sections. A goal carrying a suite marker
+  is held back, and a request that copies a goal's statement is refused (#2687, #2688).
+- **A change request may name the goals it means to move** (`moves_goals`), seen only by its proposer and the
+  supervisor; an id it wasn't shown is refused. The package reads what became of each named goal, by id (#2686,
+  #2689).
+- **The live reading** (`cmp_ca24f3776ef8`): the evidence reached and rendered in 4 of 4 proposals; 6 of the 10 named
+  goals moved, against 0 of the 40 unnamed; no step value or goal reached a new place. "A proposal shown a failing
+  goal aims at one" was falsified as written by a proposal shown none (#2690, #2691, #2696).
+
+**Campaigns (SIP-0109).**
+- **A campaign declares its stack,** and every launch carries it; a stack it can't run on is refused at creation with
+  422 (#2443; #2446). The FastAPI + React shakeout's definition is the Next.js one's twin (#2516).
+- **A repair's or retry's block is built from the increment's own keys and its lineage, never copied from the failed
+  cycle's:** a retry of a repair starts from the accepted tree, and no earlier cycle's brief rides along (#2558,
+  #2576, #2578; #2574, #2699).
+- **An accepted repair freezes its criteria with what they assert,** and the digest names one recorded without; one of
+  the window's campaigns had lost its evidence package to it (#2595; #2597). A fresh proposal is shown up to ten
+  proposals its campaign never approved, each with its ruling's reason (§24bu; #2593; #2598).
+- **A cycle stopped at its plan gate built nothing, so it has no verdict;** a calibration whose plan was rejected had
+  been promoted with an empty tree (#2704; #2705). A control operation answers after its own drain, naming a launch
+  that drain refused (#2621; #2625).
+- **A cycle held on its instruction bindings escalates as its own kind, `binding_hold`,** released by re-supply and
+  never parked; an expired hold's run cancel is retried by the next sweep (§24bw; #2178, #2642; #2628, #2643).
+
+**Stacks and scaffold.**
+- **What the Next.js shakeout found before the window,** each fixed before the window's deploy froze:
+  - a page criterion's test is a file its runner collects, and a footprint reads a dynamic route's brackets literally
+    (#2511, #2512; #2514);
+  - a route handler states its request fields, its errors and its response entity's fields, so an increment that
+    changes them has the route in its footprint (#2522, #2538; #2523, #2539);
+  - the runner collects `.test.tsx` under `__tests__/` (#2531; #2532); a page suite runs in jsdom with Testing Library
+    (#2395, #2534; #2535); the frozen API client is declared to the suite's author (#2540; #2541); and a suite that
+    renders a page or component counts as invoking the application (#2547; #2548).
+- **A Next.js criterion's test calls its route through a frozen route caller,** so a route the change adds can
+  discriminate (#2577; #2599).
+- **An endpoint declares its query inputs,** and the stub, the signature check, QA's contract and the Next.js route
+  read them: #2378's proper fix (#2378; #2670). An authored import of the app's entry module is dropped where the
+  harness boundary is bound, since no suite can pass both (#2572; #2573).
+
+**Memory entry points (SIP-0110 Appendix A).**
+- **The typed memory records:** notes, preferences, and project and task instructions, with permissions by kind,
+  provenance and revisions (#2177; #2508).
+- **Task instructions reach the tasks they name, and only those:** given at cycle create (`--instruction … --for …`)
+  or a campaign's launch, after admission as an intervention refused once its task dispatched (`squadops
+  instructions`), at the increment gate, or carried into a repair or retry, with `@current` bound when written. A run
+  whose binding can't be read or fitted is held, not failed, until re-supply completes it, and an emergency withdrawal
+  halts the work built on it and restarts the run without it (#2178; #2513, #2549, #2554, #2556, #2559, #2636, #2639).
+- **Project instructions are pinned in a unit's snapshot at admission** and bind on the tasks they apply to. The
+  lessons take the budget they leave; a `memory_context: none` arm withholds both; a counted roll records the set it
+  pinned; a withdrawal names the units that pinned it; and a running unit is re-bound forward only (`squadops
+  snapshots`) (#2179; #2515, #2526, #2528, #2533, #2544, #2546).
+- **References:** a project instruction's `@current` is bound at admission through a resolver port per family, under
+  one time bound; one no unit can bind is refused at write; a campaign's are bound per cycle against its snapshot; the
+  content is read at each dispatch and shown under its instruction; and a bound revision is re-bound without revising
+  its instruction (#2179, #2575; #2555, #2567, #2570, #2579, #2668, #2669).
+- **Each task is composed at its own dispatch and measured as its handler renders it.** A unit's dispatches and the
+  changes to what they're handed are ordered by its dispatch turn, a pin is settled against a withdrawal that landed
+  while it was taken (#2545, #2681, #2684; #2551, #2603, #2693), and the monolithic `qa.test` and
+  `development.develop` prompts render the slots their focused paths do (#2509, #2674, #2682; #2510, #2675, #2685).
+- **Chat on the memory substrate:** a server-side project binding, each turn's context and exposure, and confirmed
+  capture of a project or task instruction, judged by the records API's rules. Chat explains approved lessons and is
+  never guided by them, and a conversational claim is a suggestion note. A person deletes their own sessions, and none
+  expire (Q29) (#2180, #2181; #2422, #2517, #2518, #2525, #2550).
+- **The console's memory record view:** a record's uses apart from its effect, its capture taken live; a long record
+  no longer stretches the list (#2182, #2692; #2524, #2695, #2701).
+- **A paired comparison's arms are read as one,** and a pair handed different bindings is reported invalid
+  (`memory_exposure_report.py --pair`) (#2183; #2702).
+
+**QA: risk-first test design (#1966).**
+- **QA plans and writes tests by the faults a change could have:** each acceptance criterion still gets its test, and
+  beyond those no further test is a correct answer (three prompt assets). In its pre-registered A/B on four replayed
+  window increments, nothing was lost on either arm, QA repairs whose retest passed went from 2 to 1, and QA's own
+  tests fell on 2 of 4 against a prediction of 3. The cut's set read it under the owner's revert rule, and both of
+  its no-loss checks held (above). The builder half was never measured and is not built (#1966; #2666, #2700).
+- **An increment replay runs on the stack its source ran on** (#2667).
+
+**Correction and execution.**
+- **A red retest is judged by the tests that fail,** with the row's facts by their direction, so a repair that cleared
+  an application error or made a suite load is kept (SIP-0086 §12e). On its pre-registered replay of 18 stored red
+  retests it kept four more and lost none main kept. The rest of the converging-repair question was read on every keep
+  since #1522 and left as it is (§12f) (#2306; #2662, #2663, #2673).
+- **A handler's input refusal fails the run at once,** naming it, with no retry or correction (#2553; #2566); a QA
+  re-take that a repair then patched is stored as the patch it verified (#2536; #2537); a plan index that isn't an
+  integer is refused with its value (#2488; #2490); a builder squad with no `build_profile` is refused at cycle
+  create, not at implementation (#2437; #2438); and an emitted file keeps its final newline (#2607; #2618).
+- **Routing a failing slot assertion by defect ownership is not built:** the shell's construction already routes it as
+  SIP-0104 §13d asks, and 37 days of runs show no route it would change (§13e; #2153; #2665).
+
+**Request profiles (SIP-0114).**
+- **The operator's seven request profiles** (`smoke`, `build`, `validate`, `implement`, `ship`, `wrapup`,
+  `benchmark`), each stack's request defaults beneath an operator profile's own keys, and every 2.3.1 profile frozen
+  byte for byte and still resolving by name (#316; #2445, #2494, #2500, #2519).
+- **The console's cycle create resolves its request on the server** with the builder the CLI uses (`POST
+  /api/v1/cycle-request-profiles/{name}/resolve`), so a console cycle carries its profile and the CLI's config hash
+  (#2520; #2529). `cycles create --set` reads a list or mapping value as JSON (#2496; #2497).
+
+**Deploy, configuration and telemetry.**
+- **Every service mounts exactly the secrets it reads:** the agents hold no database credential, and nothing holds
+  Keycloak's admin password (#2457, #2498; #2506).
+- **Deploys:** one that runs the sandbox builds its pinned environment image when the tag is absent (#2582; #2585);
+  the record declares each agent instance's own model, so a chat turn leaves the box quiet (#2676; #2679); and a
+  failed Keycloak realm sync fails the deploy (#2426; #2429). Ollama is asked for the context the registry budgets
+  each model at (#2427; #2434), and `lite-14b` is `lite` on qwen2.5:14b, the MacBook's build check (#2435; #2436).
+- **Quieter and stricter settings:** the console reads every setting as required (#2431; #2432); a successful
+  heartbeat or health probe leaves the access log (#2425; #2428); and the collector stops printing every metrics
+  batch, Grafana's usage reporting is off and three images are pinned (#2424; #2430).
+- **A generation's full rendered request is kept beside the capped display text,** readable by id
+  (`read_full_prompt.py`), and the connection-string redaction no longer crosses lines (#1756; #2463). The generic
+  `api-`/`key-` redaction spares the framework's own ids and still redacts a real key (#2462; #2505).
+- **Loaded checks for each batch,** one id per check, and every row answers its expect on the source in CI before a
+  rebuild, with `docker` shadowed (#2694; #2475, #2477, #2482, #2483, #2492, #2503, #2552, #2600, #2697).
+
+**Dependencies and CI.** certifi 2026.10.19, past GHSA-6q48-6c7w-9gw2 (#2571), and the OpenTelemetry family
+1.45.1/0.66b1, past GHSA-xcq7-p3pf-p88h (#2671), in the locks and CI's constraints. The dependency audit reads an npm
+endpoint error as not run, never as no advisories (#2644; #2645), and runs under macOS's bash (#2648); the scenario
+CLI's tests read past Rich's wrapping (#2491; #2504).
+
+**Plans and SIPs.** The 2.4 plan, adopted (#2387); SIP-0112 and SIP-0113 accepted (#2401, #2406); SIP-0111's second
+engine candidate redirected to the upgrade to TensorFold 1.x, still unplaced (#2230; #2423); and the Spark thermal
+rule's no-data alert placed in 2.5 (#2433; #2439). Outcome Evaluation's design records: the safety guarantees
+Autonomous Outcome Reliability reads (#2486), the seeded reading and the browser runner proposed (#2563) and reviewed
+(#2631, #2641), the owner's rulings of 2026-10-20 (#2569), the ledgers re-read before the cut (#2629), and a Campaign
+on a repository-backed Project designed for 2.5 (#2624, #2626). <!-- TODO after IR-1/2/8 on the cut deploy --> The integration record
+(`docs/plans/2-4-0-integration-record.md`): of the ten cross-lane scenarios, four passed (one on three of its four
+points), the counted regression pair on a deploy carrying both lanes among them; two ran in part; and four were not
+run, each waiting on #2619 (#2640, #2649, #2654). The cut's pre-registration and registration (#2703, #2707, #2708),
+and the v2.3.1 package (#2404).
+
+**Not in this release:**
+- **A Campaign on a repository-backed Project** (#2619): it calibrates but can't launch an increment. Its design is
+  SIP-0112 H.4, SIP-0109 §24bv and SIP-0113 §10l, placed in 2.5 by the owner on 2026-10-21, with the remainders of the
+  cycle-end declared start and the evaluation secrets (#2414, #2421).
+- **The outcome target and the quality gates** (SIP-0113 §4.7), held until a reading shows contribution separating
+  from acceptance; the finer seeded reading (#2637, 2.5); and two browser-driver fixes (#2659, #2706), placed in 2.5
+  with suite revision 6, since they move the evaluator's tag.
+- **Placed in 2.5 by the owner on 2026-10-23:** widening the check that QA's tests call each endpoint as its contract
+  declares it, after QA's backend test guessed an endpoint's method (#2297); a refusal of a slot-scoped QA repair that
+  weakens a failing slot assertion (#2664), after the MacBook lane's review; and an increment identity of its own
+  (#2578, parts 2–4).
+- **The builder half of the risk-first instructions** (#1966), deliberately unplaced; and update history, archive,
+  restore and conflict recovery (SIP-0112 E.4.5), placed in 2.6 with the SIP's close (the owner, 2026-10-23).
+
+**Upgrade from 2.3.1:** `.env` must name `SQUADOPS__CYCLES__PROJECT_REGISTRY_PROVIDER`,
+`SQUADOPS__SANDBOX_CLIENT__PROVIDER` and `SQUADOPS_SANDBOX_SERVICE_PROVIDER`, and `deploy_credentials.py ensure`
+generates `SQUADOPS_SUPERVISOR_PASSWORD`. The runtime API applies migrations 1780–1970 at startup. A deploy's move to
+the writable registry is `docs/ops/project_registry_cutover.md`. Rebuild everything.
+
 ## [2.3.1] — 2026-10-17
 
 **The 2.3 line's first patch: what a campaign's records and checks say is what happened** (plan

@@ -104,7 +104,7 @@ sandbox, which the Spark lane owns, are named as cross-lane tasks (§8.2.2).
   review, was approved by the owner as written, 2026-10-17 (§8.2 contract 7). This PR stays proposal-only until the
   owner approves it, and no integration branch is created yet.
 
-## Delivery ledger (current as of 2026-10-21)
+## Delivery ledger (current as of 2026-10-23)
 
 One row per part that ships separately, from Appendix E.4. Statuses: *shipped* (the release, the PR,
 and the issue it closed), *placed* (the release and the open issue tracking it, labelled `sip:NNNN` once
@@ -114,7 +114,9 @@ numbered), *unplaced* (said deliberately), *dropped* (by the numbered amendment 
 feature on the MacBook lane, beside Outcome Evaluation's feature half on the Spark; the rows were placed at
 acceptance (2026-10-17), each with its issue labelled `sip:0112`. Greenfield (E.4.6) ships in 2.4: the cut requires it (G6, the owner's
 ruling of 2026-10-17). 2.4 carries E.4.1–E.4.4 and E.4.6, the two demonstrations; E.4.5 is required
-before the SIP closes and need not ship in 2.4 (the owner, the same day). Dependencies are in E.4. Game-specific adapters have no row here: they are their own SIPs' (Q34).
+before the SIP closes and need not ship in 2.4 (the owner, the same day). On 2026-10-23 the owner placed it in 2.6
+and the SIP's close with it ("move E.4.5 to 2.6 and close 0112 in 2.6"): 2.5 is a stabilization release, and E.4.5's
+update history and archive/restore are features. Dependencies are in E.4. Game-specific adapters have no row here: they are their own SIPs' (Q34).
 
 | part | status | where |
 |---|---|---|
@@ -124,11 +126,12 @@ before the SIP closes and need not ship in 2.4 (the owner, the same day). Depend
 | E.4.3 the first scoped feature through the shared cycle path | **shipped**: the source-backed run, from the product's tree to a verified change contributed through its own process (#2484); the sync's attribution of SquadOps's own contributions and its hold on Cycles until drift is reconciled (#2610, H.2); the brownfield demonstration read against its pre-registration, with IR-2 passing live (#2611). The deletion form and a regression's repair round are deferred follow-ups, each with its own issue | 2.4.0, PRs #2484, #2610 and #2611, issue #2410 |
 | E.4.4 the second feature after an outside contribution | **shipped**: a product's upstream read against its approved baseline, its contributions' standing, and the repository reference resolver (#2565); the sync's attribution and its hold on Cycles until drift is reconciled (#2610, H.2); the brownfield demonstration's second feature after an outside change, read (#2611); IR-3 as H.3 restates it (#2616) | 2.4.0, PRs #2565, #2610 and #2611, issue #2411 |
 | H.4 a repository-backed Project's development profile derived from its tree, its capability gaps named, and Campaigns run on it (found as #2619; the owner, 2026-10-21) | **placed** | 2.5.0, #2619 |
-| E.4.5 lifecycle completeness: update history, archive/restore, concurrency and conflict recovery (before close; not required in 2.4) | **unplaced**, deliberately: placed by a later plan, before the SIP closes | — |
-| E.4.6 greenfield Project creation at an owner-approved external destination (required, Q34; shipped by the 2.4 cut, G6) | **placed** | 2.4.0, #2412 |
-| E.4.7 direct attachment: writing in place in an existing checkout (optional, FR-02) | **unplaced**, deliberately: optional | — |
+| E.4.5 lifecycle completeness: update history, archive/restore, concurrency and conflict recovery (before close; not required in 2.4) | **placed** (the owner, 2026-10-23) | 2.6.0, #2709 |
+| E.4.6 greenfield Project creation at an owner-approved external destination (required, Q34; shipped by the 2.4 cut, G6) | **shipped** | 2.4.0, PR #2584, closes #2412: the greenfield proof ran on the Spark's deploy (`cyc_7bf35ffb4cc5`; `backspring-labs/z_shelfnote#1`, merged as `9bcdc7c0`) and is read in `docs/plans/2-4-0-demonstrations-readout.md`. IR-7, a greenfield Project's first Campaign, waits on H.4 (#2619, 2.5.0), as the integration record says |
+| E.4.7 direct attachment: writing in place in an existing checkout (optional, FR-02) | **unplaced**, deliberately: optional. The 2.6 plan ships it or drops it by a numbered amendment, since the SIP closes in 2.6 (the owner, 2026-10-23) | — |
 
-**What closes this SIP:** the shared fixture and E.4.1–E.4.6 shipped, and E.4.7 shipped or dropped. Greenfield creation (E.4.6)
+**What closes this SIP:** the shared fixture, E.4.1–E.4.6 and H.4 shipped, and E.4.7 shipped or dropped. It closes in 2.6
+(the owner, 2026-10-23). Greenfield creation (E.4.6)
 is in the completion scope by the owner's ruling of 2026-10-17 (Q34), and leaves it only by a numbered
 amendment the owner rules. The 2.4 cut requires it shipped (G6, ruled the same day).
 

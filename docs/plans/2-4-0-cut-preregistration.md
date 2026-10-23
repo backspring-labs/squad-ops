@@ -1,6 +1,6 @@
 # 2.4.0 — pre-registration of the cut's set (the plan's §6.2, "the release evidence")
 
-**Status: REGISTERED** on 2026-10-23 at 13:42 ET (§6), when all seven conditions below held. Written the same day by the
+**Status: READ, PASS** on 2026-10-23 (§13). **Registered** on 2026-10-23 at 13:42 ET (§6), when all seven conditions below held. Written the same day by the
 Spark lane, which runs the line under D11, before anything in it launched, and revised on a second reader's findings
 (§11) and on shakeout round 1, a diagnostic round (§12). The exit rule held in round 2 (§12b). Nothing in the set
 launched before registration. The plan leaves the cut's numbers to this document (§8: "each is
@@ -416,3 +416,55 @@ completed `success`, with its objective met on row 3.
 The records are in `var/verification_sets/2-4-0-cut/shakeout-r2/`. **The loop took two rounds:**
 1. round 1, a diagnostic on a superseded deploy, found #2706, and the MacBook lane named #2704's fix;
 2. round 2 met the rule.
+
+---
+
+## 13. The reading: PASS (2026-10-23)
+
+**The chain** ran the four rolls from the main checkout at `c3f6ec2a` (this registration's merge), 17:49–19:53Z,
+on `dep_d7ff50b9b39c`. Nothing merged, rebuilt or ran beside it. No roll was void or re-run, and the owner took no
+action while the set was open. The held-out readings ran after the chain's last roll, once each, and each started its
+tree. The records are in `var/verification_sets/2-4-0-cut/` (each roll's record, `chain/` and `readings/`).
+
+| roll | cycle | verdict | criteria | boot audit | correction rounds (by repairing task) | QA repairs whose retest passed | model calls |
+|---|---|---|---|---|---|---|---|
+| FastAPI + React 1 | `cyc_de4b598fb1d2` | accepted | 22 / 22 | PASS | 2 (`development.correction_repair`) | 0 | 20 |
+| Next.js 1 | `cyc_0b6cbf9ab49c` | accepted | 17 / 17 | PASS | 0 | 0 | 17 |
+| FastAPI + React 2 | `cyc_1aa7a36f28b1` | accepted | 21 / 21 | PASS | 1 (`qa.test_repair`) | 1 | 19 |
+| Next.js 2 | `cyc_007ec7f73c86` | accepted | 19 / 19 | PASS | 1 (`development.correction_repair`) | 0 | 24 |
+
+Three plan gates were decided by `system:no_open_questions`. Next.js 2's plan had an open question, and the driver
+approved its gate with the set's constant notes. Every correction round is inside §3's range of 0–3. FastAPI + React 1's two rounds are above
+that stack's 2.4 baselines (0–1), which is data, as §3 says.
+
+**The predictions:**
+
+| # | read | result |
+|---|---|---|
+| P1, every model call TensorFold's | each roll's window in `squadops_llm_call_seconds_count`: one series, `engine=tensorfold`, `model=qwen3.8-27b-tf-nvfp4`. The agents' completion lines agree: 80 of 80 name the TensorFold adapter and that model | **holds** |
+| P2, every tracked loaded check answers | 179 of 179 rows of `loaded_checks.yaml` answer their `expect` in every roll, `1966` reading `True True False` | **holds** |
+| P3, memory stays disabled | each cycle declares memory disabled and pins a disabled snapshot with no entries. Their 45 exposures all read `memory_disabled`, no record is bound to any of them, and all 45 captured envelopes reconstruct byte for byte, each with its own exposure (`verify_authoring_envelopes.py`, all eight runs) | **holds** |
+| P5, cadence, pulse and correction paths the baseline's | no cadence policy or pulse checks in any applied defaults or overrides; no `pulse_verification_records` row for any of the eight runs; every repair went through `development.correction_repair` or `qa.test_repair`, each decision through `governance.correction_decision`, each analysis through `data.analyze_failure`, as the baselines' did; each cycle has its two runs, both completed, with no hold, halt or restart | **holds** |
+| Q1, no held-out scenario lost (#1966) | on every roll's tree, each HTTP scenario in its stack's always-pass set passed, 4 of 4 on each stack (`readings/q1-reading.txt`). The FastAPI + React set's browser scenario, reported and not predicted, passed on both of that stack's trees | **holds** |
+| Q2, no extra rounds from QA's own tests (#1966) | at most one QA repair whose retest passed, on FastAPI + React 2 (`readings/q2-qa-rounds.txt`). The limit is one | **holds** |
+
+**So #1966's revert rule isn't triggered,** and #2700 is in the tag.
+
+**Reported beside Q1, not predicted:**
+- **The passed counts.** FastAPI + React read 13 and 11 of 31, against its baselines' 6–11. Next.js read 9 and 10,
+  against 11–12.
+- **Most of Next.js's difference is the baselines' surfaces.** Six scenarios pass only on window c4's calibration,
+  which built a different API surface for the run's participants. Against the two baselines whose surface matches the
+  rolls' (11 and 12), one scenario passed on both baselines and failed on both rolls, at the same step. Two more
+  passed on one of those two baselines and failed on both rolls. Two rolls can't separate the new QA instructions from
+  build-to-build spread. It's the first thing a Next.js campaign under #1966 would read.
+- **FastAPI + React 1 passed both soonest-first scenarios,** which failed on every baseline tree.
+
+**What it doesn't cover,** beside §9:
+- **The tagged tree differs from the registered deploy** only by documents and the version string: this registration
+  and its two set configs (in `c3f6ec2a`), and the release PR's version bump, CHANGELOG, ROADMAP, README, CLAUDE.md,
+  SIP ledgers and this section. Nothing under `src/`, `adapters/`, `infra/`, `agents/`, `config/` or `scripts/`
+  differs from `b3acbc82`, so the difference is additive.
+- **#1966 on Next.js increments.** The shakeout ran FastAPI + React, and the Next.js rolls are greenfield builds.
+- **The held-out readings are one reading per tree.** The page scenarios' three-round agreement (SIP-0113 §10r) is the
+  instrument's; it isn't re-read here.
