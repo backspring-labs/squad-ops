@@ -1641,3 +1641,10 @@ checks:
       from squadops.outcomes.named_goals import GoalMove
       print(PACKAGE_VERSION, [m.value for m in GoalMove])
     expect: "5 ['moved', 'still failing', 'already passing', 'regressed', 'not verified', 'not evaluated']"
+  - id: "2578-continuation"
+    what: a repair's or a retry's block carries the increment's own keys and its lineage, never a copy of the failed cycle's (#2578 part 1, SIP-0109 §24ca)
+    container: squadops-runtime-api
+    code: |
+      from squadops.campaigns.launch_requests import CONTINUED_KEYS
+      print(len(CONTINUED_KEYS), "repair_of" in CONTINUED_KEYS, "abandoned_increment" in CONTINUED_KEYS)
+    expect: "9 False False"
