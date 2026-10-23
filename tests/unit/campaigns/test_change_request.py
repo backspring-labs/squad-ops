@@ -423,11 +423,13 @@ def test_the_goals_a_request_names_are_bound_by_its_ruling_and_kept_from_every_o
         (("goal_export", "goal_sort"), ["goal_sort"], None),
         # Ruling 5: a goal already passing is still one it was shown, so it is not refused here.
         (("goal_export",), ["goal_export", "goal_other", "goal_other"], "goal_other"),
+        (("goal_export",), ["goal_a", "goal_export", "goal_b", "goal_b"], "goal_a, goal_b"),
     ],
 )
 def test_a_proposal_may_name_only_the_goals_it_was_shown(shown, named, unknown):
-    """Bug caught: an invented goal id accepted, so the ledger reads a prediction against a goal
-    no proposal could see; or a shown goal refused."""
+    """Bugs caught: an invented goal id accepted, so the ledger reads a prediction against a goal
+    no proposal could see; a shown goal refused; or only the first unknown id named, so a
+    revision fixes one per round."""
     verdict = validate_proposal(_authored(moves_goals=named), _context(shown_goals=shown))
 
     refused = [r.detail for r in verdict.refusals if r.kind is RefusalKind.UNKNOWN_GOAL]
