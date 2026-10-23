@@ -3950,3 +3950,23 @@ and `tests/unit/campaigns/test_change_request.py`.
 
 **Who ruled.** The supervisor's design (SIP-0113 §10t), under the owner's 2.4 delegation and D4's ruling of 2026-10-22.
 For the owner's review.
+
+### 24ca. A repair or a retry carries the increment's own keys and its lineage, never a copy of the failed cycle's block (2026-10-23, §10a, §24u; #2578 part 1, after #2558 and #2576; implementer's correction, for the owner)
+
+**What was wrong.** A continuation's `campaign_proposal` block was the failed cycle's block, copied whole, with
+`repair_of` and `prior_cycle` then deleted. #2558 and #2576 were both keys of one cycle carried into the next that
+way. Any key added later rode along by default, and so did the keys only a proposal reads: `abandoned_increment`,
+`qa_proposed_behaviours`, `unapproved_proposals`, a revision's note. A continuation runs no proposal.
+
+**What changed.** The block is built from `CONTINUED_KEYS` (`launch_requests.py`) and the launch's own lineage.
+- `CONTINUED_KEYS` holds the binding and what every increment seam reads of it, as the increment's launch wrote them:
+  `proposal_id`, `version`, `baseline_tree`, `accepted_cycle_id`, `baseline_manifest`, `objective`, `prior_criteria`,
+  `frozen_criteria` and `max_revisions`.
+- The lineage is `continues`, `repair_of` for a repair, and the brief of the cycle it continues, `prior_cycle`.
+
+**Evidence.** Every campaign cycle the Spark has stored carries the nine keys. A test plants proposal-only keys and an
+invented later lineage key in a failed increment's block, and finds the retry carries none of them. Copying the block
+again fails it, and #2558's test.
+
+**What stays.** #2578's other parts (an `increment_id` on each cycle, Prefect tags, a per-increment view in the
+ledger) await a ruling.
