@@ -31,7 +31,7 @@ import json
 import re
 from collections.abc import Mapping
 from importlib import resources
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, overload
 
 from squadops.capabilities.context_assembly import (
     SUPPLEMENT_BUILD_PROFILE,
@@ -53,6 +53,28 @@ if TYPE_CHECKING:
 #: What memory supplies a dispatch. The composer measures these sections itself, framing included,
 #: so they are never the task's own input.
 SUPPLIED_INPUTS = frozenset({LESSONS_INPUT, TASK_INSTRUCTIONS_INPUT, PROJECT_INSTRUCTIONS_INPUT})
+
+
+@overload
+def completion_reserve(
+    task_type: str,
+    *,
+    model_name: str | None,
+    agent_model: str | None,
+    agent_overrides: Mapping[str, Any],
+    capability_max_tokens: int,
+) -> int: ...
+
+
+@overload
+def completion_reserve(
+    task_type: str,
+    *,
+    model_name: str | None,
+    agent_model: str | None,
+    agent_overrides: Mapping[str, Any],
+    capability_max_tokens: None = None,
+) -> int | None: ...
 
 
 def completion_reserve(
