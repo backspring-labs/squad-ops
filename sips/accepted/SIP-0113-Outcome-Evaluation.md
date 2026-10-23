@@ -433,7 +433,7 @@ Project Lifecycle Management (SIP-0112) states the seven contracts in its §8.2 
 | contract | this SIP |
 |---|---|
 | 1. Project identity and source revision | records the Project ID and the evaluated tree's identity; resolves a Git revision only through contract 4's mapping |
-| 2. `prepare_cycle()` and Campaign admission | adds nothing at `prepare_cycle()` or in a launch request; adds `scenario_suite` at Campaign creation (§4.7) |
+| 2. `prepare_cycle()` and Campaign admission | adds nothing at `prepare_cycle()`; adds `scenario_suite` at Campaign creation (§4.7). **Amended by §10t:** §4.5's evidence is a key inside a proposal launch's admitted `campaign_proposal` block, stripped from every task envelope but the proposal's |
 | 3. `WorkspaceStore` | evaluates a disposable copy, never the live tree; no scenario file enters a workspace; names trees by identity, never by sandbox revision |
 | 4. Campaign accepted trees | reads regression against the previous accepted tree, by SIP-0109's identity |
 | 5. evaluation references | produces the evaluation record and its reference (`OutcomeEvaluationRef`), with the campaign ID nullable (§4.1); its names follow §0 |
@@ -1919,3 +1919,85 @@ scenarios and a clean holdout, and its prediction is read in the ledger whatever
 **What else it changes.** Phase 2 changes what the proposer is shown, a squad behaviour. The 2.4 plan's rule that a
 release doesn't change two squad behaviours at once applies: #1966's risk-first QA instructions, read as an A/B on
 2026-10-22, are adopted no earlier than the release after §4.5's, unless the owner rules otherwise.
+
+### 10t. §4.5's design review: the rulings it settles, before any of it is built (2026-10-22; #2677; the supervisor's, under the owner's grant of 2026-10-19 and D4's ruling of 2026-10-22)
+
+§10s placed §4.5 in 2.4. A read of the code found where its evidence would have to travel, and that the path reaches
+further than §4.5 allows. These rulings settle the design before the first PR, as §10p did for the browser runner.
+
+**What the read found:**
+- **Every task envelope carries the cycle's whole resolved config.** `cycles/task_plan.py` builds each task's inputs with
+  `"resolved_config": resolved_config`, and the correction runner's analysis and decision envelopes carry
+  `cycle.resolved_config()`. The authoring envelopes store those inputs. So a key in a cycle's `campaign_proposal` block
+  reaches every role of that cycle, and `bound_launch` (`campaigns/launch_requests.py`) copies the block into retries and
+  repairs.
+- **The squad's packages can't read the held-out store.** `capabilities`, `execution`, `agents` and `prompts` may not
+  import `squadops.scenarios` (`test_held_out_scenarios_stay_out_of_the_squads_reach.py`). So the runtime has to put the
+  evidence on the launch.
+- **The sweep leaves goals out of its markers** (`scripts/dev/heldout_sweep.py`). A goal that quoted a step value would
+  carry a marker into LangFuse, and a goal in the wrong envelope would go unfound.
+- **A change request's `content_hash` covers every authored field,** and a stored document is re-hashed when loaded
+  (`campaigns/change_request.py`). A new field would break every stored request unless it's left out when empty.
+
+**The rulings:**
+1. **The boundary is built first, before any evidence exists.**
+   - The evidence travels on the proposal launch, as `campaign_proposal.proposal_evidence`.
+   - One function, `squad_view(resolved_config, task_type)` in `cycles/`, strips it from every task's config except
+     `strategy.propose_increment`'s. It is applied where the plan and the correction runner compose envelopes, and again,
+     as a backstop, where `TaskDispatcher` publishes them.
+   - `bound_launch` drops the key from retries and repairs.
+   - An AST guard requires every envelope's `resolved_config` to pass through `squad_view`.
+   - Its tests push a synthetic block through the proposal, framing and implementation runs and a correction round:
+     the key is on the proposal's envelope only.
+2. **What the proposer is shown.**
+   - **Each goal:** its id, its statement and its result, one of `passed`, `failed` or `not verified`. A
+     `blocked_unverified` outcome is shown as `not verified` without its reason, since a reason such as
+     `surface_absent` names a held-out surface. `not_applicable` goals are left out.
+   - **Quality:** each measure's delta against the calibration baseline (`quality_deltas`), without detail, seed or URL.
+     The seeded reading is left out: S2 was falsified (§10o), and #2637's finer reading comes first.
+   - **The accepted increments' `prd_delta`:** folded by section id into what is now accepted, not their history.
+   - Only `scenario_id`, `goal` and `result` are read from the evaluation records. No step, check, value or evidence is
+     read at all.
+3. **A goal that carries a marker is held back.** The suite's markers move into `scenarios/` so the sweep and the
+   runtime share one definition. Before a launch, each goal is checked against the pinned suite's own markers. One that
+   contains a marker is held back and counted on the launch; it is never shown.
+4. **A change request may name the goals it means to move:** `moves_goals: [goal_id]`.
+   - An id that isn't one of the goals shown is refused (`unknown_goal`), with every other refusal.
+   - An empty list is left out of the document and its hash, so every stored request keeps its identity.
+   - Framing and the build roles receive the request without the field.
+   - The SIP-0109 §7.2 row is a numbered amendment in the PR that builds it.
+5. **Naming a goal that already passes is not refused.** The ledger reads it as `already passing`. Refusing it would
+   make the first live prediction true by construction.
+6. **A failed read of the evidence raises,** and the campaign's re-hearing retries, as every other read at a launch does.
+   A proposal is never launched without it: require, don't default.
+7. **Two channels that go round the boundary:**
+   - **A change request that copies a goal's text into what every role sees** (its `prd_delta`, its criteria or its
+     statement) is refused at the rails, checked by the same markers: `goal_text_copied`.
+   - **The supervisor's gate notes never quote a goal.** That is the ruling-notes rule already. Memory observations take
+     ruling reasons, so a quoted goal would reach them.
+   - The live reading measures both with a `--goals` mode of the sweep.
+8. **Contract 2.** Nothing changes at `prepare_cycle()` or Campaign admission. The evidence is a key inside an already
+   admitted `campaign_proposal` block, as #2593's unapproved proposals are. §4.8's row 2 is amended here, and the launch
+   request's change takes the MacBook lane's review (G4).
+9. **The live reading** is pre-registered on its own: one `group_run` campaign of three increments on the 2.4 deploy,
+   with nothing else changed (§10s, #1966).
+   - Each proposal is approved as it stands, at version 1, unless the rails refuse it. The window's rule followed the
+     PRD's priority order, and it would decide whether a goal-aimed proposal survives, not the evidence.
+   - Its predictions: every proposal after calibration names a goal not passing on its tree; at least half the named
+     goals of accepted increments read `moved`; P2's sweep is clean; and goal statements appear only in the proposal's
+     envelopes and generations, the evaluator's records and the package.
+
+**The build order:** six PRs, each with a wiring test that enters where the live campaign does.
+1. the boundary;
+2. `moves_goals`;
+3. the evidence on the launch;
+4. the prompt's three sections (`request.strategy_propose_increment.md`, through the real renderer per
+   PROMPT_AUTHORING_STANDARD rule 8);
+5. the ledger reading (`moved`, `still failing`, `regressed`, `already passing`, `not verified`, `not evaluated`), in the
+   digest by id only;
+6. the record: §10u as built, and the sweep's `--goals` mode.
+
+Then the pre-registration and the campaign.
+
+**Not decided here:** whether §4.5's results change campaign success. That is §4.7's, held by §10s.
+
