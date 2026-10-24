@@ -34,6 +34,10 @@ export const fold = (value) =>
     .replace(/\s+/g, " ")
     .trim();
 
+// A control's accessible name, as `fold` reads it with one trailing colon dropped: a field labelled
+// "Your name:" is named "Your name" (#2706). Page text and a check's patterns are read as written.
+export const foldName = (value) => fold(value).replace(/\s*:$/, "");
+
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
 // Patterns are drafted as the suite's own text and read here as JavaScript regular expressions,
@@ -58,8 +62,8 @@ function narrowed(elements, target) {
 export async function select(page, target) {
   const pool = narrowed(await page.find(target.role), target);
   if (!target.names) return pool;
-  const wanted = new Set(target.names.map(fold));
-  return pool.filter((e) => wanted.has(fold(e.name)));
+  const wanted = new Set(target.names.map(foldName));
+  return pool.filter((e) => wanted.has(foldName(e.name)));
 }
 
 // The control a step acts on (§10p ruling 3): the first candidate name that matches any element,
@@ -70,7 +74,7 @@ export async function locate(page, target) {
   let hits = [];
   let nameIndex = null;
   for (const [i, name] of (target.names ?? []).entries()) {
-    hits = pool.filter((e) => fold(e.name) === fold(name));
+    hits = pool.filter((e) => foldName(e.name) === foldName(name));
     if (hits.length) {
       nameIndex = i;
       break;
@@ -92,7 +96,11 @@ export async function locate(page, target) {
   return { element, matched: { name_index: nameIndex, count: hits.length } };
 }
 
+// A click with `if_enabled` (#2659) on a control that stays disabled through the whole bound is
+// skipped: it ends `done`, noted, so a delivery that disables the control and one that refuses the
+// click read alike, and the scenario's read-back decides both. A control that enables late is clicked.
 async function act(page, step, bounds, deadline) {
+  const skippable = step.action === "click" && step.if_enabled === true;
   const found = await poll(
     bounds.locateMs,
     deadline,
@@ -106,6 +114,9 @@ async function act(page, step, bounds, deadline) {
   );
   if (!found.element) return { outcome: "not_found", matched: null };
   if (!found.done) {
+    if (skippable && found.element.visible && found.element.disabled && (await page.stable(found.element))) {
+      return { outcome: "done", detail: "skipped: the control was disabled", matched: found.matched };
+    }
     const why = found.element.disabled ? "disabled" : "not visible or still moving";
     return { outcome: "action_failed", detail: `the control was ${why}`, matched: found.matched };
   }

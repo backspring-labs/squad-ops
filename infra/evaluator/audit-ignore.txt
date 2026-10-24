@@ -1,18 +1,8 @@
 # npm advisories the dependency audit is told to ignore in the evaluator image's lock — each with its
-# reason, and the issue that retires it. The owner's ruling on #2455 (2026-10-18, option (a)): accepted,
-# because none of this code runs in the image. It uses Debian's Chromium (PUPPETEER_SKIP_DOWNLOAD),
-# downloads no browser, makes no FTP or proxy fetch, and its only network is the sandbox's internal app
-# network (#2460). All three arrive through Puppeteer's browser-download chain, which Lighthouse pulls
-# in through puppeteer-core. Retired by #2469. Format: one advisory id per line; `#` comments.
-GHSA-7pqw-9j4j-h8q3  # extract-zip <=2.0.1, symlink archive writes: @puppeteer/browsers' download unzip, never run
-GHSA-jmr9-qjv8-65gv  # extract-zip <=2.0.1, symlink path traversal: the same unzip, never run
-GHSA-c475-qrg2-pj4r  # basic-ftp <=6.2.0, Client.list() CPU DoS: proxy-agent -> get-uri's ftp://, never fetched
-# The owner's ruling at the 2.4.0 cut (2026-10-23, on #2712): accepted for 2.4.0, retired by #2712 with the evaluator's
-# next tag. zod never loads: it is the peer `puppeteer`'s, which @axe-core/puppeteer's dist never requires, and the
-# driver speaks CDP through puppeteer-core, whose own zod is 4.6.7. fast-uri runs only inside ajv, resolving the ids of
-# ESLint's and Lighthouse's own schemas; no decision rests on a URI, and the image has no route out (#2460).
-GHSA-mrhx-c7xc-m3w5  # zod <4.6.6, memory exhaustion on oversized constrained collections: the peer puppeteer's, never loaded
-GHSA-333x-w4r6-6crp  # fast-uri <=3.1.8, scheme injection via a first-segment colon: ajv's schema-id resolution only
-GHSA-w74x-v6f9-j3xg  # fast-uri <=3.1.8, scheme spoofing via percent-encoded schemes: the same
-GHSA-wjr9-j795-jxcr  # fast-uri <=3.1.8, host confusion via WHATWG canonicalization: the same
-GHSA-xhq7-xmqj-769h  # fast-uri <=3.1.8, path equivalence in relative normalization: the same
+# reason, and the issue that retires it. Format: one advisory id per line; `#` comments.
+#
+# Empty since `-6` (2.5): pinning the peer `puppeteer` that @axe-core/puppeteer installs to 25.14.0, the
+# version of the `puppeteer-core` the driver uses (`overrides` in package.json), takes its browser-download
+# chain off `extract-zip` and `basic-ftp` (#2469) and its `chromium-bidi` onto `zod` 4 (#2712), and `fast-uri`
+# moves to 3.1.9 (#2712). The eight advisories accepted for 2.4.0 (the owner's rulings on #2455, 2026-10-18,
+# and at the 2.4.0 cut, 2026-10-23) no longer apply.

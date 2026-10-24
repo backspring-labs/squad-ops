@@ -240,6 +240,12 @@ SECRET = "Moonrise-Relay-Ninety"
          "check 1: a text check reads a browser step, and step 1 isn't one"),
         ([{"action": "visit", "path": "/"}], [{"check": "status", "step": 1, "equals": 200}],
          "check 1: a status check reads an HTTP step, and step 1 isn't one"),
+        ([{"action": "visit", "path": "/"}, {"action": "fill", "target": NAME_BOX, "value": "x", "if_enabled": True}],
+         [], "step 2: if_enabled is a click's, true or false"),
+        ([{"action": "http", "method": "GET", "path": "/runs", "if_enabled": True}], [],
+         "step 1: if_enabled is a click's, true or false"),
+        ([{"action": "visit", "path": "/"}, {"action": "click", "target": JOIN, "if_enabled": SECRET}], [],
+         "step 2: if_enabled is a click's, true or false"),
     ],
     ids=[
         "a-segment-that-doesnt-begin-with-visit",
@@ -255,6 +261,9 @@ SECRET = "Moonrise-Relay-Ninety"
         "a-check-on-a-step-that-isnt-there",
         "a-browser-check-on-an-http-step",
         "an-http-check-on-a-browser-step",
+        "if-enabled-on-a-fill",
+        "if-enabled-on-an-http-step",
+        "if-enabled-not-a-boolean",
     ],
 )  # fmt: skip
 def test_a_malformed_browser_step_or_check_is_refused_by_its_place_never_its_value(
@@ -281,6 +290,22 @@ def test_a_well_formed_mixed_scenario_and_an_http_only_one_are_refused_nothing()
 
     assert vocabulary_refusals(mixed["steps"], mixed["checks"]) == []
     assert vocabulary_refusals(http_only, [{"check": "status", "equals": 201}]) == []
+
+
+async def test_an_if_enabled_click_is_refused_nothing_and_reaches_the_browser_as_written():
+    """#2659. Bugs caught: the draft-time rule refusing a well-formed `if_enabled` click, so a
+    two-form outcome can't be written; or the runner's rendering dropping the key, so the driver
+    clicks a disabled control and the delivery that disables it reads failed."""
+    scenario = _joining()
+    scenario["steps"][3] = {**scenario["steps"][3], "if_enabled": True}
+    browser = _Browser()
+
+    run = await run_scenario(scenario, _app, browser)
+
+    assert vocabulary_refusals(scenario["steps"], scenario["checks"]) == []
+    assert run.result == "passed"
+    sent = browser.requests[0].steps
+    assert [s.get("if_enabled") for s in sent] == [None, None, True]
 
 
 async def test_the_run_records_its_runner_and_each_steps_seconds_and_never_the_browsers_text():

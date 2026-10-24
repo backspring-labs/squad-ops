@@ -34,6 +34,10 @@ _CUT = {
     # #2583: the base and Debian's archive pinned (its 260 packages are -4's), and §10p ruling 5's
     # measured bound of 5 s (§10r).
     "squadops-evaluator:lighthouse13.5-axe4.14-ruff0.16-eslint10.12-5": "2fa34a2d556173c6",
+    # 2.5's re-cut: a control's name matched with a trailing colon dropped (#2706), the `if_enabled`
+    # click (#2659), and the lock's advisories fixed, the peer puppeteer pinned to 25.14.0 and fast-uri
+    # 3.1.9 (#2712, #2469). Every baseline is re-read on it (the 2.5 plan's §2.2).
+    "squadops-evaluator:lighthouse13.5-axe4.14-ruff0.16-eslint10.12-6": "cecd430f253e0567",
 }
 
 
