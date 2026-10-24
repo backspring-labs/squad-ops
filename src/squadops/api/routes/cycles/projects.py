@@ -4,6 +4,7 @@ Project API routes (SIP-0064 §9.1).
 
 from datetime import UTC, datetime
 from pathlib import Path
+from typing import Any
 
 from fastapi import APIRouter, Depends, Request
 from fastapi.responses import PlainTextResponse
@@ -11,6 +12,7 @@ from fastapi.responses import PlainTextResponse
 from squadops.api.cycle_schemas import (
     ContributionRequest,
     ContributionResponse,
+    DerivedProfileResponse,
     DevelopmentConfigurationRecordedResponse,
     DevelopmentConfigurationRequest,
     DevelopmentConfigurationResponse,
@@ -37,6 +39,7 @@ from squadops.api.runtime.deps import (
     get_source_repository,
 )
 from squadops.auth.models import Identity, Scope
+from squadops.cycles.models import DerivedProfileNotFoundError
 from squadops.ports.projects.review_request import ReviewRequestFailed
 from squadops.projects.configuration import configure_project
 from squadops.projects.contribution import ContributionRefused, contribute
@@ -219,15 +222,38 @@ async def capture_baseline(
     except SandboxUnavailable as e:
         raise http_error(503, "SANDBOX_UNAVAILABLE", str(e)) from e
     return InheritedBaselineResponse(
-        project_id=project_id, document=baseline.to_document(), replayed=replayed
+        project_id=project_id,
+        document=baseline.to_document(),
+        replayed=replayed,
+        derived_profile=await _derived_profile(request, project_id),
     )
 
 
 @router.get("/{project_id}/baseline", dependencies=[Depends(require_scopes(Scope.CYCLES_READ))])
 async def get_baseline(request: Request, project_id: str) -> InheritedBaselineResponse:
-    """The Project's latest inherited baseline."""
+    """The Project's latest inherited baseline, and the profile derived with it."""
     baseline = await get_project_registry(request).get_inherited_baseline(project_id)
-    return InheritedBaselineResponse(project_id=project_id, document=baseline.to_document())
+    return InheritedBaselineResponse(
+        project_id=project_id,
+        document=baseline.to_document(),
+        derived_profile=await _derived_profile(request, project_id),
+    )
+
+
+@router.get("/{project_id}/profile", dependencies=[Depends(require_scopes(Scope.CYCLES_READ))])
+async def get_profile(request: Request, project_id: str) -> DerivedProfileResponse:
+    """The derived development profile recorded with the Project's latest inherited baseline
+    (SIP-0112 H.4, contract 8): what the squad's roles depend on in the product, and each gap."""
+    profile = await get_project_registry(request).get_derived_profile(project_id)
+    return DerivedProfileResponse(project_id=project_id, document=profile.to_document())
+
+
+async def _derived_profile(request: Request, project_id: str) -> dict[str, Any] | None:
+    try:
+        profile = await get_project_registry(request).get_derived_profile(project_id)
+    except DerivedProfileNotFoundError:
+        return None
+    return profile.to_document()
 
 
 @router.post("/{project_id}/contributions", status_code=201)

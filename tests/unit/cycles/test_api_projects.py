@@ -574,6 +574,41 @@ class TestBaselineRoutes:
             "INHERITED_BASELINE_NOT_FOUND",
         )
 
+    @pytest.mark.parametrize("stored", [True, False], ids=["recorded", "captured before profiles"])
+    def test_the_derived_profile_reads_as_recorded_and_its_absence_is_not_found(
+        self, client, mock_project_registry, stored
+    ):
+        """H.4, contract 8. Bugs caught: a capture from before profiles answered 500, or read as
+        an empty profile rather than absent; the baseline's read failing for want of one."""
+        from squadops.cycles.models import DerivedProfileNotFoundError
+        from squadops.projects.baseline import parse_baseline
+        from squadops.projects.derived_profile import parse_profile
+        from tests.fixtures.shared_contract.repository import recorded
+
+        valid = recorded("derived_profile", "valid")
+        baseline_doc = recorded("inherited_baseline", "valid")
+        mock_project_registry.get_inherited_baseline.return_value = parse_baseline(baseline_doc)
+        if stored:
+            mock_project_registry.get_derived_profile.return_value = parse_profile(valid)
+        else:
+            mock_project_registry.get_derived_profile.side_effect = DerivedProfileNotFoundError(
+                "none"
+            )
+
+        profile = client.get("/api/v1/projects/prj-tally/profile")
+        baseline = client.get("/api/v1/projects/prj-tally/baseline")
+
+        assert baseline.status_code == 200
+        if stored:
+            assert (profile.status_code, profile.json()["document"]) == (200, valid)
+            assert baseline.json()["derived_profile"] == valid
+        else:
+            assert (profile.status_code, profile.json()["detail"]["error"]["code"]) == (
+                404,
+                "DERIVED_PROFILE_NOT_FOUND",
+            )
+            assert baseline.json()["derived_profile"] is None
+
 
 class TestContributionRoutes:
     """``/api/v1/projects/{id}/contributions`` (SIP-0112 FR-06, E.4.3). Bugs caught: a refused
