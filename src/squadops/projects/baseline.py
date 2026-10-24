@@ -43,6 +43,8 @@ _DID_NOT_RUN = {
     "command_not_executable": "its command is not executable in the sandbox's image",
     "setup_failed": "a setup step failed before it ran",
 }
+#: Of those, the outcomes that say the check's own command isn't in the image: H.4's toolchain gap.
+_TOOLCHAIN_MISSING = ("command_not_found", "command_not_executable")
 
 
 class BaselineInvalid(ValueError):
@@ -133,6 +135,15 @@ def result_of(check: Check, run: Any) -> CheckResult:
         )
     verdict = PASS if run.exit_code == 0 else FAIL
     return CheckResult(check.id, verdict, evidence=evidence, findings=_reading_of(check, run))
+
+
+def toolchain_missing(result: CheckResult) -> bool:
+    """Whether a check couldn't run because its command isn't in the sandbox's image (H.4). Read
+    from its evidence when it has any, and otherwise from its recorded reason, which a stored
+    baseline keeps without the evidence."""
+    if result.evidence:
+        return result.evidence.get("outcome") in _TOOLCHAIN_MISSING
+    return result.reason in {_DID_NOT_RUN[o] for o in _TOOLCHAIN_MISSING}
 
 
 def _reading_of(check: Check, run: Any) -> FindingsReading | None:
