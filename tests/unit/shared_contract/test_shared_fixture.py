@@ -15,6 +15,7 @@ import subprocess
 import time
 import urllib.error
 import urllib.request
+from fnmatch import fnmatch
 
 import pytest
 
@@ -90,6 +91,42 @@ def test_every_identifier_a_valid_recording_names_is_what_the_fixture_builds(rep
             repository.second_commit,
         )
     assert recorded("inherited_baseline", "valid")["commit"] == repository.second_commit
+    profile = recorded("derived_profile", "valid")
+    assert (profile["commit"], profile["development_configuration_revision"]) == (
+        repository.second_commit,
+        configuration["revision"],
+    )
+
+
+def test_the_derived_profile_names_only_the_checks_and_files_the_fixture_has(repository):
+    profile = recorded("derived_profile", "valid")
+    commands = recorded("development_configuration", "valid")["configuration"]["technical"]
+    checks = {c["id"] for c in commands["commands"]["checks"]}
+    files = tracked_files(repository.path, repository.second_commit)
+    (runner,) = profile["test_runners"]
+
+    assert (
+        profile["environment"]["image"]
+        == (recorded("inherited_baseline", "valid")["environment"]["image"])
+    )
+    assert set(runner["checks"]) <= checks
+    assert {c for t in profile["toolchains"] for c in t["required_by"]} == checks
+    tests = {p for p in files if any(fnmatch(p, g) for g in profile["files"]["test"])}
+    assert tests == {p for p in files if p.startswith("checks/")}
+
+
+def test_the_derived_one_file_command_runs_that_file_alone(repository):
+    (runner,) = recorded("derived_profile", "valid")["test_runners"]
+
+    def run(name: str) -> subprocess.CompletedProcess:
+        argv = [a.replace("{name}", name) for a in runner["single_file_argv"]]
+        return subprocess.run(argv, cwd=repository.path, capture_output=True, text=True, timeout=60)
+
+    # check_parse.py fails before any change (IR-9), so a command that ran the whole suite would
+    # fail for ledger too.
+    ledger, parse = run("check_ledger.py"), run("check_parse.py")
+    assert ledger.returncode == 0, ledger.stderr[-2000:]
+    assert parse.returncode == 1 and "Ran 3 tests" in parse.stderr
 
 
 @pytest.mark.parametrize("output", OUTPUTS)
