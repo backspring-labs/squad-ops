@@ -44,7 +44,7 @@ from squadops.ports.cycles.campaign_registry import CampaignRegistryPort
 
 _CAMPAIGN_COLUMNS = (
     "campaign_id, project_id, objective, policy, state, outcome, created_at, created_by, "
-    "updated_at, accepted_identity, accepted_cycle_id, proposal"
+    "updated_at, accepted_identity, accepted_cycle_id, accepted_calibration_record_id, proposal"
 )
 _ENTRY_COLUMNS = (
     "entry_id, campaign_id, seq, operation, actor, actor_role, reason, target, idempotency_key, "
@@ -368,7 +368,8 @@ async def _commit(
     if updated is not campaign:
         await conn.execute(
             "UPDATE campaigns SET state = $2, outcome = $3, updated_at = $4, "
-            "accepted_identity = $5, accepted_cycle_id = $6, proposal = $7 "
+            "accepted_identity = $5, accepted_cycle_id = $6, accepted_calibration_record_id = $7, "
+            "proposal = $8 "
             "WHERE campaign_id = $1",
             updated.campaign_id,
             updated.state.value,
@@ -482,8 +483,12 @@ def _row_to_proposal(value: dict | None) -> SubmittedProposal | None:
     )
 
 
-def _accepted_args(accepted: AcceptedTree | None) -> tuple[str | None, str | None]:
-    return (accepted.identity, accepted.cycle_id) if accepted else (None, None)
+def _accepted_args(accepted: AcceptedTree | None) -> tuple[str | None, str | None, str | None]:
+    """The tree's identity, and the one thing it names: its cycle or its calibration record
+    (§24cc; 1697's CHECK holds them to exactly one)."""
+    if accepted is None:
+        return (None, None, None)
+    return (accepted.identity, accepted.cycle_id, accepted.calibration_record_id)
 
 
 def _intent_args(intent: LaunchIntent) -> tuple:
@@ -521,7 +526,11 @@ def _row_to_campaign(row: asyncpg.Record) -> Campaign:
         updated_at=row["updated_at"],
         outcome=CampaignOutcome(row["outcome"]) if row["outcome"] else None,
         accepted=(
-            AcceptedTree(row["accepted_identity"], row["accepted_cycle_id"])
+            AcceptedTree(
+                row["accepted_identity"],
+                row["accepted_cycle_id"],
+                row["accepted_calibration_record_id"],
+            )
             if row["accepted_identity"]
             else None
         ),

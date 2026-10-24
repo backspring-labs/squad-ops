@@ -239,6 +239,14 @@ def no_partial_promotion(doc: Mapping[str, Any]) -> GuaranteeReading:
     unread: list[str] = []
     for p in _applied(doc["control_log"], ControlOperation.PROMOTE):
         b = p["binding"]
+        if b.get("calibration_record_id"):
+            # §24cc: a calibration record's tree is its commit's in the managed clone, with no
+            # vault reference; it is whole when it names that commit, and it freezes nothing.
+            if not b.get("commit"):
+                broken.append(
+                    f"row {p['seq']} promotes {b['calibration_record_id']} with no commit"
+                )
+            continue
         if "tree_ref" not in b:
             unread.append(f"row {p['seq']} was stored before #1887 recorded a tree_ref")
         elif not b["tree_ref"]:

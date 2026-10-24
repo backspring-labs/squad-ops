@@ -210,6 +210,34 @@ async def test_a_promoted_tree_survives_a_restart_and_is_stored_whole(campaigns,
             )
 
 
+async def test_a_calibration_records_tree_survives_a_restart_naming_only_its_record(
+    campaigns, pool
+):
+    """§24cc, migration 1697. Bugs caught: the record's id left out of the UPDATE, so the tree
+    reads as a cycle's (or not at all) after a restart; or a CHECK that lets a row name both a
+    cycle and a record, or 1630's both-or-neither CHECK left standing, which refuses the record's
+    promotion at the database while the memory twin accepts it."""
+    tree = AcceptedTree("sha-rec", calibration_record_id="calrec_0123456789ab")
+    await campaigns.transition(
+        CID, move(S.CALIBRATING, "k-promote", operation=ControlOperation.PROMOTE, accepted=tree)
+    )
+
+    fresh_pool = await create_pool(POSTGRES_URL, min_size=1, max_size=2)
+    try:
+        stored = await PostgresCampaignRegistry(pool=fresh_pool).get_campaign(CID)
+    finally:
+        await fresh_pool.close()
+
+    assert stored.accepted == tree
+    async with pool.acquire() as conn:
+        with pytest.raises(asyncpg.CheckViolationError):
+            await conn.execute(
+                "UPDATE campaigns SET accepted_cycle_id = 'cyc_cal000000001' "
+                "WHERE campaign_id = $1",
+                CID,
+            )
+
+
 async def test_a_submitted_proposal_and_a_stale_rulings_refusal_are_stored(campaigns):
     """§9.2 on the database: the submission's proposal survives a restart, and the refusal
     values 1640 adds are accepted by the control log's CHECK. Bug caught: a migration whose list

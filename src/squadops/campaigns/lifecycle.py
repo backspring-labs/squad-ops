@@ -145,6 +145,10 @@ def transition_request_hash(transition: CampaignTransition) -> str:
     """
     payload = dataclasses.asdict(transition)
     payload.pop("idempotency_key")
+    if payload["accepted"] is not None and payload["accepted"]["calibration_record_id"] is None:
+        # §24cc: a cycle's tree is hashed as it was before a tree could name a calibration
+        # record, so a promotion committed then still replays after a restart on this code.
+        del payload["accepted"]["calibration_record_id"]
     if transition.operation.records_only:
         payload = {k: payload[k] for k in ("operation", "target", "binding")}
     return _digest(payload)

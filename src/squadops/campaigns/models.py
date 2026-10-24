@@ -461,15 +461,30 @@ class CampaignPolicy:
 
 @dataclass(frozen=True)
 class AcceptedTree:
-    """The campaign's accepted tree (§7.1, §7.4): its verified identity and the cycle whose
-    candidate it is. Every increment is proposed against it and every ruling binds to it; it
-    changes only by a promotion (§12a)."""
+    """The campaign's accepted tree (§7.1, §7.4): its verified identity and what it is the tree
+    of. Every increment is proposed against it and every ruling binds to it; it changes only by a
+    promotion (§12a).
+
+    It names exactly one of two things (§24cc): the cycle whose candidate it is, or, on a
+    repository-backed Project, the calibration record whose commit it is (§24bv point 1). A reader
+    that needs a cycle reads ``cycle_id`` and refuses a record by name; it never passes ``None``
+    on as if it were a cycle."""
 
     identity: str
-    cycle_id: str
+    cycle_id: str | None = None
+    calibration_record_id: str | None = None
 
     def __post_init__(self) -> None:
-        _require_text("AcceptedTree", identity=self.identity, cycle_id=self.cycle_id)
+        _require_text("AcceptedTree", identity=self.identity)
+        if (self.cycle_id is None) == (self.calibration_record_id is None):
+            raise ValueError(
+                "AcceptedTree names exactly one of cycle_id and calibration_record_id, got "
+                f"cycle_id={self.cycle_id!r}, calibration_record_id={self.calibration_record_id!r}"
+            )
+        for name in ("cycle_id", "calibration_record_id"):
+            value = getattr(self, name)
+            if value is not None and not value.strip():
+                raise ValueError(f"AcceptedTree.{name} is required")
 
 
 @dataclass(frozen=True)
