@@ -29,6 +29,9 @@ from squadops.projects.baseline import (
 )
 
 SOURCE_VERIFICATION_SCHEMA = "source-verification/v1"
+#: How a run's verification is stored in the vault, beside its cycle and run (E.4.3).
+SOURCE_VERIFICATION_TYPE = "source_verification"
+SOURCE_VERIFICATION_FILENAME = "source_verification.json"
 #: v2 (#2609): a check failing on both sides is compared finding by finding when it declares a
 #: reader, so a change that adds findings to an already-failing check is a regression.
 ACCEPTANCE_POLICY = "no-introduced-regression/v2"
