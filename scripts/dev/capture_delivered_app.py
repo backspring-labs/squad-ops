@@ -502,9 +502,8 @@ def shoot(
     try:
         for route, label in routes:
             target = staging / f"{label}.png"
+            # Refused unless a file is written, naming the browser's own load error (#2713).
             screenshot(browser, f"http://localhost:{ui_port}{route}", target, width, 940, 8000)
-            if not target.exists() or target.stat().st_size == 0:
-                raise SystemExit(f"{browser} wrote no file for {route} — is it snap-confined?")
             # A screenshot of a page that rendered none of its view is a picture of nothing,
             # and its filename is a caption promising something (#1665).
             expected = testids.get(route) or []

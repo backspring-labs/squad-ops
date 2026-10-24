@@ -119,9 +119,8 @@ def shoot(browser: str, flow_run_id: str, dest: Path, width: int, height: int) -
     staging.mkdir(exist_ok=True)
     try:
         tmp = staging / dest.name
+        # Refused unless a file is written, naming the browser's own load error (#2713).
         screenshot(browser, url, tmp, width, height, 30000)
-        if not tmp.exists() or tmp.stat().st_size == 0:
-            raise SystemExit(f"{browser} wrote no file — snap confinement, or Prefect is down")
         dest.parent.mkdir(parents=True, exist_ok=True)
         shutil.move(str(tmp), dest)
     finally:
