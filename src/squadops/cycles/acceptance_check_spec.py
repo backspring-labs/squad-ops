@@ -998,8 +998,13 @@ CHECK_SPECS: dict[str, CheckSpec] = {
         name=CHECK_CONTRACT_ASSERTIONS,
         applicable_extensions=frozenset({".py"}),
         required_params=frozenset({"file", "endpoints"}),
-        optional_params=frozenset({"allowed_error_statuses"}),
-        param_types={"file": str, "endpoints": list, "allowed_error_statuses": list},
+        optional_params=frozenset({"allowed_error_statuses", "declared_routes"}),
+        param_types={
+            "file": str,
+            "endpoints": list,
+            "allowed_error_statuses": list,
+            "declared_routes": list,
+        },
         requires_stack_context=False,
         path_params=frozenset({"file"}),
         framework_injected=True,
@@ -1007,6 +1012,7 @@ CHECK_SPECS: dict[str, CheckSpec] = {
             "file": "backend/tests/test_runs.py",
             "endpoints": ["POST /runs 201", "POST /runs 422"],
             "allowed_error_statuses": [404, 409, 422],
+            "declared_routes": ["POST /runs", "DELETE /runs/{run_id}/tags/{tag}"],
         },
         # #629 / pf-54: five authored suite versions asserted 200-on-create
         # against a contract-pinned 201 — an unwinnable correction loop no
@@ -1018,7 +1024,11 @@ CHECK_SPECS: dict[str, CheckSpec] = {
             "status codes in the suite are diffed against the contract's pinned "
             "endpoint statuses (`endpoints` tokens, `METHOD /path STATUS`); a "
             "pinned path requested through an undeclared prefix is also a "
-            "violation. Never authored."
+            "violation, and so (#2297) is a status assertion on a request that is a "
+            "declared route (`declared_routes` tokens, `METHOD /path`, from the "
+            "interface manifest) with a required path segment left empty, unless it "
+            "asserts the router's own answer (405 or 404, derived from the routes). "
+            "Never authored."
         ),
         failure_ownership=OWNERSHIP_SUITE,
         qa_available=True,
