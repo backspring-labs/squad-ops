@@ -61,6 +61,9 @@ async def _repair_intent(w, *, continues: str | None = CONTINUED, decided: str |
     body = intent.cycle_request["body"]
     overrides = dict(body.get("execution_overrides") or {})
     block = dict(overrides.get("campaign_proposal") or {})
+    # A repair's block carries its increment's proposal id (``CONTINUED_KEYS``), which the
+    # launcher reads as the cycle's increment (#2578 part 2).
+    block["proposal_id"] = "prop_carried0001"
     if continues:
         block["continues"] = continues
     overrides["campaign_proposal"] = block

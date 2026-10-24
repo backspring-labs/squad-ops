@@ -670,6 +670,8 @@ def _flow_run_tags_for(cycle: Cycle) -> list[str]:
         framework_git_sha=cycle.framework_git_sha,
         deploy_id=cycle.deploy_id,
         campaign_id=cycle.campaign_id,
+        increment_id=cycle.increment_id,
+        kind=cycle.kind,
         replay_of=replay.source_run_id if replay else None,
     )
 

@@ -326,6 +326,7 @@ def cycle_to_response(
         deploy_id=cycle.deploy_id,
         campaign_id=cycle.campaign_id,
         kind=cycle.kind,
+        increment_id=cycle.increment_id,
         source_context=(
             cycle.source_context.to_document() if cycle.source_context is not None else None
         ),

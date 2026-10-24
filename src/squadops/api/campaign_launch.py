@@ -27,6 +27,7 @@ from squadops.api.cycle_schemas import CycleCreateRequest
 from squadops.api.routes.cycles.cycles import CreationPorts, first_run, prepare_cycle
 from squadops.api.routes.cycles.errors import cycle_error_envelope
 from squadops.api.routes.cycles.mapping import cycle_status_of
+from squadops.campaigns.launch_requests import increment_id_of
 from squadops.campaigns.launcher import BoxVerdict, CampaignLauncher, LaunchRefused, unblocked
 from squadops.campaigns.models import (
     Campaign,
@@ -95,6 +96,12 @@ class CampaignLaunchService:
             request = CycleCreateRequest(**intent.cycle_request["body"])
         except pydantic.ValidationError as e:
             raise LaunchRefused(f"VALIDATION_ERROR: {e}") from e
+        # #2578 part 2: the cycle's increment, from this launch's own binding. An intent that
+        # names none never will, so it escalates rather than repeating on every drain.
+        try:
+            increment_id = increment_id_of(intent.cycle_kind, intent.cycle_request)
+        except ValueError as e:
+            raise LaunchRefused(f"VALIDATION_ERROR: {e}") from e
         try:
             prepared = await prepare_cycle(
                 self._creation,
@@ -104,6 +111,7 @@ class CampaignLaunchService:
                 initiated_by=RunInitiator.SYSTEM,
                 campaign_id=campaign.campaign_id,
                 kind=intent.cycle_kind.value,
+                increment_id=increment_id,
             )
         except CycleError as e:
             status, detail = cycle_error_envelope(e)

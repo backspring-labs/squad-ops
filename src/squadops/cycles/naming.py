@@ -24,6 +24,10 @@ TAG_PROJECT = "project"
 TAG_FRAMEWORK = "framework"
 TAG_DEPLOY = "deploy"
 TAG_CAMPAIGN = "campaign"
+#: #2578 part 3: an increment's flow runs, its calibration's and its repairs' can be filtered.
+#: For operators only: nothing reads a tag to decide.
+TAG_INCREMENT = "increment"
+TAG_KIND = "kind"
 TAG_REPLAY_OF = "replay-of"
 
 
@@ -33,6 +37,8 @@ def flow_run_tags(
     framework_git_sha: str | None,
     deploy_id: str | None,
     campaign_id: str | None,
+    increment_id: str | None,
+    kind: str | None,
     replay_of: str | None,
 ) -> list[str]:
     """The Prefect tags for a cycle run: a tag appears only when its value exists — never a
@@ -42,6 +48,8 @@ def flow_run_tags(
         (TAG_FRAMEWORK, framework_git_sha),
         (TAG_DEPLOY, deploy_id),
         (TAG_CAMPAIGN, campaign_id),
+        (TAG_INCREMENT, increment_id),
+        (TAG_KIND, kind),
         (TAG_REPLAY_OF, replay_of),
     ):
         if value:

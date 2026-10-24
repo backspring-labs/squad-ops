@@ -581,6 +581,7 @@ async def prepare_cycle(
     initiated_by: str = "api",
     campaign_id: str | None = None,
     kind: str | None = None,
+    increment_id: str | None = None,
     instructed_by: str | None = None,
 ) -> PreparedCycle:
     """Build and preflight a cycle and its first run from a create request: the route's body,
@@ -678,6 +679,7 @@ async def prepare_cycle(
         notes=body.notes,
         campaign_id=campaign_id,
         kind=kind,
+        increment_id=increment_id,
         source_context=source_context,
     )
     return PreparedCycle(

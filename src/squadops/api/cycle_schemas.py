@@ -567,6 +567,8 @@ class CycleResponse(BaseModel):
     # launched, which is otherwise unchanged.
     campaign_id: str | None = None
     kind: str | None = None
+    #: #2578 part 2: the increment the cycle belongs to (its proposal's id); null otherwise.
+    increment_id: str | None = None
     # SIP-0112 contract 1 (E.4.3): the external source this Cycle pinned; None for a sample app.
     source_context: dict[str, Any] | None = None
     notes: str | None = None
