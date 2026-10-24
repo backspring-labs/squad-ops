@@ -1674,3 +1674,38 @@ checks:
       ending = cycle_ending(CycleStopReason.PLAN_REJECTED, run, parked=False)
       print(ending.value, _ABANDONED_UNBUILT[CycleEnding.STOPPED_AT_PLAN_GATE])
     expect: "stopped_at_plan_gate 18"
+  - id: "2659"
+    what: a click may say if_enabled, and the suite's draft-time rule refuses it on anything but a click (the evaluator's -6)
+    container: squadops-runtime-api
+    code: |
+      from squadops.scenarios.steps import vocabulary_refusals
+      print(vocabulary_refusals([{"action": "visit", "path": "/"}, {"action": "visit", "path": "/", "if_enabled": True}], []))
+    expect: "[\"step 2: if_enabled is a click's, true or false\"]"
+  - id: "2712"
+    what: the runtime launches the evaluator's -6, whose npm lock has no advisory (#2706, #2659, #2469)
+    container: squadops-runtime-api
+    code: &evaluator_tag_2712 |
+      from squadops.sandbox.environment import EVALUATOR_IMAGE
+      print(EVALUATOR_IMAGE.rsplit("-", 1)[-1])
+    expect: "6"
+  - id: "2712-sandbox"
+    what: the sandbox service names the evaluator's -6
+    container: squadops-sandbox-service
+    code: *evaluator_tag_2712
+    expect: "6"
+  - id: "2493"
+    what: an agent's service token carries its expiry on the wall clock too, so a host sleep doesn't leave it sending an expired token
+    container: squadops-max
+    code: |
+      import dataclasses
+      from squadops.auth.client_credentials import ServiceToken
+      print(sorted(f.name for f in dataclasses.fields(ServiceToken)))
+    expect: "['access_token', 'expires_at', 'token_type', 'wall_expires_at']"
+  - id: "2672"
+    what: a managed clone's missing directory is named as that, not as git missing
+    container: squadops-runtime-api
+    code: |
+      import inspect
+      from adapters.tools import git_source
+      print("the managed clone is missing" in inspect.getsource(git_source))
+    expect: "True"
