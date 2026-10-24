@@ -75,6 +75,10 @@ class ServedRecipe:
     top_p: float
     top_k: int
     min_p: float
+    #: #2561: the weights the recipe serves, as its checkpoint's ``hf:<repo>@<revision>``. The
+    #: server's ``/v1/models`` lists ids only, so this is what a deploy record names as the
+    #: served id's digest: a revision pins the checkpoint's content as a pull digest does.
+    weights: str
 
 
 #: The served ids this adapter can speak for, each with its frozen recipe's wire settings. A test
@@ -83,7 +87,12 @@ class ServedRecipe:
 #: defaults, which no gate measured.
 RECIPES: dict[str, ServedRecipe] = {
     "qwen3.8-27b-tf-nvfp4": ServedRecipe(
-        parity_effort=ReasoningLevel.MEDIUM, temperature=1.0, top_p=0.95, top_k=20, min_p=0.0
+        parity_effort=ReasoningLevel.MEDIUM,
+        temperature=1.0,
+        top_p=0.95,
+        top_k=20,
+        min_p=0.0,
+        weights="hf:nvidia/Qwen3.8-27B-NVFP4@482ca0f3832238542f8f5295dde86b5f22711d80",
     ),
 }
 
@@ -674,8 +683,12 @@ class TensorFoldAdapter(LLMPort):
         return [i for entry in response.json().get("data", []) if (i := entry.get("id"))]
 
     async def list_available_models(self) -> list[ModelInfo]:
-        """The served id and its aliases, as ``/v1/models`` lists them."""
-        return [ModelInfo(name=i) for i in await self._model_ids()]
+        """The served id and its aliases, as ``/v1/models`` lists them, each with its frozen
+        recipe's weights as the digest (#2561). An id without a recipe reports none."""
+        return [
+            ModelInfo(name=i, digest=r.weights if (r := RECIPES.get(i)) else None)
+            for i in await self._model_ids()
+        ]
 
     async def list_loaded_models(self) -> list[ModelInfo]:
         """One resident model, whatever aliases it answers to (§5.5): the server lists its served

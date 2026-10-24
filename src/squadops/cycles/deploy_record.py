@@ -47,6 +47,9 @@ class ModelWeights:
     model: str
     #: ``None`` when the provider does not report a digest, or does not serve the model at all.
     digest: str | None
+    #: #2561: whether the deploy's provider listed the model, so a ``None`` digest says which of
+    #: the two it is. ``None`` when the listing couldn't be read, and on records written before.
+    served: bool | None = None
 
 
 @dataclass(frozen=True)
@@ -108,9 +111,16 @@ def instance_models(
     }
 
 
-def model_weights(named: set[str], digests: Mapping[str, str | None]) -> tuple[ModelWeights, ...]:
-    """Each model the deploy names, with the digest the provider reported for it, if any."""
-    return tuple(ModelWeights(model=m, digest=digests.get(m)) for m in sorted(named))
+def model_weights(
+    named: set[str], digests: Mapping[str, str | None] | None
+) -> tuple[ModelWeights, ...]:
+    """Each model the deploy names, with the digest the provider reported for it, if any, and
+    whether the provider listed it. ``digests`` is ``None`` when the listing couldn't be read."""
+    if digests is None:
+        return tuple(ModelWeights(model=m, digest=None) for m in sorted(named))
+    return tuple(
+        ModelWeights(model=m, digest=digests.get(m), served=m in digests) for m in sorted(named)
+    )
 
 
 def revision_matches_deploy(reported: str | None, deployed: str | None) -> bool | None:
