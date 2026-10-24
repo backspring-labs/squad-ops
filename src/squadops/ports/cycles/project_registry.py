@@ -132,11 +132,15 @@ class ProjectRegistryPort(ABC):
         """
 
     @abstractmethod
-    async def get_derived_profile(self, project_id: str) -> DerivedProfile:
-        """The derived profile recorded with the Project's latest inherited baseline (contract 8).
+    async def get_derived_profile(
+        self, project_id: str, *, at: tuple[str, int] | None = None
+    ) -> DerivedProfile:
+        """The derived profile recorded with the Project's latest inherited baseline (contract 8),
+        or with the latest captured at ``at``: the commit and configuration revision a unit
+        pinned.
 
         Raises:
-            DerivedProfileNotFoundError: no baseline is captured, or the latest has no profile.
+            DerivedProfileNotFoundError: no such baseline is captured, or it has no profile.
         """
 
     @abstractmethod

@@ -549,13 +549,25 @@ class PostgresProjectRegistry(ProjectRegistryPort):
             raise InheritedBaselineNotFoundError(f"Project {project_id} has no inherited baseline")
         return parse_baseline(document)
 
-    async def get_derived_profile(self, project_id: str) -> DerivedProfile:
+    async def get_derived_profile(
+        self, project_id: str, *, at: tuple[str, int] | None = None
+    ) -> DerivedProfile:
         async with self._pool.acquire() as conn:
-            row = await conn.fetchrow(
-                "SELECT derived_profile FROM project_inherited_baselines WHERE project_id = $1 "
-                "ORDER BY captured_seq DESC LIMIT 1",
-                project_id,
-            )
+            if at is None:
+                row = await conn.fetchrow(
+                    "SELECT derived_profile FROM project_inherited_baselines "
+                    "WHERE project_id = $1 ORDER BY captured_seq DESC LIMIT 1",
+                    project_id,
+                )
+            else:
+                row = await conn.fetchrow(
+                    "SELECT derived_profile FROM project_inherited_baselines "
+                    "WHERE project_id = $1 AND commit = $2 "
+                    "AND development_configuration_revision = $3 "
+                    "ORDER BY captured_seq DESC LIMIT 1",
+                    project_id,
+                    *at,
+                )
         if row is None or row["derived_profile"] is None:
             raise DerivedProfileNotFoundError(
                 f"Project {project_id}'s latest inherited baseline has no derived profile"

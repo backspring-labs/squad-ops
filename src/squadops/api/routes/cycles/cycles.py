@@ -60,11 +60,13 @@ from squadops.cycles.contract_derivation import (
     load_seeded_manifest_content,
 )
 from squadops.cycles.cycle_outcome import resolve_cycle_outcome
+from squadops.cycles.implementation_plan import ImplementationPlan
 from squadops.cycles.lifecycle import compute_config_hash
 from squadops.cycles.models import (
     ArtifactRef,
     Cycle,
     CycleStatus,
+    DerivedProfileNotFoundError,
     Gate,
     InheritedBaselineNotFoundError,
     PreflightRejectedError,
@@ -95,6 +97,7 @@ from squadops.cycles.preflight import (
     stack_development_profile_decision,
 )
 from squadops.cycles.replay import check_replay_compatibility, parse_replay_declaration
+from squadops.cycles.vault_reads import retrieve_or_absent
 from squadops.events.types import EventType
 from squadops.memory.pinning import cycle_binding, pin_standalone_cycle
 from squadops.memory.records import RecordRefused, Source, SourceKind
@@ -505,6 +508,70 @@ async def require_inherited_baseline(registry: Any, context: ProjectSourceContex
         )
 
 
+async def require_no_blocking_gap(
+    registry: Any, vault: Any | None, context: ProjectSourceContext, body: CycleCreateRequest
+) -> tuple[Finding, ...]:
+    """SIP-0112 H.4 (H.6, H.8): a source-backed Cycle whose work meets a blocking gap of the
+    derived profile at its pin is refused before anything is persisted, naming the gap.
+
+    Its work's paths are known here only from an operator's plan. A framing-authored plan meets
+    the same rule at the plan gate (``validate_blocking_gaps``). A pin whose baseline has no
+    profile runs as it did in 2.4, and the absence is returned as a warning."""
+    try:
+        profile = await registry.get_derived_profile(
+            context.project_id,
+            at=(context.development_baseline_commit, context.development_configuration_revision),
+        )
+    except DerivedProfileNotFoundError:
+        return (
+            Finding(
+                code="derived_profile_absent",
+                severity="warning",
+                message=(
+                    f"Project {context.project_id}'s baseline at its pin has no derived profile, "
+                    "so no gap is checked: capture the baseline again (squadops projects "
+                    "baseline --capture)"
+                ),
+            ),
+        )
+    plan = await _operator_plan(vault, body)
+    if plan is not None:
+        errors = plan.validate_blocking_gaps(profile)
+    else:
+        errors = [
+            f"blocking_gap: {g.id}{f' ({g.subject})' if g.subject else ''} stops all work: "
+            f"{g.reason}. Close it first: {g.closes_by}."
+            for g in profile.blocking_work(None)
+        ]
+    if errors:
+        raise ProjectStateConflictError(
+            f"Project {context.project_id}'s derived profile names a blocking gap this Cycle's "
+            "work meets: " + "; ".join(errors)
+        )
+    return ()
+
+
+async def _operator_plan(vault: Any | None, body: CycleCreateRequest) -> ImplementationPlan | None:
+    """The implementation plan an operator seeded in ``plan_artifact_refs``, or ``None``. One
+    that can't be read is left to the dispatch-time net, which diagnoses it in full."""
+    refs = (body.execution_overrides or {}).get("plan_artifact_refs") or []
+    if vault is None or not refs:
+        return None
+    for ref_id in refs:
+        got = await retrieve_or_absent(vault, ref_id)
+        if got is None:
+            continue
+        ref, content = got
+        if ref.filename == "implementation_plan.yaml" or (
+            getattr(ref, "artifact_type", None) == "control_implementation_plan"
+        ):
+            try:
+                return ImplementationPlan.from_yaml(content.decode(errors="replace"))
+            except Exception:  # noqa: BLE001 - an unreadable plan is the dispatch net's to name
+                return None
+    return None
+
+
 async def prepare_cycle(
     ports: CreationPorts,
     project_id: str,
@@ -526,9 +593,13 @@ async def prepare_cycle(
             f"Project {project_id} is {project.lifecycle_status.value}: a Cycle needs it READY"
         )
     source_context = pin_source_context(project, body.source_precondition)
+    gap_warnings: tuple[Finding, ...] = ()
     if source_context is not None:
         await require_reconciled_upstream(ports.project_registry, source_context)
         await require_inherited_baseline(ports.project_registry, source_context)
+        gap_warnings = await require_no_blocking_gap(
+            ports.project_registry, ports.artifact_vault, source_context, body
+        )
 
     # Resolve squad profile snapshot
     profile, snapshot_hash = await ports.squad_profile.resolve_snapshot(body.squad_profile_id)
@@ -555,7 +626,7 @@ async def prepare_cycle(
     effective_config = resolve_config(applied_defaults, body.execution_overrides or {})
 
     # SIP-0095: create-time preflight — fail fast (422) before persist/dispatch.
-    preflight_warnings = await _run_create_preflight(
+    preflight_warnings = gap_warnings + await _run_create_preflight(
         ports.llm,
         profile,
         effective_config,
