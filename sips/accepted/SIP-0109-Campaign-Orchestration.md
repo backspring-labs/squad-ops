@@ -4018,6 +4018,118 @@ failure outside the work still routes to a retry on rows 10 and 11, which a no-v
 correction changes only the stops at a gate. Nobody has seen a failed framing run's assessment read `accepted`, and
 this correction doesn't change that path.
 
+### 24cc. A calibration record is what the first accepted tree names, and unclassed test files refuse a Campaign's start (2026-10-24, §7.1, §10 rows 2, 4 and 5, §12a, §15, §16, §24bv points 1 and 3; SIP-0112 H.6, H.7; #2619; the supervisor's design, for the owner)
+
+**Why.** §24bv point 1 makes a repository-backed Project's calibration a record, not a cycle. Building it showed
+that two parts of the accepted design no longer describe what runs:
+- §7.1 has the first increment's baseline be "the accepted tree … of the calibration cycle", and §15's accepted
+  tree named its cycle. After a record, there is no such cycle.
+- §24bv point 3 has unclassed test files block only `feature` and `fix` increments, "named at configure time".
+  SIP-0112 H.6 makes the gap a stop for a Campaign's start, and H.7 names it at baseline capture.
+
+**What changed.**
+1. **The accepted tree names its cycle or its calibration record: exactly one of the two** (§7.1, §15, §16).
+   - `AcceptedTree` carries its identity and exactly one of `cycle_id` and `calibration_record_id`. The dataclass
+     refuses neither and both.
+   - Migration 1697 adds `campaigns.accepted_calibration_record_id`, and replaces 1630's both-or-neither CHECK with
+     one that holds the identity and exactly one of the two together.
+   - A record's identity is its commit's tree identity (contract 4), read from the mapping its baseline capture
+     recorded.
+   - A cycle's promotion hashes as it did before (`transition_request_hash` leaves the new field out when it's
+     empty), so a promotion committed before the upgrade still replays after it.
+2. **Every reader of the accepted tree's cycle reads a record, or refuses it by name.** None passes an empty cycle
+   on.
+   - The proposal launch (`_propose_launch`) returns the record as unbuilt, so the campaign escalates naming §24bv
+     point 5.
+   - `increment_launch` raises for a tree that names no cycle. So `campaign_proposal.accepted_cycle_id` is never
+     written empty, and the seams downstream (`accepted_cycle_of`, the proposal's evidence, the evaluated tree) only
+     ever read a cycle.
+   - The latest decided cycle, read by the owner's word, is none after a record's decision. Its target is the
+     record's id, never looked up as a cycle.
+   - The campaign's read (`AcceptedTreeDTO`) carries whichever one it names.
+   - The record's promotion and decision rows name the record, never a cycle. Each package reader is fixed to
+     match:
+     - the digest's accepted list names the record, its commit and its tree;
+     - "no partial promotion" holds for a record's promotion when it names its commit, since its tree is the
+       managed clone's and has no vault reference;
+     - the proposal ledger reads a record's decision as deciding no proposal;
+     - the proposal evidence reads no cycle evaluation for it (SIP-0113 §10l's reading of the record's commit isn't
+       built).
+3. **The record lives in the start's own control-log row** (§12a, §16). The start row's binding holds it whole
+   (`calibration-record/v1`), so the start and its record commit together, and no table is added. It holds:
+   - the Project's baseline commit and configuration revision (as `pin_source_context` reads them);
+   - the commit's tree identity;
+   - the inherited baseline at both, by a digest of its checks and each check's result;
+   - the derived profile's disclosed gaps.
+4. **The record's own path, in a cycle's order** (§10: promotion first; §12a).
+   - `promote`, keyed by the record and its identity, names the record and its commit. Nothing goes to the vault
+     and nothing is frozen.
+   - Then `decide`, keyed by the record. Its ending is `calibration_recorded` and its verdict `accepted`.
+   - The start route runs both after the memory pin. A restart, or a failed hearing, between any two of the three
+     rows is re-heard at startup and on the sweep's interval (`rehear_calibration_records`, beside `rehear_ended`).
+     The keys make a second hearing write nothing.
+5. **Rows 2, 4 and 5, as built** (`calibration_record_decision`).
+   - Row 5 proposes.
+   - Row 2 can't fire, since a start that would fail it is refused.
+   - No limit of row 4 and no guard of step 3 counts the record: it's no cycle, spends no tokens and is no
+     unaccepted increment.
+   - The guard still reads the elapsed time from the start.
+6. **The refusal: 409 `CALIBRATION_REFUSED`, with its cause in the details.** The causes:
+   - `project_not_ready`, including a Project with no validated commit or no configuration revision;
+   - `drift_unreconciled`, read by SIP-0112 H.2's `unreconciled`;
+   - `no_baseline`, at that commit and revision, or with no tree recorded at the commit;
+   - `no_profile` and `stale_profile` (contract 8);
+   - `blocking_gap`, naming each gap's id and what closes it.
+
+   **Nothing is written, not even a refused row.** Like the start refused for a request profile that doesn't
+   exist (422), it's refused before it reaches the control log, so §12a's "refused and recorded" doesn't apply.
+7. **Point 3, matched to H.6.** Unclassed test files refuse the Campaign's start: the derived profile's blocking
+   `test_files_unclassed`, which H.6 makes a stop for `campaigns`. That's stronger than point 3's "a blocking gap for
+   `feature` and `fix` increments". The gap is named at baseline capture, where H.7 derives the profile, not at
+   configure time.
+
+**Where it stops, by design.** Row 5's proposal input on a repository-backed Project is §24bv point 5, the MacBook
+lane's. Until it lands, the record's decision escalates with that reason, and the owner's resume answers it the same
+way (422). Not in this amendment:
+- the creation rules (`calibration_profile`, `policy.stack`, `proposal_profile`);
+- the campaign branch and promotion onto it (point 2);
+- the increment's pin (contract 1);
+- reading the profile at the Project's pin, once SIP-0112 H.8 (#2734) gives `get_derived_profile` its `at=`
+  argument. Until then the record reads the latest capture's profile and refuses one at another commit or revision
+  as stale.
+
+**Evidence.** The tests enter at `POST /api/v1/campaigns/{id}/start`
+(`tests/unit/api/test_campaign_calibration_record.py`):
+- **The wiring.** It runs on the shared fixture's Tally, with its baseline really captured: the managed clone and
+  the workspace store are real, and the checks run as local processes. The record names the capture's commit,
+  revision and checks, and Tally's two disclosed gaps. Its tree is the fixture's own recorded tree identity. No
+  cycle or intent is created. Row 5 proposes and escalates on point 5.
+- **Each refusal cause, 11 cases.** Each one leaves the control log at its creation row.
+- **A restart before the promotion, and one between the promotion and the decision.** Each is heard once at
+  `main._resume_campaigns`, and a second startup writes nothing.
+- **The abort's package.** It names the record, and "no partial promotion" holds.
+- **The owner's word and the ledger** after the record's decision escalated. The resume names point 5 (422), and
+  the ledger reads.
+- **A sample application's start** still launches its calibration cycle.
+
+`tests/unit/campaigns/test_calibration_record.py` holds three things: the decision with every limit at its floor,
+the exactly-one tree, and a cycle's promotion hash, which is the one `origin/main` computes. The Postgres test
+reads a record's tree back after a restart and refuses a row naming both.
+
+Fifteen mutants, each caught by these tests:
+- the route never taking the record path;
+- the record counted toward the budget, or the elapsed time not read;
+- `test_files_unclassed` not a stop, drift not read, or a stale profile accepted;
+- the tree identity not read from the mapping;
+- no re-hearing at startup;
+- the new field in a cycle's promotion hash;
+- the latest decided cycle, the digest, "no partial promotion" or the ledger reading a record as a cycle;
+- `increment_launch` accepting a record's tree, or a tree naming both.
+
+**Who ruled.** The supervisor (the Spark lane), implementing §24bv, for the owner's review. The choice in point 1 (a
+tree names its cycle or its record, rather than the record wearing a cycle's id) is the supervisor's design call,
+recorded as risk 2 of the 2.5 build plan for §24bv.
+
 ### 24cd. §24bv points 2–4 as they will be built: the head is read at launch, a rebase supersedes what it makes stale, and acceptance runs where the product's toolchain is (2026-10-24, §7.1, §8.2, §8.4, §12a, §12b, §24bv; #2619; the supervisor's design, for the owner, with the MacBook lane's G4 on the contract points)
 
 **What was found.** A read of the code against §24bv, before building it, found seven places where §24bv's text can't be built as written, or leaves the build a choice. Each is settled below. The seams are on main at `daf63168`, and each is named.
