@@ -20,13 +20,16 @@ from datetime import UTC, datetime
 import pytest
 
 from adapters.memory.cross_cycle import InMemoryCrossCycleMemoryStore
+from adapters.memory.recall import SnapshotRecall
 from adapters.memory.records import InMemoryMemoryRecords
+from adapters.memory.reference_resolvers import create_reference_resolvers
 from adapters.tools.factory import create_repository_reference_resolver
 from adapters.tools.git_source import GitSourceRepository
 from adapters.tools.repository_references import REPOSITORY_FAMILY, RepositoryReferenceResolver
 from squadops.cycles.models import Project, ProjectNotFoundError
 from squadops.memory.pinning import pin_standalone_cycle
 from squadops.memory.records import Reference
+from squadops.memory.reference_reading import Unread, read_references
 from squadops.ports.memory.references import BindingContext, BoundReference, ReferenceUnresolved
 from squadops.ports.projects.review_request import ReviewRequestState
 from squadops.projects.contribution import Contribution, capture_ref
@@ -368,6 +371,41 @@ async def test_a_clone_that_times_out_is_a_fault_never_a_reference_kept_unbound(
         with pytest.raises(SourceUnavailable) as raised:
             await call
         assert raised.value.reason == "timeout"
+
+
+async def test_a_clone_moved_aside_holds_a_read_as_the_store_failing_and_names_the_clone(
+    world, tmp_path
+):
+    """#2672, entered where a dispatch reads its references (``read_references`` through
+    ``SnapshotRecall``), with this resolver registered under its bound as the runtime registers it.
+    Bugs caught: a clone moved aside answering "git is not installed here", which sends an
+    operator after a git binary; and a fix that made a missing clone a refusal of the reference,
+    so the task waits on the operator's re-binding instead of releasing once the clone is back."""
+    repo, clones, registry = world
+    await clones.sync("prj-tally", str(repo.path), "refs/heads/main")
+    pinned = BindingContext("prj-tally", "cycle", "cyc_1", repo.second_commit)
+    bound = await RepositoryReferenceResolver(clones, registry).bind(
+        "repo:file:CONTRIBUTING.md@current", pinned
+    )
+    resolvers = create_reference_resolvers(30.0)
+    resolvers.register(create_repository_reference_resolver(clones, registry))
+    recall = SnapshotRecall(InMemoryCrossCycleMemoryStore(), resolvers=resolvers)
+    dispatch = BindingContext("prj-tally", "cycle", "cyc_1")
+    clone = tmp_path / "cache" / "prj-tally.git"
+    clone.rename(tmp_path / "cache" / "moved-aside.git")
+
+    read = await read_references(
+        [Reference(bound.ref, True, digest=bound.digest)],
+        lambda reference: recall.read_reference(reference, dispatch),
+    )
+
+    assert read.unread == {
+        bound.ref: Unread(
+            "its repo resolver failed (SourceUnavailable: the managed clone is missing: "
+            f"{clone} does not exist)",
+            store_failed=True,
+        )
+    }
 
 
 async def test_a_standalone_cycle_pins_a_project_instruction_at_its_source_context(world):
