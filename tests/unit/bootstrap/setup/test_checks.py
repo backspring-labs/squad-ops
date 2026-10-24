@@ -1195,7 +1195,11 @@ class TestProvisioningNamesTheSameRole:
     def test_ci_runs_the_suite_as_the_test_role_on_the_test_database(self):
         ci = (_REPO_ROOT / ".github" / "workflows" / "ci.yml").read_text()
         assert f"POSTGRES_URL: postgresql://{TEST_DB_ROLE}:" in ci
-        assert f"POSTGRES_DB: {DEPLOYMENT_DB_NAME}\n" in ci
+        # #2560: the job's postgres is started by its services script, not a `services:` block,
+        # so the deployment database it creates is read there, through the job's call to it.
+        assert "./scripts/dev/ci_integration_services.sh" in ci
+        services = (_REPO_ROOT / "scripts" / "dev" / "ci_integration_services.sh").read_text()
+        assert f"-e POSTGRES_DB={DEPLOYMENT_DB_NAME} " in services
         assert "scripts/dev/ops/ensure_test_database.sh" in ci
 
     def test_with_database_keeps_role_host_and_port(self):

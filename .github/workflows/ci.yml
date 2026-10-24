@@ -349,44 +349,10 @@ jobs:
     # doc-adjacent breakage like the generated typed-check menu drifting from the registry.
     if: needs.changes.outputs.code == 'true'
     runs-on: ubuntu-latest
-    services:
-      postgres:
-        # #2201: Google's mirror of Docker Hub's official images. Docker Hub limits anonymous pulls
-        # per source IP, and GitHub's runners share theirs: the integration job failed twice on
-        # `toomanyrequests`. The owner chose the mirror (the 2.3 plan's D7): the same images, no
-        # account and no secret.
-        image: mirror.gcr.io/library/postgres:15
-        # The same shape as docker-compose.yml: POSTGRES_DB is the deployment database,
-        # owned by the superuser squadops. The test role and its database are provisioned
-        # by the "Provision the integration-test role" step, not by this image (#1180).
-        env:
-          POSTGRES_USER: squadops
-          POSTGRES_PASSWORD: squadops-dev
-          POSTGRES_DB: squadops
-        ports: ["5432:5432"]
-        options: >-
-          --health-cmd "pg_isready -U squadops"
-          --health-interval 10s --health-timeout 5s --health-retries 10
-      redis:
-        image: mirror.gcr.io/library/redis:7-alpine
-        ports: ["6379:6379"]
-        options: >-
-          --health-cmd "redis-cli ping"
-          --health-interval 10s --health-timeout 5s --health-retries 10
-      rabbitmq:
-        image: mirror.gcr.io/library/rabbitmq:3.12-management
-        # The broker must CREATE the user the tests authenticate as. Setting only
-        # RABBITMQ_USER/PASSWORD in the job env configures the client side; the stock image
-        # ships `guest` alone, so every AMQP test failed with
-        # "PLAIN login refused: user 'squadops' - invalid credentials". Must match the
-        # RABBITMQ_USER / RABBITMQ_PASSWORD under `env:` below.
-        env:
-          RABBITMQ_DEFAULT_USER: squadops
-          RABBITMQ_DEFAULT_PASS: squadops-dev
-        ports: ["5672:5672", "15672:15672"]
-        options: >-
-          --health-cmd "rabbitmq-diagnostics -q ping"
-          --health-interval 10s --health-timeout 10s --health-retries 15
+    # #2560: no `services:` block. It pulled each image from Google's mirror once and could not fall
+    # back, and the mirror's request quota failed this required job on 2026-10-20 with no test run.
+    # The "Start the services" step starts the same three containers (images, environment, ports,
+    # health checks), pulling from the mirror with retries and falling back to Docker Hub.
     env:
       SQUADOPS_REQUIRE_SERVICES: "1"
       # Agent containers are a dev-box thing; CI has no images for them. Without this the
@@ -415,14 +381,17 @@ jobs:
           pip install -e .
           pip install -r tests/requirements.txt -c ci-constraints.txt
 
+      - name: Start the services (#2560)
+        run: ./scripts/dev/ci_integration_services.sh
+
       - name: Provision the integration-test role (#1180)
-        # On a box the compose init script provisions squadops_test at initdb; a service
-        # container has no init mount, so the deploy-path helper runs that same script
+        # On a box the compose init script provisions squadops_test at initdb; the job's
+        # postgres container has no init mount, so the deploy-path helper runs that same script
         # against it here — infra/00-create-databases.sh, the SQL the deploy applies. The
         # suite then runs as the test role, and test_deployment_database_unreachable.py
         # asserts the deployment database refuses it: the grant is proven on every push.
         env:
-          CONTAINER: ${{ job.services.postgres.id }}
+          CONTAINER: ci-postgres
           POSTGRES_TEST_PASSWORD: squadops-test
         run: ./scripts/dev/ops/ensure_test_database.sh
 
