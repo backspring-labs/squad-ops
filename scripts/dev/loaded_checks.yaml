@@ -1735,3 +1735,20 @@ checks:
       lock = pathlib.Path("requirements/agent.lock").read_text()
       print("memory" in {f.name for f in fields(PortsBundle)}, "lancedb==" in lock, pathlib.Path("adapters/memory/lancedb.py").exists(), os.path.ismount("/app/data/memory_db"))
     expect: "False False False False"
+  - id: "2664"
+    what: the qa agent reads a vitest slot assertion's subject, which the slot-subject gate refuses a repair for dropping (SIP-0104 §13f)
+    container: squadops-eve
+    code: |
+      from squadops.stacks.stack_nextjs_ts_subjects import read_slot_assertions
+      [assertion] = read_slot_assertions("    const rows = all(TABLES.Shelf)\n    expect(rows[0].label).toBe('A')")
+      print(assertion.subject.describe())
+    expect: "`label` on store table `Shelf`"
+  - id: "2664-runtime"
+    what: the runtime spends a round whose qa repair dropped a failing slot assertion's subject, and the registry declares the value
+    container: squadops-runtime-api
+    code: |
+      from squadops.cycles.correction_signature import REPAIR_SUBJECT_DROPPED_MARKER, repair_not_applied_in_round
+      from squadops.cycles.failure_attribution import Vocabulary, disposition_for
+      entry = f"correction attempt 1: {REPAIR_SUBJECT_DROPPED_MARKER} (slot_subject_dropped: slot-x)"
+      print(repair_not_applied_in_round([entry], 1), disposition_for(Vocabulary.FAILURE_CLASSIFICATION, "slot_subject_dropped").attribution.value)
+    expect: True producer_output_failure

@@ -321,10 +321,13 @@ DISPOSITIONS: tuple[Disposition, ...] = (
         None,
         primary_eligible=False,
     ),
-    # FailureClassification — framework-set values only (see the module docstring)
+    # FailureClassification — framework-set values only (see the module docstring). A slot
+    # revision refused for dropping its failing assertion's subject (SIP-0104 §13f, #2664) is a
+    # producer's artifact failing a deterministic gate, declared under the same disposition as
+    # WORK_PRODUCT; no attribution rule reads it, so the registry's version is unchanged.
     *_each(
         Vocabulary.FAILURE_CLASSIFICATION,
-        (FailureClassification.WORK_PRODUCT,),
+        (FailureClassification.WORK_PRODUCT, FailureClassification.SLOT_SUBJECT_DROPPED),
         _A,
         _C.PRODUCER_OUTPUT_FAILURE,
         primary_eligible=True,

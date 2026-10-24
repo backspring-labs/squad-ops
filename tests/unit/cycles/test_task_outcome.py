@@ -51,6 +51,7 @@ class TestFailureClassification:
             "DECISION",
             "MODEL_LIMITATION",
             "CONTRACT_COMPLIANCE",  # SIP-0100: scaffold write-ownership violation family
+            "SLOT_SUBJECT_DROPPED",  # SIP-0104 §13f: a slot revision refused by its subject gate
         }
         actual = {
             k

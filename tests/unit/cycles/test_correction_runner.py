@@ -5996,6 +5996,7 @@ class TestQaRepairReachesFills:
                         "failure_class": klass,
                         "detail": "slot disposition filled: expected [] to have a length of 1",
                         "criterion_id": "vc-probe-api-runs-join" if klass != "fill" else "",
+                        "line": 41,
                     }
                 ],
             }
@@ -6017,11 +6018,14 @@ class TestQaRepairReachesFills:
     def test_fill_observations_are_read_per_file_and_slot(self):
         from squadops.execution.correction_repair import _fill_observations
 
+        # #2664: the merged shell's line rides too, since the slot-subject gate reads the
+        # failing assertion's subject at it.
         assert _fill_observations(self._evidence()) == [
             {
                 "file": self._SHELL,
                 "slot_id": "slot-vc-probe-api-runs-join",
                 "detail": "slot disposition filled: expected [] to have a length of 1",
+                "line": 41,
             }
         ]
         assert _fill_observations(self._evidence(klass="app_contract")) == []
@@ -8041,6 +8045,371 @@ class TestARepairWriteAuthorizationDroppedIsSpent:
         }
         # #1129/#1658: the terminal reads this round as one whose repair never reached the tree.
         assert repair_not_applied_in_round(carry[envelope.task_id], 1) is True
+
+
+class TestASlotRepairThatDropsItsFailingSubjectIsSpent:
+    """#2664 (SIP-0104 §13f): a qa repair of a failing slot assertion that keeps no assertion on
+    its subject, where the declarations show that field present, is refused whole. Its round is
+    spent, not refunded, and the next one is told the slot and the subject (#2727's shape).
+
+    ``cyc_bb493eb4725b`` is the case: a slot-scoped ``qa.test_repair`` deleted the failing store
+    assertion from three slots and passed all eight shells, and was rejected only because an
+    additive suite still failed. Every value here is invented, on the reference manifest.
+    """
+
+    _JOIN = "__tests__/scaffold/vc-probe-api-runs-join.scaffold.test.ts"
+    _SLOT = "slot-vc-probe-api-runs-join"
+    _ACCEPTED = (
+        "    expect(body.participants).toHaveLength(1)\n"
+        "    expect(all(TABLES.RunEvent)[0].participants[0].name).toBe('Ada')"
+    )
+    _NEEDLE = "participants[0].name).toBe('Ada')"
+    _WEAKENED = "    expect(body.participants).toHaveLength(1)"
+    _CORRECTED = (
+        "    const rows = all(TABLES.RunEvent)\n    expect(rows[0].participants[0].name).toBe('Bo')"
+    )
+
+    @staticmethod
+    def _scaffold():
+        """The scaffold input as the plan composer threads it onto a qa.test, declarations in."""
+        from squadops.cycles.task_plan import inject_contract_inputs
+        from squadops.cycles.verification_contract import VerificationContract
+        from squadops.stacks.scaffold_contract import emit_contract_dict
+        from tests.unit.capabilities._stack_fixtures import manifest_for_stack
+
+        manifest = manifest_for_stack("nextjs_ts")
+        inputs: dict = {}
+        contract = VerificationContract.from_dict(emit_contract_dict(manifest))
+        inject_contract_inputs(inputs, contract, "qa.test", manifest)
+        return inputs["verification_scaffold"]
+
+    def _failed(self, scaffold):
+        """The failed qa.test's result: its merged shells, and the scaffold evidence the real
+        classifier records for the join slot's store assertion failing."""
+        from squadops.capabilities.verification_scaffold_fill import (
+            merge_fills,
+            parse_fill_emission,
+        )
+        from squadops.cycles.scaffold_evidence import classify_shell_failures
+        from squadops.stacks.verification_scaffold import VerificationScaffoldManifest
+
+        record = VerificationScaffoldManifest.from_dict(scaffold["manifest"])
+        fills = "".join(
+            f"```fill:{slot}\n"
+            f"{self._ACCEPTED if slot == self._SLOT else '    expect(body).toBeTruthy()'}\n```\n"
+            for slot in record.slot_ids()
+        )
+        merged = merge_fills(
+            scaffold["files"],
+            record,
+            parse_fill_emission(fills),
+            store_tables=scaffold["store_tables"],
+            slot_element_kinds=scaffold["slot_element_kinds"],
+        )
+        shells = {f.path: f.content for f in merged.files}
+        line = next(
+            n for n, text in enumerate(shells[self._JOIN].split("\n"), 1) if self._NEEDLE in text
+        )
+        message = "AssertionError: expected 'Bo' to be 'Ada'"
+        observations = classify_shell_failures(
+            [{"file": self._JOIN, "line": line, "messages": [message]}],
+            shells,
+            record,
+            {slot: "filled" for slot in record.slot_ids()},
+        )
+        return TaskResult(
+            task_id="task-run_001-m004-qa.test",
+            status="FAILED",
+            error="tests failed (exit code 1)",
+            outputs={
+                "artifacts": [
+                    {"name": p, "content": c, "media_type": "text/typescript", "type": "test"}
+                    for p, c in shells.items()
+                ],
+                "scaffold_evidence": {
+                    "failure_classes": {"fill": 1},
+                    "observations": [o.to_dict() for o in observations],
+                },
+                "validation_result": {
+                    "passed": False,
+                    "summary": "tests failed (exit code 1)",
+                    "checks": [
+                        {
+                            "check": "tests_pass",
+                            "status": "failed",
+                            "passed": False,
+                            "executed": True,
+                            "exit_code": 1,
+                            "runner": "vitest",
+                            "suite_broken": False,
+                            "failing_cases": [
+                                {"title": "join", "file": self._JOIN, "message": message}
+                            ],
+                        }
+                    ],
+                },
+            },
+        )
+
+    @staticmethod
+    def _envelope(scaffold):
+        from squadops.tasks.models import TaskEnvelope
+
+        return TaskEnvelope(
+            task_id="task-run_001-m004-qa.test",
+            agent_id="eve",
+            cycle_id="cyc_001",
+            pulse_id="p",
+            project_id="hello_squad",
+            task_type="qa.test",
+            correlation_id="corr",
+            causation_id=None,
+            trace_id="t",
+            span_id="s",
+            inputs={
+                "expected_artifacts": ["__tests__/runs.test.ts"],
+                "subtask_focus": "API tests",
+                "subtask_description": "vitest suite over the run endpoints.",
+                "resolved_config": {"build_profile": "nextjs_ts"},
+                "verification_scaffold": scaffold,
+            },
+            metadata={"role": "qa"},
+        )
+
+    def _runner(self, repair_fill_body, repairs):
+        """The runner, its qa repair answered by the REAL handler's emission handling on the
+        inputs the runner built for it — the agent side of the live cycle's dispatch."""
+        from squadops.capabilities.handlers.base import HandlerEvidence, HandlerResult
+        from squadops.capabilities.handlers.impl.repair_handlers import QATestRepairHandler
+
+        async def responder(envelope):
+            if envelope.task_type == "data.analyze_failure":
+                outputs = {"classification": "work_product", "analysis_summary": "slot fails"}
+            elif envelope.task_type == "governance.correction_decision":
+                outputs = {
+                    "correction_path": "patch",
+                    "decision_rationale": "repair the slot",
+                    "affected_task_types": ["qa.test"],
+                }
+            elif envelope.task_type == "qa.test_repair":
+                repairs.append(envelope)
+                handler = QATestRepairHandler()
+                emitted = handler._build_artifacts_from_content(
+                    f"```fill:{self._SLOT}\n{repair_fill_body}\n```\n"
+                )
+                result = HandlerResult(
+                    success=True,
+                    outputs={"artifacts": emitted},
+                    _evidence=HandlerEvidence.create(handler._handler_name, "qa.test_repair", 1),
+                )
+                await handler._after_emission(envelope.inputs, result)
+                outputs = result.outputs
+            else:
+                outputs = {}
+            return TaskResult(task_id=envelope.task_id, status="SUCCEEDED", outputs=outputs)
+
+        class _Dispatcher:
+            async def dispatch_task(self, envelope, run_id, **_kwargs):
+                return await responder(envelope)
+
+            async def create_task_run_if_enabled(self, _flow_run_id, _envelope):
+                return None
+
+        bus = MagicMock()
+        runner = _runner_class()(
+            cycle_registry=AsyncMock(),
+            artifact_vault=AsyncMock(),
+            event_bus=bus,
+            task_dispatcher=_Dispatcher(),
+            store_artifact=AsyncMock(),
+            failure_recall=NoOpFailurePatternRecall(),
+        )
+        return runner, bus
+
+    async def _protocol(self, cycle, repair_fill_body):
+        scaffold = self._scaffold()
+        envelope, failed = self._envelope(scaffold), self._failed(scaffold)
+        repairs: list = []
+        runner, bus = self._runner(repair_fill_body, repairs)
+        prior_outputs: dict = {}
+        protocol = await runner.run_correction_protocol(
+            run_id="run_001",
+            cycle=cycle,
+            envelope=envelope,
+            result=failed,
+            correction_attempts=0,
+            prior_outputs=prior_outputs,
+            all_artifact_refs=[],
+            stored_artifacts=[],
+            completed_task_ids=[],
+            plan_delta_refs=[],
+            correction_budget=3,
+        )
+        return protocol, envelope, failed, repairs, bus, prior_outputs
+
+    async def _route(self, executor, cycle, protocol, envelope, failed, carry, counter):
+        from squadops.execution.dispatched_flow_executor import _CorrectionRound
+
+        return await executor._route_correction_path(
+            _CorrectionRound(protocol=protocol, attempt=1, max_attempts=3),
+            failed,
+            envelope,
+            "run_001",
+            cycle=cycle,
+            correction_counter=counter,
+            patched_result_holder=None,
+            prior_outputs={},
+            all_artifact_refs=[],
+            stored_artifacts=[],
+            completed_task_ids=[],
+            plan_delta_refs=[],
+            profile=None,
+            flow_run_id=None,
+            enriched_envelope=None,
+            budget_guard=None,
+            interface_manifest=None,
+            repair_rejection_carry=carry,
+            bound_record=None,
+            compliance_counter=None,
+        )
+
+    async def test_the_refusal_reaches_the_rejection_carry_and_the_round_is_spent(
+        self, executor, cycle
+    ):
+        """Entry: `run_correction_protocol`, the call the live cycle makes for a failed qa.test,
+        then `_route_correction_path`. The repair's merge (`merge_fills` through
+        `_merge_repair_fills`) runs on the `repair_slots` and `current_files` the runner built.
+
+        Bug caught: the weakening accepted, or refunded as an empty emission (the handler
+        hands back nothing), so the round is re-taken unchanged and the next round is told
+        nothing about the subject it dropped."""
+        from squadops.capabilities.verification_scaffold_fill import SLOT_SUBJECT_DROPPED_KEY
+        from squadops.cycles.correction_signature import repair_not_applied_in_round
+
+        protocol, envelope, failed, repairs, bus, prior_outputs = await self._protocol(
+            cycle, self._WEAKENED
+        )
+
+        # the runner handed the repair the failing line it read the subject at
+        [repair] = repairs
+        [slot] = repair.inputs["repair_slots"]
+        assert (slot["slot_id"], isinstance(slot["line"], int)) == (self._SLOT, True)
+        assert protocol.emission_empty is False
+        assert protocol.repair_artifacts == []
+        [refused] = protocol.repair_subject_dropped
+        assert (refused["slot_id"], refused["verdict"]) == (self._SLOT, "slot_subject_dropped")
+        assert refused["described"] == "`participants` on store table `RunEvent`"
+        [completed] = [
+            c.kwargs["payload"]
+            for c in bus.emit.call_args_list
+            if c.args and c.args[0] == EventType.CORRECTION_COMPLETED
+        ]
+        assert completed["repair_subject_dropped"] == [self._SLOT]
+        assert all(SLOT_SUBJECT_DROPPED_KEY not in v for v in prior_outputs.values())
+
+        executor._try_accept_patch = AsyncMock(return_value="accept_patch")
+        carry: dict = {}
+        counter = {"n": 1, "empty_refunds": 0}
+        action = await self._route(executor, cycle, protocol, envelope, failed, carry, counter)
+
+        assert action == "continue"
+        executor._try_accept_patch.assert_not_awaited()
+        assert counter == {"n": 1, "empty_refunds": 0}  # spent: no refund handed back
+        assert carry == {
+            envelope.task_id: [
+                "correction attempt 1: the repair dropped a failing slot assertion's subject "
+                "(slot_subject_dropped: slot-vc-probe-api-runs-join: `participants` on store "
+                "table `RunEvent`) — each is declared there; nothing was applied, verified or "
+                "retested. A repair keeps an assertion on that field, and an app that does not "
+                "meet it is dev's to fix"
+            ]
+        }
+        # #1129/#1658/#2521: the terminal reads this round as one whose repair never landed.
+        assert repair_not_applied_in_round(carry[envelope.task_id], 1) is True
+
+    async def test_a_correct_rewrite_of_the_subject_reaches_patch_acceptance(
+        self, executor, cycle, monkeypatch
+    ):
+        """The control, on the same entry. Bug caught: the gate refusing a repair that keeps
+        the failing subject and corrects its value, so qa can never fix its own assertion."""
+        from squadops.capabilities.handlers.impl.repair_handlers import QATestRepairHandler
+
+        # The typed-check evaluation needs the stack's toolchain; it is not this test's subject.
+        monkeypatch.setattr(QATestRepairHandler, "_attach_typed_checks", AsyncMock())
+        protocol, envelope, failed, *_ = await self._protocol(cycle, self._CORRECTED)
+
+        assert protocol.repair_subject_dropped == ()
+        [shell] = protocol.repair_artifacts
+        assert shell["name"] == self._JOIN and "toBe('Bo')" in shell["content"]
+
+        executor._try_accept_patch = AsyncMock(return_value="accept_patch")
+        action = await self._route(
+            executor, cycle, protocol, envelope, failed, {}, {"n": 1, "empty_refunds": 0}
+        )
+        assert action == "accept_patch"
+        executor._try_accept_patch.assert_awaited_once()
+
+    async def test_a_re_dispatched_qa_tests_refusal_reaches_the_next_rounds_carry(
+        self, executor, cycle
+    ):
+        """Entry: `_dispatch_correction_protocol`, with a failed re-dispatched qa.test whose
+        own merge refused a slot revision (it stamps the same key). Bug caught: the refusal
+        recorded in the task's evidence but never told to the round that follows it."""
+        from squadops.capabilities.verification_scaffold_fill import SLOT_SUBJECT_DROPPED_KEY
+        from squadops.cycles.correction_signature import repair_not_applied_in_round
+        from squadops.execution.correction_runner import CorrectionProtocolResult
+
+        envelope = self._envelope({})
+        envelope.inputs["prior_attempts"] = 2
+        refused = {
+            "slot_id": self._SLOT,
+            "verdict": "slot_subject_dropped",
+            "described": "`participants` on store table `RunEvent`",
+        }
+        failed = TaskResult(
+            task_id=envelope.task_id,
+            status="FAILED",
+            error="tests failed",
+            outputs={SLOT_SUBJECT_DROPPED_KEY: [refused]},
+        )
+        executor._correction_runner.run_correction_protocol = AsyncMock(
+            return_value=CorrectionProtocolResult(correction_path="patch")
+        )
+        carry: dict = {}
+        await executor._dispatch_correction_protocol(
+            failed,
+            envelope,
+            cycle,
+            "run_001",
+            correction_counter={"n": 0},
+            correction_signature_state={},
+            scaffold_enforcement_carry=[],
+            prior_outputs={},
+            all_artifact_refs=[],
+            stored_artifacts=[],
+            completed_task_ids=[],
+            plan_delta_refs=[],
+            profile=None,
+            flow_run_id=None,
+            enriched_envelope=None,
+            interface_manifest=None,
+            budget_guard=None,
+            repair_rejection_carry=carry,
+            accepted_repair_task_ids=None,
+        )
+
+        assert carry == {
+            envelope.task_id: [
+                "qa.test attempt 2: its re-authored fill dropped a failing slot assertion's "
+                "subject (slot_subject_dropped: slot-vc-probe-api-runs-join: `participants` on "
+                "store table `RunEvent`) — each is declared there, so the accepted assertion was "
+                "kept"
+            ]
+        }
+        kwargs = executor._correction_runner.run_correction_protocol.await_args.kwargs
+        assert kwargs["repair_rejections"] == carry[envelope.task_id]
+        # not a correction round's marker: the round before it applied what it applied
+        assert repair_not_applied_in_round(carry[envelope.task_id], 2) is False
 
 
 class TestFillRepairAlsoTargetsTheOwnAdditiveSuite(TestCorrectionRunnerStandalone):

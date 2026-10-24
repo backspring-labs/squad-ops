@@ -292,7 +292,8 @@
           "correction_path": "patch",
           "emission_empty": true,
           "empty_emission_signatures": [],
-          "repair_dropped": []
+          "repair_dropped": [],
+          "repair_subject_dropped": []
         }
       }
     ],
@@ -304,6 +305,7 @@
       "empty_emission_signatures": [],
       "repair_artifacts": [],
       "repair_dropped": [],
+      "repair_subject_dropped": [],
       "repair_typed_checks": []
     },
     "round_failures": [
@@ -698,7 +700,8 @@
           "correction_path": "patch",
           "emission_empty": true,
           "empty_emission_signatures": [],
-          "repair_dropped": []
+          "repair_dropped": [],
+          "repair_subject_dropped": []
         }
       }
     ],
@@ -710,6 +713,7 @@
       "empty_emission_signatures": [],
       "repair_artifacts": [],
       "repair_dropped": [],
+      "repair_subject_dropped": [],
       "repair_typed_checks": []
     },
     "round_failures": [
@@ -1171,7 +1175,8 @@
           "correction_path": "patch",
           "emission_empty": true,
           "empty_emission_signatures": [],
-          "repair_dropped": []
+          "repair_dropped": [],
+          "repair_subject_dropped": []
         }
       }
     ],
@@ -1183,6 +1188,7 @@
       "empty_emission_signatures": [],
       "repair_artifacts": [],
       "repair_dropped": [],
+      "repair_subject_dropped": [],
       "repair_typed_checks": []
     },
     "round_failures": [
@@ -1539,7 +1545,8 @@
           "correction_path": "patch",
           "emission_empty": true,
           "empty_emission_signatures": [],
-          "repair_dropped": []
+          "repair_dropped": [],
+          "repair_subject_dropped": []
         }
       }
     ],
@@ -1551,6 +1558,7 @@
       "empty_emission_signatures": [],
       "repair_artifacts": [],
       "repair_dropped": [],
+      "repair_subject_dropped": [],
       "repair_typed_checks": []
     },
     "round_failures": [

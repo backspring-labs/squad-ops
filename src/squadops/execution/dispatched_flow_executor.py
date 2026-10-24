@@ -35,15 +35,18 @@ from squadops.capabilities.context_assembly import (
     ACCEPTANCE_WORKSPACE_FILTER,
     INCREMENT_CANDIDATE_FILTER,
     LANDING_PRIOR_OUTPUTS,
+    PRIOR_SLOT_FAILURES_KEY,
     RETAKE_CURRENT_FILES_KEY,
     dispatch_artifact_filter_spec,
     get_context_contract,
     manifest_surface_fragments,
+    prior_slot_failures,
     retake_suite_files,
     wrapup_evidence_applies,
 )
 from squadops.capabilities.handlers.build_profiles import get_profile
 from squadops.capabilities.lesson_supply import supply_the_dispatch
+from squadops.capabilities.verification_scaffold_fill import SLOT_SUBJECT_DROPPED_KEY
 from squadops.cycles.build_completeness import compute_missing_required_files
 from squadops.cycles.checkpoint import RunCheckpoint
 from squadops.cycles.contract_derivation import (
@@ -54,7 +57,11 @@ from squadops.cycles.contract_derivation import (
     is_interface_manifest,
     load_seeded_manifest_content,
 )
-from squadops.cycles.correction_signature import REPAIR_DROPPED_MARKER, REPAIR_EMPTY_MARKER
+from squadops.cycles.correction_signature import (
+    REPAIR_DROPPED_MARKER,
+    REPAIR_EMPTY_MARKER,
+    REPAIR_SUBJECT_DROPPED_MARKER,
+)
 from squadops.cycles.cycle_end import STOP_REASON_FOR_UNCOMPLETED_RUN, CycleStopReason
 from squadops.cycles.cycle_outcome import resolve_cycle_outcome
 from squadops.cycles.emission_integrity import EMISSION_FAILURE_KEY, EMISSION_STATUS_FAILED
@@ -277,6 +284,40 @@ def _carry_retake_suite(
         envelope.task_id,
         ", ".join(sorted(suite)),
     )
+
+
+def _subject_dropped_summary(entries: Any) -> str:
+    """``slot_subject_dropped: <slot>: <subject>; …`` — the refused slots a carry entry names
+    (#2664). Each entry is a ``SlotSubjectVerdict.to_dict()`` the qa merge stamped."""
+    return "slot_subject_dropped: " + "; ".join(
+        f"{e.get('slot_id')}: {e.get('described') or e.get('failing_target')}"
+        for e in entries or ()
+        if isinstance(e, dict)
+    )
+
+
+def _carry_prior_slot_failures(
+    result: TaskResult, envelope: TaskEnvelope, enriched_envelope: TaskEnvelope | None
+) -> None:
+    """SIP-0104 §13f (#2664): a fill-mode qa.test that failed in a slot is re-dispatched to
+    re-fill that slot, which is a slot revision like a repair's. Its in-slot failures and the
+    shells they were observed on ride the re-dispatch, so its merge is gated too.
+
+    A result that ran no suite leaves the earlier carry standing: the last observation of
+    those slots is still the one before it."""
+    scaffold_input = (envelope.inputs or {}).get("verification_scaffold")
+    if not isinstance(scaffold_input, dict):
+        return
+    carried = prior_slot_failures(result.outputs, scaffold_input)
+    if carried is None:
+        return
+    for env in (envelope, enriched_envelope):
+        if env is None:
+            continue
+        if carried:
+            env.inputs[PRIOR_SLOT_FAILURES_KEY] = carried
+        else:
+            env.inputs.pop(PRIOR_SLOT_FAILURES_KEY, None)
 
 
 def record_task_evidence(ledger: RunLedger, task_result, task_id: str) -> None:
@@ -3435,6 +3476,8 @@ class DispatchedFlowExecutor(FlowExecutionPort):
         if enriched_envelope is not None:
             enriched_envelope.inputs.pop(RETAKE_CURRENT_FILES_KEY, None)
 
+        _carry_prior_slot_failures(result, envelope, enriched_envelope)
+
         retained = failing_cases_from_evidence(result.outputs or {})
         if retained:
             envelope.inputs["prior_failing_cases"] = retained
@@ -3573,6 +3616,19 @@ class DispatchedFlowExecutor(FlowExecutionPort):
         # share ``attempt`` (a refund re-takes the index, #1053) never share a task id.
         round_seq = correction_counter.get("round_seq", 0)
         correction_counter["round_seq"] = round_seq + 1
+
+        # #2664: a re-dispatched qa.test whose own merge refused a slot revision kept the
+        # accepted assertion; this round is told which subject that emission tried to drop.
+        refused_here = (result.outputs or {}).get(SLOT_SUBJECT_DROPPED_KEY)
+        if refused_here:
+            _record_repair_rejection(
+                repair_rejection_carry,
+                envelope.task_id,
+                f"{envelope.task_type} attempt {envelope.inputs.get('prior_attempts') or 1}: "
+                f"its re-authored fill dropped a failing slot assertion's subject "
+                f"({_subject_dropped_summary(refused_here)}) — each is declared there, so the "
+                "accepted assertion was kept",
+            )
 
         # The DISPATCHED envelope, as the retest hand-off below already passes: the
         # correction runner forwards the failed task's typed-acceptance workspace to the
@@ -3753,6 +3809,19 @@ class DispatchedFlowExecutor(FlowExecutionPort):
                 )
                 + ") — nothing was applied, verified or retested; the fix belongs in files the "
                 "repair may write, or the plan's grant is wrong",
+            )
+            return "continue"
+        if protocol.repair_subject_dropped and correction_path == "patch":
+            # #2664 (SIP-0104 §13f): the qa repair kept no assertion on its failing assertion's
+            # subject, and the declarations show that field there. The round is spent, as a
+            # dropped patch's is, and the next one is told the slot and the subject.
+            _record_repair_rejection(
+                repair_rejection_carry,
+                envelope.task_id,
+                f"correction attempt {attempt}: {REPAIR_SUBJECT_DROPPED_MARKER} ("
+                + _subject_dropped_summary(protocol.repair_subject_dropped)
+                + ") — each is declared there; nothing was applied, verified or retested. A repair "
+                "keeps an assertion on that field, and an app that does not meet it is dev's to fix",
             )
             return "continue"
         if correction_path == "abort":
