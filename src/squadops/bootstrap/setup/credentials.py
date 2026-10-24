@@ -70,10 +70,32 @@ def secret_file_content(credential: Mapping, value: str) -> str:
 
 def value_from_secret_file(credential: Mapping, content: str) -> str | None:
     """The value a secret file holds, read back through its format."""
+    if label := credential.get("secret_key_label"):
+        values = [line.partition(":")[2].strip() for line in content.splitlines()
+                  if ":" in line and line.partition(":")[0].strip() == label]
+        if len(values) > 1:
+            raise ValueError("duplicate managed key label; values withheld")
+        return values[0] if values and values[0] else None
     fmt = str(credential.get("secret_format") or "{value}")
     head, _, tail = fmt.partition("{value}")
     match = re.fullmatch(re.escape(head) + "(.+)" + re.escape(tail), content.strip())
     return match.group(1) if match else None
+
+
+def merge_key_file(credential: Mapping, value: str, held: str) -> str:
+    """Update only this deploy's label, preserving independently provisioned callers and comments."""
+    label = credential["secret_key_label"]
+    # Detect duplicate ownership before writing, even when .env already supplies the value.
+    value_from_secret_file(credential, held)
+    lines = held.splitlines()
+    found = False
+    for i, line in enumerate(lines):
+        if ":" in line and line.partition(":")[0].strip() == label:
+            lines[i] = secret_file_content(credential, value)
+            found = True
+    if not found:
+        lines.append(secret_file_content(credential, value))
+    return "\n".join(lines).rstrip()
 
 
 @dataclass(frozen=True)
@@ -115,7 +137,8 @@ def plan(
             env_updates[name] = (value, "adopted" if adopted else "generated")
         target = credential.get("secret_file")
         if target:
-            content = secret_file_content(credential, value)
+            content = (merge_key_file(credential, value, secret_files.get(target) or "")
+                       if credential.get("secret_key_label") else secret_file_content(credential, value))
             # A file bootstrap wrote through `cut` ends in a newline its readers strip.
             if (secret_files.get(target) or "").strip() != content:
                 secret_writes[target] = content

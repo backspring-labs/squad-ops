@@ -87,6 +87,20 @@ def test_the_serve_command_carries_every_pin_the_recipe_names():
     assert "127.0.0.1:8090:8080" in cmd  # never published beyond the host's loopback
 
 
+def test_key_registry_selects_squadops_without_disabling_independent_callers(tmp_path):
+    path = tmp_path/"keys"
+    original = "# shared engine\nnostromo-mother: mother-fixture\nsquadops: squad-fixture\nnostromo-brett: brett-fixture\n"
+    path.write_text(original)
+    assert es.api_key(path) == "squad-fixture"
+    assert path.read_text() == original
+    path.write_text("legacy-fixture\n")
+    assert es.api_key(path) == "legacy-fixture"
+    for malformed in ("squadops: first\nsquadops: second", "nostromo-mother: fixture", "# empty\n"):
+        path.write_text(malformed)
+        with pytest.raises(es.SwitchFailed, match="values withheld"):
+            es.api_key(path)
+
+
 def test_a_recipe_missing_a_pin_is_refused(tmp_path):
     path = tmp_path / "r.yaml"
     path.write_text(yaml.safe_dump({k: v for k, v in RECIPE.items() if k != "context"}))
