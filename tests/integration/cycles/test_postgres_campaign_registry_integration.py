@@ -238,6 +238,51 @@ async def test_a_calibration_records_tree_survives_a_restart_naming_only_its_rec
             )
 
 
+@pytest.mark.parametrize(
+    "corruption",
+    [
+        "accepted_commit = 'HEAD'",
+        "accepted_identity = NULL, accepted_cycle_id = NULL, accepted_calibration_record_id = NULL",
+    ],
+    ids=["not-a-commit", "a-commit-with-no-tree"],
+)
+async def test_a_campaign_branchs_head_survives_a_restart_beside_its_identity(
+    campaigns, pool, corruption
+):
+    """§24bv point 2, migration 1698. Bugs caught: the commit left out of the UPDATE (or read
+    back from the wrong column), so after a restart the accepted tree reads as a sample
+    application's, with no head, and every repository-backed increment's promotion is refused;
+    or a CHECK that lets a commit stand malformed or with no tree to be the head of."""
+    record_tree = AcceptedTree(
+        "sha-rec", calibration_record_id="calrec_0123456789ab", commit="a" * 40
+    )
+    increment_tree = AcceptedTree("sha-inc", "cyc_inc000000001", commit="b" * 40)
+    await campaigns.transition(
+        CID,
+        move(S.CALIBRATING, "k-promote", operation=ControlOperation.PROMOTE, accepted=record_tree),
+    )
+    await campaigns.transition(
+        CID,
+        move(
+            S.CALIBRATING,
+            "k-promote-2",
+            operation=ControlOperation.PROMOTE,
+            accepted=increment_tree,
+        ),
+    )
+
+    fresh_pool = await create_pool(POSTGRES_URL, min_size=1, max_size=2)
+    try:
+        stored = await PostgresCampaignRegistry(pool=fresh_pool).get_campaign(CID)
+    finally:
+        await fresh_pool.close()
+
+    assert stored.accepted == increment_tree
+    async with pool.acquire() as conn:
+        with pytest.raises(asyncpg.CheckViolationError):
+            await conn.execute(f"UPDATE campaigns SET {corruption} WHERE campaign_id = $1", CID)
+
+
 async def test_a_submitted_proposal_and_a_stale_rulings_refusal_are_stored(campaigns):
     """§9.2 on the database: the submission's proposal survives a restart, and the refusal
     values 1640 adds are accepted by the control log's CHECK. Bug caught: a migration whose list

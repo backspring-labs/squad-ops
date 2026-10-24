@@ -36,7 +36,7 @@ from pathlib import Path, PurePosixPath
 from urllib.parse import urlsplit
 
 from squadops.ports.projects.source_repository import SourceRepositoryPort
-from squadops.projects.models import CheckoutTree, SourceUnavailable
+from squadops.projects.models import CheckoutTree, RefMoved, SourceUnavailable
 from squadops.projects.registration import (
     LocatorPolicy,
     LocatorRefused,
@@ -47,9 +47,12 @@ from squadops.projects.registration import (
 _COMMIT = re.compile(r"^[0-9a-f]{40}$")
 _PROJECT_ID = re.compile(r"^[a-z][a-z0-9_-]{1,62}$")
 _SCP_HOST = re.compile(r"^[A-Za-z0-9._-]+@(?P<host>[A-Za-z0-9.-]+):")
-#: Where a captured candidate is kept in the clone: a namespace the product's remote never has,
-#: so no fetch writes or prunes it.
-_CAPTURE_REF = re.compile(r"^refs/squadops/[A-Za-z0-9_-]+(/[A-Za-z0-9_-]+)*$")
+#: Our namespace in the clone, which the product's remote never has, so no fetch writes or prunes
+#: it: a captured candidate (``refs/squadops/<cycle>/<run>``) and a campaign's branch
+#: (``refs/squadops/campaign/<campaign_id>``, SIP-0109 §24bv point 2).
+_SQUADOPS_REF = re.compile(r"^refs/squadops/[A-Za-z0-9_-]+(/[A-Za-z0-9_-]+)*$")
+#: The object id ``update-ref`` reads as "no such ref": a compare-and-swap that creates one.
+_NO_REF = "0" * 40
 _IDENTITY = re.compile(r"^[^<>\n]+$")
 _REVIEW_BRANCH = re.compile(r"^squadops/[A-Za-z0-9_-]+$")
 _BRANCH_REF = re.compile(r"^refs/heads/[A-Za-z0-9_-][A-Za-z0-9._-]*(/[A-Za-z0-9._-]+)*$")
@@ -142,11 +145,31 @@ class GitSourceRepository(SourceRepositoryPort):
     ) -> str:
         if not _COMMIT.match(parent):
             raise SourceUnavailable(f"{parent!r} is not a commit", reason="not_a_commit")
-        if not _CAPTURE_REF.match(ref):
+        if not _SQUADOPS_REF.match(ref):
             raise SourceUnavailable(f"{ref!r} is not a capture ref", reason="ref_refused")
         return await asyncio.to_thread(
             self._commit_tree, self._clone_dir(project_id), parent, files, executable, ref, message
         )
+
+    async def update_ref(
+        self, project_id: str, ref: str, *, new_commit: str, expected_commit: str | None
+    ) -> None:
+        for commit in (new_commit, expected_commit or _NO_REF):
+            if not _COMMIT.match(commit):
+                raise SourceUnavailable(f"{commit!r} is not a commit", reason="not_a_commit")
+        if not _SQUADOPS_REF.match(ref):
+            raise SourceUnavailable(f"{ref!r} is not one of our refs", reason="ref_refused")
+        await asyncio.to_thread(
+            self._update_ref, self._clone_dir(project_id), ref, new_commit, expected_commit
+        )
+
+    async def ref_commit(self, project_id: str, ref: str) -> str | None:
+        if not _SQUADOPS_REF.match(ref):
+            raise SourceUnavailable(f"{ref!r} is not one of our refs", reason="ref_refused")
+        clone = self._clone_dir(project_id)
+        if not clone.is_dir():
+            raise SourceUnavailable("the managed clone does not exist yet", reason="not_cloned")
+        return await asyncio.to_thread(self._ref_commit, clone, ref)
 
     async def export_patch(self, project_id: str, commit: str) -> bytes:
         if not _COMMIT.match(commit):
@@ -200,7 +223,7 @@ class GitSourceRepository(SourceRepositoryPort):
     async def push_capture(
         self, project_id: str, locator: str, *, ref: str, branch: str, token: str
     ) -> None:
-        if not _CAPTURE_REF.match(ref):
+        if not _SQUADOPS_REF.match(ref):
             raise SourceUnavailable(f"{ref!r} is not a capture ref", reason="ref_refused")
         if not _REVIEW_BRANCH.match(branch):
             raise SourceUnavailable(f"{branch!r} is not a review branch", reason="ref_refused")
@@ -266,6 +289,40 @@ class GitSourceRepository(SourceRepositoryPort):
             raise SourceUnavailable("the managed clone does not exist yet", reason="not_cloned")
         self._git(clone, "cat-file", "-e", f"{parent}^{{commit}}", step="read")
         return self._fast_import(clone, ref, parent, files, executable, message, int(time.time()))
+
+    def _update_ref(self, clone: Path, ref: str, new: str, expected: str | None) -> None:
+        """Git's own compare-and-swap: ``update-ref <ref> <new> <old>`` locks the ref and moves it
+        only while it names ``<old>``, where all zeros means it must not exist. A refusal is read
+        back: a ref somewhere else is the swap lost, and anything else is the clone's failure."""
+        if not clone.is_dir():
+            raise SourceUnavailable("the managed clone does not exist yet", reason="not_cloned")
+        self._git(clone, "cat-file", "-e", f"{new}^{{commit}}", step="read")
+        try:
+            self._git(
+                clone, "update-ref", "--no-deref", "--end-of-options", ref, new,
+                expected or _NO_REF, step="update_ref",
+            )  # fmt: skip
+        except SourceUnavailable:
+            held = self._ref_commit(clone, ref)
+            if held != expected:
+                raise RefMoved(
+                    f"{ref} names {held or 'no commit'}, not "
+                    f"{expected or 'nothing'} as expected: it was not moved to {new}",
+                    held=held,
+                ) from None
+            raise
+
+    def _ref_commit(self, clone: Path, ref: str) -> str | None:
+        """The ref's commit, read by its full name: ``for-each-ref`` also lists the refs under a
+        prefix, so only the line that names ``ref`` itself is read."""
+        listing = self._git(
+            clone, "for-each-ref", "--format=%(refname) %(objectname)", ref, step="resolve"
+        )
+        for line in listing.decode().splitlines():
+            name, _, commit = line.partition(" ")
+            if name == ref:
+                return commit
+        return None
 
     def _initialize(
         self,

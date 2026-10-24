@@ -29,6 +29,7 @@ from adapters.cycles.memory_campaign_registry import MemoryCampaignRegistry
 from adapters.tools.git_source import GitSourceRepository
 from squadops.api.campaign_launch import CampaignLaunchService
 from squadops.campaigns.calibration_record import BINDING_KEY
+from squadops.campaigns.campaign_branch import CampaignBranch, campaign_ref
 from squadops.campaigns.models import (
     AcceptedTree,
     CampaignState,
@@ -156,7 +157,7 @@ def _never_assessed(cycle_id: str):
     raise AssertionError(f"a calibration record is never assessed as a cycle ({cycle_id})")
 
 
-def _progress(world: _World, vault_dir) -> CampaignProgress:
+def _progress(world: _World, vault_dir, branch: CampaignBranch | None = None) -> CampaignProgress:
     return CampaignProgress(
         campaigns=world.campaigns,
         cycles=world.cycles,
@@ -166,12 +167,18 @@ def _progress(world: _World, vault_dir) -> CampaignProgress:
         evaluate_outcome=None,
         outcome_section=None,
         intervention_section=None,
+        campaign_branch=branch,
     )
 
 
-async def _world(projects, tmp_path, campaigns: MemoryCampaignRegistry | None = None) -> _World:
+async def _world(
+    projects,
+    tmp_path,
+    campaigns: MemoryCampaignRegistry | None = None,
+    branch: CampaignBranch | None = None,
+) -> _World:
     world = _World(campaigns, project_registry=projects)
-    world.progress = _progress(world, tmp_path / "vault")
+    world.progress = _progress(world, tmp_path / "vault", branch)
     world.client.app.state.campaign_progress = world.progress
     world.client.app.state.artifact_vault = FilesystemArtifactVault(tmp_path / "vault")
     await world.campaigns.create_campaign(
@@ -195,7 +202,9 @@ async def test_a_start_writes_the_record_launches_nothing_and_row_5_proposes(tmp
     Bugs caught: a repository-backed start that launches a calibration cycle (IR-2's, which fails
     at provisioning for want of a plan); a record that names anything but the capture's commit,
     revision, checks, disclosed gaps and the commit's own tree; an accepted tree that names a cycle,
-    or none; or a record never decided, so the campaign sits calibrating with nothing to end it.
+    or none; a campaign branch (§24bv point 2) not started at the record's commit, so the first
+    increment's capture has no head to follow; or a record never decided, so the campaign sits
+    calibrating with nothing to end it.
     Row 5 proposes, and its launch is the proposal input point 5 has yet to build: it escalates,
     naming it, which is where this lane's half stops."""
     repo = build_repository(tmp_path / "sources" / "tally")
@@ -217,7 +226,9 @@ async def test_a_start_writes_the_record_launches_nothing_and_row_5_proposes(tmp
         actor="owner",
         idempotency_key="b-1",
     )
-    world = await _world(projects, tmp_path)
+    world = await _world(
+        projects, tmp_path, branch=CampaignBranch(projects=projects, repository=clones)
+    )
 
     resp = world.start()
 
@@ -245,8 +256,12 @@ async def test_a_start_writes_the_record_launches_nothing_and_row_5_proposes(tmp
         "missing_environment",
         "no_test_id_reader",
     ]
-    assert stored.accepted == AcceptedTree(TREE, calibration_record_id=record["record_id"])
+    assert stored.accepted == AcceptedTree(
+        TREE, calibration_record_id=record["record_id"], commit=repo.second_commit
+    )
     assert promote.binding["commit"] == repo.second_commit
+    # §24bv point 2: the campaign's branch starts at the record's commit.
+    assert await clones.ref_commit(PROJECT, campaign_ref(CID)) == repo.second_commit
     assert (decide.target, decide.binding["row"], decide.binding["action"]) == (
         record["record_id"],
         5,

@@ -60,6 +60,63 @@ class SourceMapping:
     campaign_id: str | None = None
 
 
+def delivery_workspace(run_id: str, tree_identity: str) -> str:
+    """The workspace a source-backed run's delivery verifies its candidate in (E.4.3): named by
+    the run and the candidate's tree, so a resumed run's second delivery of another tree has its
+    own."""
+    return f"{_delivered_by(run_id)}{tree_identity[:12]}"
+
+
+def _delivered_by(run_id: str) -> str:
+    """The start every one of ``run_id``'s delivery workspaces' names shares."""
+    return f"src-{run_id}-"
+
+
+@dataclass(frozen=True)
+class CapturedChange:
+    """What a run's delivery captured (contract 3): the commit, its tree identity, and the commit
+    it was captured on, which is the one its workspace was seeded at."""
+
+    commit: str
+    parent: str
+    tree_identity: str
+    workspace_id: str
+
+
+def captured_change(
+    mappings: list[SourceMapping], cycle_id: str, run_id: str
+) -> CapturedChange | None:
+    """The change run ``run_id`` of ``cycle_id`` captured, read from the Project's mappings: its
+    delivery workspace's CAPTURED mapping, the latest when a resumed run delivered twice, and the
+    SEEDED mapping of the same workspace for its parent. ``None`` when the run captured nothing:
+    only a change the product's own checks accepted is captured.
+
+    Raises:
+        ValueError: The capture's workspace records no seed, so its parent can't be read.
+    """
+    captured = [
+        m
+        for m in mappings
+        if m.direction == CAPTURED
+        and m.cycle_id == cycle_id
+        and m.workspace_id.startswith(_delivered_by(run_id))
+    ]
+    if not captured:
+        return None
+    capture = captured[-1]
+    seeded = [
+        m.commit
+        for m in mappings
+        if m.direction == SEEDED and m.workspace_id == capture.workspace_id
+    ]
+    if not seeded:
+        raise ValueError(
+            f"workspace {capture.workspace_id} records the capture {capture.commit} and no seed: "
+            "the commit it was captured on can't be read (contract 3)"
+        )
+    return CapturedChange(capture.commit, seeded[-1], capture.tree_identity, capture.workspace_id)
+
+
 async def seed_project_tree(
     project: Project,
     commit: str,

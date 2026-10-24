@@ -44,10 +44,17 @@ from squadops.cycles.task_plan import REPAIR_TASK_TYPES
 from squadops.projects.checkout import SOURCE_CHECKOUT
 from squadops.projects.configuration import baseline_tree
 from squadops.projects.contribution import capture_ref
-from squadops.projects.verification import ACCEPTED, SourceVerification, attributed
+from squadops.projects.verification import (
+    ACCEPTED,
+    SOURCE_VERIFICATION_FILENAME,
+    SOURCE_VERIFICATION_TYPE,
+    SourceVerification,
+    attributed,
+)
 from squadops.projects.workspaces import (
     CAPTURED,
     SourceMapping,
+    delivery_workspace,
     run_checks,
     seed_project_tree,
 )
@@ -56,8 +63,6 @@ from squadops.tasks.task_types import authors_qa_suite, authors_source
 
 logger = logging.getLogger(__name__)
 
-SOURCE_VERIFICATION_TYPE = "source_verification"
-SOURCE_VERIFICATION_FILENAME = "source_verification.json"
 SOURCE_PATCH_TYPE = "source_patch"
 SOURCE_PATCH_FILENAME = "source_change.patch"
 
@@ -183,7 +188,7 @@ async def deliver_source_change(
 
     candidate_files = {**checkout.files, **changes}
     tree_identity = FileTree.of(candidate_files).identity
-    workspace_id = f"src-{run_id}-{tree_identity[:12]}"
+    workspace_id = delivery_workspace(run_id, tree_identity)
     # A resumed run delivers again: an earlier attempt's workspace, its head already that
     # attempt's candidate, is released before seeding, and this one at its teardown, once the
     # capture has read it back (#2473's release; the G4 of #2484).

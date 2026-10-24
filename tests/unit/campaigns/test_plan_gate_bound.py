@@ -122,6 +122,7 @@ async def _world():
         evaluate_outcome=None,
         outcome_section=None,
         intervention_section=None,
+        campaign_branch=None,
         clock=lambda: now[0],
     )
     return campaigns, cycles, progress, now

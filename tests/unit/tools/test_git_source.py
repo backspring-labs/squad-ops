@@ -15,7 +15,7 @@ import pytest
 
 from adapters.tools.git_source import GitSourceRepository
 from squadops.campaigns.evaluator_trees import FileTree
-from squadops.projects.models import SourceUnavailable
+from squadops.projects.models import RefMoved, SourceUnavailable
 from squadops.projects.registration import LocatorPolicy
 from tests.fixtures.shared_contract.repository import build_repository, recorded
 
@@ -181,6 +181,76 @@ async def test_a_capture_names_only_our_namespace_and_a_parent_the_clone_holds(
             ref=ref or "refs/squadops/cyc_1/run_1",
             message="m\n",
         )
+
+
+async def test_a_campaign_branch_moves_only_from_the_commit_its_mover_expected(product, clones):
+    """SIP-0109 §24cd point 2: the ref follows its control row by compare-and-swap. Bugs caught:
+    - a move from a stale expected commit that lands anyway, so a follow racing the startup
+      re-sync puts the branch back on a commit its row has left;
+    - a create that overwrites a branch already there;
+    - the mirror's ``fetch --prune`` deleting the branch, which the product never has;
+    - a ref read by prefix, so a capture's ref under ``refs/squadops/<cycle>/`` answers for a
+      name that holds nothing."""
+    first = product.first_commit
+    second = await clones.sync("prj-tally", str(product.path), "refs/heads/main")
+    branch = "refs/squadops/campaign/cmp_branch000001"
+    await clones.update_ref("prj-tally", branch, new_commit=first, expected_commit=None)
+
+    with pytest.raises(RefMoved) as stale:
+        await clones.update_ref("prj-tally", branch, new_commit=second, expected_commit=second)
+    with pytest.raises(RefMoved) as exists:
+        await clones.update_ref("prj-tally", branch, new_commit=second, expected_commit=None)
+    held_after_refusals = await clones.ref_commit("prj-tally", branch)
+    await clones.update_ref("prj-tally", branch, new_commit=second, expected_commit=first)
+    (product.path / "NOTES.md").write_text("an outside change\n")
+    _git(product.path, "add", "NOTES.md")
+    _git(product.path, "commit", "-q", "-m", "outside")
+    await clones.sync("prj-tally", str(product.path), "refs/heads/main")
+    await clones.commit_tree(
+        "prj-tally",
+        parent=second,
+        files={"a.txt": b"a\n"},
+        executable=(),
+        ref="refs/squadops/cyc_1/run_1",
+        message="m\n",
+    )
+
+    assert (stale.value.held, exists.value.held, held_after_refusals) == (first, first, first)
+    assert (stale.value.reason, exists.value.reason) == ("ref_moved", "ref_moved")
+    assert await clones.ref_commit("prj-tally", branch) == second
+    assert await clones.ref_commit("prj-tally", "refs/squadops/cyc_1") is None
+    assert await clones.ref_commit("prj-tally", "refs/squadops/campaign/cmp_none") is None
+
+
+@pytest.mark.parametrize(
+    ("ref", "new", "reason"),
+    [
+        ("refs/heads/main", "FIRST", "ref_refused"),
+        ("refs/squadops/../heads/main", "FIRST", "ref_refused"),
+        ("refs/squadops/campaign/cmp_1", "f" * 40, "read"),
+        ("refs/squadops/campaign/cmp_1", "HEAD", "not_a_commit"),
+    ],
+    ids=["a-product-branch", "escaping-ref", "commit-not-in-clone", "not-a-commit-id"],
+)
+async def test_a_branch_moves_only_in_our_namespace_and_to_a_commit_the_clone_holds(
+    product, clones, ref, new, reason
+):
+    """Bugs caught: a move of the product's own branch in the clone (the next fetch would undo
+    it, or a push publish it); a branch left naming an object nothing can check out. Each is
+    refused before anything moves, and is never read as a lost compare-and-swap."""
+    await clones.sync("prj-tally", str(product.path), "refs/heads/main")
+    new = product.first_commit if new == "FIRST" else new
+
+    with pytest.raises(SourceUnavailable) as refused:
+        await clones.update_ref("prj-tally", ref, new_commit=new, expected_commit=None)
+
+    assert refused.value.reason == reason
+    assert not isinstance(refused.value, RefMoved)
+    assert _git(clones._clone_dir("prj-tally"), "rev-parse", "refs/heads/main") == (
+        product.second_commit
+    )
+    if ref.startswith("refs/squadops/campaign/"):
+        assert await clones.ref_commit("prj-tally", ref) is None
 
 
 @pytest.mark.parametrize(

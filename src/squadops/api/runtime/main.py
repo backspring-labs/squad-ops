@@ -64,6 +64,7 @@ from squadops.api.runtime.startup_reaps import (
 )
 from squadops.bootstrap.secrets import secret_provider_for
 from squadops.campaigns.box_reading import BoxReader
+from squadops.campaigns.campaign_branch import CampaignBranch
 from squadops.campaigns.progress import CampaignProgress
 from squadops.campaigns.projection import ProjectingCampaignRegistry
 from squadops.config import config_fingerprint, load_config, redact_config
@@ -647,6 +648,11 @@ async def _init_cycle_subsystem(state, config, pool) -> None:
         outcome_section=partial(campaign_outcomes, scenario_store),
         # SIP-0113 §4.3, §4.6 (#2418): the ledger's entries, which AOR reads, in the package too.
         intervention_section=partial(campaign_interventions, intervention_ledger),
+        # SIP-0109 §24bv point 2: a repository-backed Campaign's branch, in its Project's managed
+        # clone. The control log is its authority, and the clone's ref follows (§24cd point 2).
+        campaign_branch=CampaignBranch(
+            projects=project_registry, repository=state.source_repository
+        ),
     )
 
     flow_executor = create_flow_executor(
@@ -979,6 +985,11 @@ async def _sweep_campaigns(state) -> None:
                 logger.warning("campaign_records_reheard_by_the_sweep campaigns=%s", recorded)
         except Exception:
             logger.exception("campaign_record_rehear_sweep_failed")
+        try:
+            # §24cd point 2: a campaign branch's ref a failed follow left behind its row.
+            await state.campaign_progress.resync_campaign_branches()
+        except Exception:
+            logger.exception("campaign_branch_resync_sweep_failed")
 
 
 async def _resume_campaigns(state) -> None:
@@ -986,7 +997,13 @@ async def _resume_campaigns(state) -> None:
     started. Then §12a (#1803): every launched cycle that ended with no decision is re-heard
     from its recorded ending, and (§24cc) every calibration record a start wrote and nothing
     decided. After the drain, never inside it: a decision launches through the drain, which
-    holds its lock."""
+    holds its lock. First of all (§24cd point 2), each campaign branch's ref a stop left behind its
+    row is moved to the row. The row is the authority and every reader reads it, so a re-sync that
+    fails is logged and the resumption goes on."""
+    try:
+        await state.campaign_progress.resync_campaign_branches()
+    except Exception:
+        logger.exception("campaign_branch_resync_failed")
     await state.campaign_launch.drain()
     await state.campaign_progress.rehear_ended(await state.campaign_launch.launched_cycles())
     await state.campaign_progress.rehear_calibration_records()

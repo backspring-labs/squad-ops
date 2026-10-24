@@ -20,6 +20,9 @@ from typing import Any
 from squadops.cycles.models import GateDecisionValue
 from squadops.stacks.scaffold import hosts_campaign_increments
 
+#: A commit id, as the managed clone names one (SIP-0112 E.4.2).
+_COMMIT = re.compile(r"[0-9a-f]{40}")
+
 # =============================================================================
 # Enums
 # =============================================================================
@@ -468,11 +471,16 @@ class AcceptedTree:
     It names exactly one of two things (§24cc): the cycle whose candidate it is, or, on a
     repository-backed Project, the calibration record whose commit it is (§24bv point 1). A reader
     that needs a cycle reads ``cycle_id`` and refuses a record by name; it never passes ``None``
-    on as if it were a cycle."""
+    on as if it were a cycle.
+
+    On a repository-backed Project it is the head of the campaign's branch (§24bv point 2), and
+    ``commit`` is that head: the record's commit, or an increment's captured one. A sample
+    application's tree is the vault's, and names no commit."""
 
     identity: str
     cycle_id: str | None = None
     calibration_record_id: str | None = None
+    commit: str | None = None
 
     def __post_init__(self) -> None:
         _require_text("AcceptedTree", identity=self.identity)
@@ -485,6 +493,10 @@ class AcceptedTree:
             value = getattr(self, name)
             if value is not None and not value.strip():
                 raise ValueError(f"AcceptedTree.{name} is required")
+        if self.commit is not None and not _COMMIT.fullmatch(self.commit):
+            raise ValueError(
+                f"AcceptedTree.commit is a 40-character commit id, not {self.commit!r}"
+            )
 
 
 @dataclass(frozen=True)

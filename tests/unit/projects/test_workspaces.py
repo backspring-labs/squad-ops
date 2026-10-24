@@ -28,7 +28,17 @@ from squadops.projects.development_configuration import parse_configuration
 from squadops.projects.models import ProjectLifecycleStatus, ProjectSource
 from squadops.projects.registration import LocatorPolicy
 from squadops.projects.verification import attributed
-from squadops.projects.workspaces import SandboxUnavailable, capture_inherited_baseline, run_checks
+from squadops.projects.workspaces import (
+    CAPTURED,
+    SEEDED,
+    CapturedChange,
+    SandboxUnavailable,
+    SourceMapping,
+    capture_inherited_baseline,
+    captured_change,
+    delivery_workspace,
+    run_checks,
+)
 from squadops.sandbox.findings import read
 from squadops.sandbox.models import CommandOutcome, RevisionOrigin
 from squadops.sandbox.workspace import WorkspaceStore
@@ -361,3 +371,39 @@ async def test_a_change_that_adds_a_failure_inside_the_inherited_one_is_a_regres
     )
     assert any("test_reads_a_plain_entry" in key for key in parse.read["grown"])
     assert all(c.read is None for i, c in by_id.items() if i != "parse")
+
+
+def _mapping(direction: str, workspace: str, commit: str, cycle: str = "cyc_1") -> SourceMapping:
+    return SourceMapping("prj-tally", workspace, direction, commit, "rev", f"tree-{commit}", cycle)
+
+
+def test_a_runs_capture_is_read_with_the_commit_its_own_workspace_was_seeded_at():
+    """Contract 3's reader, shared by the contribution and the campaign branch's promotion
+    (SIP-0109 §24bv point 2). A resumed run delivered twice, a second run of the cycle captured,
+    and the baseline's own seed is in the same mappings. Bugs caught: an earlier attempt's capture
+    read for a resumed run; another run's capture read for this one; or a parent read from a seed
+    of another workspace, so a promotion takes a capture built elsewhere for one on the head."""
+    run_1 = delivery_workspace("run_1", "a" * 64)
+    run_1_again = delivery_workspace("run_1", "b" * 64)
+    mappings = [
+        _mapping(SEEDED, "baseline-prj-tally", "0" * 40, cycle=None),
+        _mapping(SEEDED, run_1, "1" * 40),
+        _mapping(CAPTURED, run_1, "2" * 40),
+        _mapping(SEEDED, run_1_again, "3" * 40),
+        _mapping(CAPTURED, run_1_again, "4" * 40),
+        _mapping(SEEDED, delivery_workspace("run_10", "c" * 64), "5" * 40),
+        _mapping(CAPTURED, delivery_workspace("run_10", "c" * 64), "6" * 40),
+    ]
+
+    assert captured_change(mappings, "cyc_1", "run_1") == CapturedChange(
+        "4" * 40, "3" * 40, f"tree-{'4' * 40}", run_1_again
+    )
+    assert captured_change(mappings, "cyc_2", "run_1") is None
+
+
+def test_a_capture_whose_workspace_records_no_seed_is_refused_by_name():
+    """Bug caught: a capture with no seed of its own read with no parent, or another's."""
+    workspace = delivery_workspace("run_1", "a" * 64)
+
+    with pytest.raises(ValueError, match=f"workspace {workspace} records the capture"):
+        captured_change([_mapping(CAPTURED, workspace, "2" * 40)], "cyc_1", "run_1")

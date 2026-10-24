@@ -103,8 +103,11 @@ class CalibrationRecord:
 
     @property
     def accepted_tree(self) -> AcceptedTree:
-        """The tree a promotion of this record accepts: its commit's, naming the record."""
-        return AcceptedTree(self.tree_identity, calibration_record_id=self.record_id)
+        """The tree a promotion of this record accepts: its commit's, naming the record. The
+        commit is where the campaign's branch starts (§24bv point 2)."""
+        return AcceptedTree(
+            self.tree_identity, calibration_record_id=self.record_id, commit=self.commit
+        )
 
     def to_binding(self) -> dict[str, Any]:
         return {

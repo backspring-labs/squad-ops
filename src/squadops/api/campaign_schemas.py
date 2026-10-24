@@ -185,11 +185,13 @@ class EscalationResponse(BaseModel):
 
 class AcceptedTreeDTO(BaseModel):
     """The accepted tree's identity and the one thing it names (§24cc): the cycle whose candidate
-    it is, or, on a repository-backed Project, the calibration record whose commit it is."""
+    it is, or, on a repository-backed Project, the calibration record whose commit it is. On such
+    a Project, ``commit`` is the head of the campaign's branch (§24bv point 2)."""
 
     identity: str
     cycle_id: str | None = None
     calibration_record_id: str | None = None
+    commit: str | None = None
 
 
 class CampaignResponse(BaseModel):

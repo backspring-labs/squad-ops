@@ -32,6 +32,7 @@ from squadops.campaigns.calibration_record import (
     CalibrationRecord,
     recorded_calibration,
 )
+from squadops.campaigns.campaign_branch import CampaignBranch, PromotionRefused
 from squadops.campaigns.change_request import ChangeRequest, load_stored_change_request
 from squadops.campaigns.continuation import (
     CampaignCounters,
@@ -223,6 +224,7 @@ def decision_transition(
     verdict: RunVerdict | None,
     launch: LaunchRequest | None,
     unbuilt: str | None = None,
+    promotion_refused: str | None = None,
 ) -> CampaignTransition:
     """The decision's one control-log row (§10). Its binding records the decision whole — the
     row, the ending and verdict it read, and the outcome or the action with its guard — so the
@@ -235,6 +237,9 @@ def decision_transition(
     - a launch action under ``proceed`` writes its intent (``launch``). ``unbuilt`` names an
       action whose cycle cannot be launched yet; the campaign escalates with that reason rather
       than pretend to launch it.
+
+    ``promotion_refused`` names why an accepted cycle's tree wasn't promoted (§24ce), whatever
+    the decision. Only a row that has one carries the key, so every other row hashes as before.
     """
     binding: dict = {
         "cycle_id": decision.cycle_id,
@@ -242,6 +247,8 @@ def decision_transition(
         "ending": ending.value,
         "verdict": verdict.value if verdict else None,
     }
+    if promotion_refused is not None:
+        binding["promotion_refused"] = promotion_refused
     decided, next_state, outcome = _decided(decision, unbuilt)
     return CampaignTransition(
         operation=ControlOperation.DECIDE,
@@ -586,6 +593,10 @@ class CampaignProgress:
         #: ``(campaign_id, cycle_ids, *, named_goals)``: SIP-0113's section (``campaign_outcomes``).
         outcome_section: Callable[..., Awaitable[dict | None]] | None,
         intervention_section: Callable[[str, list[ControlLogEntry]], Awaitable[dict]] | None,
+        #: §24bv point 2: a repository-backed Campaign's branch in the managed clone. ``None``
+        #: where no project registry and managed clone are wired: a repository-backed increment's
+        #: promotion is then refused, and the campaign escalates naming it.
+        campaign_branch: CampaignBranch | None,
         clock: Callable[[], datetime] = lambda: datetime.now(UTC),
     ) -> None:
         self._campaigns = campaigns
@@ -601,6 +612,7 @@ class CampaignProgress:
         self._outcome_section = outcome_section
         # SIP-0113 §4.3, §4.6 (#2418): the package's intervention ledger, which AOR reads.
         self._intervention_section = intervention_section
+        self._campaign_branch = campaign_branch
         self._clock = clock
         # #1972: the cycles being heard now. The completion hook and the sweep's re-hearing share
         # this instance, so a cycle the hook is still deciding is not decided a second time
@@ -654,8 +666,9 @@ class CampaignProgress:
         verdict = cycle_verdict(latest, ended)
 
         # §12a: a calibration's tree, and an increment's when its own acceptance holds too (§8.4).
+        not_promoted = None
         if kind in _PROMOTED_KINDS and verdict is RunVerdict.ACCEPTED:
-            campaign = await self._promote(campaign, cycle, last_run, evaluation)
+            campaign, not_promoted = await self._promoted(campaign, cycle, last_run, evaluation)
         if campaign.state in _RUNNING_STATES:
             campaign = await self._evaluating(campaign, cycle)
 
@@ -675,8 +688,9 @@ class CampaignProgress:
         )
         launch, unbuilt = None, None
         if not decision.terminal and decision.guard is Guard.PROCEED:
-            built = await self._launch_for(campaign, decision.action, cycle, latest)
-            launch, unbuilt = (built, None) if isinstance(built, LaunchRequest) else (None, built)
+            launch, unbuilt = await self._decided_launch(
+                campaign, decision.action, cycle, latest, not_promoted
+            )
         try:
             result = await self._campaigns.transition(
                 campaign.campaign_id,
@@ -687,6 +701,7 @@ class CampaignProgress:
                     verdict=verdict,
                     launch=launch,
                     unbuilt=unbuilt,
+                    promotion_refused=not_promoted,
                 ),
             )
         except ControlOperationRefused as refused:
@@ -700,6 +715,37 @@ class CampaignProgress:
         if decision.terminal:
             await self.materialize_package(campaign.campaign_id)
         return decision
+
+    async def _promoted(
+        self, campaign: Campaign, cycle: Cycle, last_run: Run, evaluation: dict | None
+    ) -> tuple[Campaign, str | None]:
+        """The campaign after the accepted cycle's promotion, and ``None``; or, for an increment
+        its campaign branch can't take (§24ce), the campaign unchanged and why. Nothing moved
+        then: the decision names the refusal, and nothing launches on the tree the increment
+        would have replaced."""
+        try:
+            return await self._promote(campaign, cycle, last_run, evaluation), None
+        except PromotionRefused as e:
+            logger.error(
+                "campaign_promotion_refused", extra={"cycle_id": cycle.cycle_id, "refusal": str(e)}
+            )
+            return campaign, str(e)
+
+    async def _decided_launch(
+        self,
+        campaign: Campaign,
+        action: PendingAction | None,
+        cycle: Cycle,
+        latest: CycleAssessment,
+        not_promoted: str | None,
+    ) -> tuple[LaunchRequest | None, str | None]:
+        """The launch a decision under ``proceed`` writes, or why it can't (``unbuilt``). An
+        accepted cycle that wasn't promoted launches nothing (§24ce): the campaign escalates."""
+        if not_promoted is not None:
+            return None, f"cycle {cycle.cycle_id} was accepted and not promoted: {not_promoted}"
+        assert action is not None
+        built = await self._launch_for(campaign, action, cycle, latest)
+        return (built, None) if isinstance(built, LaunchRequest) else (None, built)
 
     async def _outcome_evaluated(self, cycle: Cycle) -> None:
         """SIP-0113 §4.1 (#2414): the cycle evaluated against its campaign's pinned suite, before
@@ -723,7 +769,16 @@ class CampaignProgress:
         """§12a: the accepted tree is the files the cycle delivered, identified by their hash,
         in a transition of its own keyed by the cycle and that identity. An increment's new
         criteria are frozen with it (§8.1): each bundle stored, and named on the row, so every
-        later increment is launched with it."""
+        later increment is launched with it.
+
+        A repository-backed increment's is the commit its run captured, on the campaign branch
+        (``_promote_onto_branch``)."""
+        if (
+            cycle.source_context is not None
+            and cycle.kind is not None
+            and CycleKind(cycle.kind) in _INCREMENT_KINDS
+        ):
+            return await self._promote_onto_branch(campaign, cycle, last_run, evaluation)
         refs = await self._vault.list_artifacts(cycle_id=cycle.cycle_id, run_id=last_run.run_id)
         # #1887: an increment delivered its change, not the app — the whole tree is the one it
         # was built on, overlaid with what it delivered.
@@ -756,6 +811,56 @@ class CampaignProgress:
                 accepted=AcceptedTree(identity, cycle.cycle_id),
             ),
         )
+        return result.campaign
+
+    async def _promote_onto_branch(
+        self, campaign: Campaign, cycle: Cycle, last_run: Run, evaluation: dict | None
+    ) -> Campaign:
+        """§24bv point 2 (§24cd point 2): a repository-backed increment's accepted tree is the
+        commit its run captured (contract 3), taken only when it was built on the branch's head.
+        The row commits first, naming the commit beside the identity, and the branch's ref then
+        follows it. Nothing is composed from the vault or stored there: the tree is the managed
+        clone's. The increment's new criteria are frozen as any increment's are (§8.1).
+
+        Raises:
+            PromotionRefused: Nothing was written (``CampaignBranch.promotion``).
+        """
+        if self._campaign_branch is None:
+            raise PromotionRefused(
+                "this runtime reads no managed clone, so a repository-backed increment can't be "
+                "promoted onto its campaign branch"
+            )
+        refs = await self._vault.list_artifacts(cycle_id=cycle.cycle_id, run_id=last_run.run_id)
+        promotion = await self._campaign_branch.promotion(
+            campaign, cycle.cycle_id, last_run.run_id, refs
+        )
+        accepted = promotion.accepted
+        assert accepted.commit is not None
+        frozen = await self._freeze_bundles(cycle, last_run, evaluation)
+        result = await self._campaigns.transition(
+            campaign.campaign_id,
+            CampaignTransition(
+                operation=ControlOperation.PROMOTE,
+                actor="squadops",
+                actor_role=COMPLETION_ROLE,
+                reason=f"cycle {cycle.cycle_id} accepted: its capture {accepted.commit[:12]}, on "
+                "the campaign branch",
+                idempotency_key=f"promote:{cycle.cycle_id}:{accepted.identity}",
+                next_state=campaign.state,
+                target=cycle.cycle_id,
+                binding={
+                    "cycle_id": cycle.cycle_id,
+                    "identity": accepted.identity,
+                    "commit": accepted.commit,
+                    "parent_commit": promotion.parent,
+                    "verification_ref": promotion.verification_ref,
+                    "frozen_criteria": frozen,
+                    "retired_criteria": list((evaluation or {}).get("retired") or ()),
+                },
+                accepted=accepted,
+            ),
+        )
+        await self._campaign_branch.follow(result.campaign, previous=promotion.parent)
         return result.campaign
 
     async def rehear_ended(self, cycle_ids: Iterable[str]) -> list[str]:
@@ -836,7 +941,10 @@ class CampaignProgress:
     async def _promote_record(self, campaign: Campaign, record: CalibrationRecord) -> Campaign:
         """§12a for a calibration record: the accepted tree is the record's commit, by its tree
         identity, naming the record (§24cc). Nothing is stored in the vault: the tree is the
-        managed clone's at that commit, and nothing is frozen, since no criterion was judged."""
+        managed clone's at that commit, and nothing is frozen, since no criterion was judged.
+
+        The campaign's branch starts there (§24bv point 2): its ref is created once the row has
+        committed. A replayed promotion finds it made."""
         accepted = record.accepted_tree
         result = await self._campaigns.transition(
             campaign.campaign_id,
@@ -861,7 +969,17 @@ class CampaignProgress:
                 accepted=accepted,
             ),
         )
+        if self._campaign_branch is not None:
+            await self._campaign_branch.follow(result.campaign, previous=None)
         return result.campaign
+
+    async def resync_campaign_branches(self) -> list[str]:
+        """§24cd point 2: every campaign branch whose ref disagrees with its row (a stop between
+        a promotion's row and its ref, or a follow that failed) is moved to the row, at startup
+        and on the sweep's interval. Returns the campaigns whose ref moved."""
+        if self._campaign_branch is None:
+            return []
+        return await self._campaign_branch.resync(self._campaigns)
 
     async def rehear_calibration_records(self) -> list[str]:
         """§12a for a calibration record (§24cc): each calibrating campaign whose start wrote a
@@ -1658,15 +1776,19 @@ class CampaignProgress:
         if campaign.accepted is None:
             return "the campaign has no accepted tree to propose against"
         accepted_cycle = campaign.accepted.cycle_id
-        if accepted_cycle is None:
-            # §24cc: the accepted tree is a calibration record's commit, which has no interface
-            # manifest. A repository-backed proposal reads the product's tree, its derived profile
-            # and the previous verification instead (§24bv point 5), which is not built yet.
+        if accepted_cycle is None or campaign.accepted.commit is not None:
+            # §24cc: the accepted tree is a calibration record's commit, or (§24bv point 2) an
+            # increment's on the campaign branch, neither with an interface manifest. A
+            # repository-backed proposal reads the product's tree, its derived profile and the
+            # previous verification instead (§24bv point 5), which is not built yet.
+            named = (
+                f"calibration record {campaign.accepted.calibration_record_id}'s commit"
+                if accepted_cycle is None
+                else f"cycle {accepted_cycle}'s capture, on the campaign branch"
+            )
             return (
-                f"the accepted tree is calibration record "
-                f"{campaign.accepted.calibration_record_id}'s commit: a proposal on a "
-                "repository-backed Project reads the product's tree (SIP-0109 §24bv point 5), "
-                "which is not built yet"
+                f"the accepted tree is {named}: a proposal on a repository-backed Project reads "
+                "the product's tree (SIP-0109 §24bv point 5), which is not built yet"
             )
         baseline = await self._accepted_manifest(accepted_cycle)
         if baseline is None:

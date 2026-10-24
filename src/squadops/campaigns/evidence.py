@@ -407,9 +407,15 @@ def _accepted(doc: dict) -> list[str]:
                 f"tree `{b['identity'][:12]}`"
             )
             continue
+        # §24bv point 2: an increment on the campaign branch is its captured commit there.
+        shipped = (
+            f"commit `{b['commit'][:12]}` on the campaign branch"
+            if b.get("commit")
+            else f"{b.get('files', '?')} files"
+        )
         lines.append(
             f"- {kinds.get(b['cycle_id'], 'cycle')} `{b['cycle_id']}`: tree `{b['identity'][:12]}`, "
-            f"{b.get('files', '?')} files"
+            f"{shipped}"
         )
         lines += [
             f"  - froze {f['criterion_id']}: {f.get('statement') or 'statement not recorded'}"

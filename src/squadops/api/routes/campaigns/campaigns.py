@@ -1045,6 +1045,7 @@ def _campaign(c: Campaign) -> CampaignResponse:
                 identity=c.accepted.identity,
                 cycle_id=c.accepted.cycle_id,
                 calibration_record_id=c.accepted.calibration_record_id,
+                commit=c.accepted.commit,
             )
             if c.accepted
             else None

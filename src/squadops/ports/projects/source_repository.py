@@ -54,6 +54,31 @@ class SourceRepositoryPort(ABC):
         """
 
     @abstractmethod
+    async def update_ref(
+        self, project_id: str, ref: str, *, new_commit: str, expected_commit: str | None
+    ) -> None:
+        """Move ``ref`` (under ``refs/squadops/``) in the managed clone to ``new_commit``, only if
+        it names ``expected_commit`` now: a compare-and-swap. ``None`` expects no such ref, so the
+        call creates it. Only the clone's ref moves: nothing is pushed or forced, and a later sync
+        never prunes it (SIP-0109 §24cd point 2's campaign branch).
+
+        Raises:
+            RefMoved: The ref names another commit, or none, or already exists. ``held`` says
+                which, and nothing moved.
+            SourceUnavailable: The clone doesn't hold ``new_commit`` as a commit, or the ref isn't
+                one of ours.
+        """
+
+    @abstractmethod
+    async def ref_commit(self, project_id: str, ref: str) -> str | None:
+        """The commit ``ref`` (under ``refs/squadops/``) names in the managed clone, or ``None``
+        when the clone has no such ref.
+
+        Raises:
+            SourceUnavailable: The clone doesn't exist, or the ref isn't one of ours.
+        """
+
+    @abstractmethod
     async def export_patch(self, project_id: str, commit: str) -> bytes:
         """``commit``'s change from its parent as a mail-formatted patch, binary-safe, that
         ``git am`` applies: FR-06's ``patch_export`` contribution.

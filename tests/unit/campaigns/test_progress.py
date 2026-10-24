@@ -19,10 +19,12 @@ import yaml
 from adapters.cycles.memory_campaign_registry import MemoryCampaignRegistry
 from adapters.cycles.memory_cycle_registry import MemoryCycleRegistry
 from adapters.noop.ports import NoOpFailurePatternRecall, NoOpProposalEvidence
+from squadops.campaigns.campaign_branch import CampaignBranch
 from squadops.campaigns.continuation import CycleEnding
 from squadops.campaigns.evaluator_trees import FileTree
 from squadops.campaigns.launch_requests import start_transition
 from squadops.campaigns.models import (
+    AcceptedTree,
     CampaignOutcome,
     CampaignState,
     ControlOperation,
@@ -119,7 +121,7 @@ class _Vault:
 
 
 class _World:
-    def __init__(self, verdict: RunVerdict | None, evaluator=None) -> None:
+    def __init__(self, verdict: RunVerdict | None, evaluator=None, branch=None) -> None:
         from squadops.execution.dispatched_flow_executor import DispatchedFlowExecutor
 
         self.campaigns = MemoryCampaignRegistry()
@@ -138,6 +140,7 @@ class _World:
             evaluate_outcome=self.evaluations,
             outcome_section=None,
             intervention_section=None,
+            campaign_branch=branch,
             clock=lambda: self.now,
         )
         self.executor = DispatchedFlowExecutor(
@@ -214,9 +217,10 @@ async def calibrating() -> _World:
         evaluator=None,
         overrides=None,
         workload="implementation",
+        branch=None,
         **policy_overrides,
     ):
-        w = _World(verdict, evaluator)
+        w = _World(verdict, evaluator, branch)
         draft = campaign(
             CID,
             policy=policy(
@@ -918,6 +922,50 @@ async def test_an_accepted_increment_is_promoted_and_its_criteria_frozen_for_the
     assert proposal["prior_criteria"] == ["C1"]
     assert proposal["frozen_criteria"][0]["bundle_ref"] == frozen["bundle_ref"]
     assert proposal["accepted_cycle_id"] == "cyc_inc"
+
+
+class _NoClone:
+    """A sample application has no managed clone and no source mappings: any read or move of one
+    by its promotion is the bug."""
+
+    def __getattr__(self, name):
+        async def reached(*args, **kwargs):
+            raise AssertionError(f"a sample application's promotion reached {name}")
+
+        return reached
+
+
+async def test_a_sample_applications_promotions_stay_the_vaults_with_a_branch_wired(
+    calibrating, stored
+):
+    """§24bv's "What stays": the runtime always wires the campaign branch (§24bv point 2), so this
+    world does too, over a clone and mappings that fail on any touch. Bugs caught: a sample
+    application's calibration or increment routed onto the branch's path, where it is refused (or
+    fails), so the campaign never accepts an increment; or its tree given a commit, which every
+    reader then takes for a repository-backed Project's."""
+    w, run = await calibrating(
+        RunVerdict.ACCEPTED, branch=CampaignBranch(projects=_NoClone(), repository=_NoClone())
+    )
+    await w.end("cyc_cal", run, CycleStopReason.SEQUENCE_COMPLETED)
+    stored["art_eval"] = (
+        _ref("art_eval", "increment_evaluation.json", "increment_evaluation", 20),
+        _evaluation("accepted"),
+    )
+    increment_run = await w.launched_cycle("increment", "cyc_inc", "implementation", "completed")
+
+    await w.end("cyc_inc", increment_run, CycleStopReason.SEQUENCE_COMPLETED)
+
+    log = await w.campaigns.control_log(CID)
+    promotions = [e for e in log if e.operation is ControlOperation.PROMOTE]
+    stored_campaign = await w.campaigns.get_campaign(CID)
+    assert [p.target for p in promotions] == ["cyc_cal", "cyc_inc"]
+    assert [("tree_ref" in p.binding, "commit" in p.binding) for p in promotions] == [
+        (True, False),
+        (True, False),
+    ]
+    assert stored_campaign.accepted == AcceptedTree(promotions[-1].binding["identity"], "cyc_inc")
+    assert (log[-1].binding["row"], log[-1].binding["action"]) == (7, "propose")
+    assert "promotion_refused" not in log[-1].binding
 
 
 async def test_a_frozen_criterion_carries_what_it_asserts_to_the_next_proposal(calibrating, stored):

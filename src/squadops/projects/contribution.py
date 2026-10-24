@@ -23,7 +23,7 @@ from typing import Any
 
 from squadops.projects.development_configuration import submission_digest
 from squadops.projects.models import ContributionMode
-from squadops.projects.workspaces import CAPTURED, SEEDED
+from squadops.projects.workspaces import captured_change
 
 #: The modes 2.4 contributes through. A direct push is integration, and isn't delegated in 2.4.
 CONTRIBUTION_MODES_MADE = (ContributionMode.PATCH_EXPORT, ContributionMode.REVIEW_REQUEST)
@@ -100,25 +100,13 @@ async def contribute(
     for existing in await registry.contributions(project_id):
         if (existing.cycle_id, existing.run_id) == (cycle_id, run_id):
             return existing, True
-    mappings = await registry.source_mappings(project_id)
-    captured = [
-        m
-        for m in mappings
-        if m.direction == CAPTURED
-        and m.cycle_id == cycle_id
-        and m.workspace_id.startswith(f"src-{run_id}-")
-    ]
-    if not captured:
+    capture = captured_change(await registry.source_mappings(project_id), cycle_id, run_id)
+    if capture is None:
         raise ContributionRefused(
             f"run {run_id} of cycle {cycle_id} captured no accepted change: only a change the "
             "product's own checks accepted is contributed"
         )
-    capture = captured[-1]
-    parent = next(
-        m.commit
-        for m in mappings
-        if m.direction == SEEDED and m.workspace_id == capture.workspace_id
-    )
+    parent = capture.parent
     mode = project.source.contribution_mode
     branch = review_url = None
     if mode == ContributionMode.REVIEW_REQUEST:
