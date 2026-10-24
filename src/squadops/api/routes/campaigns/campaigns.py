@@ -545,14 +545,18 @@ async def read_ledger(
     campaign_id: str,
     identity: Identity | None = Depends(require_scopes(Scope.CAMPAIGNS_READ)),
 ) -> list[LedgerEntryResponse]:
-    """The proposal ledger (§9.4), read from the control log: per proposal version, its
-    submission, its ruling, its cycle's outcome and its classification."""
+    """The proposal ledger (§9.4), read from the control log and the launch outbox: per proposal
+    version, its submission, its ruling, the cycles that carried it with their outcomes (#2578),
+    and its classification."""
     import dataclasses
 
-    await _registry(request).get_campaign(campaign_id)
+    registry = _registry(request)
+    await registry.get_campaign(campaign_id)
     return [
         LedgerEntryResponse(**dataclasses.asdict(e))
-        for e in ledger(await _registry(request).control_log(campaign_id))
+        for e in ledger(
+            await registry.control_log(campaign_id), await registry.launch_intents(campaign_id)
+        )
     ]
 
 
