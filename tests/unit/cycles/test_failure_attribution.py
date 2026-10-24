@@ -106,8 +106,9 @@ class TestEverySourceValueHasExactlyOneDisposition:
             )
 
     def test_the_reserved_class_has_no_manufactured_mapping(self):
-        """``input_contract_failure`` is reserved: no reachable evidence establishes it, and a
-        mapping invented to use it would attribute a cause the evidence does not show."""
+        """``input_contract_failure`` is read from the input-refused terminal only (#2553): no
+        source vocabulary's value establishes it, and a mapping invented to use it would
+        attribute a cause the evidence does not show."""
         assert not [
             d for d in DISPOSITIONS if d.attribution == AttributionClass.INPUT_CONTRACT_FAILURE
         ]
@@ -315,6 +316,12 @@ class TestThePrimaryIsTheTerminalEvidence:
                 ),
                 AttributionClass.VERIFICATION_ARTIFACT_FAILURE,
                 [AttributionClass.VERIFICATION_ARTIFACT_FAILURE] * 2,
+            ),
+            # #2553: a handler refused its task's inputs, and the run ended there.
+            (
+                TerminalEvidence(kind=TerminalKind.INPUT_REFUSED),
+                AttributionClass.INPUT_CONTRACT_FAILURE,
+                [],
             ),
             (
                 TerminalEvidence(kind=TerminalKind.OTHER),

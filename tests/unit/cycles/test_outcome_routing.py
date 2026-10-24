@@ -15,6 +15,7 @@ from unittest.mock import AsyncMock, patch
 import pytest
 
 from adapters.noop.ports import NoOpFailurePatternRecall, NoOpProposalEvidence
+from squadops.cycles.failure_attribution import TerminalKind
 from squadops.cycles.models import (
     AgentProfileEntry,
     Cycle,
@@ -23,6 +24,7 @@ from squadops.cycles.models import (
     SquadProfile,
     TaskFlowPolicy,
 )
+from squadops.cycles.run_loop_summary import RunTerminalDecision
 from squadops.cycles.task_outcome import TaskOutcome
 from squadops.tasks.models import INPUT_REFUSAL_EVIDENCE, TaskResult
 
@@ -477,8 +479,10 @@ class TestInputRefusal:
         self, executor, mock_queue, mock_registry
     ):
         refusal = "'artifact_contents' or 'artifact_vault' is required for build tasks"
+        refused_ids: list[str] = []
 
         def responder(env):
+            refused_ids.append(env["task_id"])
             return TaskResult(
                 task_id=env["task_id"],
                 status="FAILED",
@@ -502,6 +506,12 @@ class TestInputRefusal:
         ]  # fmt: skip
         assert "refused its inputs" in failed.kwargs["failure_reason"]
         assert refusal in failed.kwargs["failure_reason"]
+        # #2553's remainder: the run's recorded ending names the refusal, so its attribution
+        # reads input_contract_failure rather than an unknown ending.
+        _, summary = mock_registry.record_run_loop_summary.await_args.args
+        assert summary.terminal == RunTerminalDecision(
+            kind=TerminalKind.INPUT_REFUSED, task_id=refused_ids[0]
+        )
 
     async def test_a_failure_without_a_refusal_still_retries(
         self, executor, mock_queue, mock_registry
