@@ -131,7 +131,8 @@ Kept by the rule in CLAUDE.md ("SIP System"): one row per part, updated in the P
 | proposal-run retries bound failed proposal cycles in a row, and the failure past them pauses (§24bn) | **shipped** | 2.3.0, PR #2245, issue #2231 |
 | a campaign declares its stack, and every cycle it launches carries it (§24bs) | **shipped** | 2.4.0, PR #2446, issue #2443 |
 | a fresh proposal is shown each proposal its campaign never approved, with the ruling's reason (§24bu) | **shipped** | 2.4.0, PR #2598, issue #2593 |
-| a Campaign on a repository-backed Project: calibration as a record, increments on a campaign branch, proposals from the product's tree (§24bv; SIP-0112 H.4) | **placed** | 2.5.0, #2619 |
+| a Campaign on a repository-backed Project, point 1: calibration as a record, not a cycle (§24bv point 1, §24cc) | **shipped** | 2.5.0, PR #2738 |
+| a Campaign on a repository-backed Project, points 2–5: increments on a campaign branch, their pin and acceptance on the product's runner, upstream moving, proposals from the product's tree (§24bv, §24cd; SIP-0112 H.4) | **placed** | 2.5.0, #2619 |
 | a Campaign cycle held on its instruction bindings escalates as `binding_hold`, released by re-supply and never parked (§24bw; SIP-0110 §A.3.6) | **shipped** | 2.4.0, PR #2628 (#2178's Campaign half) |
 
 **What closes this SIP:** Its 2.1.0 rows closing, #1710's remainder ruled, and #1708's remainder shipped in 2.2.0 or ruled out of scope. §24at, the consolidated status at the v2.0.0 cut, replaces the 2.0 plan's §5a as the permanent record. Promotion follows at the sweep after the last placed row closes.
