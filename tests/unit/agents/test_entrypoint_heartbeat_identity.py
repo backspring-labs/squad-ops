@@ -11,11 +11,13 @@ heartbeats against an authed endpoint.
 from __future__ import annotations
 
 import asyncio
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
+from squadops.auth import client_credentials
 from squadops.config.schema import OIDCConfig, ServiceClientConfig
+from tests.unit.auth.test_client_credentials import _Clocks, _mock_response
 
 pytestmark = [pytest.mark.domain_agents]
 
@@ -88,3 +90,41 @@ class TestHeartbeatIdentityWiring:
 
         token_client.close.assert_awaited_once()
         assert runner._service_token_client is None
+
+    async def test_a_heartbeat_after_the_host_slept_carries_a_token_fetched_since(
+        self, monkeypatch
+    ):
+        """#2493, entered at the agent's ``_send_heartbeat`` with the reporter and token client
+        ``_create_heartbeat_reporter`` builds. Bug caught: after the host sleeps, every heartbeat
+        carries the token cached before the sleep, which the runtime API refuses as expired until
+        the monotonic clock, stopped while the host slept, reaches the token's refresh deadline."""
+        clocks = _Clocks()
+        monkeypatch.setattr(client_credentials, "time", clocks)
+        runner = _make_runner()
+        runner._lifecycle_state = "READY"
+        runner._heartbeat_reporter = runner._create_heartbeat_reporter(
+            _config(_AGENT_CLIENT, _OIDC)
+        )
+        keycloak = AsyncMock()
+        keycloak.post.side_effect = [
+            _mock_response(access_token="before-sleep", expires_in=300),
+            _mock_response(access_token="after-sleep", expires_in=300),
+        ]
+        runner._service_token_client._http_client = keycloak
+        api = MagicMock()
+        api.post = AsyncMock(return_value=MagicMock(status_code=200, text="ok"))
+        session = MagicMock()
+        session.__aenter__ = AsyncMock(return_value=api)
+        session.__aexit__ = AsyncMock(return_value=False)
+
+        with patch(
+            "adapters.observability.healthcheck_http.httpx.AsyncClient", return_value=session
+        ):
+            await runner._send_heartbeat()
+            clocks.advance(monotonic=0, wall=3600)  # the host sleeps for an hour
+            await runner._send_heartbeat()
+
+        assert [call.kwargs["headers"]["Authorization"] for call in api.post.await_args_list] == [
+            "Bearer before-sleep",
+            "Bearer after-sleep",
+        ]
