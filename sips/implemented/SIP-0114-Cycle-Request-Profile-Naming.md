@@ -1,11 +1,11 @@
 ---
 sip_uid: '17883224960398652'
-status: accepted
+status: implemented
 title: Cycle Request-Profile Naming Taxonomy
 author: SquadOps Architecture (Spark lane)
 created_at: '2026-07-01T00:00:00Z'
 sip_number: 114
-updated_at: '2026-10-19T13:46:04.444128Z'
+updated_at: '2026-10-23T18:44:13.174273Z'
 ---
 # SIP-0114: Cycle Request-Profile Naming Taxonomy
 
@@ -16,7 +16,7 @@ updated_at: '2026-10-19T13:46:04.444128Z'
 > **Moved to 2.4.0 (2026-10-15, the owner's ruling of 2026-10-15, in session: "ok to defer").** The SIP was still proposed when 2.3's last structural rounds ran, and its acceptance is the owner's design review, so 2.3 is cut without it. The 2.4 plan places its review and #316's build. The constraint above stands.
 
 
-**Status:** Accepted
+**Status:** Implemented
 **Authors:** SquadOps Architecture (Spark lane)
 **Created:** 2026-07-01
 **Revision:** 4 (2026-10-19; revision 3 was 2026-10-18, revision 2 2026-10-13, revision 1 2026-07-01)

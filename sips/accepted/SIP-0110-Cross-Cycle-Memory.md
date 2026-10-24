@@ -61,7 +61,7 @@ diverged from on agent-discretionary memory tools (§6).
 
 ---
 
-## Delivery ledger (current as of 2026-10-17)
+## Delivery ledger (current as of 2026-10-23)
 
 Kept by the rule in CLAUDE.md ("SIP System"): one row per part, updated in the PR that ships or
 re-places it.
@@ -87,7 +87,7 @@ re-places it.
 | entry points: chat on the substrate, with capture confirmed, chat exposures, server-side project binding and provenance authorized (§A.3.5) | **shipped** | 2.4.0, issue #2180: stage A (the binding, each turn's context and exposure, confirmed capture of notes and preferences, authorized provenance, Q29's deletion) in PR #2517, stage B's project-instruction capture in PR #2525 (§5o), and its task-instruction capture in PR #2550 (§5x) |
 | entry points: lesson inspection from chat; a conversational claim never becomes a lesson (§A.3.5) | **shipped** | 2.4.0, PR #2518, issue #2181 (§5p) |
 | entry points: the console's memory record view (§A.3.11) | **shipped** | 2.4.0, PR #2524 (§5q), closes #2182: its capture was taken live with #2183's T11 on the Mac (issuecomment-6355208484): a record's source, scope, status, revisions, consuming tasks and results, beside an accepted build, with "no effect measured" apart; the list's layout the owner found there was fixed in PR #2695 (#2692) |
-| entry points: the acceptance matrix, T1–T17, live on a deploy (§A.5) | **placed** | 2.4.0, #2183 |
+| entry points: the acceptance matrix, T1–T17, live on a deploy (§A.5) | **shipped** | 2.4.0, #2183: every case passed, each with its evidence on the issue (the summary is issuecomment-6376996254). T1–T11 and T13–T17 ran on the Mac's deploys of main from `dc7f3324` to `b3acbc82` with `lite-14b` (T17's re-run on #2693's branch before it merged), and T12 with T6's campaign half ran on the Spark's cut deploy (`dep_d7ff50b9b39c`, `full-38-tf`, issuecomment-6376598961). Five sub-cases are held by unit tests instead, each named with why in the summary: T8's failing records store and its two optional failures, which would fail the run's own Postgres reads; T14's session used with another agent, since only Joi has messaging enabled; and T12's continuation without `carries_into`, which the campaign didn't make. What it found was fixed before it closed: a `qa.test` that showed no instructions (#2674, PR #2675), a task composed and measured at the run's start rather than at its own dispatch (#2681 and #2684, PR #2693), a pair whose arms nothing read (PR #2702, §5al), and a calibration stopped at its plan gate promoted as an empty accepted tree (#2704, PR #2705, SIP-0109 §24cb) |
 | entry points: the legacy agent store retired (§A.4.3), on the owner's OK for its compose change | **placed** | 2.5.0, #2184 |
 | a unit pinned while a revocation or a withdrawal is answered, missed by its answer (§0.7, §A.3.8) | **shipped** | 2.4.0, PRs #2603 (the dispatch half, §5af) and #2551 (the pin half, §5y), issue #2545: found by the second reader on PR #2544 (§5u) |
 

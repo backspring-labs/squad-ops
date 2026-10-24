@@ -21,7 +21,7 @@ Proposed
 **Amends:** SIP-0094 D12 ack policy — scoped per-direction, not revoked (see §5.1).
 **Ruled 2026-10-14 (the owner, on #1977):** §5.1–§5.3a are accepted as #1977's design: bounded redelivery and a dead-letter queue, the death-path rule, publisher confirms and mandatory routing, and consumer idempotency. §5.4, §5.5 and the duty-gated parts are not part of that ruling. **Measured 2026-10-14, before §5.1 was built:** an explicit `nack(requeue=True)` on these classic queues carries no `x-death` and no delivery count (#1977). §5.1's count never advances as written. **Amended 2026-10-14 (§5.3b), ruled by the owner:** the bound is the agent's own per-task attempt count in Redis. **Amended 2026-10-15 (§5.3c), ruled by the owner (#2333):** the record is kept per send, not per task, because the runtime sends a task again under its own id for a fresh execution.
 
-## Delivery ledger (current as of 2026-10-17)
+## Delivery ledger (current as of 2026-10-23)
 
 Kept by the rule in CLAUDE.md ("SIP System"): one row per part, updated in the PR that ships or re-places it.
 

@@ -11,10 +11,14 @@ updated_at: '2026-10-17T23:13:12.320896Z'
 
 **Status:** Accepted (2026-10-17, revision 2)
 **Revision:** 2 (2026-10-17)
-**Target:** 2.4, on the Spark lane (the 2.4 plan, adopted 2026-10-17, `docs/plans/2-4-0-plan.md`):
-- **phase 1, the instruments, reporting only:** committed for the 2.4 cut (the plan's D1 and §6.1);
-- **phase 2, the feature half:** in 2.4 only if the measurement window's record supports it. The owner decides on that
-  record (D4). If it moves, it moves to the next even release with the record.
+**Target:** 2.4, on the Spark lane (the 2.4 plan, adopted 2026-10-17, `docs/plans/2-4-0-plan.md`). Phase 1 and §4.5
+shipped in 2.4.0; the rest is placed or held, as re-read at the cut (2026-10-23):
+- **phase 1, the instruments, reporting only:** shipped in 2.4.0, except the parts its ledger places in 2.5.0 (#2414's
+  declared start, #2637 and #2619);
+- **phase 2, the feature half:** split by the owner on the window's record (D4, 2026-10-22). §4.5, the proposal shown
+  its outcomes, shipped in 2.4.0 (#2677)
+- **§4.7, the outcome target and the quality gates,** is held until a reading shows contribution separating from
+  acceptance, and moves to an even release with that record.
 
 **Authors:** Jason Ladd (the idea); Claude Code (this draft)
 **Source:** `docs/ideas/outcome-oriented-campaign-evaluation.md` (recorded 2026-10-04). This SIP is
@@ -68,7 +72,7 @@ contracts (its §8.2). §4.8 says what this SIP produces and reads at each.
 >   revision's design (§4.1, §4.8).
 > - **No conflict.**
 
-## Delivery ledger (current as of 2026-10-22)
+## Delivery ledger (current as of 2026-10-23)
 
 One row per part that ships separately. Statuses as CLAUDE.md defines them. The 2.4 plan places phase 1 in 2.4
 (committed) and phase 2 in 2.4 conditionally. **Phase 1's parts are placed** with the issues filed at acceptance

@@ -8,7 +8,7 @@ author: Backspring Labs / SquadOps
 
 **Status:** Proposed (the owner's draft, revision 1, under the placement note below)
 **Revision:** 1
-**Target:** re-placed 2026-10-04 (`sips/PORTFOLIO.md` §2), and read at the cut of 2026-10-07; #1960's tokens and verification share shipped in 2.1.0 (#2027); test-file churn unplaced (it needs the vault); #1965 the crew's, unplaced; #1966 in 2.4 or later, after Cross-Cycle Memory's finding
+**Target:** re-placed 2026-10-04 (`sips/PORTFOLIO.md` §2), and read at the cut of 2026-10-07; #1960's tokens and verification share shipped in 2.1.0 (#2027); test-file churn unplaced (it needs the vault); #1965 the crew's, unplaced; #1966's QA half shipped in 2.4.0 (#2700), its builder half deliberately unplaced
 **Authors:** Backspring Labs / SquadOps
 **Theme:** Verification quality, test economics, agent efficiency
 
