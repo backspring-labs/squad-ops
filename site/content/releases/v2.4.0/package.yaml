@@ -2337,3 +2337,19 @@ showcase:
     FastAPI + React roll 1''s timeline, the set''s one roll with two correction rounds,
     each a developer repair whose retest passed'
   role: shakeout
+records:
+  asset: squadops-2.4.0-records.tar.gz
+  sha256: 97cfb2207c029b8b5b5422a369da5f2d189556e6adc5ba63ec73a182f38b3dd1
+  files: 310
+  campaigns:
+  - cmp_ca24f3776ef8
+  engine_records: []
+  bytes: 460633
+  attached_at: '2026-10-24T00:42:30Z'
+  scanned:
+    secret_values: 70
+    patterns:
+    - langfuse key
+    - api key (sk-)
+    - jwt
+    - private key
