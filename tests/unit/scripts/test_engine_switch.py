@@ -88,7 +88,7 @@ def test_the_serve_command_carries_every_pin_the_recipe_names():
 
 
 def test_key_registry_selects_squadops_without_disabling_independent_callers(tmp_path):
-    path = tmp_path/"keys"
+    path = tmp_path / "keys"
     original = "# shared engine\nnostromo-mother: mother-fixture\nsquadops: squad-fixture\nnostromo-brett: brett-fixture\n"
     path.write_text(original)
     assert es.api_key(path) == "squad-fixture"

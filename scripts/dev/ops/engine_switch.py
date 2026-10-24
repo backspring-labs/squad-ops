@@ -355,10 +355,16 @@ def serve_command(recipe: dict[str, Any], network: str | None = None) -> list[st
 
 
 def api_key(path: Path = KEY_FILE) -> str:
-    lines = [line.strip() for line in path.read_text().splitlines()
-             if line.strip() and not line.lstrip().startswith("#")]
-    owned = [line.split(":", 1)[1].strip() for line in lines
-             if ":" in line and line.split(":", 1)[0].strip() == "squadops"]
+    lines = [
+        line.strip()
+        for line in path.read_text().splitlines()
+        if line.strip() and not line.lstrip().startswith("#")
+    ]
+    owned = [
+        line.split(":", 1)[1].strip()
+        for line in lines
+        if ":" in line and line.split(":", 1)[0].strip() == "squadops"
+    ]
     if len(owned) == 1 and owned[0] and not any(c.isspace() for c in owned[0]):
         return owned[0]
     if len(lines) == 1 and ":" not in lines[0] and not any(c.isspace() for c in lines[0]):

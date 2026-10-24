@@ -45,11 +45,29 @@ def test_tensorfold_ensure_preserves_independent_callers_and_adopts_only_its_lab
     adopted = plan([credential], {}, {target: original}, existing=True)
     assert adopted.env_updates[credential["env"]] == ("squad-fixture", "adopted")
     assert adopted.secret_writes == {}
-    updated = plan([credential], {credential["env"]: "rotated-fixture"}, {target: original}, existing=True)
-    assert updated.secret_writes[target] == original.replace("squad-fixture", "rotated-fixture").rstrip()
-    assert plan([credential], {credential["env"]: "rotated-fixture"}, updated.secret_writes, existing=True).secret_writes == {}
+    updated = plan(
+        [credential], {credential["env"]: "rotated-fixture"}, {target: original}, existing=True
+    )
+    assert (
+        updated.secret_writes[target]
+        == original.replace("squad-fixture", "rotated-fixture").rstrip()
+    )
+    assert (
+        plan(
+            [credential],
+            {credential["env"]: "rotated-fixture"},
+            updated.secret_writes,
+            existing=True,
+        ).secret_writes
+        == {}
+    )
     with pytest.raises(ValueError, match="duplicate managed key"):
-        plan([credential], {credential["env"]: "value"}, {target: "squadops: a\nsquadops: b"}, existing=True)
+        plan(
+            [credential],
+            {credential["env"]: "value"},
+            {target: "squadops: a\nsquadops: b"},
+            existing=True,
+        )
 
 
 def _counter():
