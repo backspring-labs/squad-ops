@@ -6,6 +6,7 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
+from squadops.auth import client_credentials
 from squadops.auth.client_credentials import ServiceToken, ServiceTokenClient
 
 
@@ -27,10 +28,35 @@ def _mock_response(access_token="tok-123", expires_in=300, status_code=200):
     return resp
 
 
+class _Clocks:
+    """The two clocks the token cache reads, set by the test. A host's suspend advances the wall
+    clock alone: the monotonic clock doesn't run while the host (or Docker's VM) is asleep."""
+
+    def __init__(self) -> None:
+        self._monotonic, self._wall = 1_000.0, 1_760_000_000.0
+
+    def monotonic(self) -> float:
+        return self._monotonic
+
+    def time(self) -> float:
+        return self._wall
+
+    def advance(self, *, monotonic: float, wall: float) -> None:
+        self._monotonic += monotonic
+        self._wall += wall
+
+
+@pytest.fixture
+def clocks(monkeypatch):
+    fake = _Clocks()
+    monkeypatch.setattr(client_credentials, "time", fake)
+    return fake
+
+
 @pytest.mark.auth
 class TestServiceToken:
     def test_frozen_dataclass(self):
-        token = ServiceToken(access_token="abc", expires_at=100.0)
+        token = ServiceToken(access_token="abc", expires_at=100.0, wall_expires_at=200.0)
         assert token.access_token == "abc"
         assert token.expires_at == 100.0
         assert token.token_type == "Bearer"
@@ -86,6 +112,7 @@ class TestServiceTokenClient:
         client._cached = ServiceToken(
             access_token="old-tok",
             expires_at=time.monotonic() + 5,  # 5 seconds left, within 30s margin
+            wall_expires_at=time.time() + 5,
         )
         mock_resp = _mock_response(access_token="new-tok", expires_in=300)
         client._http_client = AsyncMock()
@@ -94,6 +121,47 @@ class TestServiceTokenClient:
         token = await client.get_token()
         assert token == "new-tok"
         client._http_client.post.assert_awaited_once()
+
+    @pytest.mark.parametrize(
+        ("monotonic", "wall", "handed"),
+        [
+            (100, 100, "first-tok"),
+            (0, 3600, "second-tok"),
+            (0, 270, "second-tok"),
+            (0, 269, "first-tok"),
+            (270, -3600, "second-tok"),
+        ],
+        ids=[
+            "awake-outside-the-margin",
+            "slept-past-the-expiry",
+            "slept-to-the-refresh-margin",
+            "slept-to-just-short-of-it",
+            "wall-clock-stepped-back",
+        ],
+    )
+    async def test_a_token_is_refreshed_when_either_clock_reaches_its_margin(
+        self, clocks, monotonic, wall, handed
+    ):
+        """#2493. Bugs caught: an expiry kept on the monotonic clock alone, which doesn't advance
+        while the host sleeps, so after a sleep every request carries a token whose wall-clock
+        ``exp`` the issuer has passed; the refresh margin lost on the wall clock; and a fix that
+        reads the wall clock alone, so a clock stepped back keeps a token past its expiry."""
+        client = ServiceTokenClient(
+            token_endpoint="http://keycloak/token",
+            client_id="svc",
+            client_secret="secret",
+            refresh_margin_seconds=30,
+        )
+        client._http_client = AsyncMock()
+        client._http_client.post.side_effect = [
+            _mock_response(access_token="first-tok", expires_in=300),
+            _mock_response(access_token="second-tok", expires_in=300),
+        ]
+        assert await client.get_token() == "first-tok"
+
+        clocks.advance(monotonic=monotonic, wall=wall)
+
+        assert await client.get_token() == handed
 
     async def test_concurrent_get_token_only_fetches_once(self):
         """asyncio.Lock prevents concurrent refresh stampede."""
