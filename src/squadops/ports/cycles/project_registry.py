@@ -10,6 +10,7 @@ from typing import TYPE_CHECKING
 
 from squadops.cycles.models import Project
 from squadops.projects.baseline import InheritedBaseline
+from squadops.projects.derived_profile import DerivedProfile
 from squadops.projects.development_configuration import DevelopmentConfiguration
 from squadops.projects.registration import ProjectRegistration
 
@@ -116,9 +117,11 @@ class ProjectRegistryPort(ABC):
         actor: str,
         idempotency_key: str,
         request_hash: str,
+        derived_profile: DerivedProfile | None = None,
     ) -> tuple[InheritedBaseline, bool]:
-        """Record a captured inherited baseline (FR-20). Returns it and whether this replayed an
-        earlier capture under the same key."""
+        """Record a captured inherited baseline (FR-20), with the profile derived at that capture
+        beside it (H.4, contract 8). Returns it and whether this replayed an earlier capture under
+        the same key."""
 
     @abstractmethod
     async def get_inherited_baseline(self, project_id: str) -> InheritedBaseline:
@@ -126,6 +129,14 @@ class ProjectRegistryPort(ABC):
 
         Raises:
             InheritedBaselineNotFoundError: none is captured.
+        """
+
+    @abstractmethod
+    async def get_derived_profile(self, project_id: str) -> DerivedProfile:
+        """The derived profile recorded with the Project's latest inherited baseline (contract 8).
+
+        Raises:
+            DerivedProfileNotFoundError: no baseline is captured, or the latest has no profile.
         """
 
     @abstractmethod

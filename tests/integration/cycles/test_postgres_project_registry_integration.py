@@ -432,6 +432,36 @@ async def test_mappings_resolve_both_ways_and_baselines_read_back(pool):
         assert await conn.fetchval("SELECT count(*) FROM project_inherited_baselines") == 1
 
 
+async def test_a_captures_derived_profile_reads_back_and_one_captured_without_reads_absent(pool):
+    """H.4, contract 8, recorded beside each capture. Bugs caught: the profile not stored with its
+    capture; a capture recorded before profiles (NULL) read as an empty profile rather than
+    absent; an older capture's profile read in place of the latest one's."""
+    from squadops.cycles.models import DerivedProfileNotFoundError
+    from squadops.projects.baseline import parse_baseline
+    from squadops.projects.derived_profile import parse_profile
+    from tests.fixtures.shared_contract.repository import recorded
+
+    registry = PostgresProjectRegistry(pool)
+    await registry.register_project(_registration(), actor="owner")
+    baseline = dataclasses.replace(
+        parse_baseline(recorded("inherited_baseline", "valid")), project_id="prj-tally"
+    )
+    profile = parse_profile(recorded("derived_profile", "valid"))
+
+    with pytest.raises(DerivedProfileNotFoundError):
+        await registry.get_derived_profile("prj-tally")
+    await registry.record_inherited_baseline(
+        baseline, actor="owner", idempotency_key="b-1", request_hash="h1"
+    )
+    with pytest.raises(DerivedProfileNotFoundError):
+        await registry.get_derived_profile("prj-tally")
+    await registry.record_inherited_baseline(
+        baseline, actor="owner", idempotency_key="b-2", request_hash="h2", derived_profile=profile
+    )
+
+    assert await registry.get_derived_profile("prj-tally") == profile
+
+
 async def test_a_cycles_pinned_source_context_round_trips_and_a_sample_apps_stays_null(pool):
     """Contract 1's persistence (§D.3: persisted before dispatch). Bugs caught: the context
     dropped by the cycle registry's insert or read; a sample application's cycle given one."""

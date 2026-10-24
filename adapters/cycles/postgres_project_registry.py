@@ -15,6 +15,7 @@ from datetime import UTC, datetime
 import asyncpg
 
 from squadops.cycles.models import (
+    DerivedProfileNotFoundError,
     DevelopmentConfigurationNotFoundError,
     InheritedBaselineNotFoundError,
     Project,
@@ -28,6 +29,7 @@ from squadops.cycles.models import (
 from squadops.ports.cycles.project_registry import ProjectRegistryPort
 from squadops.projects.baseline import InheritedBaseline, parse_baseline
 from squadops.projects.contribution import Contribution
+from squadops.projects.derived_profile import DerivedProfile, parse_profile
 from squadops.projects.development_configuration import (
     DevelopmentConfiguration,
     parse_configuration,
@@ -460,6 +462,7 @@ class PostgresProjectRegistry(ProjectRegistryPort):
         actor: str,
         idempotency_key: str,
         request_hash: str,
+        derived_profile: DerivedProfile | None = None,
     ) -> tuple[InheritedBaseline, bool]:
         if not self._writable:
             raise ProjectRegistryReadOnlyError(
@@ -502,7 +505,7 @@ class PostgresProjectRegistry(ProjectRegistryPort):
             await conn.execute(
                 "INSERT INTO project_inherited_baselines (project_id, captured_seq, commit, "
                 "development_configuration_revision, document, evidence, captured_by, "
-                "captured_at) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)",
+                "captured_at, derived_profile) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)",
                 project_id,
                 seq,
                 baseline.commit,
@@ -511,6 +514,7 @@ class PostgresProjectRegistry(ProjectRegistryPort):
                 baseline.evidence(),
                 actor,
                 now,
+                derived_profile.to_document() if derived_profile is not None else None,
             )
             await conn.execute(
                 "UPDATE project_records SET record_version = $2, updated_at = $3 "
@@ -544,6 +548,20 @@ class PostgresProjectRegistry(ProjectRegistryPort):
         if document is None:
             raise InheritedBaselineNotFoundError(f"Project {project_id} has no inherited baseline")
         return parse_baseline(document)
+
+    async def get_derived_profile(self, project_id: str) -> DerivedProfile:
+        async with self._pool.acquire() as conn:
+            row = await conn.fetchrow(
+                "SELECT derived_profile FROM project_inherited_baselines WHERE project_id = $1 "
+                "ORDER BY captured_seq DESC LIMIT 1",
+                project_id,
+            )
+        if row is None or row["derived_profile"] is None:
+            raise DerivedProfileNotFoundError(
+                f"Project {project_id}'s latest inherited baseline has no derived profile"
+                + ("" if row is not None else ": none is captured")
+            )
+        return parse_profile(row["derived_profile"])
 
     # --- contributions (FR-06; E.4.3) ---
 

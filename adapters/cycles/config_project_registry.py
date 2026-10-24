@@ -13,6 +13,7 @@ from pathlib import Path
 import yaml
 
 from squadops.cycles.models import (
+    DerivedProfileNotFoundError,
     DevelopmentConfigurationNotFoundError,
     InheritedBaselineNotFoundError,
     Project,
@@ -101,7 +102,9 @@ class ConfigProjectRegistry(ProjectRegistryPort):
     async def source_mappings(self, project_id, *, workspace_id=None):
         return []
 
-    async def record_inherited_baseline(self, baseline, *, actor, idempotency_key, request_hash):
+    async def record_inherited_baseline(
+        self, baseline, *, actor, idempotency_key, request_hash, derived_profile=None
+    ):
         raise ProjectRegistryReadOnlyError("the config provider records no baselines")
 
     async def record_contribution(self, contribution, *, idempotency_key, request_hash):
@@ -128,4 +131,9 @@ class ConfigProjectRegistry(ProjectRegistryPort):
     async def get_inherited_baseline(self, project_id):
         raise InheritedBaselineNotFoundError(
             f"Project {project_id} is a sample application: it has no inherited baseline"
+        )
+
+    async def get_derived_profile(self, project_id):
+        raise DerivedProfileNotFoundError(
+            f"Project {project_id} is a sample application: it has no derived profile"
         )
