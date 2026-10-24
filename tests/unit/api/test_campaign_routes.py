@@ -304,20 +304,25 @@ async def test_resume_returns_the_campaign_to_the_state_it_was_paused_from(world
     [
         (
             AcceptedTree("sha-cal", "cyc_cal000000001"),
-            {"cycle_id": "cyc_cal000000001", "calibration_record_id": None},
+            {"cycle_id": "cyc_cal000000001", "calibration_record_id": None, "commit": None},
         ),
         (
-            AcceptedTree("sha-cal", calibration_record_id="calrec_0123456789ab"),
-            {"cycle_id": None, "calibration_record_id": "calrec_0123456789ab"},
+            AcceptedTree("sha-cal", calibration_record_id="calrec_0123456789ab", commit="a" * 40),
+            {"cycle_id": None, "calibration_record_id": "calrec_0123456789ab", "commit": "a" * 40},
+        ),
+        (
+            AcceptedTree("sha-cal", "cyc_inc000000001", commit="b" * 40),
+            {"cycle_id": "cyc_inc000000001", "calibration_record_id": None, "commit": "b" * 40},
         ),
     ],
-    ids=["a-cycles", "a-calibration-records"],
+    ids=["a-cycles", "a-calibration-records", "a-campaign-branchs"],
 )
 async def test_the_campaign_read_carries_its_accepted_tree(world, tree, names):
     """§7.1: the tree every increment is proposed against and every ruling binds to is readable
     by the supervisor. Bugs caught: the response mapping leaving it out, so a ruling's binding
-    cannot be built from a read; or (§24cc) a read that requires a cycle, so every campaign on a
-    repository-backed Project answers 500 once its calibration record is promoted."""
+    cannot be built from a read; (§24cc) a read that requires a cycle, so every campaign on a
+    repository-backed Project answers 500 once its calibration record is promoted; or (§24bv
+    point 2) the head of a campaign branch read without its commit."""
     _create(world)
     await world.campaigns.transition("cmp_api000000001", move(CampaignState.CALIBRATING, "a"))
     before = world.client.get("/api/v1/campaigns/cmp_api000000001").json()
