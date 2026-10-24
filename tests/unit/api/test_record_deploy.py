@@ -85,9 +85,43 @@ async def test_the_record_holds_each_service_and_each_named_models_weights():
         ServiceImage("runtime-api", "sha256:api", "7acc2bc1"),
     )
     assert record.models == (
-        ModelWeights("llama3.1:8b", None),  # named, but the provider does not serve it
-        ModelWeights("qwen3.6:27b", None),
-        ModelWeights("qwen3.8:27b", "22130167c4c2"),
+        ModelWeights("llama3.1:8b", None, served=False),  # named, but the provider doesn't serve it
+        ModelWeights("qwen3.6:27b", None, served=True),  # served, with no digest reported
+        ModelWeights("qwen3.8:27b", "22130167c4c2", served=True),
+    )
+
+
+async def test_a_tensorfold_deploy_records_its_served_weights_and_what_it_does_not_serve():
+    """#2561. Entry: ``record_deploy`` with the runtime's own TensorFold adapter, the provider
+    since the engine switch, over its wire. Bug caught: every model recorded ``digest: null``,
+    TensorFold's served one included, since ``/v1/models`` lists ids only, and nothing in the
+    record told an unserved model's null from a served one's."""
+    from adapters.llm.tensorfold import TensorFoldAdapter
+    from tests.unit.llm.conformance import TENSORFOLD_KEY, TENSORFOLD_SERVED, tensorfold_ok, wire
+
+    llm = TensorFoldAdapter(
+        base_url="http://tensorfold:8080",
+        default_model=TENSORFOLD_SERVED,
+        timeout_seconds=5.0,
+        api_key=TENSORFOLD_KEY,
+    )
+    with wire(tensorfold_ok):
+        record = await recorder.record_deploy(
+            FACTS,
+            registry=MemoryDeployRegistry(),
+            profiles=_profiles([(TENSORFOLD_SERVED, True), ("qwen2.5:3b-instruct", True)]),
+            llm=llm,
+            instances=[],
+            now=NOW,
+        )
+
+    assert record.models == (
+        ModelWeights("qwen2.5:3b-instruct", None, served=False),
+        ModelWeights(
+            TENSORFOLD_SERVED,
+            "hf:nvidia/Qwen3.8-27B-NVFP4@482ca0f3832238542f8f5295dde86b5f22711d80",
+            served=True,
+        ),
     )
 
 
@@ -103,7 +137,8 @@ async def test_a_provider_that_cannot_be_listed_records_every_digest_unknown(cap
         now=NOW,
     )
 
-    assert record.models == (ModelWeights("qwen3.8:27b", None),)
+    # Unreadable, so whether it is served is unknown too, never guessed as unserved.
+    assert record.models == (ModelWeights("qwen3.8:27b", None, served=None),)
     assert len(record.services) == 4
     assert "model digests unavailable (ollama unreachable)" in capsys.readouterr().err
 
@@ -223,7 +258,8 @@ async def test_the_one_off_loads_the_deploys_config_as_the_runtime_does(monkeypa
 
     assert seen.get("secret_provider_factory") is secret_provider_for
     assert len(record.services) == 4
-    assert record.models == (ModelWeights("qwen2.5:7b", None),)  # FACTS runs neo, not joi
+    # FACTS runs neo, not joi; the provider lists nothing, so the model is recorded unserved.
+    assert record.models == (ModelWeights("qwen2.5:7b", None, served=False),)
     pool.close.assert_awaited_once()
 
 

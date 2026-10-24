@@ -63,7 +63,11 @@ def _record(deploy_id: str, hours: int) -> DeployRecord:
             ServiceImage("neo", "sha256:neo", "7acc2bc1-dirty"),
             ServiceImage("postgres", "sha256:pg", None),
         ),
-        models=(ModelWeights("qwen3.8:27b", "22130167c4c2"), ModelWeights("llama3.1:8b", None)),
+        # #2561: whether each was served round-trips too.
+        models=(
+            ModelWeights("qwen3.8:27b", "22130167c4c2", served=True),
+            ModelWeights("llama3.1:8b", None, served=False),
+        ),
     )
 
 

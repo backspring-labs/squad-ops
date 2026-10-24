@@ -83,13 +83,15 @@ async def record_deploy(
         for agent in profile.agents
         if agent.enabled and agent.model
     } | instance_models(instances, services)
+    digests: dict[str, str | None] | None
     try:
         available: list[ModelInfo] = await llm.list_available_models()
+        digests = {m.name: m.digest for m in available}
     except Exception as exc:  # the provider is down or unreachable: the images are still true
         print(
             f"record_deploy: model digests unavailable ({exc}); recorded as None", file=sys.stderr
         )
-        available = []
+        digests = None
     source = (facts.get("source_revision") or "").strip()
     record = DeployRecord(
         deploy_id=f"dep_{uuid.uuid4().hex[:12]}",
@@ -97,7 +99,7 @@ async def record_deploy(
         recorded_by=recorded_by,
         source_revision=source if source and source != "unknown" else None,
         services=services,
-        models=model_weights(named, {m.name: m.digest for m in available}),
+        models=model_weights(named, digests),
     )
     await registry.record(record)
     return record
@@ -220,10 +222,12 @@ def main() -> int:
         return 2
     unrevisioned = [s.service for s in record.services if s.revision is None]
     undigested = [m.model for m in record.models if m.digest is None]
+    unserved = [m.model for m in record.models if m.served is False]
     print(
         f"deploy record {record.deploy_id}: {len(record.services)} services "
         f"({len(unrevisioned)} without a revision label), {len(record.models)} models "
-        f"({len(undigested)} without a digest{': ' + ', '.join(undigested) if undigested else ''})"
+        f"({len(undigested)} without a digest{': ' + ', '.join(undigested) if undigested else ''}"
+        f"{f'; {len(unserved)} of them not served by the provider' if unserved else ''})"
     )
     return 0
 
