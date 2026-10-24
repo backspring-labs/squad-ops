@@ -293,6 +293,7 @@ class TestInjection:
             "qa.test",
             _qa_task(["backend/tests/test_runs.py", "backend/tests/test_events.py", "notes.md"]),
             _bound_contract(),
+            None,
         )
         assert [r.params["file"] for r in rows] == [
             "backend/tests/test_runs.py",
@@ -307,9 +308,11 @@ class TestInjection:
 
     def test_author_mode_non_qa_and_probeless_inject_nothing(self):
         task = _qa_task(["backend/tests/test_runs.py"])
-        assert _contract_assertion_criteria("qa.test", task, None) == []
-        assert _contract_assertion_criteria("development.develop", task, _bound_contract()) == []
-        assert _contract_assertion_criteria("qa.test", task, _bound_contract(probes=[])) == []
+        assert _contract_assertion_criteria("qa.test", task, None, None) == []
+        assert (
+            _contract_assertion_criteria("development.develop", task, _bound_contract(), None) == []
+        )
+        assert _contract_assertion_criteria("qa.test", task, _bound_contract(probes=[]), None) == []
 
 
 class TestLocusRouting:

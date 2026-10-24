@@ -38,6 +38,7 @@ from squadops.cycles.acceptance_check_spec import (
     CHECK_SPECS,
     derived_check_names,
     is_check_applicable,
+    parse_method_path,
 )
 from squadops.cycles.agent_config import resolve_agent_config, served_roles, serves_role
 from squadops.cycles.bound_scaffold_record import _normalize
@@ -1020,7 +1021,10 @@ def inject_contract_inputs(
 
 
 def _contract_assertion_criteria(
-    task_type: str, plan_task: Any, contract: VerificationContract | None
+    task_type: str,
+    plan_task: Any,
+    contract: VerificationContract | None,
+    interface_manifest: InterfaceManifest | None,
 ) -> list[TypedCheck]:
     """#629 (1.5 A6/D2): contract-owned ``contract_assertions_match`` checks for a bound
     qa.test task — one per expected ``.py`` suite file in the stack's QA namespace, params
@@ -1028,7 +1032,12 @@ def _contract_assertion_criteria(
     tokens + the suite-wide allowed error statuses), so the evaluator needs no contract
     access. pf-54: five authored suite versions asserted 200 where the probe pinned 201 —
     the authoring injection (layer 1) states the pins; this check enforces them. Empty in
-    author mode, non-qa tasks, and probe-less contracts (byte-identical plans there)."""
+    author mode, non-qa tasks, and probe-less contracts (byte-identical plans there).
+
+    #2297: with a manifest, the params also carry its declared routes (``METHOD /path``
+    tokens, in declaration order), so the check can refuse a request that is a declared
+    route with a required path segment left empty. Without one the key is absent and the
+    check reads what it read before."""
     if not authors_qa_suite(task_type) or contract is None:
         return []
     pinned = contract.pinned_endpoint_statuses()
@@ -1043,6 +1052,9 @@ def _contract_assertion_criteria(
     error_statuses = contract.allowed_error_statuses()
     if error_statuses:
         params["allowed_error_statuses"] = list(error_statuses)
+    declared = _declared_route_tokens(interface_manifest)
+    if declared:
+        params["declared_routes"] = declared
     stack = contract.skeleton.expander
     return [
         TypedCheck(
@@ -1058,6 +1070,19 @@ def _contract_assertion_criteria(
         if is_check_applicable(CHECK_CONTRACT_ASSERTIONS, art)
         and is_qa_test_path_for_stack(art, stack)
     ]
+
+
+def _declared_route_tokens(interface_manifest: InterfaceManifest | None) -> list[str]:
+    """The manifest's endpoints as ``METHOD /path`` tokens, in declaration order, each once
+    — the grammar ``endpoint_defined`` and the contract read (``parse_method_path``)."""
+    if interface_manifest is None:
+        return []
+    tokens: dict[str, None] = {}
+    for ep in interface_manifest.api.endpoints:
+        parsed = parse_method_path(f"{ep.method} {ep.path}")
+        if parsed is not None:
+            tokens.setdefault(f"{parsed[0]} {parsed[1]}")
+    return list(tokens)
 
 
 def _assertion_kind_criteria(
@@ -1413,7 +1438,9 @@ def _plan_task_acceptance(
     # #629 (A6/D2): bind contract-owned assertion-vs-contract checks onto
     # bound qa.test suite files — layer 1's authoring block is guidance,
     # this is the guarantee.
-    acceptance.extend(_contract_assertion_criteria(task_type, plan_task, contract))
+    acceptance.extend(
+        _contract_assertion_criteria(task_type, plan_task, contract, interface_manifest)
+    )
     # #1153: the manifest's declared field kinds, enforced on the suite's own
     # literal assertions — the free-authored counterpart of the fill kind gate.
     acceptance.extend(_assertion_kind_criteria(task_type, plan_task, contract, interface_manifest))
