@@ -3302,7 +3302,10 @@ class DispatchedFlowExecutor(FlowExecutionPort):
         if refused:
             raise _ExecutionError(
                 f"Task {envelope.task_id} ({envelope.task_type}) refused its inputs: "
-                + "; ".join(str(e) for e in refused)
+                + "; ".join(str(e) for e in refused),
+                terminal=RunTerminalDecision(
+                    kind=TerminalKind.INPUT_REFUSED, task_id=envelope.task_id
+                ),
             )
         outcome = (result.outputs or {}).get("outcome_class") if result.outputs else None
 

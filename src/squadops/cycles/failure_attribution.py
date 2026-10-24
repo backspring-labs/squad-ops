@@ -52,7 +52,9 @@ from squadops.cycles.verification_integrity import (
 )
 
 #: The registry's contract version — named by every assessment that reads it (SIP-0108 §4.1).
-ATTRIBUTION_REGISTRY_VERSION = 1
+#: 2: a handler's input refusal is the terminal ``input_refused``, read as
+#: ``input_contract_failure`` (#2553, SIP-0108 §10r).
+ATTRIBUTION_REGISTRY_VERSION = 2
 
 
 class AttributionClass(StrEnum):
@@ -66,8 +68,9 @@ class AttributionClass(StrEnum):
     #: Content lost between emission and artifact, a correction chain terminated as not
     #: progressing, or rounds that moved without converging.
     HANDOFF_OR_CONVERGENCE_FAILURE = "handoff_or_convergence_failure"
-    #: A task's inputs lacked what its contract required. **Reserved**: no reachable evidence
-    #: establishes it today, and the registry says so rather than manufacturing a mapping.
+    #: A task's inputs lacked what its contract required: its handler refused them at
+    #: ``validate_inputs`` and the run ended there (``TerminalKind.INPUT_REFUSED``, #2553). No
+    #: source vocabulary's value maps to it; only that terminal does.
     INPUT_CONTRACT_FAILURE = "input_contract_failure"
     #: A declared budget ran out: the completion cap with nothing extractable, the correction
     #: attempts, the run time budget.
@@ -518,6 +521,9 @@ class TerminalKind(StrEnum):
     #: box refused the run past its admission bound, or the queue refused a dispatch. A task
     #: timeout is not one of them: the model may still have been working (#995).
     INFRASTRUCTURE_FAILED = "infrastructure_failed"
+    #: #2553: a handler refused its task's inputs (``INPUT_REFUSAL_EVIDENCE`` on its reply), and
+    #: the run ended at once, since the same envelope is refused every time.
+    INPUT_REFUSED = "input_refused"
     COMPLETED = "completed"
     OTHER = "other"
 
@@ -713,6 +719,9 @@ def attribute(terminal: TerminalEvidence) -> Attribution:
         contributing = events
     elif kind == TerminalKind.INFRASTRUCTURE_FAILED:
         primary = AttributionClass.ENVIRONMENT_OR_INFRASTRUCTURE_FAILURE
+        contributing = events
+    elif kind == TerminalKind.INPUT_REFUSED:
+        primary = AttributionClass.INPUT_CONTRACT_FAILURE
         contributing = events
     elif kind == TerminalKind.COMPLETED and terminal.verdict == _VERDICT_ACCEPTED:
         return Attribution(primary=None, contributing=())

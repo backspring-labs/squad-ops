@@ -1306,3 +1306,28 @@ stopped (#995), so it is not read as infrastructure. Everything else §10b lists
 **Why.** SIP-0109's retry rows (§24bg there) read this class, and nothing produced it.
 
 **Who ruled.** The owner, 2026-10-05, on #1824's recommendation: option 1 with the producer.
+
+### 10r. 2026-10-24 — a handler's input refusal is a terminal kind, read as `input_contract_failure`; the registry is version 2 (§4.1, §4.2, §10b, §10q)
+
+**What changed.** §10b's table gains a row, and `input_contract_failure` its first producer:
+
+| where the run ends | kind | also recorded |
+|---|---|---|
+| a handler refuses its task's inputs at `validate_inputs` (its reply carries `INPUT_REFUSAL_EVIDENCE`) | `input_refused` | the refused task's id; the run's failure reason names every error |
+
+- **`attribute()`** reads `input_refused` as `input_contract_failure`, with the run's failure events contributing. Before this, the ending was recorded as `other` and read `unattributed`.
+- **The class was reserved** because no reachable evidence established it. A handler's refusal is that evidence: the framework sets it deterministically, and since #2566 the run ends on it at once, with no retry and no correction (#2553).
+- **No source vocabulary's value maps to the class.** The terminal kind is its only producer, as `infrastructure_failed` is for its class.
+
+**The registry is version 2.**
+- `ATTRIBUTION_REGISTRY_VERSION` names the rules an assessment was composed under. A run ended by a refusal reads `unattributed` under the old rules and `input_contract_failure` under these, so the version moves with them.
+- **A gap this names rather than mends.** §10q added `infrastructure_failed` on 2026-10-05 and left the version at 1, so a version-1 record from before that date and one from after it were composed under different rules. Version 2 doesn't re-mark them. A reader comparing version-1 records across 2026-10-05 has to read §10q.
+- **What reads the version:**
+  - every assessment and failure record names it;
+  - the benchmark capture refuses rows assessed under two versions (`benchmark_registry.capture_document`);
+  - stored records keep the version they were written under.
+- **The 2.5 cut's pre-registration** names version 2. No counted reading before it compares across the bump: the 2.4 window and cut were read under version 1 and stay so.
+
+**Why.** A refusal is the framework composing an envelope its own handler rejects. Recorded as an unattributed producer failure, it read as the squad's, and a recall over failure records would learn from it as one (#2553).
+
+**Who ruled.** The supervisor (Spark lane), 2026-10-24, under the owner's overnight grant of 2026-10-24 and the 2.5 plan's placement of #2553's remainder, which put the version bump under the Spark lane's review before the cut's pre-registration.

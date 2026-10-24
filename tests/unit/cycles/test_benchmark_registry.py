@@ -37,8 +37,14 @@ from squadops.cycles.benchmark_registry import (
     preflight,
     render_capture,
 )
-from squadops.cycles.cycle_assessment import AssessorIdentity, CycleEvidence, RunRecord
+from squadops.cycles.cycle_assessment import (
+    ASSESSMENT_VERSION,
+    AssessorIdentity,
+    CycleEvidence,
+    RunRecord,
+)
 from squadops.cycles.deploy_record import DeployRecord, ModelWeights, ServiceImage
+from squadops.cycles.failure_attribution import ATTRIBUTION_REGISTRY_VERSION
 from squadops.cycles.models import Cycle, Run, TaskFlowPolicy
 from squadops.cycles.verification_integrity import aggregate_verification
 from squadops.execution.benchmark_regrade import regrade
@@ -340,7 +346,11 @@ async def test_the_regrade_keeps_every_declared_roll_and_grades_only_what_its_pr
     assert rows[1].assessment is None and rows[2].assessment is None
     assert rows[3].assessment is None, "a replay is never graded (SIP-0101 §4.1)"
 
-    versions = {"assessment_version": 1, "attribution_registry_version": 1}
+    # The live assessment above is composed under the current contract versions.
+    versions = {
+        "assessment_version": ASSESSMENT_VERSION,
+        "attribution_registry_version": ATTRIBUTION_REGISTRY_VERSION,
+    }
     document = json.loads(
         render_capture(capture_document(rows, versions=versions, assessor=ASSESSOR))
     )
