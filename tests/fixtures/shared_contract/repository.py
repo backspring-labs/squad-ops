@@ -25,12 +25,14 @@ RECORDED = FIXTURE / "recorded"
 
 ABSENT_AT_FIRST_COMMIT = frozenset({"tally/report.py", "checks/check_report.py"})
 
-# Each lane's recorded outputs (D12): the MacBook lane's four, then the Spark lane's.
+# Each lane's recorded outputs (D12): the MacBook lane's, then the Spark lane's. The derived profile
+# is contract 8, added for 2.5 (H.6).
 OUTPUTS = (
     "project_source_context",
     "development_configuration",
     "workspace_commit_mapping",
     "inherited_baseline",
+    "derived_profile",
     "outcome_evaluation_ref",
 )
 FORMS = ("valid", "missing_field", "unknown_major", "stale_commit")
