@@ -1,7 +1,7 @@
 # Recommendation: LanceDB for SquadOps Memory (SIP-042)
 
 **Date:** 2025-01-XX  
-**Status:** ✅ **IMPLEMENTED** - LanceDB configured with local embeddings  
+**Status:** **RETIRED in 2.5** (SIP-0110 §A.4.3, #2184, 2026-10-24): the per-agent LanceDB store held no record in any of the eight agents when it was re-inventoried, and its port, adapter, volumes and `lancedb` dependency were removed. Memory's records are SIP-0110's, in Postgres. This page is kept as the record of the 2025 decision.  
 **Context:** SIP-042 specifies local semantic memory for agent-level memory  
 **SquadOps Objectives:** Local-first architecture, edge deployment (Jetson), production-grade, no external dependencies
 

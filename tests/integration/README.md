@@ -275,13 +275,7 @@ Integration tests verify the new agent initialization flow:
 1. **Agent Info Loading** - Agents load `agent_info.json` during initialization (backward compatible if missing)
    - Verified by: `test_agent_loads_agent_info_on_initialize()` in `test_agent_initialization.py`
 
-2. **Memory Provider Initialization** - Agents initialize memory providers (LanceDB, SQL adapter)
-   - Verified by: `test_agent_initialization_with_memory_providers()` in `test_agent_initialization.py`
-
-3. **Role Context Storage** - Agents store role context in memory during initialization
-   - Verified by: `test_agent_stores_role_context()` in `test_agent_initialization.py`
-
-4. **Backward Compatibility** - Initialization works even without `agent_info.json`
+2. **Backward Compatibility** - Initialization works even without `agent_info.json`
    - Verified by: `test_agent_initialization_backward_compatibility()` in `test_agent_initialization.py`
 
 ## Troubleshooting

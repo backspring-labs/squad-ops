@@ -530,3 +530,16 @@ The transport (console → runtime API → A2A) and the persistence (`chat_sessi
 **Ruled by.** The owner, 2026-10-09: "an explicit design that reconciles these paths without carrying forward obsolete
 chat assumptions." The replacement design awaits the owner's acceptance. Until it ships, the legacy path is made dormant
 with its failures visible (#2174).
+
+### 2026-10-24 — the legacy agent store is removed (#2184)
+
+**What changed.** §10's per-agent store, superseded by the amendment above and dormant since #2174, is removed: the
+`MemoryPort` chat agents held, its LanceDB adapter, the agents' store construction, the `lancedb` dependency and the
+eight store volumes. Chat neither recalls nor stores, as since #2174. Each turn's memory context is assembled by the
+runtime API from SIP-0110's records (#2180).
+
+**Evidence.** The re-inventory before removal (2026-10-24, the Spark's deploy, read-only): no record in any of the eight
+stores. Joi's holds the same one empty table. The record is SIP-0110 §5am.
+
+**Ruled by.** SIP-0110 §A.4.3, accepted by the owner on 2026-10-09, and the owner's D4 of the adopted 2.5 plan for the
+compose change.

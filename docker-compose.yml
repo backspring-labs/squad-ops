@@ -300,8 +300,6 @@ services:
       SQUADOPS__CYCLES__SQUAD_PROFILE_PROVIDER: postgres  # required, never defaulted (#1568)
       SQUADOPS__CYCLES__PROJECT_REGISTRY_PROVIDER: ${SQUADOPS__CYCLES__PROJECT_REGISTRY_PROVIDER:?set it in .env (see .env.example) — required, never defaulted (#1568)}
       SQUADOPS__SANDBOX__PROVIDER: ${SQUADOPS__SANDBOX__PROVIDER:?set it in .env (see .env.example) — required, never defaulted (#1568)}
-    volumes:
-      - max_memory_data:/app/data/memory_db
     depends_on:
       rabbitmq:
         condition: service_healthy
@@ -360,8 +358,6 @@ services:
       SQUADOPS__CYCLES__SQUAD_PROFILE_PROVIDER: postgres  # required, never defaulted (#1568)
       SQUADOPS__CYCLES__PROJECT_REGISTRY_PROVIDER: ${SQUADOPS__CYCLES__PROJECT_REGISTRY_PROVIDER:?set it in .env (see .env.example) — required, never defaulted (#1568)}
       SQUADOPS__SANDBOX__PROVIDER: ${SQUADOPS__SANDBOX__PROVIDER:?set it in .env (see .env.example) — required, never defaulted (#1568)}
-    volumes:
-      - nat_memory_data:/app/data/memory_db
     depends_on:
       rabbitmq:
         condition: service_healthy
@@ -444,7 +440,6 @@ services:
     volumes:
       - ./docker-compose.yml:/app/docker-compose.yml
       - /var/run/docker.sock:/var/run/docker.sock
-      - neo_memory_data:/app/data/memory_db
     depends_on:
       rabbitmq:
         condition: service_healthy
@@ -503,8 +498,6 @@ services:
       SQUADOPS__CYCLES__SQUAD_PROFILE_PROVIDER: postgres  # required, never defaulted (#1568)
       SQUADOPS__CYCLES__PROJECT_REGISTRY_PROVIDER: ${SQUADOPS__CYCLES__PROJECT_REGISTRY_PROVIDER:?set it in .env (see .env.example) — required, never defaulted (#1568)}
       SQUADOPS__SANDBOX__PROVIDER: ${SQUADOPS__SANDBOX__PROVIDER:?set it in .env (see .env.example) — required, never defaulted (#1568)}
-    volumes:
-      - eve_memory_data:/app/data/memory_db
     depends_on:
       rabbitmq:
         condition: service_healthy
@@ -563,8 +556,6 @@ services:
       SQUADOPS__CYCLES__SQUAD_PROFILE_PROVIDER: postgres  # required, never defaulted (#1568)
       SQUADOPS__CYCLES__PROJECT_REGISTRY_PROVIDER: ${SQUADOPS__CYCLES__PROJECT_REGISTRY_PROVIDER:?set it in .env (see .env.example) — required, never defaulted (#1568)}
       SQUADOPS__SANDBOX__PROVIDER: ${SQUADOPS__SANDBOX__PROVIDER:?set it in .env (see .env.example) — required, never defaulted (#1568)}
-    volumes:
-      - data_memory_data:/app/data/memory_db
     depends_on:
       rabbitmq:
         condition: service_healthy
@@ -625,8 +616,6 @@ services:
       SQUADOPS__CYCLES__SQUAD_PROFILE_PROVIDER: postgres  # required, never defaulted (#1568)
       SQUADOPS__CYCLES__PROJECT_REGISTRY_PROVIDER: ${SQUADOPS__CYCLES__PROJECT_REGISTRY_PROVIDER:?set it in .env (see .env.example) — required, never defaulted (#1568)}
       SQUADOPS__SANDBOX__PROVIDER: ${SQUADOPS__SANDBOX__PROVIDER:?set it in .env (see .env.example) — required, never defaulted (#1568)}
-    volumes:
-      - han_memory_data:/app/data/memory_db
     depends_on:
       rabbitmq:
         condition: service_healthy
@@ -685,8 +674,6 @@ services:
       SQUADOPS__CYCLES__SQUAD_PROFILE_PROVIDER: postgres  # required, never defaulted (#1568)
       SQUADOPS__CYCLES__PROJECT_REGISTRY_PROVIDER: ${SQUADOPS__CYCLES__PROJECT_REGISTRY_PROVIDER:?set it in .env (see .env.example) — required, never defaulted (#1568)}
       SQUADOPS__SANDBOX__PROVIDER: ${SQUADOPS__SANDBOX__PROVIDER:?set it in .env (see .env.example) — required, never defaulted (#1568)}
-    volumes:
-      - bob_memory_data:/app/data/memory_db
     depends_on:
       rabbitmq:
         condition: service_healthy
@@ -766,8 +753,6 @@ services:
       SQUADOPS__AUTH__OIDC__AUDIENCE: squadops-runtime
       SQUADOPS__AUTH__AGENT_CLIENT__CLIENT_ID: squadops-agent
       SQUADOPS__AUTH__AGENT_CLIENT__CLIENT_SECRET: secret://agent_client_secret
-    volumes:
-      - joi_memory_data:/app/data/memory_db
     depends_on:
       rabbitmq:
         condition: service_healthy
@@ -1023,14 +1008,6 @@ volumes:
   redis_data: {}
   prometheus_data: {}
   grafana_data: {}
-  max_memory_data: {}
-  neo_memory_data: {}
-  bob_memory_data: {}
-  data_memory_data: {}
-  joi_memory_data: {}
-  nat_memory_data: {}
-  eve_memory_data: {}
-  han_memory_data: {}
 secrets:
   agent_client_secret:
     file: ./secrets/agent_client_secret.txt

@@ -28,17 +28,12 @@ def mock_ports():
     llm.chat = AsyncMock()
     llm.health = AsyncMock(return_value={"healthy": True})
 
-    memory = MagicMock()
-    memory.store = AsyncMock(return_value="mem-123")
-    memory.search = AsyncMock(return_value=[])
-
     filesystem = MagicMock()
     filesystem.read = MagicMock(return_value="content")
     filesystem.write = MagicMock()
 
     return PortsBundle(
         llm=llm,
-        memory=memory,
         prompt_service=MagicMock(),
         queue=MagicMock(),
         metrics=MagicMock(),
@@ -209,7 +204,6 @@ class TestSystemBootstrap:
         """Should create complete system."""
         system = create_system(
             llm=mock_ports.llm,
-            memory=mock_ports.memory,
             prompt_service=mock_ports.prompt_service,
             queue=mock_ports.queue,
             metrics=mock_ports.metrics,
@@ -232,7 +226,6 @@ class TestSystemBootstrap:
 
         system = create_system(
             llm=mock_ports.llm,
-            memory=mock_ports.memory,
             prompt_service=mock_ports.prompt_service,
             queue=mock_ports.queue,
             metrics=mock_ports.metrics,
@@ -249,7 +242,6 @@ class TestSystemBootstrap:
         """Should report system health."""
         system = create_system(
             llm=mock_ports.llm,
-            memory=mock_ports.memory,
             prompt_service=mock_ports.prompt_service,
             queue=mock_ports.queue,
             metrics=mock_ports.metrics,

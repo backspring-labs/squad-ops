@@ -230,7 +230,6 @@ _EXPECTED_FACTORY_CALLS: dict[str, dict[str, int]] = {
         "create_llm_provider": 1,
         "create_queue_adapter": 1,
         "create_filesystem_provider": 1,
-        "create_memory_provider": 1,
         "create_prompt_repository": 1,
         "create_prompt_asset_source": 2,
         "create_telemetry_provider": 1,
@@ -424,7 +423,6 @@ _FACTORY_SELECTORS = (
     ("adapters.cycles.factory", "create_flow_executor", "provider"),
     ("adapters.embeddings.factory", "create_embeddings_provider", "provider"),
     ("adapters.events.factory", "create_cycle_event_bus", "provider"),
-    ("adapters.memory.factory", "create_memory_provider", "provider"),
     ("adapters.prompts.factory", "create_prompt_repository", "provider"),
     ("adapters.prompts.factory", "create_prompt_asset_source", "provider"),
     # #1568: the auth middleware's provider, a constructor keyword the runtime root names.

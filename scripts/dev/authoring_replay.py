@@ -68,7 +68,6 @@ def _context(envelope: dict, llm: Any, prompt_service: Any, renderer: Any) -> An
         request_renderer=renderer,
         llm_observability=None,
         filesystem=None,
-        memory=None,
         queue=None,
         metrics=None,
         events=None,

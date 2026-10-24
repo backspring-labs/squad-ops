@@ -6,10 +6,10 @@ comes entirely from role_id → prompt_service.get_system_prompt(role_id).
 
 Key design decisions (from plan runtime contracts):
 - P2-RC1: Zero role-specific code. role_id drives identity via prompt_service.
-- P2-RC4, superseded: chat neither recalls nor stores. The legacy agent store is dormant
-  (SIP-0110 §A.4.3, #2174). The runtime API assembles each turn's memory context from the records
-  and sends it in the message's metadata (#2180); this executor renders it through a managed
-  template and owns no memory. A capture is only ever proposed here: the person confirms it.
+- P2-RC4, superseded: chat neither recalls nor stores. The legacy agent store is retired
+  (SIP-0110 §A.4.3: dormant in #2174, removed in #2184). The runtime API assembles each turn's
+  memory context from the records and sends it in the message's metadata (#2180); this executor
+  renders it through a managed template and owns no memory. A capture is only ever proposed here: the person confirms it.
 - P2-RC5: History comes from the proxy (Phase 3), not A2A context: the runtime API sends a
   session's earlier turns, bounded, in the message's metadata (#2175).
 """
@@ -58,12 +58,6 @@ class ChatAgentExecutor(AgentExecutor):
     def __init__(self, *, ports: PortsBundle, role_id: str) -> None:
         self._ports = ports
         self._role_id = role_id
-        # INFO (#2425): the dormancy is the ruled state until SIP-0110 lands, said once at start
-        # where the agents log at INFO; a warning on every start teaches a reader to skip them.
-        logger.info(
-            "legacy agent memory dormant: chat neither recalls nor stores (SIP-0110 §A.4.3, #2174)",
-            extra={"role_id": role_id},
-        )
 
     async def execute(self, context: RequestContext, event_queue: EventQueue) -> None:
         """Execute a chat request: stream LLM response as A2A events."""

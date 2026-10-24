@@ -471,7 +471,6 @@ class AgentRunner:
             create_task_attempts,
         )
         from adapters.llm.factory import create_llm_provider
-        from adapters.memory.factory import create_memory_provider
         from adapters.prompts import create_prompt_repository
         from adapters.telemetry.factory import (
             create_llm_observability_provider,
@@ -507,11 +506,6 @@ class AgentRunner:
             timeout_seconds=config.llm.timeout,
             api_key=config.llm.api_key,
         )
-
-        # The legacy agent store is dormant (SIP-0110 §A.4.3, #2174): it holds no record and
-        # could embed none, and the accepted design retires it (#2184). The agents hold a port
-        # that refuses loudly, and no embedder is built. Its volume stays until the retirement.
-        memory = create_memory_provider(provider="dormant")
 
         # Create prompt service
         prompt_repo = create_prompt_repository("filesystem")  # no config field selects it
@@ -603,7 +597,6 @@ class AgentRunner:
                 # 1. Build PortsBundle without messaging
                 ports_without_messaging = PortsBundle(
                     llm=llm,
-                    memory=memory,
                     prompt_service=prompt_service,
                     queue=queue,
                     metrics=metrics,
@@ -650,7 +643,6 @@ class AgentRunner:
 
         return {
             "llm": llm,
-            "memory": memory,
             "prompt_service": prompt_service,
             "queue": queue,
             "metrics": metrics,

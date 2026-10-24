@@ -156,7 +156,6 @@ def _executor_for(handler, llm):
     registry.register(handler)
     ports = PortsBundle(
         llm=llm,
-        memory=MagicMock(),
         prompt_service=MagicMock(),
         queue=MagicMock(),
         metrics=MagicMock(),
@@ -282,7 +281,6 @@ class TestASelfEvaluationPassIsBookedUnderItsOwnKey:
         prompt_service.assemble.return_value = MagicMock(content="system", assembly_hash="h")
         ports = PortsBundle(
             llm=llm,
-            memory=MagicMock(),
             prompt_service=prompt_service,
             queue=MagicMock(),
             metrics=MagicMock(),

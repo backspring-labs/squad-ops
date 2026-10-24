@@ -68,11 +68,6 @@ PROVIDED_BY: dict[str, tuple[str, str]] = {
         "FastAPI pins its Starlette range and does not re-export BaseHTTPMiddleware; "
         "importing it directly is the documented FastAPI form (api/middleware/auth.py).",
     ),
-    "pyarrow": (
-        "lancedb",
-        "LanceDB's table API is Arrow; pyarrow is lancedb's own hard dependency, imported "
-        "lazily beside it (adapters/memory/lancedb.py).",
-    ),
 }
 
 #: Declared, never imported — with the reason it must be installed anyway.
@@ -327,7 +322,9 @@ def test_the_scan_sees_the_package():
     unguarded, guarded = _imports()
     assert "pydantic" in unguarded and len(unguarded["pydantic"]) >= 5
     assert "yaml" in unguarded
-    assert "lancedb" in guarded, "the TYPE_CHECKING / try-except guard detection is broken"
+    # langfuse is imported under a guard by its adapters (adapters/telemetry/langfuse/adapter.py);
+    # lancedb was the example until the legacy store was retired (#2184).
+    assert "langfuse" in guarded, "the TYPE_CHECKING / try-except guard detection is broken"
 
 
 def test_the_guard_detection_reads_both_forms(tmp_path: Path):

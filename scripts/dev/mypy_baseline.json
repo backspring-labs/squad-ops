@@ -22,8 +22,6 @@
 "adapters/cycles/postgres_campaign_registry.py\tunion-attr\tItem \"None\" of \"LaunchIntent | None\" has no attribute \"launched_at\"": 1,
 "adapters/cycles/postgres_campaign_registry.py\tunion-attr\tItem \"None\" of \"LaunchIntent | None\" has no attribute \"state\"": 1,
 "adapters/events/in_process_cycle_event_bus.py\tunused-ignore\tUnused \"type: ignore\" comment": 1,
-"adapters/memory/lancedb.py\tunion-attr\tItem \"None\" of \"DBConnection | None\" has no attribute \"create_table\"": 1,
-"adapters/memory/lancedb.py\tunion-attr\tItem \"None\" of \"DBConnection | None\" has no attribute \"open_table\"": 1,
 "adapters/sandbox/container_backend.py\targ-type\tArgument 1 to \"ProbeResult\" has incompatible type \"**dict[str, str | None]\"; expected \"float | None\"": 1,
 "adapters/sandbox/container_backend.py\targ-type\tArgument 1 to \"ProbeResult\" has incompatible type \"**dict[str, str | None]\"; expected \"int | None\"": 2,
 "adapters/sandbox/container_backend.py\targ-type\tArgument 1 to \"ProbeResult\" has incompatible type \"**dict[str, str | None]\"; expected \"str\"": 3,

@@ -15,7 +15,7 @@ is a factory change.
 | Config | **pydantic-settings** + **python-dotenv** + **PyYAML** | `SQUADOPS__*` env vars, profile YAML |
 | Workflow visibility | **Prefect** | Flow runs and task graphs. Orchestration decisions stay in the executor — Prefect is the view |
 | Identity | **Keycloak** (service) + **PyJWT** | OIDC, JWT validation, scopes |
-| Semantic memory | **LanceDB** + **sentence-transformers** | Embedded vector store; local embeddings, no hosted API |
+| Memory | **asyncpg** (Postgres) | Cross-Cycle Memory's lessons and typed records, beside the cycle registry. No vector store: the per-agent LanceDB store was retired in 2.5 (#2184) |
 | Inference | **Ollama** / **vLLM** | Both behind `LLMPort`, selected by configuration |
 | LLM observability | **LangFuse** | Behind `LLMObservabilityPort`, alongside OpenTelemetry and a NoOp |
 | Tracing / metrics | **OpenTelemetry** | Collector transport for traces and metrics |
@@ -51,9 +51,8 @@ install from the `.lock`. CI installs `tests/requirements.txt` *constrained by*
 `ci-constraints.txt`, so an upstream release cannot silently change what CI
 tested.
 
-Agent images install per surface, so a role that does not need the memory stack
-does not carry LanceDB, PyArrow and pandas — the difference between a small
-agent image and a very large one.
+Each image installs its own surface's lock, so the runtime API's image does not
+carry what only the agents use: the A2A server, the tree-sitter grammars and ruff.
 
 !!! warning "Known gap: CI does not test the deployed version set"
 

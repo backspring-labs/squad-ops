@@ -51,7 +51,6 @@ async def _qa(pass_answer: str, monkeypatch, caplog):
     prompt_service.assemble.return_value = MagicMock(content="system", assembly_hash="h")
     ports = PortsBundle(
         llm=llm,
-        memory=MagicMock(),
         prompt_service=prompt_service,
         queue=MagicMock(),
         metrics=MagicMock(),

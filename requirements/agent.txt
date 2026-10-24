@@ -18,9 +18,6 @@ aio-pika>=9.3.1
 # api.txt, so the CI constraint governs the version.
 redis>=5.0.0
 
-# Memory system (SIP-042)
-lancedb>=0.8.2
-
 # A2A Messaging (SIP-0085)
 a2a-sdk[http-server]>=0.3.0
 uvicorn>=0.30.0

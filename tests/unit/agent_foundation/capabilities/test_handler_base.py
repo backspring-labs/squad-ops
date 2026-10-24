@@ -133,7 +133,6 @@ class TestExecutionContext:
 
         return PortsBundle(
             llm=llm,
-            memory=MagicMock(),
             prompt_service=MagicMock(),
             queue=MagicMock(),
             metrics=MagicMock(),

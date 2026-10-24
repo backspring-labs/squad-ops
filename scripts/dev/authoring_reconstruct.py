@@ -104,7 +104,6 @@ async def reconstruct(
         request_renderer=renderer,
         llm_observability=None,
         filesystem=None,
-        memory=None,
         queue=None,
         metrics=None,
         events=None,

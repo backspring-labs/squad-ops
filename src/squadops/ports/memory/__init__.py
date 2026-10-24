@@ -1,9 +1,5 @@
-"""Memory port interfaces.
+"""Memory port interfaces (SIP-0110): recall, the records, references and context assembly.
 
-Provides abstract base class for memory storage adapters.
-Part of SIP-0.8.7 Infrastructure Ports Migration.
+Each port is imported by its own module. SIP-042's ``MemoryPort`` is retired (SIP-0110 §A.4.3,
+#2184).
 """
-
-from squadops.ports.memory.store import MemoryPort
-
-__all__ = ["MemoryPort"]
