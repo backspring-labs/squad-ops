@@ -1659,6 +1659,14 @@ checks:
       tags = flow_run_tags(project_id="p", framework_git_sha=None, deploy_id=None, campaign_id="c", increment_id="prop_x", kind="repair", replay_of=None)
       print("increment_id" in inspect.signature(prepare_cycle).parameters, increment_id_of(CycleKind.CALIBRATION, {}), tags[-2:])
     expect: "True None ['increment:prop_x', 'kind:repair']"
+  - id: "2578-ledger"
+    what: the campaign ledger lists each version's cycles, a repair or retry attached by its own launch's binding (#2578 part 4, SIP-0109 §24cg)
+    container: squadops-runtime-api
+    code: |
+      import dataclasses
+      from squadops.campaigns.ledger import LedgerEntry
+      print("cycles" in {f.name for f in dataclasses.fields(LedgerEntry)})
+    expect: "True"
   - id: "1966"
     what: QA plans and writes its tests by the faults a change could have, and writing no further test beyond the criteria is a correct answer (#1966's qa half, adopted)
     container: squadops-eve

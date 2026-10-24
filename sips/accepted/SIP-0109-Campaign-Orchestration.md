@@ -4207,3 +4207,26 @@ recorded as risk 2 of the 2.5 build plan for §24bv.
 - **The tags:** the executor's flow-run tag test holds the new tags.
 
 **Who ruled.** The owner placed parts 2–4 in 2.5 ("3–5 yes", 2026-10-23). The MacBook lane approved part 2's design on #2578 (issuecomment-6381040179): set by the launcher, read from the continuation's own binding, a projection with its test, and independent of contract 1's `pinned_commit`. The supervisor (the Spark lane) built it.
+
+### 24cg. The ledger lists each version's cycles, and the last one's end is the version's outcome (2026-10-24, §9.4, §10a, §24ca, §24cf; #2578 part 4; implementer's correction, for the owner)
+
+**What was wrong.**
+- The ledger (§9.4) gave each proposal version the decision of the cycle that carried it, and only that cycle's.
+- An increment spans its cycle, then any repair or retry of it, so the ledger showed a repaired version with the row that decided its first try, and never attached the repair's own end.
+- The 2.4 window's campaign 1 shows this: sorting's first try appears as row 12 (repair), and the repair's abandonment (row 13) isn't attached.
+
+**Built:**
+- **Each ledger entry lists the cycles that carried its version** (`cycles`), in launch order. Each shows its id, its kind (`increment`, then `repair` or `retry`) and, once decided, the deciding row's fields. The entry's `outcome` is its last cycle's decision.
+- **A repair or retry is attached by its own launch's binding,** the proposal and version `CONTINUED_KEYS` carry into its block (§24ca), read from the launch outbox. It is never attached by cycle order.
+  - So campaigns run before #2578 part 2's `increment_id` read correctly too: their launches always carried the binding.
+  - A continuation whose binding names a version never submitted is listed under none.
+- **The CLI's `campaigns ledger`** shows each version's cycles beside its ruling.
+- **There is still no writable increments table** (#2578's part 4): this view is derived from the log and the outbox.
+
+**Evidence.** The ledger route's tests, entered at `GET /api/v1/campaigns/{id}/ledger`:
+- a repair launched by the owner's resume (`bound_launch`) is listed under the version it continues, first with no row and then with its own deciding row, which becomes the version's outcome;
+- a continuation of another proposal is listed under none.
+
+Two mutations are each caught: the route not reading the outbox, and attaching by order.
+
+**Who ruled.** The owner placed #2578 parts 2–4 in 2.5 ("3–5 yes", 2026-10-23). The supervisor (the Spark lane) built this part.
