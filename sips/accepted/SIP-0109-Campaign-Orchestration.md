@@ -4186,6 +4186,90 @@ recorded as risk 2 of the 2.5 build plan for §24bv.
 
 **Who ruled.** The supervisor (the Spark lane), implementing §24bv under the owner's direction of 2026-10-21 and the overnight grant of 2026-10-24. Points 1 to 6 are the build's. Point 7's two questions are the owner's. Points 1 and 6 meet the MacBook lane's contract 1 and recipe. The MacBook lane approved both (G4 on PR #2733, 2026-10-24) and added point 3's last two items.
 
+### 24ce. An increment is promoted onto its campaign branch from its own capture, and a capture the branch can't take escalates (2026-10-24, §7.1, §7.5, §12a, §24bv point 2, §24cd points 1 and 2; #2619; the supervisor's design, for the owner)
+
+**Why.** §24bv point 2 makes a repository-backed Project's accepted tree the head of a campaign
+branch, and §24cd point 2 has the control row commit first with the ref following it. Building
+it forced five things neither says.
+
+**What changed.**
+1. **A capture the branch can't take is refused, and the campaign escalates** (§24bv point 2,
+   §12a).
+   - §24bv says the capture's parent is the head, but not what happens when it isn't. The
+     promotion is refused, and nothing is written: no PROMOTE row, and the accepted tree and the
+     ref stay where they were.
+   - It's refused when the capture was built on a commit other than the head, the run captured
+     nothing, the run recorded no source verification, the campaign has no head, or the runtime
+     has no managed clone wired.
+   - The decision row still follows, and names the refusal (`promotion_refused`). A decision
+     under `proceed` launches nothing on the tree the increment would have replaced: the
+     campaign escalates, with the refusal as its reason (`unbuilt`). A terminal decision still
+     completes the campaign.
+   - Until contract 1's increment pin lands (§24cd point 1), every increment is pinned at the
+     Project's baseline. So the first accepted increment after the record is promoted, and a
+     second accepted increment is refused this way, never stacked over the first.
+2. **The head is read from the row and its log** (§24cd point 1).
+   - `head(campaign, log)` returns `CampaignHead(commit, tree_identity,
+     previous_verification_ref)`. §24cd named `head(campaign_id)`, but the verification isn't
+     part of the accepted tree: it is on the PROMOTE row that made the head.
+   - A tree that names no commit raises `NoCampaignHead`, never a default.
+   - Nothing reads the ref for the head.
+3. **What a promotion on the branch records.**
+   - `AcceptedTree` carries `commit` beside its identity: the record's commit, or the
+     increment's captured one. Migration 1698 adds `campaigns.accepted_commit`, held by a CHECK
+     to a commit id beside an identity. A sample application's tree names none, and the request
+     hash leaves an empty commit out, so every promotion committed before the upgrade replays.
+   - The increment's PROMOTE row names `commit`, `parent_commit` and `verification_ref` (the
+     run's source verification), and no `tree_ref`: nothing is composed from the vault or stored
+     there. Its new criteria are frozen as any increment's are (§8.1).
+   - "No partial promotion" (§12a) reads a promotion naming its commit as whole. The digest
+     names the commit.
+   - The capture is read from contract 3's mappings: the run's delivery workspace's CAPTURED
+     mapping, with its parent read from the same workspace's SEEDED mapping. The contribution
+     reads it through the same function.
+   - The path is chosen by the cycle: a source-backed increment, repair or retry. A calibration
+     cycle and every sample application's cycle keep the vault's path.
+4. **A restart between the row and the ref.**
+   - A re-hearing of the cycle (§24v) finds its capture already the head, and replays the same
+     promotion. It writes no second row, and isn't refused as built elsewhere.
+   - The follow is one compare-and-swap, from the commit the row replaced. A ref already at the
+     head is a replay's. Any other refusal or failure is logged and never raised.
+   - The re-sync runs at startup, before the drain, and on the sweep's interval (§24cd says at
+     startup), so a follow that failed while the process stayed up is caught within a sweep.
+     It reads the ref before the row, so a promotion committing in between is never undone.
+5. **The record's promotion creates the branch** at the record's commit (`expected = None`).
+   A replayed record promotion finds it made.
+
+**Where it stops, by design.**
+- The launcher doesn't hand `CampaignHead` to cycle creation yet. That waits for the MacBook
+  lane's `ProjectSourceContext.pinned_commit` and `pinned_from` (§24cd point 1, contract 1).
+- The regression baseline from `previous_verification_ref` (§24bv point 3), acceptance on the
+  product's runner (§24cd point 6), the rebase (point 4) and the review request (§24cd point 7)
+  are later builds. Nothing is pushed.
+
+**Evidence.**
+- The wiring test enters at `CampaignProgress.cycle_ended` after a real
+  `deliver_source_change` over the shared fixture's managed clone
+  (`tests/unit/campaigns/test_campaign_branch.py`). The accepted tree is the capture's commit
+  and the commit's own tree, read back from Git. The ref is at the capture, and the package
+  holds "no partial promotion".
+- The same file holds:
+  - a second increment pinned at the Project's baseline, refused and escalated;
+  - a failed increment, whose capture stays at its own ref;
+  - a follow that failed, moved at `main._resume_campaigns`;
+  - a stop between the row and the ref, promoted once and decided once at startup.
+- `tests/unit/tools/test_git_source.py` holds the compare-and-swap refusing a stale expected
+  commit and a create over an existing branch. The Postgres test reads the commit back after a
+  restart, and refuses a malformed one or one with no tree.
+- `tests/unit/campaigns/test_progress.py` holds a sample application's promotions with the
+  branch wired, unchanged.
+- Thirteen mutants, twelve caught. The thirteenth was a second compare-and-swap in the follow
+  that no reachable path exercised, and it was removed (item 4).
+
+**Who ruled.** The supervisor (the Spark lane), implementing §24bv and §24cd under the owner's
+direction of 2026-10-21 and the overnight grant of 2026-10-24, for the owner's review. Item 1's
+escalation is the supervisor's design call.
+
 ### 24cf. A campaign cycle names its increment, and its flow runs say which increment and which kind (2026-10-24, §10a, §12b, §16, §24ca; #2578 parts 2 and 3; the supervisor's design, the MacBook lane's G4 on part 2)
 
 **What changed.**
