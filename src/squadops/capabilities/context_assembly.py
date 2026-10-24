@@ -252,6 +252,7 @@ _PLANNING_TEMPLATES = (
 _PLAN_PROPOSAL_TEMPLATES = (
     "request.plan_authoring_rules_appendix",
     "request.plan_bind_criteria_appendix",
+    "request.plan_blocking_gaps_appendix",
     "request.plan_frozen_surface_appendix",
     "request.plan_increment_criteria_appendix",
     "request.plan_increment_footprint_appendix",

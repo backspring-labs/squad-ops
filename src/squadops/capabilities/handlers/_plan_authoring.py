@@ -93,6 +93,11 @@ INCREMENT_SURFACES = (
 )
 
 
+#: SIP-0112 H.8: what a source-backed plan's authors are shown, as ``(asset, variable, input key)``:
+#: where a blocking gap stops the work, which the plan gate refuses a task for writing (#686).
+SOURCE_SURFACES = (("request.plan_blocking_gaps_appendix", "blocked_index", "blocked_paths_index"),)
+
+
 async def render_surfaces(renderer: Any, inputs: dict[str, Any], surfaces) -> str:
     """Each surface whose index the inputs carry, rendered through its managed asset (#448), in
     order. Each appendix opens with its heading and ends on its list, so they are joined with a
@@ -146,6 +151,7 @@ async def contract_surface_sections(renderer: Any, inputs: dict[str, Any]) -> st
                 "frozen_surface_index",
                 "frozen_surface_index",
             ),
+            *SOURCE_SURFACES,
             *INCREMENT_SURFACES,
         ),
     )

@@ -24,6 +24,7 @@ if TYPE_CHECKING:
     from squadops.capabilities.handlers.context import ExecutionContext
 from squadops.capabilities.handlers._plan_authoring import (
     INCREMENT_SURFACES,
+    SOURCE_SURFACES,
     render_surfaces,
     retry_yaml_call,
 )
@@ -228,7 +229,8 @@ class _ProposeBaseHandler(_PlanningTaskHandler):
         if self._proposer_role not in ("development", "qa"):
             return ""
 
-        return await render_surfaces(renderer, inputs, INCREMENT_SURFACES)
+        # SIP-0112 H.8: and, on a source-backed cycle, where a blocking gap stops the work.
+        return await render_surfaces(renderer, inputs, (*SOURCE_SURFACES, *INCREMENT_SURFACES))
 
     async def handle(
         self,

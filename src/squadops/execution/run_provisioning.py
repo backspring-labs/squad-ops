@@ -28,6 +28,7 @@ from squadops.cycles.models import Cycle, RunStatus, WorkloadType
 from squadops.cycles.task_plan import generate_task_plan
 from squadops.events.types import EventType
 from squadops.execution.binding_holds import checked_or_held
+from squadops.execution.blocked_paths import with_blocked_paths
 from squadops.execution.execution_errors import _ExecutionError
 from squadops.execution.proposal_evidence import with_proposal_evidence
 from squadops.stacks.scaffold import frozen_paths
@@ -68,6 +69,7 @@ class RunProvisioning:
         "_binding_holds",
         "_cycle_event_bus",
         "_cycle_registry",
+        "_derived_profile_for",
         "_failure_recall",
         "_load_contract_for_run",
         "_load_interface_manifest_for_run",
@@ -188,6 +190,9 @@ class RunProvisioning:
         # goals and readings, on its own inputs. No other task is, and the cycle's config never
         # holds them.
         plan = await with_proposal_evidence(self._proposal_evidence, plan, cycle=cycle)
+        # SIP-0112 H.8: a source-backed plan's authors are shown where a blocking gap stops the
+        # work, before either plan gate refuses a plan that goes there.
+        plan = await with_blocked_paths(self._derived_profile_for, plan, cycle=cycle)
         # SIP-0110 §0.9: each plan-writing and build-authoring task asks its unit's pinned snapshot
         # for its lessons and instructions at its own dispatch, where its prompt can be measured
         # (#2681). Before the first, the plan is checked: an instruction that can't be read, bound
