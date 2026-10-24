@@ -773,7 +773,11 @@ class CampaignProgress:
 
         A repository-backed increment's is the commit its run captured, on the campaign branch
         (``_promote_onto_branch``)."""
-        if cycle.source_context is not None and CycleKind(cycle.kind) in _INCREMENT_KINDS:
+        if (
+            cycle.source_context is not None
+            and cycle.kind is not None
+            and CycleKind(cycle.kind) in _INCREMENT_KINDS
+        ):
             return await self._promote_onto_branch(campaign, cycle, last_run, evaluation)
         refs = await self._vault.list_artifacts(cycle_id=cycle.cycle_id, run_id=last_run.run_id)
         # #1887: an increment delivered its change, not the app — the whole tree is the one it

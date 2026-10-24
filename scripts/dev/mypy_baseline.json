@@ -79,7 +79,6 @@
 "src/squadops/campaigns/box.py\tunion-attr\tItem \"None\" of \"BoxLease | None\" has no attribute \"campaign_id\"": 1,
 "src/squadops/campaigns/box.py\tunion-attr\tItem \"None\" of \"BoxLease | None\" has no attribute \"held_by\"": 1,
 "src/squadops/campaigns/progress.py\targ-type\tArgument 1 to \"CycleKind\" has incompatible type \"str | None\"; expected \"str\"": 1,
-"src/squadops/campaigns/progress.py\targ-type\tArgument 2 to \"_launch_for\" of \"CampaignProgress\" has incompatible type \"PendingAction | None\"; expected \"PendingAction\"": 1,
 "src/squadops/campaigns/progress.py\tassignment\tIncompatible types in assignment (expression has type \"dict[str, str]\", variable has type \"CycleAssessment\")": 1,
 "src/squadops/campaigns/progress.py\tvar-annotated\tNeed type annotation for \"since_increment\" (hint: \"since_increment: list[<type>] = ...\")": 1,
 "src/squadops/campaigns/proposal_rating.py\targ-type\tArgument 1 to \"Rating\" has incompatible type \"Any | None\"; expected \"int\"": 1,
