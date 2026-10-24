@@ -62,10 +62,12 @@ class _World:
         self.campaigns = campaigns or MemoryCampaignRegistry()
         self.cycles = MemoryCycleRegistry()
         self.executor = _Executor()
+        # One registry for the start route and the launch it makes, as the runtime wires them.
+        self.projects = project_registry or create_project_registry("config")
         self.launch = CampaignLaunchService(
             campaigns=self.campaigns,
             creation=CreationPorts(
-                project_registry=project_registry or create_project_registry("config"),
+                project_registry=self.projects,
                 squad_profile=create_squad_profile_port("config"),
                 cycle_registry=self.cycles,
                 deploy_registry=_Deploys(),
@@ -96,6 +98,7 @@ class _World:
         app.state.campaign_registry = self.campaigns
         app.state.cycle_registry = self.cycles
         app.state.campaign_launch = self.launch
+        app.state.project_registry = self.projects
         app.state.authz_port = KeycloakAuthzAdapter()
         self.client = TestClient(app)
 
@@ -374,7 +377,10 @@ async def test_a_restart_takes_up_the_campaign_cycle_it_died_inside(world, left,
         event_bus=MagicMock(),
         box_verdict=quiet_box,
     )
-    progress = SimpleNamespace(rehear_ended=AsyncMock(return_value=[]))
+    progress = SimpleNamespace(
+        rehear_ended=AsyncMock(return_value=[]),
+        rehear_calibration_records=AsyncMock(return_value=[]),
+    )
 
     await _resume_campaigns(SimpleNamespace(campaign_launch=restarted, campaign_progress=progress))
     await asyncio.sleep(0)
@@ -420,7 +426,10 @@ async def test_a_restart_starts_a_successor_left_queued(world, earlier, started)
         event_bus=MagicMock(),
         box_verdict=quiet_box,
     )
-    progress = SimpleNamespace(rehear_ended=AsyncMock(return_value=[]))
+    progress = SimpleNamespace(
+        rehear_ended=AsyncMock(return_value=[]),
+        rehear_calibration_records=AsyncMock(return_value=[]),
+    )
 
     await _resume_campaigns(SimpleNamespace(campaign_launch=restarted, campaign_progress=progress))
     await _resume_campaigns(SimpleNamespace(campaign_launch=restarted, campaign_progress=progress))

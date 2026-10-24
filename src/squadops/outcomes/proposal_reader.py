@@ -100,6 +100,8 @@ class StoredProposalEvidence(ProposalEvidencePort):
             ),
             key=lambda e: e.seq,
         )
+        # A calibration record's promotion (§24cc) names no cycle, so it has no evaluation by
+        # cycle to compare with: the record's own reading is SIP-0113 §10l's, not built here.
         order = dict.fromkeys(
             str(e.binding.get("cycle_id")) for e in rows if e.binding.get("cycle_id")
         )

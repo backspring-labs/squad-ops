@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import uuid
 
+from squadops.campaigns.calibration_record import BINDING_KEY, CalibrationRecord
 from squadops.campaigns.models import (
     Campaign,
     CampaignState,
@@ -45,10 +46,21 @@ def calibration_launch(campaign: Campaign) -> LaunchRequest:
 
 
 def start_transition(
-    campaign: Campaign, *, actor: str, actor_role: str, reason: str, idempotency_key: str
+    campaign: Campaign,
+    *,
+    actor: str,
+    actor_role: str,
+    reason: str,
+    idempotency_key: str,
+    record: CalibrationRecord | None = None,
 ) -> CampaignTransition:
-    """The owner's start: a draft campaign moves to calibrating, and its calibration cycle's
-    launch intent is written in the same transaction (§12b). Acted on the draft only."""
+    """The owner's start: a draft campaign moves to calibrating. Acted on the draft only.
+
+    - A sample application's: its calibration cycle's launch intent is written in the same
+      transaction (§12b).
+    - A repository-backed Project's (§24bv point 1): ``record`` is its calibration record, written
+      in this row's binding, and nothing is launched. Its promotion and decision follow
+      (``CampaignProgress.calibration_recorded``)."""
     return CampaignTransition(
         operation=ControlOperation.START,
         actor=actor,
@@ -57,7 +69,8 @@ def start_transition(
         idempotency_key=idempotency_key,
         next_state=CampaignState.CALIBRATING,
         expected_state=CampaignState.DRAFT,
-        launch=calibration_launch(campaign),
+        binding={BINDING_KEY: record.to_binding()} if record is not None else {},
+        launch=calibration_launch(campaign) if record is None else None,
     )
 
 
@@ -83,9 +96,22 @@ def increment_launch(
     ``qa_proposed`` is what the qa authors proposed instead of testing (#1884), when anything.
 
     ``unapproved`` is each proposal the campaign ruled on and never approved, by its last ruling
-    (#2593), when there is any."""
+    (#2593), when there is any.
+
+    Raises ``ValueError`` for a campaign whose accepted tree is no cycle's: one with none, or a
+    calibration record's (§24cc), whose proposal reads the product's tree instead (§24bv point 5).
+    Every seam downstream reads ``accepted_cycle_id`` as the cycle the increment builds on, so it
+    is never written empty."""
     policy = campaign.policy
-    assert campaign.accepted is not None
+    if campaign.accepted is None or campaign.accepted.cycle_id is None:
+        raise ValueError(
+            f"campaign {campaign.campaign_id}'s accepted tree names no cycle to propose on: "
+            + (
+                f"it is calibration record {campaign.accepted.calibration_record_id}'s"
+                if campaign.accepted is not None
+                else "it has none"
+            )
+        )
     return LaunchRequest(
         CycleKind.INCREMENT,
         {

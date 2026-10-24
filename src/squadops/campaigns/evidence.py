@@ -399,6 +399,14 @@ def _accepted(doc: dict) -> list[str]:
         if r["operation"] != ControlOperation.PROMOTE or r["outcome"] != ControlOutcome.APPLIED:
             continue
         b = r["binding"]
+        if b.get("calibration_record_id"):
+            # §24cc: a repository-backed calibration is a record of the product's own commit.
+            lines.append(
+                f"- calibration record `{b['calibration_record_id']}`: commit "
+                f"`{b['commit'][:12]}`, revision {b['development_configuration_revision']}, "
+                f"tree `{b['identity'][:12]}`"
+            )
+            continue
         lines.append(
             f"- {kinds.get(b['cycle_id'], 'cycle')} `{b['cycle_id']}`: tree `{b['identity'][:12]}`, "
             f"{b.get('files', '?')} files"

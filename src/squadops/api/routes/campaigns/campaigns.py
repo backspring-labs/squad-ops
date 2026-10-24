@@ -61,11 +61,17 @@ from squadops.api.runtime.deps import (
     get_cycle_registry,
     get_memory_records,
     get_memory_store,
+    get_project_registry,
     get_reference_resolvers,
     get_scenario_store,
 )
 from squadops.auth.models import Identity, Role, Scope
 from squadops.campaigns import lifecycle
+from squadops.campaigns.calibration_record import (
+    CalibrationRecord,
+    record_for,
+    recorded_calibration,
+)
 from squadops.campaigns.continuation import PendingAction
 from squadops.campaigns.escalation import Escalation, answer_refusal, answer_transition, escalations
 from squadops.campaigns.gate import increment_sequence_refusal
@@ -334,12 +340,19 @@ async def start_campaign(
     body: ControlRequest,
     identity: Identity | None = Depends(require_scopes(Scope.CAMPAIGNS_MANAGE)),
 ) -> ControlResultResponse:
-    """The start (§17), the owner's or the supervisor's (#1940): the draft moves to calibrating, its calibration cycle's launch
-    intent written in the same row (§12b), and the cycle is launched by the cycle-create path.
-    A campaign that is not a draft refuses the start as stale, and the refusal is recorded."""
+    """The start (§17), the owner's or the supervisor's (#1940): the draft moves to calibrating.
+    A campaign that is not a draft refuses the start as stale, and the refusal is recorded.
+
+    - **A sample application's:** its calibration cycle's launch intent is written in the same
+      row (§12b), and the cycle is launched by the cycle-create path.
+    - **A repository-backed Project's** (§24bv point 1, §24cc): a calibration record is written
+      in the row instead, and nothing is launched. Its tree is promoted and row 5 decides at once.
+      A start that can't write one is refused (409 ``CALIBRATION_REFUSED``, naming the cause), and
+      nothing is written."""
 
     actor, role = actor_from(identity)
     campaign = await _registry(request).get_campaign(campaign_id)
+    record = await _calibration_record(request, campaign)
     try:
         transition = start_transition(
             campaign,
@@ -347,6 +360,7 @@ async def start_campaign(
             actor_role=role,
             reason=body.reason,
             idempotency_key=body.idempotency_key,
+            record=record,
         )
     except FileNotFoundError as e:
         # The policy names a request profile that does not exist: nothing can launch.
@@ -360,7 +374,39 @@ async def start_campaign(
     async with get_campaign_launch(request).launches_held():
         result = await apply_control(request, campaign_id, transition, identity)
         await _pin_memory(request, result.campaign)
-    return await _after_drain(request, result, await launch_pending(request, result))
+    if record is None:
+        return await _after_drain(request, result, await launch_pending(request, result))
+    # §24bv point 1: the record is promoted and decided now, after the pin and outside the launch
+    # lock, since the decision's own launch drains under it. A hearing that fails here is retried
+    # by the sweep and at startup (``rehear_calibration_records``); a replayed start hears nothing.
+    decided = await get_campaign_progress(request).calibration_recorded(campaign_id)
+    if decided is None or decided.intent is None:
+        return await _after_drain(request, result, [])
+    intent = await _registry(request).get_launch_intent(decided.intent.launch_id)
+    return await _after_drain(
+        request,
+        result,
+        [intent.cycle_id] if intent.cycle_id else [],
+        launch_id=intent.launch_id,
+    )
+
+
+async def _calibration_record(request: Request, campaign: Campaign) -> CalibrationRecord | None:
+    """The calibration record a repository-backed Project's start writes (§24bv point 1), or
+    ``None`` for a sample application's, whose start launches its calibration cycle (§11).
+
+    A draft's is read from the Project's state now, refused with :class:`CalibrationRecordRefused`
+    when it can't be written. A campaign past its draft can only replay its start or be refused
+    as stale, so it is given the record its start wrote, if any: a replay then matches, and a
+    Project that has moved on since doesn't turn a replay into a refusal."""
+    project = await get_project_registry(request).get_project(campaign.project_id)
+    if project.source is None:
+        return None
+    if campaign.state is not CampaignState.DRAFT:
+        return recorded_calibration(await _registry(request).control_log(campaign.campaign_id))
+    return await record_for(
+        get_project_registry(request), project, campaign_id=campaign.campaign_id
+    )
 
 
 async def _pin_memory(request: Request, campaign) -> None:
@@ -995,7 +1041,11 @@ def _campaign(c: Campaign) -> CampaignResponse:
         created_by=c.created_by,
         updated_at=c.updated_at,
         accepted=(
-            AcceptedTreeDTO(identity=c.accepted.identity, cycle_id=c.accepted.cycle_id)
+            AcceptedTreeDTO(
+                identity=c.accepted.identity,
+                cycle_id=c.accepted.cycle_id,
+                calibration_record_id=c.accepted.calibration_record_id,
+            )
             if c.accepted
             else None
         ),

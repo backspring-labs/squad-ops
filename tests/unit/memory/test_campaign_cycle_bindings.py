@@ -427,7 +427,9 @@ async def _one_sweep(launcher) -> None:
 
     launcher.retry_blocked = AsyncMock(return_value=[])
     progress = SimpleNamespace(
-        sweep_ruling_bounds=AsyncMock(), rehear_ended=AsyncMock(return_value=[])
+        sweep_ruling_bounds=AsyncMock(),
+        rehear_ended=AsyncMock(return_value=[]),
+        rehear_calibration_records=AsyncMock(return_value=[]),
     )
     with (
         patch.object(

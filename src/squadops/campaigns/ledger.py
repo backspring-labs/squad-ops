@@ -64,8 +64,9 @@ def ledger(log: list[ControlLogEntry]) -> list[LedgerEntry]:
                     "at": e.committed_at.isoformat(),
                 }
         elif e.operation == ControlOperation.DECIDE and "row" in b:
-            # The cycle's end decides for the last version it carried.
-            versions = by_cycle.get(b["cycle_id"], [])
+            # The cycle's end decides for the last version it carried. A calibration record's
+            # decision (§24cc) names no cycle, and no proposal was submitted before it.
+            versions = by_cycle.get(b["cycle_id"], []) if "cycle_id" in b else []
             if versions:
                 entries[max(versions, key=lambda k: k[1])]["outcome"] = {
                     k: b.get(k)
