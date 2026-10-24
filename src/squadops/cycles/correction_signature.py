@@ -518,6 +518,12 @@ REPAIR_REFUSED_MARKER = "repair REJECTED by patch verification"
 REPAIR_EMPTY_MARKER = "the repair emitted no content"
 
 
+#: The executor's wording for a repair whose every file write authorization dropped (#2521): it
+#: emitted files its grant excludes, so its round is spent rather than refunded, and nothing was
+#: applied. One constant, two readers, like the two above.
+REPAIR_DROPPED_MARKER = "write authorization dropped every file the repair emitted"
+
+
 def repair_not_applied_in_round(repair_rejections: list[str] | None, round_no: int) -> bool:
     """Whether round ``round_no``'s repair was never applied to the tree (#1129, #1658).
 
@@ -531,13 +537,15 @@ def repair_not_applied_in_round(repair_rejections: list[str] | None, round_no: i
       and the rule still counted it: both of Han's shakeout rolls on the 1.8.1 deploy B′ ended
       ``plan_defect`` on such a round, one after zero applied repairs. Where no decision step
       is declared the rule is the carried failures alone, so nothing else shielded it.
+    - **every file dropped by write authorization** (#2521) — the round is spent, and the tree
+      the next round fails on is the one this round left unrepaired.
 
     The carry entries are the executor's own ``"correction attempt N: <marker> …"`` lines; a
     retest that ran and FAILED is a different entry and stays informative.
     """
     prefixes = tuple(
         f"correction attempt {round_no}: {marker}"
-        for marker in (REPAIR_REFUSED_MARKER, REPAIR_EMPTY_MARKER)
+        for marker in (REPAIR_REFUSED_MARKER, REPAIR_EMPTY_MARKER, REPAIR_DROPPED_MARKER)
     )
     return any(str(entry).startswith(prefixes) for entry in repair_rejections or [])
 
