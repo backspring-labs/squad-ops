@@ -861,4 +861,367 @@ campaigns:
     sha256: 3cb4b766f28b6aac3197ce849d73c4395581b1b678ef418459a90a115b651f4d
   package_identity: 97c6a080b9042f573a5e0efb922822bb9b9b88b15316fe345bdc466ea89af24e
   package_artifact: art_5d31ef6165a3
+- campaign_id: cmp_a4beedc0bbe7
+  created: '2026-10-19T15:37:25.98873+00:00'
+  state: completed
+  outcome: aborted
+  create_reason: '2.4 Next.js shakeout, round 1 (uncounted): the first Next.js campaign, the window''s
+    suite pinned, on dep_158f507cf00f (docs/plans/2-4-0-window-preregistration.md, condition 4); launched
+    by the supervisor under the owner''s grant of 2026-10-19'
+  recorded_definition:
+    path: examples/03_group_run/campaigns/2-4-0-nextjs-shakeout-1.yaml
+    sha256: 806c64d93ea853529eb4ea0dfe56a7667409d92709bf347644f3f6ac2d9fefc6
+  recorded_reconciles: true
+  definitions:
+  - path: examples/03_group_run/campaigns/2-4-0-nextjs-shakeout-1.yaml
+    sha256: 806c64d93ea853529eb4ea0dfe56a7667409d92709bf347644f3f6ac2d9fefc6
+  package_identity: 6ae707283c1f385f3945b173246e7eb0b91b8b1bf3957d8e6786942b423cf439
+  package_artifact: art_814918942c14
+- campaign_id: cmp_686713e84c66
+  created: '2026-10-19T16:51:43.864322+00:00'
+  state: completed
+  outcome: aborted
+  create_reason: '2.4 Next.js shakeout, round 2: round 1 (cmp_a4beedc0bbe7) found #2511 and #2512, fixed
+    in #2514 and loaded on dep_ecdc0fe88296 (main 12128307). Pre-registration condition 4; uncounted;
+    exit rule: this campaign on one deploy with no new seam finding. The supervisor, under the owner''s
+    grant of 2026-10-19'
+  recorded_definition:
+    path: examples/03_group_run/campaigns/2-4-0-nextjs-shakeout-1.yaml
+    sha256: 806c64d93ea853529eb4ea0dfe56a7667409d92709bf347644f3f6ac2d9fefc6
+  recorded_reconciles: true
+  definitions:
+  - path: examples/03_group_run/campaigns/2-4-0-nextjs-shakeout-1.yaml
+    sha256: 806c64d93ea853529eb4ea0dfe56a7667409d92709bf347644f3f6ac2d9fefc6
+  package_identity: de011890ac8e2be38d02cf7353eca967127116b488687887fdfa4451752b8616
+  package_artifact: art_e948d60bd516
+- campaign_id: cmp_c3229ccc38d7
+  created: '2026-10-19T18:54:29.254068+00:00'
+  state: completed
+  outcome: aborted
+  create_reason: '2.4 Next.js shakeout, round 3: round 2 (cmp_686713e84c66) found #2522 (a Next.js increment''s
+    footprint left out the route file of an endpoint whose request or errors it changed, so every repair
+    to it was dropped), fixed in #2523 and loaded on dep_8688ab4fec1c (main 38c578fd), with #316''s rename
+    (#2500) and the memory entry points'' chat (#2517, #2518) beside it. Pre-registration condition 4;
+    uncounted; exit rule: this campaign on one deploy with no new seam finding. The supervisor, under
+    the owner''s grant of 2026-10-19'
+  recorded_definition:
+    path: examples/03_group_run/campaigns/2-4-0-nextjs-shakeout-1.yaml
+    sha256: 806c64d93ea853529eb4ea0dfe56a7667409d92709bf347644f3f6ac2d9fefc6
+  recorded_reconciles: true
+  definitions:
+  - path: examples/03_group_run/campaigns/2-4-0-nextjs-shakeout-1.yaml
+    sha256: 806c64d93ea853529eb4ea0dfe56a7667409d92709bf347644f3f6ac2d9fefc6
+  package_identity: b4f9440463f82bb3fee92094a528b7183bf7126a4b2cf44ffee1c9167a91166a
+  package_artifact: art_e1e6b0d1c048
+- campaign_id: cmp_37bd069c4d89
+  created: '2026-10-20T02:51:54.363847+00:00'
+  state: completed
+  outcome: failure
+  create_reason: '2.4 Next.js shakeout round 4 on dep_ea20aa87f9bd (main 119a5565), after round 3''s findings
+    #2531 (PR #2532) and #2534/#2395 (PR #2535). The exit rule: a round with no new seam finding.'
+  recorded_definition:
+    path: examples/03_group_run/campaigns/2-4-0-nextjs-shakeout-1.yaml
+    sha256: 806c64d93ea853529eb4ea0dfe56a7667409d92709bf347644f3f6ac2d9fefc6
+  recorded_reconciles: true
+  definitions:
+  - path: examples/03_group_run/campaigns/2-4-0-nextjs-shakeout-1.yaml
+    sha256: 806c64d93ea853529eb4ea0dfe56a7667409d92709bf347644f3f6ac2d9fefc6
+  package_identity: 9170fc055e6e90fb4a3003824603dae451e7a5ea1c2841b51c281c5964aa5143
+  package_artifact: art_15bea077ee4f
+- campaign_id: cmp_aa8a80827dfb
+  created: '2026-10-20T04:03:24.614557+00:00'
+  state: completed
+  outcome: aborted
+  create_reason: '2.4 Next.js shakeout round 5 on dep_abc4094b71dd (main 52050dda), after round 4''s finding
+    #2536 (PR #2537). The exit rule: a round with no new seam finding.'
+  recorded_definition:
+    path: examples/03_group_run/campaigns/2-4-0-nextjs-shakeout-1.yaml
+    sha256: 806c64d93ea853529eb4ea0dfe56a7667409d92709bf347644f3f6ac2d9fefc6
+  recorded_reconciles: true
+  definitions:
+  - path: examples/03_group_run/campaigns/2-4-0-nextjs-shakeout-1.yaml
+    sha256: 806c64d93ea853529eb4ea0dfe56a7667409d92709bf347644f3f6ac2d9fefc6
+  package_identity: 9956da39738eb47e30077ad172dc0e8e094bb12eaf19ecb4dedd2b1dad0d7cfb
+  package_artifact: art_b5884131a36c
+- campaign_id: cmp_3358baf106a0
+  created: '2026-10-20T06:25:10.839967+00:00'
+  state: completed
+  outcome: failure
+  create_reason: '2.4 Next.js shakeout round 6 on dep_9bdb6e53df23 (main 8109459c), after round 5''s finding
+    #2538 (PR #2539). The exit rule: a round with no new seam finding.'
+  recorded_definition:
+    path: examples/03_group_run/campaigns/2-4-0-nextjs-shakeout-1.yaml
+    sha256: 806c64d93ea853529eb4ea0dfe56a7667409d92709bf347644f3f6ac2d9fefc6
+  recorded_reconciles: true
+  definitions:
+  - path: examples/03_group_run/campaigns/2-4-0-nextjs-shakeout-1.yaml
+    sha256: 806c64d93ea853529eb4ea0dfe56a7667409d92709bf347644f3f6ac2d9fefc6
+  package_identity: aa43896bda41e5daffbcd429ba5aea310d11b86d7c44ca1a30a44c49079753d8
+  package_artifact: art_74299f8686d7
+- campaign_id: cmp_9255bdbc66f4
+  created: '2026-10-20T07:57:54.870799+00:00'
+  state: completed
+  outcome: failure
+  create_reason: '2.4 Next.js shakeout round 7 on dep_f64298529c50 (main 36d1e363), after round 6''s finding
+    #2540 (PR #2541). The exit rule: a round with no new seam finding.'
+  recorded_definition:
+    path: examples/03_group_run/campaigns/2-4-0-nextjs-shakeout-1.yaml
+    sha256: 806c64d93ea853529eb4ea0dfe56a7667409d92709bf347644f3f6ac2d9fefc6
+  recorded_reconciles: true
+  definitions:
+  - path: examples/03_group_run/campaigns/2-4-0-nextjs-shakeout-1.yaml
+    sha256: 806c64d93ea853529eb4ea0dfe56a7667409d92709bf347644f3f6ac2d9fefc6
+  package_identity: a71a58465ec64ca46612f366e68ffd2960f7c79169c314e02dab7923ac39ebe3
+  package_artifact: art_f9a611f5c6b3
+- campaign_id: cmp_8cabe31f6e52
+  created: '2026-10-20T10:52:00.4672+00:00'
+  state: completed
+  outcome: aborted
+  create_reason: '2.4 Next.js shakeout round 8 on dep_8578fa24da57 (main a2f61afc), after round 7''s finding
+    #2542 (PR #2543). The exit rule: a round with no new seam finding, its outcome evaluations read.'
+  recorded_definition:
+    path: examples/03_group_run/campaigns/2-4-0-nextjs-shakeout-1.yaml
+    sha256: 806c64d93ea853529eb4ea0dfe56a7667409d92709bf347644f3f6ac2d9fefc6
+  recorded_reconciles: true
+  definitions:
+  - path: examples/03_group_run/campaigns/2-4-0-nextjs-shakeout-1.yaml
+    sha256: 806c64d93ea853529eb4ea0dfe56a7667409d92709bf347644f3f6ac2d9fefc6
+  package_identity: 1fd6cffd88c3809cd3132a6044373b6dd771e72308d5684b6a7ba65cf2ac4f79
+  package_artifact: art_7ab02726e1f9
+- campaign_id: cmp_51011c06ed90
+  created: '2026-10-20T14:22:15.42274+00:00'
+  state: completed
+  outcome: failure
+  create_reason: '2.4 shakeout round 9 (Next.js) on dep_19dfa94c0a0a (main 92e26330, 157/157 loaded with
+    #2552''s row): round 8''s finding #2547 fixed in PR #2548 (the supervisor, under the owner''s grant
+    of 2026-10-19)'
+  recorded_definition:
+    path: examples/03_group_run/campaigns/2-4-0-nextjs-shakeout-1.yaml
+    sha256: 806c64d93ea853529eb4ea0dfe56a7667409d92709bf347644f3f6ac2d9fefc6
+  recorded_reconciles: true
+  definitions:
+  - path: examples/03_group_run/campaigns/2-4-0-nextjs-shakeout-1.yaml
+    sha256: 806c64d93ea853529eb4ea0dfe56a7667409d92709bf347644f3f6ac2d9fefc6
+  package_identity: df1ba579bae592871d9cfb0a1417b5cb14bb41572741a33c8ba1778639baf0c1
+  package_artifact: art_80d3a4f9d70b
+- campaign_id: cmp_41d4a7185a3a
+  created: '2026-10-20T15:24:05.974213+00:00'
+  state: completed
+  outcome: success
+  create_reason: '2.4 shakeout: the FastAPI + React campaign on dep_19dfa94c0a0a (main 92e26330, 157/157
+    loaded). Next.js round 9 ended at calibration by #2306''s known shape (after the window, D8): no new
+    seam finding (the supervisor, under the owner''s grant of 2026-10-19)'
+  recorded_definition:
+    path: examples/03_group_run/campaigns/2-4-0-fastapi-shakeout-1.yaml
+    sha256: b84a9b79e27f0277fc52d1c6f952e3c783d0edefaa8fbb540fe802361cd0ed7a
+  recorded_reconciles: true
+  definitions:
+  - path: examples/03_group_run/campaigns/2-4-0-cut-shakeout.yaml
+    sha256: a25d6f7b6497a86095114945a05c09207cfdf29bd14b9a08fcaa4ba96d2cd4ac
+  - path: examples/03_group_run/campaigns/2-4-0-fastapi-shakeout-1.yaml
+    sha256: b84a9b79e27f0277fc52d1c6f952e3c783d0edefaa8fbb540fe802361cd0ed7a
+  package_identity: 4072d0a99e5b091bdcbe8f5e3234d07db9a4cdc4b5e4419c771539ab4c2479cd
+  package_artifact: art_60fbaaf828f0
+- campaign_id: cmp_7197fdc82778
+  created: '2026-10-20T16:33:17.044908+00:00'
+  state: completed
+  outcome: success
+  create_reason: '2.4 shakeout loop round 10: Next.js on dep_19dfa94c0a0a, to exercise the increment path
+    (#2547''s fix) that round 9 never reached'
+  recorded_definition:
+    path: examples/03_group_run/campaigns/2-4-0-nextjs-shakeout-1.yaml
+    sha256: 806c64d93ea853529eb4ea0dfe56a7667409d92709bf347644f3f6ac2d9fefc6
+  recorded_reconciles: true
+  definitions:
+  - path: examples/03_group_run/campaigns/2-4-0-nextjs-shakeout-1.yaml
+    sha256: 806c64d93ea853529eb4ea0dfe56a7667409d92709bf347644f3f6ac2d9fefc6
+  package_identity: null
+  package_artifact: null
+- campaign_id: cmp_83d63c2ebb50
+  created: '2026-10-20T18:59:10.579581+00:00'
+  state: completed
+  outcome: success
+  create_reason: '2.4 measurement window, campaign 1 of 4 (FastAPI 1), registered in docs/plans/2-4-0-window-preregistration.md
+    (PR #2568)'
+  recorded_definition:
+    path: examples/03_group_run/campaigns/2-4-0-window-fastapi-react-1.yaml
+    sha256: 2d9c74f1ca2e1cd77c057b67f12fd5c3806d9374c3028257c93137f11b39d82d
+  recorded_reconciles: true
+  definitions:
+  - path: examples/03_group_run/campaigns/2-4-0-proposal-evidence-fastapi-react.yaml
+    sha256: b775453c730be124e7d69cbef7df0eb338036da04286bd6c828292a6ebf8d993
+  - path: examples/03_group_run/campaigns/2-4-0-window-fastapi-react-1.yaml
+    sha256: 2d9c74f1ca2e1cd77c057b67f12fd5c3806d9374c3028257c93137f11b39d82d
+  - path: examples/03_group_run/campaigns/2-4-0-window-fastapi-react-2.yaml
+    sha256: e12484cb97a9ff6e18c6065a5e409a1727f0ab09aca6e0c84817a12aac198c36
+  package_identity: c3951181e96ac0a584e85249d58563da18ab7812a02b4ead820d95950af849d0
+  package_artifact: art_b874f721414b
+- campaign_id: cmp_ae20bfd95bc3
+  created: '2026-10-20T21:04:43.271901+00:00'
+  state: completed
+  outcome: failure
+  create_reason: '2.4 measurement window, campaign 2 of 4 (Next.js 1), registered in docs/plans/2-4-0-window-preregistration.md
+    (PR #2568)'
+  recorded_definition:
+    path: examples/03_group_run/campaigns/2-4-0-window-nextjs-1.yaml
+    sha256: a2ff593a5d29b15310dc993d8c2b8f3eca262879b9943898af9831df78c515f9
+  recorded_reconciles: true
+  definitions:
+  - path: examples/03_group_run/campaigns/2-4-0-window-nextjs-1.yaml
+    sha256: a2ff593a5d29b15310dc993d8c2b8f3eca262879b9943898af9831df78c515f9
+  - path: examples/03_group_run/campaigns/2-4-0-window-nextjs-2.yaml
+    sha256: 4a0cccc71e49a2be8f0e987ee0adc7c4e94c45cc930691cec9eda8270d0f93c1
+  package_identity: 9a392238b78b239b452e25374048d2047ef46835a81f6f989965b6e67f7819f9
+  package_artifact: art_222ca629f68a
+- campaign_id: cmp_e717aefe1143
+  created: '2026-10-20T23:42:23.258558+00:00'
+  state: completed
+  outcome: success
+  create_reason: '2.4 measurement window, campaign 3 of 4 (FastAPI 2), registered in docs/plans/2-4-0-window-preregistration.md
+    (PR #2568)'
+  recorded_definition:
+    path: examples/03_group_run/campaigns/2-4-0-window-fastapi-react-2.yaml
+    sha256: e12484cb97a9ff6e18c6065a5e409a1727f0ab09aca6e0c84817a12aac198c36
+  recorded_reconciles: true
+  definitions:
+  - path: examples/03_group_run/campaigns/2-4-0-proposal-evidence-fastapi-react.yaml
+    sha256: b775453c730be124e7d69cbef7df0eb338036da04286bd6c828292a6ebf8d993
+  - path: examples/03_group_run/campaigns/2-4-0-window-fastapi-react-1.yaml
+    sha256: 2d9c74f1ca2e1cd77c057b67f12fd5c3806d9374c3028257c93137f11b39d82d
+  - path: examples/03_group_run/campaigns/2-4-0-window-fastapi-react-2.yaml
+    sha256: e12484cb97a9ff6e18c6065a5e409a1727f0ab09aca6e0c84817a12aac198c36
+  package_identity: f213d13d5d5a9247e1d2ba7567c9eef5dad60a197278d6cc32fefe0d124e22ba
+  package_artifact: art_dc47928cc668
+- campaign_id: cmp_263d1e49aca8
+  created: '2026-10-21T01:29:46.635846+00:00'
+  state: completed
+  outcome: aborted
+  create_reason: '2.4 measurement window, campaign 4 of 4 (Next.js 2), registered in docs/plans/2-4-0-window-preregistration.md
+    (PR #2568)'
+  recorded_definition:
+    path: examples/03_group_run/campaigns/2-4-0-window-nextjs-2.yaml
+    sha256: 4a0cccc71e49a2be8f0e987ee0adc7c4e94c45cc930691cec9eda8270d0f93c1
+  recorded_reconciles: true
+  definitions:
+  - path: examples/03_group_run/campaigns/2-4-0-window-nextjs-1.yaml
+    sha256: a2ff593a5d29b15310dc993d8c2b8f3eca262879b9943898af9831df78c515f9
+  - path: examples/03_group_run/campaigns/2-4-0-window-nextjs-2.yaml
+    sha256: 4a0cccc71e49a2be8f0e987ee0adc7c4e94c45cc930691cec9eda8270d0f93c1
+  package_identity: 5f6004e3cb4e216bbebde9c3488da9314776db23c1d38cf227c524623cdb8df9
+  package_artifact: art_997f581271c5
+- campaign_id: cmp_a74d3af52810
+  created: '2026-10-21T21:19:06.190449+00:00'
+  state: completed
+  outcome: failure
+  create_reason: 'IR-3 live (SIP-0112 H.3, #2179), uncounted: campaign w'
+  recorded_definition:
+    path: /tmp/claude-1000/-home-jladd-Code-squad-ops/d6ea102c-ec30-4d33-8d81-31830b1e1569/scratchpad/ir3live/campaign-w.yaml
+    sha256: dccecc4946654991a17249834d149ca1a126e9db352c5567f73038396fffbb28
+  recorded_reconciles: false
+  definitions: []
+  package_identity: b108214f2a352637a05c1ff4c484073da7b65408be21a9b1d15cf139c4fc2a02
+  package_artifact: art_46676c186260
+- campaign_id: cmp_283a739a107c
+  created: '2026-10-21T21:19:06.61103+00:00'
+  state: completed
+  outcome: failure
+  create_reason: 'IR-3 live (SIP-0112 H.3, #2179), uncounted: campaign x'
+  recorded_definition:
+    path: /tmp/claude-1000/-home-jladd-Code-squad-ops/d6ea102c-ec30-4d33-8d81-31830b1e1569/scratchpad/ir3live/campaign-x.yaml
+    sha256: 7311580e41f41bee6793a9963b2d4b95bb9386d1721b2059d4c9ea046c701af5
+  recorded_reconciles: false
+  definitions: []
+  package_identity: 20b2a47788d6422d21569da3b07fc6673fa9268c0e0d13b84ca28d18087ddcec
+  package_artifact: art_ca4525ccaadc
+- campaign_id: cmp_ca24f3776ef8
+  created: '2026-10-23T02:28:32.483952+00:00'
+  state: completed
+  outcome: success
+  create_reason: "SIP-0113 \xA74.5's live reading, pre-registered in docs/plans/verification-sets/2-4-0-proposal-evidence-preregistration.md\
+    \ (#2691)"
+  recorded_definition:
+    path: examples/03_group_run/campaigns/2-4-0-proposal-evidence-fastapi-react.yaml
+    sha256: b775453c730be124e7d69cbef7df0eb338036da04286bd6c828292a6ebf8d993
+  recorded_reconciles: true
+  definitions:
+  - path: examples/03_group_run/campaigns/2-4-0-proposal-evidence-fastapi-react.yaml
+    sha256: b775453c730be124e7d69cbef7df0eb338036da04286bd6c828292a6ebf8d993
+  - path: examples/03_group_run/campaigns/2-4-0-window-fastapi-react-1.yaml
+    sha256: 2d9c74f1ca2e1cd77c057b67f12fd5c3806d9374c3028257c93137f11b39d82d
+  - path: examples/03_group_run/campaigns/2-4-0-window-fastapi-react-2.yaml
+    sha256: e12484cb97a9ff6e18c6065a5e409a1727f0ab09aca6e0c84817a12aac198c36
+  package_identity: 8bba8a816b2203c07e55bd7c19324beadf41da0cd2c93186693c6dd49ed8c5d9
+  package_artifact: art_9c717a8f7f89
+- campaign_id: cmp_73d227af5da0
+  created: '2026-10-23T13:44:48.19495+00:00'
+  state: completed
+  outcome: success
+  create_reason: '2.4 cut shakeout round 1 (docs/plans/2-4-0-cut-preregistration.md, #2703) on the final
+    deploy dep_7daa36f7adb9 at f8309507'
+  recorded_definition:
+    path: examples/03_group_run/campaigns/2-4-0-cut-shakeout.yaml
+    sha256: a25d6f7b6497a86095114945a05c09207cfdf29bd14b9a08fcaa4ba96d2cd4ac
+  recorded_reconciles: true
+  definitions:
+  - path: examples/03_group_run/campaigns/2-4-0-cut-shakeout.yaml
+    sha256: a25d6f7b6497a86095114945a05c09207cfdf29bd14b9a08fcaa4ba96d2cd4ac
+  - path: examples/03_group_run/campaigns/2-4-0-fastapi-shakeout-1.yaml
+    sha256: b84a9b79e27f0277fc52d1c6f952e3c783d0edefaa8fbb540fe802361cd0ed7a
+  package_identity: bbd734b6618274f6eb05ccfccf40e645998f6e105cee8d63e9d5ffe50bf59d2f
+  package_artifact: art_dbf56b0989b8
+- campaign_id: cmp_78442938b5ec
+  created: '2026-10-23T16:05:52.594958+00:00'
+  state: completed
+  outcome: success
+  create_reason: 2.4 cut shakeout round 2 (docs/plans/2-4-0-cut-preregistration.md) on the final deploy
+    dep_d7ff50b9b39c at b3acbc82
+  recorded_definition:
+    path: examples/03_group_run/campaigns/2-4-0-cut-shakeout.yaml
+    sha256: a25d6f7b6497a86095114945a05c09207cfdf29bd14b9a08fcaa4ba96d2cd4ac
+  recorded_reconciles: true
+  definitions:
+  - path: examples/03_group_run/campaigns/2-4-0-cut-shakeout.yaml
+    sha256: a25d6f7b6497a86095114945a05c09207cfdf29bd14b9a08fcaa4ba96d2cd4ac
+  - path: examples/03_group_run/campaigns/2-4-0-fastapi-shakeout-1.yaml
+    sha256: b84a9b79e27f0277fc52d1c6f952e3c783d0edefaa8fbb540fe802361cd0ed7a
+  package_identity: 5d7af8bfa3fdb19915adb580af3c5bf5f83fb9062b55197bff69a71c92213b3a
+  package_artifact: art_0301714fe513
+- campaign_id: cmp_82fed8669ea0
+  created: '2026-10-23T20:04:38.965292+00:00'
+  state: completed
+  outcome: failure
+  create_reason: '#2183 T6 (campaign half) and T12 on the Spark, uncounted, after the 2.4 cut set''s reading'
+  recorded_definition:
+    path: var/campaigns/2183-t12-t6c.yaml
+    sha256: ba1d6dfcf71d0e620d6ceb2b03e8ceb325f35fc6d1d598c9a985cfdc32956fec
+  recorded_reconciles: false
+  definitions: []
+  package_identity: e05376e0460f1875ce68a8c65acce3fe75e57a5cd7b9db862a1c9285117afe82
+  package_artifact: art_f2beaf2967ce
+- campaign_id: cmp_4707a0662a5e
+  created: '2026-10-23T22:23:58.017325+00:00'
+  state: completed
+  outcome: aborted
+  create_reason: '#2183 T6 (campaign half) and T12 on the Spark, attempt 2 (attempt 1 cmp_82fed8669ea0
+    parked at its calibration plan gate)'
+  recorded_definition:
+    path: var/campaigns/2183-t12-t6c.yaml
+    sha256: ba1d6dfcf71d0e620d6ceb2b03e8ceb325f35fc6d1d598c9a985cfdc32956fec
+  recorded_reconciles: false
+  definitions: []
+  package_identity: 74b7352d840e348966337ceee84c182381960e0203532ccd69b23104d219aa0e
+  package_artifact: art_396492ef5777
+- campaign_id: cmp_db018b53e124
+  created: '2026-10-23T23:51:12.557182+00:00'
+  state: completed
+  outcome: failure
+  create_reason: "IR-2 on the 2.4 cut deploy: the Campaign launcher pins what a standalone create pins\
+    \ (SIP-0112 \xA78.4)"
+  recorded_definition:
+    path: var/campaigns/ir2-cut.yaml
+    sha256: 639fd4f535d781031a7ce8019bc1795d876560c1f922a3d47a024a90c6f33b24
+  recorded_reconciles: false
+  definitions: []
+  package_identity: 6934baad4df61e71a732539156dfd262bfe355fb23d9ab8dfd46105b82363ff0
+  package_artifact: art_6b369b551639
 examples_only: []
