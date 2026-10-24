@@ -204,6 +204,51 @@ async def test_what_cannot_be_reached_is_named_never_guessed(product, clones, lo
     assert refused.value.reason == reason
 
 
+@pytest.mark.parametrize(
+    "read",
+    [
+        lambda clones, commit: clones.file_at("prj-tally", commit, "CONTRIBUTING.md"),
+        lambda clones, commit: clones.commit_message("prj-tally", commit),
+        lambda clones, commit: clones.export_patch("prj-tally", commit),
+        lambda clones, commit: clones.is_ancestor("prj-tally", commit, commit),
+    ],
+    ids=["file_at", "commit_message", "export_patch", "is_ancestor"],
+)
+async def test_a_clone_moved_aside_is_named_never_read_as_git_missing(
+    product, clones, tmp_path, read
+):
+    """#2672. Bug caught: git run in a clone directory that isn't there raises the same
+    ``FileNotFoundError`` as a git binary that isn't, and each was reported as "git is not
+    installed here", sending an operator after git when the clone is what's missing."""
+    commit = await clones.sync("prj-tally", str(product.path), "refs/heads/main")
+    clone = tmp_path / "cache" / "prj-tally.git"
+    clone.rename(tmp_path / "cache" / "moved-aside.git")
+
+    with pytest.raises(SourceUnavailable) as missing:
+        await read(clones, commit)
+
+    assert (missing.value.reason, str(missing.value)) == (
+        "not_cloned",
+        f"the managed clone is missing: {clone} does not exist",
+    )
+
+
+async def test_git_missing_from_the_path_is_still_named_as_git(
+    product, clones, tmp_path, monkeypatch
+):
+    """#2672's other half. Bug caught: every ``FileNotFoundError`` read as a missing clone, so a
+    deploy whose image has no git sends its operator to a clone that is there."""
+    commit = await clones.sync("prj-tally", str(product.path), "refs/heads/main")
+    no_git = tmp_path / "bin-without-git"
+    no_git.mkdir()
+    monkeypatch.setenv("PATH", str(no_git))
+
+    with pytest.raises(SourceUnavailable) as missing:
+        await clones.file_at("prj-tally", commit, "CONTRIBUTING.md")
+
+    assert (missing.value.reason, str(missing.value)) == ("no_git", "git is not installed here")
+
+
 async def test_the_callers_git_environment_never_reaches_the_clone(product, clones, monkeypatch):
     """Under a hook, GIT_DIR names the caller's repository; every call here would act on it."""
     monkeypatch.setenv("GIT_DIR", str(product.path.parent / "callers-repository"))

@@ -474,6 +474,12 @@ class GitSourceRepository(SourceRepositoryPort):
         except subprocess.TimeoutExpired as e:
             raise SourceUnavailable(f"git {step} timed out", reason="timeout") from e
         except FileNotFoundError as e:
+            # #2672: a working directory that isn't there raises the same error as a git binary
+            # that isn't. The first is the managed clone, moved aside or lost with its container.
+            if not cwd.is_dir():
+                raise SourceUnavailable(
+                    f"the managed clone is missing: {cwd} does not exist", reason="not_cloned"
+                ) from e
             raise SourceUnavailable("git is not installed here", reason="no_git") from e
         if done.returncode != 0:
             detail = done.stderr.decode(errors="replace").strip().splitlines()
