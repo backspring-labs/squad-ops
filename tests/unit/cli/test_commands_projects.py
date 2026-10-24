@@ -83,6 +83,40 @@ class TestProjectsShow:
         result = runner.invoke(app, ["projects", "show", "nope"])
         assert result.exit_code == exit_codes.NOT_FOUND
 
+    @pytest.mark.parametrize(
+        ("source", "profile", "expected", "calls"),
+        [
+            ({"repo_uri": "x"}, "recorded", ["missing_environment\tdisclosed\tverification"], 2),
+            ({"repo_uri": "x"}, None, ["has no derived profile"], 2),
+            (None, None, [], 1),
+        ],
+        ids=["each gap with what it stops", "a baseline from before profiles", "a sample app"],
+    )
+    @patch("squadops.cli.commands.projects._get_client")
+    def test_show_reports_a_repository_backed_projects_gaps(
+        self, mock_get_client, source, profile, expected, calls
+    ):
+        """H.4, contract 8: `projects show` reports the gaps. Bugs caught: show failing for a
+        Project with no profile; a sample application asked for one; a gap printed without what
+        it stops."""
+        from tests.fixtures.shared_contract.repository import recorded
+
+        project = {"project_id": "prj-tally", "name": "Tally", "description": "", "source": source}
+        answer = (
+            {"project_id": "prj-tally", "document": recorded("derived_profile", "valid")}
+            if profile
+            else CLIError("not found", exit_codes.NOT_FOUND)
+        )
+        mock = MagicMock()
+        mock.get.side_effect = [project, answer]
+        mock_get_client.return_value = mock
+
+        result = runner.invoke(app, ["--quiet", "projects", "show", "prj-tally"])
+
+        assert result.exit_code == 0, result.output
+        assert all(line in result.output for line in expected)
+        assert mock.get.call_count == calls
+
 
 _IMPORT_ARGS = [
     "projects",

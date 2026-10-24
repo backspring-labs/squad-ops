@@ -10,9 +10,11 @@ from pathlib import Path
 import typer
 import yaml
 
+from squadops.cli import exit_codes
 from squadops.cli.client import CLIError
 from squadops.cli.client import get_client as _get_client
 from squadops.cli.output import print_detail, print_error, print_json, print_success, print_table
+from squadops.projects.derived_profile import parse_profile
 from squadops.projects.models import ProjectLifecycleStatus
 
 app = typer.Typer(name="projects", help="Manage projects")
@@ -51,9 +53,12 @@ def show_project(ctx: typer.Context, project_id: str = typer.Argument(...)):
     fmt = ctx.obj.get("format", "table") if ctx.obj else "table"
     quiet = ctx.obj.get("quiet", False) if ctx.obj else False
 
+    profile: dict | None = None
     try:
         client = _get_client(ctx)
         data = client.get(f"/api/v1/projects/{project_id}")
+        if data.get("source") and fmt != "json":
+            profile = _derived_profile(client, project_id)
         client.close()
     except CLIError as e:
         print_error(str(e))
@@ -61,8 +66,10 @@ def show_project(ctx: typer.Context, project_id: str = typer.Argument(...)):
 
     if fmt == "json":
         print_json(data)
-    else:
-        print_detail(data, quiet=quiet)
+        return
+    print_detail(data, quiet=quiet)
+    if data.get("source"):
+        _print_gaps(project_id, profile, quiet=quiet)
 
 
 @app.command("cat", hidden=True)
@@ -302,6 +309,39 @@ def baseline(
     print_success(
         f"{project_id} at {document['commit'][:12]}, configuration revision "
         f"{document['development_configuration_revision']}"
+    )
+    _print_gaps(project_id, data.get("derived_profile"))
+
+
+def _derived_profile(client, project_id: str) -> dict | None:
+    """The Project's derived profile (SIP-0112 H.4, contract 8), or ``None`` when its latest
+    baseline has none."""
+    try:
+        return client.get(f"/api/v1/projects/{project_id}/profile")["document"]
+    except CLIError as e:
+        if e.exit_code != exit_codes.NOT_FOUND:
+            raise
+        return None
+
+
+def _print_gaps(project_id: str, document: dict | None, *, quiet: bool = False) -> None:
+    """Each gap the derived profile names (H.6): its kind, what it stops, and where."""
+    if document is None:
+        typer.echo(
+            f"{project_id} has no derived profile: its latest baseline was captured before "
+            f"profiles were derived, or none is. Capture it (squadops projects baseline "
+            f"{project_id} --capture)."
+        )
+        return
+    profile = parse_profile(document)
+    if not profile.gaps:
+        print_success(f"{project_id}'s derived profile names no gap")
+        return
+    rows = [
+        [g.id, g.kind, g.stops, g.subject or "", ", ".join(g.paths), g.reason] for g in profile.gaps
+    ]
+    print_table(
+        ["Gap", "Kind", "Stops", "Subject", "Paths", "Why"], rows, quiet=quiet, title="Gaps"
     )
 
 

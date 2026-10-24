@@ -100,7 +100,7 @@ class _Run:
 class _Registry:
     def __init__(self, project, configuration):
         self.project, self.configuration = project, configuration
-        self.mappings, self.baseline = [], None
+        self.mappings, self.baseline, self.derived_profile = [], None, None
 
     async def get_project(self, project_id):
         return self.project
@@ -111,9 +111,12 @@ class _Registry:
     async def record_source_mapping(self, mapping):
         self.mappings.append(mapping)
 
-    async def record_inherited_baseline(self, baseline, **kwargs):
-        self.baseline = baseline
+    async def record_inherited_baseline(self, baseline, *, derived_profile=None, **kwargs):
+        self.baseline, self.derived_profile = baseline, derived_profile
         return baseline, False
+
+    async def get_initialization(self, project_id):
+        return None
 
 
 @pytest.fixture
@@ -175,6 +178,19 @@ async def test_the_fixtures_own_checks_reproduce_its_recorded_inherited_baseline
     assert (
         parse.evidence["exit_code"] == 1 and "FAILED (failures=1)" in parse.evidence["stderr_tail"]
     )
+
+
+async def test_the_capture_records_the_profile_it_derives_beside_the_baseline(world):
+    """H.4, contract 8: entered at ``capture_inherited_baseline``, the live caller, on the shared
+    fixture's real clone and checks. Bugs caught: a profile derived from another tree than the one
+    the checks ran on, toolchains read from anything but this capture's own evidence, or a capture
+    that records no profile at all."""
+    repo, registry, clones, sandbox = world
+
+    baseline, _ = await _capture(registry, clones, sandbox)
+
+    assert registry.derived_profile.to_document() == recorded("derived_profile", "valid")
+    assert registry.derived_profile.commit == baseline.commit == repo.second_commit
 
 
 async def test_each_check_runs_after_the_install_its_configuration_declares(world):

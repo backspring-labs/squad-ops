@@ -1986,8 +1986,8 @@ the revision itself, and that capture.
 - **`per_test_reading`:** each criterion is read by its own test file's result.
 - **`per_finding_comparison`:** a lint check failing on both sides is compared whole (H.5).
 
-`projects configure` and `projects show` report every gap. Each run records the disclosed gaps that apply to its
-work, and the proposal is given them (§24bv point 5).
+`projects baseline` and `projects show` report every gap (H.7). Each run records the disclosed gaps that apply to
+its work, and the proposal is given them (§24bv point 5).
 
 **When it's absent.** A unit that pinned a revision with no profile reads none:
 - a Campaign's start is refused, naming it (§24bv point 1);
@@ -2036,3 +2036,91 @@ contract written first and reviewed by both lanes. The MacBook lane wrote it, un
 2026-10-18. The Spark lane's G4 approved it on its PR (#2716), as §24bv's and §10l's builder. The G4 asked for three
 rules stated (the file pattern, where a runner's argvs run, and which runner owns a test file), and noted duplicate
 names and the base URLs' source, all of which are above.
+
+## H.7 The profile as derived (2026-10-24; #2619; the MacBook lane, under the owner's delegation of 2026-10-18)
+
+**What shipped:**
+- **`squadops.projects.profile_derivation.derive_profile`:** `capture_inherited_baseline` runs it at every capture,
+  on the tree the checks ran on, and records the profile beside the capture
+  (`project_inherited_baselines.derived_profile`, migration 1808).
+- **The read route:** `GET /api/v1/projects/{id}/profile` reads the latest capture's profile, and the baseline's read
+  and capture carry it.
+- **The CLI:** `projects baseline` and `projects show` print its gaps.
+
+**Where it departs from H.4's text: the gaps are reported by `projects baseline` and `projects show`, not
+`projects configure`.** H.4 records the gaps when a configuration revision is recorded, and has configure report them.
+But they're read from the baseline's evidence (which toolchain the image lacked, which environment it didn't give),
+and the baseline is captured after the revision. So the profile is derived at the capture (H.6), and configure has
+nothing to report yet.
+
+**How each field is read.** Only from the tree, the configuration and the capture:
+- **Languages:**
+  - Python, from its manifests (`pyproject.toml`, `setup.py`, `setup.cfg`, `Pipfile`, `requirements*.txt`) or any
+    `.py` file. Its manager comes from a lock (uv, poetry, pipenv), else is pip when there's a manifest, else none.
+  - JavaScript, or TypeScript with a `tsconfig.json` or a `.ts` file, from `package.json`. Its manager comes from a
+    lock, else is npm.
+  - Go and Rust, from `go.mod` and `Cargo.toml`.
+- **Runners,** from the configuration's checks alone:
+  - **unittest** (`-m unittest`): its `-s` root and `-p` pattern. Checks that name their files one by one form one
+    runner, whose pattern is the names' common prefix and suffix around a `*`. Its one-file argv names the file as
+    `{name}`.
+  - **pytest:** its roots are its positional paths, else `testpaths`, else the working directory. Its patterns are
+    `python_files`, else `test_*.py` and, where files are so named, `*_test.py`. Its one-file argv drops the
+    positional paths and takes `{path}`, and is null for a working directory other than the root. #2609's pytest
+    reader names its tests.
+  - **vitest and jest,** run directly or through an npm, pnpm or yarn script (`--prefix`, `-C`, `--dir` or `--cwd`
+    naming the package). Their patterns are `*.test.*` and `*.spec.*`. Their filters match a test file's path relative
+    to its package, so the one-file argv is `-- {path}` only for a package at the repository's root, and `-- {name}`
+    under a package. On shelfnote's clone, `npm --prefix frontend test -- frontend/src/__tests__/harness.test.jsx`
+    found no test files, and `-- harness.test.jsx` ran exactly that one.
+  - **Lint:** a check running ruff, flake8, pylint, mypy, eslint, tsc, svelte-check or biome is a lint check.
+  - Any other check stays a check: it's run and read, and it isn't a runner.
+- **Covers:** a JavaScript runner covers its package. A Python runner covers its packages (a top-level or `src/`
+  directory with an `__init__.py`), else the top-level directories that hold Python outside its tests.
+- **Support files:** each `conftest.py` under a pytest root or at the root. Under a JavaScript root, each file whose
+  name starts `setupTests.`, `vitest.setup.`, `jest.setup.` or `test-setup.`.
+- **Toolchains:** each check's command. It's unavailable where a check needing it is UNVERIFIED as
+  `command_not_found` or `command_not_executable`, read from the check's evidence, or from its recorded reason when a
+  stored baseline has no evidence.
+- **Public surfaces:**
+  - contract 7's base URLs;
+  - `[project.scripts]`;
+  - a package's `__main__.py`, run by the checks' own Python;
+  - `package.json`'s `bin`;
+  - the Python packages, and a `package.json` `name` that isn't private.
+- **Client routes:** the frontend routes of the manifest the Project was initialized from, when the configuration names
+  a blueprint.
+
+**The gaps as derived:**
+- **`missing_toolchain`** is blocking when the runners that need it cover paths that no other runner whose check ran
+  covers. Otherwise it's disclosed.
+- **`runner_not_scopable`** is named for a runner with no one-file argv, for a `{name}` argv over two files of one
+  name, and for a vitest or jest `{name}` argv where one test file's name lies inside another's path, since their
+  filter would select both.
+- **`test_files_unclassed`** names files named as tests (`test_*.py`, `*_test.py`, `*.test.*`, `*.spec.*`) that no
+  runner holds. Its paths are their directories.
+- **`no_test_runner`** names each directory with a manifest of its own (`package.json`, or a Python, Go or Rust
+  manifest) that no runner covers, and the whole product when it has no runner.
+- **`runner_not_authored` isn't derived in 2.5.** Every runner this reads (pytest, unittest, vitest, jest) is one QA
+  can write for. A check that names another runner isn't read as a runner, so the part of the tree it tests reads
+  `no_test_runner`. The vocabulary keeps the gap for a runner read as `other`.
+
+**The evidence:**
+- **`tests/unit/projects/test_profile_derivation.py`:**
+  - Tally's recorded profile is exactly what the derivation reads from the shared fixture.
+  - continuum and shelfnote read as their configurations on the Mac declare them. Continuum is pytest over a `src`
+    layout, ruff with its reader, and `web/` and a plugin UI with no tests. Shelfnote is pytest at the root and
+    vitest through its frontend's npm script, on a blueprint with the manifest's routes.
+  - Each gap is read with its kind and paths.
+  - A vitest name filter that would select another file reads `runner_not_scopable`.
+  - Six mutants are each caught: the group pattern not unified, a positional root kept in the one-file argv, a
+    toolchain gap never blocking, untested directories not named, the baseline's image ignored, and owned files
+    counted unowned.
+- **The wiring test** (`test_workspaces.py`) enters at `capture_inherited_baseline`, on the fixture's real clone and
+  checks. The profile it records equals the recorded one.
+- **The Postgres integration test:** a capture without a profile reads absent, never empty, and the latest capture's
+  profile reads back.
+- **The route and CLI tests:** a capture from before profiles answers 404 at `/profile` and `null` beside the
+  baseline, and a sample application is never asked for one.
+
+**Who ruled:** the MacBook lane, under the owner's delegation of 2026-10-18, within H.4 and H.6 as ruled.

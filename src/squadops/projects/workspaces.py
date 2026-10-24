@@ -24,6 +24,7 @@ from squadops.projects.baseline import (
 )
 from squadops.projects.configuration import baseline_tree
 from squadops.projects.development_configuration import Commands, submission_digest
+from squadops.projects.profile_derivation import derive_profile
 from squadops.sandbox.models import RevisionOrigin
 
 if TYPE_CHECKING:
@@ -151,7 +152,8 @@ async def capture_inherited_baseline(
     idempotency_key: str,
 ) -> tuple[InheritedBaseline, bool]:
     """Run the current Development Configuration's checks against the Project's pinned,
-    unmodified baseline commit, and record the inherited baseline (FR-20)."""
+    unmodified baseline commit, and record the inherited baseline (FR-20), with the profile
+    derived from that tree, that revision and this capture beside it (H.4, contract 8)."""
     project = await registry.get_project(project_id)
     commit = project.development_baseline_commit
     configuration = await registry.get_development_configuration(project_id)
@@ -164,9 +166,22 @@ async def capture_inherited_baseline(
             f"{configuration.revision} was recorded at {configuration.validated_at_commit}, not "
             f"its baseline {commit}: record a revision at the baseline first (FR-21)"
         )
+    if sandbox is None:
+        raise SandboxUnavailable("the runtime API has no sandbox client to seed through")
+    if project.source is None:
+        raise ValueError(f"Project {project_id} has no external source to seed")
+    tree = await baseline_tree(
+        repository, project_id, project.source.repo_uri, project.source.base_ref, commit
+    )
     workspace_id = f"baseline-{project_id}-{commit[:12]}"
     revision = await seed_project_tree(
-        project, commit, workspace_id, registry=registry, repository=repository, sandbox=sandbox
+        project,
+        commit,
+        workspace_id,
+        registry=registry,
+        repository=repository,
+        sandbox=sandbox,
+        tree=tree,
     )
     results, environment = await run_checks(sandbox, revision, configuration.commands)
     baseline = InheritedBaseline(
@@ -176,8 +191,12 @@ async def capture_inherited_baseline(
         environment=environment,
         checks=results,
     )
+    initialization = await registry.get_initialization(project_id)
     return await registry.record_inherited_baseline(
         baseline,
+        derived_profile=derive_profile(
+            tree.files, configuration, baseline, initialization=initialization
+        ),
         actor=actor,
         idempotency_key=idempotency_key,
         request_hash=submission_digest(

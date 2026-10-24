@@ -344,6 +344,16 @@ class InheritedBaselineResponse(BaseModel):
     project_id: str
     document: dict[str, Any]
     replayed: bool = False
+    #: The profile derived at the Project's latest capture (SIP-0112 H.4, contract 8), or ``None``
+    #: when that capture predates profiles.
+    derived_profile: dict[str, Any] | None = None
+
+
+class DerivedProfileResponse(BaseModel):
+    """The derived development profile, as contract 8 records it (SIP-0112 H.6)."""
+
+    project_id: str
+    document: dict[str, Any]
 
 
 class ContributionRequest(BaseModel):
