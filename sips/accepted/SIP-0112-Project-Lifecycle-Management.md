@@ -2069,7 +2069,10 @@ nothing to report yet.
     positional paths and takes `{path}`, and is null for a working directory other than the root. #2609's pytest
     reader names its tests.
   - **vitest and jest,** run directly or through an npm, pnpm or yarn script (`--prefix`, `-C`, `--dir` or `--cwd`
-    naming the package). Their patterns are `*.test.*` and `*.spec.*`, and the one-file argv is `-- {path}`.
+    naming the package). Their patterns are `*.test.*` and `*.spec.*`. Their filters match a test file's path relative
+    to its package, so the one-file argv is `-- {path}` only for a package at the repository's root, and `-- {name}`
+    under a package. On shelfnote's clone, `npm --prefix frontend test -- frontend/src/__tests__/harness.test.jsx`
+    found no test files, and `-- harness.test.jsx` ran exactly that one.
   - **Lint:** a check running ruff, flake8, pylint, mypy, eslint, tsc, svelte-check or biome is a lint check.
   - Any other check stays a check: it's run and read, and it isn't a runner.
 - **Covers:** a JavaScript runner covers its package. A Python runner covers its packages (a top-level or `src/`
@@ -2091,6 +2094,9 @@ nothing to report yet.
 **The gaps as derived:**
 - **`missing_toolchain`** is blocking when the runners that need it cover paths that no other runner whose check ran
   covers. Otherwise it's disclosed.
+- **`runner_not_scopable`** is named for a runner with no one-file argv, for a `{name}` argv over two files of one
+  name, and for a vitest or jest `{name}` argv where one test file's name lies inside another's path, since their
+  filter would select both.
 - **`test_files_unclassed`** names files named as tests (`test_*.py`, `*_test.py`, `*.test.*`, `*.spec.*`) that no
   runner holds. Its paths are their directories.
 - **`no_test_runner`** names each directory with a manifest of its own (`package.json`, or a Python, Go or Rust
@@ -2106,6 +2112,7 @@ nothing to report yet.
     layout, ruff with its reader, and `web/` and a plugin UI with no tests. Shelfnote is pytest at the root and
     vitest through its frontend's npm script, on a blueprint with the manifest's routes.
   - Each gap is read with its kind and paths.
+  - A vitest name filter that would select another file reads `runner_not_scopable`.
   - Six mutants are each caught: the group pattern not unified, a positional root kept in the one-file argv, a
     toolchain gap never blocking, untested directories not named, the baseline's image ignored, and owned files
     counted unowned.

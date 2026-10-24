@@ -212,7 +212,10 @@ def _runner_of(check: Check, tree: _Tree, wd: str) -> _Found | None:
         prefix, text = script
         for kind in ("vitest", "jest"):
             if kind in text.split():
-                extra = ("{path}",) if "--" in argv else ("--", "{path}")
+                # Their filters match a test file's path relative to its package, so under a
+                # package a repository-relative path finds nothing: the file is named by its name.
+                placeholder = "{path}" if prefix == "." else "{name}"
+                extra = (placeholder,) if "--" in argv else ("--", placeholder)
                 return _Found(kind, prefix, _JS_FILES, argv, (*argv, *extra))
         return None
     for kind in ("vitest", "jest"):
@@ -707,11 +710,18 @@ def _untested(tree: _Tree, runners: Sequence[Runner]) -> list[Gap]:
 def _unscopable(runners: Sequence[Runner], owner: Mapping[str, Runner]) -> list[Gap]:
     gaps: dict[str, Gap] = {}
     for r in runners:
-        names = [PurePosixPath(p).name for p, o in owner.items() if o.runner == r.runner]
+        owned = [p for p, o in owner.items() if o.runner == r.runner]
+        names = [PurePosixPath(p).name for p in owned]
+        by_name = r.single_file_argv is not None and any("{name}" in a for a in r.single_file_argv)
         if r.single_file_argv is None:
             why = f"{r.runner}'s command can't be scoped to one test file"
-        elif any("{name}" in a for a in r.single_file_argv) and len(names) != len(set(names)):
+        elif by_name and len(names) != len(set(names)):
             why = f"{r.runner}'s one-file command names a file by its name, and two of its files share one"
+        elif by_name and r.runner in ("vitest", "jest") and _inside_another(owned):
+            why = (
+                f"{r.runner}'s one-file command filters by a file's name, and one test file's name "
+                "is inside another's path"
+            )
         else:
             continue
         gaps.setdefault(
@@ -726,6 +736,12 @@ def _unscopable(runners: Sequence[Runner], owner: Mapping[str, Runner]) -> list[
             ),
         )
     return list(gaps.values())
+
+
+def _inside_another(paths: Sequence[str]) -> bool:
+    """Whether one file's name is a substring of another's path: a filter by the first's name
+    selects both."""
+    return any(PurePosixPath(a).name in b for a in paths for b in paths if a != b)
 
 
 def _overlaps(a: str, b: str) -> bool:

@@ -158,7 +158,7 @@ def test_shelfnote_runs_pytest_at_its_root_and_vitest_through_its_frontends_npm_
         ("vitest", ("frontend_tests",), ("frontend",), "*.test.*", ("frontend/**",)),
     ]
     assert vitest.single_file_argv == (
-        "npm", "--prefix", "frontend", "test", "--silent", "--", "{path}"
+        "npm", "--prefix", "frontend", "test", "--silent", "--", "{name}"
     )  # fmt: skip
     assert profile.runner_for("frontend/src/App.test.jsx") is vitest
     assert profile.runner_for("tests/test_books_api.py") is pytest_runner
@@ -205,6 +205,11 @@ def test_shelfnote_runs_pytest_at_its_root_and_vitest_through_its_frontends_npm_
             ("runner_not_scopable", "disclosed", "unittest", ("**",)),
         ),
         (
+            {**_SHELFNOTE, "frontend/src/a.test.jsx": b"", "frontend/src/data.test.jsx": b""},
+            _SHELFNOTE_CHECKS, {},
+            ("runner_not_scopable", "disclosed", "vitest", ("**",)),
+        ),
+        (
             _CONTINUUM, (_CONTINUUM_CHECKS[0], Check("lint", ("ruff", "check", "src"))), {},
             ("lint_without_reader", "disclosed", "lint", ("**",)),
         ),
@@ -215,6 +220,7 @@ def test_shelfnote_runs_pytest_at_its_root_and_vitest_through_its_frontends_npm_
         "a lint tool missing, with no runner needing it",
         "test files no runner owns",
         "a one-file command by name over two files of one name",
+        "a name filter that selects another file too",
         "a lint with no findings reader",
     ],
 )  # fmt: skip
