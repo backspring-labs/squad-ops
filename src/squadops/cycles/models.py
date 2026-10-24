@@ -481,6 +481,11 @@ class Cycle:
     # otherwise unchanged (§19).
     campaign_id: str | None = None
     kind: str | None = None
+    #: #2578 part 2: the increment the cycle belongs to, its proposal's id, set by the campaign's
+    #: launcher from the launch's own binding: a repair or retry carries its increment's, a
+    #: re-proposal a new one. None for a calibration and a cycle no campaign launched. A
+    #: projection of the control log, which stays the campaign's source of truth.
+    increment_id: str | None = None
     #: SIP-0112 contract 1 (E.4.3): an external Project's source, pinned before dispatch and
     #: never changed for this Cycle. None for a sample application.
     source_context: ProjectSourceContext | None = None

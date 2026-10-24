@@ -352,13 +352,29 @@ class TestPrefectFlowRunTags:
                     "framework_git_sha": "0739af1d",
                     "deploy_id": "dep_fd4de43a1f39",
                     "campaign_id": "cmp_be852b0f08f0",
-                    "kind": "increment",
+                    "kind": "repair",
+                    "increment_id": "prop_3f0c9a71d2e4",
                 },
                 [
                     "project:hello_squad",
                     "framework:0739af1d",
                     "deploy:dep_fd4de43a1f39",
                     "campaign:cmp_be852b0f08f0",
+                    "increment:prop_3f0c9a71d2e4",
+                    "kind:repair",
+                ],
+            ),
+            (
+                {
+                    "framework_git_sha": "0739af1d",
+                    "campaign_id": "cmp_be852b0f08f0",
+                    "kind": "calibration",
+                },
+                [
+                    "project:hello_squad",
+                    "framework:0739af1d",
+                    "campaign:cmp_be852b0f08f0",
+                    "kind:calibration",
                 ],
             ),
             (
@@ -370,7 +386,8 @@ class TestPrefectFlowRunTags:
             "a normal cycle",
             "a replay",
             "no framework commit stamped: no framework tag",
-            "a campaign's cycle (#1728)",
+            "a campaign's repair: its increment and kind (#1728, #2578)",
+            "a calibration: its kind, and no increment (#2578)",
             "a cycle outside a campaign: no campaign tag (#1728)",
         ],
     )
@@ -380,7 +397,8 @@ class TestPrefectFlowRunTags:
         """Bug this catches: tags built and never passed; a ``framework:None`` or
         ``campaign:None`` a filter must know to exclude; a replay indistinguishable from the run
         it replays; a campaign's cycles that no filter can gather, or whose deploy changes
-        cannot be seen (#1728)."""
+        cannot be seen (#1728); an increment's repair that no filter can gather with it, or an
+        ``increment:None`` on a calibration (#2578)."""
         import dataclasses
 
         await executor._init_run_observability(

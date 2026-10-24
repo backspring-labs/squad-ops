@@ -227,6 +227,25 @@ class TestCodeLineageRoundTrip:
         )
 
 
+class TestIncrementIdentityRoundTrip:
+    """#2578 part 2 against real Postgres: migration 1699's column takes a campaign cycle's
+    increment and reads back as None for one that has none. Only this proves the INSERT's column
+    list and the table agree."""
+
+    @pytest.mark.parametrize(
+        ("kind", "increment_id"),
+        [("repair", "prop_3f0c9a71d2e4"), ("calibration", None)],
+        ids=["an increment's repair", "a calibration"],
+    )
+    async def test_the_increment_round_trips(self, registry, kind, increment_id):
+        cycle = _make_cycle(campaign_id="cmp_be852b0f08f0", kind=kind, increment_id=increment_id)
+        await registry.create_cycle(cycle)
+
+        fetched = await registry.get_cycle(cycle.cycle_id)
+
+        assert (fetched.kind, fetched.increment_id) == (kind, increment_id)
+
+
 class TestRunLoopSummaryRoundTrip:
     """SIP-0108 §4.1 against real Postgres: migration 1500's table takes the row, a re-finalize
     supersedes it, and the JSONB reads back as the same summary. The unit contract test runs

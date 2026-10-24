@@ -148,6 +148,24 @@ CONTINUED_KEYS = (
 )
 
 
+def increment_id_of(kind: CycleKind, cycle_request: dict) -> str | None:
+    """#2578 part 2: the increment a launch's cycle belongs to, its proposal's id, read from the
+    launch's own ``campaign_proposal`` block: ``increment_launch`` wrote it, and ``CONTINUED_KEYS``
+    carries it into a repair's or retry's. Never from the predecessor's row, which is the
+    copy-then-delete class part 1 closed. ``None`` for a calibration, which belongs to no increment.
+
+    Raises ``ValueError`` for an increment, repair or retry whose block names no proposal: its
+    cycle would read as belonging to none, and is refused rather than defaulted."""
+    if kind is CycleKind.CALIBRATION:
+        return None
+    body = cycle_request.get("body") or {}
+    block = (body.get("execution_overrides") or {}).get("campaign_proposal") or {}
+    proposal_id = block.get("proposal_id") if isinstance(block, dict) else None
+    if not (isinstance(proposal_id, str) and proposal_id.strip()):
+        raise ValueError(f"a {kind} launch's campaign_proposal block names no proposal_id")
+    return proposal_id
+
+
 #: The workloads each bound cycle runs (§10a): a retry frames afresh and builds; a repair builds
 #: only, under the failed cycle's approved plan.
 BOUND_WORKLOADS = {

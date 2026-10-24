@@ -137,6 +137,7 @@ def _cycle_row(**overrides):
         "deploy_id": None,  # #1720, migration 1051
         "campaign_id": None,  # SIP-0109 #1799, migration 1610
         "kind": None,
+        "increment_id": None,  # #2578, migration 1699
         # SIP-0112 contract 1: a sample application's cycle pins no source.
         "source_context": None,
         "notes": None,

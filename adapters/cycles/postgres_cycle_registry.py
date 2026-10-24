@@ -73,7 +73,8 @@ _CYCLE_INSERT_COLUMNS = (
     "squad_profile_id, squad_profile_snapshot_ref, task_flow_policy, "
     "build_strategy, applied_defaults, execution_overrides, "
     "expected_artifact_types, experiment_context, notes, request_profile, "
-    "framework_version, framework_git_sha, deploy_id, campaign_id, kind, source_context"
+    "framework_version, framework_git_sha, deploy_id, campaign_id, kind, source_context, "
+    "increment_id"
 )
 _CYCLE_INSERT_COLUMN_COUNT = len(_CYCLE_INSERT_COLUMNS.split(","))
 
@@ -105,6 +106,7 @@ def _cycle_insert_args(cycle: Cycle) -> tuple:
         cycle.campaign_id,
         cycle.kind,
         cycle.source_context.to_document() if cycle.source_context is not None else None,
+        cycle.increment_id,
     )
 
 
@@ -955,6 +957,7 @@ class PostgresCycleRegistry(CycleRegistryPort):
             deploy_id=row["deploy_id"],
             campaign_id=row["campaign_id"],
             kind=row["kind"],
+            increment_id=row["increment_id"],
             source_context=(
                 parse_source_context(row["source_context"])
                 if row["source_context"] is not None
