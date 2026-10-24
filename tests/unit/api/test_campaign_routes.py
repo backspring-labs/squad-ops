@@ -299,10 +299,25 @@ async def test_resume_returns_the_campaign_to_the_state_it_was_paused_from(world
     )
 
 
-async def test_the_campaign_read_carries_its_accepted_tree(world):
+@pytest.mark.parametrize(
+    ("tree", "names"),
+    [
+        (
+            AcceptedTree("sha-cal", "cyc_cal000000001"),
+            {"cycle_id": "cyc_cal000000001", "calibration_record_id": None},
+        ),
+        (
+            AcceptedTree("sha-cal", calibration_record_id="calrec_0123456789ab"),
+            {"cycle_id": None, "calibration_record_id": "calrec_0123456789ab"},
+        ),
+    ],
+    ids=["a-cycles", "a-calibration-records"],
+)
+async def test_the_campaign_read_carries_its_accepted_tree(world, tree, names):
     """§7.1: the tree every increment is proposed against and every ruling binds to is readable
-    by the supervisor. Bug caught: the response mapping leaving it out, so a ruling's binding
-    cannot be built from a read."""
+    by the supervisor. Bugs caught: the response mapping leaving it out, so a ruling's binding
+    cannot be built from a read; or (§24cc) a read that requires a cycle, so every campaign on a
+    repository-backed Project answers 500 once its calibration record is promoted."""
     _create(world)
     await world.campaigns.transition("cmp_api000000001", move(CampaignState.CALIBRATING, "a"))
     before = world.client.get("/api/v1/campaigns/cmp_api000000001").json()
@@ -312,7 +327,7 @@ async def test_the_campaign_read_carries_its_accepted_tree(world):
             CampaignState.CALIBRATING,
             "promote",
             operation=ControlOperation.PROMOTE,
-            accepted=AcceptedTree("sha-cal", "cyc_cal000000001"),
+            accepted=tree,
         ),
     )
 
@@ -321,7 +336,7 @@ async def test_the_campaign_read_carries_its_accepted_tree(world):
     )
 
     assert before["accepted"] is None
-    assert after.json()["accepted"] == {"identity": "sha-cal", "cycle_id": "cyc_cal000000001"}
+    assert after.json()["accepted"] == {"identity": "sha-cal", **names}
 
 
 async def test_a_resume_after_the_gate_opened_during_the_pause_returns_to_the_gate(world):

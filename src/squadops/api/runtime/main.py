@@ -972,15 +972,24 @@ async def _sweep_campaigns(state) -> None:
                 logger.warning("campaign_cycles_reheard_by_the_sweep cycles=%s (#1972)", decided)
         except Exception:
             logger.exception("campaign_rehear_sweep_failed")
+        try:
+            # §24cc: a calibration record whose start's own hearing failed, as a cycle's above.
+            recorded = await state.campaign_progress.rehear_calibration_records()
+            if recorded:
+                logger.warning("campaign_records_reheard_by_the_sweep campaigns=%s", recorded)
+        except Exception:
+            logger.exception("campaign_record_rehear_sweep_failed")
 
 
 async def _resume_campaigns(state) -> None:
     """§12b: an intent a crash left pending is launched, and a launched cycle's first run
     started. Then §12a (#1803): every launched cycle that ended with no decision is re-heard
-    from its recorded ending. After the drain, never inside it: a decision launches through the
-    drain, which holds its lock."""
+    from its recorded ending, and (§24cc) every calibration record a start wrote and nothing
+    decided. After the drain, never inside it: a decision launches through the drain, which
+    holds its lock."""
     await state.campaign_launch.drain()
     await state.campaign_progress.rehear_ended(await state.campaign_launch.launched_cycles())
+    await state.campaign_progress.rehear_calibration_records()
     # #1922: what the dying process was running, or waiting on at a gate, is taken up again.
     await state.campaign_launch.reattach()
 

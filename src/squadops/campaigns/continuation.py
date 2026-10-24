@@ -283,6 +283,41 @@ def campaign_continuation_decision(
     )
 
 
+def calibration_record_decision(
+    campaign: Campaign, record_id: str, *, elapsed_s: int
+) -> ContinuationDecision:
+    """§10 for a calibration record (§24bv point 1, §24cc), once per record, keyed by its id.
+
+    The record is read as an accepted calibration, so row 5 proposes. Row 2 never fires: a start
+    that would have failed it was refused, and wrote no record. The record is no cycle, so it
+    counts toward none of row 4's limits and none of step 3's guards: the guard reads counters
+    with nothing counted but the elapsed time, which runs from the start as for any campaign.
+    Row 1 still comes first."""
+    if campaign.outcome is CampaignOutcome.ABORTED:
+        return ContinuationDecision(
+            record_id, 1, outcome=CampaignOutcome.ABORTED, cause=TerminalCause.ABORTED
+        )
+    nothing_counted = CampaignCounters(
+        cycles=0,
+        elapsed_s=elapsed_s,
+        tokens=0,
+        repair_cycles=0,
+        retry_cycles=0,
+        rejected_proposals_in_row=0,
+        failed_proposals_in_row=0,
+        unaccepted_increments=0,
+        objective_met=False,
+    )
+    limit = _pausing_limit(campaign.policy, nothing_counted)
+    return ContinuationDecision(
+        record_id,
+        5,
+        action=PendingAction.PROPOSE,
+        guard=Guard.PAUSED if limit else Guard.PROCEED,
+        paused_by=limit,
+    )
+
+
 def _pending(
     cycle: EndedCycle,
     verdict: RunVerdict | None,
