@@ -4060,7 +4060,8 @@ that two parts of the accepted design no longer describe what runs:
    - the Project's baseline commit and configuration revision (as `pin_source_context` reads them);
    - the commit's tree identity;
    - the inherited baseline at both, by a digest of its checks and each check's result;
-   - the derived profile's disclosed gaps.
+   - the disclosed gaps of the derived profile at the Project's pin. It's read as `prepare_cycle` reads a Cycle's
+     (SIP-0112 H.8): `get_derived_profile(project_id, at=(commit, revision))`, never the latest capture's.
 4. **The record's own path, in a cycle's order** (§10: promotion first; §12a).
    - `promote`, keyed by the record and its identity, names the record and its commit. Nothing goes to the vault
      and nothing is frozen.
@@ -4078,8 +4079,14 @@ that two parts of the accepted design no longer describe what runs:
    - `project_not_ready`, including a Project with no validated commit or no configuration revision;
    - `drift_unreconciled`, read by SIP-0112 H.2's `unreconciled`;
    - `no_baseline`, at that commit and revision, or with no tree recorded at the commit;
-   - `no_profile` and `stale_profile` (contract 8);
-   - `blocking_gap`, naming each gap's id and what closes it.
+   - `no_profile`: none is recorded at the pin (contract 8). A profile derived at another commit or revision is
+     never read in its place, so there's no separate stale cause;
+   - `blocking_gap`, naming each gap's id and what closes it. Every blocking gap refuses the start (H.6), not only
+     those that stop `work`.
+
+   **No refusal is reached twice.** The start creates no cycle, so `prepare_cycle`'s own blocking-gap refusal
+   (H.8's 409 `PROJECT_STATE_CONFLICT`) is never reached for it, nor is the plan gates' validator. H.8
+   leaves refusing a Campaign's start to this point.
 
    **Nothing is written, not even a refused row.** Like the start refused for a request profile that doesn't
    exist (422), it's refused before it reaches the control log, so §12a's "refused and recorded" doesn't apply.
@@ -4093,10 +4100,7 @@ lane's. Until it lands, the record's decision escalates with that reason, and th
 way (422). Not in this amendment:
 - the creation rules (`calibration_profile`, `policy.stack`, `proposal_profile`);
 - the campaign branch and promotion onto it (point 2);
-- the increment's pin (contract 1);
-- reading the profile at the Project's pin, once SIP-0112 H.8 (#2734) gives `get_derived_profile` its `at=`
-  argument. Until then the record reads the latest capture's profile and refuses one at another commit or revision
-  as stale.
+- the increment's pin (contract 1).
 
 **Evidence.** The tests enter at `POST /api/v1/campaigns/{id}/start`
 (`tests/unit/api/test_campaign_calibration_record.py`):
@@ -4104,7 +4108,7 @@ way (422). Not in this amendment:
   the workspace store are real, and the checks run as local processes. The record names the capture's commit,
   revision and checks, and Tally's two disclosed gaps. Its tree is the fixture's own recorded tree identity. No
   cycle or intent is created. Row 5 proposes and escalates on point 5.
-- **Each refusal cause, 11 cases.** Each one leaves the control log at its creation row.
+- **Each refusal cause, 11 cases.** Each one leaves the control log at its creation row, and creates no cycle.
 - **A restart before the promotion, and one between the promotion and the decision.** Each is heard once at
   `main._resume_campaigns`, and a second startup writes nothing.
 - **The abort's package.** It names the record, and "no partial promotion" holds.
@@ -4119,7 +4123,7 @@ reads a record's tree back after a restart and refuses a row naming both.
 Fifteen mutants, each caught by these tests:
 - the route never taking the record path;
 - the record counted toward the budget, or the elapsed time not read;
-- `test_files_unclassed` not a stop, drift not read, or a stale profile accepted;
+- `test_files_unclassed` not a stop, drift not read, or a profile of another commit read in place of the pin's;
 - the tree identity not read from the mapping;
 - no re-hearing at startup;
 - the new field in a cycle's promotion hash;

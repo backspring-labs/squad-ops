@@ -109,10 +109,14 @@ class _Projects:
             raise InheritedBaselineNotFoundError(f"no baseline for {project_id}")
         return self.baseline
 
-    async def get_derived_profile(self, project_id):
-        if self.profile is None:
-            raise DerivedProfileNotFoundError(f"no profile for {project_id}")
-        return self.profile
+    async def get_derived_profile(self, project_id, *, at=None):
+        """As the port reads it (SIP-0112 H.8): the latest capture's, or the one at ``at``."""
+        held = self.profile
+        if held is None or (
+            at is not None and (held.commit, held.development_configuration_revision) != at
+        ):
+            raise DerivedProfileNotFoundError(f"no profile for {project_id} at {at}")
+        return held
 
     async def source_syncs(self, project_id):
         return list(self.syncs)
@@ -305,7 +309,8 @@ def _stale_profile(projects: _Projects) -> None:
         ({}, _baseline_elsewhere, "no_baseline"),
         ({}, _no_tree, "no_baseline"),
         ({}, _no_profile, "no_profile"),
-        ({}, _stale_profile, "stale_profile"),
+        # H.8: a profile of another commit is none at the pin, never read in its place.
+        ({}, _stale_profile, "no_profile"),
         (
             {},
             lambda p: _with_gap(p, _blocking("test_files_unclassed", ("legacy",))),
@@ -326,7 +331,7 @@ def _stale_profile(projects: _Projects) -> None:
         "captured-at-another-commit",
         "no-tree-at-the-commit",
         "no-profile",
-        "stale-profile",
+        "a-profile-of-another-commit",
         "test-files-unclassed",
         "no-check-ran",
         "toolchain-missing",
@@ -336,11 +341,13 @@ async def test_a_start_that_cant_write_its_record_is_refused_and_writes_nothing(
     tmp_path, project, change, cause
 ):
     """§24bv point 1, §24cc, SIP-0112 H.6: each cause refuses the start (409, naming it), and
-    nothing is written: no start row, no record, no launch. Bugs caught: a cause missed, so a
-    Campaign calibrates on drift nobody reconciled, on a baseline of another commit, on a profile
-    of another tree, or past a blocking gap, including ``test_files_unclassed``, which H.6 makes a
-    stop for a Campaign and not only for its feature and fix increments; or a refusal that writes
-    the start and leaves the campaign calibrating."""
+    nothing is written: no start row, no record, no launch and no cycle, so ``prepare_cycle``'s
+    own blocking-gap refusal (SIP-0112 H.8) is never reached and the start is refused once. Bugs
+    caught: a cause missed, so a Campaign calibrates on drift nobody reconciled, on a baseline of
+    another commit, on a profile of another tree (read in place of none at the pin), or past a
+    blocking gap, including ``test_files_unclassed``, which H.6 makes a stop for a Campaign and not
+    only for its feature and fix increments; or a refusal that writes the start and leaves the
+    campaign calibrating."""
     projects = _recorded_projects(**project)
     if change is not None:
         change(projects)
@@ -355,6 +362,7 @@ async def test_a_start_that_cant_write_its_record_is_refused_and_writes_nothing(
     assert [e.operation for e in log] == [ControlOperation.CREATE]
     assert (await world.campaigns.get_campaign(CID)).state is CampaignState.DRAFT
     assert await world.campaigns.launch_intents(CID) == []
+    assert await world.cycles.list_cycles(PROJECT) == []
 
 
 async def test_a_blocking_gaps_refusal_names_each_gap(tmp_path):

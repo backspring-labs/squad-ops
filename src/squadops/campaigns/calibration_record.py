@@ -62,10 +62,9 @@ class RefusalCause(StrEnum):
     DRIFT_UNRECONCILED = "drift_unreconciled"
     #: No inherited baseline, or no tree, is captured at the commit and revision.
     NO_BASELINE = "no_baseline"
-    #: The latest capture recorded no derived profile (contract 8, "When it's absent").
+    #: No derived profile is recorded at the Project's pin (contract 8, "When it's absent"). One
+    #: derived at another commit or revision is never read in its place (SIP-0112 H.8's ``at=``).
     NO_PROFILE = "no_profile"
-    #: The profile was derived at another commit or revision (``StaleProfile``).
-    STALE_PROFILE = "stale_profile"
     #: A blocking gap stands: ``no_check_ran``, a blocking ``missing_toolchain``, or
     #: ``test_files_unclassed``, which H.6 makes a stop for ``campaigns``.
     BLOCKING_GAP = "blocking_gap"
@@ -163,7 +162,7 @@ async def record_for(
     """The calibration record ``project``'s state allows, or :class:`CalibrationRecordRefused`
     naming the first cause that stops it, in §24bv point 1's order. Reads only; writes nothing."""
     # deferred (pair): squadops.projects imports this package at load (workspaces' FileTree)
-    from squadops.projects.derived_profile import DISCLOSED, StaleProfile
+    from squadops.projects.derived_profile import DISCLOSED
 
     # deferred (pair): squadops.projects imports this package at load
     from squadops.projects.sync import unreconciled
@@ -213,20 +212,13 @@ async def record_for(
             "(squadops projects baseline --capture)",
         )
     try:
-        profile = await registry.get_derived_profile(pid)
+        # SIP-0112 H.8: the profile at the Project's pin, as prepare_cycle reads a Cycle's.
+        profile = await registry.get_derived_profile(pid, at=(commit, revision))
     except DerivedProfileNotFoundError as e:
         raise CalibrationRecordRefused(
             RefusalCause.NO_PROFILE,
-            f"Project {pid} has no derived profile at {commit}, revision {revision} ({e}): "
-            "capture the baseline again to derive one (SIP-0112 H.6)",
-        ) from e
-    try:
-        profile.require_current(commit=commit, development_configuration_revision=revision)
-    except StaleProfile as e:
-        raise CalibrationRecordRefused(
-            RefusalCause.STALE_PROFILE,
-            f"Project {pid}'s derived profile is stale: {e}. Capture the baseline again to "
-            "derive one at the pinned commit (SIP-0112 H.6)",
+            f"Project {pid} has no derived profile at its pin, {commit}, revision {revision} "
+            f"({e}): capture the baseline there again to derive one (SIP-0112 H.6)",
         ) from e
     if profile.blocking:
         named = "; ".join(
