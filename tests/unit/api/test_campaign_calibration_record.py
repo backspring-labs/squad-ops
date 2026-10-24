@@ -450,6 +450,27 @@ async def test_a_record_campaigns_package_reads_its_record(tmp_path):
     assert "- held: no partial promotion" in digest
 
 
+async def test_the_owners_word_and_the_ledger_read_a_records_decision(tmp_path):
+    """§10's owner's word and §9.4's ledger after a record's decision escalated (§24cc). Bugs
+    caught: the resume looking the record's id up as a cycle (the latest decision's target), so
+    the owner's propose answers as a missing cycle instead of naming what isn't built; or the
+    ledger reading every decision as a cycle's, so its read fails from the campaign's start on."""
+    world = await _world(_recorded_projects(), tmp_path)
+    world.start()
+
+    resumed = world.client.post(
+        f"/api/v1/campaigns/{CID}/resume",
+        json={"reason": "propose", "idempotency_key": "r-1", "action": "propose"},
+    )
+    ledger = world.client.get(f"/api/v1/campaigns/{CID}/ledger")
+
+    error = resumed.json()["detail"]["error"]
+    assert (resumed.status_code, error["code"]) == (422, "VALIDATION_ERROR")
+    assert "§24bv point 5" in error["message"]
+    assert (await world.campaigns.get_campaign(CID)).state is CampaignState.ESCALATED
+    assert (ledger.status_code, ledger.json()) == (200, [])
+
+
 async def test_a_sample_applications_start_still_launches_its_calibration_cycle(tmp_path):
     """§11, unchanged by §24bv. Bug caught: a Project with no source taken down the record path,
     so a sample application's campaign builds nothing and proposes on a tree it never built."""
