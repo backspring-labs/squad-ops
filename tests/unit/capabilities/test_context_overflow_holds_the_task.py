@@ -57,7 +57,6 @@ def _executor(error: Exception, calls: list) -> HandlerExecutor:
     prompt_service.assemble.return_value = MagicMock(content="system", assembly_hash="h")
     ports = PortsBundle(
         llm=llm,
-        memory=MagicMock(),
         prompt_service=prompt_service,
         queue=MagicMock(),
         metrics=MagicMock(),

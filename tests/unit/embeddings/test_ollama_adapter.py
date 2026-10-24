@@ -173,3 +173,15 @@ class TestEmbeddingsFactory:
         )
         assert provider._base_url == "http://custom:8080"
         assert provider._model == "mxbai-embed-large"
+
+    @pytest.mark.parametrize(
+        "kwargs", [{"model": "nomic-embed-text"}, {"base_url": "http://ollama:11434"}]
+    )
+    def test_an_embedder_names_its_server_and_model(self, kwargs):
+        """Bug caught: an embedder built at a defaulted ``localhost`` URL, or for a model nobody
+        installed, reached only when the first embedding silently fails (#2171). Moved here from
+        the legacy store's tests when the store was retired (#2184)."""
+        from adapters.embeddings.factory import create_embeddings_provider
+
+        with pytest.raises(TypeError):
+            create_embeddings_provider("ollama", **kwargs)

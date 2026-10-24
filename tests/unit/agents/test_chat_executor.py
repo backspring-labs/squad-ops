@@ -16,10 +16,12 @@ def _make_ports_bundle(
     stream_chunks: list[str] | None = None,
     system_prompt: str = "You are a test agent.",
 ):
-    """Build a mock PortsBundle for executor tests."""
+    """Build a mock PortsBundle for executor tests, shaped by the bundle itself: a port the bundle
+    doesn't carry (a memory store, since #2184) is an ``AttributeError``, not a fresh mock."""
+    from squadops.agents.base import PortsBundle
     from squadops.prompts.models import AssembledPrompt
 
-    bundle = MagicMock()
+    bundle = MagicMock(spec=PortsBundle)
 
     # LLM — mock chat_stream as an async generator
     chunks = stream_chunks if stream_chunks is not None else ["hello", " world"]
@@ -41,11 +43,6 @@ def _make_ports_bundle(
         hook="agent_start",
         version="1",
     )
-
-    # Memory: the port the agents hold, dormant (#2174)
-    from adapters.memory.dormant import DormantMemoryPort
-
-    bundle.memory = DormantMemoryPort()
 
     return bundle
 
@@ -228,29 +225,18 @@ class TestChatAgentExecutorErrorHandling:
         assert eq.events[0].final is True
 
 
-class TestLegacyMemoryIsDormant:
-    """SIP-0110 §A.4.3 (#2174): the legacy agent store is dormant. Chat neither recalls nor
-    stores, says so once at start, and a call that reaches the store is refused loudly."""
-
-    def test_the_executor_says_once_that_memory_is_dormant(self, caplog):
-        """Bug caught: the dormancy silent, so an operator reads chat's missing memory section
-        as a recall that found nothing (the shape #2171 found)."""
-        from adapters.comms.chat_executor import ChatAgentExecutor
-
-        with caplog.at_level("INFO", logger="adapters.comms.chat_executor"):
-            ChatAgentExecutor(ports=_make_ports_bundle(), role_id="comms")
-
-        # INFO, the agents' default level (#2425): said once at every start, not a warning.
-        said = [r for r in caplog.records if "legacy agent memory dormant" in r.getMessage()]
-        assert [r.levelname for r in said] == ["INFO"]
+class TestChatHoldsNoStore:
+    """SIP-0110 §A.4.3: the legacy agent store is retired (dormant in #2174, removed in #2184).
+    Chat neither recalls nor stores: the runtime API sends each turn's memory context (#2180)."""
 
     @pytest.mark.parametrize(
         "user_text", ["Please remember this: the deploy is on Friday", "When is the deploy?"]
     )
-    async def test_chat_answers_without_reaching_the_store(self, user_text, caplog):
-        """Entered at ``execute``, with the agents' own dormant port. Bugs caught: a "remember
-        this" trigger or a recall still calling the store (the dormant port would refuse it and
-        log the refusal); or chat failing because the store is gone."""
+    async def test_chat_answers_without_reaching_a_store(self, user_text):
+        """Entered at ``execute``, with a bundle shaped as the agents' ``PortsBundle``, which has
+        no memory port. Bugs caught: a "remember this" trigger or a recall reaching for a store
+        the agents no longer hold (an ``AttributeError`` on the bundle, which fails the turn); or
+        the turn's messages carrying anything beside the identity and the user's text."""
         from adapters.comms.chat_executor import ChatAgentExecutor
 
         captured: list = []
@@ -264,15 +250,13 @@ class TestLegacyMemoryIsDormant:
         executor = ChatAgentExecutor(ports=ports, role_id="comms")
         eq = _make_event_queue()
 
-        with caplog.at_level("WARNING"):
-            await executor.execute(_make_context(user_text=user_text), eq)
+        await executor.execute(_make_context(user_text=user_text), eq)
 
         assert eq.events[-1].status.state == "completed"
         assert [(m.role, m.content) for m in captured] == [
             ("system", "You are a test agent."),
             ("user", user_text),
         ]
-        assert not [r for r in caplog.records if "refused" in r.getMessage()]
 
 
 class TestTheTurnsHistory:

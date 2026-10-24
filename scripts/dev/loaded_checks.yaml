@@ -758,23 +758,19 @@ checks:
       import inspect
       print(CampaignLimit.FAILED_PROPOSALS_IN_ROW.value, "max_proposal_run_retries" in inspect.signature(CampaignPolicy).parameters)
     expect: "failed_proposals_in_row True"
+  # #2184 removed the dormant store this row first read (its port, its refusal and the entrypoint's
+  # construction), so the row now reads #2174's first part, which still holds: chat's executor
+  # neither recalls from nor stores to an agent store. Before #2174 both names were in its source.
+  # The 2.3 and 2.4 sets track this id. The store's removal is row "2184".
   - id: "2174"
-    what: "the agents hold the legacy store dormant, a call is refused, and the entrypoint builds it so"
+    what: "chat's executor neither recalls from nor stores to the legacy agent store"
     container: squadops-neo
     code: |
-      import asyncio, inspect, logging
-      logging.disable(logging.WARNING)
-      from adapters.memory.factory import create_memory_provider
-      from squadops.agents import entrypoint
-      from squadops.memory.exceptions import MemoryDormantError
-      port = create_memory_provider(provider="dormant")
-      try:
-          asyncio.run(port.get("probe"))
-          said = "answered"
-      except MemoryDormantError:
-          said = "refused"
-      print(type(port).__name__, said, 'create_memory_provider(provider="dormant")' in inspect.getsource(entrypoint))
-    expect: "DormantMemoryPort refused True"
+      import inspect
+      from adapters.comms import chat_executor
+      source = inspect.getsource(chat_executor)
+      print("_ports.memory" in source, "_MEMORY_TRIGGERS" in source)
+    expect: "False False"
   - id: "2175-agent"
     what: "a chat turn's earlier turns, sent in its metadata, reach the agent's messages"
     container: squadops-max
@@ -1709,3 +1705,13 @@ checks:
       from adapters.tools import git_source
       print("the managed clone is missing" in inspect.getsource(git_source))
     expect: "True"
+  - id: "2184"
+    what: the legacy per-agent store is retired; no agent holds a memory port, the image's lock has no lancedb, and nothing is mounted at the old store path (SIP-0110 §A.4.3)
+    container: squadops-neo
+    code: |
+      import os, pathlib
+      from dataclasses import fields
+      from squadops.agents.base import PortsBundle
+      lock = pathlib.Path("requirements/agent.lock").read_text()
+      print("memory" in {f.name for f in fields(PortsBundle)}, "lancedb==" in lock, pathlib.Path("adapters/memory/lancedb.py").exists(), os.path.ismount("/app/data/memory_db"))
+    expect: "False False False False"

@@ -1,15 +1,6 @@
-"""Memory adapters.
+"""Memory adapters (SIP-0110): Cross-Cycle Memory's store, the recall behind its port, the typed
+records' store and the reference resolvers. Each is imported by its own module.
 
-Provides implementations of memory ports:
-- LanceDBAdapter: Vector-based memory with LanceDB
-
-Part of SIP-0.8.7 Infrastructure Ports Migration.
+SIP-042's per-agent LanceDB store, its dormant stand-in and their factory are retired (SIP-0110
+§A.4.3, #2184).
 """
-
-from adapters.memory.factory import create_memory_provider
-from adapters.memory.lancedb import LanceDBAdapter
-
-__all__ = [
-    "LanceDBAdapter",
-    "create_memory_provider",
-]

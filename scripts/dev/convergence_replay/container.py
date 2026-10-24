@@ -8,9 +8,8 @@ The qa image carries every toolchain a round's checks need: pytest, vitest, Node
 one-off of the service has the agent's own configuration and network but not its command, so
 nothing here consumes from the queue.
 
-**The ports mirror ``AgentRunner._create_ports``**, with four exceptions, each named where it is
+**The ports mirror ``AgentRunner._create_ports``**, with three exceptions, each named where it is
 built:
-- the memory port is a null store, because the one-off shares the qa agent's memory volume;
 - the queue refuses every call;
 - telemetry is ``null``, and LLM observability is the no-op;
 - request templates come from a filesystem source for the arm. The scoped arm reads today's
@@ -31,7 +30,6 @@ from typing import Any
 from uuid import uuid4
 
 from squadops.ports.comms.queue import QueuePort
-from squadops.ports.memory.store import MemoryPort
 
 #: The admission verdicts. A round is replayable only when its recorded failure reproduces.
 ADMITTED = "admitted"
@@ -41,22 +39,6 @@ UNRUNNABLE = "unrunnable"
 #: A recorded check the verifier returns no row for: a framework-owed row (a build step's
 #: ``acceptance:frontend_compiles``) that the producing handler writes, not a typed criterion.
 UNEVALUATED = "recorded_check_not_evaluated_here"
-
-
-class NullMemory(MemoryPort):
-    """Stores nothing and finds nothing: the one-off shares the qa agent's memory volume."""
-
-    async def store(self, entry: Any) -> str:
-        return "null"
-
-    async def search(self, query: Any) -> list[Any]:
-        return []
-
-    async def get(self, memory_id: str) -> Any:
-        return None
-
-    async def delete(self, memory_id: str) -> bool:
-        return False
 
 
 class RefusingQueuePort(QueuePort):
@@ -114,7 +96,6 @@ async def compose_system(
     metrics, events = create_telemetry_provider("null")
     return create_system(
         llm=llm,
-        memory=NullMemory(),
         prompt_service=PromptAssembler(create_prompt_repository("filesystem")),
         queue=RefusingQueuePort(),
         metrics=metrics,
