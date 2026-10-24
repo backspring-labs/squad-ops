@@ -18,6 +18,9 @@ Steps are numbered from 1.
 
 **A browser step** (§10k, §10p): ``{"action": "visit", "path": "/runs/{run_id}"}``,
 ``{"action": "fill", "target": {...}, "value": "Ada"}`` or ``{"action": "click", "target": {...}}``.
+A click may say ``"if_enabled": true`` (#2659): when its control stays disabled, it is skipped and
+reads ``done``, so a delivery that disables the control and one that refuses the click read alike,
+and the scenario's read-back decides both. Only a click takes it.
 A target is found the way a user finds it: ``{"role": "button", "names": ["Join", "Join run"]}``,
 the first candidate name that matches any element, exactly after case-folding; ``near`` names
 another target the control must share a form with, and ``text`` a substring its text contains.
@@ -439,6 +442,8 @@ def _step_refusals(steps: Sequence[Mapping[str, Any]], actions: Mapping[int, Any
     out: list[str] = []
     for n, step in enumerate(steps, start=1):
         action = actions[n]
+        if "if_enabled" in step and (action != "click" or not isinstance(step["if_enabled"], bool)):
+            out.append(f"step {n}: if_enabled is a click's, true or false")
         if action not in _BROWSER_ACTIONS:
             continue
         if action != "visit" and actions.get(n - 1) not in _BROWSER_ACTIONS:

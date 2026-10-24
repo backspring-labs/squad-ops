@@ -40,7 +40,8 @@ else
   exit 2
 fi
 npm_status=0
-NPM_AUDIT_REPORT="$report" python3 - infra/evaluator/audit-ignore.txt <<'PY' || npm_status=$?
+# The accepted list is the repository's; EVALUATOR_AUDIT_IGNORE names another for the script's own tests.
+NPM_AUDIT_REPORT="$report" python3 - "${EVALUATOR_AUDIT_IGNORE:-infra/evaluator/audit-ignore.txt}" <<'PY' || npm_status=$?
 import json, os, sys
 ignored = {line.split("#")[0].strip() for line in open(sys.argv[1]) if line.split("#")[0].strip()}
 try:

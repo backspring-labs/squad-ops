@@ -2147,3 +2147,31 @@ a pre-push scan's hit is always a real exposure.
 scenarios. §10v's baseline found 9 by its wider reach, which includes the images and caches. The next revision
 replaces them. Revision 5 stands as approved, since revising it is the owner's.
 
+
+### 10x. The evaluator's `-6`: a control's name read past a trailing colon, a click skipped when its control is disabled, and the lock's advisories fixed (2026-10-24; #2706, #2659, #2712, #2469; the supervisor's, under the 2.5 plan's Track B)
+
+**What changed,** in one tag, since each moves the measure (§10p ruling 6):
+- **A control's accessible name is matched with one trailing colon dropped** (#2706). A field labelled "Your name:" is
+  named "Your name", so a correct build no longer reads `control_absent`. Only names are read this way: page text and a
+  check's patterns keep the colon. Ruling 3's exact match after folding otherwise stands, and "Name: first" is still
+  never "Name".
+- **A click may say `if_enabled: true`** (#2659), the vocabulary's one addition. When its control stays visible, stable
+  and disabled through the locate bound, the click is skipped and the step reads `done`, noted in the step's detail. So
+  a delivery that disables the control and one that refuses the click read alike, and the scenario's read-back decides
+  both. A control that enables within the bound is clicked, and a control not found is still `control_absent`. Only a
+  click takes it: `vocabulary_refusals` refuses it on any other step, or as anything but a boolean, at draft time.
+- **The image's npm lock has no advisory:** the peer `puppeteer` that `@axe-core/puppeteer` installs is pinned to 25.14.0,
+  the version of the `puppeteer-core` the driver runs (`overrides`). That takes its browser-download chain off
+  `extract-zip` and `basic-ftp` (#2469) and its `chromium-bidi` onto `zod` 4, and `fast-uri` moves to 3.1.9 (#2712).
+  `audit-ignore.txt` is empty. The peer package was never loaded at run time, and Lighthouse, ESLint and
+  `puppeteer-core` are unchanged.
+
+**Evidence:** the driver's Node tests (`infra/evaluator/browser.test.mjs`) and the vocabulary's refusal and wiring tests
+(`tests/unit/scenarios/test_browser_steps.py`), each new one failing on `-5`'s code; `npm audit --package-lock-only
+--omit=dev` reports nothing. **Before any baseline is read on `-6`,** the 2.5 plan's §2.2 validates the two-form
+scenario on known-good and broken builds of both forms, on both stacks, three rounds each, and re-reads every
+baseline, so no series compares `-5` with `-6`.
+
+**Who ruled.** The owner placed #2706 and #2659 in 2.5 with suite revision 6 (2026-10-23), accepted the five advisories
+for 2.4.0 only, with their fix to follow in 2.5 (2026-10-23), and adopted the 2.5 plan (2026-10-24). The supervisor
+wrote this.

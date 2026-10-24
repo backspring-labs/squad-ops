@@ -20,11 +20,9 @@ import pytest
 
 REPO = Path(__file__).resolve().parents[3]
 SCRIPT = REPO / "scripts" / "dev" / "audit_dependencies.sh"
-ACCEPTED = sorted(
-    line.split("#")[0].strip()
-    for line in (REPO / "infra" / "evaluator" / "audit-ignore.txt").read_text().splitlines()
-    if line.split("#")[0].strip()
-)
+#: The accepted list each test hands the script (``EVALUATOR_AUDIT_IGNORE``), invented: the
+#: repository's own list is empty since the evaluator's ``-6``, so it can't be the fixture.
+ACCEPTED = ("GHSA-aaaa-0000-0001", "GHSA-aaaa-0000-0002", "GHSA-aaaa-0000-0003")
 
 
 def _report(*advisories: str) -> str:
@@ -47,7 +45,11 @@ def _report(*advisories: str) -> str:
     )
 
 
-def _run(tmp_path: Path, npm_output: str, npm_exit: int) -> subprocess.CompletedProcess:
+def _run(
+    tmp_path: Path, npm_output: str, npm_exit: int, accepted: tuple[str, ...] = ACCEPTED
+) -> subprocess.CompletedProcess:
+    ignore = tmp_path / "audit-ignore.txt"
+    ignore.write_text("# invented\n" + "".join(f"{a}  # a reason\n" for a in accepted))
     bin_dir = tmp_path / "bin"
     bin_dir.mkdir()
     (tmp_path / "npm-output.json").write_text(npm_output)
@@ -59,7 +61,11 @@ def _run(tmp_path: Path, npm_output: str, npm_exit: int) -> subprocess.Completed
         path = bin_dir / name
         path.write_text(body)
         path.chmod(path.stat().st_mode | stat.S_IXUSR)
-    env = {**os.environ, "PATH": f"{bin_dir}{os.pathsep}{os.environ['PATH']}"}
+    env = {
+        **os.environ,
+        "PATH": f"{bin_dir}{os.pathsep}{os.environ['PATH']}",
+        "EVALUATOR_AUDIT_IGNORE": str(ignore),
+    }
     return subprocess.run(
         ["bash", str(SCRIPT)], cwd=REPO, env=env, capture_output=True, text=True, timeout=60
     )
@@ -95,8 +101,19 @@ def test_an_audit_that_read_nothing_says_not_run_and_never_calls_an_accepted_id_
 def test_a_report_that_was_read_is_judged_against_the_accepted_ids(
     tmp_path, advisories, returncode, line
 ):
-    assert ACCEPTED, "the evaluator's ignore list is the fixture: it lists accepted advisories"
     done = _run(tmp_path, _report(*advisories), npm_exit=0 if advisories == ACCEPTED else 1)
 
     assert (done.returncode, line in done.stdout) == (returncode, True)
     assert "NOT RUN" not in done.stderr
+
+
+def test_an_empty_accepted_list_passes_a_clean_report_and_fails_any_advisory(tmp_path):
+    """The evaluator's state since ``-6``: nothing accepted. Bugs caught: an empty list read as a
+    missing one, so a clean lock fails the job; or every advisory waved through."""
+    for name in ("clean", "dirty"):
+        (tmp_path / name).mkdir()
+    clean = _run(tmp_path / "clean", _report(), npm_exit=0, accepted=())
+    dirty = _run(tmp_path / "dirty", _report("GHSA-aaaa-bbbb-cccc"), npm_exit=1, accepted=())
+
+    assert clean.returncode == 0, clean.stdout + clean.stderr
+    assert (dirty.returncode, "NEW      GHSA-aaaa-bbbb-cccc" in dirty.stdout) == (1, True)

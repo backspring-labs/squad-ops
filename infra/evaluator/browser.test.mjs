@@ -3,7 +3,7 @@
 // runs it in CI. Every value is invented.
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { fold, locate, runSegment } from "./browser.mjs";
+import { fold, foldName, locate, runSegment, select } from "./browser.mjs";
 
 const FAST = { navigateMs: 200, locateMs: 60, checkMs: 60, settleIdleMs: 1, settleMs: 5, pollMs: 5 };
 
@@ -221,4 +221,46 @@ test("a check or a step that throws says so in its reading and keeps the error's
 
   assert.deepEqual([failed.steps[1].outcome, failed.steps[1].detail], ["action_failed", "Error"]);
   assert.ok(failed.evidence.errors[0].includes("Moonrise"));
+});
+
+test("a label's trailing colon doesn't hide its field, and only a trailing one is dropped (#2706)", async () => {
+  const page = fakePage({ elements: { textbox: [{ name: "Your name:" }, { name: "Name: first" }] } });
+
+  const { element } = await locate(page, { role: "textbox", names: ["Your name"] });
+  const none = await locate(page, { role: "textbox", names: ["Name"] });
+  const counted = await select(page, { role: "textbox", names: ["your name:"] });
+
+  assert.equal(element.name, "Your name:");
+  assert.equal(none.element, null); // "Name: first" is never "Name"
+  assert.equal(counted.length, 1);
+  assert.equal(foldName(" Your name : "), "your name");
+  assert.equal(fold("Your name:"), "your name:"); // page text and patterns keep it
+});
+
+test("an if_enabled click skips a control disabled through the bound, and clicks one that enables late (#2659)", async () => {
+  const join = { role: "button", names: ["Join"] };
+  const steps = (extra) => [{ action: "visit", path: "/" }, { action: "click", target: join, ...extra }];
+  const disabled = () => ({ button: [{ name: "Join", disabled: true }] });
+
+  const skipped = await runSegment(fakePage({ elements: disabled() }), segment(steps({ if_enabled: true })), FAST);
+  const plain = await runSegment(fakePage({ elements: disabled() }), segment(steps({})), FAST);
+  const absent = await runSegment(fakePage({ elements: {} }), segment(steps({ if_enabled: true })), FAST);
+  const late = fakePage({ elements: disabled() });
+  const find = late.find.bind(late);
+  let finds = 0;
+  late.find = async (role) => {
+    finds += 1;
+    if (finds > 2) late.state.elements.button[0].disabled = false;
+    return find(role);
+  };
+  const enabled = await runSegment(late, segment(steps({ if_enabled: true })), FAST);
+
+  assert.deepEqual(skipped.steps.map((s) => s.outcome), ["done", "done"]);
+  assert.equal(skipped.steps[1].detail, "skipped: the control was disabled");
+  assert.equal(skipped.evidence, null);
+  assert.deepEqual(plain.steps.map((s) => s.outcome), ["done", "action_failed"]);
+  assert.deepEqual(absent.steps.map((s) => s.outcome), ["done", "not_found"]); // still control_absent
+  assert.deepEqual(enabled.steps.map((s) => s.outcome), ["done", "done"]);
+  assert.deepEqual(late.state.acted, [["click", "Join"]]);
+  assert.equal(enabled.steps[1].detail, null);
 });
