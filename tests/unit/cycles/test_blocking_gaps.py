@@ -395,3 +395,38 @@ async def test_both_plan_author_paths_render_the_blocked_paths_through_the_manag
 
     assert "Where this product's checks can't run: plan no task there" in text
     assert "- `frontend/**`: missing_toolchain (npm)" in text
+
+
+async def test_a_framing_runs_plan_authors_carry_the_blocked_paths_from_run_provisioning():
+    """Wiring (anti-pattern 6a), entered at ``RunProvisioning.prepare``, the step ``execute_run``
+    takes before dispatch, with the real plan generation for the ``validate`` profile's framing.
+    On the Mac's live check (``cyc_0661f9d38394``) the merger authored the plan alone, and the
+    plan gate refused it for ``frontend/``. Bug caught: the step applied nowhere on the live
+    path, so an author is refused for paths the run never showed it."""
+    from squadops.contracts.cycle_request_profiles import load_profile
+    from squadops.execution.blocked_paths import BLOCKED_PATHS_INPUT
+    from squadops.execution.run_provisioning import RunInProgress
+    from tests.unit.cycles.test_increment_evaluation_wiring import PROFILE
+
+    cycle = dataclasses.replace(
+        _cycle(), applied_defaults={**dict(load_profile("validate").defaults)}
+    )
+    run = Run("run_f", "cyc_gap", 1, "queued", "system", "cfg", workload_type="framing")
+    executor = _executor(_plan("backend/main.py"), _Registry(_profile(_NPM)))
+    executor._prepare_cycle_for_run = AsyncMock(return_value=(cycle, None))
+    executor._cycle_registry.get_run.return_value = run
+    executor._cycle_registry.get_latest_checkpoint.return_value = None
+    executor._squad_profile.resolve_snapshot.return_value = (PROFILE, "sha")
+    executor._load_plan_for_run = AsyncMock(return_value=None)
+    executor._load_contract_for_run = AsyncMock(return_value=None)
+    state = RunInProgress()
+
+    await executor._run_provisioning.prepare(
+        state, cycle.cycle_id, run.run_id, "full", forwarding_overrides=None
+    )
+
+    carried = {e.task_type for e in state.plan if BLOCKED_PATHS_INPUT in e.inputs}
+    assert "governance.merge_plan" in {e.task_type for e in state.plan}
+    assert carried == {e.task_type for e in state.plan if e.task_type in (
+        "governance.merge_plan", "development.propose_plan_tasks", "qa.propose_plan_tasks"
+    )}  # fmt: skip
