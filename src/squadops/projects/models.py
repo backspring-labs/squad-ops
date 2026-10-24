@@ -79,6 +79,16 @@ class SourceUnavailable(RuntimeError):
         self.reason = reason
 
 
+class RefMoved(SourceUnavailable):
+    """A compare-and-swap on a managed clone's ref lost: the ref wasn't at the commit the caller
+    expected (SIP-0109 §24cd point 2). ``held`` is the commit it names now, or ``None`` when there
+    is no such ref. Nothing was moved."""
+
+    def __init__(self, message: str, *, held: str | None) -> None:
+        super().__init__(message, reason="ref_moved")
+        self.held = held
+
+
 @dataclass(frozen=True)
 class CheckoutTree:
     """A commit's tracked tree, as the sandbox can carry it (X-1, X-2): files as bytes and the
