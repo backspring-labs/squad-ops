@@ -2162,7 +2162,7 @@ nothing to report yet.
   refusing a Campaign's start is SIP-0109 §24bv point 1's, which is the Spark lane's.
 
 **The evidence:**
-- **`tests/unit/cycles/test_blocking_gaps.py`** (22 tests):
+- **`tests/unit/cycles/test_blocking_gaps.py`** (23 tests):
   - the rule on the record;
   - the refusals at `prepare_cycle`: an unconfined gap, and an operator's plan meeting or clearing a confined one;
   - the absence warning;
@@ -2170,12 +2170,23 @@ nothing to report yet.
   - the in-run seam failing the run under `validate_blocking_gaps`;
   - the profile read at the cycle's own pin, and never for a sample application;
   - the plan authors given the index, and no other task;
-  - both authoring paths rendering the asset.
-- **Four mutants, each caught:**
+  - both authoring paths rendering the asset;
+  - the wiring, entered at `RunProvisioning.prepare` with the real plan generation for the `validate` profile's
+    framing: the merger, the plan's sole author there, carries the index.
+- **Five mutants, each caught:**
   - a confined gap meeting any work;
   - unconfined gaps listed for the authors;
   - the operator's plan not read;
-  - the promotion seam reading no profile.
+  - the promotion seam reading no profile;
+  - the plan step dropped from `RunProvisioning.prepare`.
+- **Live on the Mac** (2026-10-24), on `prj-shelfnote` (`z_shelfnote`, a test product), with this change's runtime:
+  - **Revision 5, every check's command missing:** the capture's profile reads `no_check_ran` and a blocking
+    `missing_toolchain` on each side, and `cycles create` was refused with 409, naming `no_check_ran`.
+  - **Revision 6, only npm missing:** the profile reads `missing_toolchain (npm)`, blocking `frontend/**`. A framing
+    cycle (`cyc_0661f9d38394`) was accepted at create. Its plan gate rejected two framings in turn under
+    `blocking_gap`, for `frontend/src/components/BooksList.jsx` and then for `Pagination.jsx` and `BooksListView.jsx`.
+    The PRD asks for frontend work, so no plan could go around the gap. The cycle was cancelled.
+  - **Revision 7** restored revision 4's configuration, and its capture reads the original two disclosed gaps.
 
 **Who ruled:** the MacBook lane, under the owner's delegation of 2026-10-18, within H.4 and H.6 as ruled.
 
