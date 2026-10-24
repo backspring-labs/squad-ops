@@ -53,6 +53,7 @@ from squadops.tasks.task_types import TaskType, authors_qa_suite
 
 if TYPE_CHECKING:
     from squadops.cycles.verification_contract import VerificationContract
+    from squadops.projects.derived_profile import DerivedProfile
 
 # Known task types that may appear in plan tasks.
 _KNOWN_BUILD_TASK_TYPES = {
@@ -966,6 +967,24 @@ class ImplementationPlan:
             for artifact in task.expected_artifacts
             if not is_qa_test_path_for_stack(artifact, stack)
         ]
+
+    def validate_blocking_gaps(self, profile: DerivedProfile | None) -> list[str]:
+        """SIP-0112 H.4 (H.8): no task's expected artifact lies where a blocking gap of the
+        Project's derived profile stops the work. No check could run there, so nothing a task
+        wrote there could be verified. ``None``, a Project with no profile, checks nothing."""
+        if profile is None:
+            return []
+        paths = [a for task in self.tasks for a in task.expected_artifacts]
+        errors = []
+        for gap in profile.blocking_work(paths):
+            met = [a for a in paths if gap.covers(a)] or paths
+            subject = f" ({gap.subject})" if gap.subject else ""
+            errors.append(
+                f"blocking_gap: {', '.join(met)} lie where {gap.id}{subject} stops the work "
+                f"({', '.join(gap.paths)}): {gap.reason}. Plan the change elsewhere, or close the "
+                f"gap first: {gap.closes_by}."
+            )
+        return errors
 
     def validate_increment_footprint(self, footprint: tuple[str, ...] | None) -> list[str]:
         """SIP-0109 §7.3 (#1705): an increment's plan covers only its approved change.
