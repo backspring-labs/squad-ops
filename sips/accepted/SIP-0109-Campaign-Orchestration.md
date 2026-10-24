@@ -4050,11 +4050,11 @@ this correction doesn't change that path.
 
 **7. For the owner: two questions this doesn't settle.**
 - **"For the intended reason" (§8.2) on a product's own runner.**
-  - pytest's findings reader keys only failed and errored test ids (`projects/findings.py:154-179`), so a criterion failing on the baseline by an `ImportError` reads the same as one failing behaviourally. vitest has no test-id reader at all (H.7's disclosed `no_test_id_reader`).
+  - pytest's findings reader keys only failed and errored test ids (`sandbox/findings.py:154-179`), so a criterion failing on the baseline by an `ImportError` reads the same as one failing behaviourally. vitest has no test-id reader at all (H.7's disclosed `no_test_id_reader`).
   - **Proposed:** a pytest reader that carries each failure's exception class, built with this, so §8.2's rule holds on pytest. On a runner with no such reader, a criterion's discrimination is unread, and it isn't accepted as discriminating. That holds the rule rather than weakening it, and may leave a vitest-only criterion unacceptable until a reader exists.
   - **Yours to rule:** keep that, or accept a whole-file reading as a disclosed limitation.
 - **The Campaign's review request** (§24bv point 2, H.4).
-  - Today a review request is the owner's act, one per run (`campaigns`' contribution, `contribution.py:81-152`). Pushes are never forced (`ports/projects/source_repository.py:79`), and a branch name is one segment (`adapters/tools/git_source.py:54`).
+  - Today a review request is the owner's act, one per run (`projects/contribution.py:81-152`). Pushes are never forced (`ports/projects/source_repository.py:79`), and a branch name is one segment (`adapters/tools/git_source.py:54`).
   - A Campaign's single review request needs an automatic push on the deploy's credentials, and a forced one after a rebase.
   - **Yours to rule:** whether it is automatic, and when. Until then the branch lives in the managed clone, and nothing is pushed.
 
