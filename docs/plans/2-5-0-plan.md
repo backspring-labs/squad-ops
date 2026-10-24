@@ -1,6 +1,14 @@
 # 2.5.0 plan — stabilization: a Campaign on a product SquadOps doesn't own, the yardstick re-cut once, and the hardening the 2.4 line found
 
-**Status: DRAFT (2026-10-23), for the owner's review.** Revised twice on 2026-10-24:
+**Status: ADOPTED (2026-10-24).** The owner ruled §7 and the lanes on 2026-10-24:
+- **D1–D10 as recommended,** D5 deferred to 2.6 as recommended. The owner's words: "with all your recommendations and
+  defer tensor fold upgrade", then "I agree with your recommendations" on the outside review's changes, then "agree"
+  to the summary that named the ten as ruled;
+- **D11: approval of the two demonstration suites delegated** on revision 5's terms ("agree");
+- **the MacBook lane kept, narrowed** ("keep it narrowed"): it builds Track A's Project Lifecycle Management pieces
+  on its own code and does two design reviews, and everything else is the Spark lane's (§5).
+
+**Drafted 2026-10-23, for the owner's review,** and revised three times on 2026-10-24:
 - **on the MacBook lane's review:** its rows confirmed, one split, one added, and §24bv's three proposals made D10;
 - **on an outside reviewer's review, which the owner brought and accepted** ("I agree with your recommendations"):
   D10's exemption narrowed to the one limit §24bv names; two demonstration Campaigns with a table of what each
@@ -11,7 +19,7 @@
 - **and on the MacBook lane's second review:** `z_continuum` tests with pytest only, so the main demonstration's
   features are backend ones or the `web/` gap is named first; and run-path fixes land before Track D's read.
 
-Nothing in it starts before the owner rules §7. The Spark lane drafted it after the 2.4.0 cut (the owner: "let's draft
+The Spark lane drafted it after the 2.4.0 cut (the owner: "let's draft
 2.5"). Every item in it was already placed in 2.5 by a ruling or a ledger row, or was found by the 2.4 line and is
 placed here for the first time. §1 says which is which.
 
@@ -168,11 +176,11 @@ the cut's rolls and the shakeout's calibrations are read for it too, at no extra
 | item | what | lane | size |
 |---|---|---|---|
 | **#2297** | `contract_assertions_match` also flags a suite request that matches a declared route only with a required path segment left empty. **Evidence before merge:** it flags both stored failing suites and passes every accepted suite in the vault since 2026-09-15 | Spark | S |
-| **#2664** | a repair of a failing slot assertion keeps an assertion on the same field and surface unless the declarations show the field absent there, or it's refused as `slot_subject_dropped`. **The MacBook lane reviews the design first** (G4), since the correction loop's acceptance is its ground. **Evidence before merge:** read against the 9 recorded cases, it refuses `cyc_bb493eb4725b`'s weakening and passes the strengthening and both correct reductions | after G4: the MacBook lane names the builder | M |
+| **#2664** | a repair of a failing slot assertion keeps an assertion on the same field and surface unless the declarations show the field absent there, or it's refused as `slot_subject_dropped`. **The MacBook lane reviews the design first** (G4), since the correction loop's acceptance is its ground. **Evidence before merge:** read against the 9 recorded cases, it refuses `cyc_bb493eb4725b`'s weakening and passes the strengthening and both correct reductions | Spark, after the MacBook lane's G4 | M |
 | **#2253** | QA's output budget, **built on the headroom read already done** (#2253, 2026-10-18): `qa.test` and `qa.test_repair` are the only task types whose p95 is the cap, and on TensorFold 7.9% of `qa.test` calls and 20.8% of `qa.test_repair` calls were cut; most cut calls ran out thinking, not writing. The 2.4.0 cut's Next.js roll 2 had one more. **Before any change:** compare, for both task types, the suites' outcomes and the time spent under the two remedies the read names, a higher cap (a replay of the cut envelopes at it) and a lower reasoning level for test authoring (the finished re-asks against first calls that finished). **"No change" is a valid outcome** if the evidence doesn't favour either | Spark | S–M read, S change |
 | **#2602** | a Next.js page criterion for a page or route the change adds can discriminate: its test's imports and fetch stub resolve on the accepted tree, as #2599 did for endpoints | Spark | M |
-| **#2521** | a repair whose files the write authorization drops is told why and counted, not refunded and re-taken unchanged | MacBook | S–M |
-| **#2553's remainder** | an input refusal's failure record names its class (`input_contract_failure`). It bumps `ATTRIBUTION_REGISTRY_VERSION` from 1, so failure records written before and after it read differently: the Spark lane, which reads those records, rules the bump at its G4, and it lands before the cut's pre-registration, so no counted reading straddles it | MacBook | S |
+| **#2521** | a repair whose files the write authorization drops is told why and counted, not refunded and re-taken unchanged | Spark | S–M |
+| **#2553's remainder** | an input refusal's failure record names its class (`input_contract_failure`). It bumps `ATTRIBUTION_REGISTRY_VERSION` from 1, so failure records written before and after it read differently: the Spark lane builds it, since it reads those records, and it lands before the cut's pre-registration, so no counted reading straddles it | Spark | S |
 
 ### 2.4 Track D: structure
 
@@ -188,12 +196,12 @@ the cut's rolls and the shakeout's calibrations are read for it too, at no extra
 |---|---|---|---|
 | **#2184** | retire the legacy per-agent LanceDB store, after a re-inventory. **Its volumes are a compose change, the owner's** (D4) | Spark | M |
 | **#2433** | the Spark-only thermal rule raises no alert on a box without that board, and the deploy starts node-exporter wherever its rules expect it | Spark | S |
-| **#2493** | an agent's service-token expiry is read on the wall clock, so a host sleep doesn't leave every agent sending an expired token | MacBook (it shows only on a host that sleeps) | S |
+| **#2493** | an agent's service-token expiry is read on the wall clock, so a host sleep doesn't leave every agent sending an expired token | Spark (reproduced by moving the clock, since it shows only on a host that sleeps) | S |
 | **#2561** | the deploy record carries a model digest under TensorFold, read from TensorFold's own model listing | Spark | S |
 | **#2560** | CI's integration job survives `mirror.gcr.io`'s request quota | Spark | S |
 | **#2286** | TensorFold's key file holds labelled operator keys beside the deploy key, so an operator key survives a rotation | Spark | S |
-| **#2672** | a managed clone's missing directory is named as that, not as "git is not installed here" | MacBook | S |
-| **#2402** | `run_prose_lane.sh` runs under macOS's bash 3.2 (no `mapfile`) | MacBook (it shows only there) | S |
+| **#2672** | a managed clone's missing directory is named as that, not as "git is not installed here" | Spark | S |
+| **#2402** | `run_prose_lane.sh` runs under macOS's bash 3.2 (no `mapfile`) | Spark (tested under bash 3.2 in a container, since it shows only on macOS) | S |
 | **#2710** | `update_sip_status.py` stamps UTC | Spark | S |
 | **#2713** | the release capture names the browser's own load error, and the Spark's capture browser is fixed or replaced (its snap Chromium refuses every local page since 2026-10-22) | Spark | S |
 | **#1469** | `frontend_build`'s per-failure signature (#878's treatment, which #1468 left out) | Spark | S |
@@ -223,7 +231,7 @@ The Spark is one GPU and one deploy. Everything that measures runs one thing at 
    D10's three proposals ruled; #2664's G4 and #2578 part 2's G4 by the MacBook lane; #2637's design review (D7);
    suite revision 6 drafted and reviewed. Small fixes from Tracks C and E merge on green. **Each fix that changes a
    path a run executes lands in phases 1–2,** before Track D's uncounted Campaign, so the invalidation rule below voids
-   neither that read nor the demonstrations: the MacBook lane's #2521, #2553's remainder, #2672 and #2493 among them.
+   neither that read nor the demonstrations: #2521, #2553's remainder, #2672 and #2493 among them.
    A fix to a script no run executes, such as #2402, can land at any time.
 2. **Track B's batch, one deploy.** #2706, #2659, #2712 and #2469 in one evaluator tag; #2557 if ruled; #2637's
    measure versions. Then, in order: **the changed scenario's validation** (§2.2), about 2 box-hours as a guide;
@@ -275,17 +283,17 @@ Written as a pre-registration when the last batch is built, as at 2.4.0. This pl
 
 ## 5. The lanes
 
-As 2.4's D11 and D12, by file ownership:
-- **The MacBook lane:** H.4's contract, derived profile and recipe, §24bv point 5's proposal input and contract 1's
-  pin for an increment (Project Lifecycle Management's surfaces); #2521, #2553's remainder, #2672, #2402 and #2493;
-  the G4 reviews of #2664 and #2578 part 2. It names #2664's builder at its review. Confirmed in its review of this PR
-  (2026-10-24).
-- **The Spark lane:** Tracks B and D; Track E but for #2672, #2402 and #2493; §24bv points 1–4, §10l, #2414's and
-  #2421's remainders, #2592, #2297, #2253 and #2602; the G4 of #2553's registry bump; the deploys, the re-read, the
-  demonstration's runs and the cut.
-- **The lanes meet** at H.4's contract (the derived profile's record, which §24bv and §10l read): it's written down
-  first, and reviewed by both, as 2.4's shared fixture was.
-
+**The MacBook lane is kept, narrowed** (the owner, 2026-10-24: "keep it narrowed"). Its reason to exist in 2.5 is Track
+A's Project Lifecycle Management pieces, which build on code it wrote in 2.4, and its reviews as that code's owner.
+- **The MacBook lane builds:** H.4's contract (its first 2.5 PR), the derived profile and gaps, the recipe, §24bv point
+  5's proposal input and contract 1's pin for an increment. **It reviews:** #2664's design and #2578 part 2's cycle
+  field (G4), before the Spark lane builds either.
+- **The Spark lane does everything else:** Tracks B, C, D and E, #2521, #2553's remainder, #2672, #2493 and #2402
+  among them; §24bv points 1–4, §10l, #2414's and #2421's remainders and #2592; the deploys, the re-read, the
+  demonstrations' runs and the cut.
+- **The lanes meet at three points only:** H.4's contract, reviewed by both before either builds against it; the two
+  G4 reviews; and merge holds while a counted set or a demonstration runs. Nothing else needs the MacBook lane, so a
+  lane that's asleep holds nothing up.
 
 ---
 
@@ -299,7 +307,7 @@ supervisor's estimates have run high on earlier lines, so these are ceilings to 
 
 ---
 
-## 7. Decisions for the owner
+## 7. Decisions for the owner (ruled 2026-10-24, as recommended; D11 delegated)
 
 | # | decision | recommendation |
 |---|---|---|
@@ -324,7 +332,6 @@ supervisor's estimates have run high on earlier lines, so these are ceilings to 
 - **Revision 6's text.** The supervisor drafts and approves it on the owner's delegation, and nothing of its content
   is written here.
 - **#2637's design,** which its review settles (D7).
-- **#2664's builder,** which the MacBook lane names at its review.
 - **§24bv's other three open questions:** whether the review request stays a draft until the Campaign ends, a
   per-increment review request beside the Campaign's, and how a frozen bundle snapshots fixtures for runners other
   than pytest and vitest. They wait until after the demonstrations, whose products test with pytest, and vitest on
