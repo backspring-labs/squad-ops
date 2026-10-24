@@ -87,11 +87,11 @@ def ledger(log: list[ControlLogEntry], launches: Iterable[LaunchIntent] = ()) ->
             # A cycle's end decides for its version, and the last cycle's decision is the
             # version's outcome. A calibration record's decision (§24cc) names no cycle, and no
             # proposal was submitted before it.
-            key = decides_for.get(b.get("cycle_id", ""))
-            if key is not None:
+            decided = decides_for.get(b.get("cycle_id", ""))
+            if decided is not None:
                 decision = {k: b.get(k) for k in _DECISION_FIELDS if b.get(k) is not None}
-                entries[key]["outcome"] = decision
-                for cycle in cycles[key]:
+                entries[decided]["outcome"] = decision
+                for cycle in cycles[decided]:
                     if cycle["cycle_id"] == b["cycle_id"]:
                         cycle.update(decision)
         elif e.operation == ControlOperation.CLASSIFY:
@@ -127,10 +127,10 @@ def _carrying_cycles(
         if intent.cycle_kind not in _CONTINUATIONS or intent.cycle_id is None:
             continue
         block = _block_of(intent)
-        key = (block.get("proposal_id"), block.get("version"))
-        if key in entries and intent.cycle_id not in decides_for:
-            decides_for[intent.cycle_id] = key
-            cycles.setdefault(key, []).append(
+        bound = (block.get("proposal_id"), block.get("version"))
+        if bound in entries and intent.cycle_id not in decides_for:
+            decides_for[intent.cycle_id] = bound
+            cycles.setdefault(bound, []).append(
                 {"cycle_id": intent.cycle_id, "kind": str(intent.cycle_kind)}
             )
     return decides_for, cycles
