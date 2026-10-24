@@ -541,16 +541,19 @@ class CorrectionRunner:
         # repair overlay, patch verification). In-place replacement of
         # the artifacts list is deliberate — both consumers read
         # result.outputs.
-        step_artifacts = (result.outputs or {}).get("artifacts") or []
+        outputs = result.outputs
+        if outputs is None:
+            return  # nothing emitted, so nothing to enforce
+        step_artifacts = outputs.get("artifacts") or []
         if bound_record is not None and step_artifacts:
             enforced, integrity_evidence = enforce_frozen_ownership(
                 step_artifacts, bound_record, step_envelope
             )
             if integrity_evidence:
-                result.outputs["artifacts"] = enforced
+                outputs["artifacts"] = enforced
                 # #2521: what was dropped, for the round's judgment — a step whose files were
                 # all dropped emitted a refused repair, not nothing.
-                result.outputs[OWNERSHIP_DROPPED_KEY] = [
+                outputs[OWNERSHIP_DROPPED_KEY] = [
                     {
                         "path": str(record.normalized_path or record.attempted_path),
                         "producer_task_type": str(record.producer_task_type),
@@ -580,7 +583,7 @@ class CorrectionRunner:
         if step_artifacts:
             kept, rejected = syntax_gate_python_artifacts(step_artifacts)
             if rejected:
-                result.outputs["artifacts"] = kept
+                outputs["artifacts"] = kept
                 for art, error in rejected:
                     name = art.get("name") or art.get("path") or "(unnamed)"
                     payload = {

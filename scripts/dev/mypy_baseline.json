@@ -176,7 +176,6 @@
 "src/squadops/cycles/task_plan.py\targ-type\tArgument 3 to \"_resolve_workload_steps\" has incompatible type \"frozenset[str]\"; expected \"set[str]\"": 1,
 "src/squadops/cycles/task_plan.py\targ-type\tArgument 4 to \"_replace_build_steps_with_plan\" has incompatible type \"frozenset[str]\"; expected \"set[str]\"": 1,
 "src/squadops/cycles/verification_normalize.py\targ-type\tArgument 1 to \"get\" of \"dict\" has incompatible type \"int | None\"; expected \"int\"": 1,
-"src/squadops/execution/correction_runner.py\tindex\tUnsupported target for indexed assignment (\"dict[str, Any] | None\")": 2,
 "src/squadops/execution/correction_runner.py\tindex\tValue of type \"Any | None\" is not indexable": 1,
 "src/squadops/execution/correction_runner.py\toperator\tUnsupported left operand type for - (\"None\")": 1,
 "src/squadops/execution/correction_runner.py\toperator\tUnsupported operand types for - (\"frozenset[tuple[str, str, str]]\" and \"None\")": 1,
