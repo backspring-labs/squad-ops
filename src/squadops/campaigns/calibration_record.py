@@ -246,14 +246,17 @@ async def record_for(
             "baseline capture records the tree it seeded (contract 3), so capture it again",
         )
     checks = [c.to_document() for c in baseline.checks]
-    disclosed = [g for g in profile.to_document()["gaps"] if g["kind"] == DISCLOSED]
+    tree = next(iter(trees))
+    digest = hashlib.sha256(_canonical(checks)).hexdigest()
+    results = tuple((str(c["id"]), str(c["result"])) for c in checks)
+    disclosed = tuple(g for g in profile.to_document()["gaps"] if g["kind"] == DISCLOSED)
     content = {
         "project_id": pid,
         "commit": commit,
         "development_configuration_revision": revision,
-        "tree_identity": next(iter(trees)),
-        "baseline_digest": hashlib.sha256(_canonical(checks)).hexdigest(),
-        "baseline_checks": [(c["id"], c["result"]) for c in checks],
+        "tree_identity": tree,
+        "baseline_digest": digest,
+        "baseline_checks": results,
         "disclosed_gaps": disclosed,
     }
     return CalibrationRecord(
@@ -261,8 +264,8 @@ async def record_for(
         project_id=pid,
         commit=commit,
         development_configuration_revision=revision,
-        tree_identity=content["tree_identity"],
-        baseline_digest=content["baseline_digest"],
-        baseline_checks=tuple(content["baseline_checks"]),
-        disclosed_gaps=tuple(disclosed),
+        tree_identity=tree,
+        baseline_digest=digest,
+        baseline_checks=results,
+        disclosed_gaps=disclosed,
     )
