@@ -120,7 +120,7 @@ RUN --mount=type=cache,target=/root/.cache/pip pip install -e .
 RUN python -m squadops.prompts.fragment_stamp
 
 # Create required directories
-RUN mkdir -p /app/logs /app/data/memory_db
+RUN mkdir -p /app/logs
 
 # Expose health check port
 EXPOSE 8000
