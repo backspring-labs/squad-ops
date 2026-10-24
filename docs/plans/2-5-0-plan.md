@@ -7,7 +7,9 @@
   cross-lane scenario reads (§2.1a); Track D moved before the demonstration, with an invalidation rule and the
   scenarios required to pass (§3); the changed browser scenario validated before baselines freeze (§2.2); #2253 built
   on its completed read; a fresh plan-gate check for D3; and, found while checking, each demonstration Project's start
-  declaration and held-out suite (D11).
+  declaration and held-out suite (D11);
+- **and on the MacBook lane's second review:** `z_continuum` tests with pytest only, so the main demonstration's
+  features are backend ones or the `web/` gap is named first; and run-path fixes land before Track D's read.
 
 Nothing in it starts before the owner rules §7. The Spark lane drafted it after the 2.4.0 cut (the owner: "let's draft
 2.5"). Every item in it was already placed in 2.5 by a ruling or a ledger row, or was found by the 2.4 line and is
@@ -87,7 +89,10 @@ owned by the owner's account. Never the real `backspring-labs/continuum`.
   and an inherited failing check, its `lint` (IR-9 needs one). IR-3's 2.4 run bound a project instruction to its
   `CLAUDE.md` (`repo:file:CLAUDE.md@current`), and that record is withdrawn now. So a project instruction bound to the
   same file is written before the Campaign starts, and the outside contribution changes that file: IR-3 completes
-  here.
+  here. **It tests with pytest only:** its `web/` app's scripts are `dev`, `build`, `preview` and `check`, with no
+  test runner, and its plugin UIs only build. So H.4's profile names a disclosed gap for changes under `web/`, and
+  the main demonstration's pre-registration picks two features with backend observables, or names that gap before
+  it launches (the MacBook lane's review).
 - **A short one, on `z_shelfnote`:** the greenfield product from E.4.6's proof, for its first Campaign (IR-7), with
   H.4's blueprint path. One increment is enough. On its own, `z_shelfnote` can't read IR-6 or IR-9: it was created
   from an approved manifest, and its recorded failing check passes once its first contribution is reconciled (the
@@ -198,10 +203,11 @@ the cut's rolls and the shakeout's calibrations are read for it too, at no extra
 ### 2.6 Not in 2.5
 
 - **Features, by parity,** each waiting for 2.6's plan: the judgement steps (#557, #949, #950) and Test-First's
-  greenfield gate (#1978), as re-read at the 2.4.0 cut (the 2.4 plan's D10); SIP-0112's lifecycle completeness (E.4.5, #2709, placed
-  in 2.6 with the SIP's close, the owner 2026-10-23) and E.4.7's ship-or-drop decision; a source-backed change's file
-  deletion (#2612) and its end-of-plan regression repair (#2613); Outcome Evaluation's outcome target and quality
-  gates (SIP-0113 §4.7, held until a reading shows contribution separating from acceptance).
+  greenfield gate (#1978), as re-read at the 2.4.0 cut (the 2.4 plan's D10); SIP-0112's lifecycle completeness
+  (E.4.5, #2709, placed in 2.6 with the SIP's close, the owner 2026-10-23) and E.4.7's ship-or-drop decision; a
+  source-backed change's file deletion (#2612) and its end-of-plan regression repair (#2613); Outcome Evaluation's
+  outcome target and quality gates (SIP-0113 §4.7, held until a reading shows contribution separating from
+  acceptance).
 - **The TensorFold 1.x upgrade** (#2230), unless D5 places it.
 - **#1965,** the Verification Yield crew's suite audit, and **#1039,** the docs site's design pass: unplaced, as
   before.
@@ -215,7 +221,10 @@ The Spark is one GPU and one deploy. Everything that measures runs one thing at 
 
 1. **Designs and reviews, no box time.** H.4's contract, the MacBook lane's first 2.5 PR, reviewed by both lanes;
    D10's three proposals ruled; #2664's G4 and #2578 part 2's G4 by the MacBook lane; #2637's design review (D7);
-   suite revision 6 drafted and reviewed. Small fixes from Tracks C and E merge on green throughout.
+   suite revision 6 drafted and reviewed. Small fixes from Tracks C and E merge on green. **Each fix that changes a
+   path a run executes lands in phases 1–2,** before Track D's uncounted Campaign, so the invalidation rule below voids
+   neither that read nor the demonstrations: the MacBook lane's #2521, #2553's remainder, #2672 and #2493 among them.
+   A fix to a script no run executes, such as #2402, can land at any time.
 2. **Track B's batch, one deploy.** #2706, #2659, #2712 and #2469 in one evaluator tag; #2557 if ruled; #2637's
    measure versions. Then, in order: **the changed scenario's validation** (§2.2), about 2 box-hours as a guide;
    revision 6 approved; **the re-read**, about 2; and D3's fresh calibrations, if ruled, about 1. Nothing after this
@@ -318,5 +327,6 @@ supervisor's estimates have run high on earlier lines, so these are ceilings to 
 - **#2664's builder,** which the MacBook lane names at its review.
 - **§24bv's other three open questions:** whether the review request stays a draft until the Campaign ends, a
   per-increment review request beside the Campaign's, and how a frozen bundle snapshots fixtures for runners other
-  than pytest and vitest. They wait until after the demonstrations, whose products test with pytest and vitest.
+  than pytest and vitest. They wait until after the demonstrations, whose products test with pytest, and vitest on
+  `z_shelfnote`.
 - **Anything compose** beyond #2184's volumes, and that only with D4.
