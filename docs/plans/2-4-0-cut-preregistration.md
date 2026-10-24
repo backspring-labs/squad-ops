@@ -470,8 +470,10 @@ that stack's 2.4 baselines (0–1), which is data, as §3 says.
 **What it doesn't cover,** beside §9:
 - **The tagged tree differs from the registered deploy** only by documents and the version string: this registration
   and its two set configs (in `c3f6ec2a`), and the release PR's version bump, CHANGELOG, ROADMAP, README, CLAUDE.md,
-  SIP ledgers and this section. Nothing under `src/`, `adapters/`, `infra/`, `agents/`, `config/` or `scripts/`
-  differs from `b3acbc82`, so the difference is additive.
+  SIP ledgers and this section. Nothing under `src/`, `adapters/`, `agents/`, `config/` or `scripts/` differs from
+  `b3acbc82`. Under `infra/`, only `infra/evaluator/audit-ignore.txt` does: five npm advisories published on the cut's
+  day, accepted for 2.4.0 by the owner's ruling of 2026-10-23 (#2712). The image doesn't copy that file, so the
+  evaluator the set read is the one the tag ships. The difference is additive.
 - **#1966 on Next.js increments.** The shakeout ran FastAPI + React, and the Next.js rolls are greenfield builds.
 - **The held-out readings are one reading per tree.** The page scenarios' three-round agreement (SIP-0113 §10r) is the
   instrument's; it isn't re-read here.

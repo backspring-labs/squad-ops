@@ -36,7 +36,8 @@ in §13). It was read on the final deploy (`b3acbc82`, `dep_d7ff50b9b39c`):
   registry half passed. #2183's memory acceptance matrix passed, T1–T17: T12 and T6's campaign half on the Spark's cut
   deploy, the rest on the Mac's deploys of main, with five sub-cases held by unit tests and named on the issue;
 - **what it does not cover:** the tagged tree differs from the validated deploy only by documents and the version
-  string. Nothing under `src/`, `adapters/`, `infra/`, `agents/`, `config/` or `scripts/` differs. Outcome Evaluation
+  string. Nothing under `src/`, `adapters/`, `agents/`, `config/` or `scripts/` differs, and under `infra/` only the
+  evaluator's accepted-advisory list, which the image doesn't copy. Outcome Evaluation
   of an external Project (IR-4 to IR-7, and the evaluation halves of IR-8 and IR-9) is not run, waiting on #2619 in
   2.5. #1966 is read on Next.js greenfield builds only, and the memory matrix's Mac cycles ran on `lite-14b`, so they are
   machinery evidence, not quality.
@@ -259,7 +260,10 @@ owner's split #2678, its design review #2680).
   rebuild, with `docker` shadowed (#2694; #2475, #2477, #2482, #2483, #2492, #2503, #2552, #2600, #2697).
 
 **Dependencies and CI.** certifi 2026.10.19, past GHSA-6q48-6c7w-9gw2 (#2571), and the OpenTelemetry family
-1.45.1/0.66b1, past GHSA-xcq7-p3pf-p88h (#2671), in the locks and CI's constraints. The dependency audit reads an npm
+1.45.1/0.66b1, past GHSA-xcq7-p3pf-p88h (#2671), in the locks and CI's constraints. Five npm advisories published on
+the cut's day, in the evaluator image's lock, are accepted for 2.4.0 by the owner's ruling of 2026-10-23, each with its
+reason: `zod`'s belongs to a peer package the image never loads, and `fast-uri`'s four sit inside `ajv`'s resolution
+of library schemas. The lock's fix lands with the evaluator's next image (#2712). The dependency audit reads an npm
 endpoint error as not run, never as no advisories (#2644; #2645), and runs under macOS's bash (#2648); the scenario
 CLI's tests read past Rich's wrapping (#2491; #2504).
 
