@@ -4017,3 +4017,52 @@ its own run, not at its gate. It stays `assessed` on purpose, so its assessment 
 failure outside the work still routes to a retry on rows 10 and 11, which a no-verdict ending would skip. This
 correction changes only the stops at a gate. Nobody has seen a failed framing run's assessment read `accepted`, and
 this correction doesn't change that path.
+
+### 24cd. §24bv points 2–4 as they will be built: the head is read at launch, a rebase supersedes what it makes stale, and acceptance runs where the product's toolchain is (2026-10-24, §7.1, §8.2, §8.4, §12a, §12b, §24bv; #2619; the supervisor's design, for the owner, with the MacBook lane's G4 on the contract points)
+
+**What was found.** A read of the code against §24bv, before building it, found seven places where §24bv's text can't be built as written, or leaves the build a choice. Each is settled below. The seams are on main at `daf63168`, and each is named.
+
+**1. The head is read at launch, and handed to the cycle as a typed field (§12b, §24bv point 3).**
+- **What's wrong today:** a launch intent fixes its `baseline_tree` when its decision is written (`campaigns/launch_requests.py:100`), and a ruling is refused once the accepted tree moves past it (`campaigns/lifecycle.py:245-251`). Under §24bv point 4 the branch can move at drain time, by a rebase, so every intent written before it would go stale.
+- **Built:** a repository-backed increment's intent binds no tree. The launcher reads the campaign branch's head at drain (`campaign_branch.head(campaign_id)`) and hands it to cycle creation as a `CampaignHead(commit, tree_identity, previous_verification_ref)`.
+  - `prepare_cycle` pins the increment there, through the MacBook lane's additive `ProjectSourceContext.pinned_commit` and `pinned_from` (contract 1's increment pin). `development_baseline_commit` keeps meaning the Project's baseline, so H.2's drift gate still keys on it.
+  - A repository-backed increment without a head is refused, never defaulted.
+- **A sample application's intents** are unchanged: they bind their tree as today.
+
+**2. A rebase supersedes what it makes stale, in its own transition (§12b, §24bv point 4, D10).**
+- `BRANCH_REBASED` is a control-log transition, and moves the accepted tree's base and head. In the same transaction, a pending repair or retry built on the old head is marked `superseded` (a new intent state). Its increment is abandoned as `upstream_moved`, and row 6's fresh-proposal intent is written.
+- **D10's exemption:** `upstream_moved` counts toward no `max_unaccepted_increments`. Cycles, tokens and time keep their limits.
+- **A Git ref can't join a database transaction.** The control row commits first, and the branch's ref then follows it by compare-and-swap. At startup, a ref that disagrees with the latest row is moved to it, so the row is the authority and the ref its projection. This replaces point 2's "in the same keyed transition" for the ref.
+
+**3. The launcher never reconciles a Project (§24bv point 4, SIP-0112 H.2).**
+- It rebases only onto a commit the Project has already reconciled (validated, configured and baselined, as today, by whoever reconciles).
+- A relevant drift not yet reconciled refuses the launch as H.2's gate does (`api/routes/cycles/cycles.py:469-483`): it escalates with the intent pending.
+
+**4. The owner's merge is a rebase that ends at the merge commit (§24bv point 4).** When the owner merges the review request, the next sync reports upstream at the merge commit, and the Project is reconciled there. The launcher's pre-launch comparison then rebases the branch onto it. The branch's increments are already in it, so the rebased head is the merge commit itself. No separate trigger exists or is needed, and H.2's attribution reads the increments as integrated.
+
+**5. The rebase's verification runs the frozen criteria too (§24bv point 4, §8.1).** It runs the product's checks and every frozen criterion's bundle on the rebased head. So a break upstream caused is found at the rebase (`REBASED_HEAD_REGRESSED`), never blamed on the next increment.
+
+**6. Acceptance on the product's runner runs in the sandbox, runtime-side (§8.4, §24bv point 3).**
+- §8.4 puts the increment evaluator in its role's container. A repository-backed product's toolchain exists only in the sandbox, where its declared commands run (SIP-0102 X-3a).
+- So its accumulated acceptance and discrimination run there, through the runtime, with each overlay built as a revision of the tree.
+- The plan drops `qa.evaluate_increment` for a source-backed increment, keyed on the cycle's source context. That is the MacBook lane's recipe change, and it lands with or after this build, never before.
+- §8.4's other rows, and a sample application's evaluator, are unchanged.
+
+**7. For the owner: two questions this doesn't settle.**
+- **"For the intended reason" (§8.2) on a product's own runner.**
+  - pytest's findings reader keys only failed and errored test ids (`projects/findings.py:154-179`), so a criterion failing on the baseline by an `ImportError` reads the same as one failing behaviourally. vitest has no test-id reader at all (H.7's disclosed `no_test_id_reader`).
+  - **Proposed:** a pytest reader that carries each failure's exception class, built with this, so §8.2's rule holds on pytest. On a runner with no such reader, a criterion's discrimination is unread, and it isn't accepted as discriminating. That holds the rule rather than weakening it, and may leave a vitest-only criterion unacceptable until a reader exists.
+  - **Yours to rule:** keep that, or accept a whole-file reading as a disclosed limitation.
+- **The Campaign's review request** (§24bv point 2, H.4).
+  - Today a review request is the owner's act, one per run (`campaigns`' contribution, `contribution.py:81-152`). Pushes are never forced (`ports/projects/source_repository.py:79`), and a branch name is one segment (`adapters/tools/git_source.py:54`).
+  - A Campaign's single review request needs an automatic push on the deploy's credentials, and a forced one after a rebase.
+  - **Yours to rule:** whether it is automatic, and when. Until then the branch lives in the managed clone, and nothing is pushed.
+
+**What stays:** §24bv's points 1 and 5, every row's predicate, and a sample application's Campaigns.
+
+**Evidence:**
+- the seams named above;
+- the MacBook lane's answers on the pin, the recipe and `create_campaign` (2026-10-24, cross-lane);
+- the Plan read of 2026-10-24, kept with the supervisor's build plan.
+
+**Who ruled.** The supervisor (the Spark lane), implementing §24bv under the owner's direction of 2026-10-21 and the overnight grant of 2026-10-24. Points 1 to 6 are the build's. Point 7's two questions are the owner's. Points 1 and 6 meet the MacBook lane's contract 1 and recipe, and take its G4.
