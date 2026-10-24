@@ -111,6 +111,7 @@ def test_a_profile_derived_at_another_commit_or_revision_is_refused_as_stale():
             "test_runners[0].single_file_argv",
         ),
         (("test_runners", 0, "test_ids"), "junit", "test_runners[0].test_ids"),
+        (("test_runners", 0, "file_pattern"), "checks/check_*.py", "test_runners[0].file_pattern"),
         (("public_surfaces", 1, "argv"), "python3 -m tally", "public_surfaces[1].argv"),
         (("public_surfaces", 0, "kind"), "grpc", "public_surfaces[0].kind"),
         (("start_declared",), "yes", "start_declared"),
@@ -124,6 +125,7 @@ def test_a_profile_derived_at_another_commit_or_revision_is_refused_as_stale():
         "a path outside the repository",
         "a one-file command naming no file",
         "an unknown test-id reader",
+        "a file pattern that names a path",
         "a shell string for an argv",
         "an unknown surface",
         "a non-boolean",
@@ -135,6 +137,48 @@ def test_a_value_outside_the_contract_is_refused_naming_its_field(path, value, f
         parse_profile(_with(path, value))
 
     assert raised.value.field == field
+
+
+def _two_runners(first: dict, second: dict) -> dict:
+    doc = _valid()
+    doc["test_runners"] = [
+        {**doc["test_runners"][0], **first},
+        {**doc["test_runners"][0], **second},
+    ]
+    return doc
+
+
+@pytest.mark.parametrize(
+    ("path", "owner"),
+    [
+        ("checks/check_parse.py", "unittest"),
+        ("checks/deep/check_more.py", "unittest"),
+        ("tools/check_build.py", "pytest"),
+        ("checks/helper.py", None),
+        ("check_parse.py", "pytest"),
+    ],
+)
+def test_a_test_file_is_the_first_runner_s_whose_roots_hold_it_and_whose_pattern_matches_its_name(
+    path, owner
+):
+    profile = parse_profile(
+        _two_runners(
+            {"runner": "unittest", "roots": ["checks"]},
+            {"runner": "pytest", "roots": ["."]},
+        )
+    )
+    reversed_order = parse_profile(
+        _two_runners(
+            {"runner": "pytest", "roots": ["."]},
+            {"runner": "unittest", "roots": ["checks"]},
+        )
+    )
+
+    runner = profile.runner_for(path)
+    assert (runner.runner if runner else None) == owner
+    # Both runners' roots hold a file under checks/, so list order decides it.
+    if path.startswith("checks/") and owner:
+        assert reversed_order.runner_for(path).runner == "pytest"
 
 
 def test_a_field_this_reader_doesnt_know_is_left_unread():

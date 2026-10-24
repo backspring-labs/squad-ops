@@ -1935,14 +1935,25 @@ the revision itself, and that capture.
 | `commit`, `development_configuration_revision` | the commit and revision it was derived at | every reader, to refuse a stale profile |
 | `environment.image` | the image the baseline's checks ran on | its toolchains and their gaps |
 | `languages[]` | each language, its package manager (or null) and the manifests that name it | the proposal's input |
-| `test_runners[]` | each runner (`pytest`, `unittest`, `vitest`, `jest` or `other`): the checks that run it, the paths its tests cover, where it discovers tests and the file names it takes, its whole-suite argv, its one-file argv (naming the file as `{path}` or `{name}`, or null), the findings reader that names its tests one by one (or null), and its support files | §24bv point 3: where a criterion's test file goes, what it's frozen with, how it runs alone and in the suite, and how each criterion is read |
+| `test_runners[]` | each runner (`pytest`, `unittest`, `vitest`, `jest` or `other`): the checks that run it, the paths its tests cover, its roots (where it discovers tests; `.` is the whole tree), its `file_pattern` (an `fnmatch` glob on a file's name, refused if it holds a `/`), its whole-suite argv, its one-file argv (naming the file as `{path}` or `{name}`, or null), the findings reader that names its tests one by one (or null), and its support files | §24bv point 3: where a criterion's test file goes, what it's frozen with, how it runs alone and in the suite, and how each criterion is read |
 | `lint[]` | each lint check, its tool and its findings reader (or null) | H.5's comparison |
 | `toolchains[]` | each toolchain, the checks that need it, and whether the image had it | its gaps |
 | `start_declared` | whether contract 7's start is declared | SIP-0113 §10l |
-| `public_surfaces[]` | a base URL the start declaration serves (`http_base`, `ui_base`), a command-line entry point (`command`), or a package (`package`) | §24bv point 5: the surfaces a criterion may assert on |
+| `public_surfaces[]` | a base URL the start declaration serves (`http_base`, `ui_base`, copied from contract 7's entry points and never authored apart from them, so the proposal's view and the evaluation's can't disagree), a command-line entry point (`command`), or a package (`package`) | §24bv point 5: the surfaces a criterion may assert on |
 | `blueprint`, `client_routes` | the SIP-0105 blueprint the configuration names, and its approved manifest's client routes; both null without one | §24bv point 3's route rendering; SIP-0113 §10l's lint rule set |
-| `files.test`, `files.test_support` | globs classing the tree's test files and their support files. Every other tracked file is the product's | §24bv point 3's baseline-evaluator overlay |
+| `files.test`, `files.test_support` | repository-relative globs, matched on the whole path, classing the tree's test files and their support files. Every other tracked file is the product's | §24bv point 3's baseline-evaluator overlay |
 | `gaps[]` | each gap's id, kind and subject (the check, runner or tool it is about, or null), the paths whose work it applies to (`**` when it isn't confined), why it was named, and what would close it | every reader: below |
+
+**How a runner's tests are found and run** (the Spark lane's G4 asked for each rule to be stated):
+- **Which runner owns a test file:** the first runner in list order whose roots hold the file and whose `file_pattern`
+  matches its name (`DerivedProfile.runner_for`). Two runners' roots can overlap, as a monorepo's `tests/` and
+  `web/tests/` do, and list order decides between them.
+- **Where its argvs run:** `suite_argv` and `single_file_argv` run as a check does, in the configuration's
+  `commands.working_directory`, after its `install` and `build` steps, in the checks' environment.
+- **What the placeholders mean:** `{path}` is the file's repository-relative path, and `{name}` is its name.
+- **Duplicate names:** a `{name}` argv runs every file of that name under the runner's roots. So the derivation uses
+  `{path}` wherever the runner takes it. Where the runner can only take `{name}` and two of its files share a name, the
+  derivation names a `runner_not_scopable` gap.
 
 **The gaps.** A gap's id is one of ten, and its kind is one its id allows. What it stops follows from the two
 (`Gap.stops`). No record stores what a gap stops, so no record can contradict this table:
@@ -1952,12 +1963,12 @@ the revision itself, and that capture.
 | `no_check_ran` | blocking | the baseline ran no check: none is declared, or every one is UNVERIFIED | `work` |
 | `missing_toolchain` | blocking | a check is UNVERIFIED as `command_not_found` or `command_not_executable` on the baseline's image, and no other check on its paths runs | `work` |
 | `missing_toolchain` | disclosed | as above, while another check on its paths runs | `verification` |
-| `test_files_unclassed` | blocking | the tree's test files can't be told from its product files | `campaigns` |
+| `test_files_unclassed` | blocking | the tree's test files can't be told from its product files, or a file `files.test` classes as a test belongs to no runner | `campaigns` |
 | `missing_environment` | disclosed | a check needs an environment variable the checks' environment doesn't provide | `verification` |
 | `no_start_declaration` | disclosed | no start is declared (contract 7) | `outcome_evaluation` |
 | `no_test_runner` | disclosed | a part of the tree that no runner's tests cover | `squad_tests` |
 | `runner_not_authored` | disclosed | a runner QA doesn't write tests for | `squad_tests` |
-| `runner_not_scopable` | disclosed | a runner with no one-file argv | `criterion_scoping` |
+| `runner_not_scopable` | disclosed | a runner with no one-file argv, or one whose `{name}` argv would run two files of the same name | `criterion_scoping` |
 | `no_test_id_reader` | disclosed | no findings reader names the runner's tests one by one | `per_test_reading` |
 | `lint_without_reader` | disclosed | a lint check with no findings reader | `per_finding_comparison` |
 
@@ -2003,7 +2014,10 @@ Tally has no package manager and tests with unittest. It carries two gaps, both 
   - The recording reads back as recorded.
   - An unknown major version, a missing field and a stale commit are each refused, naming the field.
   - A value outside the contract is refused, naming its field: an unknown gap or kind, a kind its gap can't take, a
-    path leaving the repository, a one-file argv naming no file, an argv given as one string, or an unknown surface.
+    path leaving the repository, a one-file argv naming no file, a file pattern naming a path, an argv given as one
+    string, or an unknown surface.
+  - A test file is the first runner's whose roots hold it and whose pattern matches its name, and list order decides
+    between overlapping roots.
   - A field the reader doesn't know is left unread.
   - What a gap stops follows from its id and kind.
 - **`test_shared_fixture.py`** holds the recording to the fixture.
@@ -2019,4 +2033,6 @@ Tally has no package manager and tests with unittest. It carries two gaps, both 
 
 **Who ruled.** The owner placed H.4 in 2.5 on 2026-10-21. On 2026-10-24 the owner adopted the 2.5 plan, which has this
 contract written first and reviewed by both lanes. The MacBook lane wrote it, under the owner's delegation of
-2026-10-18. The Spark lane's G4 is on its PR.
+2026-10-18. The Spark lane's G4 approved it on its PR (#2716), as §24bv's and §10l's builder. The G4 asked for three
+rules stated (the file pattern, where a runner's argvs run, and which runner owns a test file), and noted duplicate
+names and the base URLs' source, all of which are above.

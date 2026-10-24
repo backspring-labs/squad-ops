@@ -18,6 +18,18 @@ increment's acceptance on the product's own runner and the proposal's input, and
 whether the product can be started for evaluation. A profile is never edited. A new configuration
 revision or a new baseline capture derives a new one, and a unit reads the one at the commit and
 revision it pinned.
+
+How a runner's tests are found and run (H.6):
+- a runner's ``file_pattern`` is an ``fnmatch`` glob on a file's name, never its path. The
+  ``files`` classes, every ``paths`` and every root are repository-relative, matched on the whole
+  path;
+- a test file is the first runner's, in list order, whose roots hold it and whose pattern matches
+  its name (``runner_for``);
+- ``suite_argv`` and ``single_file_argv`` run as a check does: in the configuration's
+  ``commands.working_directory``, after its ``install`` and ``build`` steps, in the checks'
+  environment. ``{path}`` is the file's repository-relative path, and ``{name}`` its name;
+- the ``http_base`` and ``ui_base`` surfaces are contract 7's entry points, copied from the start
+  declaration and never authored apart from it.
 """
 
 from __future__ import annotations
@@ -25,6 +37,7 @@ from __future__ import annotations
 import re
 from collections.abc import Mapping
 from dataclasses import dataclass
+from fnmatch import fnmatch
 from pathlib import PurePosixPath
 from typing import Any
 
@@ -95,7 +108,8 @@ class Runner:
     checks: tuple[str, ...]
     #: The product paths its tests exercise.
     covers: tuple[str, ...]
-    #: Where it discovers tests, and the file names it takes as tests.
+    #: Where it discovers tests (``.`` is the whole tree), and the file names it takes as tests: an
+    #: ``fnmatch`` glob on a file's name.
     roots: tuple[str, ...]
     file_pattern: str
     suite_argv: tuple[str, ...]
@@ -105,6 +119,12 @@ class Runner:
     #: The findings reader that names its tests one by one; ``None`` reads a file's result whole.
     test_ids: str | None
     support_files: tuple[str, ...]
+
+    def holds(self, path: str) -> bool:
+        """Whether ``path`` (repository-relative) is one of this runner's test files."""
+        file = PurePosixPath(path)
+        under = any(r == "." or file.is_relative_to(r) for r in self.roots)
+        return under and fnmatch(file.name, self.file_pattern)
 
 
 @dataclass(frozen=True)
@@ -174,6 +194,11 @@ class DerivedProfile:
     @property
     def blocking(self) -> tuple[Gap, ...]:
         return tuple(g for g in self.gaps if g.kind == BLOCKING)
+
+    def runner_for(self, path: str) -> Runner | None:
+        """The runner that owns test file ``path``: the first, in list order, that holds it. A
+        test file none holds is a ``test_files_unclassed`` gap."""
+        return next((r for r in self.runners if r.holds(path)), None)
 
     def require_current(self, *, commit: str, development_configuration_revision: int) -> None:
         """Refuse this profile for a unit that pinned another commit or revision."""
@@ -303,12 +328,21 @@ def _runner(doc: Mapping[str, Any], at: str) -> Runner:
         checks=_texts(doc, "checks", at),
         covers=_paths(doc, "covers", at),
         roots=_paths(doc, "roots", at),
-        file_pattern=_text(doc, "file_pattern", at),
+        file_pattern=_file_pattern(doc, at),
         suite_argv=_argv(_present(doc, "suite_argv", at), f"{at}.suite_argv"),
         single_file_argv=single_argv,
         test_ids=test_ids,
         support_files=_paths(doc, "support_files", at, allow_empty=True),
     )
+
+
+def _file_pattern(doc: Mapping[str, Any], at: str) -> str:
+    pattern = _text(doc, "file_pattern", at)
+    if "/" in pattern:
+        raise ProfileInvalid(
+            f"{at}.file_pattern", "an fnmatch glob on a file's name, holding no '/'"
+        )
+    return pattern
 
 
 def _lint(doc: Mapping[str, Any], at: str) -> Lint:
