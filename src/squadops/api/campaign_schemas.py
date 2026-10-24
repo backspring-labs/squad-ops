@@ -242,6 +242,8 @@ class LedgerEntryResponse(BaseModel):
     ruling: dict[str, Any] | None = None
     outcome: dict[str, Any] | None = None
     classification: dict[str, Any] | None = None
+    #: #2578 part 4: each cycle that carried the version, in launch order, with its deciding row.
+    cycles: list[dict[str, Any]] = Field(default_factory=list)
 
 
 class PackageMaterializedResponse(BaseModel):

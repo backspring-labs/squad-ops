@@ -221,11 +221,16 @@ def ledger(ctx: typer.Context, campaign_id: str = typer.Argument(...)):
             f"{e['proposal_id']} v{e['version']}",
             (e.get("ruling") or {}).get("decision", "—"),
             str((e.get("outcome") or {}).get("row", "—")),
+            # #2578 part 4: each cycle that carried the version, with the row that decided it.
+            ", ".join(
+                f"{c['kind']} {c['cycle_id']} ({c.get('row', '…')})" for c in e.get("cycles") or []
+            )
+            or "—",
             (e.get("classification") or {}).get("classification", "—"),
         ]
         for e in entries
     ]
-    print_table(["Proposal", "Ruling", "Decided (row)", "Classified"], rows, quiet=quiet)
+    print_table(["Proposal", "Ruling", "Decided (row)", "Cycles", "Classified"], rows, quiet=quiet)
 
 
 @app.command("classify")
