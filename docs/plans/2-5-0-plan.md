@@ -1,6 +1,7 @@
 # 2.5.0 plan — stabilization: a Campaign on a product SquadOps doesn't own, the yardstick re-cut once, and the hardening the 2.4 line found
 
-**Status: DRAFT (2026-10-23), for the owner's review.** Nothing in it starts before the owner rules §7. The Spark lane
+**Status: DRAFT (2026-10-23), for the owner's review; revised 2026-10-24 on the MacBook lane's review** (its rows
+confirmed, one split, one added, and §24bv's three proposals made D10). Nothing in it starts before the owner rules §7. The Spark lane
 drafted it after the 2.4.0 cut (the owner: "let's draft 2.5"). Every item in it was already placed in 2.5 by a ruling
 or a ledger row, or was found by the 2.4 line and is placed here for the first time. §1 says which is which.
 
@@ -61,21 +62,27 @@ plan only orders and verifies it.
 
 | item | what | lane | size |
 |---|---|---|---|
-| **H.4's derived profile and gaps** | when a Development Configuration revision is recorded, read what the squad's roles depend on from the pinned tree (languages, test runners, lint and its findings reader, the start declaration, the blueprint if any, the toolchains), and name each gap as **blocking** or **disclosed** | MacBook | L |
-| **H.4's proposal input** | a proposal reads the product's own tree, not a vault manifest it never had; the increment profiles stop pinning a scaffold stack, with a resolution-parity test for every sample application's Campaign | MacBook | M |
-| **SIP-0109 §24bv** | the calibration is the inherited baseline, recorded, not built; increments land on one campaign branch, in order; one review request per Campaign; a rebase that conflicts escalates | Spark | M–L |
+| **H.4's derived profile and gaps** | when a Development Configuration revision is recorded, read what the squad's roles depend on from the pinned tree (languages, test runners, lint and its findings reader, the start declaration, the blueprint if any, the toolchains), and name each gap as **blocking** or **disclosed**. A blocking gap refuses a Cycle before dispatch, and `projects configure` and `projects show` report the gaps. **Its record is the lanes' contract and the MacBook lane's first 2.5 PR,** reviewed by both. Beside H.4 point 1's list, it carries what §24bv point 3 reads: where the product's runner discovers tests, which files are test files, whether the runner can be scoped to one file, the test-support files a frozen bundle takes, and the client routes where a blueprint names them | MacBook | L |
+| **H.4's recipe** | the request profiles carry no stack, the source-backed increment profile that §24bv point 1's `proposal_profile` names included, with a resolution-parity test over every `examples/03_group_run/campaigns/*.yaml`, `policy.stack` set and unset. E.4.3's guard narrows from "a stack is named" to "a skeleton would be seeded". A repository-backed cycle takes the derived profile: the configuration's checks, QA writing for the product's runner, and a blueprint's conventions without its template | MacBook | M |
+| **SIP-0109 §24bv point 5, the proposal's input** | what the strategy role is handed for a repository-backed Project in place of the accepted tree's manifest, `objective.requirements` at creation (D10), and the change request's rules there, built against §24bv's text | MacBook | M |
+| **contract 1's pin for an increment** | `prepare_cycle` pins a repository-backed increment at the campaign branch's head, and its inherited-baseline check reads the previous accepted verification there; H.2's gate keeps reading the Project's baseline. It meets §24bv's branch at the head commit and the previous verification, both in the contract above | MacBook | S |
+| **SIP-0109 §24bv points 1–4** | point 1, the calibration is a record of the inherited baseline, not a built cycle, and the start is refused when none can be written (D10); point 2, the accepted tree is one campaign branch, increments promoted onto it in order, with one review request per Campaign; point 3, what an increment pins and is compared against, its acceptance read on the product's own runner; point 4, when upstream moves, a rebase that conflicts escalates and an increment built on the old head is abandoned as `upstream_moved` (D10) | Spark | M–L |
 | **SIP-0113 §10l, and #2414's remainder** | the Campaign's baseline reading is an evaluation of the calibration record's commit; the product starts from its own declaration at the cycle-end hook | Spark | M |
 | **#2421's remainder** | an owner-approved evaluation secret resolved into the disposable copy's environment at start (SIP-0102 §11e) | Spark | S |
 | **#2592** | Outcome Evaluation reads the tree a source-backed cycle contributes (the managed clone's captured commit), not its vault artifacts | Spark | S–M |
 
 **Read by:** the shared demonstration, carried from the 2.4 plan (its D13). One Campaign on an external Project, across
 two features, with an outside contribution between them. It is the vehicle for IR-4, IR-5, IR-6 and IR-7, and for
-IR-8's and IR-9's evaluation halves, the scenarios the 2.4 integration record reports *not run*. **The Project:** a
-private copy owned by the owner's account, as the 2.4 demonstrations used (`z_continuum` or `z_shelfnote`). Never the
-real `backspring-labs/continuum`.
+IR-8's and IR-9's evaluation halves, the scenarios the 2.4 integration record reports *not run*. **The Project:**
+`z_shelfnote`, the greenfield product from E.4.6's proof, owned by the owner's account. IR-7 needs a greenfield
+Project's first Campaign, so on `z_shelfnote` IR-4 to IR-7 read on one Campaign, and H.4's blueprint path runs too. On
+`z_continuum`, an imported product, IR-7 would need a Campaign of its own (the MacBook lane's review). Never the real
+`backspring-labs/continuum`.
 
-**The order inside the track:** H.4's profile first, since a blocking gap refuses a Campaign before dispatch; then the
-proposal input and §24bv together; then §10l and #2592, which only an evaluated increment exercises.
+**The order inside the track:** H.4's contract first, since both lanes build against it; then the profile and its
+gaps, since a blocking gap refuses a Campaign before dispatch; then the recipe, the proposal's input, the increment's
+pin and §24bv's points 1–4 together; then §10l and #2592, which only an evaluated increment exercises. D10's three
+proposals are ruled before the calibration record or the proposal's input is built.
 
 ### 2.2 Track B: the yardstick, re-cut once
 
@@ -106,7 +113,7 @@ baseline it touches, so the track lands as **one batch**, with one deploy and on
 | **#2253** | QA's output budget. The 2.4.0 cut's Next.js roll 2 had a `qa.test` emission cut at its 12,288-token cap, 8,403 of them reasoning. A read first: every `cap_truncated` QA emission since the TensorFold cutover, against the budget. Then the budget, or the reasoning level, set on that evidence | Spark | S read, S change |
 | **#2602** | a Next.js page criterion for a page or route the change adds can discriminate: its test's imports and fetch stub resolve on the accepted tree, as #2599 did for endpoints | Spark | M |
 | **#2521** | a repair whose files the write authorization drops is told why and counted, not refunded and re-taken unchanged | MacBook | S–M |
-| **#2553's remainder** | an input refusal's failure record names its class (`input_contract_failure`) | MacBook | S |
+| **#2553's remainder** | an input refusal's failure record names its class (`input_contract_failure`). It bumps `ATTRIBUTION_REGISTRY_VERSION` from 1, so failure records written before and after it read differently: the Spark lane, which reads those records, rules the bump at its G4, and it lands before the cut's pre-registration, so no counted reading straddles it | MacBook | S |
 
 ### 2.4 Track D: structure
 
@@ -122,12 +129,12 @@ baseline it touches, so the track lands as **one batch**, with one deploy and on
 |---|---|---|---|
 | **#2184** | retire the legacy per-agent LanceDB store, after a re-inventory. **Its volumes are a compose change, the owner's** (D4) | Spark | M |
 | **#2433** | the Spark-only thermal rule raises no alert on a box without that board, and the deploy starts node-exporter wherever its rules expect it | Spark | S |
-| **#2493** | an agent's service-token expiry is read on the wall clock, so a host sleep doesn't leave every agent sending an expired token | either | S |
+| **#2493** | an agent's service-token expiry is read on the wall clock, so a host sleep doesn't leave every agent sending an expired token | MacBook (it shows only on a host that sleeps) | S |
 | **#2561** | the deploy record carries a model digest under TensorFold, read from TensorFold's own model listing | Spark | S |
 | **#2560** | CI's integration job survives `mirror.gcr.io`'s request quota | Spark | S |
 | **#2286** | TensorFold's key file holds labelled operator keys beside the deploy key, so an operator key survives a rotation | Spark | S |
 | **#2672** | a managed clone's missing directory is named as that, not as "git is not installed here" | MacBook | S |
-| **#2402** | `run_prose_lane.sh` runs under macOS's bash 3.2 (no `mapfile`) | either | S |
+| **#2402** | `run_prose_lane.sh` runs under macOS's bash 3.2 (no `mapfile`) | MacBook (it shows only there) | S |
 | **#2710** | `update_sip_status.py` stamps UTC | Spark | S |
 | **#2713** | the release capture names the browser's own load error, and the Spark's capture browser is fixed or replaced (its snap Chromium refuses every local page since 2026-10-22) | Spark | S |
 | **#1469** | `frontend_build`'s per-failure signature (#878's treatment, which #1468 left out) | Spark | S |
@@ -151,7 +158,8 @@ baseline it touches, so the track lands as **one batch**, with one deploy and on
 
 The Spark is one GPU and one deploy. Everything that measures runs one thing at a time.
 
-1. **Designs and reviews, no box time.** #2664's G4 and #2578 part 2's G4 by the MacBook lane; #2637's design
+1. **Designs and reviews, no box time.** H.4's contract, the MacBook lane's first 2.5 PR, reviewed by both lanes;
+   D10's three proposals ruled; #2664's G4 and #2578 part 2's G4 by the MacBook lane; #2637's design
    review (D7); suite revision 6 drafted and reviewed. Small fixes from Tracks C and E merge on green throughout.
 2. **Track B's batch, one deploy.** #2706, #2659, #2712 and #2469 in one evaluator tag; revision 6 approved; #2557 if
    ruled; #2637's measure versions. Then **the re-read** (§2.2): about 2 box-hours as a guide. Nothing after this
@@ -188,14 +196,16 @@ Written as a pre-registration when the last batch is built, as at 2.4.0. This pl
 ## 5. The lanes
 
 As 2.4's D11 and D12, by file ownership:
-- **The MacBook lane:** H.4's derived profile and proposal input (Project Lifecycle Management's surfaces); #2521,
-  #2553's remainder, #2672; the G4 reviews of #2664 and #2578 part 2. It names #2664's builder at its review.
-- **The Spark lane:** Tracks B, D and E, §24bv, §10l, #2414's and #2421's remainders, #2592, #2297, #2253, #2602; the
-  deploys, the re-read, the demonstration's runs and the cut.
+- **The MacBook lane:** H.4's contract, derived profile and recipe, §24bv point 5's proposal input and contract 1's
+  pin for an increment (Project Lifecycle Management's surfaces); #2521, #2553's remainder, #2672, #2402 and #2493;
+  the G4 reviews of #2664 and #2578 part 2. It names #2664's builder at its review. Confirmed in its review of this PR
+  (2026-10-24).
+- **The Spark lane:** Tracks B and D; Track E but for #2672, #2402 and #2493; §24bv points 1–4, §10l, #2414's and
+  #2421's remainders, #2592, #2297, #2253 and #2602; the G4 of #2553's registry bump; the deploys, the re-read, the
+  demonstration's runs and the cut.
 - **The lanes meet** at H.4's contract (the derived profile's record, which §24bv and §10l read): it's written down
   first, and reviewed by both, as 2.4's shared fixture was.
 
-The MacBook lane confirms its rows in this PR's review.
 
 ---
 
@@ -221,6 +231,7 @@ moved, before Track A's demonstration launches.
 | D7 | **#2637's design review** | **the supervisor drafts it as a SIP-0113 amendment, a fresh agent reviews it, and you approve it:** it changes what the yardstick reads |
 | D8 | **the cut's shape** (§4) | **2.4's,** with the demonstration as the cross-lane scenarios' vehicle, pre-registered when the last batch is built |
 | D9 | **who runs the line, and the tag** | **2.4's terms carry:** the supervisor builds the Spark lane in §3's order, merges on green with main's run read, and runs the rebuilds, the re-read and the uncounted runs. **Yours:** compose changes, gate changes beyond #2664 (already placed), lesson approvals, security, and the Release. **The tag:** the supervisor pushes it at the cut once you say go, as at 2.4.0 |
+| D10 | **three proposals of SIP-0109 §24bv**, which gate the calibration record and the proposal's input and are the supervisor's, left for your review | **take them as §24bv proposes** (the MacBook lane's G4 on #2626 found each well argued): **(1)** a Campaign's start is refused, naming why, when no calibration record can be written (the Project isn't ready, its drift isn't reconciled, no baseline is captured, or a blocking gap stands); **(2)** an increment abandoned because upstream moved under it is counted toward no limit, since the squad's work didn't fail; **(3)** a repository-backed Campaign's objective names its requirements source at creation, a file in the product or a stored artifact, since such a Project has no PRD of its own |
 
 ---
 
@@ -232,4 +243,7 @@ moved, before Track A's demonstration launches.
   written here.
 - **#2637's design,** which its review settles (D7).
 - **#2664's builder,** which the MacBook lane names at its review.
+- **§24bv's other three open questions:** whether the review request stays a draft until the Campaign ends, a
+  per-increment review request beside the Campaign's, and how a frozen bundle snapshots fixtures for runners other than
+  pytest and vitest. They wait until after the demonstration, since `z_shelfnote` runs on pytest and vitest.
 - **Anything compose** beyond #2184's volumes, and that only with D4.
