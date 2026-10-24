@@ -1647,6 +1647,18 @@ checks:
       from squadops.campaigns.launch_requests import CONTINUED_KEYS
       print(len(CONTINUED_KEYS), "repair_of" in CONTINUED_KEYS, "abandoned_increment" in CONTINUED_KEYS)
     expect: "9 False False"
+  - id: "2578-increment"
+    what: a campaign cycle names its increment, set by the launcher from the launch's own binding, and its flow runs carry increment and kind tags (#2578 parts 2 and 3, SIP-0109 §24cf)
+    container: squadops-runtime-api
+    code: |
+      import inspect
+      from squadops.api.routes.cycles.cycles import prepare_cycle
+      from squadops.campaigns.launch_requests import increment_id_of
+      from squadops.campaigns.models import CycleKind
+      from squadops.cycles.naming import flow_run_tags
+      tags = flow_run_tags(project_id="p", framework_git_sha=None, deploy_id=None, campaign_id="c", increment_id="prop_x", kind="repair", replay_of=None)
+      print("increment_id" in inspect.signature(prepare_cycle).parameters, increment_id_of(CycleKind.CALIBRATION, {}), tags[-2:])
+    expect: "True None ['increment:prop_x', 'kind:repair']"
   - id: "1966"
     what: QA plans and writes its tests by the faults a change could have, and writing no further test beyond the criteria is a correct answer (#1966's qa half, adopted)
     container: squadops-eve

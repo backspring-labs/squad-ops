@@ -4068,3 +4068,25 @@ this correction doesn't change that path.
 - the Plan read of 2026-10-24, kept with the supervisor's build plan.
 
 **Who ruled.** The supervisor (the Spark lane), implementing §24bv under the owner's direction of 2026-10-21 and the overnight grant of 2026-10-24. Points 1 to 6 are the build's. Point 7's two questions are the owner's. Points 1 and 6 meet the MacBook lane's contract 1 and recipe. The MacBook lane approved both (G4 on PR #2733, 2026-10-24) and added point 3's last two items.
+
+### 24cf. A campaign cycle names its increment, and its flow runs say which increment and which kind (2026-10-24, §10a, §12b, §16, §24ca; #2578 parts 2 and 3; the supervisor's design, the MacBook lane's G4 on part 2)
+
+**What changed.**
+- **`increment_id` on each cycle.** It is the increment's proposal id, on `Cycle`, on contract 2's cycle record (the cycle DTO) and in an indexed `cycle_registry.increment_id` column (migration 1699).
+  - **The campaign's launcher sets it,** and nothing else does. It reads it from the launch's own `campaign_proposal` block (`launch_requests.increment_id_of`) and hands it to `prepare_cycle` as a keyword, as it hands `campaign_id` and `kind`.
+  - **A repair or retry** carries its increment's id, through part 1's allow-list (§24ca), never from its predecessor's row.
+  - **A re-proposal** carries a new one. A calibration, and a cycle no campaign launched, carry none.
+  - `CycleCreateRequest` gains nothing, so a standalone create can't name an increment.
+- **A launch whose block names no proposal is refused,** escalating the campaign (`LaunchRefused`), never defaulted to empty. No re-drain can supply what the intent lacks.
+- **The control log stays the source of truth.** The column is its projection, and a test holds every launched cycle's `increment_id` equal to the proposal id its own launch names.
+- **Prefect tags `increment:<id>` and `kind:<kind>`** join the flow run's tags, for operators only. Nothing reads a tag to decide.
+
+**What stays.** Part 4, the per-increment view the ledger lists, is its own PR. There is still no writable increments table.
+
+**Evidence.**
+- **The wiring:** a test enters at `CampaignLaunchService.drain()`, over calibration, increment and repair intents written by `calibration_launch`, `increment_launch` and `bound_launch`. It finds the calibration empty and the increment and its repair naming one proposal.
+- **The refusal:** a test finds an intent without a proposal escalating the campaign with no cycle created.
+- **Persistence:** the Postgres round trip holds the column.
+- **The tags:** the executor's flow-run tag test holds the new tags.
+
+**Who ruled.** The owner placed parts 2–4 in 2.5 ("3–5 yes", 2026-10-23). The MacBook lane approved part 2's design on #2578 (issuecomment-6381040179): set by the launcher, read from the continuation's own binding, a projection with its test, and independent of contract 1's `pinned_commit`. The supervisor (the Spark lane) built it.
