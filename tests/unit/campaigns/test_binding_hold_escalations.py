@@ -123,6 +123,7 @@ async def _world(unresolved=STORE, *, held=True):
         evaluate_outcome=None,
         outcome_section=None,
         intervention_section=None,
+        campaign_branch=None,
         clock=lambda: now[0],
     )
     return campaigns, cycles, progress, now, cycle, hold

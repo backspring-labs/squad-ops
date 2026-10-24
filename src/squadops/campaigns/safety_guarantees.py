@@ -234,7 +234,9 @@ def no_duplicate_launch(doc: Mapping[str, Any]) -> GuaranteeReading:
 def no_partial_promotion(doc: Mapping[str, Any]) -> GuaranteeReading:
     """Every promotion carries its tree's reference and a bundle for each criterion it froze. A
     promotion stored before #1887 recorded the tree's reference (2026-10-03) has no such key, and
-    reads not read, never violated: read on the Spark's three campaigns from 2026-10-02 and -03."""
+    reads not read, never violated: read on the Spark's three campaigns from 2026-10-02 and -03.
+    A tree in the managed clone (a calibration record's, or an increment's on the campaign branch)
+    is referenced by its commit."""
     broken: list[str] = []
     unread: list[str] = []
     for p in _applied(doc["control_log"], ControlOperation.PROMOTE):
@@ -247,7 +249,12 @@ def no_partial_promotion(doc: Mapping[str, Any]) -> GuaranteeReading:
                     f"row {p['seq']} promotes {b['calibration_record_id']} with no commit"
                 )
             continue
-        if "tree_ref" not in b:
+        if "commit" in b:
+            # §24bv point 2: a repository-backed increment's tree is its captured commit on the
+            # campaign branch, with no vault reference; it is whole when it names that commit.
+            if not b["commit"]:
+                broken.append(f"row {p['seq']} promotes {b.get('cycle_id')} with no commit")
+        elif "tree_ref" not in b:
             unread.append(f"row {p['seq']} was stored before #1887 recorded a tree_ref")
         elif not b["tree_ref"]:
             broken.append(f"row {p['seq']} promotes {b.get('cycle_id')} with no tree_ref")
