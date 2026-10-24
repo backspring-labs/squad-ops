@@ -3,7 +3,7 @@
 **Date:** 2025-11-05  
 **Status:** ⚠️ **DEPRECATED** - Migrated to LanceDB  
 **Context:** Mem0 required OpenAI API key, breaking offline builds  
-**Migration:** See `MEMORY_LANCEDB_RECOMMENDATION.md` for current implementation
+**Migration:** See `MEMORY_LANCEDB_RECOMMENDATION.md` for what replaced it, itself retired in 2.5 (#2184)
 
 ---
 

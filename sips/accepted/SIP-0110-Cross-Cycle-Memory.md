@@ -61,7 +61,7 @@ diverged from on agent-discretionary memory tools (§6).
 
 ---
 
-## Delivery ledger (current as of 2026-10-23)
+## Delivery ledger (current as of 2026-10-24)
 
 Kept by the rule in CLAUDE.md ("SIP System"): one row per part, updated in the PR that ships or
 re-places it.
@@ -88,7 +88,7 @@ re-places it.
 | entry points: lesson inspection from chat; a conversational claim never becomes a lesson (§A.3.5) | **shipped** | 2.4.0, PR #2518, issue #2181 (§5p) |
 | entry points: the console's memory record view (§A.3.11) | **shipped** | 2.4.0, PR #2524 (§5q), closes #2182: its capture was taken live with #2183's T11 on the Mac (issuecomment-6355208484): a record's source, scope, status, revisions, consuming tasks and results, beside an accepted build, with "no effect measured" apart; the list's layout the owner found there was fixed in PR #2695 (#2692) |
 | entry points: the acceptance matrix, T1–T17, live on a deploy (§A.5) | **shipped** | 2.4.0, #2183: every case passed, each with its evidence on the issue (the summary is issuecomment-6376996254). T1–T11 and T13–T17 ran on the Mac's deploys of main from `dc7f3324` to `b3acbc82` with `lite-14b` (T17's re-run on #2693's branch before it merged), and T12 with T6's campaign half ran on the Spark's cut deploy (`dep_d7ff50b9b39c`, `full-38-tf`, issuecomment-6376598961). Five sub-cases are held by unit tests instead, each named with why in the summary: T8's failing records store and its two optional failures, which would fail the run's own Postgres reads; T14's session used with another agent, since only Joi has messaging enabled; and T12's continuation without `carries_into`, which the campaign didn't make. What it found was fixed before it closed: a `qa.test` that showed no instructions (#2674, PR #2675), a task composed and measured at the run's start rather than at its own dispatch (#2681 and #2684, PR #2693), a pair whose arms nothing read (PR #2702, §5al), and a calibration stopped at its plan gate promoted as an empty accepted tree (#2704, PR #2705, SIP-0109 §24cb) |
-| entry points: the legacy agent store retired (§A.4.3), on the owner's OK for its compose change | **placed** | 2.5.0, #2184 |
+| entry points: the legacy agent store retired (§A.4.3), on the owner's OK for its compose change | **shipped** | 2.5.0, PR: this one, issue #2184 (§5am): the eight stores re-inventoried empty first; `MemoryPort`, the LanceDB adapter, the agents' store construction, `lancedb` and the eight volumes removed, on D4 of the 2.5 plan; the volumes kept on the box until the cut |
 | a unit pinned while a revocation or a withdrawal is answered, missed by its answer (§0.7, §A.3.8) | **shipped** | 2.4.0, PRs #2603 (the dispatch half, §5af) and #2551 (the pin half, §5y), issue #2545: found by the second reader on PR #2544 (§5u) |
 
 **What closes this SIP:** Phase 1's four slices shipped in 2.2.0 with the window's finding recorded (§0.13), Phase 2's
@@ -405,6 +405,7 @@ set is the framework's yardstick, and an approved lesson must not move it unanno
   > console chat, reaches only joi. The memory entry-points proposal makes it dormant (2.3) and retires it in the
   > stabilization release after its replacement passes acceptance;
   > a similarity index, if one is ever added, is derived from Postgres records and owns none of them.
+  > **2026-10-24 (§5am):** retired in 2.5 (#2184). No agent holds a store.
 - The recall policy behind `FailurePatternRecallPort` owns eligibility, authorization, snapshot selection, ordering and disclosure.
 - The executor is a consumer. Duty and ambient callers will reuse the policy rather than reimplement its trust rules.
 
@@ -654,7 +655,7 @@ Decision records belong to the Design Decision Register and #950 (§5b).
 | SIP-0109 | ruling events, a campaign's admission point (where its snapshot is pinned), gate authority, escalation and continuation |
 | the cycle registry (SIP-0064, SIP-0067) and the correction loop (SIP-0086) | a standalone cycle's creation (where its snapshot is pinned), its gate decisions, and its correction rounds' records |
 | this SIP's store, in Postgres beside the cycle registry (§0.8, the 2.2 plan's D13) | the four records, their idempotency keys and their reconciliation |
-| SIP-042 | each agent's own semantic store, which Phase 1 does not use. **2026-10-09 (§5f):** it holds no record and is proposed for retirement |
+| SIP-042 | each agent's own semantic store, which Phase 1 does not use. **2026-10-09 (§5f):** it holds no record and is proposed for retirement. **2026-10-24 (§5am):** retired in 2.5 (#2184): no agent holds a store, and its port, adapter, volumes and dependency are removed |
 | the test runner (`capabilities/handlers/test_runner.py`) | each runner's failure-shape table, beside its suite-health markers and its own-frame shapes (§0.4) |
 | the replay specification (slices 1 and 2: #2105, #2106) | the pre-authoring envelope, temporal isolation, arm execution and scoring |
 | SIP-0088/0089 | persistent identity and mode compatibility |
@@ -3525,6 +3526,58 @@ pair the caller doesn't name is never read.
     another.
   - T9's lessons-on and lessons-disabled arms (`cyc_8a3aece426d3`, `cyc_7cb718e789f8`) read **valid**.
 
+## 5am. The legacy agent store retired, as built (2026-10-24, #2184; the Spark lane, on the owner's D4 of the 2.5 plan)
+
+**What changed.** §A.4.3's second half, as written, in 2.5: SIP-042's per-agent store is gone. §0.14's SIP-042 row,
+§0.8's note on it and §6 item 4's note are marked where they stand.
+- **The re-inventory ran first** (2026-10-24 05:43 UTC, the Spark's deploy, read-only). Every one of the eight volumes
+  was mounted by its running agent at `/app/data/memory_db`, so each store was read through its own container: the
+  directory listed, then opened with lancedb 0.38.0 and each table's rows counted.
+
+  | volume | table | rows |
+  |---|---|---|
+  | `squad-ops_bob_memory_data` | none | 0 |
+  | `squad-ops_data_memory_data` | none | 0 |
+  | `squad-ops_eve_memory_data` | none | 0 |
+  | `squad-ops_han_memory_data` | none | 0 |
+  | `squad-ops_joi_memory_data` | `memories` (version 1) | 0 |
+  | `squad-ops_max_memory_data` | none | 0 |
+  | `squad-ops_nat_memory_data` | none | 0 |
+  | `squad-ops_neo_memory_data` | none | 0 |
+
+  No record, so nothing was converted to a note. Joi's table is the one §A.2.1 found on 2026-10-09: created at version
+  1 and never written.
+- **Removed:** `MemoryPort` and its models and exceptions (`MemoryEntry`, `MemoryQuery`, `MemoryResult`); the LanceDB
+  adapter; #2174's dormant port and the factory that built both; `NoOpMemoryPort`; the `memory` slot of `PortsBundle`,
+  `BaseAgent` and `create_system`; the agent root's store construction; and the `lancedb` dependency, with the eight
+  packages only it pulled into `requirements/agent.lock` and the 46 that CI's install set no longer resolves to.
+  Chat's executor no longer logs the dormancy at start, since nothing is dormant.
+- **The eight volumes leave `docker-compose.yml`,** their mounts and their declarations. The agent image no longer
+  creates the store's directory.
+- **The volumes stay on the box until the cut,** as D4 ruled. Nothing removes them, and a compose file that no longer
+  declares them can't remove them with `down -v`. Nothing mounts them once the agents are recreated, though, so a
+  `docker volume prune` would delete them.
+
+**What it does not change.** No memory semantics: every record this SIP defines is in Postgres, and no agent read the
+legacy store after #2174 made it dormant. The embeddings port and its Ollama adapter stay. Nothing builds them now, and
+§A.3.10's semantic index, if one is ever added, is derived from Postgres records.
+
+**Evidence:**
+- **The guard** `tests/unit/architecture/test_agent_memory_volumes.py` asserts that no agent mounts a store: no named
+  or anonymous volume on an agent service, nothing at the retired store path, no `MEMORY_DB_PATH`, and no
+  `*_memory_data` volume declared. Read against main's compose file before this change, it names all eight mounts and
+  all eight declarations that the change removes.
+- **Chat's test** builds its bundle as a `PortsBundle`, which has no memory port. A mutant executor that reaches for
+  `ports.memory` fails both its cases.
+- **Loaded check `2184`** prints, on a rebuilt agent, that `PortsBundle` has no memory slot, that the image's lock has
+  no lancedb, that the adapter file is gone and that nothing is mounted at the old path. Row `2174`'s code imported
+  what this removes, and the 2.3 and 2.4 verification sets track that id, so the row stays and now reads #2174's first
+  part, which still holds: chat's executor neither recalls from nor stores to an agent store.
+
+**Who ruled it.** The design is §A.4.3, accepted by the owner on 2026-10-09 (§5g), and its placement is Q25. The owner's
+OK for the compose change is D4 of the adopted 2.5 plan (`docs/plans/2-5-0-plan.md`): "yes, in 2.5: its prerequisites
+are met (#2180 shipped, #2183 passed). The re-inventory runs first, and the volumes are kept as a backup until the cut."
+
 ## 6. Mode neutrality: cycle, duty, and ambient utilization
 
 Phase 1 implements the cycle-mode loop, but the substrate is designed so duty- and
@@ -3557,6 +3610,7 @@ Phase 1's implementation (normative), with the utilization sketch they exist to 
    > **2026-10-09 (§5f):** "the same port" is not SIP-042's `MemoryPort`, which is proposed for retirement. It is the
    > recall policy, and, if the entry-points proposal is accepted, its capture and context-assembly interfaces. The
    > quarantine rule below is unchanged.
+   > **2026-10-24 (§5am):** `MemoryPort` is removed (#2184).
 
 **Utilization sketch (non-normative, later phases):**
 

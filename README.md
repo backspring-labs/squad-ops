@@ -95,7 +95,7 @@ Comprehensive documentation and protocols are available in `/docs/`:
 ├── api/              # FastAPI runtime API service (SIP-0048)
 │   └── runtime/      # Routes, DTOs, DI wiring, migrations
 ├── telemetry/        # LLM observability models and NoOp adapter
-├── memory/           # LanceDB semantic memory
+├── memory/           # Cross-Cycle Memory: lessons, typed records, recall (SIP-0110)
 ├── llm/              # LLM router abstraction with dynamic provider registry
 ├── config/           # Configuration loading (SQUADOPS__* env vars)
 ├── tasks/            # TaskEnvelope, TaskResult models (A2A message format)
@@ -211,7 +211,7 @@ See [docs/ROADMAP.md](docs/ROADMAP.md) for the full release timeline.
 - Pulse verification at pipeline boundaries with bounded repair loops (SIP-0070)
 - Assembly CLI command for extracting build artifacts into runnable projects
 - LLM router abstraction with Ollama adapter
-- LanceDB semantic memory (SIP-042)
+- Cross-Cycle Memory: approved lessons and typed records in Postgres (SIP-0110)
 - OpenTelemetry with trace correlation
 - Console Control-Plane UI with Continuum plugin shell and auth BFF (SIP-0069)
 - Profile-driven bootstrap with doctor validation (SIP-0081)

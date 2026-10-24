@@ -114,7 +114,7 @@ python -m pytest tests/integration/ -v -m agent_containers
 
 ### 2. Memory Integration Tests
 - **File**: `test_memory_integration.py`
-- **Dependencies**: PostgreSQL, LanceDB (optional)
+- **Dependencies**: PostgreSQL
 - **Duration**: ~30 seconds
 - **Markers**: `@pytest.mark.integration`, `@pytest.mark.service_postgres`
 

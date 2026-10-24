@@ -40,9 +40,10 @@ models and decisions around them, and `adapters/` implements the ports against r
 ## Core packages (`src/squadops/`)
 
 ### `squadops.agents`
-`BaseAgent`, which receives its ports (LLM, memory, prompts, queue, metrics and events, filesystem,
-LLM observability) by constructor injection, the immutable `PortsBundle`, and the agent container's
-entrypoint, which consumes task envelopes from the queue and is the agent's composition root.
+`BaseAgent`, which receives its ports (LLM, prompts, queue, metrics and events, filesystem, LLM
+observability) by constructor injection, the immutable `PortsBundle`, and the agent container's
+entrypoint, which consumes task envelopes from the queue and is the agent's composition root. An
+agent holds no memory store: SIP-042's per-agent store was retired in 2.5 (SIP-0110 §A.4.3, #2184).
 
 ### `squadops.api`
 The runtime API: the FastAPI service (`squadops.api.runtime`, a composition root), its routes on the
@@ -98,7 +99,9 @@ verification evidence rules (SIP-0096) and the delivered-tree rules. Its executo
 `squadops.execution` (#1992).
 
 ### `squadops.embeddings`
-The embeddings domain: the request and result models an `EmbeddingsPort` adapter serves.
+The embeddings domain: the request and result models an `EmbeddingsPort` adapter serves. Nothing
+consumes it since the LanceDB store's retirement (#2184); a semantic index, if one is ever added, is
+derived from Postgres (SIP-0110 §A.3.10).
 
 ### `squadops.execution`
 The cycle's orchestration (#1992): `DispatchedFlowExecutor`, which implements `FlowExecutionPort`, and
@@ -116,12 +119,11 @@ The LLM domain: request, response and chat-message models, its exceptions, and t
 registry (SIP-0073), which maps each model name to its context window and defaults.
 
 ### `squadops.memory`
-The memory domain: entries, queries and scored results for SIP-042's per-agent semantic store (legacy: only console
-chat reads it, it holds no record on the deploy, and it is retired in 2.5, SIP-0110 §5g and #2184), and
-Cross-Cycle Memory's (SIP-0110): the observations projected from three sources and the repeat report; the lessons,
-their approvals and each unit's pinned snapshot; the recall query and its deterministic policy; the
-exposures recording what each consuming task was supplied; the authoring replay envelope with its
-four seams; and the entry points' typed records and instructions, and what a chat turn may hold and capture.
+The memory domain, Cross-Cycle Memory's (SIP-0110): the observations projected from three sources and the repeat
+report; the lessons, their approvals and each unit's pinned snapshot; the recall query and its deterministic policy;
+the exposures recording what each consuming task was supplied; the authoring replay envelope with its four seams; and
+the entry points' typed records and instructions, and what a chat turn may hold and capture. SIP-042's per-agent
+store and its models were retired in 2.5 (SIP-0110 §A.4.3, #2184).
 
 ### `squadops.orchestration`
 Coordination between agents and handlers: `AgentOrchestrator`, the handler registry and the
@@ -210,7 +212,7 @@ config-backed project registry, and the factory that composes the executor from 
 with the ports a root has bound.
 
 ### `adapters.embeddings`
-Implementations of `EmbeddingsPort`.
+Implementations of `EmbeddingsPort`, which nothing builds since the LanceDB store's retirement (#2184).
 
 ### `adapters.events`
 Cycle event buses: in-process and NoOp, the runtime event publisher, and their factory.
@@ -219,8 +221,9 @@ Cycle event buses: in-process and NoOp, the runtime event publisher, and their f
 Model servers: Ollama, vLLM's OpenAI-compatible API, and Atlas (SIP-0106).
 
 ### `adapters.memory`
-Semantic memory on LanceDB, and Cross-Cycle Memory's store (Postgres beside the cycle registry, and
-in memory for tests) with the recall that answers from a unit's pinned snapshot.
+Cross-Cycle Memory's store (Postgres beside the cycle registry, and in memory for tests) with the
+recall that answers from a unit's pinned snapshot, the typed records' store, and the reference
+resolvers. SIP-042's LanceDB store was retired in 2.5 (SIP-0110 §A.4.3, #2184).
 
 
 ### `adapters.scenarios`

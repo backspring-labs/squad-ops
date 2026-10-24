@@ -1,9 +1,9 @@
 """Cross-Cycle Memory's store (SIP-0110 §0.2, §0.8; the 2.2 plan's D13).
 
 Phase 1's records live in Postgres beside the cycle registry, behind this port, with an
-in-memory adapter for tests. It is not SIP-042's ``MemoryPort``, which is each agent's own
-semantic store: the runtime API, where recall and the projections run, has none of those, and
-Phase 1's recall is exact filtering that needs no embedding. It holds the observations (3a), and
+in-memory adapter for tests. It was never SIP-042's ``MemoryPort``, each agent's own semantic
+store (retired in 2.5, #2184): recall and the projections run in the runtime API, and Phase 1's
+recall is exact filtering that needs no embedding. It holds the observations (3a), and
 the lessons, their approvals, each unit's pinned snapshot, each consuming task's exposure (3c), and
 each exposure's assessments (3d).
 """

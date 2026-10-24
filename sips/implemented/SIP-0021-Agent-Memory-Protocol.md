@@ -22,6 +22,9 @@ original_filename: "SIP-021-Agent-Memory-Protocol.md"
 > ship (`MemoryEntry`, `MemoryQuery`, `MemoryResult`) serves only SIP-042's LanceDB store, which holds no record on the
 > deploy and is proposed for retirement (#2184). The owner's direction of 2026-10-09: "without carrying forward obsolete
 > chat assumptions."
+>
+> **Removed (2026-10-24, #2184).** The store and the data model it served are gone, retired in 2.5 after a re-inventory
+> found no record in any of the eight agent stores (SIP-0110 §A.4.3, §5am).
 
 # SIP-021: Agent Memory Protocol
 
