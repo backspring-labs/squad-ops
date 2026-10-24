@@ -7869,6 +7869,180 @@ class TestAnEmptyRepairRoundIsNotVerified:
         executor._try_accept_patch.assert_awaited_once()
 
 
+class TestARepairWriteAuthorizationDroppedIsSpent:
+    """#2521: a repair whose every file write authorization dropped emitted files its grant
+    excludes — refused, not absent. On the Next.js shakeout (cyc_0df8d7215ef2) such a repair was
+    refunded as empty three times and re-taken unchanged, and each analysis read the framework's
+    discard as the model emitting nothing."""
+
+    _make_runner = TestCorrectionRunnerStandalone._make_runner
+    _failed_envelope = TestCorrectionRunnerStandalone._failed_envelope
+
+    @staticmethod
+    def _decision_then_repair(repair_artifacts):
+        def responder(envelope):
+            if envelope.task_type == "governance.correction_decision":
+                return TaskResult(
+                    task_id=envelope.task_id,
+                    status="SUCCEEDED",
+                    outputs={
+                        "correction_path": "patch",
+                        "decision_rationale": "patchable",
+                        "affected_task_types": ["development.develop"],
+                    },
+                )
+            if envelope.task_type == "development.correction_repair":
+                return TaskResult(
+                    task_id=envelope.task_id,
+                    status="SUCCEEDED",
+                    outputs={
+                        "summary": "repaired",
+                        "artifacts": [dict(a) for a in repair_artifacts],
+                    },
+                )
+            return TaskResult(task_id=envelope.task_id, status="SUCCEEDED", outputs={})
+
+        return responder
+
+    _STORE = {"name": "lib/store.ts", "content": "export const store = {};\n", "type": "source"}
+    _ROUTE = {"name": "app/api/runs/route.ts", "content": "export async function GET() {}\n"}
+    _SUITE = {"name": "__tests__/api_runs.test.ts", "content": "it('x', () => {});\n"}
+
+    @pytest.mark.parametrize(
+        ("failed_task_type", "bound", "emitted", "dropped", "kept"),
+        [
+            (
+                "development.develop",
+                True,
+                [_STORE],
+                [("lib/store.ts", "frozen_path_emission")],
+                [],
+            ),
+            (
+                "qa.test",
+                False,
+                [_SUITE],
+                [("__tests__/api_runs.test.ts", "own_artifact_veto")],
+                [],
+            ),
+            # The control: a dropped file beside a kept one is a repair to verify as any.
+            ("development.develop", True, [_STORE, _ROUTE], [], ["app/api/runs/route.ts"]),
+        ],
+        ids=["frozen-path", "foreign-role-veto", "one-file-kept"],
+    )
+    async def test_a_round_whose_files_were_all_dropped_is_not_an_empty_emission(
+        self, cycle, failed_task_type, bound, emitted, dropped, kept
+    ):
+        """Entry point: `run_correction_protocol`, with the run's real Next.js bound record, so
+        the drop is the enforcement the live cycle runs. Bug caught: `emission_empty` True for
+        a repair that emitted files, so the executor refunds it and re-takes it unchanged."""
+        from squadops.execution.correction_repair import OWNERSHIP_DROPPED_KEY
+        from tests.unit.capabilities._stack_fixtures import manifest_for_stack
+
+        runner, _r, _v, bus = self._make_runner(self._decision_then_repair(emitted))
+        failed = dataclasses.replace(
+            self._failed_envelope(),
+            task_type=failed_task_type,
+            inputs={
+                "expected_artifacts": ["__tests__/api_runs.test.ts"],
+                "resolved_config": {"development_profile": "nextjs_ts"},
+            },
+        )
+        prior_outputs: dict = {}
+        protocol = await runner.run_correction_protocol(
+            run_id="run_001",
+            cycle=cycle,
+            envelope=failed,
+            result=TaskResult(task_id="task_failed", status="FAILED", error="failed"),
+            correction_attempts=0,
+            prior_outputs=prior_outputs,
+            all_artifact_refs=[],
+            stored_artifacts=[],
+            completed_task_ids=[],
+            plan_delta_refs=[],
+            correction_budget=3,
+            interface_manifest=manifest_for_stack("nextjs_ts") if bound else None,
+        )
+
+        assert protocol.emission_empty is False
+        assert protocol.repair_dropped == tuple(
+            {"path": path, "producer_task_type": "development.correction_repair", "reason": why}
+            for path, why in dropped
+        )
+        assert [a["name"] for a in protocol.repair_artifacts] == kept
+        [completed] = [
+            c.kwargs["payload"]
+            for c in bus.emit.call_args_list
+            if c.args and c.args[0] == EventType.CORRECTION_COMPLETED
+        ]
+        assert completed["repair_dropped"] == [path for path, _ in dropped]
+        # The drop is the round's evidence, not context for the steps after it.
+        assert all(OWNERSHIP_DROPPED_KEY not in v for v in prior_outputs.values())
+
+    async def test_the_round_is_spent_and_the_next_one_told_what_was_dropped(self, executor, cycle):
+        """Entry point: `_route_correction_path`. Bug caught: the refund re-taking the round with
+        the attempt handed back, or the dropped round reaching patch acceptance as an empty
+        repair, and the next round told nothing about the grant that excluded its files."""
+        from squadops.cycles.correction_signature import repair_not_applied_in_round
+        from squadops.execution.correction_runner import CorrectionProtocolResult
+        from squadops.execution.dispatched_flow_executor import _CorrectionRound
+
+        executor._try_accept_patch = AsyncMock(return_value="accept_patch")
+        envelope = TestProgressAwareTermination._envelope()
+        counter = {"n": 1, "empty_refunds": 0}
+        carry: dict = {}
+        action = await executor._route_correction_path(
+            _CorrectionRound(
+                protocol=CorrectionProtocolResult(
+                    correction_path="patch",
+                    repair_dropped=(
+                        {
+                            "path": "app/api/runs/route.ts",
+                            "producer_task_type": "development.correction_repair",
+                            "reason": "unauthorized_slot_emission",
+                        },
+                    ),
+                ),
+                attempt=1,
+                max_attempts=3,
+            ),
+            TaskResult(task_id=envelope.task_id, status="FAILED", error="suite failed"),
+            envelope,
+            "run_001",
+            cycle=cycle,
+            correction_counter=counter,
+            patched_result_holder=None,
+            prior_outputs={},
+            all_artifact_refs=[],
+            stored_artifacts=[],
+            completed_task_ids=[],
+            plan_delta_refs=[],
+            profile=None,
+            flow_run_id=None,
+            enriched_envelope=None,
+            budget_guard=None,
+            interface_manifest=None,
+            repair_rejection_carry=carry,
+            bound_record=None,
+            compliance_counter=None,
+        )
+
+        assert action == "continue"
+        executor._try_accept_patch.assert_not_awaited()
+        assert counter == {"n": 1, "empty_refunds": 0}
+        assert carry == {
+            envelope.task_id: [
+                "correction attempt 1: write authorization dropped every file the repair "
+                "emitted (app/api/runs/route.ts: outside the development.correction_repair "
+                "grant, unauthorized_slot_emission) — nothing was applied, verified or "
+                "retested; the fix belongs in files the repair may write, or the plan's grant "
+                "is wrong"
+            ]
+        }
+        # #1129/#1658: the terminal reads this round as one whose repair never reached the tree.
+        assert repair_not_applied_in_round(carry[envelope.task_id], 1) is True
+
+
 class TestFillRepairAlsoTargetsTheOwnAdditiveSuite(TestCorrectionRunnerStandalone):
     """#1602: under fill mode, the failed qa task's own free-authored suite failing beside its
     fill slots is dispatched to the qa repair with the shells — one round, both files.

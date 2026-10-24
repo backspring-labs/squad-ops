@@ -54,7 +54,7 @@ from squadops.cycles.contract_derivation import (
     is_interface_manifest,
     load_seeded_manifest_content,
 )
-from squadops.cycles.correction_signature import REPAIR_EMPTY_MARKER
+from squadops.cycles.correction_signature import REPAIR_DROPPED_MARKER, REPAIR_EMPTY_MARKER
 from squadops.cycles.cycle_end import STOP_REASON_FOR_UNCOMPLETED_RUN, CycleStopReason
 from squadops.cycles.cycle_outcome import resolve_cycle_outcome
 from squadops.cycles.emission_integrity import EMISSION_FAILURE_KEY, EMISSION_STATUS_FAILED
@@ -3730,6 +3730,23 @@ class DispatchedFlowExecutor(FlowExecutionPort):
                 " — nothing was applied, verified or retested",
             )
             _carry_retake_suite(result, envelope, enriched_envelope)
+            return "continue"
+        if protocol.repair_dropped and correction_path == "patch":
+            # #2521: every file the repair emitted was one its grant excludes, so nothing reached
+            # the tree. The round is spent — it was not refunded above, since the repair emitted
+            # files — and the next one is told which paths and whose grant, where a refund had it
+            # re-taken unchanged and analysed as "emitted no content" (cyc_0df8d7215ef2).
+            _record_repair_rejection(
+                repair_rejection_carry,
+                envelope.task_id,
+                f"correction attempt {attempt}: {REPAIR_DROPPED_MARKER} ("
+                + "; ".join(
+                    f"{d['path']}: outside the {d['producer_task_type']} grant, {d['reason']}"
+                    for d in protocol.repair_dropped
+                )
+                + ") — nothing was applied, verified or retested; the fix belongs in files the "
+                "repair may write, or the plan's grant is wrong",
+            )
             return "continue"
         if correction_path == "abort":
             raise _ExecutionError(

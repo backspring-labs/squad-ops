@@ -291,7 +291,8 @@
         "payload": {
           "correction_path": "patch",
           "emission_empty": true,
-          "empty_emission_signatures": []
+          "empty_emission_signatures": [],
+          "repair_dropped": []
         }
       }
     ],
@@ -302,6 +303,7 @@
       "empty_emission_offered_scoped": null,
       "empty_emission_signatures": [],
       "repair_artifacts": [],
+      "repair_dropped": [],
       "repair_typed_checks": []
     },
     "round_failures": [
@@ -695,7 +697,8 @@
         "payload": {
           "correction_path": "patch",
           "emission_empty": true,
-          "empty_emission_signatures": []
+          "empty_emission_signatures": [],
+          "repair_dropped": []
         }
       }
     ],
@@ -706,6 +709,7 @@
       "empty_emission_offered_scoped": null,
       "empty_emission_signatures": [],
       "repair_artifacts": [],
+      "repair_dropped": [],
       "repair_typed_checks": []
     },
     "round_failures": [
@@ -1166,7 +1170,8 @@
         "payload": {
           "correction_path": "patch",
           "emission_empty": true,
-          "empty_emission_signatures": []
+          "empty_emission_signatures": [],
+          "repair_dropped": []
         }
       }
     ],
@@ -1177,6 +1182,7 @@
       "empty_emission_offered_scoped": null,
       "empty_emission_signatures": [],
       "repair_artifacts": [],
+      "repair_dropped": [],
       "repair_typed_checks": []
     },
     "round_failures": [
@@ -1532,7 +1538,8 @@
         "payload": {
           "correction_path": "patch",
           "emission_empty": true,
-          "empty_emission_signatures": []
+          "empty_emission_signatures": [],
+          "repair_dropped": []
         }
       }
     ],
@@ -1543,6 +1550,7 @@
       "empty_emission_offered_scoped": null,
       "empty_emission_signatures": [],
       "repair_artifacts": [],
+      "repair_dropped": [],
       "repair_typed_checks": []
     },
     "round_failures": [

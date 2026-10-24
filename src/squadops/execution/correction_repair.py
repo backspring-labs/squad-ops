@@ -325,6 +325,31 @@ def _qa_scaffold_repair_inputs(
     }
 
 
+#: #2521: the key the correction runner stamps on a protocol step's outputs when write
+#: authorization dropped any of its files — one entry per file, naming its path, the producer
+#: whose grant excluded it and the violation code. Read here, by the round's repair collection.
+OWNERSHIP_DROPPED_KEY = "ownership_dropped"
+
+#: #2521: the reason an entry carries when the #1014 veto below dropped the file — a step under
+#: a foreign role may not land the failed task's own artifacts or its test-collection surface.
+OWN_ARTIFACT_VETO = "own_artifact_veto"
+
+
+def _ownership_dropped(result: Any) -> list[dict[str, str]]:
+    """The files write authorization dropped from one repair step's emission (#2521)."""
+    rows = (getattr(result, "outputs", None) or {}).get(OWNERSHIP_DROPPED_KEY) or []
+    return [r for r in rows if isinstance(r, dict)]
+
+
+def _emitted_content(artifacts: list[dict[str, Any]]) -> bool:
+    """Whether any artifact carries content (#1053), the extraction fallback excepted (#1273)."""
+    return any(
+        str(a.get("content") or "").strip()
+        for a in artifacts
+        if isinstance(a, dict) and not a.get("emission_fallback")
+    )
+
+
 def _anchored_edits_refused(result: Any) -> bool:
     """Whether a repair step's revision was refused on its retry too: its anchored edits, or a
     whole re-emission of an existing file (SIP-0107 §22, §46s). A refused repair failed; it is
@@ -895,6 +920,10 @@ class RepairOutcome:
     #: #1911: per repair step that recorded its revision form, whether it was offered the
     #: scoped edit form (any file listed in the form) or asked for whole files.
     offered_scoped: list[bool] = field(default_factory=list)
+    #: #2521: the files write authorization dropped from the round's emissions — the runner's
+    #: SIP-0100 enforcement and the #1014 veto — each naming its path, the producer whose grant
+    #: excluded it, and why. A repair that kept nothing else emitted files, so it is refused.
+    dropped: list[dict[str, str]] = field(default_factory=list)
 
 
 class CorrectionRepair:
@@ -976,6 +1005,7 @@ class CorrectionRepair:
         repair_artifacts: list[dict[str, Any]] = []
         repair_typed_checks: list[dict[str, Any]] = []
         repair_disputes: list[dict[str, Any]] = []
+        repair_dropped: list[dict[str, str]] = []
         anchored_edits_refused = False
         repair_steps_ran = False
         empty_signatures: list[str] = []
@@ -1131,7 +1161,9 @@ class CorrectionRepair:
                 # surfaced to the overlay below, not through prompt context).
                 role_key = repair_envelope.metadata.get("role", "unknown")
                 prior_outputs[role_key] = {
-                    k: v for k, v in (repair_result.outputs or {}).items() if k != "artifacts"
+                    k: v
+                    for k, v in (repair_result.outputs or {}).items()
+                    if k not in ("artifacts", OWNERSHIP_DROPPED_KEY)
                 }
 
                 # #389: surface the repair's emitted files to the executor for
@@ -1150,6 +1182,7 @@ class CorrectionRepair:
                 anchored_edits_refused = anchored_edits_refused or _anchored_edits_refused(
                     repair_result
                 )
+                repair_dropped.extend(_ownership_dropped(repair_result))
                 # #507: re-home repair files onto the failed task's expected
                 # paths before they reach the overlay — a repair emitted under
                 # the wrong directory otherwise lands as a net-new file, patch
@@ -1175,18 +1208,24 @@ class CorrectionRepair:
                 # receive these on the FAILED task's envelope, and the repairing role can
                 # differ from the failed one — the grants must be this step's, not the
                 # failed task's, or a dev repair of a dev slot reads as a QA write to it.
-                repair_artifacts.extend(
-                    name_producer(
-                        _apply_emission_ownership_veto(
-                            rebased,
-                            envelope.task_type,
-                            role,
-                            [str(e) for e in (failed_inputs.get("expected_artifacts") or [])],
-                            patterns,
-                        ),
-                        repair_envelope,
-                    )
+                kept = _apply_emission_ownership_veto(
+                    rebased,
+                    envelope.task_type,
+                    role,
+                    [str(e) for e in (failed_inputs.get("expected_artifacts") or [])],
+                    patterns,
                 )
+                kept_names = {a.get("name") for a in kept}
+                repair_dropped.extend(
+                    {
+                        "path": str(a.get("name") or ""),
+                        "producer_task_type": str(task_type),
+                        "reason": OWN_ARTIFACT_VETO,
+                    }
+                    for a in rebased
+                    if a.get("name") not in kept_names
+                )
+                repair_artifacts.extend(name_producer(kept, repair_envelope))
         return RepairOutcome(
             artifacts=repair_artifacts,
             typed_checks=repair_typed_checks,
@@ -1195,7 +1234,20 @@ class CorrectionRepair:
             anchored_edits_refused=anchored_edits_refused,
             disputes=repair_disputes,
             offered_scoped=offered_scoped,
+            dropped=repair_dropped,
         )
+
+    @staticmethod
+    def dropped_entirely(repair: RepairOutcome) -> tuple[dict[str, str], ...]:
+        """The files write authorization dropped, when nothing else of the repair survived.
+
+        #2521: such a repair is refused, not absent — the SIP-0107 §22 reading of a refused
+        anchored edit. Its round is spent, and the next one is told which paths were dropped and
+        whose grant excluded them. Empty when content survived: that repair is verified as any.
+        """
+        if not repair.steps_ran or not repair.dropped or _emitted_content(repair.artifacts):
+            return ()
+        return tuple(repair.dropped)
 
     def judge_emission(self, repair: RepairOutcome, correction_attempts: int) -> bool:
         """Step 5 — did the repair emit a *file*?
@@ -1219,14 +1271,13 @@ class CorrectionRepair:
         # cyc_9be98128f0e9). "Did the repair emit a FILE" is the question; the marker the
         # extractor stamps is the answer.
         # SIP-0107 §22: refused anchored edits are a repair that failed, not an absent one.
+        # #2521: so are files write authorization dropped — the repair emitted them, and a
+        # refund re-took the round unchanged until the budget was spent (cyc_0df8d7215ef2).
         emission_empty = (
             repair_steps_ran
             and not repair.anchored_edits_refused
-            and not any(
-                str(a.get("content") or "").strip()
-                for a in repair_artifacts
-                if isinstance(a, dict) and not a.get("emission_fallback")
-            )
+            and not repair.dropped
+            and not _emitted_content(repair_artifacts)
         )
         if emission_empty:
             logger.warning(
