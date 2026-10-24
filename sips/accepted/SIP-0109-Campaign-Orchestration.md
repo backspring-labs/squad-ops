@@ -4037,6 +4037,8 @@ this correction doesn't change that path.
 **3. The launcher never reconciles a Project (§24bv point 4, SIP-0112 H.2).**
 - It rebases only onto a commit the Project has already reconciled (validated, configured and baselined, as today, by whoever reconciles).
 - A relevant drift not yet reconciled refuses the launch as H.2's gate does (`api/routes/cycles/cycles.py:469-483`): it escalates with the intent pending.
+- **A blocking gap at launch:** SIP-0112 H.8 refuses a Cycle whose known work meets a blocking gap, in `prepare_cycle` (`ProjectStateConflictError`, 409). A Campaign meets one only when a reconciliation in mid-Campaign records a profile with one. The launcher escalates on that refusal with the intent pending, as it does for H.2's gate.
+- **Which profile an increment reads:** the derived profile at the Project's pin (`development_baseline_commit` and its configuration revision), not at `pinned_commit`. So every increment of a Campaign reads the same profile between reconciliations.
 
 **4. The owner's merge is a rebase that ends at the merge commit (§24bv point 4).** When the owner merges the review request, the next sync reports upstream at the merge commit, and the Project is reconciled there. The launcher's pre-launch comparison then rebases the branch onto it. The branch's increments are already in it, so the rebased head is the merge commit itself. No separate trigger exists or is needed, and H.2's attribution reads the increments as integrated.
 
@@ -4056,7 +4058,7 @@ this correction doesn't change that path.
 - **The Campaign's review request** (§24bv point 2, H.4).
   - Today a review request is the owner's act, one per run (`projects/contribution.py:81-152`). Pushes are never forced (`ports/projects/source_repository.py:79`), and a branch name is one segment (`adapters/tools/git_source.py:54`).
   - A Campaign's single review request needs an automatic push on the deploy's credentials, and a forced one after a rebase.
-  - **Yours to rule:** whether it is automatic, and when. Until then the branch lives in the managed clone, and nothing is pushed.
+  - **Yours to rule:** whether it is automatic, and when, and on whose credentials. A contribution's push uses the owner's token for that act only, so an automatic push is a credentials ruling as well as a timing one. Until then the branch lives in the managed clone, and nothing is pushed.
 
 **What stays:** §24bv's points 1 and 5, every row's predicate, and a sample application's Campaigns.
 
@@ -4065,4 +4067,4 @@ this correction doesn't change that path.
 - the MacBook lane's answers on the pin, the recipe and `create_campaign` (2026-10-24, cross-lane);
 - the Plan read of 2026-10-24, kept with the supervisor's build plan.
 
-**Who ruled.** The supervisor (the Spark lane), implementing §24bv under the owner's direction of 2026-10-21 and the overnight grant of 2026-10-24. Points 1 to 6 are the build's. Point 7's two questions are the owner's. Points 1 and 6 meet the MacBook lane's contract 1 and recipe, and take its G4.
+**Who ruled.** The supervisor (the Spark lane), implementing §24bv under the owner's direction of 2026-10-21 and the overnight grant of 2026-10-24. Points 1 to 6 are the build's. Point 7's two questions are the owner's. Points 1 and 6 meet the MacBook lane's contract 1 and recipe. The MacBook lane approved both (G4 on PR #2733, 2026-10-24) and added point 3's last two items.
