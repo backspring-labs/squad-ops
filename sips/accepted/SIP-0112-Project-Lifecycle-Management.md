@@ -2124,3 +2124,69 @@ nothing to report yet.
   baseline, and a sample application is never asked for one.
 
 **Who ruled:** the MacBook lane, under the owner's delegation of 2026-10-18, within H.4 and H.6 as ruled.
+
+## H.8 A blocking gap refuses the Cycle work it meets (2026-10-24; #2619; the MacBook lane, under the owner's delegation of 2026-10-18)
+
+**What shipped:**
+- **H.6's rule, in one place:** `DerivedProfile.blocking_work(paths)` returns the blocking gaps that stop `work` and
+  that a footprint meets.
+  - An unconfined gap meets any work.
+  - A confined gap meets a path its globs match.
+  - Paths that aren't known yet meet only an unconfined gap.
+- **At create:** `prepare_cycle` serves both the create route and the Campaign launcher. A source-backed Cycle reads the
+  profile at its pin, `get_derived_profile(project_id, at=(commit, revision))`.
+  - **An unconfined blocking gap refuses it** before anything is persisted, with 409 `PROJECT_STATE_CONFLICT`
+    naming the gap and what closes it.
+  - **An operator's plan** (`plan_artifact_refs`) whose expected artifacts meet a confined gap is refused the same
+    way.
+  - **A pin with no profile runs as it did in 2.4,** with a `derived_profile_absent` warning on the create response.
+- **At both plan gates,** a plan validator, `validate_blocking_gaps`, refuses a plan whose tasks' expected artifacts
+  meet a blocking gap.
+  - At the promotion seam, the framing re-rolls and is told where (#669).
+  - At the in-run seam, the run fails at the gate. Like every plan validator (`PLAN_VALIDATORS`), it's attributed
+    `plan_gate_failure`.
+  - Both seams are pinned by `test_plan_gate_seams.py` (the #718/#719 rule).
+- **Taught before it's enforced (#686):** every plan author of a source-backed cycle is shown each confined gap: its
+  paths, why it exists, and what closes it. The plan authors are the dev and qa proposers and the merger
+  (`TaskType.authors_plan`).
+  - It's composed with the run's plan in `RunProvisioning.prepare` (`with_blocked_paths`), as SIP-0113's proposal
+    evidence is.
+  - It's rendered by the managed asset `request.plan_blocking_gaps_appendix`, on the proposers' path and on the
+    merger's.
+  - `plan_authoring_rules` lists the validator as taught there.
+
+**Where it narrows H.4:**
+- **A standalone Cycle's footprint is its plan's expected artifacts.** Those are the only paths it declares before its
+  build.
+- **A Campaign increment meets the same validators at its framing gate.** Its own footprint isn't read here, and
+  refusing a Campaign's start is SIP-0109 §24bv point 1's, which is the Spark lane's.
+
+**The evidence:**
+- **`tests/unit/cycles/test_blocking_gaps.py`** (23 tests):
+  - the rule on the record;
+  - the refusals at `prepare_cycle`: an unconfined gap, and an operator's plan meeting or clearing a confined one;
+  - the absence warning;
+  - the promotion seam rejecting a plan, naming the gap and what closes it;
+  - the in-run seam failing the run under `validate_blocking_gaps`;
+  - the profile read at the cycle's own pin, and never for a sample application;
+  - the plan authors given the index, and no other task;
+  - both authoring paths rendering the asset;
+  - the wiring, entered at `RunProvisioning.prepare` with the real plan generation for the `validate` profile's
+    framing: the merger, the plan's sole author there, carries the index.
+- **Five mutants, each caught:**
+  - a confined gap meeting any work;
+  - unconfined gaps listed for the authors;
+  - the operator's plan not read;
+  - the promotion seam reading no profile;
+  - the plan step dropped from `RunProvisioning.prepare`.
+- **Live on the Mac** (2026-10-24), on `prj-shelfnote` (`z_shelfnote`, a test product), with this change's runtime:
+  - **Revision 5, every check's command missing:** the capture's profile reads `no_check_ran` and a blocking
+    `missing_toolchain` on each side, and `cycles create` was refused with 409, naming `no_check_ran`.
+  - **Revision 6, only npm missing:** the profile reads `missing_toolchain (npm)`, blocking `frontend/**`. A framing
+    cycle (`cyc_0661f9d38394`) was accepted at create. Its plan gate rejected two framings in turn under
+    `blocking_gap`, for `frontend/src/components/BooksList.jsx` and then for `Pagination.jsx` and `BooksListView.jsx`.
+    The PRD asks for frontend work, so no plan could go around the gap. The cycle was cancelled.
+  - **Revision 7** restored revision 4's configuration, and its capture reads the original two disclosed gaps.
+
+**Who ruled:** the MacBook lane, under the owner's delegation of 2026-10-18, within H.4 and H.6 as ruled.
+

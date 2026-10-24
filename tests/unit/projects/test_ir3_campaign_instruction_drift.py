@@ -42,7 +42,11 @@ from squadops.api.campaign_launch import LaunchRefused
 from squadops.api.cycle_schemas import CycleCreateRequest
 from squadops.api.routes.cycles.cycles import prepare_cycle
 from squadops.campaigns.launch_requests import start_transition
-from squadops.cycles.models import Project, StaleSourcePreconditionError
+from squadops.cycles.models import (
+    DerivedProfileNotFoundError,
+    Project,
+    StaleSourcePreconditionError,
+)
 from squadops.memory.lessons import UnitKind
 from squadops.memory.pinning import pin_campaign, pin_standalone_cycle
 from squadops.memory.records import Reference
@@ -98,6 +102,10 @@ class _Projects:
             development_configuration_revision=self.revision,
             development_baseline_commit=self.commit, integrated_upstream_commit=self.commit,
         )  # fmt: skip
+
+    async def get_derived_profile(self, project_id, *, at=None):
+        # Captured before profiles (H.6): its Cycles run as they did in 2.4.
+        raise DerivedProfileNotFoundError(project_id)
 
     async def get_inherited_baseline(self, project_id):
         return parse_baseline(

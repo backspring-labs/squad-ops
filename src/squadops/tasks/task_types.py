@@ -101,6 +101,16 @@ class TaskType(StrEnum):
         return self is TaskType.DEVELOPMENT_DEVELOP
 
     @property
+    def authors_plan(self) -> bool:
+        """The steps whose emission is the implementation plan, or a part of it: the dev and qa
+        proposers and the merger, which authors it alone when no proposer runs (#846)."""
+        return self in (
+            TaskType.DEVELOPMENT_PROPOSE_PLAN_TASKS,
+            TaskType.QA_PROPOSE_PLAN_TASKS,
+            TaskType.GOVERNANCE_MERGE_PLAN,
+        )
+
+    @property
     def fails_without_correction(self) -> bool:
         """A failure here aborts the run rather than entering the correction loop.
 
@@ -154,6 +164,12 @@ def authors_source(task_type: object) -> bool:
     """``TaskType.authors_source`` for a value that may be a raw string."""
     member = _member_or_none(task_type)
     return bool(member and member.authors_source)
+
+
+def authors_plan(task_type: object) -> bool:
+    """``TaskType.authors_plan`` for a value that may be a raw string."""
+    member = _member_or_none(task_type)
+    return bool(member and member.authors_plan)
 
 
 def fails_without_correction(task_type: object) -> bool:

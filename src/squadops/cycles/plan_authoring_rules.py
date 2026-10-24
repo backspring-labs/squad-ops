@@ -78,6 +78,8 @@ COVERED_ELSEWHERE: dict[str, str] = {
     "validate_increment_criterion_files": "request.plan_increment_criteria_appendix",
     # SIP-0109 §8.1: rendered per increment with the earlier criteria's actual frozen files.
     "validate_increment_frozen_files": "request.plan_increment_frozen_appendix",
+    # SIP-0112 H.8: rendered per source-backed cycle with the paths its blocking gaps stop.
+    "validate_blocking_gaps": "request.plan_blocking_gaps_appendix",
 }
 
 # Validators with no author-facing rule: nothing the author writes can trip them, or the

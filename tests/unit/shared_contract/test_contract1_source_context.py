@@ -31,6 +31,7 @@ from squadops.cycles.models import (
     StaleSourcePreconditionError,
 )
 from squadops.projects.baseline import parse_baseline
+from squadops.projects.derived_profile import parse_profile
 from squadops.projects.models import ProjectLifecycleStatus, ProjectSource
 from squadops.projects.source_context import parse_source_context
 from tests.fixtures.shared_contract.repository import recorded
@@ -78,6 +79,8 @@ def ports():
     registry.get_inherited_baseline.return_value = parse_baseline(
         recorded("inherited_baseline", "valid")
     )
+    # Tally's profile names no blocking gap (contract 8).
+    registry.get_derived_profile.return_value = parse_profile(recorded("derived_profile", "valid"))
     registry.source_syncs.return_value = []
     profiles = AsyncMock()
     profiles.resolve_snapshot.return_value = (_profile(), "sha256:abc")

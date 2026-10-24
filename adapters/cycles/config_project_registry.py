@@ -133,7 +133,7 @@ class ConfigProjectRegistry(ProjectRegistryPort):
             f"Project {project_id} is a sample application: it has no inherited baseline"
         )
 
-    async def get_derived_profile(self, project_id):
+    async def get_derived_profile(self, project_id, *, at=None):
         raise DerivedProfileNotFoundError(
             f"Project {project_id} is a sample application: it has no derived profile"
         )

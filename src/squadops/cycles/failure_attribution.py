@@ -158,6 +158,7 @@ _C = AttributionClass
 #: drift test until someone declares what its refusal shows.
 PLAN_VALIDATORS: tuple[str, ...] = (
     "validate_against_profile",
+    "validate_blocking_gaps",
     "validate_build_config",
     "validate_builder_floor",
     "validate_check_applicability",

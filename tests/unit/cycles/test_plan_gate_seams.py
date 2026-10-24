@@ -106,10 +106,25 @@ def test_seam_error_channels_stay_distinct():
     )
 
 
-def test_builder_floor_rule_is_wired_at_both_seams():
-    """#888 (the #718/#719 rule applied): the builder-floor validator must be
-    called from BOTH seams — dropping either lets an under-covered plan reach
-    the #291 completion gate, which has no repair path (roll 15's dead end)."""
+@pytest.mark.parametrize(
+    ("validator", "consequence"),
+    [
+        (
+            "validate_builder_floor",
+            "an under-covered builder plan on this path dies at run completion with no repair path",
+        ),
+        (
+            "validate_blocking_gaps",
+            "a plan writing where a blocking gap stops the work reaches implementation, where "
+            "nothing it writes there can be verified (SIP-0112 H.8)",
+        ),
+    ],
+)
+def test_a_rule_both_seams_need_is_wired_at_both_seams(validator, consequence):
+    """#888 (the #718/#719 rule applied): these validators must be called from BOTH seams.
+    Dropping the builder floor from either lets an under-covered plan reach the #291
+    completion gate, which has no repair path (roll 15's dead end). Dropping the blocking gaps
+    from either lets a plan into a blocked area through that path alone."""
 
     def sources(path, names):
         return {
@@ -126,7 +141,4 @@ def test_builder_floor_rule_is_wired_at_both_seams():
     }
 
     for seam in (_PROMOTION_SEAM, _DISPATCH_SEAM):
-        assert "validate_builder_floor" in seam_sources[seam], (
-            f"{seam} no longer calls validate_builder_floor — an under-covered "
-            "builder plan on this path dies at run completion with no repair path"
-        )
+        assert validator in seam_sources[seam], f"{seam} no longer calls {validator}: {consequence}"

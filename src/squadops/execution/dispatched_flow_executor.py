@@ -73,6 +73,7 @@ from squadops.cycles.models import (
     APPROVING_DECISIONS,
     ArtifactRef,
     Cycle,
+    DerivedProfileNotFoundError,
     FlowMode,
     GateDecision,
     GateDecisionValue,
@@ -152,6 +153,7 @@ from squadops.ports.comms.queue import QueueError
 from squadops.ports.cycles.flow_execution import FlowExecutionPort
 from squadops.ports.events.noop import NoOpCycleEventBus
 from squadops.projects.models import SourceUnavailable
+from squadops.projects.source_context import ProjectSourceContext
 from squadops.projects.workspaces import SandboxUnavailable
 from squadops.sandbox.models import RevisionOrigin, WorkspaceRevision
 from squadops.stacks.scaffold import (
@@ -4459,7 +4461,26 @@ class DispatchedFlowExecutor(FlowExecutionPort):
                 *args, **kw
             ),
             load_contract_for_run=lambda *args, **kw: self._load_contract_for_run(*args, **kw),
+            derived_profile=lambda cycle: self._derived_profile_for(cycle),
         )
+
+    async def _derived_profile_for(self, cycle: Any) -> Any:
+        """SIP-0112 H.4: the derived profile recorded at the source a cycle pinned, or ``None``
+        for a cycle with no source, a registry that can't say, or a capture with no profile."""
+        context = getattr(cycle, "source_context", None)
+        if not isinstance(context, ProjectSourceContext) or self._project_registry is None:
+            return None
+
+        try:
+            return await self._project_registry.get_derived_profile(
+                context.project_id,
+                at=(
+                    context.development_baseline_commit,
+                    context.development_configuration_revision,
+                ),
+            )
+        except DerivedProfileNotFoundError:
+            return None
 
     async def _reject_invalid_plan_before_workload_gate(
         self,
@@ -4604,6 +4625,12 @@ class DispatchedFlowExecutor(FlowExecutionPort):
         # #1912: a qa.test task that declares no suite fails whatever it returns.
         errors += classifier.collect(
             "validate_qa_tasks_author_a_suite", plan.validate_qa_tasks_author_a_suite()
+        )
+        # SIP-0112 H.4 (H.8): as at the promotion seam, no task writes where a blocking gap stops
+        # the work.
+        errors += classifier.collect(
+            "validate_blocking_gaps",
+            plan.validate_blocking_gaps(await self._derived_profile_for(cycle)),
         )
         if errors:
             raise _ExecutionError(

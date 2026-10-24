@@ -35,7 +35,7 @@ How a runner's tests are found and run (H.6):
 from __future__ import annotations
 
 import re
-from collections.abc import Mapping
+from collections.abc import Iterable, Mapping
 from dataclasses import dataclass
 from fnmatch import fnmatch
 from pathlib import PurePosixPath
@@ -170,6 +170,10 @@ class Gap:
         """What it stops, by its id and kind (``GAPS``): never stored, so never contradicted."""
         return GAPS[self.id][self.kind]
 
+    def covers(self, path: str) -> bool:
+        """Whether repository-relative ``path`` lies where this gap applies."""
+        return any(fnmatch(path, glob) for glob in self.paths)
+
 
 @dataclass(frozen=True)
 class DerivedProfile:
@@ -194,6 +198,19 @@ class DerivedProfile:
     @property
     def blocking(self) -> tuple[Gap, ...]:
         return tuple(g for g in self.gaps if g.kind == BLOCKING)
+
+    def blocking_work(self, paths: Iterable[str] | None = None) -> tuple[Gap, ...]:
+        """The blocking gaps that stop ``work`` and that work on ``paths`` meets (H.6, H.8). An
+        unconfined gap meets any work. A confined one meets a path its globs match. ``None`` is
+        work whose paths aren't known yet, which only an unconfined gap meets."""
+        listed = tuple(paths or ())
+        return tuple(
+            g
+            for g in self.gaps
+            if g.kind == BLOCKING
+            and g.stops == "work"
+            and ("**" in g.paths or any(g.covers(p) for p in listed))
+        )
 
     def runner_for(self, path: str) -> Runner | None:
         """The runner that owns test file ``path``: the first, in list order, that holds it. A

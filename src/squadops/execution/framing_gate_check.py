@@ -57,11 +57,14 @@ class FramingGateCheck:
         is_bind_mode: Callable[..., bool],
         load_seeded_manifest_content: Callable[..., Any],
         load_contract_for_run: Callable[..., Any],
+        derived_profile: Callable[..., Any] | None = None,
     ) -> None:
         self._vault = artifact_vault
         self._is_bind_mode = is_bind_mode
         self._load_seeded_manifest_content = load_seeded_manifest_content
         self._load_contract_for_run = load_contract_for_run
+        #: SIP-0112 H.4: the derived profile at the cycle's pinned source, or ``None``.
+        self._derived_profile = derived_profile
 
     @property
     def _artifact_vault(self) -> Any:
@@ -308,6 +311,14 @@ class FramingGateCheck:
                     parsed_plan.validate_increment_criterion_files(
                         await self._increment_criterion_files(cycle)
                     ),
+                )
+            )
+            # SIP-0112 H.4 (H.8): no task writes where a blocking gap stops the work. A re-roll
+            # is told where, so a plan can go around it.
+            profile = await self._derived_profile(cycle) if self._derived_profile else None
+            errors.extend(
+                classifier.collect(
+                    "validate_blocking_gaps", parsed_plan.validate_blocking_gaps(profile)
                 )
             )
 
