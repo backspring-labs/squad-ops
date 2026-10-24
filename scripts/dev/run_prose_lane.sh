@@ -26,13 +26,17 @@ FLOOR=(
   tests/unit/maintainer/test_release_notes.py
 )
 
-mapfile -t selected < <(
+# Bash 3.2 is the floor (#2402): macOS's /bin/bash is 3.2.57, which has no mapfile, so the
+# selection is read a line at a time. And bash before 4.4 calls an empty "${a[@]}" unbound
+# under set -u, so an expansion that may be empty is written ${a[@]+"${a[@]}"}.
+selected=()
+while IFS= read -r file; do selected+=("$file"); done < <(
   grep -rlE --include='test_*.py' '"docs"|"sips"|"site"|docs/|sips/|site/|[A-Z]+\.md' tests/unit | sort
 )
 
 missing=()
 for must in "${FLOOR[@]}"; do
-  printf '%s\n' "${selected[@]}" | grep -qxF "$must" || missing+=("$must")
+  printf '%s\n' ${selected[@]+"${selected[@]}"} | grep -qxF "$must" || missing+=("$must")
 done
 if [ "${#missing[@]}" -gt 0 ]; then
   echo "ERROR: the prose lane no longer selects a test that reads prose: ${missing[*]}" >&2
