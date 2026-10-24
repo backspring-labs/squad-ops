@@ -1,0 +1,61 @@
+# #2433: a host exporter that was reporting has stopped. node-exporter feeds the host dashboards and
+# the Spark's board-thermal alert (spark-thermals.yml), and dcgm-exporter the GPU's; with either
+# down those read no data, which the thermal alert now reads as OK. So the exporter's own absence
+# is the alert, here.
+#
+# Only an exporter that has reported in the last 7 days alerts: a box that never runs one (the
+# MacBook runs neither; only a box with a GPU's CDI spec runs dcgm-exporter) has an `up` series
+# of 0 that never rose, and that is not a fault. 7 days is inside Prometheus's 15-day retention
+# (docker-compose.yml), so the window always has data to read.
+#
+# No contact point is set, as in spark-thermals.yml: a firing alert shows in Grafana's Alerting
+# pages. Grafana expands $VARIABLES in provisioning files, so the templates use .Labels.
+apiVersion: 1
+groups:
+  - orgId: 1
+    name: host-exporters
+    folder: Host
+    interval: 30s
+    rules:
+      - uid: host-exporter-down
+        title: A host exporter stopped reporting
+        condition: B
+        data:
+          - refId: A
+            relativeTimeRange:
+              from: 300
+              to: 0
+            datasourceUid: PBFA97CFB590B2093
+            model:
+              refId: A
+              instant: true
+              range: false
+              # 1 for an exporter down now that was up within 7 days, 0 for one that is up; an
+              # exporter that never reported is filtered out.
+              expr: |-
+                (1 - up{job=~"host|gpu"})
+                and on(job, instance) (max_over_time(up{job=~"host|gpu"}[7d]) == 1)
+          - refId: B
+            datasourceUid: __expr__
+            model:
+              refId: B
+              type: threshold
+              expression: A
+              conditions:
+                - evaluator:
+                    type: gt
+                    params: [0]
+        for: 5m
+        noDataState: OK
+        execErrState: Error
+        labels:
+          severity: warning
+        annotations:
+          summary: 'The {{ .Labels.job }} exporter ({{ .Labels.instance }}) has stopped reporting'
+          description: >-
+            Prometheus has scraped nothing from this exporter for 5 minutes, after it reported
+            within the last 7 days. The host dashboards, and on the Spark the board-thermal alert,
+            have no data until it is back: `rebuild_and_deploy.sh` starts both exporters, or
+            `docker compose up -d node-exporter` (and `docker compose --profile gpu up -d
+            dcgm-exporter` on the Spark).
+        isPaused: false

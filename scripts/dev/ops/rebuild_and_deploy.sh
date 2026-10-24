@@ -227,6 +227,24 @@ echo "Starting infrastructure services (rabbitmq, postgres, redis, prefect)..."
 # pg_isready / rabbitmq-diagnostics / redis-cli polling below them are gone.
 docker compose up -d --wait rabbitmq postgres redis prefect-server
 
+# #2433: the host's exporters, which the host dashboards and the Spark's board-thermal alert read.
+# Nothing started them: a `docker compose down` and a deploy left them stopped, and the MacBook
+# never ran them. node-exporter reads a Linux host's /proc and /sys, so it runs where the deploy
+# runs on Linux (Docker Desktop on macOS refuses its rslave root mount). dcgm-exporter runs where
+# the local-spark bootstrap wrote the GPU's CDI spec, which its compose service needs. A failure
+# warns rather than failing the deploy: an exporter is monitoring, not the product, and one that
+# stops later is Grafana's `host-exporter-down` alert.
+if [ "$(uname -s)" = "Linux" ]; then
+    echo "Starting the host's exporter (node-exporter)..."
+    docker compose up -d --wait node-exporter \
+        || echo -e "${YELLOW}⚠️  node-exporter did not start: the host dashboards and the board-thermal alert have no data${NC}"
+    if [ -f /etc/cdi/nvidia.yaml ]; then
+        echo "Starting the GPU's exporter (dcgm-exporter)..."
+        docker compose --profile gpu up -d --wait dcgm-exporter \
+            || echo -e "${YELLOW}⚠️  dcgm-exporter did not start: the GPU dashboards have no data${NC}"
+    fi
+fi
+
 # #372: Keycloak imports a realm only when it does not exist, so a change to the realm
 # exports never reaches an environment whose realm is already there. Re-sync the mounted
 # exports into existing realms (partialImport, ifResourceExists=SKIP — idempotent,
