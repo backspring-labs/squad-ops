@@ -255,6 +255,7 @@ A change to a file the other lane owns goes through that lane's review (CLAUDE.m
 | 5. Evaluation references | Outcome Evaluation's evaluation records (to be built): one per evaluation run, a cycle against one suite | references to them in Project history (FR-09) | produces them: the evaluation ID and suite digest, with the Project ID, the campaign and cycle IDs, and the evaluated and previous accepted tree identities | this SIP stores the reference in Project history. It never stores steps and never recomputes a reading. No scenario result reaches a squad role's inputs through the Project Context or the handoff until Outcome Evaluation's phase 2 is ruled, and after it only the proposal run's (its §4.5) |
 | 6. Project instructions and snapshot binding | SIP-0110 §0.7, §A.3.6–§A.3.8; #2179 (2.4.0) | repository instruction discovery; drift findings; the resolver for a repository reference at the unit's pinned commit (§B.5.1) | compared increments read the instruction sets their units pinned; a set that differs between them is a changed listed input (SIP-0110 §0.12) | one store, SIP-0110's; an admitted snapshot changes only by SIP-0110's re-binding |
 | 7. Starting the product for evaluation (added by the Spark lane's review; approved by the owner as written, 2026-10-17) | the Development Configuration's `technical.commands_ref` (§B.5); for a blueprint Project, the stack's probe and render profiles (`profile_for_stack`, `src/squadops/capabilities/handlers/probe_runner.py:133`; `render_profile_for`, `src/squadops/capabilities/handlers/route_rendering.py:77`) | the commands to install, build and start the product at a given tree, its readiness check, and the base URLs or entry points it serves, versioned with the Development Configuration | reads those commands at the Development Configuration revision the unit pinned | Outcome Evaluation never infers how to start a product from a sample application; a Project with no declaration reports every scenario `blocked_unverified`, with that reason |
+| 8. The derived development profile (added for 2.5 by H.6; H.4) | the Development Configuration (§B.5) and the inherited baseline (FR-20), both this SIP's | a profile recorded with each configuration revision once its inherited baseline is captured there: what the squad's roles depend on in the product, and each gap (`squadops.projects.derived_profile`) | SIP-0109 §24bv reads it for a Campaign's calibration record (point 1), an increment's acceptance on the product's own runner (point 3) and the proposal's input (point 5); SIP-0113 §10l reads whether a start is declared | one profile per configuration revision and baseline capture, never edited; read at the commit and revision the unit pinned; what a gap stops follows from its id and kind (H.6), never from a reader's judgement |
 
 **Every change to a shared contract** names the contract in its PR body, carries the other lane's review, adds a wiring test that enters at the caller the live cycle uses (`docs/TEST_QUALITY_STANDARD.md`, anti-pattern 6a), and is additive: no field is repurposed or removed.
 
@@ -263,7 +264,8 @@ A change to a file the other lane owns goes through that lane's review (CLAUDE.m
 The table above gives each contract's owner, producer and consumer. This one gives what an
 implementation needs to build against it alone. Fields live with the contract's owner: contracts 3, 4
 and 6 use SIP-0102's, SIP-0109's and SIP-0110's as those SIPs define them, and only the three contracts
-whose data this SIP or Outcome Evaluation creates get a schema here.
+whose data this SIP or Outcome Evaluation creates get a schema here. Contract 8, added for 2.5, has its
+schema in H.6.
 
 | contract | available | absent, stale or unavailable | versioning | minimum contract test |
 |---|---|---|---|---|
@@ -274,6 +276,7 @@ whose data this SIP or Outcome Evaluation creates get a schema here.
 | 5 | when Outcome Evaluation writes an evaluation record | Project history shows *not evaluated*, never an inferred result; a reference whose record cannot be read is kept and marked unresolved | `OutcomeEvaluationRef` carries a schema version; it keeps its name while Outcome Evaluation keeps its own (that SIP's A1) | write the fixture's recorded reference into Project history; read it back; refuse an unknown major version |
 | 6 | when SIP-0110 pins the unit's snapshot | as SIP-0110 rules: a binding instruction that cannot be resolved holds dispatch | SIP-0110's | IR-3 |
 | 7 | when a Development Configuration revision is confirmed (E.4.2) | no declaration: every scenario is `blocked_unverified`, reason "no start declaration"; a start or readiness failure: `blocked_unverified`, reason "start failed"; a secret the Project has not declared for evaluation, or the owner has not approved: `blocked_unverified`, reason "secret not available" (Q40); a newer revision never applies to a unit already pinned | part of the Development Configuration's schema version | start the fixture from its declaration; a missing declaration; a readiness timeout |
+| 8 | when the inherited baseline is captured at a Development Configuration revision (H.4) | no profile at the pinned commit and revision: a Campaign's start is refused, naming it (SIP-0109 §24bv point 1), and a standalone Cycle runs as it did in 2.4, with the absence recorded; a profile at another commit or revision is refused as stale, never read in its place; a blocking gap refuses a Campaign's start, and one that stops `work` refuses a Cycle whose footprint meets its paths, before dispatch | `derived-profile/v1`; fields are only added, and a reader leaves a field it doesn't know unread | read the fixture's recorded profile back as recorded; refuse an unknown major version, a missing field and a stale commit |
 
 **Identifiers never substitute for one another.** A Project ID, a Git commit (40 hexadecimal
 characters), a sandbox revision ID (`compute_revision_id`), a Campaign tree identity
@@ -355,12 +358,14 @@ start:
   machine runs it alone.
 - **Each lane's outputs, recorded beside it:** a `ProjectSourceContext`, a Development Configuration with
   its start declaration, a workspace-to-commit mapping and an inherited baseline (the MacBook lane's), and
-  an `OutcomeEvaluationRef` (the Spark lane's). Each comes valid, with a required field missing, with an
-  unknown schema major version and with a stale commit.
+  an `OutcomeEvaluationRef` (the Spark lane's). 2.5 adds the MacBook lane's derived profile (contract 8,
+  H.6). Each comes valid, with a required field missing, with an unknown schema major version and with a
+  stale commit.
 - **Contract tests enter at the production seams:** `prepare_cycle()` and the Campaign launcher
   (contracts 1 and 2), `WorkspaceStore.seed()` (contract 3), the Project history write (contract 5) and
-  the evaluation runner's start (contract 7). Contracts 4 and 6 keep SIP-0109's and SIP-0110's tests,
-  with IR-5 and IR-3.
+  the evaluation runner's start (contract 7). Contract 8's reader is held to the fixture first, and its
+  seams' tests land with the PRs that build them (H.6). Contracts 4 and 6 keep SIP-0109's and SIP-0110's
+  tests, with IR-5 and IR-3.
 - **It lands first,** as one PR both lanes review, before either lane's first contract PR. The MacBook
   lane writes it, and the Spark lane adds its recorded `OutcomeEvaluationRef` in the same PR (the 2.4
   plan's D12). A change to it is a shared-contract change (G4).
@@ -1906,3 +1911,112 @@ every record saying `inherited`.
 **Who ruled:** the MacBook lane, under the owner's delegation of 2026-10-18. The Spark lane's G4 is on #2609 (the
 design, issuecomment-6326651632), on X-3a's shape (a), on #2620 and on #2623.
 
+## H.6 Contract 8: the derived development profile, which both lanes build H.4 against (2026-10-24; #2619; the MacBook lane, for the Spark lane's G4)
+
+**Why it's a contract.** H.4's profile is written by this SIP and read by two others:
+- SIP-0109 §24bv, for a Campaign's calibration record (point 1), an increment's acceptance on the product's own
+  runner (point 3) and the proposal's input (point 5);
+- SIP-0113 §10l, for whether the product can be started for evaluation.
+
+The 2.5 plan has both lanes review it before either builds against it (`docs/plans/2-5-0-plan.md` §5). §8.2 and §8.2.1
+carry its row as contract 8.
+
+**When it's written.** When the inherited baseline is captured at a Development Configuration revision, SquadOps
+derives the profile from three things and records it beside them: the tree at the revision's `validated_at_commit`,
+the revision itself, and that capture.
+- It's never edited. A new revision or a new capture derives a new profile.
+- A unit reads the profile at the commit and revision it pinned. A profile at another commit or revision is refused
+  as stale (`StaleProfile`), never read in its place.
+
+**What it holds** (`squadops.projects.derived_profile`, schema `derived-profile/v1`):
+
+| field | what it is | read by |
+|---|---|---|
+| `commit`, `development_configuration_revision` | the commit and revision it was derived at | every reader, to refuse a stale profile |
+| `environment.image` | the image the baseline's checks ran on | its toolchains and their gaps |
+| `languages[]` | each language, its package manager (or null) and the manifests that name it | the proposal's input |
+| `test_runners[]` | each runner (`pytest`, `unittest`, `vitest`, `jest` or `other`): the checks that run it, the paths its tests cover, where it discovers tests and the file names it takes, its whole-suite argv, its one-file argv (naming the file as `{path}` or `{name}`, or null), the findings reader that names its tests one by one (or null), and its support files | §24bv point 3: where a criterion's test file goes, what it's frozen with, how it runs alone and in the suite, and how each criterion is read |
+| `lint[]` | each lint check, its tool and its findings reader (or null) | H.5's comparison |
+| `toolchains[]` | each toolchain, the checks that need it, and whether the image had it | its gaps |
+| `start_declared` | whether contract 7's start is declared | SIP-0113 §10l |
+| `public_surfaces[]` | a base URL the start declaration serves (`http_base`, `ui_base`), a command-line entry point (`command`), or a package (`package`) | §24bv point 5: the surfaces a criterion may assert on |
+| `blueprint`, `client_routes` | the SIP-0105 blueprint the configuration names, and its approved manifest's client routes; both null without one | §24bv point 3's route rendering; SIP-0113 §10l's lint rule set |
+| `files.test`, `files.test_support` | globs classing the tree's test files and their support files. Every other tracked file is the product's | §24bv point 3's baseline-evaluator overlay |
+| `gaps[]` | each gap's id, kind and subject (the check, runner or tool it is about, or null), the paths whose work it applies to (`**` when it isn't confined), why it was named, and what would close it | every reader: below |
+
+**The gaps.** A gap's id is one of ten, and its kind is one its id allows. What it stops follows from the two
+(`Gap.stops`). No record stores what a gap stops, so no record can contradict this table:
+
+| gap | kind | named when | stops |
+|---|---|---|---|
+| `no_check_ran` | blocking | the baseline ran no check: none is declared, or every one is UNVERIFIED | `work` |
+| `missing_toolchain` | blocking | a check is UNVERIFIED as `command_not_found` or `command_not_executable` on the baseline's image, and no other check on its paths runs | `work` |
+| `missing_toolchain` | disclosed | as above, while another check on its paths runs | `verification` |
+| `test_files_unclassed` | blocking | the tree's test files can't be told from its product files | `campaigns` |
+| `missing_environment` | disclosed | a check needs an environment variable the checks' environment doesn't provide | `verification` |
+| `no_start_declaration` | disclosed | no start is declared (contract 7) | `outcome_evaluation` |
+| `no_test_runner` | disclosed | a part of the tree that no runner's tests cover | `squad_tests` |
+| `runner_not_authored` | disclosed | a runner QA doesn't write tests for | `squad_tests` |
+| `runner_not_scopable` | disclosed | a runner with no one-file argv | `criterion_scoping` |
+| `no_test_id_reader` | disclosed | no findings reader names the runner's tests one by one | `per_test_reading` |
+| `lint_without_reader` | disclosed | a lint check with no findings reader | `per_finding_comparison` |
+
+**What each one stops:**
+- **`work`:** a Cycle or a Campaign increment whose footprint meets the gap's paths is refused before dispatch,
+  naming it, and so is a Campaign's start.
+- **`campaigns`:** a Campaign's start is refused. A standalone Cycle runs, since only §24bv point 3's overlay needs
+  the classes.
+- **`verification`:** the checks on its paths read UNVERIFIED, as the baseline already records.
+- **`outcome_evaluation`:** every scenario and quality measure reads `blocked_unverified` (SIP-0113 §10l). The Cycle
+  runs.
+- **`squad_tests`:** the squad's own tests don't reach its paths, so a change there is verified by the product's checks
+  alone.
+- **`criterion_scoping`:** a frozen criterion runs only as part of the whole suite.
+- **`per_test_reading`:** each criterion is read by its own test file's result.
+- **`per_finding_comparison`:** a lint check failing on both sides is compared whole (H.5).
+
+`projects configure` and `projects show` report every gap. Each run records the disclosed gaps that apply to its
+work, and the proposal is given them (§24bv point 5).
+
+**When it's absent.** A unit that pinned a revision with no profile reads none:
+- a Campaign's start is refused, naming it (§24bv point 1);
+- a standalone Cycle runs as it did in 2.4, with the absence recorded;
+- a profile is never derived on the fly for a unit already admitted.
+
+**Versioning.** `derived-profile/v1`. Fields are only added, and a reader leaves a field it doesn't know unread. An
+unknown major version is refused before anything else is read (§8.2.1). The reader refuses a gap, kind, runner or
+surface it doesn't know, so adding one changes `GAPS`, `RUNNERS` or `SURFACES` and this section in the same PR, under
+both lanes' review.
+
+**The fixture.** Tally's profile is recorded beside the other outputs
+(`tests/fixtures/shared_contract/recorded/derived_profile/`), in the four forms:
+- with `development_configuration_revision` missing;
+- under `derived-profile/v2`;
+- derived at the first commit, for the stale form.
+
+Tally has no package manager and tests with unittest. It carries two gaps, both disclosed:
+- `missing_environment`, for `notify`;
+- `no_test_id_reader`, since no findings reader names unittest's tests one by one.
+
+**The contract tests:**
+- **`tests/unit/shared_contract/test_derived_profile_contract.py`** holds the one reader both lanes call.
+  - The recording reads back as recorded.
+  - An unknown major version, a missing field and a stale commit are each refused, naming the field.
+  - A value outside the contract is refused, naming its field: an unknown gap or kind, a kind its gap can't take, a
+    path leaving the repository, a one-file argv naming no file, an argv given as one string, or an unknown surface.
+  - A field the reader doesn't know is left unread.
+  - What a gap stops follows from its id and kind.
+- **`test_shared_fixture.py`** holds the recording to the fixture.
+  - Its commit and revision are the configuration's.
+  - Its runner's checks and its toolchains' checks are the configuration's.
+  - Its test-file glob matches exactly the `checks/` files.
+  - Its one-file argv runs one file alone: ledger passes, while parse, the inherited failure, fails with its own three
+    tests.
+- **Each seam's wiring test lands with the PR that builds it.** The derivation, this lane's next 2.5 PR, enters at the
+  baseline capture. §24bv's enter at a Campaign's start and an increment's acceptance.
+
+**What stays:** contracts 1–7 and every recorded output, unchanged, and the fixture's product untouched.
+
+**Who ruled.** The owner placed H.4 in 2.5 on 2026-10-21. On 2026-10-24 the owner adopted the 2.5 plan, which has this
+contract written first and reviewed by both lanes. The MacBook lane wrote it, under the owner's delegation of
+2026-10-18. The Spark lane's G4 is on its PR.

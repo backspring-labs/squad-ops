@@ -55,10 +55,17 @@ header says, and `test_shared_fixture.py` holds them to that.
 | `development_configuration` | MacBook | 7 (`technical.commands.start`) | `configuration.revision` | `.../v2` | validated at the first commit |
 | `workspace_commit_mapping` | MacBook | 3 and 4 | the captured entry's `commit` | `workspace-commit-mapping/v2` | the captured entry names the first commit |
 | `inherited_baseline` | MacBook | none (FR-20, IR-9) | `commit` | `inherited-baseline/v2` | captured at the first commit |
+| `derived_profile` | MacBook | 8 (H.6, added for 2.5) | `development_configuration_revision` | `derived-profile/v2` | derived at the first commit |
 | `outcome_evaluation_ref` | Spark | 5 | `campaign_id` | `outcome-evaluation-ref/v2` | `evaluated_tree_identity` names the first commit's tree |
 
 Only the start declaration is a shared contract in the Development Configuration. The rest of that
 record, and the whole inherited baseline, is the MacBook lane's own, recorded for E.4.2 and IR-9.
+
+**The derived profile (contract 8)** is what H.4 reads from Tally at its second commit, its first
+configuration revision and its baseline: Python with no package manager, five unittest checks under
+`checks/`, a one-file command through `{name}`, and two disclosed gaps (`notify`'s environment, and no
+reader that names unittest's tests one by one). `squadops.projects.derived_profile.parse_profile` is
+the one reader both lanes call, and H.6 names what each gap stops.
 
 **The commands are recorded resolved.** SIP-0112 §B.5 stores them behind `technical.commands_ref`. A
 reader receives them resolved, so that is what the recording shows.
@@ -83,6 +90,7 @@ fixture (agreed by both lanes on #2407):
 | 3 | seed the fixture at a pinned commit; capture a change back to a commit; the mapping resolves both ways | `WorkspaceStore.seed()` | E.4.2 (#2409), after X-1 (#2419) and X-2 (#2420) |
 | 5 | write the recorded reference into Project history; read it back; refuse an unknown major version | the Project history write | the reference's side with #2415; the history side with the slice that first writes Project history (#2410 or #2411) |
 | 7 | start the fixture from its declaration; a missing declaration; a readiness timeout | the evaluation runner's start | #2414, with X-3 (#2421) |
+| 8 | read the recorded profile back; refuse an unknown major version, a missing field and a stale commit | `parse_profile` first (`test_derived_profile_contract.py`); then the baseline capture that derives it, and SIP-0109 §24bv's Campaign start and increment acceptance | the reader with H.6 (#2619); each seam with the 2.5 PR that builds it |
 
 Contracts 4 and 6 keep SIP-0109's and SIP-0110's tests, with IR-5 and IR-3.
 
