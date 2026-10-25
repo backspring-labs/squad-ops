@@ -37,6 +37,39 @@ COMMITTED = {v for c in REGISTRY_ROWS for v in c["committed"]}
 _DSN = next(c for c in REGISTRY_ROWS if c["env"] == "KEYCLOAK_DB_PASSWORD")
 
 
+def test_tensorfold_ensure_preserves_independent_callers_and_adopts_only_its_label():
+    credential = next(c for c in REGISTRY_ROWS if c["env"] == "SQUADOPS_TENSORFOLD_API_KEY")
+    target = credential["secret_file"]
+    original = "# callers\nnostromo-mother: mother-fixture\nsquadops: squad-fixture\nnostromo-brett: brett-fixture\n"
+    assert value_from_secret_file(credential, original) == "squad-fixture"
+    adopted = plan([credential], {}, {target: original}, existing=True)
+    assert adopted.env_updates[credential["env"]] == ("squad-fixture", "adopted")
+    assert adopted.secret_writes == {}
+    updated = plan(
+        [credential], {credential["env"]: "rotated-fixture"}, {target: original}, existing=True
+    )
+    assert (
+        updated.secret_writes[target]
+        == original.replace("squad-fixture", "rotated-fixture").rstrip()
+    )
+    assert (
+        plan(
+            [credential],
+            {credential["env"]: "rotated-fixture"},
+            updated.secret_writes,
+            existing=True,
+        ).secret_writes
+        == {}
+    )
+    with pytest.raises(ValueError, match="duplicate managed key"):
+        plan(
+            [credential],
+            {credential["env"]: "value"},
+            {target: "squadops: a\nsquadops: b"},
+            existing=True,
+        )
+
+
 def _counter():
     n = iter(range(1000))
     return lambda: f"generated-{next(n)}"

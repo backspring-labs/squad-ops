@@ -355,8 +355,21 @@ def serve_command(recipe: dict[str, Any], network: str | None = None) -> list[st
 
 
 def api_key(path: Path = KEY_FILE) -> str:
-    line = path.read_text().strip()
-    return line.split(":", 1)[1].strip() if ":" in line else line
+    lines = [
+        line.strip()
+        for line in path.read_text().splitlines()
+        if line.strip() and not line.lstrip().startswith("#")
+    ]
+    owned = [
+        line.split(":", 1)[1].strip()
+        for line in lines
+        if ":" in line and line.split(":", 1)[0].strip() == "squadops"
+    ]
+    if len(owned) == 1 and owned[0] and not any(c.isspace() for c in owned[0]):
+        return owned[0]
+    if len(lines) == 1 and ":" not in lines[0] and not any(c.isspace() for c in lines[0]):
+        return lines[0]  # legacy single unlabelled key
+    raise SwitchFailed("TensorFold key file needs exactly one squadops entry; values withheld")
 
 
 def tf_get(path: str, **kw: Any) -> httpx.Response:
