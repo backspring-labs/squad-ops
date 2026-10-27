@@ -331,3 +331,33 @@ catches:
 - **Each row records** the call's captured deadline, the number of messages sent and the note's sha256.
 
 A change to any of these after registration is recorded here with its reason, before the reading it affects.
+
+## 10. Amendment, 2026-10-27: the arms run on the two-lane engine
+
+**What changed.** The first arm stopped on 2026-10-24 at 32 of 46 calls when the owner's usage limit paused the work.
+By 2026-10-27 the live TensorFold was serving `infra/tensorfold/recipes/candidates/qwen27b-nvfp4-parallel2.yaml`
+(#2742). That recipe differs from the frozen `qwen27b-nvfp4.yaml` only by `--parallel 2`, and other clients share the
+engine. The owner asked why the run couldn't stay on the parallel engine, and had its reproducibility checked first. On
+that check's result, every arm is run again from its first call on the two-lane engine, into a fresh `--out`:
+`var/engine_replay/2026-10-27-qa-budget-2253-parallel2`. The commands are §5's, with that recipe. §5's rule still holds:
+every arm runs on one engine, which stays loaded throughout.
+
+**The evidence.** §4's derived arm needs a seeded call to reproduce exactly. The check
+(`var/engine_replay/2026-10-27-parallel2-repro-2253/PREREG.md`, its rule written before its calls) re-ran recorded
+envelopes on the two-lane engine:
+- **alone:** the plan's first three envelopes (d50f97d0…, f9501530…, 6e00ac9f…), plus a fourth lone repeat of d50f97d0…;
+- **together:** d50f97d0… and f9501530…, launched at once, decoding side by side for about 4.3 minutes;
+- **the result:** every call matched its single-lane record: the same `token_sha`, finish and completion tokens, and
+  byte-identical reasoning and content. Sharing changed only the decode rate (56.7 against 67.9 tok/s, and 40.3
+  against 44.6). One repeat was served from the prefix cache and reproduced as well.
+
+**What the 32 single-lane calls become.** They are a reproducibility panel, read against the same envelopes in the new
+first arm: the `token_sha` match count, and each mismatch with its overlap. They enter no reading in §6.
+
+**Wall times.** These are now the two-lane engine's. §5's rule is unchanged: a call another client overlapped keeps
+its tokens, finish and verdict, and its wall time is reported apart. Decision rule 1's `qa.test` deadline floor is read
+from calls nothing overlapped, and the record says it was measured on two lanes.
+
+**The resumed first call.** It sent the whole multi-entry key file as one header because the branch predated #2742's
+key reader. h11 refused it before sending, and the refusal's text carried the key. The three rows it wrote were
+removed, and nothing reached the engine. The defect is #2744.
