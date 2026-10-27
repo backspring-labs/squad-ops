@@ -30,7 +30,7 @@ Kept by the rule in CLAUDE.md ("SIP System"): one row per part, updated in the P
 | stack #1 parity (#1122) | **dropped** (closed `not_planned` 2026-09-29, the owner's 1.9.0 ruling) | — |
 | §4.3's "any role", re-read by SIP-0107 §46d item 4 (a dev edit to slot bodies is dropped) | **recorded** (§13c) | SIP-0107 §46d |
 | a failing slot assertion routed by demonstrated defect ownership, its location only saying who wrote it (§13d) | **dropped** (§13e, 2026-10-22): the shell's construction already routes it, and 37 days of runs show no route it would change | — |
-| §13d's ambiguous case, the guard: no revision resolving it by dropping the failing assertion's subject (§13f) | **shipped** | 2.5: §13f, the PR closing #2664 |
+| §13d's ambiguous case, the guard: no revision resolving it by dropping the failing assertion's subject (§13f) | **shipped** | 2.5: §13f, PR #2746 |
 | §13d's ambiguous case, the record: both readings beside the failure. §13f records the failing subject and what the declarations say of it, not the reading that the app is wrong | *unplaced* | — |
 
 **What closes this SIP:** **Closed: promoted to implemented at the v2.0.0 cut's SIP sweep (2026-10-04),** by §13c's reading. Nothing remains placed. The §10.3 economics metric is unverified and is not a promotion criterion. §13d's routing (#2153) was a follow-on to an implemented SIP; §13e drops it. §13f builds §13d's guard against weakening (#2664). §13d's other ask, both readings recorded beside the failure, is unplaced, recorded so it does not read as shipped.
