@@ -272,7 +272,7 @@ def _probe_owned_slots(failure_evidence: Any, failed_inputs: dict[str, Any]) -> 
     return slots
 
 
-def _fill_observations(failure_evidence: Any) -> list[dict[str, str]]:
+def _fill_observations(failure_evidence: Any) -> list[dict[str, Any]]:
     """The scaffold evidence's fill-layer observations, one per (file, slot) (#970).
 
     ``classify_shell_failures`` attributes an assertion failure inside a slot region
@@ -286,7 +286,7 @@ def _fill_observations(failure_evidence: Any) -> list[dict[str, str]]:
     summary = failure_evidence.get("scaffold_evidence")
     observations = (summary.get("observations") or []) if isinstance(summary, dict) else []
     seen: set[tuple[str, str]] = set()
-    out: list[dict[str, str]] = []
+    out: list[dict[str, Any]] = []
     for obs in observations:
         if not isinstance(obs, dict) or obs.get("failure_class") != CLASS_FILL:
             continue
