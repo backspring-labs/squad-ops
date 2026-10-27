@@ -14,7 +14,7 @@ Implemented: promoted at the v2.0.0 cut's SIP sweep (2026-10-04), by §13c's rea
 **Targets:** acceptance decision in the open, against the 1e ledger through roll 17 — per the §10.4 amendment (2026-08-14); implementation in whatever feature window the owner assigns. The change is qa-surface-scoped and stack-opt-in (§8), so it can ride as an even-minor feature or land per-stack.
 **Builds on:** SIP-0100 (scaffold ownership, fill slots, the frozen harness — this SIP is its test-side counterpart), SIP-0098 (verification contract; shells derive from the same manifest facts as the behavioral probes), #818 (criteria packs — the per-stack seam, including its asymmetric-default ruling), #877 (execution-model guidance — the experiment whose measured result motivates this), #866 (context completeness), #884 (the cross-role suite rewrite this SIP's frozen spine bounds).
 
-## Delivery ledger (current as of 2026-10-24)
+## Delivery ledger (current as of 2026-10-27)
 
 Kept by the rule in CLAUDE.md ("SIP System"): one row per part, updated in the PR that ships or re-places it, read at each release cut. Built from the read-only SIP-portfolio audit of 2026-10-04; `sips/PORTFOLIO.md` indexes it.
 
@@ -346,7 +346,7 @@ in the vault.
 approve cycles, PRs, issue choices etc." on the 2.4 feature set). D8 placed the build. This drops it on the evidence above,
 and it is reported to the owner, whose ruling can restore it.
 
-### 13f. A slot revision that drops its failing assertion's subject is refused (2026-10-24)
+### 13f. A slot revision that drops its failing assertion's subject is refused (2026-10-27)
 
 **What changed.** §13d says a repair "is never allowed to resolve [an ambiguous failure] by deleting or weakening the
 assertion". §13e found that guard unbuilt, and every in-slot failure is §13d's second or ambiguous case, so the guard is
@@ -421,7 +421,7 @@ spine, so the declarations are the ones each run bound.
 | 4–6 | same, `art_c01cc97cda51` | the re-dispatch's join :48, join-duplicate :45 and leave :55, the same subject | none: the run ended `correction_terminated_plan_defect` | nothing to gate |
 | 7 | `cyc_b6a4ba977d5e`/`run_f75fd232235d`, `art_cb97ab842e38` | join-duplicate `art_7e5cc1371562`:43, `participants` on the response of a 409 | the re-dispatch `art_573e226b8998`, which moved the check to the store row and added `body.error` checks | passes: `absent_there` (the frozen envelope) |
 | 8 | same, `art_490610fa0037`: the retest after a dev repair that revised no slot | the same shell and line | the same re-dispatch | passes: `absent_there` |
-| 9 | `cyc_311e2117c21d`/`run_bffc5ecf5b6d`, `art_50efe3cc7568` | `vc-probe-api-runs` `art_e4438d18dc68`:38, `participants` on store `Run` | the re-dispatch `art_bda2682d33ac`, ten expectations down to four | passes: `absent_there` (`Run` declares no `participants`) |
+| 9 | `cyc_311e2117c21d`/`run_bffc5ecf5b6d`, `art_50efe3cc7568` | `vc-probe-api-runs` `art_e4438d18dc68`:38, `participants` on store `Run` | the re-dispatch `art_bda2682d33ac`, nine expectations down to four | passes: `absent_there` (`Run` declares no `participants`) |
 
 - **So the weakening in `cyc_bb493eb4725b` is refused** on all three slots.
 - **The strengthening (7) and both correct reductions pass:** `cyc_b6a4ba977d5e`'s, on the frozen envelope, and
@@ -435,6 +435,15 @@ spine, so the declarations are the ones each run bound.
 **What is not built.** §13d also asks for "both readings recorded beside the failure". The gate records the failing
 subject and what the declarations say of it. That is the assertion-side reading's evidence, but not the reading that
 the app is wrong. It stays unplaced; the ledger row says so.
+
+**What the gate does not see, by design or for now:**
+- **A matcher loosened on the same subject passes.** That is G4 point 3's blind spot, kept as placed. It is recorded
+  (`matcher_loosened`), not refused.
+- **A target the reader cannot place is never refused.** Examples are `all(TABLES.T).find(…)?.f` and a helper call.
+  When the revision's only assertion naming the field is such a target, the verdict is `subject_unreadable`. So the
+  gate refuses less than §13d forbids, never more.
+- **One reader exists: TypeScript.** Next.js is the only stack that emits shells today. A test requires every
+  shell-emitting stack to register a reader and its declarations, so a new one cannot ship with the gate silently off.
 
 **Who ruled.**
 - **The design:** the MacBook lane's G4 of 2026-10-24 on #2664, approved with the five points above.
