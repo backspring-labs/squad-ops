@@ -8319,9 +8319,9 @@ class TestASlotRepairThatDropsItsFailingSubjectIsSpent:
             envelope.task_id: [
                 "correction attempt 1: the repair dropped a failing slot assertion's subject "
                 "(slot_subject_dropped: slot-vc-probe-api-runs-join: `participants` on store "
-                "table `RunEvent`) — each is declared there; nothing was applied, verified or "
-                "retested. A repair keeps an assertion on that field, and an app that does not "
-                "meet it is dev's to fix"
+                "table `RunEvent`) — the declarations show each field present on that surface; "
+                "nothing was applied, verified or retested. A repair keeps an assertion on that "
+                "field, and an app that does not meet it is dev's to fix"
             ]
         }
         # #1129/#1658/#2521: the terminal reads this round as one whose repair never landed.
@@ -8402,8 +8402,8 @@ class TestASlotRepairThatDropsItsFailingSubjectIsSpent:
             envelope.task_id: [
                 "qa.test attempt 2: its re-authored fill dropped a failing slot assertion's "
                 "subject (slot_subject_dropped: slot-vc-probe-api-runs-join: `participants` on "
-                "store table `RunEvent`) — each is declared there, so the accepted assertion was "
-                "kept"
+                "store table `RunEvent`) — the declarations show each field present on that "
+                "surface, so the accepted assertion was kept"
             ]
         }
         kwargs = executor._correction_runner.run_correction_protocol.await_args.kwargs

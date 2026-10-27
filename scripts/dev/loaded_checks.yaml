@@ -1751,4 +1751,4 @@ checks:
       from squadops.cycles.failure_attribution import Vocabulary, disposition_for
       entry = f"correction attempt 1: {REPAIR_SUBJECT_DROPPED_MARKER} (slot_subject_dropped: slot-x)"
       print(repair_not_applied_in_round([entry], 1), disposition_for(Vocabulary.FAILURE_CLASSIFICATION, "slot_subject_dropped").attribution.value)
-    expect: True producer_output_failure
+    expect: "True producer_output_failure"

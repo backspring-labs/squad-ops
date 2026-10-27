@@ -730,8 +730,13 @@ def prior_slot_failures(
             failures[slot_id] = {"file": str(o["file"]), "slot_id": slot_id, "line": o.get("line")}
     if not failures:
         return {}
+    # Only the shells a failure was observed on: the guard reads each failing slot's accepted
+    # body from its own file, and the rest would ride every re-dispatch for nothing.
+    observed = {f["file"] for f in failures.values()}
     shells = {
-        str(f.get("name")) for f in scaffold_input.get("files") or () if isinstance(f, Mapping)
+        str(f.get("name"))
+        for f in scaffold_input.get("files") or ()
+        if isinstance(f, Mapping) and f.get("name") in observed
     }
     current = [
         {"name": str(a["name"]), "content": str(a.get("content") or "")}

@@ -185,6 +185,17 @@ class TestTheDeclarations:
         """Bug caught: declarations derived for a product with no slots (G4 point 5)."""
         assert slot_subject_surfaces(manifest_for_stack("fullstack_fastapi_react")) == {}
 
+    def test_every_stack_that_emits_shells_has_a_reader_and_declarations(self):
+        """Bug caught: a stack added to the shell emitters without a fill reader or its
+        declarations. `slot_subject_guard` builds no guard for a stack with no reader, so its
+        slots would be revised ungated, and nothing would say so."""
+        from squadops.stacks import verification_scaffold_emission as emission
+
+        emitting = set(emission._EMITTERS)
+        assert emitting  # the check is vacuous with no shell-emitting stack
+        assert set(emission._SLOT_ASSERTION_READERS) == emitting
+        assert set(emission._SLOT_SUBJECT_SURFACES) == emitting
+
 
 # ---------------------------------------------------------------- the gate, at the merge seams
 
@@ -481,6 +492,8 @@ class TestTheRedispatchedQaTest:
         )
         carried = envelope.inputs[PRIOR_SLOT_FAILURES_KEY]
         assert [f["slot_id"] for f in carried["failures"]] == [_JOIN_SLOT]
+        # only the shell the failure was observed on rides the re-dispatch, not every shell
+        assert [f["name"] for f in carried["current_files"]] == [_JOIN]
 
         shape = _ScaffoldFill(QATestHandler(), envelope.inputs)
         shape.split(_fill(_JOIN_SLOT, "    expect(body.participants).toHaveLength(1)"))

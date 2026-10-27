@@ -3626,8 +3626,8 @@ class DispatchedFlowExecutor(FlowExecutionPort):
                 envelope.task_id,
                 f"{envelope.task_type} attempt {envelope.inputs.get('prior_attempts') or 1}: "
                 f"its re-authored fill dropped a failing slot assertion's subject "
-                f"({_subject_dropped_summary(refused_here)}) — each is declared there, so the "
-                "accepted assertion was kept",
+                f"({_subject_dropped_summary(refused_here)}) — the declarations show each field "
+                "present on that surface, so the accepted assertion was kept",
             )
 
         # The DISPATCHED envelope, as the retest hand-off below already passes: the
@@ -3820,8 +3820,9 @@ class DispatchedFlowExecutor(FlowExecutionPort):
                 envelope.task_id,
                 f"correction attempt {attempt}: {REPAIR_SUBJECT_DROPPED_MARKER} ("
                 + _subject_dropped_summary(protocol.repair_subject_dropped)
-                + ") — each is declared there; nothing was applied, verified or retested. A repair "
-                "keeps an assertion on that field, and an app that does not meet it is dev's to fix",
+                + ") — the declarations show each field present on that surface; nothing was "
+                "applied, verified or retested. A repair keeps an assertion on that field, and an "
+                "app that does not meet it is dev's to fix",
             )
             return "continue"
         if correction_path == "abort":
