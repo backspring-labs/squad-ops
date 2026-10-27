@@ -476,35 +476,6 @@ class TestTheRedispatchedQaTest:
             metadata={"role": "qa"},
         )
 
-    def test_the_re_dispatch_is_gated_and_keeps_the_accepted_assertion(self, scaffold):
-        """Entry point: the executor's carry (`_carry_prior_slot_failures`, which block 1 runs
-        on every failed attempt), then the qa handler's fill shape on the envelope it re-
-        dispatches. Bug caught: a re-dispatched qa.test, a fresh emission with no memory,
-        re-fills the failing slot without its assertion and nothing refuses it."""
-        from squadops.capabilities.handlers.cycle.qa_test import QATestHandler, _ScaffoldFill
-        from squadops.execution.dispatched_flow_executor import _carry_prior_slot_failures
-        from squadops.tasks.models import TaskResult
-
-        _shells, outputs = self._failed_result(scaffold)
-        envelope = self._envelope(scaffold)
-        _carry_prior_slot_failures(
-            TaskResult(task_id=envelope.task_id, status="FAILED", outputs=outputs), envelope, None
-        )
-        carried = envelope.inputs[PRIOR_SLOT_FAILURES_KEY]
-        assert [f["slot_id"] for f in carried["failures"]] == [_JOIN_SLOT]
-        # only the shell the failure was observed on rides the re-dispatch, not every shell
-        assert [f["name"] for f in carried["current_files"]] == [_JOIN]
-
-        shape = _ScaffoldFill(QATestHandler(), envelope.inputs)
-        shape.split(_fill(_JOIN_SLOT, "    expect(body.participants).toHaveLength(1)"))
-        evidence_extra: dict = {}
-        artifacts = shape.merge([], evidence_extra)
-
-        join = next(a for a in artifacts if a["name"] == _JOIN)
-        assert "participants[0].name).toBe('Ada')" in join["content"]  # the accepted body kept
-        [refused] = evidence_extra["fill_merge"]["refused"]
-        assert refused["verdict"] == "slot_subject_dropped"
-
     def test_a_result_that_ran_no_suite_keeps_the_carry_and_a_clean_one_clears_it(self, scaffold):
         """Bug caught: an attempt that never ran its suite wiping the failure it was re-
         dispatched for (the gate goes off), or a passing attempt leaving a stale one."""

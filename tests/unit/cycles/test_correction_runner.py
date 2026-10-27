@@ -8349,6 +8349,34 @@ class TestASlotRepairThatDropsItsFailingSubjectIsSpent:
         assert action == "accept_patch"
         executor._try_accept_patch.assert_awaited_once()
 
+    def test_a_re_dispatched_qa_test_is_gated_and_keeps_the_accepted_assertion(self, executor):
+        """Entry: `_carry_facts_to_the_next_attempt`, block 1, which the executor runs on every
+        failed attempt before the task is re-dispatched; then the qa handler's fill shape on the
+        envelope it re-dispatches. Bug caught: a re-dispatched qa.test, a fresh emission with no
+        memory, re-fills the failing slot without its assertion and nothing refuses it, because
+        block 1 never carried the open failure onto the envelope."""
+        from squadops.capabilities.context_assembly import PRIOR_SLOT_FAILURES_KEY
+        from squadops.capabilities.handlers.cycle.qa_test import QATestHandler, _ScaffoldFill
+
+        scaffold = self._scaffold()
+        envelope = self._envelope(scaffold)
+        executor._carry_facts_to_the_next_attempt(self._failed(scaffold), envelope, None)
+
+        carried = envelope.inputs[PRIOR_SLOT_FAILURES_KEY]
+        assert [f["slot_id"] for f in carried["failures"]] == [self._SLOT]
+        # only the shell the failure was observed on rides the re-dispatch, not every shell
+        assert [f["name"] for f in carried["current_files"]] == [self._JOIN]
+
+        shape = _ScaffoldFill(QATestHandler(), envelope.inputs)
+        shape.split(f"```fill:{self._SLOT}\n{self._WEAKENED}\n```\n")
+        evidence_extra: dict = {}
+        artifacts = shape.merge([], evidence_extra)
+
+        join = next(a for a in artifacts if a["name"] == self._JOIN)
+        assert self._NEEDLE in join["content"]  # the accepted body kept
+        [refused] = evidence_extra["fill_merge"]["refused"]
+        assert (refused["slot_id"], refused["verdict"]) == (self._SLOT, "slot_subject_dropped")
+
     async def test_a_re_dispatched_qa_tests_refusal_reaches_the_next_rounds_carry(
         self, executor, cycle
     ):
