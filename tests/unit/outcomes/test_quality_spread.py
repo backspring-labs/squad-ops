@@ -140,3 +140,83 @@ def test_one_re_measure_is_no_spread():
     behind it."""
     with pytest.raises(ValueError, match="two re-measures or more"):
         quality_spread([(_quality(_page()), _lint({}))])
+
+
+# §10y (#2637): S1 reads the finer reading on an unchanged tree. Invented ids and counts.
+
+
+def _finer(axe=("label", "region"), accessibility=("label",), serious=3, app=1.0) -> PageMeasure:
+    scores = {"performance": 0.93, "accessibility": 0.96, "best_practices": 0.78}
+    if accessibility is None:
+        scores["accessibility"] = None
+    return PageMeasure(
+        "/",
+        lighthouse=scores,
+        axe=AXE,
+        axe_nodes={"critical": 0, "serious": serious, "moderate": 2, "minor": 0},
+        failing={
+            "accessibility": accessibility,
+            "best_practices": (),
+            "environment": ("is-on-https", "redirects-http"),
+            "axe": axe,
+        },
+        errored={"accessibility": (), "best_practices": (), "environment": ()},
+        best_practices_app=app,
+    )
+
+
+def _stable(result) -> dict:
+    return {f.measure: f.stable for f in result.failing}
+
+
+def test_s1_reads_each_failing_list_by_set_and_each_count_by_its_spread():
+    """§10y's S1. Bug caught: lists compared by order, so one set listed twice reads as moved;
+    a list that changed in one round read as stable; or nodes and ``best_practices_app`` left
+    out of the spread."""
+    result = quality_spread(
+        [
+            (_quality(_finer(axe=("label", "region"))), None),
+            (_quality(_finer(axe=("region", "label"), serious=4)), None),
+            (_quality(_finer(axe=("label",), app=0.95)), None),
+        ]
+    )
+
+    assert _stable(result) == {
+        "failing:accessibility": True,
+        "failing:axe": False,
+        "failing:best_practices": True,
+        "failing:environment": True,
+    }
+    spreads = _spreads(result)
+    assert spreads[("axe_nodes:serious", "/")] == ((3, 4, 3), 1)
+    assert spreads[("lighthouse:best_practices_app", "/")] == ((1.0, 1.0, 0.95), 0.05)
+
+
+@pytest.mark.parametrize(
+    ("rounds", "stable"),
+    [
+        ((None, None), True),
+        ((None, ("label",)), False),
+        (((), None), False),
+        ((("label", "list"), ("list", "label")), True),
+    ],
+    ids=["null-in-every-round", "null-then-listed", "empty-then-null", "one-set-in-two-orders"],
+)
+def test_a_list_is_compared_as_a_set_and_a_null_list_equals_only_a_null_list(rounds, stable):
+    """§10y's S1. Bug caught: a null list (its category scored null) read as an empty one, so a
+    round where an audit errored reads as stable beside a round that listed nothing; or one set
+    listed in two orders read as a move."""
+    result = quality_spread([(_quality(_finer(accessibility=a)), None) for a in rounds])
+
+    assert _stable(result)["failing:accessibility"] is stable
+
+
+def test_a_page_without_the_finer_reading_in_every_round_is_not_compared():
+    """Bug caught: a round whose page answered an error read as a list of no ids, so S1 holds
+    on a page it never read."""
+    result = quality_spread(
+        [(_quality(_finer()), None), (_quality(_page(error="lighthouse: NO_FCP")), None)]
+    )
+
+    assert result.failing == ()
+    assert ("failing:axe on /", "not scored in every re-measure") in result.not_compared

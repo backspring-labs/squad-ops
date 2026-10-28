@@ -73,14 +73,23 @@ async def campaign_outcomes(
 
 
 def _deltas(read: QualityDeltas) -> dict:
-    """The measures that moved, and what wasn't compared and why; unmoved ones are counted."""
+    """The measures that moved, and what wasn't compared and why; unmoved ones are counted.
+    §10y's failing-id lists, where both trees carry them, as the ids each list introduced and
+    resolved; a section of two trees without them has no key, as before."""
     moved = [d for d in read.deltas if d.delta]
-    return {
+    section = {
         "against_tree": read.against_tree,
         "moved": [[d.measure, d.page, d.before, d.after, d.delta] for d in moved],
         "unmoved": len(read.deltas) - len(moved),
         "not_compared": [list(item) for item in read.not_compared],
     }
+    if read.failing:
+        lists = [f for f in read.failing if f.moved]
+        section["failing_moved"] = [
+            [f.measure, f.page, list(f.introduced), list(f.resolved)] for f in lists
+        ]
+        section["failing_unmoved"] = len(read.failing) - len(lists)
+    return section
 
 
 def _contribution(record: EvaluationRecord, previous: EvaluationRecord | None) -> dict:

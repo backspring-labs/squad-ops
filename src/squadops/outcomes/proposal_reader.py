@@ -5,7 +5,8 @@ What a campaign's increment proposal is shown of the tree it proposes on (§10t 
   evaluation by this campaign: ``passed``, ``failed`` or ``not verified``. A ``blocked_unverified``
   outcome loses its reason, and a ``not_applicable`` goal isn't shown;
 - **each quality measure** against the calibration's reading, averaged over the pages both records
-  measured, since no page's URL is shown. The seeded reading is left out (§10o's S2);
+  measured, since no page's URL is shown. The seeded reading is left out (§10o's S2), and so is
+  §10y's finer reading: only the measures it was shown before ``-7`` (``_SHOWN_MEASURES``);
 - **the PRD as the accepted increments left it:** their ``prd_delta`` folded by section id, in the
   order they were promoted.
 
@@ -58,6 +59,24 @@ _SHOWN = {
 #: The kinds whose promotion accepts an increment, as against the calibration's baseline.
 _INCREMENT_FAMILY = frozenset({CycleKind.INCREMENT, CycleKind.REPAIR, CycleKind.RETRY})
 _SEEDED = "seeded:"
+#: SIP-0113 §10y: the quality measures the proposal is shown, which are those it was shown before
+#: the finer reading (``-7``): Lighthouse's three category scores, axe's rules by impact, and lint.
+#: The finer reading's node counts, failing ids and ``best_practices_app`` are reporting-only.
+#: Whether the proposal ever sees them is the owner's ruling, on their own S1 and S2.
+_SHOWN_MEASURES = frozenset(
+    {
+        "lighthouse:performance",
+        "lighthouse:accessibility",
+        "lighthouse:best_practices",
+        "axe:critical",
+        "axe:serious",
+        "axe:moderate",
+        "axe:minor",
+        "lint:total",
+    }
+)
+#: Lint is shown by rule too (``lint:<rule>``), as it was.
+_SHOWN_FAMILY = "lint:"
 
 
 class StoredProposalEvidence(ProposalEvidencePort):
@@ -177,16 +196,23 @@ class StoredProposalEvidence(ProposalEvidencePort):
         return tuple(AcceptedSection(section_id, text) for section_id, text in sections.items())
 
 
+def _shown(measure: str) -> bool:
+    if measure.startswith(_SEEDED):
+        return False
+    return measure in _SHOWN_MEASURES or measure.startswith(_SHOWN_FAMILY)
+
+
 def _quality_moves(record: EvaluationRecord, baseline: EvaluationRecord) -> tuple[QualityMove, ...]:
     """Each measure the two records both took, averaged over the pages they both measured, by its
-    first appearance. Records that can't be compared show none."""
+    first appearance. Only ``_SHOWN_MEASURES``, and never the seeded reading's. Records that can't
+    be compared show none."""
     try:
         read = quality_deltas(record, baseline, against=Against.BASELINE)
     except NotComparable:
         return ()
     by_measure: dict[str, list[tuple[float, float]]] = defaultdict(list)
     for delta in read.deltas:
-        if not delta.measure.startswith(_SEEDED):
+        if _shown(delta.measure):
             by_measure[delta.measure].append((delta.before, delta.after))
     return tuple(
         QualityMove(

@@ -1688,13 +1688,13 @@ checks:
       print(RefusalKind.GOAL_TEXT_COPIED.value, yaml.safe_load(asset.split("---")[1])["template_id"])
     expect: "goal_text_copied request.proposal_outcome_goals"
   - id: "2677-ledger"
-    what: a campaign's package reads what became of each goal an increment's request named, by id, in package version 5 (SIP-0113 §10t step 5)
+    what: a campaign's package reads what became of each goal an increment's request named, by id, in package version 5 and on (SIP-0113 §10t step 5; #2637 made it 6)
     container: squadops-runtime-api
     code: |
       from squadops.campaigns.evidence import PACKAGE_VERSION
       from squadops.outcomes.named_goals import GoalMove
-      print(PACKAGE_VERSION, [m.value for m in GoalMove])
-    expect: "5 ['moved', 'still failing', 'already passing', 'regressed', 'not verified', 'not evaluated']"
+      print(PACKAGE_VERSION >= 5, [m.value for m in GoalMove])
+    expect: "True ['moved', 'still failing', 'already passing', 'regressed', 'not verified', 'not evaluated']"
   - id: "2578-continuation"
     what: a repair's or a retry's block carries the increment's own keys and its lineage, never a copy of the failed cycle's (#2578 part 1, SIP-0109 §24ca)
     container: squadops-runtime-api
@@ -1753,17 +1753,17 @@ checks:
       print(vocabulary_refusals([{"action": "visit", "path": "/"}, {"action": "visit", "path": "/", "if_enabled": True}], []))
     expect: "[\"step 2: if_enabled is a click's, true or false\"]"
   - id: "2712"
-    what: the runtime launches the evaluator's -6, whose npm lock has no advisory (#2706, #2659, #2469)
+    what: the runtime launches the evaluator's -6 or later, whose npm lock has no advisory (#2706, #2659, #2469); -7 (#2637) keeps -6's lock
     container: squadops-runtime-api
     code: &evaluator_tag_2712 |
       from squadops.sandbox.environment import EVALUATOR_IMAGE
-      print(EVALUATOR_IMAGE.rsplit("-", 1)[-1])
-    expect: "6"
+      print(int(EVALUATOR_IMAGE.rsplit("-", 1)[-1]) >= 6)
+    expect: "True"
   - id: "2712-sandbox"
-    what: the sandbox service names the evaluator's -6
+    what: the sandbox service names the evaluator's -6 or later
     container: squadops-sandbox-service
     code: *evaluator_tag_2712
-    expect: "6"
+    expect: "True"
   - id: "2493"
     what: an agent's service token carries its expiry on the wall clock too, so a host sleep doesn't leave it sending an expired token
     container: squadops-max
@@ -1807,3 +1807,27 @@ checks:
       entry = f"correction attempt 1: {REPAIR_SUBJECT_DROPPED_MARKER} (slot_subject_dropped: slot-x)"
       print(repair_not_applied_in_round([entry], 1), disposition_for(Vocabulary.FAILURE_CLASSIFICATION, "slot_subject_dropped").attribution.value)
     expect: "True producer_output_failure"
+  - id: "2637"
+    what: the sandbox's scenario runner names the evaluator's -7 and refuses a scored page without the finer reading, rather than reading it as zero (SIP-0113 §10y)
+    container: squadops-sandbox-service
+    code: |
+      from squadops.sandbox.environment import EVALUATOR_IMAGE
+      from squadops.scenarios.quality import evaluator_pages
+      page = {"path": "/", "lighthouse": {"performance": 1, "accessibility": 1, "best-practices": 0.78},
+              "axe": {"critical": 0, "serious": 0, "moderate": 0, "minor": 0}, "error": None}
+      try:
+          evaluator_pages({"pages": [page]}, ["/"])
+          refused = "read"
+      except ValueError as e:
+          refused = "refused" if "-7" in str(e) else f"refused otherwise: {e}"
+      print(EVALUATOR_IMAGE.rsplit("-", 1)[-1], refused)
+    expect: "7 refused"
+  - id: "2637-runtime"
+    what: the runtime compares failing ids as introduced and resolved, and the proposal is shown only the measures it was shown before -7 (SIP-0113 §10y)
+    container: squadops-runtime-api
+    code: |
+      from squadops.outcomes.proposal_reader import _shown
+      from squadops.outcomes.quality_deltas import FailingDelta
+      moved = FailingDelta("failing:axe", "/", ("region",), ("label", "region"))
+      print(moved.introduced, moved.resolved, _shown("axe:serious"), _shown("axe_nodes:serious"), _shown("lighthouse:best_practices_app"))
+    expect: "('label',) () True False False"

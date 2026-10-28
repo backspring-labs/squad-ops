@@ -173,3 +173,135 @@ async def test_record_refuses_a_re_measure_of_a_tree_the_cycle_didnt_evaluate(id
             store, _Cycle(), identity or "b" * 64, "p", [(None, None, None)], datetime.now(UTC)
         )
     assert await store.remeasures_for_cycle("cyc_c1inc1") == []
+
+
+# §10y (#2637): the positive control, `--fault`, and S1's failing-id spreads. Invented tree.
+
+_TREE = {
+    "frontend/src/Detail.jsx": b"<main><h1>Orchard</h1><p>Rows</p></main>",
+    "backend/main.py": b"app = 1\n",
+}
+_FAULT = {
+    "diagnostic": "two unlabelled images on the detail page",
+    "edits": [
+        {
+            "path": "frontend/src/Detail.jsx",
+            "old": "<p>Rows</p>",
+            "new": '<p>Rows</p><img src="a.png"><img src="b.png">',
+        }
+    ],
+}
+
+
+class _Runner:
+    """The scenario runner's call, answering a -7 reading by the tree it was sent: two
+    ``image-alt`` nodes more where the tree carries the fault's images."""
+
+    def __init__(self) -> None:
+        self.sent: list[str] = []
+
+    async def evaluate_tree(self, **call):
+        from squadops.scenarios.quality import PageMeasure, QualityReading, QualityStatus
+        from squadops.scenarios.runner import TreeEvaluation
+
+        faulted = b"<img" in call["tree"]["frontend/src/Detail.jsx"]
+        self.sent.append(call["tree_identity"])
+        page = PageMeasure(
+            "/runs/{id}#full",
+            {"performance": 0.97, "accessibility": 0.9 if faulted else 1, "best_practices": 0.78},
+            {"critical": 1 if faulted else 0, "serious": 0, "moderate": 1, "minor": 0},
+            axe_nodes={"critical": 2 if faulted else 0, "serious": 0, "moderate": 1, "minor": 0},
+            failing={
+                "accessibility": ("image-alt",) if faulted else (),
+                "best_practices": (),
+                "environment": ("is-on-https", "redirects-http"),
+                "axe": ("image-alt", "region") if faulted else ("region",),
+            },
+            errored={"accessibility": (), "best_practices": (), "environment": ()},
+            best_practices_app=1,
+        )
+        seeded = QualityReading(
+            QualityStatus.MEASURED, pages=(page,), evaluator="e-7", seed={"version": "s:v1"}
+        )
+        return TreeEvaluation(call["tree_identity"], True, quality_seeded=seeded)
+
+
+async def test_the_fault_is_measured_through_the_runners_call_beside_the_tree_it_was_made_from():
+    """§10y's positive control, entered where ``main`` calls it. Bug caught: the edits applied
+    after the runner was called, so the faulted rounds measure the unchanged tree; round n read
+    against another round; the faulted tree filed under its source's identity; or the rise read
+    from the rule count, which one rule's two images move by one."""
+    from squadops.campaigns.evaluator_trees import FileTree
+
+    runner = _Runner()
+    made_from = FileTree.of(_TREE).identity
+    faulted = FileTree.of(_load().faulted_tree(_TREE, _FAULT["edits"])).identity
+
+    doc, readings, started = await _load().readings_of(
+        runner, _TREE, stack="s", pages=(), planned=None, plan=object(), times=2, fault=_FAULT
+    )
+
+    assert runner.sent == [made_from, faulted, made_from, faulted]
+    assert (doc["tree_identity"], doc["diagnostic"]) == (
+        faulted,
+        {
+            "what": _FAULT["diagnostic"],
+            "made_from": made_from,
+            "edited": ["frontend/src/Detail.jsx"],
+        },
+    )
+    assert started and len(readings) == len(doc["fault_deltas"]) == 2
+    for round_ in doc["fault_deltas"]:
+        moved = {(d[0], d[1]): d[4] for d in round_["deltas"] if d[4]}
+        assert moved == {
+            ("seeded:lighthouse:accessibility", "/runs/{id}#full"): -0.1,
+            ("seeded:axe:critical", "/runs/{id}#full"): 1,
+            ("seeded:axe_nodes:critical", "/runs/{id}#full"): 2,
+        }
+        assert [f for f in round_["failing"] if f[2] or f[3]] == [
+            ["seeded:failing:accessibility", "/runs/{id}#full", ["image-alt"], []],
+            ["seeded:failing:axe", "/runs/{id}#full", ["image-alt"], []],
+        ]
+    assert {f["measure"]: f["stable"] for f in doc["seeded_failing_spreads"]} == {
+        "failing:accessibility": True,
+        "failing:axe": True,
+        "failing:best_practices": True,
+        "failing:environment": True,
+    }
+
+
+@pytest.mark.parametrize(
+    ("edit", "why"),
+    [
+        ({"path": "frontend/src/Missing.jsx", "old": "x"}, "isn't in the tree"),
+        ({"path": "backend/main.py", "old": "nowhere"}, "occurs 0 times"),
+        ({"path": "frontend/src/Detail.jsx", "old": "<"}, "occurs 6 times"),
+    ],
+    ids=["no-such-file", "text-absent", "text-not-unique"],
+)
+async def test_a_fault_that_doesnt_apply_is_refused_before_the_runner_is_called(edit, why):
+    """Bug caught: an edit that matched nothing measured as a fault, so the control reads no rise
+    and passes for the measure's blindness; or one that matched twice, so its count is wrong."""
+    runner = _Runner()
+
+    with pytest.raises(ValueError, match=why):
+        await _load().readings_of(
+            runner,
+            _TREE,
+            stack="s",
+            pages=(),
+            planned=None,
+            plan=None,
+            times=2,
+            fault={"diagnostic": "d", "edits": [edit]},
+        )
+    assert runner.sent == []
+
+
+async def test_a_fault_is_never_recorded_and_nothing_opens(opened):
+    """§10y: a diagnostic, never a reading. Bug caught: a faulted reading filed as a re-measure
+    of the cycle's evaluation, where it joins the series S1 reads."""
+    with pytest.raises(ValueError, match="never a reading"):
+        await _load().main("cyc_000000000000", 3, "2.5, finer", _FAULT)
+
+    assert opened == {}

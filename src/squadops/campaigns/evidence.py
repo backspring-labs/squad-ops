@@ -30,7 +30,9 @@ from squadops.campaigns.scorecard import scorecard_lines
 #: 2: each cycle carries its runs' revision forms (#1710).
 #: 3: and its runs' lint readings, evidence only (#1937).
 #: 5: an increment's outcome section reads the goals its change request named (SIP-0113 §4.5).
-PACKAGE_VERSION = 5
+#: 6: its quality deltas carry §10y's failing ids, introduced and resolved, where both trees were
+#:    read by the evaluator's ``-7`` or later (``failing_moved``); its pages, the finer reading.
+PACKAGE_VERSION = 6
 
 #: The size bound (#1710: "bounded, so a frontier triage of one night fits a metered model
 #: budget"). A package holds records only, never logs or prompts, so it grows only with the cycles
@@ -357,7 +359,27 @@ def _measure_line(quality: dict | None) -> str:
     if quality["status"] != _measured():
         return f"{quality['status']} ({quality.get('reason') or 'no reason'})"
     scored = [p for p in quality["pages"] if not p.get("error")]
-    return f"measured on {len(scored)} of {len(quality['pages'])} pages"
+    told = f"measured on {len(scored)} of {len(quality['pages'])} pages"
+    finer = [p for p in scored if p.get("axe_nodes") is not None]
+    if not finer:
+        return told
+    # SIP-0113 §10y, reporting-only: Lighthouse's raw best practices, read with the sandbox's
+    # plain HTTP, beside the app's own, without the environment's audits.
+    raw = [p["lighthouse"].get("best_practices") for p in finer]
+    app = [p.get("best_practices_app") for p in finer]
+    return (
+        f"{told}; best practices raw {_range(raw)}, the app's without the environment's audits "
+        f"{_range(app)}"
+    )
+
+
+def _range(values: list) -> str:
+    known = [v for v in values if v is not None]
+    if not known:
+        return "not read"
+    low, high = min(known), max(known)
+    told = f"{low:g}" if low == high else f"{low:g} to {high:g}"
+    return told + (f" ({len(values) - len(known)} not read)" if len(known) < len(values) else "")
 
 
 def _lint_line(lint: dict | None) -> str:
@@ -378,6 +400,12 @@ def _moves_line(deltas: dict) -> str:
     moves = [
         f"{measure}{f' on {page}' if page else ''} {delta:+g}"
         for measure, page, _before, _after, delta in deltas["moved"]
+    ]
+    # SIP-0113 §10y: each failing-id list that moved, by the ids introduced (+) and resolved (-).
+    moves += [
+        f"{measure} on {page} "
+        + " ".join([*(f"+{i}" for i in introduced), *(f"-{i}" for i in resolved)])
+        for measure, page, introduced, resolved in deltas.get("failing_moved", ())
     ]
     gaps = [f"{what}: {why}" for what, why in deltas["not_compared"]]
     told = "; ".join(moves) or f"nothing moved ({deltas['unmoved']} compared)"

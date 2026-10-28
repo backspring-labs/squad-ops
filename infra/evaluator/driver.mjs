@@ -1,8 +1,10 @@
 // SIP-0113's evaluator (A2, #2416). Reads one request on stdin, writes one result on stdout.
 // Pages:
 //   in:  {"base_url": "http://app:8000", "pages": ["/", "/runs/new"]}
-//   out: {"pages": [{"path": "/", "lighthouse": {"performance": 0.98, ...}, "axe": {"critical": 0, ...}}]}
-// A page that can't be measured carries its error, and is never scored.
+//   out: {"pages": [{"path": "/", "lighthouse": {"performance": 0.98, ...}, "axe": {"critical": 0, ...},
+//                    "axe_nodes": {...}, "failing": {...}, "errored": {...}, "best_practices_app": 1, ...}]}
+// A page that can't be measured carries its error, and is never scored. What a scored page carries
+// is page_reading.mjs's: from `-7`, §10y's finer reading beside the scores and rule counts.
 // Lint (#1937's tools, rules and ESLint runner, all sent by the runner, so they have one source):
 //   in:  {"lint": {"files": {"backend/main.py": "..."}, "ruff_args": ["check", ...], "eslint_runner": "..."}}
 //   out: {"lint": {"root": "/tmp/lint-…", "ruff": {"version": "ruff 0.16.6", "exit": 0, "stdout": "[…]", "stderr": ""},
@@ -29,10 +31,8 @@ import lighthouse from "lighthouse";
 import puppeteer from "puppeteer-core";
 import { AxePuppeteer } from "@axe-core/puppeteer";
 import { runSegment } from "./browser.mjs";
+import { CATEGORIES, pageReading } from "./page_reading.mjs";
 import { PuppeteerPage } from "./puppeteer_page.mjs";
-
-const IMPACTS = ["critical", "serious", "moderate", "minor"];
-const CATEGORIES = ["performance", "accessibility", "best-practices"];
 
 async function readStdin() {
   const chunks = [];
@@ -51,8 +51,6 @@ async function measure(browser, base, route) {
       return { path: route, lighthouse: null, axe: null, error: `answered ${status}` };
     }
     const axe = await new AxePuppeteer(page).analyze();
-    const byImpact = Object.fromEntries(IMPACTS.map((i) => [i, 0]));
-    for (const v of axe.violations) byImpact[v.impact ?? "minor"] += 1;
     const port = new URL(browser.wsEndpoint()).port;
     const run = await lighthouse(url, { port: Number(port), output: "json", logLevel: "error" }, {
       extends: "lighthouse:default",
@@ -64,10 +62,7 @@ async function measure(browser, base, route) {
       // would be an empty document's.
       return { path: route, lighthouse: null, axe: null, error: `lighthouse: ${failed?.code ?? "no result"}` };
     }
-    const scores = Object.fromEntries(
-      CATEGORIES.map((c) => [c, run.lhr.categories?.[c]?.score ?? null]),
-    );
-    return { path: route, lighthouse: scores, axe: byImpact, error: null };
+    return pageReading(route, axe, run.lhr);
   } catch (err) {
     return { path: route, lighthouse: null, axe: null, error: String(err?.message ?? err).slice(0, 500) };
   } finally {

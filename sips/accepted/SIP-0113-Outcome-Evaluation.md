@@ -72,7 +72,7 @@ contracts (its §8.2). §4.8 says what this SIP produces and reads at each.
 >   revision's design (§4.1, §4.8).
 > - **No conflict.**
 
-## Delivery ledger (current as of 2026-10-23)
+## Delivery ledger (current as of 2026-10-28)
 
 One row per part that ships separately. Statuses as CLAUDE.md defines them. The 2.4 plan places phase 1 in 2.4
 (committed) and phase 2 in 2.4 conditionally. **Phase 1's parts are placed** with the issues filed at acceptance
@@ -98,7 +98,7 @@ contribution separates from acceptance.
 | phase 2: the objective's scenario measure, read by SIP-0109 §10 row 3, as a SIP-0109 amendment (§4.7) | **unplaced**, held by D4 (§10s) until a reading shows contribution separating from acceptance (prediction 3 was falsified as written at the window's close) | the next even release at the earliest, on that reading |
 | quality gates where phase 1's data supports a threshold (§4.2, §6) | **unplaced** | with §4.7, each with its phase-1 evidence (§10s) |
 | phase 1 amendment: Lighthouse and axe on a seeded instance, parameterised pages included (§10j; reviewed in §10n) | **shipped** (§10n, §10o): a second instance of each evaluated tree, seeded through its own API and measured on every page the seed names, and the window's 20 trees re-measured as their own series. S1 **holds**, S2 **falsified** (§10o) | 2.4.0, PRs #2632, #2633, #2634 and #2635, issue #2562 |
-| phase 1 amendment: a finer quality reading, axe by element, failing audits by id, the HTTPS audits read as the environment's (§10o, proposed; its design review before it is built) | **placed** | 2.5.0, #2637 |
+| phase 1 amendment: a finer quality reading, axe by element, failing audits by id, the HTTPS audits read as the environment's (§10o; designed, reviewed and approved in §10y) | **placed**: §10y's built list is built as the evaluator's `…-eslint10.12-7` in PR #2762, with `remeasure_quality.py --fault` for its positive control. What remains is the pre-registered series (S1, S2a, S2b, E and the positive control) on a deploy carrying `-7`, read per measure | 2.5.0, #2637 |
 | a repository-backed Project's Campaign: its baseline reading, an evaluation of the calibration record's commit (§10l; SIP-0112 H.4, SIP-0109 §24bv) | **placed** | 2.5.0, #2619 |
 
 **What closes this SIP:** phase 1 shipped and phase 2 shipped, or phase 2 dropped by a numbered amendment the owner

@@ -231,6 +231,71 @@ async def test_a_not_measured_side_is_named_not_moved(store):
     ]
 
 
+def _finer(serious: int, axe: tuple[str, ...]) -> QualityReading:
+    """§10y: a -7 page with its finer reading. Invented counts and ids."""
+    [page] = _quality(0.93).pages
+    finer = dataclasses.replace(
+        page,
+        axe_nodes={"critical": 0, "serious": serious, "moderate": 2, "minor": 0},
+        failing={
+            "accessibility": (),
+            "best_practices": (),
+            "environment": ("is-on-https", "redirects-http"),
+            "axe": axe,
+        },
+        errored={"accessibility": (), "best_practices": (), "environment": ()},
+        best_practices_app=1.0,
+    )
+    return QualityReading(QualityStatus.MEASURED, pages=(finer,), evaluator=TAG)
+
+
+async def test_the_finer_reading_moves_beside_todays_measures_and_an_older_section_keeps_its_shape(
+    store,
+):
+    """§10y, reporting-only. Bug caught: the failing ids left out of the package, so no reader
+    sees which rule an increment introduced; or a section of two trees read before -7 gaining
+    keys, so a package rebuilt from them changes shape."""
+    for record in (
+        _record("cyc_cal", CAL, None, ScenarioResult.PASSED, quality=_finer(0, ("region",))),
+        _record(
+            "cyc_inc1",
+            INC1,
+            CAL,
+            ScenarioResult.PASSED,
+            quality=_finer(2, ("color-contrast", "region")),
+        ),
+        _record("cyc_inc2", INC2, INC1, ScenarioResult.PASSED),
+    ):
+        await store.save_evaluation(record)
+
+    _, inc1, inc2 = (
+        await campaign_outcomes(store, CID, ["cyc_cal", "cyc_inc1", "cyc_inc2"], named_goals={})
+    )["cycles"]
+
+    assert inc1["vs_previous"]["moved"] == [["axe_nodes:serious", "/", 0, 2, 2]]
+    assert inc1["vs_previous"]["failing_moved"] == [["failing:axe", "/", ["color-contrast"], []]]
+    assert inc1["vs_previous"]["failing_unmoved"] == 3
+    assert inc1["quality"]["pages"][0]["best_practices_app"] == 1.0
+    # Read before -7 against a -7 reading: the same evaluator tag here, so only the finer
+    # reading's absence on one side is named.
+    assert "failing_moved" not in inc2["vs_previous"]
+    assert ["page /", "the finer reading on one tree only"] in inc2["vs_previous"]["not_compared"]
+
+    from squadops.campaigns.evidence import _outcome_lines
+
+    lines = _outcome_lines({"suite_digest": SUITE.digest, "cycles": [inc1, inc2]})
+    assert (
+        "  - quality: measured on 1 of 1 pages; best practices raw 0.78, the app's without the "
+        "environment's audits 1; lint: 10 findings"
+    ) in lines
+    assert (
+        "  - against the tree it built on: axe_nodes:serious on / +2; failing:axe on / "
+        "+color-contrast"
+    ) in lines
+    # A page read before -7 says what it said before.
+    assert "  - quality: measured on 1 of 1 pages; lint: 10 findings" in lines
+
+
 async def test_a_cycle_says_how_many_of_its_page_scenarios_found_no_control(store):
     """SIP-0113 §10p ruling 4 (#2564 step 5): ``control_absent`` is unverified, never failed, so a
     page scenario whose names match no delivery would hide a job. The package and the digest say

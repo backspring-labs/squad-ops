@@ -205,7 +205,7 @@ async def test_the_package_carries_each_runs_lint_reading_from_its_persisted_sum
     assert after["cycles"][0]["lint_findings"] == [
         {"run_id": "run_impl", "workload_type": "implementation", "findings": found}
     ]
-    assert after["package_version"] == 5
+    assert after["package_version"] == 6
 
 
 async def test_the_digest_says_how_the_campaign_ended_and_what_failed(closed):
@@ -447,7 +447,7 @@ async def test_the_package_and_digest_carry_the_campaigns_outcome_readings(close
     doc = json.loads(vault.stored[package_id][1])
     text = vault.stored[digest_id][1].decode()
     [cal] = doc["outcomes"]["cycles"]
-    assert (doc["package_version"], cal["contribution"]["reading"]) == (5, "contributed")
+    assert (doc["package_version"], cal["contribution"]["reading"]) == (6, "contributed")
     assert "- `cyc_cal`: **contributed**; 1 passed" in text
     assert "  - newly passing: capacity" in text
     assert GOAL not in vault.stored[package_id][1].decode() and GOAL not in text
