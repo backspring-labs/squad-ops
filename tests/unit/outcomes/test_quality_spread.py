@@ -194,12 +194,18 @@ def test_s1_reads_each_failing_list_by_set_and_each_count_by_its_spread():
 
 @pytest.mark.parametrize(
     ("rounds", "stable"),
-    [((None, None), True), ((None, ("label",)), False), (((), None), False)],
-    ids=["null-in-every-round", "null-then-listed", "empty-then-null"],
+    [
+        ((None, None), True),
+        ((None, ("label",)), False),
+        (((), None), False),
+        ((("label", "list"), ("list", "label")), True),
+    ],
+    ids=["null-in-every-round", "null-then-listed", "empty-then-null", "one-set-in-two-orders"],
 )
-def test_a_null_list_is_equal_only_to_a_null_list(rounds, stable):
+def test_a_list_is_compared_as_a_set_and_a_null_list_equals_only_a_null_list(rounds, stable):
     """§10y's S1. Bug caught: a null list (its category scored null) read as an empty one, so a
-    round where an audit errored reads as stable beside a round that listed nothing."""
+    round where an audit errored reads as stable beside a round that listed nothing; or one set
+    listed in two orders read as a move."""
     result = quality_spread([(_quality(_finer(accessibility=a)), None) for a in rounds])
 
     assert _stable(result)["failing:accessibility"] is stable
