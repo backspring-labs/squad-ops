@@ -86,7 +86,7 @@ contribution separates from acceptance.
 | phase 0: reporting-only lint findings on the delivered app (#1937) | **shipped** | v2.1.0, PR #2088 |
 | phase 1: the scenario store, its suites and the campaign's suite pin (§4.1, §4.7) | **shipped** (§10a) | 2.4.0, PR #2448, issue #2413 |
 | phase 1: the runner, outside the squad's containers, on a disposable copy, and each campaign cycle evaluated at its end (§4.1, §10c) | **shipped** | 2.4.0, PRs #2450 (X-3b's start) and #2472 (the cycle-end hook) |
-| phase 1: the declared start at the cycle-end hook, read from a repository-backed Project's Development Configuration (§4.1, contract 7; §10l) | **placed**, re-placed from 2.4 on 2026-10-21: its only consumer is a Campaign on such a Project, which SIP-0112 H.4 places in 2.5 (#2619). The browser runner moved to #2564 (§10k) | 2.5.0, #2414 |
+| phase 1: the declared start at the cycle-end hook, read from a repository-backed Project's Development Configuration (§4.1, contract 7; §10l), on the commit the cycle's delivery captured (§10aa) | **shipped** (§10aa): started by the reading SIP-0109 §24co renders routes with. The browser runner moved to #2564 (§10k) | 2.5.0, PR #2778, closes #2414 |
 | phase 1: the browser runner and page scenarios, in the evaluator's image (§4.1, A2, A3; §10k, reviewed in §10p: eight steps, revision 5's page scenarios approved by the supervisor under the owner's delegation) | **shipped** (§10p, §10q, §10r): built in eight PRs; revision 5 approved; B1 and B2 **hold**, and B3 is **falsified as written** by one public value, not a leak (§10r) | 2.4.0, PRs #2646, #2647, #2651, #2652, #2653, #2655, #2656 and #2657, issue #2564 |
 | phase 1: the evaluator's next tag. Its base and Chromium are pinned so a tag names one image (#2583), and it carries ruling 5's measured bound of 5 s (§10r) | **shipped**: `…-eslint10.12-5`. The base is pinned by index digest and Debian's archives by a dated snapshot, and its 260 packages are `-4`'s exactly | 2.4.0, PR #2661, issue #2583 |
 | phase 1 amendment: a click that is skipped when its control is unavailable, so a page scenario can read an outcome a delivery builds in either form (§10r; #2659) | **shipped** in the evaluator's `-6` (§10x); this row read unplaced until 2026-10-28 | 2.5.0, PR #2717, issue #2659 |
@@ -2368,3 +2368,68 @@ changed page, or node counts once an app has landmarks) is worth a design; and #
 
 **Who ruled.** The supervisor read the pre-registered predictions, under the owner's rulings of 2026-10-28, which
 approved §10y's design and its series. No prediction was changed after a reading existed.
+
+### 10aa. #2414's remainder as built: a repository-backed campaign cycle is evaluated at its end on its capture, started from the Project's own declaration (2026-10-28, §4.1, §10c, §10l; SIP-0112 contract 7, E.4.3, H.9; SIP-0109 §24co; #2414; the supervisor's build, for the owner)
+
+**Why.** The cycle-end hook (§10c, #2472) started a sample application's cycle by its stack and read every other
+Project's applicable scenarios as `no_start_declaration`, since it didn't read the Development Configuration yet. Its
+tree was also read from the vault. For a repository-backed cycle, the vault holds only the squad's changes, so the
+record named a tree that wasn't the product's. §10l has each increment of such a Campaign evaluated at its cycle's end,
+started from its declaration. #2414 kept the declared start at the hook (its comment of 2026-10-20). This builds it.
+
+**What was built, and each choice the text left.**
+1. **Which tree: the commit the cycle's delivery captured** (SIP-0112 E.4.3), from the CAPTURED source mapping
+   recorded for the cycle (the last, when a run delivered twice). It's read whole from the managed clone, with its
+   executable bits, and checked against the tree identity the capture recorded (contract 4). A mismatch writes no
+   record, and is logged. A cycle that captured nothing delivered nothing, and writes no record, as a sample
+   application's cycle with no delivered tree doesn't.
+2. **How it starts: by `runner.configured_start`**, the Development Configuration's start at the revision the cycle
+   pinned. It's the reading SIP-0109 §24co renders an increment's routes with, so the two never start a product
+   differently. The surfaces it serves are its entry points' (`declared_surfaces`). A scenario whose surface kind the
+   Project lacks is not applicable, as §4.1 rules.
+3. **What a declaration that can't run reads:** every applicable scenario is `blocked_unverified` with contract 7's
+   reason, and nothing is started:
+   - no declaration: `no_start_declaration`;
+   - a declared evaluation secret: `secret_not_available` (Q40). Nothing is resolved before the owner's approval record
+     (SIP-0102's X-3b remainder, #2421, placed in 2.6);
+   - readiness `command`: `no_runner`.
+
+   With no declaration at all, every scenario is applicable, so each reads its reason, never not applicable (§10l).
+4. **Its previous tree: the head it was pinned at** (contract 1's `pinned_commit`, H.9: the campaign branch's head
+   for an increment). It's named by its tree identity, never by its commit (§4.1).
+5. **What it doesn't change:** a sample application's cycle, its stack's start and its vault tree; lint, still
+   `not_a_scaffold_stack` off a scaffold stack; and phase 1's reporting-only rule.
+
+**Not built here:**
+- §10l's baseline reading, an evaluation of the calibration record's commit when the record is written (its own
+  ledger row, #2619);
+- §10l's lint by a blueprint's rule set on a greenfield product made from one;
+- the approved secrets' resolution (#2421).
+
+**Evidence.**
+- **The wiring, entered at the live caller:** `tests/unit/scenarios/test_campaign_cycles_declared_start.py` enters at
+  `CampaignProgress.cycle_ended`. It runs on the shared fixture's Tally, with a real managed clone and an increment
+  delivered for real (verified and captured), and covers:
+  - the capture evaluated whole under its own identity, started by Tally's declared build and start at revision 1, its
+    previous tree the pinned head's, its HTTP scenario run and its page scenario not applicable;
+  - Tally's own recorded secret, and no declaration, each blocking every applicable scenario with its reason;
+  - a cycle whose capture is another cycle's, and a capture whose tree isn't the recorded one, each writing no record;
+  - an invented tree's executable bits reaching the runner;
+  - the runtime root handing the evaluator the registry and the clone.
+- **Mutants:** eleven, all caught:
+  - the product path skipped;
+  - the vault's tree used;
+  - the previous tree dropped;
+  - an unrunnable declaration ignored;
+  - the identity check dropped;
+  - another cycle's capture taken;
+  - the surfaces not read;
+  - the executable bits dropped;
+  - a secret started without;
+  - the start's revision dropped;
+  - the root wiring no registry.
+- **The loaded check** `2414-declared-start-at-cycle-end` (the runtime), run on the source.
+
+**Who ruled.** The supervisor (the Spark lane) built #2414's remainder under the owner's direction of 2026-10-21 and
+the 2.5 grants, for the owner's review. It reads contract 7 and writes contract 5's record, unchanged in shape, so it
+takes the outside review SIP-0112 H.12 provides before the merge, with SIP-0109 §24co's.

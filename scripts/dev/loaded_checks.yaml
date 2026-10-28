@@ -2040,3 +2040,14 @@ checks:
       from squadops.capabilities.handlers.route_rendering import view_anchors
       print(sorted(view_anchors('<p data-testid="shown"></p><form data-testid="a" hidden=""></form><div style="display: none"><b data-testid="b"></b></div><div aria-hidden="true"><i data-testid="c"></i></div>')))
     expect: "['shown']"
+  - id: "2414-declared-start-at-cycle-end"
+    what: a repository-backed campaign cycle is evaluated at its end on its capture, started from the Project's own declaration, and a declared secret blocks it (SIP-0113 §10aa, #2414)
+    container: squadops-runtime-api
+    code: |
+      import inspect
+      from squadops.scenarios.campaign_cycles import CampaignCycleEvaluator
+      from squadops.scenarios.evaluate import evaluate_cycle
+      from squadops.scenarios.runner import SecretUnavailable
+      p = inspect.signature(CampaignCycleEvaluator.__init__).parameters
+      print("projects" in p, "repository" in p, "tree" in inspect.signature(evaluate_cycle).parameters, SecretUnavailable.reason.value)
+    expect: "True True True secret_not_available"
