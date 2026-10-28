@@ -21,6 +21,8 @@ from adapters.cycles.postgres_campaign_registry import PostgresCampaignRegistry
 from adapters.cycles.postgres_cycle_registry import PostgresCycleRegistry
 from adapters.persistence.pool import create_pool
 from adapters.persistence.transient import TransientRetry
+from squadops.campaigns.branch_rebase import RebasedHead, rebase_transition
+from squadops.campaigns.campaign_branch import BranchBase, CampaignHead
 from squadops.campaigns.gate import ruling_transition, submission
 from squadops.campaigns.launcher import CampaignLauncher
 from squadops.campaigns.models import (
@@ -38,6 +40,7 @@ from squadops.campaigns.models import (
     SubmittedProposal,
 )
 from squadops.cycles.models import GateDecisionValue
+from squadops.projects.models import Rebased
 from tests.integration.conftest import integration_postgres_dsn
 from tests.unit.campaigns.builders import campaign, cycle_for, move, quiet_box
 
@@ -680,3 +683,71 @@ async def test_a_page_of_campaigns_is_newest_first_on_postgres(pool):
         "cmp_pgold0000001",
     ]
     assert [c.campaign_id for c in page] == ["cmp_pgmid0000002"]
+
+
+def _rebase(current, intent, *, base: str, onto: str, revision: int):
+    """§24bv point 4's row, as ``BranchRebase`` writes it: a head the reconciled commit itself."""
+    return rebase_transition(
+        current,
+        intent,
+        base=BranchBase(base, revision - 1),
+        before=CampaignHead(current.accepted.commit, current.accepted.identity, None),
+        onto=BranchBase(onto, revision),
+        made=RebasedHead(Rebased(onto, (), ()), f"sha-{onto[:4]}", None, "inherited"),
+        frozen_unrun=[],
+        launch=LaunchRequest(CycleKind.INCREMENT, {"p": revision}),
+        unbuilt=None,
+        actor="campaign-launcher",
+    )
+
+
+async def test_a_rebase_supersedes_its_repair_and_writes_its_proposal_in_one_transaction(
+    campaigns,
+):
+    """§24cd point 2, migration 2000: ``branch_rebased`` and ``superseded`` are in the schema,
+    and the rebase's row, the accepted tree, the repair's supersession and the fresh proposal
+    commit together. A second rebase naming the same repair is refused and recorded. Bugs caught:
+    a CHECK list without the new values, so the first rebase on a deploy fails its own row and
+    the campaign launches on the old head; the supersession written outside the transaction, so
+    a crash leaves the repair pending beside the proposal; a superseded repair superseded
+    again."""
+    record = AcceptedTree("sha-rec", calibration_record_id="calrec_0123456789ab", commit="a" * 40)
+    await campaigns.transition(
+        CID, move(S.CALIBRATING, "k-promote", operation=ControlOperation.PROMOTE, accepted=record)
+    )
+    await campaigns.transition(CID, move(S.ESCALATED, "k-hold"))
+    repair = await campaigns.transition(
+        CID,
+        move(
+            S.REPAIRING,
+            "k-repair",
+            operation=ControlOperation.RESUME,
+            launch=LaunchRequest(CycleKind.REPAIR, {"p": 1}),
+        ),
+    )
+    current = await campaigns.get_campaign(CID)
+
+    rebased = await campaigns.transition(
+        CID, _rebase(current, repair.intent, base="a" * 40, onto="b" * 40, revision=2)
+    )
+    with pytest.raises(ControlOperationRefused) as again:
+        await campaigns.transition(
+            CID,
+            _rebase(rebased.campaign, repair.intent, base="b" * 40, onto="c" * 40, revision=3),
+        )
+
+    intents = {i.launch_id: i for i in await campaigns.launch_intents(CID)}
+    stored = await campaigns.get_campaign(CID)
+    assert rebased.entry.operation is ControlOperation.BRANCH_REBASED
+    assert intents[repair.intent.launch_id].state is LaunchIntentState.SUPERSEDED
+    assert intents[rebased.intent.launch_id].state is LaunchIntentState.PENDING
+    assert [i.launch_id for i in await campaigns.pending_launch_intents()] == [
+        rebased.intent.launch_id
+    ]
+    assert (stored.state, stored.accepted.commit, stored.accepted.identity) == (
+        S.AT_PROPOSAL,
+        "b" * 40,
+        "sha-bbbb",
+    )
+    assert again.value.entry.refusal is RefusalReason.STALE_STATE
+    assert (await campaigns.control_log(CID))[-1].outcome is ControlOutcome.REFUSED

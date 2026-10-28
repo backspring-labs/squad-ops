@@ -272,3 +272,29 @@ def test_one_unread_guarantee_is_never_read_as_all_intact():
     assert (
         all_intact(safety_guarantees(_doc([r for r in GOOD if r["operation"] != "rule"]))) is False
     )
+
+
+REBASED_TREE = "c" * 64
+
+
+@pytest.mark.parametrize(
+    ("ruled_on", "status"),
+    [(REBASED_TREE, H), (CAL_TREE, V)],
+    ids=["ruled-on-the-rebased-tree", "ruled-on-the-tree-the-rebase-replaced"],
+)
+def test_a_rebase_moves_the_accepted_tree_a_ruling_must_bind_to(ruled_on, status):
+    """SIP-0109 §24bv point 4: a branch's rebase moves the accepted tree as a promotion does, so
+    the proposal after it is ruled on the rebased tree. Bugs caught: a ruling on the rebased tree
+    read as stale (every increment after upstream moves reads violated); or one on the tree the
+    rebase replaced read as bound."""
+    rows = [
+        _row(1, "mark_launched", {"cycle_id": "cyc_cal"}, launch_id="lnc_1"),
+        _promote(2, "cyc_cal", CAL_TREE),
+        _row(3, "branch_rebased", {"identity": REBASED_TREE, "commit": "d" * 40}),
+        _row(4, "mark_launched", {"cycle_id": "cyc_inc"}, launch_id="lnc_2"),
+        _submit(5, 1),
+        _rule(6, 1, tree=ruled_on),
+        _promote(7, "cyc_inc", INC_TREE),
+    ]
+
+    assert build_bound_to_ruling(_doc(rows)).status is status
