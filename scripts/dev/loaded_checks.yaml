@@ -2026,3 +2026,10 @@ checks:
       from squadops.scenarios.declared_routes import DeclaredStartRoutes
       print(FROM_CHANGE_REQUEST, "requested_routes" in inspect.signature(DeclaredStartRoutes.render).parameters, NO_ANCHOR_REQUESTED.startswith("the change request adds it"))
     expect: "change_request True True"
+  - id: "2777-review-inert"
+    what: a product's page counts no anchor inside a template or a noscript, which Chromium's dump keeps but never rendered (SIP-0109 §24co item 12, #2777's review P2)
+    container: squadops-sandbox-service
+    code: |
+      from squadops.capabilities.handlers.route_rendering import view_anchors
+      print(sorted(view_anchors('<p data-testid="not-found"></p><template><main data-testid="v"></main></template><noscript><i data-testid="n"></i></noscript>')))
+    expect: "['not-found']"

@@ -568,3 +568,29 @@ async def test_a_route_the_change_request_adds_keeps_the_increment_from_acceptan
         "/": "approved_manifest",
         "/totals": "change_request",
     }
+
+
+async def test_a_fallback_page_with_the_anchor_only_in_a_template_rejects_the_increment(world):  # noqa: F811
+    """The outside review of #2777 at 8c09cd4f (P2), at the live caller: the candidate no longer
+    serves ``/``, and its fallback page carries ``/``'s root anchor only inside an unused
+    ``<template>``. Bug caught: inert markup Chromium's dump keeps read as the rendered view, so a
+    dropped page holds and the increment is accepted."""
+    repo = world[0]
+    _routed(
+        world,
+        pages={
+            **_TALLY_PAGES,
+            "http://10.89.0.7:8080/": (
+                '<html><body><p data-testid="not-found-view"></p><template><main '
+                'data-testid="counter-list"></main></template></body></html>'
+            ),
+        },
+    )
+    report = tracked_files(repo.path, repo.second_commit)[REPORT]
+
+    document = await _judged(world, {REPORT: report + _LINE})
+
+    assert document["verdict"] == "rejected"
+    assert "route /: missing counter-list" in document["unmet"]
+    [root] = [r for r in document["renderings"]["routes"] if r["route"] == "/"]
+    assert (root["held"], root["seen"]) == ("broken", ["not-found-view"])

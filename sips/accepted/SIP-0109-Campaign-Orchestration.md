@@ -4991,6 +4991,40 @@ says what the build settled where the text leaves a choice, and the rule each re
     - **The record:** each route in `renderings` names its `source`, `approved_manifest` or `change_request`.
     - **A product with no blueprint** pins no route, and still has the routes its request adds judged. Before this
       item it had none.
+12. **Inert markup is no evidence a view rendered** (the outside review of PR #2777 at `8c09cd4f`, P2, 2026-10-28).
+    - **What was found:** `view_anchors` counted the `data-testid` of every element in Chromium's dump, including
+      elements inside a `<template>`, whose content is an inert fragment never connected to the document.
+      - A fallback page for a missing route could carry an unused template stamped with the route's anchor, and the
+        route would read held.
+      - Read live on the evaluator image (`-7`), the dump keeps both a template's content and a `<noscript>`'s
+        (Chromium runs with scripting on, so the latter is never rendered).
+      - On a fallback page whose rendered element was `not-found`, `view_anchors` now finds `not-found` alone. The qa
+        role's pattern finds all four ids in the dump, including one in a template and one in a noscript.
+    - **What changed:** nothing inside a `<template>` or a `<noscript>` counts, however deep
+      (`route_rendering.INERT_ELEMENTS`).
+      - An inert element that never closes leaves everything after it inert. So does `<template/>`, which HTML parses
+        as an open element. Either way the page can only lose anchors and read broken, never gain one (fail-closed).
+      - A page that renders the view reads as before, since its view is connected.
+    - **The choice: the dumped DOM, filtered, not a query of the live one.** A live query (an element connected to the
+      document, at the route's URL) runs through the image's driver. That would change `driver.mjs`, so the image's
+      tag would move and every quality series on `-7` would end (item 4).
+      - In a dump, the only content not connected to the document is a template's, and a `<noscript>` is the one
+        element a scripted page carries without rendering.
+      - **What stays unread:** a connected element that's hidden, whether by `hidden`, `display: none` or being off
+        screen, still counts. Visibility isn't part of §8.3's rule as written, and judging it needs the live page.
+    - **Where the anchor must be: the root anchor, by its id, not a position the reading checks.**
+      - SIP-0105 §17 makes "the first `testids` entry of a route … `data-testid` on the stub's container". §24p rules
+        that "a route renders when its view's root anchor does … The root anchor is the first declared id, stamped on
+        the view's container (#659)".
+      - So the contract requires the root anchor, the first declared id, and not any of the view's other anchors.
+        `acceptance.route_rendering` enforces that for a sample application's route and a product's alike: it marks
+        only that id missing.
+      - It defines the root anchor as an id stamped on the container. It doesn't make the container's position in
+        the DOM something a reading must verify. So the reading takes a rendered element carrying the id as the
+        container, and nothing here changes the sample-application reading on that point.
+    - **The sample applications:** the qa role still reads with its pattern, which counts a template's and a
+      `<noscript>`'s content as well as a script's text. Changing that changes counted evidence, so it's added to #2776
+      and not changed here.
 
 **The cost.** One more start of the product for each increment whose expected set isn't empty: its install, build and
 start. And one Chromium container for each route.
@@ -5036,19 +5070,29 @@ start. And one Chromium container for each route.
     a product with no blueprint judging its added route;
   - the wiring test at the executor's end of plan: a change request whose criterion is on `/totals`, a page the
     candidate serves broken, and the increment not accepted, with the pinned routes still held.
-- **Mutants:** thirty-two, all caught: item 1 to 10's twenty-seven, and five on item 11:
+- **Item 12's evidence** (the outside review's P2 at `8c09cd4f`):
+  - `test_route_rendering.py`: no anchor counted inside a template (nested ones too) or a noscript, the elements after
+    one still counted, and an unclosed or self-closed template inert to the end;
+  - `test_product_routes.py`: a fallback page carrying the route's anchor only in a template, or only in a noscript,
+    reads broken;
+  - the wiring test at the executor's end of plan: a fallback page with `/`'s anchor only in a template rejects the
+    increment, and its record shows only `not-found-view` seen;
+  - read live on the `-7` image's Chromium, the dump of such a page: as item 12 says.
+- **Mutants:** thirty-seven, all caught: items 1 to 10's twenty-seven, five on item 11, and five on item 12. Item 12's
+  are a template's content read, a noscript's content read, an inert element never closed, a nested template
+  closing the outer one, and a self-closed template read as opening nothing. Item 11's are:
   - the requested routes ignored;
   - an added route held on any page read;
   - the pinned routes dropped when one is added;
   - delivery handing the renderer no requested routes;
   - the record's source lost.
-- **The loaded checks** `2619-product-routes` and `2777-review` (the runtime) and `2619-product-routes-sandbox` (the
-  sandbox service)
+- **The loaded checks** `2619-product-routes` and `2777-review` (the runtime) and `2619-product-routes-sandbox` and
+  `2777-review-inert` (the sandbox service, which reads the pages)
   (`scripts/dev/loaded_checks.yaml`), each run on the source.
 
 **Who ruled.** The supervisor (the Spark lane) built §24bv point 3's rendering under the owner's direction of
-2026-10-21 and the 2.5 grants. Items 1 to 11 are the supervisor's choices, for the owner's review. Item 11 answers
-the outside review's finding on PR #2777 (P2, relayed by the owner, 2026-10-28). Its direction was the supervisor's,
+2026-10-21 and the 2.5 grants. Items 1 to 12 are the supervisor's choices, for the owner's review. Items 11 and 12
+answer the outside review's findings on PR #2777 (each a P2, relayed by the owner, 2026-10-28). Its direction was the supervisor's,
 and its choice not to read an anchor from prose is named in it. Item 9 adds a key
 to the `increment_evaluation` document, and item 3 adds a reader of contract 7, so it takes the outside review SIP-0112
 H.12 provides before the merge.

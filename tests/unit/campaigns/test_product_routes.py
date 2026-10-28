@@ -215,8 +215,20 @@ async def test_each_route_renders_its_view_on_the_candidate_started_from_its_dec
         _dom("shelf-list"),
         _dom("shelf-title-input"),
         "<html><body><h1>404 Not Found</h1></body></html>",
+        # The outside review's P2 on 8c09cd4f: a fallback page carrying the view's anchor only in an
+        # inert template (or a noscript), which Chromium's dump keeps.
+        '<html><body><p data-testid="not-found-view"></p><template><form '
+        'data-testid="add-shelf-view"></form></template></body></html>',
+        '<html><body><p data-testid="not-found-view"></p><noscript><form '
+        'data-testid="add-shelf-view"></form></noscript></body></html>',
     ],
-    ids=["another-views-page", "its-root-anchor-missing", "the-app-doesnt-serve-it"],
+    ids=[
+        "another-views-page",
+        "its-root-anchor-missing",
+        "the-app-doesnt-serve-it",
+        "a-fallback-with-the-anchor-only-in-a-template",
+        "a-fallback-with-the-anchor-only-in-a-noscript",
+    ],
 )
 async def test_a_route_whose_page_lacks_its_views_root_anchor_is_broken(tmp_path, page):
     """§8.3 and #659, as a sample application reads it: a page read without its view's root

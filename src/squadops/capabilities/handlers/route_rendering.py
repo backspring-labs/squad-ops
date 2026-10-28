@@ -244,22 +244,49 @@ def _reachable_path(
     return path
 
 
+#: The elements whose content a dumped page carries without having rendered it. A ``<template>``'s
+#: content is an inert fragment, never connected to the document. Chromium runs with scripting on,
+#: so a ``<noscript>``'s content is never rendered, though its serialized text parses as markup
+#: here. An anchor inside either is no evidence the view rendered (SIP-0109 §24co item 12).
+INERT_ELEMENTS = frozenset({"template", "noscript"})
+
+
 class _Anchors(HTMLParser):
-    """Each ``data-testid`` an element of a page carries, and nothing else."""
+    """Each ``data-testid`` a rendered element of a page carries, and nothing else: none inside an
+    inert element (``INERT_ELEMENTS``), however deep."""
 
     def __init__(self) -> None:
         super().__init__(convert_charrefs=True)
         self.found: set[str] = set()
+        self._inert = 0
 
     def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
-        self.found.update(v for k, v in attrs if k == "data-testid" and v)
+        if tag in INERT_ELEMENTS:
+            self._inert += 1
+            return
+        if not self._inert:
+            self.found.update(v for k, v in attrs if k == "data-testid" and v)
+
+    def handle_startendtag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
+        # HTML ignores a self-closing slash on a non-void element, so ``<template/>`` opens one,
+        # as a browser parses it: what follows is inert until its end tag (fail-closed).
+        self.handle_starttag(tag, attrs)
+
+    def handle_endtag(self, tag: str) -> None:
+        if tag in INERT_ELEMENTS and self._inert:
+            self._inert -= 1
 
 
 def view_anchors(dom: str) -> frozenset[str]:
-    """The test ids a dumped page's elements carry (§8.3), read from its elements' attributes.
-    A product's page is read this way (SIP-0109 §24co): a ``data-testid="…"`` in a script's text
-    or a text node is no element the page rendered, and the pattern the qa role reads with
-    (``_TESTID``) counts it."""
+    """The test ids a dumped page's rendered elements carry (§8.3), read from their attributes.
+    A product's page is read this way (SIP-0109 §24co). Three things don't count:
+    - a ``data-testid="…"`` in a script's text or a text node, which is no element (the qa role's
+      pattern, ``_TESTID``, counts it; #2776);
+    - an element inside a ``<template>``, whose content is never connected to the document;
+    - an element inside a ``<noscript>``, which a scripted page never renders.
+
+    A page whose inert element never closes reads every element after it as inert, so it can only
+    lose anchors and read broken, never gain one (fail-closed)."""
     parser = _Anchors()
     parser.feed(dom)
     parser.close()

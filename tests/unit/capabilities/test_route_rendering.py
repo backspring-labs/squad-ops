@@ -226,13 +226,35 @@ def test_only_a_catch_all_route_is_read_at_the_unmatched_path(route, path):
         ('<div id="root"></div><script>h = \'<p data-testid="ghost">\'</script>', set()),
         ('<p>data-testid="in-the-text"</p>', set()),
         ('<div data-testid="">', set()),
+        (
+            '<p data-testid="not-found"></p><template><section data-testid="totals-view">'
+            '<template><b data-testid="deeper"></b></template><i data-testid="still-inert"></i>'
+            '</section></template><footer data-testid="after"></footer>',
+            {"not-found", "after"},
+        ),
+        ('<noscript><section data-testid="totals-view"></section></noscript>', set()),
+        ('<template/><p data-testid="after-a-self-closed-template"></p>', set()),
+        ('<template><p data-testid="never-closed">', set()),
+        ('<br data-testid="void"/><p data-testid="p"></p>', {"void", "p"}),
     ],
-    ids=["elements", "a-scripts-text", "a-text-node", "an-empty-id"],
+    ids=[
+        "elements",
+        "a-scripts-text",
+        "a-text-node",
+        "an-empty-id",
+        "inside-a-template-nested",
+        "inside-a-noscript",
+        "a-self-closed-template",
+        "a-template-never-closed",
+        "a-void-element",
+    ],
 )
 def test_a_products_page_counts_only_the_ids_its_elements_carry(dom, anchors):
-    """SIP-0109 §24co's reading of a product's page. Bug caught: a test id in a script's source or
-    a page's text counted as rendered, so a route is held whose view never rendered (the qa
-    reading's pattern counts both: read live on the evaluator image, 2026-10-28)."""
+    """SIP-0109 §24co's reading of a product's page (items 5 and 12). Bugs caught: a test id in a
+    script's source or a page's text counted as rendered (the qa reading's pattern counts both);
+    one inside an inert ``<template>`` or a ``<noscript>``, which Chromium's dump carries though
+    the page never rendered it (both read live on the evaluator image, 2026-10-28); and the
+    elements after an inert one lost, or an unclosed one read as anything but inert."""
     from squadops.capabilities.handlers.route_rendering import view_anchors
 
     assert view_anchors(dom) == anchors
