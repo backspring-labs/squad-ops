@@ -2409,3 +2409,24 @@ row for the recipe points at this PR.
 
 **Who ruled:** the MacBook lane, under the owner's delegation of 2026-10-18. The owner confirmed the work on
 2026-10-28. The narrowing was agreed with the Spark lane, whose G4 is on the PR.
+
+## H.12 The second review after the MacBook lane's handoff: an outside reviewer, through the owner (2026-10-28; §8.2, §8.5 G4; the owner's ruling)
+
+**What changed.** §8.5's G4 ("the contract named, the other lane's review, a wiring test, additive only") assumed two
+lanes. On 2026-10-28 the owner moved the MacBook lane's remaining 2.5 work to the Spark lane, so no other lane is
+left to review.
+
+**The ruling** (the owner, 2026-10-28): "for a second review when needed, just give me the details and I will use
+ChatGPT".
+- **"The other lane's review" becomes an outside reviewer's,** which the owner runs.
+- **The supervisor writes a self-contained review packet** for each PR that changes a shared contract:
+  - the PR and its head sha;
+  - what the contract was and what it becomes, with the diff of the contract change;
+  - every reader of it;
+  - what could break;
+  - the questions for the reviewer.
+- **The PR doesn't merge until the review is relayed.** Its outcome is recorded on the PR as the outside reviewer's,
+  never as the owner's own view.
+- **The rest of G4 stands:** the contract named, a wiring test, additive only.
+
+**Who ruled.** The owner. The supervisor (the Spark lane) recorded it.
