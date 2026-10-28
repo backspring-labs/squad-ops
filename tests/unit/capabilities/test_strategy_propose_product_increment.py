@@ -318,7 +318,8 @@ async def test_an_added_page_reusing_a_pinned_views_anchor_is_returned_and_revis
 
     result = await StrategyProposeIncrementHandler().handle(ctx, inputs)
 
-    _first, second = _prompts(ctx)
+    first, second = _prompts(ctx)
+    assert "Give each page its own anchor, one no other page carries" in first
     assert "[anchor_not_unique]" in second
     assert "anchor 'shelf-list' for /totals, a page this change adds, and / already" in second
     assert result.success, result.error
