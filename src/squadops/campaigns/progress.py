@@ -1854,15 +1854,17 @@ class CampaignProgress:
         run, at the head its cycle pins (``execution.product_proposal``). Rows 6, 7, 13 and 16's
         inputs are the sample application's: the frozen criteria, the abandoned increment's
         brief, what qa proposed, and each proposal never approved (§24w, §24br, §24bu)."""
+        accepted = campaign.accepted
+        assert accepted is not None  # ``_propose_launch`` reads it first
         log = await self._campaigns.control_log(campaign.campaign_id)
         frozen = frozen_criteria(log)
-        built = [c for c in (campaign.accepted.cycle_id, abandoned_cycle_id) if c is not None]
+        built = [c for c in (accepted.cycle_id, abandoned_cycle_id) if c is not None]
         proposed = await self._qa_proposed_behaviours(built)
         unapproved = [
             unapproved_proposal(
                 entry,
                 await self._ruled_change_request(entry.target),
-                current_tree=campaign.accepted.identity,
+                current_tree=accepted.identity,
             )
             for entry in unapproved_rulings(log)
         ]
