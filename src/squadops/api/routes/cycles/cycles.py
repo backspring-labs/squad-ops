@@ -257,7 +257,7 @@ async def _run_create_preflight(
 
 
 async def _seed_derived_contract(
-    vault: Any | None, body: CycleCreateRequest, project_id: str, *, source_backed: bool = False
+    vault: Any | None, body: CycleCreateRequest, project_id: str, *, source_backed: bool
 ) -> str | None:
     """Derive a verification contract from a seeded manifest (#779, M0b).
 
