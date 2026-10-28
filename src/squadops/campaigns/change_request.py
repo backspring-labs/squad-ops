@@ -10,6 +10,11 @@ The strategy role authors a change request; everything here is the framework's, 
 - ``validate_proposal`` runs the rails in order and returns the change request or every
   refusal. An out-of-scope proposal is refused, never trimmed (§9.1), and a delta the SIP-0103
   manifest gates refuse is refused with their findings (§7.2).
+
+On a repository-backed Project (§24bv point 5, §24cj) there is no manifest: the request names its
+basis (``campaign_branch``), authors its footprint as path globs, and asserts at the derived
+profile's public surfaces; each criterion's own test file is placed under the product's runners
+(``criterion_placement``) and stored with it. ``_validate_product_proposal`` runs those rails.
 """
 
 from __future__ import annotations
