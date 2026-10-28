@@ -29,6 +29,7 @@ import pydantic
 from squadops.api.cycle_schemas import CycleCreateRequest
 from squadops.api.routes.cycles.cycles import (
     CreationPorts,
+    derived_profile_at_pin,
     first_run,
     pin_source_context,
     prepare_cycle,
@@ -112,7 +113,10 @@ async def reconciled_at_pin(ports: CreationPorts, project: Project, intent: Laun
         await require_reconciled_upstream(ports.project_registry, context)
         await require_inherited_baseline(ports.project_registry, context)
         await require_no_blocking_gap(
-            ports.project_registry, ports.artifact_vault, context, request
+            await derived_profile_at_pin(ports.project_registry, context),
+            ports.artifact_vault,
+            context,
+            request,
         )
     except CycleError as e:
         status, detail = cycle_error_envelope(e)

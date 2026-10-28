@@ -388,10 +388,11 @@ async def test_a_pending_repair_is_superseded_and_the_fresh_proposal_launches_on
     assert counters.unaccepted_increments == 0
 
 
-async def test_the_supersession_escalates_while_a_products_proposal_is_unbuilt(tmp_path):
-    """The real proposal path (``CampaignProgress.proposal_after_rebase``) on a repository-backed
-    campaign, where §24bv point 5 isn't built. Bug caught: the superseded repair leaving the
-    campaign proposing with no intent, so it sits with nothing pending and nothing escalated."""
+async def test_the_supersession_escalates_when_the_fresh_proposal_cant_be_built(tmp_path):
+    """The real proposal path (``CampaignProgress.proposal_after_rebase``), on a campaign whose
+    policy names a proposal profile that doesn't exist (``test_campaign_branch``'s world), so row
+    6's proposal can't be built. Bug caught: the superseded repair leaving the campaign proposing
+    with no intent, so it sits with nothing pending and nothing escalated."""
     world = _World(tmp_path)
     await world.started()
     await world.accepted()
@@ -405,7 +406,7 @@ async def test_the_supersession_escalates_while_a_products_proposal_is_unbuilt(t
 
     [rebased] = await world.rows(ControlOperation.BRANCH_REBASED)
     assert rebased.next_state is S.ESCALATED and rebased.launch_id is None
-    assert "§24bv point 5" in rebased.binding["unbuilt"]
+    assert "proposal profile cannot be loaded" in rebased.binding["unbuilt"]
     assert (await world.campaigns.get_launch_intent(repair)).state is LaunchIntentState.SUPERSEDED
     assert (await world.campaigns.get_campaign(CID)).state is S.ESCALATED
 
