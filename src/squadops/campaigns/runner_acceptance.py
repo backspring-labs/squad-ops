@@ -249,6 +249,25 @@ class OverlayRun:
         }
 
 
+def _stages(tree: SandboxTree, overlay: Overlay) -> list[tuple[str, dict, str]]:
+    """Each revision an overlay is cut through, as ``(stage, patch, revision id)``: the checkout,
+    the candidate (the squad's changes, none for the accepted tree) and the overlay. Each id is
+    what the content names (``compute_revision_id``, contract 3), with the executable bits a
+    patch keeps: a file keeps its mode, and a deleted one drops out."""
+    # deferred (pair): squadops.sandbox imports this package at load (its API's seed plan)
+    from squadops.sandbox.models import compute_revision_id
+
+    def named(files: Mapping[str, bytes]) -> str:
+        return compute_revision_id(files, tree.executable & files.keys())
+
+    content, target = tree.content, overlay.tree.as_dict()
+    return [
+        ("checkout", dict(tree.files), named(tree.files)),
+        ("candidate", dict(tree.changes), named(content)),
+        ("overlay", _patch_to(content, target), named(target)),
+    ]
+
+
 def _patch_to(current: Mapping[str, bytes], target: Mapping[str, bytes]) -> dict:
     """The patch that turns ``current`` into ``target``: each file written that differs, and each
     one ``target`` lacks deleted."""
@@ -282,13 +301,34 @@ class RunnerAcceptance:
         argv: tuple[str, ...],
         reader: str | None,
     ) -> OverlayRun:
+        """One bundle's file run on one overlay. The command runs only on the overlay itself
+        (§24cl item 13): each revision cut on the way, the checkout, the candidate and the overlay,
+        must be the one its content names, and the run must report that revision. Otherwise
+        nothing ran on the overlay, and the run is unexecuted, with why: never a result.
+
+        Raises:
+            CandidateNotDelivered: The candidate's content isn't the one delivery verified.
+        """
         # deferred (pair): squadops.sandbox imports this package at load (its API's seed plan)
         from squadops.sandbox.findings import FindingsReading
 
         # deferred (pair): as above
         from squadops.sandbox.models import CommandOutcome, RevisionOrigin
 
+        stages = _stages(tree, overlay)
+        expected = self.verified_candidate_revision
+        if tree.changes and expected is not None and stages[1][2] != expected:
+            raise CandidateNotDelivered(
+                f"the candidate's content is revision {stages[1][2]}, and delivery verified "
+                f"{expected}: the tree judged isn't the tree delivered"
+            )
         workspace_id = f"{self.workspace_prefix}{overlay.identity[:12]}"
+
+        def unexecuted(why: str, revision_id: str | None) -> OverlayRun:
+            return OverlayRun(
+                criterion_id, side, overlay.identity, revision_id, argv, reader, None, None, why
+            )
+
         await self.sandbox.release_workspace(workspace_id)
         try:
             revision = await self.sandbox.seed_workspace(
@@ -297,19 +337,29 @@ class RunnerAcceptance:
                 origin=RevisionOrigin.GIT_CHECKOUT,
                 executable=tree.executable,
             )
-            if tree.changes:
-                revision = await self._patched(
-                    revision, dict(tree.changes), RevisionOrigin.AGENT_PATCH
+            if revision.revision_id != stages[0][2]:
+                return unexecuted(
+                    f"the sandbox seeded {revision.revision_id}, not the checkout "
+                    f"{stages[0][2]}: the overlay wasn't assembled",
+                    revision.revision_id,
                 )
-                expected = self.verified_candidate_revision
-                if expected is not None and revision.revision_id != expected:
-                    raise CandidateNotDelivered(
-                        f"the sandbox cut {revision.revision_id} for the candidate, and delivery "
-                        f"verified {expected}: the tree judged isn't the tree delivered"
+            for name, files, want in stages[1:]:
+                if not files:
+                    continue
+                origin = (
+                    RevisionOrigin.AGENT_PATCH
+                    if name == "candidate"
+                    else RevisionOrigin.ACCEPTANCE_ASSEMBLY
+                )
+                patched = await self._patched(revision, files, origin)
+                if patched is None or patched.revision_id != want:
+                    cut = patched.revision_id if patched is not None else "nothing"
+                    return unexecuted(
+                        f"the {name} patch cut {cut}, not {want}: the overlay wasn't assembled, so "
+                        "nothing ran on it",
+                        revision.revision_id,
                     )
-            patch = _patch_to(tree.content, overlay.tree.as_dict())
-            if patch:
-                revision = await self._patched(revision, patch, RevisionOrigin.ACCEPTANCE_ASSEMBLY)
+                revision = patched
             result = await self.sandbox.run_declared_command(
                 revision=revision,
                 command=argv,
@@ -319,6 +369,12 @@ class RunnerAcceptance:
             )
         finally:
             await self._release(workspace_id, raising=sys.exc_info()[0] is None)
+        if result.workspace_revision_id != revision.revision_id:
+            return unexecuted(
+                f"the command ran on revision {result.workspace_revision_id}, not the overlay "
+                f"{revision.revision_id}",
+                revision.revision_id,
+            )
         exited = result.ran and result.outcome == CommandOutcome.EXITED
         return OverlayRun(
             criterion_id=criterion_id,
@@ -336,20 +392,22 @@ class RunnerAcceptance:
 
     async def _patched(
         self, base: WorkspaceRevision, files: dict, origin: str
-    ) -> WorkspaceRevision:
+    ) -> WorkspaceRevision | None:
+        """The revision a patch cut, or ``None`` when it wasn't applied (a sandbox that runs
+        nothing applies nothing, SIP-0102 §4.4)."""
         # deferred (pair): squadops.sandbox imports this package at load (its API's seed plan)
         from squadops.sandbox.models import WorkspaceRevision
 
         patched = await self.sandbox.apply_workspace_patch(base=base, files=files, origin=origin)
-        if not patched.ran or patched.new_revision_id == base.revision_id:
-            # A sandbox that runs nothing applies nothing (SIP-0102 §4.4): its run on the base
-            # reads not run, never the overlay's result.
-            return base
+        if not patched.ran:
+            return None
+        moved = patched.new_revision_id != base.revision_id
         return WorkspaceRevision(
             revision_id=patched.new_revision_id,
             cycle_id=base.cycle_id,
-            origin=origin,
-            parent_revision_id=base.revision_id,
+            origin=origin if moved else base.origin,
+            # A patch that changed nothing is its base again: the caller holds it to its content.
+            parent_revision_id=base.revision_id if moved else base.parent_revision_id,
         )
 
     async def _release(self, workspace_id: str, *, raising: bool) -> None:

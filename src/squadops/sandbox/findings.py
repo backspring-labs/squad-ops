@@ -85,7 +85,11 @@ class FindingsReading:
     unreadable, whose ``reason`` says why. ``collected`` is the tests a test runner's run ran, the
     floor a later reading must reach to compare (a run that ran fewer may have lost failures).
     ``classes`` is each failing key's exception class, for the keys whose class the output names
-    (§24ci (a)). A key it leaves out has a class that wasn't read."""
+    (§24ci (a)). A key it leaves out has a class that wasn't read. ``passed`` is how many of the
+    ``collected`` tests ran and passed, by a test runner's own summary (SIP-0109 §24cl item 13): a
+    run whose tests were all skipped collects them and passes none, so a reading that says
+    nothing failed is not yet evidence that anything ran. Like a class, it changes no key and no
+    readable rule, so no version, and a reading without it is stored as before."""
 
     reader: str
     version: int
@@ -94,6 +98,7 @@ class FindingsReading:
     counts: Mapping[str, int] = field(default_factory=dict)
     collected: int | None = None
     classes: Mapping[str, str] = field(default_factory=dict)
+    passed: int | None = None
 
     def as_dict(self) -> dict[str, Any]:
         return {
@@ -105,6 +110,7 @@ class FindingsReading:
             "collected": self.collected,
             # Only when there are any, so a reading with none is stored as it was before them.
             **({"classes": dict(sorted(self.classes.items()))} if self.classes else {}),
+            **({"passed": self.passed} if self.passed is not None else {}),
         }
 
     @classmethod
@@ -123,6 +129,11 @@ class FindingsReading:
         classes = doc.get("classes") or {}
         if not all(isinstance(v, str) and k in counts for k, v in classes.items()):
             raise ValueError("a reading's classes name an exception class for a key it counts")
+        passed = doc.get("passed")
+        if passed is not None and (
+            isinstance(passed, bool) or not isinstance(passed, int) or passed < 0
+        ):
+            raise ValueError("a reading's passed tests are a count, or absent")
         return cls(
             reader=reader,
             version=int(doc["version"]),
@@ -131,6 +142,7 @@ class FindingsReading:
             counts=dict(counts),
             collected=collected,
             classes=dict(classes),
+            passed=passed,
         )
 
 
@@ -157,8 +169,36 @@ def read(reader: str, stdout: str, stderr: str, exit_code: int | None) -> Findin
     if reason is not None:
         return FindingsReading(reader, version, readable=False, reason=reason)
     return FindingsReading(
-        reader, version, readable=True, counts=dict(counts), collected=collected, classes=classes
+        reader,
+        version,
+        readable=True,
+        counts=dict(counts),
+        collected=collected,
+        classes=classes,
+        passed=_passed(reader, stdout, stderr),
     )
+
+
+def _passed(reader: str, stdout: str, stderr: str) -> int | None:
+    """How many tests a readable test runner's run passed, from the summary its readable rule
+    already read: pytest's counts line, vitest's ``Tests`` line. ``None`` for any other reader."""
+    summary = None
+    if reader == PYTEST:
+        for line in (stdout + "\n" + stderr).splitlines():
+            match = _PYTEST_SUMMARY.match(line.strip())
+            if match:
+                summary = match["counts"]
+    elif reader == VITEST:
+        for line in _ANSI.sub("", stdout).splitlines():
+            tests = _VITEST_TESTS.match(line)
+            if tests:
+                summary = tests["counts"]
+    if summary is None:
+        return None
+    outcomes: Counter[str] = Counter()
+    for n, word in _PYTEST_COUNT.findall(summary):
+        outcomes[word] += int(n)
+    return outcomes["passed"]
 
 
 def _read_ruff(stdout: str, exit_code: int | None):

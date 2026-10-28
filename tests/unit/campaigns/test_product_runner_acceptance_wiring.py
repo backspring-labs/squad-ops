@@ -27,6 +27,7 @@ from datetime import UTC, datetime
 
 import pytest
 
+from squadops.campaigns.acceptance import NO_READER_EXIT_ZERO
 from squadops.campaigns.evaluator_trees import FileTree
 from squadops.campaigns.increment_tree import INCREMENT_EVALUATION_ARTIFACT_TYPE
 from squadops.campaigns.runner_acceptance import ProductTestSurface, freeze_product_bundle
@@ -175,8 +176,8 @@ async def _judged(world_, changes: dict, *, frozen: bool = True) -> dict:
 
 async def test_a_branch_increment_is_judged_at_its_delivery_on_its_runner(world):  # noqa: F811
     """The live path end to end: delivery verifies and captures the candidate, then judges it.
-    Tally's runner names no test, so R1 is unread and blocks (§24ci (a)), and F1's frozen bundle
-    runs on the candidate and holds by its file's exit status (H.6's ``per_test_reading``). R1's
+    Tally's runner names no test, so R1 is unread and blocks (§24ci (a)). F1's frozen bundle runs
+    on the candidate and exits 0, which shows no test ran, so it blocks too (§24cl item 13). R1's
     bundle is frozen with its invocation, for the promotion that never comes while it blocks."""
     repo = world[0]
     report = tracked_files(repo.path, repo.second_commit)[REPORT]
@@ -186,13 +187,15 @@ async def test_a_branch_increment_is_judged_at_its_delivery_on_its_runner(world)
     assert document["verdict"] == "blocked_unverified"
     assert (document["unmet"], document["blocked"]) == (
         [],
-        ["criterion R1: its runner names no test"],
+        ["criterion R1: its runner names no test", f"frozen F1: {NO_READER_EXIT_ZERO}"],
     )
     assert document["discriminations"] == [
         {"criterion_id": "R1", "met": False, "reason": "no_test_id_reader", "discriminating": []}
     ]
     [frozen] = document["frozen"]
-    assert (frozen["criterion_id"], frozen["held"], frozen["detail"]) == ("F1", "held", "")
+    assert (frozen["criterion_id"], frozen["held"], frozen["detail"]) == (
+        "F1", "blocked_unverified", NO_READER_EXIT_ZERO,
+    )  # fmt: skip
     assert document["new_bundles"]["R1"]["invocation"] == [
         "python3", "-m", "unittest", "discover", "-s", "checks", "-p", "check_criterion_R1.py",
     ]  # fmt: skip

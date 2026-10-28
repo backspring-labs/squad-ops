@@ -18,6 +18,7 @@ from pathlib import Path
 import pytest
 
 from squadops.campaigns.acceptance import (
+    NO_READER_EXIT_ZERO,
     Discrimination,
     DiscriminationReason,
     Held,
@@ -151,11 +152,23 @@ def test_an_unread_discrimination_blocks_the_increment_and_never_reads_as_unmet(
          (Held.BLOCKED_UNVERIFIED, "the runner ran none of its tests")),
         ("b1", "pytest", 2, read("pytest", "", "", 2),
          (Held.BLOCKED_UNVERIFIED, "its run is unread: pytest exited 2: the run didn't finish its tests")),
-        ("b1", None, 0, None, (Held.HELD, "")),
+        ("b1", None, 0, None, (Held.BLOCKED_UNVERIFIED, NO_READER_EXIT_ZERO)),
         ("b1", None, 1, None, (Held.BROKEN, "its test file exited 1 (read whole: no test-id reader)")),
+        ("b1", "pytest", 0, read("pytest", "1 passed, 2 skipped in 0.02s\n", "", 0),
+         (Held.BLOCKED_UNVERIFIED,
+          "2 of its 3 tests didn't run to a pass (skipped, or expected to fail)")),
+        ("b1", "pytest", 0, read("pytest", "3 skipped in 0.01s\n", "", 0),
+         (Held.BLOCKED_UNVERIFIED,
+          "3 of its 3 tests didn't run to a pass (skipped, or expected to fail)")),
+        ("b1", "vitest", 0, read("vitest", " Tests  1 passed | 1 skipped (2)\n", "", 0),
+         (Held.BLOCKED_UNVERIFIED,
+          "1 of its 2 tests didn't run to a pass (skipped, or expected to fail)")),
+        ("b1", "pytest", 0, FindingsReading("pytest", 1, True, None, {}, 2),
+         (Held.BLOCKED_UNVERIFIED, "its reading doesn't say how many of its tests passed")),
     ],
     ids=["no-bundle", "never-ran", "held", "a-file-that-no-longer-loads", "ran-no-test",
-         "unreadable", "no-reader-passed", "no-reader-failed"],
+         "unreadable", "no-reader-exit-0", "no-reader-failed", "pytest-some-skipped",
+         "pytest-all-skipped", "vitest-one-skipped", "a-reading-with-no-pass-count"],
 )  # fmt: skip
 def test_a_frozen_criterion_holds_on_a_products_runner_only_on_a_run_that_was_read(
     address, test_ids, exit_code, reading, held

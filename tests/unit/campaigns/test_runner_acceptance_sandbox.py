@@ -30,7 +30,12 @@ import sys
 
 import pytest
 
-from squadops.campaigns.acceptance import DiscriminationReason, Held, IncrementVerdict
+from squadops.campaigns.acceptance import (
+    NO_READER_EXIT_ZERO,
+    DiscriminationReason,
+    Held,
+    IncrementVerdict,
+)
 from squadops.campaigns.acceptance_run import (
     FrozenCriterion,
     NewCriterion,
@@ -430,6 +435,161 @@ async def test_a_frozen_criterion_runs_its_own_bundle_on_the_candidate(
     assert document["verdict"] == {
         Held.HELD: "accepted", Held.BROKEN: "rejected", Held.BLOCKED_UNVERIFIED: "blocked_unverified"
     }[held]  # fmt: skip
+
+
+def _frozen_as(content: bytes, profile=None) -> tuple[FrozenCriterion, dict]:
+    """F1 frozen with ``content`` as its test file, and the tree that holds that file as frozen
+    (so no rewrite of it blocks first)."""
+    profile = profile or _profile()
+    head = {**F1_HEAD, FROZEN: content}
+    bundle = freeze_product_bundle(
+        "F1",
+        FileTree.of(head),
+        FROZEN,
+        ProductTestSurface.of(profile, [FROZEN]),
+        profile.runners[0],
+    )
+    return FrozenCriterion("F1", FROZEN, bundle), head
+
+
+def _unittest_profile():
+    """A runner with no test-id reader: unittest, run on one file by its path."""
+    base = _profile(test_ids=None)
+    runner = dataclasses.replace(
+        base.runners[0], runner="unittest", single_file_argv=(PY, "-m", "unittest", "{path}"),
+        support_files=(),
+    )  # fmt: skip
+    return dataclasses.replace(base, runners=(runner,))
+
+
+_SKIPPED_UNITTEST = (
+    b"import unittest\n\n\n@unittest.skip('not today')\nclass F1(unittest.TestCase):\n"
+    b"    def test_it(self):\n        self.fail('never runs')\n"
+)
+
+
+@pytest.mark.parametrize(
+    ("content", "profile", "detail"),
+    [
+        (b"import pytest\n\npytestmark = pytest.mark.skip('not today')\n\n\n"
+         b"def test_it():\n    assert False\n", None,
+         "1 of its 1 tests didn't run to a pass (skipped, or expected to fail)"),
+        (b"import pytest\n\n\n@pytest.mark.xfail\ndef test_it():\n    assert False\n", None,
+         "1 of its 1 tests didn't run to a pass (skipped, or expected to fail)"),
+        (b"def helper():\n    return 1\n", None,
+         "its run is unread: pytest exited 5: the run didn't finish its tests"),
+        (_SKIPPED_UNITTEST, "unittest", NO_READER_EXIT_ZERO),
+    ],
+    ids=["a-skipped-verifier-file", "an-expected-failure", "zero-tests-collected",
+         "a-no-reader-runner-that-skipped-every-test"],
+)  # fmt: skip
+async def test_a_frozen_criterion_whose_tests_never_ran_is_blocked_never_held(
+    sandbox, content, profile, detail
+):
+    """§24cl item 13 (the second review's first P1), on real runs. SIP-0096: only
+    executed-and-passed credits. Bugs caught: a frozen file that skips its tests, expects them to
+    fail or holds none read ``held`` because nothing failed; a runner with no test-id reader read
+    ``held`` on exit 0, which unittest gives when every test was skipped."""
+    profile = _unittest_profile() if profile == "unittest" else _profile()
+    frozen, head = _frozen_as(content, profile)
+
+    evaluation, runs, _doc = await _evaluate(
+        sandbox, SandboxTree(head), SandboxTree(head, changes={"README.md": b"x\n"}),
+        profile=profile, new=[], frozen=[frozen],
+    )  # fmt: skip
+
+    [result] = evaluation.frozen
+    assert (result.held, result.detail) == (Held.BLOCKED_UNVERIFIED, detail)
+    assert [r.exit_code for r in runs] == [5 if b"helper" in content else 0]
+    assert evaluation.acceptance.verdict is IncrementVerdict.BLOCKED_UNVERIFIED
+
+
+async def test_a_criterion_its_candidate_skips_never_discriminates(sandbox):
+    """§8.2 with SIP-0096: a criterion that fails on the baseline and is skipped on the candidate
+    didn't pass there. Bug caught: a skipped test counted as passing, because it isn't failing,
+    so the increment is accepted with the criterion never run on the candidate."""
+    skips_on_candidate = (
+        b"import pytest\nfrom shelf.count import count\n\n\n"
+        b"def test_it(doubled):\n    if count(doubled) == 2:\n        pytest.skip('flaky')\n"
+        b"    assert count(doubled) == 2\n"
+    )
+    accepted, candidate = _trees(skips_on_candidate)
+
+    evaluation, runs, document = await _evaluate(sandbox, accepted, candidate)
+
+    assert [(r.side, r.exit_code) for r in runs] == [("baseline", 1), ("candidate", 0)]
+    [d] = evaluation.discriminations
+    assert (d.met, d.reason) == (False, DiscriminationReason.NOT_RUN)
+    assert document["verdict"] == "blocked_unverified"
+
+
+class _Lying:
+    """The real sandbox service, but one operation answers falsely: a patch that isn't applied, a
+    patch that cuts another revision than its content names, or a command that runs on the
+    overlay's base and reports that base."""
+
+    def __init__(self, service, how: str) -> None:
+        self._service, self._how = service, how
+
+    def __getattr__(self, name):
+        return getattr(self._service, name)
+
+    async def apply_workspace_patch(self, *, base, files, origin):
+        from squadops.sandbox.models import PatchResult
+
+        if origin != RevisionOrigin.ACCEPTANCE_ASSEMBLY or self._how == "runs-on-the-base":
+            return await self._service.apply_workspace_patch(base=base, files=files, origin=origin)
+        if self._how == "not-applied":
+            return PatchResult(
+                operation=OperationName.APPLY_WORKSPACE_PATCH, workspace_revision_id=base.revision_id,
+                status=OperationStatus.NOT_RUN, ran=False, new_revision_id=base.revision_id,
+            )  # fmt: skip
+        # Applied, with a file the overlay doesn't hold: the revision isn't the overlay's.
+        stray = {**files, "tests/test_stray.py": b"def test_x():\n    pass\n"}
+        return await self._service.apply_workspace_patch(base=base, files=stray, origin=origin)
+
+    async def run_declared_command(self, *, revision, **kw):
+        result = await self._service.run_declared_command(revision=revision, **kw)
+        if self._how == "runs-on-the-base":
+            # It passed, and reports the revision it ran on: the candidate, not the overlay.
+            return dataclasses.replace(result, workspace_revision_id=revision.parent_revision_id)
+        return result
+
+
+@pytest.mark.parametrize(
+    ("how", "ran", "why"),
+    [
+        ("not-applied", 0, "the overlay patch cut nothing, not "),
+        ("another-revision", 0, "the overlay patch cut "),
+        ("runs-on-the-base", 1, "the command ran on revision "),
+    ],
+    ids=["the-overlay-patch-not-applied", "the-overlay-patch-cut-another-revision",
+         "a-command-that-ran-on-another-revision"],
+)  # fmt: skip
+async def test_nothing_is_judged_on_a_revision_other_than_its_overlay(sandbox, how, ran, why):
+    """§24cl item 13 (the second review's first P1): a command never runs after an overlay patch
+    failed, and a run that reports another revision than its overlay is no result. Bugs caught:
+    the run made on the unpatched tree, whose own copy of the frozen file passes, read ``held``;
+    an overlay cut with a file it doesn't hold run as if it were the overlay; a successful
+    command on the wrong revision credited."""
+    f1 = await _frozen_f1(sandbox)
+    sandbox.backend.ran.clear()
+    runs = RunnerAcceptance(
+        sandbox=_Lying(sandbox, how), profile=_profile(), setup=RunnerSetup(),
+        workspace_prefix="acc-run_l-",
+    )  # fmt: skip
+    candidate = SandboxTree(F1_HEAD, changes={"README.md": b"x\n"})
+
+    evaluation, done = await evaluate_on_runner(
+        runs, increment_id="p", accepted=SandboxTree(F1_HEAD), candidate=candidate,
+        new=[], frozen=[f1], retired=(),
+    )  # fmt: skip
+
+    [result] = evaluation.frozen
+    assert result.held is Held.BLOCKED_UNVERIFIED
+    assert result.detail.startswith("the bundle never executed: " + why), result.detail
+    assert len(sandbox.backend.ran) == ran
+    assert [(r.exit_code, r.reading) for r in done] == [(None, None)]
 
 
 async def test_a_frozen_bundle_runs_by_its_own_invocation_after_the_profile_changes(sandbox):
