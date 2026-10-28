@@ -461,7 +461,7 @@ def _accepted(doc: dict) -> list[str]:
 
 def _rebased(b: dict) -> str:
     """§24bv point 4: the campaign branch rebased when upstream moved, with what it superseded
-    and the frozen criteria its verification left unrun (§24cm)."""
+    and the frozen criteria that held at it (§24cm)."""
     line = (
         f"- rebased onto `{b['base'][:12]}` (revision {b['development_configuration_revision']}): "
         f"head `{b['head_before'][:12]}` → `{b['commit'][:12]}`, tree `{b['identity'][:12]}`; "

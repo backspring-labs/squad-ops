@@ -17,9 +17,10 @@ Configuration revision the Project is reconciled at. When they differ:
    it is the next increment's regression baseline. A head whose checks regress, or that no check
    executed and passed, refuses the launch (``REBASED_HEAD_REGRESSED``), naming the stored
    verification. The reconciled commit itself needs none: its baseline is the inherited one.
-   The frozen criteria's bundles are not run here: a product's bundles run on its own runner in
-   the sandbox, which is §24cd point 6's evaluator, not built yet. The row names each frozen
-   criterion left unrun (§24cm).
+   Every frozen criterion's bundle then runs on the rebased head, on the product's runner in the
+   sandbox (``ProductRunnerFrozen``, #2774's ``frozen_on_runner``): one not ``held``, a blocked
+   one included, refuses as regressed, and frozen criteria nothing can run refuse as
+   unverifiable (``REBASED_HEAD_UNVERIFIABLE``). It fails closed (§24cm item 11).
 4. **One ``BRANCH_REBASED`` row** records the base and head before and after, the replayed and
    dropped commits and the verification, and moves the accepted tree. A pending repair or retry,
    built on the old head, is superseded in the same transaction: its increment is abandoned as
@@ -336,8 +337,8 @@ class BranchRebase:
         self._reconciled = reconciled
         self._propose = propose
         self._actor = actor
-        #: ``None`` until #2774's runner is wired (§24cm): every frozen criterion is then named
-        #: as unrun on the row.
+        #: The runtime's is ``ProductRunnerFrozen``. ``None`` runs nothing, so a rebase with frozen
+        #: criteria is refused as unverifiable, never passed (§24cm item 11).
         self._frozen_on_runner = frozen_on_runner
 
     async def before_launch(self, campaign: Campaign, intent: LaunchIntent) -> LaunchIntent | None:
