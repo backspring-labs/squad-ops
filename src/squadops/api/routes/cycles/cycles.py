@@ -7,7 +7,7 @@ import logging
 import uuid
 from dataclasses import dataclass
 from datetime import UTC, datetime
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Request
 
@@ -117,6 +117,9 @@ from squadops.projects.verification import SOURCE_VERIFICATION_TYPE
 from squadops.sandbox.environment import get_environment_contract
 from squadops.sandbox.main import sandbox_config_from_env
 from squadops.sandbox.preflight import sandbox_environment_decision
+
+if TYPE_CHECKING:
+    from squadops.campaigns.campaign_branch import CampaignHead
 
 logger = logging.getLogger(__name__)
 
@@ -437,7 +440,9 @@ def first_run(cycle: Cycle, *, initiated_by: str) -> Run:
 
 
 def pin_source_context(
-    project: Project, precondition: SourcePreconditionDTO | None, head: Any = None
+    project: Project,
+    precondition: SourcePreconditionDTO | None,
+    head: "CampaignHead | None" = None,
 ) -> ProjectSourceContext | None:
     """SIP-0112 contract 1 (FR-04, FR-09, §D.3): an external Project's source, resolved from the
     registry's record and pinned before dispatch. A sample application has none. A stated
@@ -484,7 +489,11 @@ def pin_source_context(
 
 
 async def require_campaign_head(
-    vault: Any | None, context: ProjectSourceContext, head: Any, *, kind: str | None
+    vault: Any | None,
+    context: ProjectSourceContext,
+    head: "CampaignHead | None",
+    *,
+    kind: str | None,
 ) -> None:
     """H.4, SIP-0109 §24cd point 1: a repository-backed Campaign's cycle is pinned at its campaign
     branch's head, never at the Project's baseline by default, and its regression baseline is the
@@ -640,7 +649,7 @@ async def prepare_cycle(
     kind: str | None = None,
     increment_id: str | None = None,
     instructed_by: str | None = None,
-    campaign_head: Any = None,
+    campaign_head: "CampaignHead | None" = None,
 ) -> PreparedCycle:
     """Build and preflight a cycle and its first run from a create request: the route's body,
     or a campaign launch's (SIP-0109 §12b), which also names the campaign and the cycle's kind.
