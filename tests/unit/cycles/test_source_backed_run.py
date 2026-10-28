@@ -593,25 +593,138 @@ async def test_an_increment_is_seeded_at_its_pin_not_at_the_projects_baseline(wo
     assert pinned.development_baseline_commit == repo.second_commit  # H.2's gate still keys here
 
 
-async def test_a_campaign_branch_increment_is_never_compared_with_the_projects_baseline(world):
-    """SIP-0109 §24bv point 3: an increment's regression baseline is the verification that made
-    its head. Until that comparison is built, delivery refuses rather than reading the Project's
-    baseline, which describes a tree the increment wasn't built on. Bug caught: a candidate built
-    on the branch's head judged against the wrong baseline, and accepted or refused for it."""
+def _parse_fixed(repo) -> bytes:
+    """Tally's parse with the inherited failure fixed: names lose the spaces around them."""
+    parse = tracked_files(repo.path, repo.second_commit)["tally/parse.py"]
+    assert b"return name, int(amount)" in parse
+    return parse.replace(b"return name, int(amount)", b"return name.strip(), int(amount)")
+
+
+async def _first_increment(world):
+    """A repository-backed Campaign's first increment, pinned at the head the calibration record
+    leaves (the Project's baseline commit, no verification), fixing parse's inherited failure. Its
+    capture and its verification are what a promotion makes the next head (``CampaignHead``)."""
+    repo, vault, executor, cycle, run = world
+    at_record = dataclasses.replace(
+        cycle,
+        source_context=dataclasses.replace(cycle.source_context, pinned_from="campaign_branch"),
+    )
+    await _end_of_plan(executor, at_record, run, vault, {"tally/parse.py": _parse_fixed(repo)})
+    [(ref, raw)] = _of_type(vault, SOURCE_VERIFICATION_TYPE)
+    [(patch_ref, _patch)] = _of_type(vault, SOURCE_PATCH_TYPE)
+    first = json.loads(raw)
+    assert first["regression_baseline"] == {"kind": "inherited_baseline", "ref": None}
+    parse = next(c for c in first["checks"] if c["id"] == "parse")
+    assert (parse["result"], parse["attribution"]) == ("PASS", "resolved")
+    return patch_ref.metadata["captured_commit"], ref.artifact_id
+
+
+def _second(world, head: str, verification: str):
+    """The next increment's cycle and run, pinned at ``head`` with ``verification`` behind it."""
+    _repo, _vault, _executor, cycle, run = world
+    context = dataclasses.replace(
+        cycle.source_context,
+        pinned_commit=head,
+        pinned_from="campaign_branch",
+        previous_verification_ref=verification,
+    )
+    return (
+        dataclasses.replace(cycle, cycle_id="cyc_2407a0000003", source_context=context),
+        dataclasses.replace(run, run_id="run_src000000002", cycle_id="cyc_2407a0000003"),
+    )
+
+
+@pytest.mark.parametrize(
+    ("change", "parse_read_as", "verdict"),
+    [("report", ("PASS", "inherited"), "accepted"), ("parse", ("FAIL", "introduced/regressed"), None)],
+    ids=["another-change-keeps-the-fix", "the-fix-undone"],
+)  # fmt: skip
+async def test_an_increment_on_a_head_is_compared_with_the_verification_that_made_it(
+    world, change, parse_read_as, verdict
+):
+    """SIP-0109 §24bv point 3, entered at ``_execute_sequential``'s end of plan, the live delivery
+    seam, twice: the first increment fixes parse's inherited failure; the second, pinned at its
+    capture with its verification behind it, either changes another file or undoes the fix.
+
+    Read against the Project's inherited baseline (parse FAIL), the first second increment would
+    read parse ``resolved`` and the undo ``inherited``, and be accepted. Against the head's own
+    verification (parse PASS) they read ``inherited`` and ``introduced/regressed``. Bugs caught:
+    the candidate compared with upstream, never the tree it was built on, so an increment that
+    undoes an accepted one is accepted; the Project's baseline read for a head past it."""
+    repo, vault, executor, _cycle, _run = world
+    head, made_it = await _first_increment(world)
+    cycle, run = _second(world, head, made_it)
+    executor._project_registry.get_inherited_baseline.reset_mock()
+    upstream = tracked_files(repo.path, repo.second_commit)  # the head changed parse.py alone
+    changes = (
+        {"tally/report.py": upstream["tally/report.py"] + _SUMMARY_LINE}
+        if change == "report"
+        else {"tally/parse.py": upstream["tally/parse.py"]}
+    )
+
+    if verdict is None:
+        with pytest.raises(_ExecutionError, match="regressed: parse failed where the baseline"):
+            await _end_of_plan(executor, cycle, run, vault, changes)
+    else:
+        await _end_of_plan(executor, cycle, run, vault, changes)
+
+    second = json.loads(
+        next(raw for ref, raw in _of_type(vault, SOURCE_VERIFICATION_TYPE) if ref.run_id == run.run_id)
+    )  # fmt: skip
+    assert second["regression_baseline"] == {"kind": "previous_verification", "ref": made_it}
+    assert second["baseline_commit"] == head
+    parse = next(c for c in second["checks"] if c["id"] == "parse")
+    assert (parse["result"], parse["attribution"]) == parse_read_as
+    assert second["verdict"] == (verdict or "regressed")
+    executor._project_registry.get_inherited_baseline.assert_not_awaited()
+
+
+@pytest.mark.parametrize(
+    ("stored", "refused"),
+    [
+        (None, "the vault holds no source verification there"),
+        ({"verdict": "regressed"}, "only an accepted one made a head"),
+        ({"development_configuration_revision": 2}, "ran at Development Configuration revision 2"),
+        ({"candidate_tree_identity": "f" * 64}, "verified tree ffffffffffff"),
+        ({"project_id": "prj-other"}, "is Project prj-other's"),
+        ({"schema": "source-verification/v2"}, "is no source-verification/v1"),
+    ],
+    ids=["missing", "not-accepted", "another-revision", "another-tree", "another-project",
+         "unknown-schema"],
+)  # fmt: skip
+async def test_a_head_whose_verification_cant_be_its_baseline_is_refused_before_anything_runs(
+    world, stored, refused
+):
+    """The edges of §24bv point 3's baseline. Bugs caught: a candidate compared with a
+    verification that was never accepted, describes another tree or Project, or ran its checks
+    at another configuration revision, so attributions compare unlike runs; any of them falling
+    back to the Project's baseline."""
     from squadops.execution.source_delivery import SourceDeliveryRefused, deliver_source_change
 
     repo, vault, executor, cycle, run = world
-    pinned = dataclasses.replace(
-        cycle.source_context,
-        pinned_commit=repo.first_commit,
-        pinned_from="campaign_branch",
-        previous_verification_ref="art_verification",
-    )
+    first = tracked_files(repo.path, repo.first_commit)
+    document = {
+        "schema": "source-verification/v1",
+        "project_id": "prj-tally",
+        "verdict": "accepted",
+        "development_configuration_revision": cycle.source_context.development_configuration_revision,
+        "candidate_tree_identity": FileTree.of(first).identity,
+        "checks": [{"id": "build", "result": "PASS", "attribution": "inherited"}],
+    }
+    if stored is not None:
+        ref = ArtifactRef(
+            artifact_id="art_madethehead", project_id="prj-tally", cycle_id="cyc_x",
+            run_id="run_x", artifact_type=SOURCE_VERIFICATION_TYPE,
+            filename="source_verification.json", content_hash="h", size_bytes=1,
+            media_type="application/json", created_at=NOW,
+        )  # fmt: skip
+        vault.stored[ref.artifact_id] = (ref, json.dumps({**document, **stored}).encode())
+    pinned, _run = _second(world, repo.first_commit, "art_madethehead")
 
-    with pytest.raises(SourceDeliveryRefused, match="§24bv point 3"):
+    with pytest.raises(SourceDeliveryRefused, match=refused):
         await deliver_source_change(
-            dataclasses.replace(cycle, source_context=pinned), run.run_id, [],
-            vault=vault, registry=executor._project_registry,
+            pinned, run.run_id, [], vault=vault, registry=executor._project_registry,
             repository=executor._source_repository, sandbox=executor._sandbox,
         )  # fmt: skip
     executor._project_registry.get_inherited_baseline.assert_not_awaited()
+    executor._project_registry.record_source_mapping.assert_not_awaited()  # nothing was seeded

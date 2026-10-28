@@ -17,6 +17,11 @@ Pure decisions over runner results, read from the test runner's own rows
 
 The increment is accepted only when everything holds; blocked when anything could not be read;
 rejected otherwise.
+
+On a repository-backed product's own runner (SIP-0109 §24bv point 3), the same two decisions
+read each run by the runner's test-id reader (``squadops.sandbox.findings``) instead of the
+stack's rows: ``discrimination_on_runner`` and ``held_on_runner``. A runner with no test-id reader
+reads no criterion as discriminating (§24ci (a)).
 """
 
 from __future__ import annotations
@@ -24,6 +29,8 @@ from __future__ import annotations
 from collections.abc import Collection, Mapping
 from dataclasses import dataclass, field
 from enum import StrEnum
+
+from squadops.sandbox.findings import FAILED, FindingsReading, comparable
 
 
 @dataclass(frozen=True)
@@ -75,6 +82,12 @@ class DiscriminationReason(StrEnum):
     NO_BASELINE_FAILURE = "no_baseline_failure"
     ONLY_SETUP_FAILURES = "only_setup_failures"
     FAILS_ON_CANDIDATE = "fails_on_candidate"
+    #: §24ci (a): on a product's runner that names no test one by one, discrimination is unread.
+    NO_TEST_ID_READER = "no_test_id_reader"
+
+
+#: The reasons a criterion's discrimination couldn't be read at all: blocked, never unmet.
+_UNREAD = (DiscriminationReason.NOT_RUN, DiscriminationReason.NO_TEST_ID_READER)
 
 
 @dataclass(frozen=True)
@@ -114,6 +127,71 @@ def discrimination(
     return Discrimination(
         criterion_id, True, DiscriminationReason.DISCRIMINATES, tuple(sorted(passing))
     )
+
+
+# =============================================================================
+# §8.2 on a repository-backed product's own runner (SIP-0109 §24bv point 3, §24ci (a))
+# =============================================================================
+
+#: §24ci (a): the exception classes that say a test failed before reaching what it asserts, by
+#: each test-id reader. The import family, and what the sample applications' stacks read as a
+#: suite's own defect (``test_runner._OWN_FRAME_SHAPES``: NameError, ReferenceError). Every
+#: ``ERROR`` key (a setup, teardown or collection failure, a suite that never loaded) is setup
+#: whatever its class, and a failure whose class wasn't read is never read as the test's own.
+SETUP_CLASSES: Mapping[str, frozenset[str]] = {
+    "pytest": frozenset({"ImportError", "ModuleNotFoundError", "SyntaxError", "NameError"}),
+    "vitest": frozenset({"SyntaxError", "ReferenceError"}),
+}
+
+
+def _intended(reading: FindingsReading) -> set[str]:
+    """The failing keys of ``reading`` that are a test's own failure: a ``FAILED`` key whose
+    class was read and is no setup class."""
+    setup = SETUP_CLASSES.get(reading.reader, frozenset())
+    return {
+        key
+        for key in reading.counts
+        if key.startswith(f"{FAILED} ")
+        and reading.classes.get(key) is not None
+        and reading.classes[key] not in setup
+    }
+
+
+def discrimination_on_runner(
+    criterion_id: str,
+    test_ids: str | None,
+    baseline: FindingsReading | None,
+    candidate: FindingsReading | None,
+) -> Discrimination:
+    """§8.2 for one new criterion on a product's own runner: its test file run alone on the
+    baseline-evaluator overlay and on the candidate, each read by ``test_ids``, the runner's
+    test-id reader in the derived profile (H.6).
+
+    - **No test-id reader:** unread, and so never accepted as discriminating (§24ci (a)). A
+      whole-file reading would count a file that fails to import on the baseline.
+    - **A run unread** (none, unreadable, another reader, or a candidate that ran fewer tests):
+      not run.
+    - **Otherwise** it discriminates when a test fails on the baseline for the intended reason
+      (``_intended``) and doesn't fail on the candidate."""
+    if test_ids is None:
+        return Discrimination(criterion_id, False, DiscriminationReason.NO_TEST_ID_READER)
+    if (
+        baseline is None
+        or candidate is None
+        or baseline.reader != test_ids
+        or comparable(baseline, candidate) is not None
+    ):
+        return Discrimination(criterion_id, False, DiscriminationReason.NOT_RUN)
+    if not baseline.counts:
+        return Discrimination(criterion_id, False, DiscriminationReason.NO_BASELINE_FAILURE)
+    intended = _intended(baseline)
+    if not intended:
+        return Discrimination(criterion_id, False, DiscriminationReason.ONLY_SETUP_FAILURES)
+    passing = intended - set(candidate.counts)
+    if not passing:
+        return Discrimination(criterion_id, False, DiscriminationReason.FAILS_ON_CANDIDATE)
+    tests = tuple(sorted(key.removeprefix(f"{FAILED} ") for key in passing))
+    return Discrimination(criterion_id, True, DiscriminationReason.DISCRIMINATES, tests)
 
 
 # =============================================================================
@@ -175,6 +253,35 @@ def _held(address: str | None, test_path: str, run: TreeRun | None) -> tuple[Hel
         return Held.BROKEN, ", ".join(failed)
     if test_path in run.uncollected:
         return Held.BLOCKED_UNVERIFIED, "the runner never collected it"
+    return Held.HELD, ""
+
+
+def held_on_runner(
+    address: str | None,
+    test_ids: str | None,
+    exit_code: int | None,
+    reading: FindingsReading | None,
+) -> tuple[Held, str]:
+    """§8.1 for one frozen criterion on a product's own runner: its bundle's test file run alone
+    on the candidate-verifier overlay. With a test-id reader, read by it: unread, or no test run,
+    is blocked, and any failing test breaks it. Without one, by the file's exit status (H.6's
+    ``per_test_reading``): a frozen criterion only has to keep passing, so a whole-file reading
+    can't credit anything a test didn't do. §24ci (a)'s rule is on discrimination alone."""
+    if address is None:
+        return Held.BLOCKED_UNVERIFIED, "the verifier bundle is missing"
+    if exit_code is None:
+        return Held.BLOCKED_UNVERIFIED, "the bundle never executed"
+    if test_ids is None:
+        if exit_code == 0:
+            return Held.HELD, ""
+        return Held.BROKEN, f"its test file exited {exit_code} (read whole: no test-id reader)"
+    if reading is None or not reading.readable or reading.reader != test_ids:
+        why = reading.reason if reading is not None and reading.reason else "no reading"
+        return Held.BLOCKED_UNVERIFIED, f"its run is unread: {why}"
+    if reading.counts:
+        return Held.BROKEN, ", ".join(sorted(k.partition(" ")[2] for k in reading.counts))
+    if not reading.collected:
+        return Held.BLOCKED_UNVERIFIED, "the runner ran none of its tests"
     return Held.HELD, ""
 
 
@@ -250,13 +357,17 @@ def increment_acceptance(
     """Accepted only when every new criterion discriminates, every frozen criterion held and every
     route rendered. Anything unread blocks: ``blocked_unverified`` never reads as accepted
     (SIP-0096), and it outranks a failure only when nothing failed."""
-    unmet = [f"criterion {d.criterion_id}: {d.reason}" for d in discriminations if not d.met]
-    blocked = [
-        f"criterion {d.criterion_id}: not run"
+    unmet = [
+        f"criterion {d.criterion_id}: {d.reason}"
         for d in discriminations
-        if d.reason is DiscriminationReason.NOT_RUN
+        if not d.met and d.reason not in _UNREAD
     ]
-    unmet = [u for u in unmet if not u.endswith(DiscriminationReason.NOT_RUN)]
+    blocked = [
+        f"criterion {d.criterion_id}: "
+        + ("not run" if d.reason is DiscriminationReason.NOT_RUN else "its runner names no test")
+        for d in discriminations
+        if d.reason in _UNREAD
+    ]
     for r in frozen:
         if r.held is Held.BROKEN:
             unmet.append(f"frozen {r.criterion_id}: {r.detail}")

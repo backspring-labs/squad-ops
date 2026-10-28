@@ -1,0 +1,65 @@
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 4 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  src/__tests__/asserting.test.js > Book form > refuses an empty title
+AssertionError: expected '' to be 'a title' // Object.is equality
+
+- Expected
++ Received
+
+- a title
+
+ ❯ src/__tests__/asserting.test.js:5:16
+      3| describe('Book form', () => {
+      4|   it('refuses an empty title', () => {
+      5|     expect('').toBe('a title')
+       |                ^
+      6|   })
+      7|   it('passes alone', () => {
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/4]⎯
+
+ FAIL  src/__tests__/asserting.test.js > Book form > when saved > twice > names the duplicate
+AssertionError: expected { a: 1 } to deeply equal { a: 2 }
+
+- Expected
++ Received
+
+  Object {
+-   "a": 2,
++   "a": 1,
+  }
+
+ ❯ src/__tests__/asserting.test.js:12:24
+     10|   describe('when saved > twice', () => {
+     11|     it('names the duplicate', () => {
+     12|       expect({ a: 1 }).toEqual({ a: 2 })
+       |                        ^
+     13|     })
+     14|   })
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[2/4]⎯
+
+ FAIL  src/__tests__/asserting.test.js > Book form > throws inside the app
+TypeError: Cannot read properties of undefined (reading 'books')
+ ❯ src/__tests__/asserting.test.js:17:18
+     15|   it('throws inside the app', () => {
+     16|     const shelf = undefined
+     17|     return shelf.books.length
+       |                  ^
+     18|   })
+     19| })
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[3/4]⎯
+
+ FAIL  src/__tests__/asserting.test.js > Setup that breaks > never reaches its body
+TypeError: the fixture is broken
+ ❯ src/__tests__/asserting.test.js:23:11
+     21| describe('Setup that breaks', () => {
+     22|   beforeEach(() => {
+     23|     throw new TypeError('the fixture is broken')
+       |           ^
+     24|   })
+     25|   it('never reaches its body', () => {
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[4/4]⎯
+

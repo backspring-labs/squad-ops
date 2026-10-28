@@ -220,30 +220,28 @@ def parse_baseline(doc: Mapping[str, Any]) -> InheritedBaseline:
     for key in ("project_id", "commit", "development_configuration_revision", "checks"):
         if key not in doc:
             raise BaselineInvalid(f"{key} is required")
-    checks = []
-    for entry in doc["checks"]:
-        if entry.get("result") not in RESULTS:
-            raise BaselineInvalid(f"check {entry.get('id')!r}: result is one of {RESULTS}")
-        findings = entry.get("findings")
-        try:
-            reading = FindingsReading.from_dict(findings) if findings else None
-        except (UnknownReader, ValueError, KeyError) as e:
-            raise BaselineInvalid(
-                f"check {entry.get('id')!r}: its findings can't be read ({e})"
-            ) from e
-        checks.append(
-            CheckResult(
-                entry["id"],
-                entry["result"],
-                entry.get("attribution", INHERITED),
-                entry.get("reason"),
-                findings=reading,
-            )
-        )
     return InheritedBaseline(
         project_id=doc["project_id"],
         commit=doc["commit"],
         development_configuration_revision=doc["development_configuration_revision"],
         environment=doc.get("environment") or {},
-        checks=tuple(checks),
+        checks=tuple(parse_check(entry) for entry in doc["checks"]),
+    )
+
+
+def parse_check(entry: Mapping[str, Any]) -> CheckResult:
+    """One stored check row, a baseline's or a source verification's, with its reading."""
+    if entry.get("result") not in RESULTS:
+        raise BaselineInvalid(f"check {entry.get('id')!r}: result is one of {RESULTS}")
+    findings = entry.get("findings")
+    try:
+        reading = FindingsReading.from_dict(findings) if findings else None
+    except (UnknownReader, ValueError, KeyError) as e:
+        raise BaselineInvalid(f"check {entry.get('id')!r}: its findings can't be read ({e})") from e
+    return CheckResult(
+        entry["id"],
+        entry["result"],
+        entry.get("attribution", INHERITED),
+        entry.get("reason"),
+        findings=reading,
     )
