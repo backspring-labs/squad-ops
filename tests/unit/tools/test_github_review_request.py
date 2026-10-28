@@ -81,3 +81,29 @@ async def test_a_refusal_is_named_and_never_carries_the_token(repo_uri, status, 
         await _open(_forge(handler), repo_uri)
 
     assert TOKEN not in str(refused.value)
+
+
+async def test_an_open_request_is_recovered_by_its_repository_head_and_base():
+    """SIP-0109 §24cn: a Campaign's push that crashed after the forge opened its request recovers
+    it by calling again, so the lookup must name the repository, the head and the base. Bugs
+    caught: a lookup by head alone, recovering a request against another base; a closed request
+    recovered as open; a second request opened."""
+    seen = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        assert request.method == "GET", "a second pull request was opened"
+        seen.append((request.url.path, dict(request.url.params)))
+        return httpx.Response(200, json=[{"html_url": "https://github.com/owner/tally/pull/9"}])
+
+    url = await _forge(handler).open_review_request(
+        repo_uri="https://github.com/owner/tally.git", head="squadops/cmp_review000001",
+        base="main", title="t", body="b", token="tok_invented",
+    )  # fmt: skip
+
+    assert url == "https://github.com/owner/tally/pull/9"
+    assert seen == [
+        (
+            "/repos/owner/tally/pulls",
+            {"head": "owner:squadops/cmp_review000001", "base": "main", "state": "open"},
+        )
+    ]

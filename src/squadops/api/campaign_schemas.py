@@ -10,7 +10,7 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Any, Literal
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, SecretStr
 
 from squadops.campaigns.models import PlanGate
 
@@ -264,6 +264,33 @@ class PackageDigestResponse(BaseModel):
     identity: str | None
     digest_artifact_id: str
     digest: str
+
+
+class ReviewPushRequest(BaseModel):
+    """Push the Campaign's review request (SIP-0109 §24ci (b)): the supervisor's act, with the
+    supervisor's own forge token for it."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    idempotency_key: str = Field(min_length=1, max_length=200)
+    #: The supervisor's own forge token, for this one push: used in memory, never stored, logged or
+    #: returned. Required: nothing in the deploy is stored for a Campaign's push.
+    token: SecretStr = Field(min_length=1, max_length=512)
+
+
+class ReviewPushResponse(BaseModel):
+    """One push of the Campaign's review request, as its row records it."""
+
+    campaign_id: str
+    branch: str
+    commit: str
+    #: The commit the push was leased on: the last one pushed, or ``None`` for the first.
+    lease: str | None
+    #: Whether the push rewrote the branch: a rebase's head, after the commit last pushed.
+    forced: bool
+    review_url: str
+    entry_id: str
+    replayed: bool
 
 
 class ControlResultResponse(BaseModel):

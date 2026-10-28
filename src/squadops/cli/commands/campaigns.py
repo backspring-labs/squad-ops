@@ -18,6 +18,7 @@ import yaml
 from squadops.campaigns.models import ControlOperation
 from squadops.cli.client import CLIError
 from squadops.cli.client import get_client as _get_client
+from squadops.cli.forge_token import gh_token
 from squadops.cli.output import print_detail, print_error, print_json, print_success, print_table
 from squadops.cli.paging import limit_option, offset_option, say_when_full
 
@@ -337,6 +338,42 @@ def answer(
         },
     )
     _show_result(ctx, data, f"escalation_answered:{escalation_id}")
+
+
+@app.command("push-review")
+def push_review(
+    ctx: typer.Context,
+    campaign_id: str = typer.Argument(...),
+    token_from_gh: bool = typer.Option(
+        False,
+        "--token-from-gh",
+        help="Push with your own GitHub access (`gh auth token`), for this act only: required",
+    ),
+    idempotency_key: str | None = typer.Option(None, "--idempotency-key"),
+):
+    """Push a repository-backed Campaign's review request to the product (SIP-0109 §24ci (b)), at
+    its close or when the owner asks: its campaign branch, as squadops/<campaign>. The first push
+    opens the review request; one after a rebase is forced with a lease on the commit last pushed,
+    and refused if someone else moved the branch. Nothing in the deploy holds a token for it, so
+    your own is required, for this push only."""
+    if not token_from_gh:
+        print_error(
+            "a campaign's review request is pushed with your own token, for this push only: "
+            "pass --token-from-gh"
+        )
+        raise typer.Exit(code=2)
+    key = _key(idempotency_key)
+    body = {"idempotency_key": key, "token": gh_token()}
+    data = _call(ctx, "post", f"/api/v1/campaigns/{campaign_id}/review-pushes", json=body)
+    fmt, _quiet = _fmt(ctx)
+    if fmt == "json":
+        print_json(data)
+        return
+    how = f"forced with a lease on {data['lease'][:12]}" if data["forced"] else "not forced"
+    again = " (already pushed)" if data.get("replayed") else ""
+    print_success(
+        f"{data['branch']} at {data['commit'][:12]}, {how}: {data['review_url']}{again} (key {key})"
+    )
 
 
 @app.command("start")

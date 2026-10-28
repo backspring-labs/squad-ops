@@ -28,7 +28,9 @@ class ReviewRequestPort(ABC):
         self, *, repo_uri: str, head: str, base: str, title: str, body: str, token: str
     ) -> str:
         """Open a review request of branch ``head`` against ``base`` and return its URL. An
-        open one for the same head is returned rather than duplicated, so a retry opens one.
+        open one of the same ``head`` against the same ``base``, in the same repository, is
+        returned rather than duplicated, so a retry opens one: a caller that crashed after the
+        forge answered recovers that request by calling again (SIP-0109 §24cn).
 
         Raises:
             ReviewRequestFailed: The repository isn't on this forge, the token is refused, or

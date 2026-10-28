@@ -750,3 +750,33 @@ async def test_a_rebase_supersedes_its_repair_and_writes_its_proposal_in_one_tra
     )
     assert again.value.entry.refusal is RefusalReason.STALE_STATE
     assert (await campaigns.control_log(CID))[-1].outcome is ControlOutcome.REFUSED
+
+
+async def test_a_review_push_is_recorded_on_a_completed_campaign(campaigns):
+    """§24ci (b), migration 2001: ``review_pushed`` is in the schema, and as a record it is
+    accepted on a completed campaign, since the push is made at the close. Bug caught: the value
+    added in Python and not in the CHECK list, so the first push lands on the product and its row
+    fails, leaving the next push no lease."""
+    await campaigns.transition(
+        CID,
+        move(
+            S.COMPLETED,
+            "k-close",
+            operation=ControlOperation.ABORT,
+            outcome=CampaignOutcome.ABORTED,
+        ),
+    )
+    pushed = move(
+        S.COMPLETED,
+        "review-push:k-1",
+        operation=ControlOperation.REVIEW_PUSHED,
+        next_state=None,
+        target="squadops/cmp_it0000000001",
+        binding={"branch": "squadops/cmp_it0000000001", "commit": "a" * 40, "lease": None,
+                 "forced": False, "review_url": "https://forge.example.invalid/pull/1"},
+    )  # fmt: skip
+
+    result = await campaigns.transition(CID, pushed)
+
+    assert result.entry.outcome is ControlOutcome.APPLIED
+    assert (await campaigns.control_log(CID))[-1].binding["commit"] == "a" * 40
