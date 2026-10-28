@@ -140,7 +140,8 @@ Kept by the rule in CLAUDE.md ("SIP System"): one row per part, updated in the P
 | a Campaign on a repository-backed Project, point 4: upstream moving. The branch is rebased onto the commit and revision its Project reconciled, its head verified by the product's checks, a pending repair or retry superseded as `upstream_moved` (D10), the conflict and regression escalations, and the ref's follow (§24bv point 4, §24cd points 2–5, §24cm) | **shipped**, with §24cd point 5's frozen bundles at the rebase run by #2774's `frozen_on_runner` (§24cm item 11) | 2.5.0, PR #2770 |
 | a Campaign on a repository-backed Project, the supervisor's review-request push: the campaign branch pushed as `squadops/<campaign>` with the supervisor's own token, leased on the last push and refused over a branch someone else moved (§24ci (b), §24cn) | **shipped** | 2.5.0, PR #2772 |
 | a Campaign on a repository-backed Project, point 3's route rendering on a product: the profile's client routes rendered on the candidate, started in the sandbox from contract 7's start, read by the evaluator image's Chromium and judged by their views' root anchors (§24bv point 3, §24cl item 6, §24co; SIP-0102 §11k) | **shipped** | 2.5.0, PR #2777 |
-| a page criterion on a repository-backed change request names its view's anchor (required on a page the change adds, refused on one the profile judges), and a route the request adds is judged by it, so it can hold (§24co item 11's remainder, §24cp) | **shipped** | 2.5.0, PR #2780, closes #2779 |
+| a page criterion on a repository-backed change request names its view's anchor (required on a page the change adds, refused on one the profile judges), and a route the request adds is judged by it, so it can hold; an added page whose path needs a seed is refused, and a dev repair keeps the anchors (§24co item 11's remainder, §24cp items 1–5) | **shipped** | 2.5.0, PR #2780, closes #2779 |
+| a seed for a page a repository-backed change request adds whose path has a parameter, so it can be read instead of refused (§24cp item 5) | **unplaced**, deliberately: for the supervisor to place | #2781 |
 | a Campaign on a repository-backed Project, read live: a repository-backed Campaign's increments judged at delivery and promoted onto its branch end to end, on a product made from a blueprint (`z_shelfnote`, IR-7) and one with its own layout (`z_continuum`), as the 2.5 plan's Track A demonstrations (§24bv, §24cl, §24co) | **placed** | 2.5.0, #2619 |
 | a vitest test-id reader, so a vitest-only criterion can be read as discriminating (§24ci (a)) | **shipped**: from vitest's default reporter, as the product's own command prints it (SIP-0112 H.10) | 2.5.0, PR #2764, closes #2757 |
 | a Campaign cycle held on its instruction bindings escalates as `binding_hold`, released by re-supply and never parked (§24bw; SIP-0110 §A.3.6) | **shipped** | 2.4.0, PR #2628 (#2178's Campaign half) |
@@ -5233,12 +5234,45 @@ anchor is a typed field.
      sample application's included. A framing stage sees the anchor in the change request it's shown, and the plan
      authors are shown the views appendix.
 
+5. **The outside review (SIP-0112 H.12) of PR #2780 at `7c19e900`, relayed by the owner: changes requested, two
+   P2s, both fixed in that PR.**
+   - **P2 1: an added route with a parameter could never be verified.**
+     - **Why:** a route the request adds gets an anchor but no seed. Seeds come from the approved manifest's creates,
+       which only a pinned route has (§24co item 6). So `literal_path` returns nothing, and the route blocks forever,
+       as this item's first text said under "not built".
+     - **The choice, the supervisor's for 2.5: refuse it at the rails, not seed it.** A page criterion on an added
+       route whose path needs a seed is refused as `added_route_unseedable`, naming a fixed path the proposer can
+       use instead (`_unseedable`, called from `_anchor_refusals`). "Needs a seed" means a segment that:
+       - is a parameter as the renderer reads one (`:x` or `{x}`, `increment_tree.route_param`);
+       - is bracketed (`[x]`, a Next.js dynamic segment);
+       - or holds a `*`.
+     - **Why refuse rather than seed:** a seed for an added page would be another typed field of §7.2's request (the
+       create endpoint, its body and the parameter the id fills), with its own design and outside review. Refusing
+       keeps a proposal from passing validation only to block at acceptance, which is the failure #2779 exists to
+       end. The seed mechanism is filed as #2781.
+     - **Read stricter than the renderer:** an added catch-all (`/docs/*`) is refused too, though the renderer reads
+       a catch-all at its unmatched path. The supervisor's rule names `*`, and #2781 can relax it with the seed
+       design.
+     - **What stays fail-closed:** a request stored before the rule may still name an added parameterized route. It
+       blocks, unseeded, whatever anchor it names. A pinned parameterized route is seeded from its manifest as
+       before, and isn't refused.
+     - The proposer is told the rule in its request asset, before its first attempt.
+   - **P2 2: a development correction repair lost the anchor.**
+     - **Why:** `increment_views` reached `development.develop` but wasn't in `REPAIR_PRESENCE_KEYS`, and the repair
+       prompt rendered no views. So a developer correcting a failed view could rewrite it without the anchor
+       acceptance enforces.
+     - **The fix:**
+       - `increment_views` rides `REPAIR_PRESENCE_KEYS` (`capabilities/context_assembly.py`);
+       - `_RepairPromptMixin._render_increment_views_section` renders the same managed asset,
+         `request.increment_views_appendix`, into `request.cycle_repair_task` (version 16, slot
+         `increment_views_section`);
+       - the section renders for a dev repair only, from the failed task's `increment_views`, or from a failed
+         `qa.test` scope's `views`, so a dev repair of a qa failure keeps it too. A qa repair already sees the views in
+         its test scope.
+     - This replaces the item's first text, which listed "a dev repair isn't shown the views" as not built.
+
 **Not built here:**
-- **A dev repair isn't shown the views.** No in-cycle check reads the anchor, so no task repair is born of one. A page
-  rendered without it is rejected at delivery. The increment's repair cycle then re-plans with the same request, its
-  authors are shown the anchor again, and its brief names `route /x: missing <anchor>` (§24br).
-- **An added parameterized route** (`/shelves/:id`) still blocks, unseeded. Its seed would come from an approved
-  manifest's creates (§24co item 6), which a route the request adds has none of.
+- **An added page whose path needs a seed** is refused, not seeded (item 5). The seed is #2781.
 - **The anchor is matched anywhere on the page,** as a pinned route's root anchor is (§24co item 5), not only on the
   view's outermost element. The prompts ask for the root.
 - **A route the request adds that the profile pins later** (its pin moves between the proposal and the acceptance) is
@@ -5292,9 +5326,34 @@ anchor is a typed field.
 - **The loaded checks** `2779-runtime`, `2779-nat`, `2779-neo`, `2779-eve` and `2779-max`
   (`scripts/dev/loaded_checks.yaml`). Each row answers its `expect` on the source, and each was read on #2777's head
   (`8c09cd4f`), where every row answers something else.
+- **Item 5's evidence** (the outside review's two P2s):
+  - **P2 1, end to end under the refusal:** `test_strategy_propose_product_increment.py` enters at `handle()`. The
+    proposer is told the rule before its first attempt, and an added `/reports/:report_id` is refused at each
+    attempt as `added_route_unseedable`. The task fails with no change request stored, so nothing is ruled on or
+    built.
+  - **P2 1 at the rails:** `test_product_change_request.py` covers five paths refused (`:x`, `{x}`, `[x]`,
+    `[...x]`, `/docs/*`) and a pinned parameterized page accepted.
+  - **P2 1 at the renderer:** `test_product_routes.py` shows a request stored before the rule still blocks its added
+    parameterized route, unseeded.
+  - **P2 2:** `test_product_increment_seams.py` starts from the anchored `development.develop` that
+    `generate_task_plan` makes. It fails the task into the correction loop (`run_correction_protocol`, a patch
+    decision), and runs the dispatched `development.correction_repair` through
+    `DevelopmentCorrectionRepairHandler.handle()` with the real assets. The repair carries `increment_views`, and its
+    prompt names `/totals` and `totals-view`. On a request that names no anchor, neither appears.
+  - **Nine more mutants, each caught:**
+    - the seed rule never asked;
+    - a bracketed segment, a wildcard, or a `:param` read as fixed;
+    - the proposer never told the rule;
+    - the repair handoff dropping the views;
+    - the dev repair rendering none;
+    - the rendered section never reaching the template;
+    - the template without its slot.
+  - **Loaded checks** `2780-review-runtime`, `2780-review-nat` and `2780-review-neo`, each run on the source.
 
 **Who ruled.** The supervisor placed #2779 in 2.5 (2026-10-28) and directed its shape: a typed anchor, validated at
 the rails, hashed, and named in the proposer's prompt. Making the anchor required on an added page, refusing it on a
 judged one, and narrowing the framing section are the implementer's choices (the Spark lane), for the supervisor's
 and the owner's review. This changes §7.2's change request, a shared contract, so it takes the outside review SIP-0112
-H.12 provides before the merge.
+H.12 provides before the merge. Item 5 answers that review's first round, relayed by the owner (2026-10-28). Refusing
+an added page that needs a seed, and filing the seed as #2781, are the supervisor's choices for 2.5. The repair's fix
+is as the review asked.
