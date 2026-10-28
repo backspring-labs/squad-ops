@@ -2307,8 +2307,13 @@ have: each failure's class, and a vitest reader. #2757 placed the reader before 
   reads unreadable, never clean.
 - **The derivation names vitest's reader from the runner's kind, not from its output** (the MacBook lane's G4,
   2026-10-28). On a product with another vitest major, a configured reporter, or stderr merged into stdout, nothing
-  shows at capture, and every criterion reads `blocked_unverified` at the first increment. Closing it is H.7's
-  derivation, the MacBook lane's, placed with H.4's recipe.
+  shows at capture, and every criterion reads `blocked_unverified` at the first increment. **Closed 2026-10-28**
+  (the Spark lane, after the MacBook lane's handoff). The derivation gives vitest's reader only where the runner's
+  package (or the repository root's) pins vitest 2, its command names no reporter and doesn't merge stderr into
+  stdout, and no `vitest.config.*` or `vite.config.*` at its root names `reporters`. Anywhere else the runner gets
+  no reader, and `no_test_id_reader` names why at capture. That gap's reason now says what §24ci (a) rules: an
+  unread runner's criterion isn't accepted as discriminating. The old text said each criterion is read by its
+  test file's result, which §24ci (a) rejected; the shared fixture's four recorded profiles carry the new wording.
 
 **Evidence:**
 - **Real output:** pytest 9.0.2 under `--tb`'s default, `short` and `no`, and vitest 2.1.9 run by the product's
