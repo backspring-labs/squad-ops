@@ -1874,3 +1874,21 @@ checks:
       reading = read("vitest", " Tests  1 failed | 1 passed (2)\n", err, 1)
       print(reading.readable, reading.collected, dict(reading.classes))
     expect: "True 2 {'FAILED src/a.test.js > shows it': 'AssertionError'}"
+  - id: "2619-blueprint-conventions"
+    what: a product's cycle is pinned to its blueprint's development profile, and a product with no blueprint keeps the default (SIP-0112 H.13)
+    container: squadops-runtime-api
+    code: |
+      from squadops.api.routes.cycles.cycles import _pin_blueprint_conventions
+      from squadops.stacks.development_profiles import blueprint_development_profile
+      print(blueprint_development_profile("fullstack_fastapi_react"), blueprint_development_profile(None) or "-", callable(_pin_blueprint_conventions))
+    expect: fullstack_fastapi_react - True
+  - id: "2619-blueprint-conventions-neo"
+    what: the developer of a product made from a blueprint is shown its conventions for a product, and never the skeleton's supplement (SIP-0112 H.13)
+    container: squadops-neo
+    code: |
+      import pathlib, squadops.prompts as p
+      from squadops.capabilities.handlers.source_repository import product_conventions_template
+      name = product_conventions_template({"source_repository": {}, "resolved_config": {"development_profile": "fullstack_fastapi_react"}})
+      text = (pathlib.Path(p.__file__).parent / "request_templates" / f"{name}.md").read_text()
+      print(name, "backend/tests" in text, product_conventions_template({"resolved_config": {"development_profile": "fullstack_fastapi_react"}}) or "-")
+    expect: request.source_repository_conventions_fullstack_fastapi_react False -

@@ -117,9 +117,11 @@ from squadops.projects.verification import SOURCE_VERIFICATION_TYPE
 from squadops.sandbox.environment import get_environment_contract
 from squadops.sandbox.main import sandbox_config_from_env
 from squadops.sandbox.preflight import sandbox_environment_decision
+from squadops.stacks.development_profiles import blueprint_development_profile
 
 if TYPE_CHECKING:
     from squadops.campaigns.campaign_branch import CampaignHead
+    from squadops.projects.derived_profile import DerivedProfile
 
 logger = logging.getLogger(__name__)
 
@@ -315,6 +317,45 @@ async def _seed_derived_contract(
             f"a manifest is seeded in plan_artifact_refs but no verification contract "
             f"could be derived from it, so the cycle would run unbound: {exc}"
         ) from exc
+
+
+def _pin_blueprint_conventions(
+    body: CycleCreateRequest, profile: "DerivedProfile | None"
+) -> str | None:
+    """Pin the development profile of the blueprint a product was made from (SIP-0112 H.13).
+
+    A product's cycle runs under the default profile unless something names another, and that is
+    ``python_cli``, so a frontend change on a FastAPI and React product was given a Python
+    package's prompts and a Python-only source filter. The derived profile at the pin names the
+    blueprint the product follows (contract 8's ``blueprint``), and that blueprint's development
+    profile is pinned in ``execution_overrides``, as ``_seed_derived_contract`` pins its
+    ``contract_ref``: one value on the cycle record, read by every task, retry and repair through
+    ``effective_development_profile``. It seeds nothing (``seeds_skeleton``).
+
+    Each task is then shown the blueprint's conventions for a product, never its test placement,
+    which the product's runners give (``source_repository_section``). Nothing is pinned:
+    - for no profile at the pin, or no blueprint, or one whose profile says nothing for a product
+      (``blueprint_development_profile``): the default stands, as in 2.4;
+    - where the request already names a ``development_profile``: the operator's choice stands, as
+      a supplied ``contract_ref`` does;
+    - for a cycle with no implementation plan. Only the plan's tasks are shown the product, with
+      its runners, so a plan-less task under the blueprint's profile would be given the profile's
+      prose for the skeleton, and its test placement with it.
+
+    Returns the profile pinned, or ``None``."""
+    if profile is None:
+        return None
+    name = blueprint_development_profile(profile.blueprint_stack)
+    if not name:
+        return None
+    overrides = body.execution_overrides or {}
+    config = resolve_config(body.applied_defaults, overrides)
+    if config.get("development_profile"):
+        return None
+    if not (config.get("implementation_plan") or config.get("typed_acceptance")):
+        return None
+    body.execution_overrides = {**overrides, "development_profile": name}
+    return name
 
 
 async def _validate_replay_declaration(
@@ -586,8 +627,26 @@ async def require_inherited_baseline(registry: Any, context: ProjectSourceContex
         )
 
 
+async def derived_profile_at_pin(
+    registry: Any, context: ProjectSourceContext
+) -> "DerivedProfile | None":
+    """The derived profile at the Project's pin (contract 8), or ``None`` for a baseline captured
+    before profiles were. An increment pinned at its campaign branch's head reads it at the
+    Project's pin all the same, as SIP-0109 §24cd point 3 rules."""
+    try:
+        return await registry.get_derived_profile(
+            context.project_id,
+            at=(context.development_baseline_commit, context.development_configuration_revision),
+        )
+    except DerivedProfileNotFoundError:
+        return None
+
+
 async def require_no_blocking_gap(
-    registry: Any, vault: Any | None, context: ProjectSourceContext, body: CycleCreateRequest
+    profile: "DerivedProfile | None",
+    vault: Any | None,
+    context: ProjectSourceContext,
+    body: CycleCreateRequest,
 ) -> tuple[Finding, ...]:
     """SIP-0112 H.4 (H.6, H.8): a source-backed Cycle whose work meets a blocking gap of the
     derived profile at its pin is refused before anything is persisted, naming the gap.
@@ -595,12 +654,7 @@ async def require_no_blocking_gap(
     Its work's paths are known here only from an operator's plan. A framing-authored plan meets
     the same rule at the plan gate (``validate_blocking_gaps``). A pin whose baseline has no
     profile runs as it did in 2.4, and the absence is returned as a warning."""
-    try:
-        profile = await registry.get_derived_profile(
-            context.project_id,
-            at=(context.development_baseline_commit, context.development_configuration_revision),
-        )
-    except DerivedProfileNotFoundError:
+    if profile is None:
         return (
             Finding(
                 code="derived_profile_absent",
@@ -679,9 +733,17 @@ async def prepare_cycle(
     if source_context is not None:
         await require_reconciled_upstream(ports.project_registry, source_context)
         await require_inherited_baseline(ports.project_registry, source_context)
+        derived = await derived_profile_at_pin(ports.project_registry, source_context)
         gap_warnings = await require_no_blocking_gap(
-            ports.project_registry, ports.artifact_vault, source_context, body
+            derived, ports.artifact_vault, source_context, body
         )
+        # SIP-0112 H.13: before the effective config is read, so preflight sees what dispatch runs.
+        pinned = _pin_blueprint_conventions(body, derived)
+        if pinned is not None:
+            logger.info(
+                "cycle_create_blueprint_conventions",
+                extra={"project_id": project_id, "development_profile": pinned},
+            )
 
     # Resolve squad profile snapshot
     profile, snapshot_hash = await ports.squad_profile.resolve_snapshot(body.squad_profile_id)
