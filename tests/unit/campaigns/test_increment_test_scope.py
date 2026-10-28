@@ -98,7 +98,7 @@ async def _qa_prompt(envelope, monkeypatch) -> str:
     sent: list = []
     inputs = {**envelope.inputs, "prd": "Runs API", "artifact_contents": {}}
     await QATestHandler().handle(_qa_context(sent), inputs)
-    return sent[0][-1].content
+    return sent[0][1].content  # the user turn: a qa first call ends with D12's note
 
 
 def _implementation(cycle, change_request):

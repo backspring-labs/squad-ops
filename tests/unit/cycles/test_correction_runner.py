@@ -4074,7 +4074,7 @@ class TestOwnArtifactLocusRouting(TestCorrectionRunnerStandalone):
             FilesystemPromptAssetAdapter(prompts / "fragments", prompts / "request_templates")
         )
         await QATestRepairHandler().handle(ctx, {**repair.inputs, "prd": "Runs"})
-        prompt = ctx.ports.llm.chat_stream_with_usage.await_args_list[0].args[0][-1].content
+        prompt = ctx.ports.llm.chat_stream_with_usage.await_args_list[0].args[0][1].content
 
         told = [
             "## What this increment's tests may assert",

@@ -113,7 +113,7 @@ async def test_the_brief_shows_the_line_the_case_failed_on_not_where_it_is_decla
             "acceptance_workspace_files": {_SUITE: _SUITE_TEXT},
         },
     )
-    prompt = ctx.ports.llm.chat_stream_with_usage.await_args_list[0].args[0][-1].content
+    prompt = ctx.ports.llm.chat_stream_with_usage.await_args_list[0].args[0][1].content
 
     assert f"`{_SUITE}:217` › submits the join form" in prompt
     assert "→  217 |     expect(apiFetch).toHaveBeenCalledWith('/runs/1/join')" in prompt
