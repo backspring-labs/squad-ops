@@ -688,7 +688,7 @@ def _gaps(
     gaps += _untested(tree, runners)
     gaps += _unscopable(runners, owner)
     for kind in dict.fromkeys(r.runner for r in runners if r.test_ids is None):
-        why = unread.get(kind)
+        unread_why = unread.get(kind)
         gaps.append(
             Gap(
                 "no_test_id_reader",
@@ -696,14 +696,14 @@ def _gaps(
                 kind,
                 ("**",),
                 (
-                    f"{kind}'s reader can't read this product's output: {why}"
-                    if why
+                    f"{kind}'s reader can't read this product's output: {unread_why}"
+                    if unread_why
                     else f"no findings reader names {kind}'s tests one by one"
                 )
                 + ", so a criterion's discrimination is unread and it isn't accepted as "
                 "discriminating (SIP-0109 §24ci (a))",
                 "vitest 2 run with its default reporter, its stderr apart"
-                if why
+                if unread_why
                 else f"a {kind} reader in squadops.sandbox.findings",
             )
         )
