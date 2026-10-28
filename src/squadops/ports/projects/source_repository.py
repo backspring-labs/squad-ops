@@ -84,8 +84,11 @@ class SourceRepositoryPort(ABC):
         Raises:
             RebaseConflict: A commit doesn't apply on ``onto`` with what was replayed before it,
                 naming the commit and its conflicting paths. Nothing was written to a ref.
-            SourceUnavailable: The clone doesn't hold one of the commits, or ``base`` isn't in
-                ``head``'s history.
+            SourceUnavailable: By a reason a caller can sort on: the clone doesn't exist
+                (``not_cloned``) or doesn't hold one of the commits (``commit_missing``); ``base``
+                isn't in ``head``'s history (``not_an_ancestor``); the history between them holds
+                a merge (``not_linear``); an id isn't one (``not_a_commit``). Anything else
+                (``timeout``, a git failure) is the clone's fault, not the branch's.
         """
 
     @abstractmethod

@@ -19,7 +19,7 @@ Configuration revision the Project is reconciled at. When they differ:
    verification. The reconciled commit itself needs none: its baseline is the inherited one.
    The frozen criteria's bundles are not run here: a product's bundles run on its own runner in
    the sandbox, which is §24cd point 6's evaluator, not built yet. The row names each frozen
-   criterion left unrun (§24cj).
+   criterion left unrun (§24cm).
 4. **One ``BRANCH_REBASED`` row** records the base and head before and after, the replayed and
    dropped commits and the verification, and moves the accepted tree. A pending repair or retry,
    built on the old head, is superseded in the same transaction: its increment is abandoned as
@@ -35,7 +35,7 @@ from __future__ import annotations
 import dataclasses
 import json
 import logging
-from collections.abc import Awaitable, Callable
+from collections.abc import Awaitable, Callable, Mapping
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from hashlib import sha256
@@ -57,7 +57,6 @@ from squadops.campaigns.models import (
     Campaign,
     CampaignState,
     CampaignTransition,
-    ControlLogEntry,
     ControlOperation,
     ControlOperationRefused,
     CycleKind,
@@ -75,9 +74,29 @@ logger = logging.getLogger(__name__)
 
 #: How an increment the rebase left nothing to continue is abandoned (§24bv point 4, D10).
 UPSTREAM_MOVED = "upstream_moved"
-#: The refusals a rebase escalates by, as the launch's refusal code (§24bv point 4).
+#: The refusals a rebase escalates by, as the launch's refusal code (§24bv point 4, §24cm).
 CAMPAIGN_BRANCH_CONFLICT = "CAMPAIGN_BRANCH_CONFLICT"
 REBASED_HEAD_REGRESSED = "REBASED_HEAD_REGRESSED"
+#: The branch's history can't be replayed as a rebase replays it: a merge commit on it, a base
+#: that isn't in its history, an id that isn't a commit.
+CAMPAIGN_BRANCH_UNREBASEABLE = "CAMPAIGN_BRANCH_UNREBASEABLE"
+#: The managed clone doesn't hold the branch: the clone is gone, or a commit is missing from it.
+CAMPAIGN_BRANCH_UNAVAILABLE = "CAMPAIGN_BRANCH_UNAVAILABLE"
+#: The rebased head can't be verified here: the runtime has no sandbox to run the checks in.
+REBASED_HEAD_UNVERIFIABLE = "REBASED_HEAD_UNVERIFIABLE"
+
+#: The repository's refusals that no retry gets past (``SourceUnavailable.reason``), each with the
+#: code its launch is refused by. The campaign escalates with the intent pending, and the
+#: operator acts. Any other ``SourceUnavailable`` (a timeout, git failing to run, a ref's lock) is
+#: an infrastructure fault: nothing is written, the intent stays pending and the campaign where it
+#: was, and the next drain (the sweep's, at the latest) repeats the launch.
+NEEDS_THE_OPERATOR: dict[str, str] = {
+    "not_linear": CAMPAIGN_BRANCH_UNREBASEABLE,
+    "not_an_ancestor": CAMPAIGN_BRANCH_UNREBASEABLE,
+    "not_a_commit": CAMPAIGN_BRANCH_UNREBASEABLE,
+    "commit_missing": CAMPAIGN_BRANCH_UNAVAILABLE,
+    "not_cloned": CAMPAIGN_BRANCH_UNAVAILABLE,
+}
 #: What a rebased head's regression baseline is, as its row names it.
 REBASE_VERIFICATION, INHERITED_BASELINE = "rebase_verification", "inherited_baseline"
 
@@ -93,6 +112,29 @@ ProposeAfterRebase = Callable[[Campaign, "str | None"], Awaitable["LaunchRequest
 
 
 @dataclass(frozen=True)
+class FrozenAtRebase:
+    """What the frozen criteria's bundles run on at a rebase (§24cd point 5): the rebased head's
+    tree (its files and executable bits), every criterion the campaign's promotions froze, and the
+    pin whose derived profile names the product's test surface. ``subject_id`` is the rebase's
+    own key, so a re-run of the same rebase is the same subject."""
+
+    subject_id: str
+    project_id: str
+    pin: BranchBase
+    tree: CheckoutTree
+    frozen: tuple[dict, ...]
+
+
+#: §24cd point 5's second half, the frozen criteria's bundles on the product's own runner: each
+#: criterion's reading by its id (``held`` or not). The runtime-side runner is #2774's
+#: ``runner_acceptance.frozen_on_runner``; the supervisor wires it at ``main``'s
+#: ``BranchRebase(frozen_on_runner=...)`` once both have merged, as one call to it.
+FrozenOnRunner = Callable[[FrozenAtRebase], Awaitable[Mapping[str, str]]]
+#: The reading a frozen criterion's bundle must give for the rebase to stand.
+HELD = "held"
+
+
+@dataclass(frozen=True)
 class RebasedHead:
     """What a rebase made: the rebased head, its tree, and its verification's vault id, or
     ``None`` when the head is the reconciled commit itself."""
@@ -101,6 +143,8 @@ class RebasedHead:
     tree_identity: str
     verification_ref: str | None
     summary: str
+    #: The frozen criteria whose bundles weren't run: every one while no runner is wired.
+    frozen_unrun: tuple[str, ...] = ()
 
 
 def needs_rebase(base: BranchBase | None, project: Project) -> bool:
@@ -127,7 +171,6 @@ def rebase_transition(
     before: CampaignHead,
     onto: BranchBase,
     made: RebasedHead,
-    frozen_unrun: list[str],
     launch: LaunchRequest | None,
     unbuilt: str | None,
     actor: str,
@@ -152,9 +195,9 @@ def rebase_transition(
         "verification": REBASE_VERIFICATION if made.verification_ref else INHERITED_BASELINE,
         "verification_ref": made.verification_ref,
         "verification_summary": made.summary,
-        # §24cd point 5's bundles, which need §24cd point 6's evaluator (§24cj): named, never
-        # passed over in silence.
-        "frozen_criteria_unrun": frozen_unrun,
+        # §24cd point 5's bundles, which run on the product's runner (§24cm): each one not run
+        # is named, never passed over in silence.
+        "frozen_criteria_unrun": list(made.frozen_unrun),
     }
     next_state = campaign.state
     if supersedes:
@@ -174,7 +217,7 @@ def rebase_transition(
             f"upstream moved: the campaign branch rebased from {base.commit[:12]} onto "
             f"{onto.commit[:12]} (revision {onto.revision}), head {made.rebased.commit[:12]}"
         ),
-        idempotency_key=(f"rebase:{base.commit}@{base.revision}->{onto.commit}@{onto.revision}"),
+        idempotency_key=rebase_key(base, onto),
         next_state=next_state,
         expected_state=campaign.state,
         target=intent.launch_id,
@@ -190,9 +233,10 @@ def rebase_transition(
     )
 
 
-def frozen_criteria_unrun(log: list[ControlLogEntry]) -> list[str]:
-    """Every frozen criterion's id, which the rebase's verification doesn't run (§24cj)."""
-    return [str(c["criterion_id"]) for c in frozen_criteria(log)]
+def rebase_key(base: BranchBase, onto: BranchBase) -> str:
+    """One rebase's identity: the base it moves from and the pin it moves to. Its row's key, and
+    the subject its frozen bundles are run under, so a re-run of it is the same subject."""
+    return f"rebase:{base.commit}@{base.revision}->{onto.commit}@{onto.revision}"
 
 
 class BranchRebase:
@@ -210,6 +254,7 @@ class BranchRebase:
         reconciled: Reconciled,
         propose: ProposeAfterRebase,
         actor: str,
+        frozen_on_runner: FrozenOnRunner | None = None,
     ) -> None:
         self._campaigns = campaigns
         self._projects = projects
@@ -220,6 +265,9 @@ class BranchRebase:
         self._reconciled = reconciled
         self._propose = propose
         self._actor = actor
+        #: ``None`` until #2774's runner is wired (§24cm): every frozen criterion is then named
+        #: as unrun on the row.
+        self._frozen_on_runner = frozen_on_runner
 
     async def before_launch(self, campaign: Campaign, intent: LaunchIntent) -> LaunchIntent | None:
         """The intent to launch now: ``intent`` itself when nothing moved, or when a fresh
@@ -228,8 +276,12 @@ class BranchRebase:
         escalated, or the campaign moved since it was read).
 
         Raises:
-            LaunchRefused: The Project isn't reconciled at its pin, the rebase conflicts, or the
-                rebased head regressed. The campaign escalates, with ``intent`` pending.
+            LaunchRefused: The Project isn't reconciled at its pin; the rebase conflicts, or the
+                repository refused it in a way no retry gets past (``NEEDS_THE_OPERATOR``); the
+                rebased head regressed, by its checks or a frozen criterion; or it can't be
+                verified here. The campaign escalates, with ``intent`` pending.
+            SourceUnavailable: An infrastructure fault (a timeout, git failing to run). Nothing
+                was written; the next drain repeats the launch.
         """
         if intent.cycle_kind is CycleKind.CALIBRATION:
             return intent
@@ -244,7 +296,9 @@ class BranchRebase:
             project.development_baseline_commit, project.development_configuration_revision
         )
         before = head(campaign, log)
-        made = await self._rebased(campaign, project, base, before, onto)
+        made = await self._rebased(
+            campaign, project, base, before, onto, tuple(frozen_criteria(log))
+        )
         launch = unbuilt = None
         if intent.cycle_kind in _CONTINUING:
             accepted = campaign.accepted
@@ -264,7 +318,6 @@ class BranchRebase:
             before=before,
             onto=onto,
             made=made,
-            frozen_unrun=frozen_criteria_unrun(log),
             launch=launch,
             unbuilt=unbuilt,
             actor=self._actor,
@@ -301,31 +354,33 @@ class BranchRebase:
         base: BranchBase,
         before: CampaignHead,
         onto: BranchBase,
+        frozen: tuple[dict, ...],
     ) -> RebasedHead:
-        """The branch's commits replayed onto ``onto``, and the rebased head verified."""
-        # deferred (pair): squadops.projects imports this package at load
-        from squadops.projects.models import RebaseConflict
-
+        """The branch's commits replayed onto ``onto``, and the rebased head verified: by the
+        product's checks, then by the frozen criteria's bundles on the product's runner."""
         # deferred (pair): squadops.projects imports this package at load
         from squadops.projects.verification import ACCEPTED
 
-        try:
-            rebased = await self._repository.rebase(
-                campaign.project_id, base=base.commit, head=before.commit, onto=onto.commit
-            )
-        except RebaseConflict as e:
-            raise LaunchRefused(
-                f"{CAMPAIGN_BRANCH_CONFLICT}: the campaign branch doesn't rebase from "
-                f"{base.commit[:12]} onto the reconciled {onto.commit[:12]}: {e}. Resolve it in "
-                "the product, reconcile the Project, and resume"
-            ) from e
+        # deferred (pair): squadops.projects imports this package at load
+        from squadops.projects.workspaces import SandboxUnavailable
+
+        rebased = await self._replayed(campaign, base, before, onto)
         tree = await self._repository.tree_at(campaign.project_id, rebased.commit)
         identity = FileTree.of(tree.files).identity
+        unrun = await self._frozen_held(campaign, base, onto, rebased, tree, frozen)
         if rebased.commit == onto.commit:
             return RebasedHead(
-                rebased, identity, None, "the reconciled commit: its inherited baseline"
+                rebased, identity, None, "the reconciled commit: its inherited baseline", unrun
             )
-        verification = await self._verified(campaign, project, tree, base, before, onto, rebased)
+        try:
+            verification = await self._verified(
+                campaign, project, tree, base, before, onto, rebased
+            )
+        except SandboxUnavailable as e:
+            raise LaunchRefused(
+                f"{REBASED_HEAD_UNVERIFIABLE}: the campaign branch rebased onto the reconciled "
+                f"{onto.commit[:12]}, and its head can't be verified here: {e}"
+            ) from e
         ref = await self._store(campaign, verification)
         if verification.verdict != ACCEPTED:
             raise LaunchRefused(
@@ -334,7 +389,68 @@ class BranchRebase:
                 f"{verification.summary()} (verification {ref}): a break upstream caused is "
                 "found here, never blamed on the next increment"
             )
-        return RebasedHead(rebased, identity, ref, verification.summary())
+        return RebasedHead(rebased, identity, ref, verification.summary(), unrun)
+
+    async def _replayed(
+        self, campaign: Campaign, base: BranchBase, before: CampaignHead, onto: BranchBase
+    ) -> Rebased:
+        """The clone's rebase, its refusals sorted by who can get past them (§24cm): a conflict,
+        and each reason in ``NEEDS_THE_OPERATOR``, escalate; anything else is a fault the next
+        drain repeats, logged here by name."""
+        # deferred (pair): squadops.projects imports this package at load
+        from squadops.projects.models import RebaseConflict, SourceUnavailable
+
+        try:
+            return await self._repository.rebase(
+                campaign.project_id, base=base.commit, head=before.commit, onto=onto.commit
+            )
+        except RebaseConflict as e:
+            raise LaunchRefused(
+                f"{CAMPAIGN_BRANCH_CONFLICT}: the campaign branch doesn't rebase from "
+                f"{base.commit[:12]} onto the reconciled {onto.commit[:12]}: {e}. Resolve it in "
+                "the product, reconcile the Project, and resume"
+            ) from e
+        except SourceUnavailable as e:
+            code = NEEDS_THE_OPERATOR.get(e.reason)
+            if code is None:
+                logger.warning(
+                    "campaign_branch_rebase_unavailable",
+                    extra={"campaign_id": campaign.campaign_id, "reason": e.reason},
+                )
+                raise
+            raise LaunchRefused(
+                f"{code}: the campaign branch can't be rebased from {base.commit[:12]} onto the "
+                f"reconciled {onto.commit[:12]} ({e.reason}): {e}"
+            ) from e
+
+    async def _frozen_held(
+        self,
+        campaign: Campaign,
+        base: BranchBase,
+        onto: BranchBase,
+        rebased: Rebased,
+        tree: CheckoutTree,
+        frozen: tuple[dict, ...],
+    ) -> tuple[str, ...]:
+        """§24cd point 5: every frozen criterion's bundle on the rebased head, by the product's
+        runner. Returns the criteria left unrun: all of them while no runner is wired, none once
+        one is. A criterion whose reading isn't ``held``, or that the runner didn't read,
+        refuses the rebase as regressed."""
+        ids = tuple(str(c["criterion_id"]) for c in frozen)
+        if not frozen or self._frozen_on_runner is None:
+            return ids
+        readings = await self._frozen_on_runner(
+            FrozenAtRebase(rebase_key(base, onto), campaign.project_id, onto, tree, frozen)
+        )
+        broken = [f"{c} ({readings.get(c, 'unread')})" for c in ids if readings.get(c) != HELD]
+        if broken:
+            raise LaunchRefused(
+                f"{REBASED_HEAD_REGRESSED}: the campaign branch rebased onto the reconciled "
+                f"{onto.commit[:12]} at {rebased.commit[:12]}, and its frozen criteria don't all "
+                f"hold: {', '.join(broken)}. A break upstream caused is found here, never blamed "
+                "on the next increment"
+            )
+        return ()
 
     async def _verified(
         self,
@@ -352,7 +468,7 @@ class BranchRebase:
         from squadops.projects.verification import SourceVerification, attributed
 
         # deferred (pair): squadops.projects imports this package at load
-        from squadops.projects.workspaces import run_checks, seed_project_tree
+        from squadops.projects.workspaces import SandboxUnavailable, run_checks, seed_project_tree
 
         baseline = await self._projects.get_inherited_baseline(campaign.project_id)
         if (baseline.commit, baseline.development_configuration_revision) != (
@@ -370,6 +486,8 @@ class BranchRebase:
         )
         upstream = await self._repository.tree_at(campaign.project_id, onto.commit)
         workspace_id = f"rebase-{campaign.campaign_id}-{rebased.commit[:12]}"
+        if self._sandbox is None:
+            raise SandboxUnavailable("the runtime API has no sandbox client to run checks through")
         await self._sandbox.release_workspace(workspace_id)
         try:
             seeded = await seed_project_tree(

@@ -694,7 +694,6 @@ def _rebase(current, intent, *, base: str, onto: str, revision: int):
         before=CampaignHead(current.accepted.commit, current.accepted.identity, None),
         onto=BranchBase(onto, revision),
         made=RebasedHead(Rebased(onto, (), ()), f"sha-{onto[:4]}", None, "inherited"),
-        frozen_unrun=[],
         launch=LaunchRequest(CycleKind.INCREMENT, {"p": revision}),
         unbuilt=None,
         actor="campaign-launcher",

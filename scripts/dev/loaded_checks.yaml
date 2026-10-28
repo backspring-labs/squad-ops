@@ -1950,7 +1950,7 @@ checks:
       print(read("pytest", "1 passed, 2 skipped in 0.01s\n", "", 0).as_dict()["passed"], read("vitest", " Tests  1 passed | 1 skipped (2)\n", "", 0).passed)
     expect: 1 1
   - id: "2619-branch-rebase"
-    what: a repository-backed campaign's branch is based where its last rebase left it, an intent can be superseded, and the clone can rebase (SIP-0109 §24bv point 4, §24cj)
+    what: a repository-backed campaign's branch is based where its last rebase left it, an intent can be superseded, and the clone can rebase (SIP-0109 §24bv point 4, §24cm)
     container: squadops-runtime-api
     code: |
       from datetime import UTC, datetime

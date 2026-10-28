@@ -586,18 +586,35 @@ async def test_a_branch_commit_that_conflicts_upstream_is_named_and_writes_no_re
 
 @pytest.mark.parametrize(
     ("case", "reason"),
-    [("same-base", None), ("base-not-in-history", "not_an_ancestor"), ("bad-id", "not_a_commit")],
+    [
+        ("same-base", None),
+        ("base-not-in-history", "not_an_ancestor"),
+        ("bad-id", "not_a_commit"),
+        ("a-merge-on-the-branch", "not_linear"),
+        ("a-head-the-clone-lacks", "commit_missing"),
+        ("onto-the-clone-lacks", "commit_missing"),
+    ],
 )
 async def test_a_rebase_with_nothing_to_move_or_no_history_to_move(product, clones, case, reason):
-    """The edges. A base equal to the commit rebased onto is a revision-only reconciliation: the
-    head stays. Bugs caught: the head rewritten for nothing; a base that isn't in the head's
-    history replaying commits that aren't the branch's own; an id passed to git unchecked."""
+    """The edges, each refused by a reason the launcher sorts on (SIP-0109 §24cm). A base equal to
+    the commit rebased onto is a revision-only reconciliation: the head stays. Bugs caught: the
+    head rewritten for nothing; a base that isn't in the head's history replaying commits that
+    aren't the branch's own; an id passed to git unchecked; a merge commit replayed as if linear;
+    a commit the clone lacks read as git failing (a fault the next drain repeats forever) rather
+    than named."""
     base = await clones.sync("prj-tally", str(product.path), "refs/heads/main")
-    _first, second = await _branch_of_two(clones, base)
+    first, second = await _branch_of_two(clones, base)
+    clone = clones._clone_dir("prj-tally")
+    merged = _git(
+        clone, "commit-tree", f"{second}^{{tree}}", "-p", first, "-p", base, "-m", "a merge"
+    )
     arguments = {
         "same-base": dict(base=base, head=second, onto=base),
         "base-not-in-history": dict(base=second, head=base, onto=base),
         "bad-id": dict(base="--all", head=second, onto=base),
+        "a-merge-on-the-branch": dict(base=base, head=merged, onto=product.first_commit),
+        "a-head-the-clone-lacks": dict(base=base, head="e" * 40, onto=base),
+        "onto-the-clone-lacks": dict(base=base, head=second, onto="e" * 40),
     }[case]
 
     if reason is None:

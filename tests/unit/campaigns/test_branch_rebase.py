@@ -1,5 +1,5 @@
 """A repository-backed campaign's branch when upstream moves (SIP-0109 §24bv point 4, §24cd
-points 2–5, §24cj).
+points 2–5, §24cm).
 
 Entered at ``CampaignLaunchService.drain()``, as the runtime's sweep and every intent-writing row
 call it, with the launcher's ``before_launch`` wired as ``main`` wires it. The Project is the
@@ -155,7 +155,9 @@ class _World(_BranchWorld):
             idempotency_key=f"b-{commit}",
         )
 
-    def service(self, *, propose=None, repository=None) -> CampaignLaunchService:
+    def service(
+        self, *, propose=None, repository=None, frozen_on_runner=None
+    ) -> CampaignLaunchService:
         """The launch service and its rebase, as ``main`` wires them."""
         squads = AsyncMock()
         squads.resolve_snapshot.return_value = (_squad(), "sha256:abc")
@@ -177,6 +179,7 @@ class _World(_BranchWorld):
             reconciled=partial(reconciled_at_pin, creation),
             propose=propose or self.progress.proposal_after_rebase,
             actor=LAUNCHER_ACTOR,
+            frozen_on_runner=frozen_on_runner,
         )
         return CampaignLaunchService(
             campaigns=self.campaigns,
@@ -639,7 +642,7 @@ async def _rebased_five_times(max_unaccepted: int = 1, **limits) -> tuple:
             rebase_transition(
                 current, repair.intent, base=base,
                 before=CampaignHead(current.accepted.commit, current.accepted.identity, None),
-                onto=onto, made=made, frozen_unrun=[], launch=_increment(f"prop_fresh{i:06d}"),
+                onto=onto, made=made, launch=_increment(f"prop_fresh{i:06d}"),
                 unbuilt=None, actor=LAUNCHER_ACTOR,
             ),
         )  # fmt: skip
@@ -722,7 +725,7 @@ async def test_a_rebase_superseding_a_repair_launched_meanwhile_is_refused_and_m
             rebase_transition(
                 current, repair.intent, base=BranchBase("b" * 40, 6),
                 before=CampaignHead(current.accepted.commit, current.accepted.identity, None),
-                onto=BranchBase("d" * 40, 7), made=made, frozen_unrun=[], launch=_increment(),
+                onto=BranchBase("d" * 40, 7), made=made, launch=_increment(),
                 unbuilt=None, actor=LAUNCHER_ACTOR,
             ),
         )  # fmt: skip
@@ -739,7 +742,7 @@ async def test_a_rebase_superseding_a_repair_launched_meanwhile_is_refused_and_m
 
 
 async def test_a_revision_only_reconciliation_reverifies_the_head_where_it_stands(tmp_path):
-    """§24bv point 4 as built (§24cj): a Project re-configured at the same commit gets a new
+    """§24bv point 4 as built (§24cm): a Project re-configured at the same commit gets a new
     Development Configuration revision, and the head's verification ran at the old one, which
     delivery refuses to compare with (FR-20). So the head is re-verified at the new revision, and
     stays the same commit. Bugs caught: the base compared by commit alone, so every increment
@@ -800,3 +803,203 @@ async def test_upstream_moving_twice_rebases_from_where_the_last_rebase_left_the
     )
     assert [old for old, _new in second.binding["replayed"]] == [first.binding["commit"]]
     assert (second.binding["base"], await world.branch()) == (second_onto, second.binding["commit"])
+
+
+class _RebaseRefuses:
+    """The managed clone, whose rebase refuses ``times`` times with ``reason``, as the Git adapter
+    refuses: then rebases for real."""
+
+    def __init__(self, clones, reason: str, times: int = 1) -> None:
+        self._clones, self._reason, self._left = clones, reason, times
+
+    def __getattr__(self, name):
+        return getattr(self._clones, name)
+
+    async def rebase(self, *args, **kwargs):
+        from squadops.projects.models import SourceUnavailable
+
+        if self._left:
+            self._left -= 1
+            raise SourceUnavailable(f"invented refusal ({self._reason})", reason=self._reason)
+        return await self._clones.rebase(*args, **kwargs)
+
+
+async def _one_sweep(world: _World, service) -> None:
+    """One pass of the runtime's campaign sweep (``main._sweep_campaigns``), with this launch
+    service and the world's own progress."""
+    import asyncio
+    from types import SimpleNamespace
+    from unittest.mock import patch
+
+    from squadops.api.runtime import main
+
+    progress = SimpleNamespace(
+        sweep_ruling_bounds=AsyncMock(),
+        rehear_ended=AsyncMock(return_value=[]),
+        rehear_calibration_records=AsyncMock(return_value=[]),
+        resync_campaign_branches=AsyncMock(return_value=[]),
+    )
+    with (
+        patch.object(
+            main.asyncio, "sleep", AsyncMock(side_effect=[None, asyncio.CancelledError()])
+        ),
+        pytest.raises(asyncio.CancelledError),
+    ):
+        await main._sweep_campaigns(
+            SimpleNamespace(campaign_launch=service, campaign_progress=progress)
+        )
+
+
+@pytest.mark.parametrize(
+    ("reason", "code"),
+    [
+        ("not_linear", "CAMPAIGN_BRANCH_UNREBASEABLE"),
+        ("not_an_ancestor", "CAMPAIGN_BRANCH_UNREBASEABLE"),
+        ("commit_missing", "CAMPAIGN_BRANCH_UNAVAILABLE"),
+    ],
+)
+async def test_a_branch_the_clone_cant_rebase_escalates_with_the_intent_pending(
+    tmp_path, reason, code
+):
+    """#2770's second review, P2: the clone's refusals that no retry gets past (a merge commit on
+    the branch, a base not in its history, a commit the clone lacks) escalate by name, as a
+    conflict does. Bugs caught: the refusal escaping the launcher's escalation as a fault, so the
+    campaign repeats it at every drain and no one is told; the intent consumed or the branch
+    moved by a rebase that never happened."""
+    world = _World(tmp_path)
+    await world.started()
+    first = await world.accepted()
+    await world.reconciled(world.upstream({"README.md": b"moved\n"}, "docs"))
+    launch_id = await world.proposing()
+
+    await world.service(repository=_RebaseRefuses(world.clones, reason)).drain()
+
+    refused = (await world.campaigns.control_log(CID))[-1]
+    assert refused.operation is ControlOperation.LAUNCH_REFUSED
+    assert refused.binding["refusal"].startswith(f"{code}: "), refused.binding["refusal"]
+    assert f"({reason})" in refused.binding["refusal"]
+    assert (await world.campaigns.get_campaign(CID)).state is S.ESCALATED
+    assert await world.rows(ControlOperation.BRANCH_REBASED) == []
+    assert await world.branch() == first
+    assert (await world.campaigns.get_launch_intent(launch_id)).state is LaunchIntentState.PENDING
+
+
+async def test_a_lost_managed_clone_escalates_as_unavailable(tmp_path):
+    """The real clone moved aside (the only way it is lost, #2761's G4 note 3): the Git adapter
+    refuses ``not_cloned``. Bug caught: a missing clone read as a transient fault, repeated every
+    drain while nothing can bring it back."""
+    world = _World(tmp_path)
+    await world.started()
+    await world.accepted()
+    await world.reconciled(world.upstream({"README.md": b"moved\n"}, "docs"))
+    launch_id = await world.proposing()
+    (tmp_path / "cache" / "prj-tally.git").rename(tmp_path / "cache" / "moved-aside.git")
+
+    await world.service().drain()
+
+    refused = (await world.campaigns.control_log(CID))[-1]
+    assert refused.binding["refusal"].startswith("CAMPAIGN_BRANCH_UNAVAILABLE: ")
+    assert "(not_cloned)" in refused.binding["refusal"]
+    assert (await world.campaigns.get_launch_intent(launch_id)).state is LaunchIntentState.PENDING
+
+
+async def test_an_infrastructure_fault_writes_nothing_and_the_sweeps_drain_repeats_it(tmp_path):
+    """#2770's second review, P2: a fault a retry can get past (git timing out) is not the
+    operator's. Nothing is written, the campaign stays where it was with its intent pending, and
+    the sweep's drain (``main._sweep_campaigns``) repeats the launch. Bugs caught: a timeout
+    escalated to the owner, who has nothing to resolve; or the launch left until the next row
+    that writes an intent, which a waiting campaign never writes."""
+    world = _World(tmp_path)
+    await world.started()
+    await world.accepted()
+    await world.reconciled(world.upstream({"README.md": b"moved\n"}, "docs"))
+    launch_id = await world.proposing()
+    state_before = (await world.campaigns.get_campaign(CID)).state
+    rows_before = len(await world.campaigns.control_log(CID))
+    service = world.service(repository=_RebaseRefuses(world.clones, "timeout"))
+
+    await service.drain()
+    after_fault = await world.campaigns.get_campaign(CID)
+    rows_after_fault = len(await world.campaigns.control_log(CID))
+    await _one_sweep(world, service)
+
+    assert (after_fault.state, rows_after_fault) == (state_before, rows_before)
+    [rebased] = await world.rows(ControlOperation.BRANCH_REBASED)
+    assert await world.branch() == rebased.binding["commit"]
+    assert (await world.campaigns.get_launch_intent(launch_id)).state is LaunchIntentState.LAUNCHED
+
+
+async def test_a_runtime_with_no_sandbox_escalates_its_rebased_head_as_unverifiable(tmp_path):
+    """The edge: the runtime has no sandbox client, so the rebased head's checks can't run.
+    Bug caught: the head accepted unverified, or the refusal repeated every drain as a fault."""
+    world = _World(tmp_path)
+    await world.started()
+    await world.accepted()
+    await world.reconciled(world.upstream({"README.md": b"moved\n"}, "docs"))
+    await world.proposing()
+    world.sandbox = None
+
+    await world.service().drain()
+
+    refused = (await world.campaigns.control_log(CID))[-1]
+    assert refused.binding["refusal"].startswith("REBASED_HEAD_UNVERIFIABLE: ")
+    assert await world.rows(ControlOperation.BRANCH_REBASED) == []
+
+
+async def _with_a_frozen_criterion(world: _World) -> None:
+    """The accepted increment's promotion, as if its evaluation had frozen one criterion."""
+    stored = await world.campaigns.get_campaign(CID)
+    at = head(stored, await world.campaigns.control_log(CID))
+    await world.campaigns.transition(
+        CID,
+        move(
+            stored.state, "k-freeze", operation=ControlOperation.PROMOTE, accepted=stored.accepted,
+            binding={"cycle_id": stored.accepted.cycle_id, "identity": at.tree_identity,
+                     "commit": at.commit, "verification_ref": at.previous_verification_ref,
+                     "frozen_criteria": [{"criterion_id": "crit_total", "test_file": "t.py"}]},
+        ),
+    )  # fmt: skip
+
+
+@pytest.mark.parametrize(
+    ("readings", "refused"),
+    [(None, None), ({"crit_total": "held"}, None), ({"crit_total": "broken"}, "crit_total (broken)"),
+     ({}, "crit_total (unread)")],
+    ids=["no-runner-wired", "held", "broken", "unread"],
+)  # fmt: skip
+async def test_the_frozen_criteria_run_through_one_seam_and_any_not_held_regresses(
+    tmp_path, readings, refused
+):
+    """The integration point for #2774's ``frozen_on_runner`` (§24cm): one call, given the
+    rebase's own key, the rebased head's tree and the frozen criteria. Bugs caught: a criterion
+    the runner didn't read accepted as held; a broken one accepted; the row claiming bundles ran
+    when no runner is wired; the runner given the old head's tree."""
+    world = _World(tmp_path)
+    await world.started()
+    await world.accepted()
+    await _with_a_frozen_criterion(world)
+    onto = world.upstream({"README.md": b"moved\n"}, "docs")
+    await world.reconciled(onto)
+    await world.proposing()
+    seen = []
+
+    async def runner(at):
+        seen.append(at)
+        return readings
+
+    service = world.service(frozen_on_runner=None if readings is None else runner)
+    await service.drain()
+
+    rows = await world.rows(ControlOperation.BRANCH_REBASED)
+    if refused is not None:
+        refusal = (await world.campaigns.control_log(CID))[-1].binding["refusal"]
+        assert refusal.startswith("REBASED_HEAD_REGRESSED: ") and refused in refusal
+        assert rows == []
+        return
+    [rebased] = rows
+    assert rebased.binding["frozen_criteria_unrun"] == ([] if readings else ["crit_total"])
+    if readings:
+        [at] = seen
+        assert at.subject_id == rebased.idempotency_key
+        assert (at.pin.commit, [c["criterion_id"] for c in at.frozen]) == (onto, ["crit_total"])
+        assert at.tree.commit == rebased.binding["commit"]

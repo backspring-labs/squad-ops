@@ -970,6 +970,7 @@ _CAMPAIGN_SWEEP_INTERVAL_S = 60
 async def _sweep_campaigns(state) -> None:
     """§9.2, §9.5 (§24ae): every interval, each increment gate waiting past a seat's ruling bound
     is recorded as overdue; §9.3 (#1802): each launch the box refused is re-attempted when due;
+    §24cm: each pending launch a fault left behind is drained again;
     §24v (#1972): each launched cycle that ended with no decision is re-heard, so a completion
     hook that failed while the process stayed up is not left until the next restart; SIP-0110
     §5ad: each running campaign cycle's binding a re-binding couldn't reach is filled. A sweep
@@ -984,6 +985,13 @@ async def _sweep_campaigns(state) -> None:
             await state.campaign_launch.retry_blocked()
         except Exception:
             logger.exception("campaign_launch_retry_sweep_failed")
+        try:
+            # SIP-0109 §24cm: a launch that faulted (a campaign branch's rebase whose clone timed
+            # out, say) is left pending and its campaign where it was; it's repeated here, so it
+            # never waits on the next row that writes an intent.
+            await state.campaign_launch.drain()
+        except Exception:
+            logger.exception("campaign_launch_drain_sweep_failed")
         try:
             # SIP-0110 §5ad: a running campaign cycle's binding a re-binding couldn't reach.
             await state.campaign_launch.reconcile_bindings()

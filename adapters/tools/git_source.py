@@ -296,12 +296,18 @@ class GitSourceRepository(SourceRepositoryPort):
         committer, so the same rebase writes the same commits."""
         if not clone.is_dir():
             raise SourceUnavailable("the managed clone does not exist yet", reason="not_cloned")
+        for name, commit in (("base", base), ("head", head), ("onto", onto)):
+            held = self._run(clone, "cat-file", "-e", f"{commit}^{{commit}}", step="read")
+            if held.returncode != 0:
+                raise SourceUnavailable(
+                    f"the managed clone holds no commit {commit[:12]} (the rebase's {name})",
+                    reason="commit_missing",
+                )
         if not self._is_ancestor(clone, base, head):
             raise SourceUnavailable(
                 f"{base[:12]} isn't in {head[:12]}'s history: only a branch's own commits rebase",
                 reason="not_an_ancestor",
             )
-        self._git(clone, "cat-file", "-e", f"{onto}^{{commit}}", step="read")
         if base == onto:
             return Rebased(head, (), ())
         listed = self._git(
@@ -310,20 +316,25 @@ class GitSourceRepository(SourceRepositoryPort):
         commits = listed.decode().split()
         if self._is_ancestor(clone, head, onto):
             return Rebased(onto, (), tuple(commits))
+        # A campaign branch is linear by construction (each capture's parent is the head). One
+        # that isn't is refused whole, before anything is replayed: never read as a conflict.
+        merges = self._git(
+            clone, "rev-list", "--min-parents=2", "--end-of-options", f"{base}..{head}",
+            step="rebase",
+        ).decode().split()  # fmt: skip
+        if merges:
+            raise SourceUnavailable(
+                f"{merges[-1][:12]} is a merge on the branch between {base[:12]} and "
+                f"{head[:12]}: a campaign branch is linear",
+                reason="not_linear",
+            )
         replayed: list[tuple[str, str]] = []
         dropped: list[str] = []
         at = onto
         for commit in commits:
-            parents = self._git(clone, "rev-list", "--parents", "-n", "1", commit, step="rebase")
-            parent = parents.decode().split()[1:]
-            if len(parent) != 1:
-                raise SourceUnavailable(
-                    f"{commit[:12]} has {len(parent)} parents: a campaign branch is linear",
-                    reason="not_linear",
-                )
             merged = self._run(
                 clone, "merge-tree", "--write-tree", "--name-only", "--no-messages",
-                f"--merge-base={parent[0]}", at, commit, step="rebase",
+                f"--merge-base={commit}^", at, commit, step="rebase",
             )  # fmt: skip
             lines = merged.stdout.decode(errors="replace").splitlines()
             if merged.returncode == 1 and lines:
