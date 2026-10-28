@@ -173,12 +173,32 @@ def render_routes(
             steps.stop(server)
 
 
+#: The segment a catch-all route is read at: one no declared route serves, so the router falls
+#: through to the catch-all (#2754).
+UNMATCHED_SEGMENT = "__squadops_unmatched__"
+
+
+def catch_all_path(route: str) -> str | None:
+    """The concrete path a catch-all client route is read at, or ``None`` for any other route.
+    ``*`` is read at ``/__squadops_unmatched__`` and ``/docs/*`` at
+    ``/docs/__squadops_unmatched__``: a path is what a browser asks for, and ``*`` is none, so
+    reading the route as written read no page at all (#2754)."""
+    if route == "*":
+        return f"/{UNMATCHED_SEGMENT}"
+    if route.endswith("/*"):
+        return f"{route[:-1]}{UNMATCHED_SEGMENT}"
+    return None
+
+
 def _reachable_path(
     route: str, seed: Mapping[str, Any] | None, api: str, steps: RenderSteps
 ) -> str | None:
     """The concrete path to read ``route`` at, or ``None`` when its page cannot be reached: a
-    parameter with no seed, or a seed the app refused or answered without an ``id``."""
+    parameter with no seed, or a seed the app refused or answered without an ``id``. A
+    catch-all is read where nothing else is served (``catch_all_path``)."""
 
+    if (unmatched := catch_all_path(route)) is not None:
+        return unmatched
     if not any(route_param(s) is not None for s in route.split("/")):
         return route
     if seed is None:
