@@ -10,6 +10,7 @@ its previous verification the record's inherited baseline.
 from __future__ import annotations
 
 import dataclasses
+import json
 from datetime import UTC, datetime
 from unittest.mock import AsyncMock, MagicMock
 
@@ -19,6 +20,7 @@ from adapters.noop.ports import NoOpFailurePatternRecall, NoOpProposalEvidence
 from adapters.tools.git_source import GitSourceRepository
 from squadops.campaigns.change_request import PRODUCT_PROPOSAL_INPUT
 from squadops.cycles.models import (
+    ArtifactRef,
     Cycle,
     DerivedProfileNotFoundError,
     Run,
@@ -28,7 +30,7 @@ from squadops.projects.baseline import parse_baseline
 from squadops.projects.derived_profile import parse_profile
 from squadops.projects.registration import LocatorPolicy
 from squadops.projects.source_context import parse_source_context
-from tests.fixtures.shared_contract.repository import build_repository, recorded
+from tests.fixtures.shared_contract.repository import build_repository, recorded, tracked_files
 
 NOW = datetime(2026, 10, 28, 12, 0, tzinfo=UTC)
 _TREE = "f" * 64
@@ -74,7 +76,9 @@ async def _clone(tmp_path):
     return repo, clones
 
 
-def _cycle(repo, requirements: str = "repo:file:README.md@current") -> Cycle:
+def _cycle(
+    repo, requirements: str = "repo:file:README.md@current", head=None, verification=None
+) -> Cycle:
     context = parse_source_context(recorded("project_source_context", "valid"))
     return Cycle(
         cycle_id="cyc_inc",
@@ -105,22 +109,23 @@ def _cycle(repo, requirements: str = "repo:file:README.md@current") -> Cycle:
         source_context=dataclasses.replace(
             context,
             repo_uri=str(repo.path),
-            pinned_commit=repo.second_commit,
+            pinned_commit=head or repo.second_commit,
             pinned_from="campaign_branch",
+            previous_verification_ref=verification,
         ),
         campaign_id="cmp_tally00001",
         kind="increment",
     )
 
 
-async def _prepared(cycle: Cycle, clones, projects: _Projects):
+async def _prepared(cycle: Cycle, clones, projects: _Projects, vault=None):
     """``RunProvisioning.prepare`` for the cycle's proposal run, as ``execute_run`` calls it."""
     from squadops.execution.dispatched_flow_executor import DispatchedFlowExecutor
     from squadops.execution.run_provisioning import RunInProgress
     from tests.unit.cycles.test_increment_evaluation_wiring import PROFILE
 
     executor = DispatchedFlowExecutor(
-        cycle_registry=AsyncMock(), artifact_vault=_EmptyVault(), queue=AsyncMock(),
+        cycle_registry=AsyncMock(), artifact_vault=vault or _EmptyVault(), queue=AsyncMock(),
         squad_profile=AsyncMock(), task_timeout=5.0, project_registry=projects,
         campaign_registry=None, campaign_progress=None, box_verdict=None,
         failure_recall=NoOpFailurePatternRecall(), proposal_evidence=NoOpProposalEvidence(),
@@ -202,3 +207,60 @@ async def test_a_proposal_whose_input_cant_be_read_fails_its_run_naming_why(
 
     with pytest.raises(_ExecutionError, match=why):
         await _prepared(_cycle(repo, requirements), clones, _Projects(profile=profile))
+
+
+class _VerificationVault(_EmptyVault):
+    """The source verification of the increment whose promotion made the head (§24ce)."""
+
+    def __init__(self, document: dict) -> None:
+        self.ref = ArtifactRef(
+            "art_ver", "prj-tally", "source_verification", "source_verification.json", "h", 1,
+            "application/json", NOW, cycle_id="cyc_prev", run_id="run_prev",
+        )  # fmt: skip
+        self.content = json.dumps(document).encode()
+
+    async def retrieve(self, artifact_id):
+        if artifact_id != self.ref.artifact_id:
+            return await super().retrieve(artifact_id)
+        return self.ref, self.content
+
+
+async def test_a_proposal_on_a_head_past_the_record_reads_it_and_its_verification(tmp_path):
+    """The later increment: the head is the previous increment's capture, past the calibration
+    record. Bugs caught: the head, its tree view or its requirements read at the Project's
+    baseline instead of the pin, so the proposal is shown the product as it was before the
+    increments it builds on; or the previous verification read as the record's inherited baseline,
+    not the verification that made the head."""
+    repo, clones = await _clone(tmp_path)
+    context = recorded("project_source_context", "valid")
+    files = tracked_files(repo.path, repo.second_commit)
+    files["README.md"] = files["README.md"] + b"\nThe report ends in a total.\n"
+    head = await clones.commit_tree(
+        context["project_id"], parent=repo.second_commit, files=files, executable=(),
+        ref="refs/squadops/captures/cyc_prev/run_prev", message="the previous increment",
+    )  # fmt: skip
+    verification = {
+        "schema": "source-verification/v1", "project_id": context["project_id"],
+        "verdict": "accepted",
+        "development_configuration_revision": context["development_configuration_revision"],
+        "candidate_tree_identity": _TREE,
+        "checks": [{"id": "report", "result": "PASS"}, {"id": "parse", "result": "FAIL"}],
+    }  # fmt: skip
+
+    plan = await _prepared(
+        _cycle(repo, head=head, verification="art_ver"),
+        clones,
+        _Projects(),
+        vault=_VerificationVault(verification),
+    )
+
+    [given] = [e.inputs[PRODUCT_PROPOSAL_INPUT] for e in plan if PRODUCT_PROPOSAL_INPUT in e.inputs]
+    assert given["head"]["commit"] == head
+    assert given["previous_verification"]["source"] == "verification art_ver"
+    assert given["previous_verification"]["commit"] == head
+    assert [(c["id"], c["result"]) for c in given["previous_verification"]["checks"]] == [
+        ("report", "PASS"),
+        ("parse", "FAIL"),
+    ]
+    assert given["requirements"]["ref"] == f"repo:file:README.md@{head}"
+    assert given["requirements"]["content"].endswith("The report ends in a total.\n")
