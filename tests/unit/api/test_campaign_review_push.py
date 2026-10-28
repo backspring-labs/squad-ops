@@ -245,3 +245,50 @@ async def test_a_completed_campaign_is_pushed_at_its_close(tmp_path):
         first,
         first,
     )
+
+
+async def _rebased_again(world: _Pushing, content: bytes, message: str) -> str:
+    """Upstream moves, the Project is reconciled there, and the branch is rebased at the next
+    drain. Returns the rebased head."""
+    await world.reconciled(world.upstream({"README.md": content}, message))
+    await world.proposing(f"k-propose-{message}")
+    await world.service().drain()
+    return (await world.campaigns.get_campaign(CID)).accepted.commit
+
+
+async def test_each_push_is_leased_on_the_one_before_it(tmp_path):
+    """Three pushes across two rebases. Bug caught: the lease read from the first push rather
+    than the last, so the third push is refused as a moved branch when nobody but the campaign
+    moved it."""
+    world = _Pushing(tmp_path)
+    await world.started()
+    first = await world.accepted()
+    world.push("push-1")
+    second = await _rebased_again(world, b"moved once\n", "once")
+    world.push("push-2")
+    third = await _rebased_again(world, b"moved twice\n", "twice")
+
+    pushed = world.push("push-3")
+
+    assert pushed.status_code == 201, pushed.text
+    assert (pushed.json()["lease"], pushed.json()["commit"]) == (second, third)
+    assert [r.binding["lease"] for r in await world.pushes()] == [None, first, second]
+    assert world.remote() == third
+
+
+async def test_a_retried_key_answers_its_push_even_after_the_head_moved(tmp_path):
+    """The retry of a request whose response was lost, sent after the branch was rebased. Bug
+    caught: the retry pushing the new head under the old key, whose row is then refused as a
+    conflicting key, so the push lands on the product with no row and the next lease is stale."""
+    world = _Pushing(tmp_path)
+    await world.started()
+    first = await world.accepted()
+    original = world.push("push-1")
+    await _rebased_again(world, b"moved\n", "once")
+
+    retried = world.push("push-1")
+
+    assert (retried.status_code, retried.json()["replayed"]) == (201, True)
+    assert retried.json()["entry_id"] == original.json()["entry_id"]
+    assert (retried.json()["commit"], world.remote()) == (first, first)
+    assert len(await world.pushes()) == 1
