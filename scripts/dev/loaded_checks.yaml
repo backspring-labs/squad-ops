@@ -1857,6 +1857,14 @@ checks:
                                         "counts": {"FAILED t.py::x": 1}, "classes": {"FAILED t.py::x": "ImportError"}})
       print(baseline.checks[0].result, tree[:4], discrimination_on_runner("c", None, None, None).reason.value, read.classes["FAILED t.py::x"])
     expect: PASS tttt no_test_id_reader ImportError
+  - id: "h10-vitest-reader"
+    what: vitest's reader is given only where the product's output is what it reads, and the gap names why (SIP-0112 H.10)
+    container: squadops-runtime-api
+    code: |
+      from squadops.projects.profile_derivation import _Tree, _vitest_unread
+      pinned = _Tree({"frontend/package.json": b'{"devDependencies": {"vitest": "^2.1.9"}}'})
+      print(_vitest_unread("frontend", "vitest run", pinned), "|", _vitest_unread("frontend", "vitest run --reporter=dot", pinned))
+    expect: "None | its test command names a reporter"
   - id: "2757"
     what: the sandbox reads vitest's default reporter by test id with each failure's class (#2757, SIP-0112 H.10)
     container: squadops-sandbox-service
