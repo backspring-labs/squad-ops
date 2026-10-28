@@ -12,6 +12,7 @@ required_variables:
   - requirements_section
 optional_variables:
   - product_tree_section
+  - approved_manifest_section
   - frozen_conventions_section
   - supervisor_note_section
   - unapproved_proposals_section
@@ -62,6 +63,7 @@ behaviour where a caller reaches it.
 {{qa_proposed_behaviours_section}}
 {{task_instructions_section}}{{project_instructions_section}}{{cross_cycle_lessons_section}}
 {{product_tree_section}}
+{{approved_manifest_section}}
 
 ### What you emit
 

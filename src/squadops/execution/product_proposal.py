@@ -14,7 +14,9 @@ at the head its cycle pins (contract 1's ``pinned_commit``):
 - **the previous increment's verification,** or the calibration record's inherited baseline for
   the first: the checks its change is compared with (``source_delivery.regression_baseline``);
 - **the requirements source, bound at the head:** a ``repo:file:<path>@current`` read at the pinned
-  commit, as SIP-0110 §5ad binds an instruction's, or a stored artifact.
+  commit, as SIP-0110 §5ad binds an instruction's, or a stored artifact;
+- **a greenfield product's approved manifest** (SIP-0112 H.1), beside them, when it was initialized
+  here.
 
 The frozen criteria, the abandoned increment's brief, what qa proposed and each proposal never
 approved stay on the launch's block, as a sample application's do.
@@ -120,6 +122,22 @@ async def product_proposal_input(
         "requirements": await _requirements(
             cycle, (block.get("objective") or {}).get("requirements"), repository, vault
         ),
+        **await _approved_manifest(projects, cycle.project_id),
+    }
+
+
+async def _approved_manifest(projects: Any, project_id: str) -> dict[str, Any]:
+    """§24bv point 5: a greenfield product's approved manifest (SIP-0112 H.1), given beside the
+    rest. An existing product was initialized nowhere, and is given none."""
+    initialization = await projects.get_initialization(project_id)
+    if initialization is None:
+        return {}
+    return {
+        "approved_manifest": {
+            "stack": initialization.stack,
+            "commit": initialization.commit,
+            "content": initialization.manifest,
+        }
     }
 
 

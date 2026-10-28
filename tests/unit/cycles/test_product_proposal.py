@@ -39,9 +39,13 @@ _TREE = "f" * 64
 class _Projects:
     """The registry's reads the proposal's input makes: the profile at the pin and the baseline."""
 
-    def __init__(self, *, profile=True) -> None:
+    def __init__(self, *, profile=True, initialization=None) -> None:
         self.profile = parse_profile(recorded("derived_profile", "valid")) if profile else None
         self.baseline = parse_baseline(recorded("inherited_baseline", "valid"))
+        self.initialization = initialization
+
+    async def get_initialization(self, project_id):
+        return self.initialization
 
     async def get_derived_profile(self, project_id, *, at=None):
         if self.profile is None:
@@ -183,6 +187,31 @@ async def test_the_proposal_task_is_given_the_head_profile_verification_and_requ
     assert given["requirements"] == {
         "ref": f"repo:file:README.md@{repo.second_commit}",
         "content": readme,
+    }
+    assert "approved_manifest" not in given  # Tally is an existing product, initialized nowhere
+
+
+async def test_a_greenfield_products_proposal_is_given_its_approved_manifest_beside(tmp_path):
+    """§24bv point 5: "A greenfield product's approved manifest (H.1) is given beside them." Bug
+    caught: the manifest the product was initialized from never reaching its proposals, so the
+    structure the owner approved is unread from the first increment on."""
+    from squadops.projects.initialization import ProjectInitialization
+
+    repo, clones = await _clone(tmp_path)
+    initialized = ProjectInitialization(
+        project_id="prj-tally", commit=repo.first_commit, branch="main",
+        stack="fullstack_fastapi_react", manifest_digest="sha256:" + "0" * 64,
+        manifest="api:\n  endpoints: []\n", files=("README.md",), initialized_by="owner",
+        initialized_at=NOW,
+    )  # fmt: skip
+
+    plan = await _prepared(_cycle(repo), clones, _Projects(initialization=initialized))
+
+    [given] = [e.inputs[PRODUCT_PROPOSAL_INPUT] for e in plan if PRODUCT_PROPOSAL_INPUT in e.inputs]
+    assert given["approved_manifest"] == {
+        "stack": "fullstack_fastapi_react",
+        "commit": repo.first_commit,
+        "content": "api:\n  endpoints: []\n",
     }
 
 

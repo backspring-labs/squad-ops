@@ -517,6 +517,7 @@ CONTEXT_CONTRACTS: dict[str, ContextAssemblyContract] = {
             "request.proposal_previous_verification",
             "request.proposal_requirements_source",
             "request.proposal_product_tree",
+            "request.proposal_approved_manifest",
             "request.source_repository_instructions_block",
         ),
     ),

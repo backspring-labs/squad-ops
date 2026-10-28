@@ -171,3 +171,23 @@ async def test_a_branch_proposal_given_no_product_input_fails_and_never_reads_as
     assert not result.success
     assert "was given no product_proposal" in result.error
     ctx.ports.llm.chat_stream_with_usage.assert_not_called()
+
+
+async def test_a_greenfield_products_approved_manifest_is_rendered_beside_the_tree():
+    """Bug caught: the approved manifest composed onto the input (H.1) and never rendered, so the
+    proposer is never shown the structure the product was initialized from."""
+    inputs = _inputs()
+    inputs["product_proposal"]["approved_manifest"] = {
+        "stack": "fullstack_fastapi_react",
+        "commit": "1" * 40,
+        "content": "api:\n  endpoints:\n    - {method: GET, path: /ledger}\n",
+    }
+    ctx, plain = _ctx(_fenced(_REQUEST)), _ctx(_fenced(_REQUEST))
+
+    await StrategyProposeIncrementHandler().handle(ctx, inputs)
+    await StrategyProposeIncrementHandler().handle(plain, _inputs())
+
+    [prompt] = _prompts(ctx)
+    assert "### The interface manifest this product was initialized from" in prompt
+    assert "- {method: GET, path: /ledger}" in prompt
+    assert "initialized from" not in _prompts(plain)[0]

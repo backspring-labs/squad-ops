@@ -442,7 +442,21 @@ async def product_sections(
         rendered = await renderer.render("request.proposal_product_gaps", {"gap_lines": lines})
         profile_variables["gaps_section"] = rendered.content
     head = str(product["head"]["commit"])
+    approved = product.get("approved_manifest")
+    sections: dict[str, str] = {}
+    if approved:
+        # §24bv point 5: a greenfield product's approved manifest (SIP-0112 H.1), beside the rest.
+        rendered = await renderer.render(
+            "request.proposal_approved_manifest",
+            {
+                "stack": str(approved["stack"]),
+                "commit": str(approved["commit"]),
+                "manifest": str(approved["content"]).strip(),
+            },
+        )
+        sections["approved_manifest_section"] = rendered.content
     return {
+        **sections,
         "head_commit": head,
         "product_tree_section": await _tree_section(renderer, inputs, head),
         "product_profile_section": (
