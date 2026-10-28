@@ -251,8 +251,12 @@ class TestCustomHandlerTemplateIdCoverage:
         inputs = {"prd": "Test PRD", **extra_inputs}
         await handler.handle(ctx, inputs)
 
-        renderer.render.assert_called_once()
-        actual_template_id = renderer.render.call_args[0][0]
+        # A qa first call also renders D12's note, which is not the request (#2253).
+        requests = [
+            c for c in renderer.render.call_args_list if c[0][0] != "request.keep_reasoning_short"
+        ]
+        assert len(requests) == 1
+        actual_template_id = requests[0][0][0]
         assert actual_template_id == expected_template_id, (
             f"{handler_cls.__name__} rendered with '{actual_template_id}', "
             f"expected '{expected_template_id}'"

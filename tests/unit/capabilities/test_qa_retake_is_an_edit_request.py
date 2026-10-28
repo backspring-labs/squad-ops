@@ -81,7 +81,7 @@ async def _retake(
         if "qa_retake_revision_form " in r.getMessage()
     ]
     stored = {a["name"]: a["content"] for a in (result.outputs or {}).get("artifacts", [])}
-    return result, sent[0][-1].content, forms, stored
+    return result, sent[0][1].content, forms, stored
 
 
 async def test_a_re_take_is_shown_its_suite_and_edits_it(caplog, monkeypatch):

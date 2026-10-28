@@ -96,6 +96,13 @@ class TaskType(StrEnum):
         return self is TaskType.QA_TEST
 
     @property
+    def first_call_keeps_reasoning_short(self) -> bool:
+        """The steps whose first call is told to keep its reasoning short, as the cut-off re-ask
+        is (the 2.5 plan's D12, #2253): the qa suite's author and its repair, the two whose p95
+        output was the cap. The note was measured on the first call only, so it goes there only."""
+        return self in (TaskType.QA_TEST, TaskType.QA_TEST_REPAIR)
+
+    @property
     def authors_source(self) -> bool:
         """The step whose emission is the application source under test."""
         return self is TaskType.DEVELOPMENT_DEVELOP
@@ -158,6 +165,12 @@ def authors_qa_suite(task_type: object) -> bool:
     from the planner and the caller's question is about the kind, not validity."""
     member = _member_or_none(task_type)
     return bool(member and member.authors_qa_suite)
+
+
+def first_call_keeps_reasoning_short(task_type: object) -> bool:
+    """``TaskType.first_call_keeps_reasoning_short`` for a value that may be a raw string."""
+    member = _member_or_none(task_type)
+    return bool(member and member.first_call_keeps_reasoning_short)
 
 
 def authors_source(task_type: object) -> bool:

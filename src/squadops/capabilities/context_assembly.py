@@ -227,11 +227,13 @@ _SHARED_CONTEXT_TEMPLATES = (
     "request.source_repository_instructions_block",
     "request.prior_cycle_brief_appendix",
 )
-#: What a cycle task's re-dispatch appends: the emission retry's feedback and the disputes.
+#: What a cycle task's re-dispatch appends: the emission retry's feedback and the disputes, and the
+#: clause the cut-off re-ask ends with, which a qa first call is also sent (D12, #2253).
 _CYCLE_TASK_RETRY_TEMPLATES = (
     "request.cycle_emission_retry_feedback",
     "request.cycle_cap_exhausted_retry",
     "request.cycle_cap_truncated_retry",
+    "request.keep_reasoning_short",
     "request.disputed_checks_appendix",
 )
 _DEVELOP_APPENDIX_TEMPLATES = (
@@ -603,6 +605,9 @@ REPAIR_CONTEXT_CONTRACT = ContextAssemblyContract(
         "request.qa_test_frozen_surface_appendix",
         "request.qa_test_repair_failing_cases_appendix",
         "request.qa_test_repair_fill_appendix",
+        # D12 (#2253): a qa repair's first call is sent it; the other repair types are not, so for
+        # them this is a few tokens over.
+        "request.keep_reasoning_short",
         "request.disputed_checks_appendix",
         *_DEVELOP_APPENDIX_TEMPLATES,
     ),
