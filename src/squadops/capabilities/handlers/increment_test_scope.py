@@ -7,14 +7,20 @@ from __future__ import annotations
 
 from typing import Any
 
-from squadops.stacks.scaffold import criterion_route_harness_for, route_caller_import_for
+from squadops.stacks.scaffold import (
+    criterion_page_harness_for,
+    criterion_route_harness_for,
+    page_loader_import_for,
+    route_caller_import_for,
+)
 
 
 async def increment_test_scope_section(renderer: Any, inputs: dict[str, Any]) -> str:
     """The rule and the increment's criteria as an appendix, or ``""`` outside an increment.
 
     On a stack whose criterion tests must reach a route through the scaffold's caller (#2577),
-    an increment with an endpoint criterion is also told how, through the stack's own asset."""
+    an increment with an endpoint criterion is also told how, through the stack's own asset; and
+    one with a page criterion how to load its page through the scaffold's loader (#2602)."""
     scope = inputs.get("increment_test_scope")
     if renderer is None or not isinstance(scope, dict):
         return ""
@@ -25,15 +31,28 @@ async def increment_test_scope_section(renderer: Any, inputs: dict[str, Any]) ->
         "request.increment_test_scope_appendix", {"scope_lines": test_scope_lines(scope)}
     )
     stack = str(scope.get("stack") or "")
+    sections = [rendered.content]
     harness = criterion_route_harness_for(stack)
     routes = [str(c) for c in scope.get("route_criteria") or ()]
-    if not harness or not routes:
-        return rendered.content
-    how = await renderer.render(
-        harness,
-        {
-            "route_criteria": ", ".join(routes),
-            "route_caller_import": route_caller_import_for(stack),
-        },
-    )
-    return f"{rendered.content}\n\n{how.content}"
+    if harness and routes:
+        how = await renderer.render(
+            harness,
+            {
+                "route_criteria": ", ".join(routes),
+                "route_caller_import": route_caller_import_for(stack),
+            },
+        )
+        sections.append(how.content)
+    page_harness = criterion_page_harness_for(stack)
+    pages = [str(c) for c in scope.get("page_criteria") or ()]
+    if page_harness and pages:
+        how = await renderer.render(
+            page_harness,
+            {
+                "page_criteria": ", ".join(pages),
+                "page_loader_import": page_loader_import_for(stack),
+                "route_caller_import": route_caller_import_for(stack),
+            },
+        )
+        sections.append(how.content)
+    return "\n\n".join(sections)

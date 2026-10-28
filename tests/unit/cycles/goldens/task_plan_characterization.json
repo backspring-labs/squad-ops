@@ -1480,6 +1480,9 @@
               }
             ],
             "frozen": [],
+            "page_criteria": [
+              "C3"
+            ],
             "route_criteria": [
               "C1",
               "C2"

@@ -88,6 +88,8 @@ _MANIFEST_HASH = "ac1e7be378c54d5966680b85824c6f2c2e4d158eb8dec14d081209223e0705
 # 2026-10-20 (the Next.js shakeout's round 5): each route handler states its response entity's fields, tree-only
 # again.
 # #2577 (2026-10-21): the tree gains the frozen route caller, `vitest.routes.ts`, tree-only again.
+# #2602 (2026-10-27): the tree gains the frozen page loader, `vitest.pages.ts`, tree-only again; the route
+# caller is byte-identical.
 _AGGREGATE_SPINE_HASH = "1ff59445d016f6d7385d713c5f31de7620fe3f065344db6a083bae7b1a0ab962"
 _SCAFFOLD_HASH = "6fc46f50369bc9afd34e40607350b2464b74f79a6a8ef62772470037f5e98854"
 

@@ -145,6 +145,16 @@ _DECLARED_OPTIONAL = {
     ("ScaffoldStack", "route_caller_import"): (
         "the import of the route caller only nextjs_ts declares (#2577); stack #1 has none"
     ),
+    # #2602: stack #1's page tests render its frozen ``App`` at the page's path, so a page the
+    # change adds renders without its test ids on the accepted tree; only nextjs_ts imports pages.
+    ("ScaffoldStack", "criterion_page_harness"): (
+        "stack #1's page tests render the frozen `App` under a `MemoryRouter` at the page's path, "
+        "so on the accepted tree a page the change adds renders without its test ids; only "
+        "nextjs_ts's tests import page modules, and need the loader"
+    ),
+    ("ScaffoldStack", "page_loader_import"): (
+        "the import of the page loader only nextjs_ts declares (#2602); stack #1 has none"
+    ),
     ("ScaffoldStack", "verification_scaffold"): (
         "SIP-0104: a deterministic test scaffold is opt-in per stack, never inherited; only "
         "nextjs_ts declares one"
