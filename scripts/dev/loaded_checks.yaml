@@ -1971,3 +1971,12 @@ checks:
       from squadops.campaigns.branch_rebase import UPSTREAM_MOVED
       print("before_launch" in inspect.signature(CampaignLaunchService.__init__).parameters, UPSTREAM_MOVED, callable(reconciled_at_pin))
     expect: True upstream_moved True
+  - id: "2619-rebase-frozen"
+    what: a rebase runs every frozen criterion on the product's runner through #2774's frozen_on_runner, and fails closed without one (SIP-0109 §24cm item 11)
+    container: squadops-runtime-api
+    code: |
+      import inspect
+      from squadops.api.runtime import main
+      from squadops.campaigns.branch_rebase import REBASED_HEAD_UNVERIFIABLE, ProductRunnerFrozen
+      print("frozen_on_runner=ProductRunnerFrozen(" in inspect.getsource(main._branch_rebase), REBASED_HEAD_UNVERIFIABLE)
+    expect: True REBASED_HEAD_UNVERIFIABLE
