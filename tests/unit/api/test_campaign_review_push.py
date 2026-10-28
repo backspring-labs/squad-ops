@@ -8,6 +8,7 @@ repository, the Project's locator. The forge is a recorder, and the token is inv
 
 from __future__ import annotations
 
+import asyncio
 import logging
 
 import pytest
@@ -43,14 +44,23 @@ def _sandbox_provider(monkeypatch):
 
 
 class _Forge:
-    """Where a review request is opened: each call recorded, the token kept to compare."""
+    """Where a review request is opened, as the port's contract has it: an open request of the
+    same head against the same base, in the same repository, is returned rather than opened
+    again (``GitHubReviewRequests`` holds to it, ``test_github_review_request.py``). ``opened`` is
+    each request the forge created, and ``calls`` each time it was asked."""
 
     def __init__(self) -> None:
         self.opened: list[dict] = []
+        self.calls = 0
+        self._open: dict[tuple[str, str, str], str] = {}
 
     async def open_review_request(self, **request) -> str:
-        self.opened.append(request)
-        return URL
+        self.calls += 1
+        key = (request["repo_uri"], request["head"], request["base"])
+        if key not in self._open:
+            self.opened.append(request)
+            self._open[key] = URL
+        return self._open[key]
 
 
 class _Pushing(_World):
@@ -292,3 +302,96 @@ async def test_a_retried_key_answers_its_push_even_after_the_head_moved(tmp_path
     assert retried.json()["entry_id"] == original.json()["entry_id"]
     assert (retried.json()["commit"], world.remote()) == (first, first)
     assert len(await world.pushes()) == 1
+
+
+class _CrashesAfterTheForge:
+    """The campaign registry, which fails once on the push's row: the runtime stops after the
+    product took the push and the forge opened the request, before ``review_pushed`` commits."""
+
+    def __init__(self, campaigns) -> None:
+        self._campaigns, self.failed = campaigns, False
+
+    def __getattr__(self, name):
+        return getattr(self._campaigns, name)
+
+    async def transition(self, campaign_id, transition):
+        if transition.operation is ControlOperation.REVIEW_PUSHED and not self.failed:
+            self.failed = True
+            raise ConnectionError("the runtime stopped before the row committed")
+        return await self._campaigns.transition(campaign_id, transition)
+
+
+@pytest.mark.parametrize("retry_key", ["push-1", "push-again"], ids=["same-key", "a-new-key"])
+async def test_a_crash_after_the_forge_opened_the_request_recovers_it_on_retry(tmp_path, retry_key):
+    """#2772's second review, P1: the push landed and the forge opened the request, and the row
+    never committed. The retry, by the same key or a new one, finds no push recorded, pushes the
+    commit the product already holds (up to date), and recovers the open request of that head
+    against that base rather than opening another. Its row records the recovered address. Bugs
+    caught: a second review request opened; the retry refused as a moved branch; no row, so the
+    next push has no lease."""
+    world = _Pushing(tmp_path)
+    await world.started()
+    first = await world.accepted()
+    crashing = _CrashesAfterTheForge(world.campaigns)
+    world.client.app.state.campaign_registry = crashing
+
+    with pytest.raises(ConnectionError):
+        world.push("push-1")
+    pushed_before_the_row = world.remote()
+    retried = world.push(retry_key)
+
+    assert crashing.failed and pushed_before_the_row == first
+    assert retried.status_code == 201, retried.text
+    assert (retried.json()["commit"], retried.json()["review_url"]) == (first, URL)
+    assert (len(world.forge.opened), world.forge.calls) == (1, 2)
+    [row] = await world.pushes()
+    assert (row.binding["review_url"], row.binding["lease"], row.idempotency_key) == (
+        URL,
+        None,
+        f"review-push:{retry_key}",
+    )
+    assert world.remote() == first
+
+
+class _Counting:
+    """The managed clone, counting its pushes to the product."""
+
+    def __init__(self, clones) -> None:
+        self._clones, self.pushes = clones, 0
+
+    def __getattr__(self, name):
+        return getattr(self._clones, name)
+
+    async def push_campaign_branch(self, *args, **kwargs):
+        self.pushes += 1
+        await asyncio.sleep(0)  # let a concurrent retry run up to its own push
+        return await self._clones.push_campaign_branch(*args, **kwargs)
+
+
+@pytest.mark.parametrize(
+    "keys", [("push-1", "push-1"), ("push-1", "push-2")], ids=["one-key", "two-keys"]
+)
+async def test_retries_arriving_together_make_one_push_and_open_one_request(tmp_path, keys):
+    """#2772's second review, P1: two retries of one push at once, by the same key or not. They
+    are serialized per Campaign, and the second reads the first's row inside the lock. Bugs
+    caught: two pushes and two forge calls racing; two rows, the second's lease the first's own
+    commit."""
+    from squadops.campaigns.review_push import push_review
+
+    world = _Pushing(tmp_path)
+    await world.started()
+    first = await world.accepted()
+    counting = _Counting(world.clones)
+
+    def one(key):
+        return push_review(
+            CID, campaigns=world.campaigns, projects=world.projects, repository=counting,
+            forge=world.forge, token=TOKEN, actor="supervisor", actor_role="campaign_supervisor",
+            idempotency_key=key,
+        )  # fmt: skip
+
+    a, b = await asyncio.gather(one(keys[0]), one(keys[1]))
+
+    assert (counting.pushes, world.forge.calls, len(world.forge.opened)) == (1, 1, 1)
+    assert a.entry_id == b.entry_id and (a.replayed, b.replayed) == (False, True)
+    assert [r.binding["commit"] for r in await world.pushes()] == [first]

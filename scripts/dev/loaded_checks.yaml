@@ -1981,7 +1981,7 @@ checks:
       print("frozen_on_runner=ProductRunnerFrozen(" in inspect.getsource(main._branch_rebase), REBASED_HEAD_UNVERIFIABLE)
     expect: True REBASED_HEAD_UNVERIFIABLE
   - id: "2619-review-push"
-    what: the supervisor's review-request push, a record accepted on a completed campaign, through a port method only a campaign's own branch may use (SIP-0109 §24ci (b), §24ck)
+    what: the supervisor's review-request push, a record accepted on a completed campaign, through a port method only a campaign's own branch may use (SIP-0109 §24ci (b), §24cn)
     container: squadops-runtime-api
     code: |
       from squadops.campaigns.models import ControlOperation

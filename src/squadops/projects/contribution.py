@@ -253,6 +253,8 @@ async def push_campaign_review(
     )
     if review_url is not None:
         return review_url
+    # The port returns an open request of this head against this base rather than opening another,
+    # so after a crash between the forge's answer and the Campaign's row this recovers it.
     return await forge.open_review_request(
         repo_uri=source.repo_uri,
         head=branch,

@@ -17,13 +17,24 @@ deploy's:
   branch, the commit, the lease it was pushed under, whether it rewrote the branch, and the
   review request's address. Its commit is the next push's lease.
 
-A push and its row can't share a transaction. The push goes first. A retry after a push whose row
-never committed pushes the same commit again, which the product reads as up to date.
+A push and its row can't share a transaction, and neither can the forge's review request (the
+second review, SIP-0112 H.12, P1 on #2772). So each remote step is one a retry repeats safely:
+- **the push** of a commit the product's branch already holds is up to date, and changes nothing;
+- **the review request** is opened through the port's contract, which returns an open request of
+  the same head against the same base rather than opening another
+  (``ReviewRequestPort.open_review_request``). A retry after a crash between the forge's answer and
+  the row recovers that request, and its row records the recovered address;
+- **one push at a time per Campaign.** Retries that arrive together are serialized here, in this
+  process, and each reads the control log afresh inside the lock: the second finds the first's row
+  and is answered with it, with no remote call. The runtime API is one process; a second one
+  would need the lock in the registry.
 """
 
 from __future__ import annotations
 
+import asyncio
 import logging
+import weakref
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from typing import Any
@@ -40,6 +51,17 @@ from squadops.campaigns.models import (
 )
 
 logger = logging.getLogger(__name__)
+
+
+#: One lock per Campaign, per event loop: a lock belongs to the loop it was first awaited on.
+_PUSHING: weakref.WeakKeyDictionary[asyncio.AbstractEventLoop, dict[str, asyncio.Lock]] = (
+    weakref.WeakKeyDictionary()
+)
+
+
+def _lock_for(campaign_id: str) -> asyncio.Lock:
+    locks = _PUSHING.setdefault(asyncio.get_running_loop(), {})
+    return locks.setdefault(campaign_id, asyncio.Lock())
 
 
 class ReviewPushRefused(CampaignError):
@@ -111,10 +133,10 @@ async def push_review(
     idempotency_key: str,
     record: Callable[[CampaignTransition], Awaitable[TransitionResult]] | None = None,
 ) -> ReviewPush:
-    """Push the Campaign's review request (§24ci (b)), and record it. A request whose key is
-    recorded, or whose head is the one last pushed, is answered with that push, and nothing is
-    pushed again. ``record`` commits the row (the route's, which projects it); by default the
-    registry's own transition.
+    """Push the Campaign's review request (§24ci (b)), and record it, one push at a time per
+    Campaign. A request whose key is recorded, or whose head is the one last pushed, is answered
+    with that push, and nothing is pushed again. ``record`` commits the row (the route's, which
+    projects it); by default the registry's own transition.
 
     Raises:
         ReviewPushRefused: A sample application's Campaign; a Project that doesn't contribute by
@@ -125,6 +147,35 @@ async def push_review(
         squadops.projects.models.SourceUnavailable: The product refused the push, with reason
             ``lease_refused`` when someone else moved the branch since the last push.
     """
+    async with _lock_for(campaign_id):
+        return await _push_review(
+            campaign_id,
+            campaigns=campaigns,
+            projects=projects,
+            repository=repository,
+            forge=forge,
+            token=token,
+            actor=actor,
+            actor_role=actor_role,
+            idempotency_key=idempotency_key,
+            record=record,
+        )
+
+
+async def _push_review(
+    campaign_id: str,
+    *,
+    campaigns: Any,
+    projects: Any,
+    repository: Any,
+    forge: Any,
+    token: str,
+    actor: str,
+    actor_role: str,
+    idempotency_key: str,
+    record: Callable[[CampaignTransition], Awaitable[TransitionResult]] | None,
+) -> ReviewPush:
+    """``push_review``'s body, under the Campaign's lock: every read of the log is inside it."""
     # deferred (pair): squadops.projects imports this package at load
     from squadops.projects.contribution import campaign_review_branch, push_campaign_review
 
