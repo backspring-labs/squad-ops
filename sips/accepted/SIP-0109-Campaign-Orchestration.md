@@ -4315,3 +4315,40 @@ escalation is the supervisor's design call.
 Two mutations are each caught: the route not reading the outbox, and attaching by order.
 
 **Who ruled.** The owner placed #2578 parts 2–4 in 2.5 ("3–5 yes", 2026-10-23). The supervisor (the Spark lane) built this part.
+
+### 24ch. An increment's scope governs its product files, and the qa test namespace is the framework's (2026-10-28, §7.2, §9.1, §9.2 condition 4, §24bj; #2743; the owner's ruling)
+
+**What was wrong.**
+- The footprint (§7.2) is derived, never authored: each product file whose expansion the delta changes, plus the stack's qa test namespace as `<dir>**` patterns, which `derive_footprint_from` appends whatever the delta.
+- §9.1's rail held the whole footprint to the objective's `allowed_scope`, those patterns included. §9.2's condition 4 held every file a plan names to it, the criterion tests included.
+- So a narrow scope refused every increment. Campaign `cmp_b79783b2…` (2.4.0, `fullstack_fastapi_react`) was scoped to `backend/routes.py` and `backend/tests/test_runs.py`, for a backend-only fix to the runs list's order. Its proposal was refused `out_of_scope` on `backend/tests/**`, `frontend/src/__tests__/**` and `frontend/src/tests/**`, which no scope entry naming a file can cover, and the campaign closed `exhausted`.
+- Narrowing the patterns to the scope would not have been enough. The framework writes an endpoint criterion's test at `backend/tests/criteria/test_{criterion}.py`, which the same scope also leaves out.
+
+**The ruling** (the owner, 2026-10-28, "go with option 1"):
+- **The objective's scope governs the change's product files.**
+- **The stack's qa test namespace is the framework's.** The scope does not read it, and the verdict names it.
+- **Rejected:** letting the scope narrow the namespace, refused with the criterion-test path named. It would have kept the owner's control of where tests go, but it still refused the reproduction.
+
+**Built:**
+- **One reading for both checks.** `outside_allowed_scope` takes the stack, and leaves out every path in its qa test namespace (`qa_namespace_paths`, by `is_qa_test_path_for_stack`). That covers the footprint's `<dir>**` patterns and any test file a plan names there. §9.1's rail and §9.2's condition 4 call it, so the two still cannot disagree.
+- **An unknown stack has no namespace,** so every path stays the scope's. The plan-review tier reads the stack from the run's manifest (`manifest_stack`), and with no manifest it already escalates on condition 3.
+- **What the reader sees:**
+  - a refusal for a product file outside the scope names the namespace as the framework's;
+  - the tier's reading lists the plan's files in the namespace beside its product files;
+  - an accepted request's footprint still names the patterns the build may write.
+- **The write grants are unchanged.** The qa namespace was already granted to the test author by its own declaration, not by the scope (`write_authorization.py`).
+- **The cost:** an objective can no longer say where tests may go. A scope of test files alone admits no product change, and its refusal says so.
+
+**Evidence:**
+- **The issue's reproduction,** entered at `validate_proposal` on the 1.9 baseline: `GET /runs` given a declared order, under the scope of the route file and one test file. It is accepted, with footprint `backend/routes.py` plus the three namespace patterns. On the code before this change it is refused exactly as #2743 reports.
+- **The same delta under a scope of the test file alone** is refused, naming `backend/routes.py` and the namespace.
+- **At the gate,** entered at `WorkloadGate.decide`: a tier campaign scoped to `backend/routes.py`, whose plan names `backend/tests/criteria/test_c1.py`, is approved by the tier. Its notes name the test file as the framework's.
+- **Six mutations are each caught:**
+  - the namespace not left out;
+  - every path left out;
+  - the gate passing no stack;
+  - `manifest_stack` reading none;
+  - the tier dropping the stack;
+  - the refusal no longer naming the namespace.
+
+**Who ruled.** The owner (option 1, 2026-10-28), on the supervisor's analysis in #2743. The supervisor (the Spark lane) built it.
