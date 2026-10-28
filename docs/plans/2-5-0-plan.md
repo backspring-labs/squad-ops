@@ -56,6 +56,7 @@ against its own pre-registered evidence.
 |---|---|---|
 | #2619: a Campaign on a repository-backed Project (SIP-0112 H.4, SIP-0109 §24bv, SIP-0113 §10l) | the owner: "go with 2.5, write up the amendment" | 2026-10-21 |
 | #2414's remainder (the declared start at the cycle-end hook) and #2421's (an owner-approved evaluation secret resolved at start) | SIP-0113's and SIP-0102's ledgers, re-placed with #2619 | 2026-10-21 |
+| #2421's remainder (an owner-approved evaluation secret resolved at start) | **left unbuilt in 2.5** (the owner, 2026-10-28, taking the supervisor's recommendation): SIP-0102's ledger re-places it at 2.6.0 | 2026-10-28 |
 | #2297: widen `contract_assertions_match` | the owner ("3–5 yes") | 2026-10-23 |
 | #2664: refuse a QA repair that weakens a failing slot assertion, after the MacBook lane's review | the owner ("3–5 yes") | 2026-10-23 |
 | #2578, parts 2–4: an increment's own identity | the owner ("3–5 yes") | 2026-10-23 |
@@ -87,7 +88,7 @@ plan only orders and verifies it.
 | **contract 1's pin for an increment** | `prepare_cycle` pins a repository-backed increment at the campaign branch's head, and its inherited-baseline check reads the previous accepted verification there; H.2's gate keeps reading the Project's baseline. It meets §24bv's branch at the head commit and the previous verification, both in the contract above | MacBook | S |
 | **SIP-0109 §24bv points 1–4** | point 1, the calibration is a record of the inherited baseline, not a built cycle, and the start is refused when none can be written (D10); point 2, the accepted tree is one campaign branch, increments promoted onto it in order, with one review request per Campaign; point 3, what an increment pins and is compared against, its acceptance read on the product's own runner; point 4, when upstream moves, a rebase that conflicts escalates and an increment built on the old head is abandoned as `upstream_moved` (D10) | Spark | M–L |
 | **SIP-0113 §10l, and #2414's remainder** | the Campaign's baseline reading is an evaluation of the calibration record's commit; the product starts from its own declaration at the cycle-end hook | Spark | M |
-| **#2421's remainder** | an owner-approved evaluation secret resolved into the disposable copy's environment at start (SIP-0102 §11e) | Spark | S |
+| **#2757** | a vitest test-id reader, so a criterion that runs only under vitest can be read as discriminating (SIP-0109 §24ci (a)). With it, §24bv point 3's pytest reader carries each failure's exception class. It lands before `z_shelfnote`'s demonstration, whose frontend tests with vitest. Placed 2026-10-28 | Spark | S–M |
 | **#2592** | Outcome Evaluation reads the tree a source-backed cycle contributes (the managed clone's captured commit), not its vault artifacts | Spark | S–M |
 
 **Read by two demonstration Campaigns,** carried from the 2.4 plan's shared demonstration (its D13), on private copies
@@ -299,7 +300,7 @@ A's Project Lifecycle Management pieces, which build on code it wrote in 2.4, an
   5's proposal input and contract 1's pin for an increment. **It reviews:** #2664's design and #2578 part 2's cycle
   field (G4), before the Spark lane builds either.
 - **The Spark lane does everything else:** Tracks B, C, D and E, #2521, #2553's remainder, #2672, #2493 and #2402
-  among them; §24bv points 1–4, §10l, #2414's and #2421's remainders and #2592; the deploys, the re-read, the
+  among them; §24bv points 1–4 with SIP-0109 §24ci's readers and push, #2757, §10l, #2414's remainder and #2592; the deploys, the re-read, the
   demonstrations' runs and the cut.
 - **The lanes meet at three points only:** H.4's contract, reviewed by both before either builds against it; the two
   G4 reviews; and merge holds while a counted set or a demonstration runs. Nothing else needs the MacBook lane, so a
@@ -341,7 +342,7 @@ supervisor's estimates have run high on earlier lines, so these are ceilings to 
   pre-registration.
 - **Revision 6's text.** The supervisor drafts and approves it on the owner's delegation, and nothing of its content
   is written here.
-- **#2637's design,** which its review settles (D7).
+- **#2637's design,** which its review settles (D7). **Approved by the owner 2026-10-28** (SIP-0113 §10y).
 - **§24bv's other three open questions:** whether the review request stays a draft until the Campaign ends, a
   per-increment review request beside the Campaign's, and how a frozen bundle snapshots fixtures for runners other
   than pytest and vitest. They wait until after the demonstrations, whose products test with pytest, and vitest on

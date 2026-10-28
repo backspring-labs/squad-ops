@@ -84,7 +84,7 @@ The revision history at the end has the earlier placements.
 
 ---
 
-## Delivery ledger (current as of 2026-10-23)
+## Delivery ledger (current as of 2026-10-28)
 
 Kept by the rule in CLAUDE.md ("SIP System"): one row per part, updated in the PR that ships or re-places it, read at each release cut. Built from the read-only SIP-portfolio audit of 2026-10-04; `sips/PORTFOLIO.md` indexes it.
 
@@ -133,7 +133,8 @@ Kept by the rule in CLAUDE.md ("SIP System"): one row per part, updated in the P
 | a fresh proposal is shown each proposal its campaign never approved, with the ruling's reason (§24bu) | **shipped** | 2.4.0, PR #2598, issue #2593 |
 | a Campaign on a repository-backed Project, point 1: calibration as a record, not a cycle (§24bv point 1, §24cc) | **shipped** | 2.5.0, PR #2738 |
 | a Campaign on a repository-backed Project, point 2: the accepted tree is a campaign branch, an increment promoted onto it from its own capture (§24bv point 2, §24cd, §24ce) | **shipped** | 2.5.0, PR #2740 |
-| a Campaign on a repository-backed Project, the rest: point 2's launcher handoff, an increment's pin and acceptance on the product's runner (point 3), upstream moving (point 4), proposals from the product's tree (point 5) (§24bv, §24cd; SIP-0112 H.4) | **placed** | 2.5.0, #2619 |
+| a Campaign on a repository-backed Project, the rest: point 2's launcher handoff, an increment's pin and acceptance on the product's runner (point 3), upstream moving (point 4), proposals from the product's tree (point 5) (§24bv, §24cd; SIP-0112 H.4), with §24ci's pytest exception-class reader and the supervisor's review-request push | **placed** | 2.5.0, #2619 |
+| a vitest test-id reader, so a vitest-only criterion can be read as discriminating (§24ci (a)) | **placed**: before `z_shelfnote`'s demonstration, whose frontend tests with vitest | 2.5.0, #2757 |
 | a Campaign cycle held on its instruction bindings escalates as `binding_hold`, released by re-supply and never parked (§24bw; SIP-0110 §A.3.6) | **shipped** | 2.4.0, PR #2628 (#2178's Campaign half) |
 
 **What closes this SIP:** Its 2.1.0 rows closing, #1710's remainder ruled, and #1708's remainder shipped in 2.2.0 or ruled out of scope. §24at, the consolidated status at the v2.0.0 cut, replaces the 2.0 plan's §5a as the permanent record. Promotion follows at the sweep after the last placed row closes.
@@ -4352,3 +4353,24 @@ Two mutations are each caught: the route not reading the outbox, and attaching b
   - the refusal no longer naming the namespace.
 
 **Who ruled.** The owner (option 1, 2026-10-28), on the supervisor's analysis in #2743. The supervisor (the Spark lane) built it.
+
+### 24ci. §24cd point 7 ruled: discrimination on a product's runner needs a test-id reader, and the supervisor pushes the Campaign's review request (2026-10-28, §8.2, §24bv point 2, §24cd point 7; SIP-0112 H.4, H.7; #2619, #2757; the owner's ruling)
+
+**What was open.** §24cd point 7 left the owner two questions about a Campaign on a repository-backed Project. The supervisor recommended an answer to each, and the owner took both, changing who pushes: "Go with your recommendations but for you to push not me".
+
+**(a) "For the intended reason" (§8.2) on a product's own runner: the rule holds.**
+- **A runner with a test-id reader:** pytest's reader is extended, with §24bv point 3's build (#2619), to carry each failure's exception class beside its test id. A criterion that fails on the baseline only by an `ImportError`, or by any setup failure, then doesn't read as discriminating, as on the sample applications' stacks.
+- **A runner without one:** the criterion's discrimination is unread, and it isn't accepted as discriminating. vitest is such a runner today (H.7's disclosed `no_test_id_reader`).
+- **Rejected:** a whole-file reading, disclosed as a limitation. It would count a test file that fails to import on the baseline as discriminating, which is the failure #2602 removed on Next.js pages.
+- **The cost:** a Campaign whose criteria run only under vitest accepts no criterion until a vitest reader exists. That reader is #2757, placed in 2.5 before `z_shelfnote`'s demonstration, since that Project tests its frontend with vitest (SIP-0112's H.4 reading of its configuration).
+
+**(b) The Campaign's review request: the supervisor pushes it, at the Campaign's close or on request.**
+- **No automatic push from the deploy.** That would need a token with write access stored in the deploy for it (`projects.review_request_tokens`), and nothing is stored for it.
+- **Who and how:** the supervisor runs the push, as an operator's act, through the contribution path (`squadops projects contribute`, `projects/contribution.py`), passing the token with the request as that command does today (`--token-from-gh`, the box's `gh` login). The owner reviews and merges the review request, and §24cd point 4 reads that merge.
+- **When:** at the Campaign's close, or mid-Campaign when the owner asks for it.
+- **After a rebase (§24cd point 2):** the push to the Campaign's review branch is forced with a lease on the ref the control log last recorded, so a branch someone else moved is refused, never overwritten. This widens `source_repository.py:79`'s "never forced" for this branch only, and the build says so.
+- **Until it is built:** the branch lives in the managed clone, and nothing is pushed.
+
+**Evidence:** §24cd point 7's reading of `sandbox/findings.py:154-179`, `projects/contribution.py:81-152` and `ports/projects/source_repository.py:79`; the token reading of `contribution.py`'s `_open_review_request`, which refuses a request with no token for the Project and names both sources.
+
+**Who ruled.** The owner (2026-10-28), on the supervisor's recommendations. The supervisor (the Spark lane) builds both with #2619.
