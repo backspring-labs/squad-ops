@@ -30,6 +30,7 @@ from squadops.campaigns.increment_tree import (
     frozen_bundle_contents,
     increment_seed,
 )
+from squadops.campaigns.runner_acceptance import CandidateNotDelivered
 from squadops.capabilities.assembly_notes import ASSEMBLY_NOTES_DOCUMENT
 from squadops.capabilities.context_assembly import (
     ACCEPTANCE_WORKSPACE_FILTER,
@@ -145,6 +146,11 @@ from squadops.execution.patch_acceptance import (
     KEPT_OUTPUTS_KEY,
     PatchAcceptance,
     _record_repair_rejection,
+)
+from squadops.execution.product_acceptance import (
+    ProductAcceptanceRefused,
+    evaluate_product_increment,
+    evaluated_at_delivery,
 )
 from squadops.execution.pulse_boundary_runner import PulseBoundaryRunner
 from squadops.execution.run_admission import RunAdmission
@@ -2556,6 +2562,28 @@ class DispatchedFlowExecutor(FlowExecutionPort):
             raise _ExecutionError(
                 f"source delivery: the product's own checks: {delivery.verification.summary()}"
             )
+        # SIP-0109 §24cd point 6: a repository-backed increment's acceptance, on the product's
+        # runner in the sandbox, in place of the qa.evaluate_increment its plan doesn't carry.
+        if evaluated_at_delivery(cycle):
+            try:
+                evaluation = await evaluate_product_increment(
+                    cycle,
+                    run_id,
+                    delivery,
+                    vault=self._artifact_vault,
+                    projects=self._project_registry,
+                    sandbox=self._sandbox,
+                    read_profile=self._derived_profile_for,
+                )
+            except (
+                ProductAcceptanceRefused,
+                CandidateNotDelivered,
+                SandboxUnavailable,
+            ) as e:
+                raise _ExecutionError(f"increment acceptance: {e}") from e
+            produced.all_artifact_refs.append(evaluation)
+            if self._cycle_registry is not None:
+                await self._cycle_registry.append_artifact_refs(run_id, [evaluation])
 
     async def _seed_verification_scaffold_artifacts(
         self,

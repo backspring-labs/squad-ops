@@ -116,6 +116,15 @@ class IncrementBasis(StrEnum):
         stack's scaffold map derives. On the campaign branch it is authored instead."""
         return self is IncrementBasis.MANIFEST
 
+    @property
+    def evaluated_at_delivery(self) -> bool:
+        """Whether the increment's acceptance (§8) is judged at its delivery, on the product's own
+        runner in the sandbox, runtime-side (§24cd point 6), rather than by the qa role's
+        ``qa.evaluate_increment`` at the end of its plan. A product's toolchain exists only in the
+        sandbox, where its declared commands run (SIP-0102 X-3a). The plan and the delivery both
+        ask it, so exactly one evaluator judges each increment."""
+        return self is IncrementBasis.CAMPAIGN_BRANCH
+
 
 @dataclass(frozen=True)
 class PrdSection:

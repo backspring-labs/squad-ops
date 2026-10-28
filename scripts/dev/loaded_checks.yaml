@@ -1921,3 +1921,15 @@ checks:
       from squadops.stacks.scaffold import criterion_module_name
       print(RefusalKind.CRITERION_FILE_COLLISION.value, criterion_module_name("T-1") == criterion_module_name("T_1"), callable(placement_inconsistency))
     expect: criterion_file_collision True True
+  - id: "2619-product-acceptance"
+    what: a repository-backed increment is judged at its delivery on its product's runner in the sandbox, and its plan carries no qa.evaluate_increment (SIP-0109 §24cd point 6, §24cl)
+    container: squadops-runtime-api
+    code: |
+      from squadops.campaigns.change_request import IncrementBasis
+      from squadops.campaigns.runner_acceptance import ProductTestSurface, single_file_argv
+      from squadops.execution.product_acceptance import PRODUCT_RUNNER, acceptance_workspace_prefix
+      from squadops.projects.derived_profile import Runner
+      r = Runner("vitest", ("web",), ("web/**",), ("web/src",), "*.test.*", ("npm", "test"), ("npm", "test", "--", "{name}"), "vitest", ())
+      s = ProductTestSurface(("web/src/*.test.*",), frozenset({"web/src/criterion_C1.test.jsx"}))
+      print(PRODUCT_RUNNER, IncrementBasis.CAMPAIGN_BRANCH.evaluated_at_delivery, IncrementBasis.MANIFEST.evaluated_at_delivery, single_file_argv(r, "web/src/criterion_C1.test.jsx")[-1], s.is_test("web/src/App.jsx"), acceptance_workspace_prefix("run_x"))
+    expect: product_runner True False criterion_C1.test.jsx False acc-run_x-

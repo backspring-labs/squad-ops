@@ -30,7 +30,7 @@ import logging
 import posixpath
 import sys
 from collections.abc import Mapping
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from hashlib import sha256
 from pathlib import PurePosixPath
@@ -48,6 +48,7 @@ from squadops.projects.baseline import InheritedBaseline
 from squadops.projects.checkout import SOURCE_CHECKOUT
 from squadops.projects.configuration import baseline_tree
 from squadops.projects.contribution import capture_ref
+from squadops.projects.models import CheckoutTree
 from squadops.projects.verification import (
     ACCEPTED,
     SOURCE_VERIFICATION_FILENAME,
@@ -82,6 +83,10 @@ class SourceDelivery:
     verification: SourceVerification
     artifact_ids: tuple[str, ...]
     captured_commit: str | None = None
+    #: The pinned commit's tree the candidate was built on, and the squad's changes to it: the
+    #: two trees a repository-backed increment's acceptance is judged on (SIP-0109 §24cd point 6).
+    head: CheckoutTree | None = None
+    changes: Mapping[str, bytes] = field(default_factory=dict)
 
 
 def squad_changes(
@@ -253,7 +258,7 @@ async def deliver_source_change(
             )
         ]
         if verification.verdict != ACCEPTED:
-            return SourceDelivery(verification, tuple(ids))
+            return SourceDelivery(verification, tuple(ids), head=checkout, changes=changes)
 
         new_commit, captured = await _capture(
             cycle, run_id, candidate, commit, verification, repository, sandbox
@@ -288,7 +293,9 @@ async def deliver_source_change(
                 {"captured_commit": new_commit, "parent_commit": commit},
             )
         )
-        return SourceDelivery(verification, tuple(ids), captured_commit=new_commit)
+        return SourceDelivery(
+            verification, tuple(ids), captured_commit=new_commit, head=checkout, changes=changes
+        )
     finally:
         await _release(sandbox, workspace_id, raising=sys.exc_info()[0] is None)
 

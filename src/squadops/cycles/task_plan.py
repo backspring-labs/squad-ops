@@ -820,8 +820,14 @@ def _increment_evaluation(
     if run.workload_type != WorkloadType.IMPLEMENTATION or not change_request:
         return _IncrementEvaluation()
     # deferred (cycle): campaigns.increment_tree loads this module
-    from squadops.campaigns.increment_tree import increment_evaluation_inputs
+    from squadops.campaigns.increment_tree import increment_basis, increment_evaluation_inputs
 
+    basis = increment_basis(resolved_config)
+    if basis is not None and basis.evaluated_at_delivery:
+        # SIP-0109 §24cd point 6: a repository-backed increment is judged at its delivery, on the
+        # product's runner in the sandbox (``execution.product_acceptance``), never in a role's
+        # container, which holds no product toolchain.
+        return _IncrementEvaluation()
     return _IncrementEvaluation(
         steps=((TaskType.QA_EVALUATE_INCREMENT, "qa"),),
         inputs=increment_evaluation_inputs(resolved_config, change_request, interface_manifest),
