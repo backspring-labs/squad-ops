@@ -176,6 +176,9 @@ def discrimination_on_runner(
       whole-file reading would count a file that fails to import on the baseline.
     - **A run unread** (none, unreadable, another reader, or a candidate that ran fewer tests):
       not run.
+    - **A candidate run that doesn't show its tests ran** (SIP-0096: only executed-and-passed
+      credits; SIP-0109 §24cl item 13): a test it skipped, or one expected to fail, isn't failing,
+      and isn't passing either. A reading that names no pass count shows nothing: not run.
     - **Otherwise** it discriminates when a test fails on the baseline for the intended reason
       (``_intended``) and doesn't fail on the candidate."""
     # deferred (pair): squadops.sandbox imports this package at load (its API's seed plan)
@@ -188,6 +191,7 @@ def discrimination_on_runner(
         or candidate is None
         or baseline.reader != test_ids
         or comparable(baseline, candidate) is not None
+        or not ran_every_test(candidate)
     ):
         return Discrimination(criterion_id, False, DiscriminationReason.NOT_RUN)
     if not baseline.counts:
@@ -264,6 +268,22 @@ def _held(address: str | None, test_path: str, run: TreeRun | None) -> tuple[Hel
     return Held.HELD, ""
 
 
+def ran_every_test(reading: FindingsReading) -> bool:
+    """Whether every test a readable run collected ran to an outcome: it passed or it failed
+    (SIP-0096: only executed-and-passed credits; §24cl item 13). A skipped test, or one expected to
+    fail, did neither. A reading that names no pass count can't show it."""
+    if reading.passed is None or reading.collected is None:
+        return False
+    return reading.passed + sum(reading.counts.values()) >= reading.collected
+
+
+#: §24cl item 13: why a frozen criterion read by exit status alone holds nothing.
+NO_READER_EXIT_ZERO = (
+    "its test file exited 0, and its runner names no test, so nothing shows a test ran "
+    "(read whole: no test-id reader)"
+)
+
+
 def held_on_runner(
     address: str | None,
     test_ids: str | None,
@@ -271,17 +291,23 @@ def held_on_runner(
     reading: FindingsReading | None,
 ) -> tuple[Held, str]:
     """§8.1 for one frozen criterion on a product's own runner: its bundle's test file run alone
-    on the candidate-verifier overlay. With a test-id reader, read by it: unread, or no test run,
-    is blocked, and any failing test breaks it. Without one, by the file's exit status (H.6's
-    ``per_test_reading``): a frozen criterion only has to keep passing, so a whole-file reading
-    can't credit anything a test didn't do. §24ci (a)'s rule is on discrimination alone."""
+    on the candidate-verifier overlay. It holds only on evidence that its tests ran and passed
+    (SIP-0096: only executed-and-passed credits; §24cl item 13).
+
+    - **With a test-id reader,** read by it. Any failing test breaks it. Unread, no test run, or a
+      test that didn't run to a pass (skipped, or expected to fail) is blocked.
+    - **Without one,** by the file's exit status (H.6's ``per_test_reading``). A non-zero exit
+      breaks it: the frozen test ran against the candidate's code and didn't pass. Exit 0 is
+      blocked, never held: unittest's discovery exits 0 when every test was skipped, so a whole-file
+      pass is no evidence that a test ran. That is §24ci (a)'s rule for discrimination, applied
+      to holding."""
     if address is None:
         return Held.BLOCKED_UNVERIFIED, "the verifier bundle is missing"
     if exit_code is None:
         return Held.BLOCKED_UNVERIFIED, "the bundle never executed"
     if test_ids is None:
         if exit_code == 0:
-            return Held.HELD, ""
+            return Held.BLOCKED_UNVERIFIED, NO_READER_EXIT_ZERO
         return Held.BROKEN, f"its test file exited {exit_code} (read whole: no test-id reader)"
     if reading is None or not reading.readable or reading.reader != test_ids:
         why = reading.reason if reading is not None and reading.reason else "no reading"
@@ -290,6 +316,15 @@ def held_on_runner(
         return Held.BROKEN, ", ".join(sorted(k.partition(" ")[2] for k in reading.counts))
     if not reading.collected:
         return Held.BLOCKED_UNVERIFIED, "the runner ran none of its tests"
+    if not ran_every_test(reading):
+        if reading.passed is None:
+            return Held.BLOCKED_UNVERIFIED, "its reading doesn't say how many of its tests passed"
+        missing = reading.collected - reading.passed
+        return (
+            Held.BLOCKED_UNVERIFIED,
+            f"{missing} of its {reading.collected} tests didn't run to a pass (skipped, or "
+            "expected to fail)",
+        )
     return Held.HELD, ""
 
 

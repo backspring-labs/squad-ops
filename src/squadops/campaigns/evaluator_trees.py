@@ -27,6 +27,7 @@ import re
 from collections.abc import Iterable, Mapping
 from dataclasses import dataclass
 from enum import StrEnum
+from typing import Protocol
 
 from squadops.stacks.scaffold import qa_test_namespace_for_stack, test_config_files_for_stack
 
@@ -72,6 +73,16 @@ class FileTree:
         return dict(self.files)
 
 
+class TreeTestFiles(Protocol):
+    """What classes a tree's test files, for the overlays and a bundle: a stack's ``TestSurface``,
+    or a repository-backed product's (``runner_acceptance.ProductTestSurface``, SIP-0109 §24cl)."""
+
+    @property
+    def config_files(self) -> tuple[str, ...]: ...
+
+    def is_test(self, path: str) -> bool: ...
+
+
 @dataclass(frozen=True)
 class TestSurface:
     """Which files are the test runner's: under a qa namespace, or a test-config file."""
@@ -99,7 +110,7 @@ class Overlay:
 
 
 def baseline_evaluator_overlay(
-    accepted: FileTree, candidate: FileTree, surface: TestSurface
+    accepted: FileTree, candidate: FileTree, surface: TreeTestFiles
 ) -> Overlay:
     """The accepted tree's product code, plus the candidate's test files and test config (§7.4).
 
@@ -130,7 +141,7 @@ class VerifierBundle:
 
 
 def candidate_verifier_overlay(
-    candidate: FileTree, bundle: VerifierBundle, surface: TestSurface
+    candidate: FileTree, bundle: VerifierBundle, surface: TreeTestFiles
 ) -> Overlay:
     """The candidate's product code, plus one frozen bundle (§7.4).
 
@@ -152,7 +163,7 @@ def freeze_bundle(
     criterion_id: str,
     tree: FileTree,
     test_path: str,
-    surface: TestSurface,
+    surface: TreeTestFiles,
     invocation: Iterable[str],
 ) -> VerifierBundle:
     """Freeze a criterion's bundle from ``tree`` (§8.1): its test file, every test-surface file it

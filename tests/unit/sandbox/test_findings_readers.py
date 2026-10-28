@@ -346,3 +346,40 @@ def test_a_reading_with_classes_round_trips_and_one_without_is_stored_as_before(
     assert FindingsReading.from_dict(with_classes.as_dict()) == with_classes
     assert FindingsReading.from_dict(with_classes.as_dict()).classes == with_classes.classes
     assert "classes" not in without.as_dict()
+
+
+@pytest.mark.parametrize(
+    ("reader", "stdout", "stderr", "exit_code", "collected", "passed"),
+    [
+        ("pytest", _out("pytest-classes.txt"), "", 1, 10, 2),
+        ("vitest", _out("vitest-2.1.9-asserting.stdout.txt"),
+         _out("vitest-2.1.9-asserting.stderr.txt"), 1, 5, 1),
+        ("vitest", _out("vitest-2.1.9-skipping.stdout.txt"),
+         _out("vitest-2.1.9-skipping.stderr.txt"), 0, 3, 1),
+        ("pytest", "3 skipped in 0.01s\n", "", 0, 3, 0),
+    ],
+    ids=["pytest-failing", "vitest-failing", "vitest-skipping-and-todo", "pytest-all-skipped"],
+)  # fmt: skip
+def test_a_test_runners_reading_says_how_many_of_its_tests_passed(
+    reader, stdout, stderr, exit_code, collected, passed
+):
+    """SIP-0109 §24cl item 13: a run that collected tests and failed none may have run none.
+    Bugs caught: a skipped or todo test counted as passed, so a frozen criterion whose tests never
+    ran reads held; the pass count lost on the way to the runtime, so every criterion blocks."""
+    reading = read(reader, stdout, stderr, exit_code)
+
+    assert (reading.readable, reading.collected, reading.passed) == (True, collected, passed)
+    assert FindingsReading.from_dict(reading.as_dict()).passed == passed
+
+
+@pytest.mark.parametrize("bad", [-1, True, "2"], ids=["negative", "a-bool", "a-string"])
+def test_a_stored_pass_count_that_isnt_one_is_refused_and_one_stored_before_reads_as_before(bad):
+    """The count is additive: a reading stored before it has none and reads back unchanged, and
+    one that isn't a count is refused, never read as zero. Ruff names no tests, so has none."""
+    old = {"reader": "pytest", "version": 1, "readable": True, "counts": {}, "collected": 2}
+
+    assert FindingsReading.from_dict(old).passed is None
+    assert "passed" not in FindingsReading.from_dict(old).as_dict()
+    assert read("ruff", "", "", 0).passed is None
+    with pytest.raises(ValueError, match="passed tests are a count"):
+        FindingsReading.from_dict({**old, "passed": bad})
