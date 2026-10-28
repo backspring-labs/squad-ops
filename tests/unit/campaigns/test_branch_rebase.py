@@ -1053,10 +1053,8 @@ def _with_pytest_runner(profile_document: dict) -> dict:
             "test_ids": "pytest", "support_files": [],
         },
     ]  # fmt: skip
-    document["files"] = {
-        **document["files"],
-        "test": [*document["files"]["test"], "crit/test_*.py"],
-    }
+    # The profile's test globs don't name ``crit/``: its criteria are the framework's placed
+    # files (§24cj), which the surface classes as tests only because the pins name them.
     return document
 
 
