@@ -9,8 +9,8 @@ the pinned commit:
 - every file it doesn't touch is delivered as it was.
 
 Each task is handed a bounded ``source_repository`` input rather than the tree (squadops.projects
-.checkout): the map, the product's instruction files and the current content of the files it
-names.
+.checkout): the map, the product's checks and test runners, its instruction files and the current
+content of the files it names.
 """
 
 from __future__ import annotations
@@ -23,17 +23,19 @@ from uuid import uuid4
 
 from squadops.capabilities.handlers.cycle.validation import _classify_file
 from squadops.cycles.emission_integrity import EMISSION_STATUS_FAILED
-from squadops.cycles.models import ArtifactRef, Cycle
+from squadops.cycles.models import ArtifactRef, Cycle, DerivedProfileNotFoundError
 from squadops.cycles.task_plan import REPAIR_TASK_TYPES
 from squadops.projects.checkout import (
     CHECKOUT_MANIFEST_FILENAME,
     CHECKOUT_MANIFEST_TYPE,
     SOURCE_CHECKOUT,
     CheckoutManifest,
+    RunnerView,
     manifest_of,
     source_repository_input,
 )
 from squadops.projects.configuration import baseline_tree
+from squadops.projects.source_context import ProjectSourceContext
 
 
 class SourceCheckoutRefused(RuntimeError):
@@ -72,6 +74,7 @@ async def seed_checkout_artifacts(
         [s.path for s in configuration.instruction_sources],
         classify=lambda path: _classify_file(path)[0],
         checks=[(c.id, c.argv) for c in configuration.commands.checks],
+        runners=await _runners(registry, cycle.project_id, context),
     )
     provenance = {
         "producing_task_type": SOURCE_CHECKOUT,
@@ -100,6 +103,25 @@ async def seed_checkout_artifacts(
             await _store(vault, cycle, run_id, path, content, artifact_type, media_type, provenance)
         )
     return ids
+
+
+async def _runners(
+    registry: Any, project_id: str, context: ProjectSourceContext
+) -> tuple[RunnerView, ...]:
+    """The product's test runners, from the derived profile at the Project's pin (SIP-0112 H.4
+    point 3), as every increment of a Campaign reads it (SIP-0109 §24cd point 3). None when no
+    profile is recorded there: the run is shown the checks alone, as in 2.4, and create has
+    already warned (``derived_profile_absent``)."""
+    try:
+        profile = await registry.get_derived_profile(
+            project_id,
+            at=(context.development_baseline_commit, context.development_configuration_revision),
+        )
+    except DerivedProfileNotFoundError:
+        return ()
+    return tuple(
+        RunnerView(r.runner, r.checks, r.roots, r.file_pattern, r.covers) for r in profile.runners
+    )
 
 
 async def _store(

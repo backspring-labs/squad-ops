@@ -97,7 +97,8 @@ def test_every_profile_is_the_operators_the_campaigns_or_a_released_one():
     """Bug caught: a new profile minted outside the taxonomy, a name per stack or per pulse
     setting, the combinatorial trap the taxonomy closes (§2)."""
     assert set(list_profiles()) == set(OPERATOR_PROFILES) | set(CAMPAIGN_PROFILES) | set(RELEASED)
-    assert set(CAMPAIGN_PROFILES) <= set(RELEASED)
+    # Each campaign profile was released, but the one H.4's recipe added in 2.5 (SIP-0112 H.11).
+    assert set(CAMPAIGN_PROFILES) - set(RELEASED) == {"campaign-increment-source"}
 
 
 async def test_the_operators_listing_is_the_seven_names():
@@ -158,7 +159,9 @@ def test_the_callers_own_value_sits_above_the_stacks():
 
 
 @pytest.mark.parametrize("stack", sorted(STACK_REQUEST_DEFAULTS))
-@pytest.mark.parametrize("profile", sorted(set(RELEASED) - set(OPERATOR_PROFILES)))
+@pytest.mark.parametrize(
+    "profile", sorted((set(RELEASED) | set(CAMPAIGN_PROFILES)) - set(OPERATOR_PROFILES))
+)
 def test_an_old_or_campaign_profile_gets_nothing_from_a_stack(profile, stack):
     """R2.4's guarantee, by construction rather than by the record. Bug caught: a stack's
     requirements reaching an old name that lacks the stack's keys (``validation``, or

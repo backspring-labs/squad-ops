@@ -5,9 +5,10 @@ commit, as a campaign increment starts from its accepted tree (SIP-0109 §7.3). 
 file is seeded as the run's own starting content, so whatever the squad produces for a path wins
 over it, and every other file is delivered as it was.
 
-What a task sees of it is bounded. The squad gets four things, never a silently truncated tree:
+What a task sees of it is bounded. The squad gets five things, never a silently truncated tree:
 - a map of every path;
 - the product's own checks, which verify the change;
+- its test runners, as the derived profile reads them (SIP-0112 H.4 point 3);
 - the product's own instruction files;
 - the current content of the files that task names.
 """
@@ -64,6 +65,40 @@ class CheckoutTooLarge(ValueError):
 
 
 @dataclass(frozen=True)
+class RunnerView:
+    """One of the product's test runners, as a task is shown it (SIP-0112 H.4 point 3, from the
+    derived profile's ``test_runners``): where a test file goes so the product's checks run it."""
+
+    runner: str
+    #: The Development Configuration's checks that run it.
+    checks: tuple[str, ...]
+    #: Where it discovers tests, and the file names it takes as tests (an ``fnmatch`` glob).
+    roots: tuple[str, ...]
+    file_pattern: str
+    #: The product paths its tests exercise.
+    covers: tuple[str, ...]
+
+    def as_dict(self) -> dict[str, Any]:
+        return {
+            "runner": self.runner,
+            "checks": list(self.checks),
+            "roots": list(self.roots),
+            "file_pattern": self.file_pattern,
+            "covers": list(self.covers),
+        }
+
+    @classmethod
+    def from_dict(cls, doc: Mapping[str, Any]) -> RunnerView:
+        return cls(
+            doc["runner"],
+            tuple(doc["checks"]),
+            tuple(doc["roots"]),
+            doc["file_pattern"],
+            tuple(doc["covers"]),
+        )
+
+
+@dataclass(frozen=True)
 class CheckoutManifest:
     commit: str
     sizes: Mapping[str, int]
@@ -74,6 +109,9 @@ class CheckoutManifest:
     #: The product's own checks at the pinned configuration revision, (id, argv): what verifies
     #: the run's change, shown to every task so a plan writes tests those checks find.
     checks: tuple[tuple[str, tuple[str, ...]], ...] = ()
+    #: The product's test runners, from the derived profile at the Project's pin; empty when no
+    #: profile is recorded there, or in a manifest stored before 2.5.
+    runners: tuple[RunnerView, ...] = ()
 
     @property
     def held_back(self) -> frozenset[str]:
@@ -90,6 +128,7 @@ class CheckoutManifest:
                 "instruction_paths": list(self.instruction_paths),
                 "generated": sorted(self.generated),
                 "checks": [{"id": i, "argv": list(a)} for i, a in self.checks],
+                "runners": [r.as_dict() for r in self.runners],
             },
             indent=1,
         ).encode()
@@ -105,6 +144,7 @@ class CheckoutManifest:
             instruction_paths=tuple(doc["instruction_paths"]),
             generated=frozenset(doc["generated"]),
             checks=tuple((c["id"], tuple(c["argv"])) for c in doc["checks"]),
+            runners=tuple(RunnerView.from_dict(r) for r in doc.get("runners", ())),
         )
 
 
@@ -116,6 +156,7 @@ def manifest_of(
     *,
     classify: Callable[[str], str],
     checks: Iterable[tuple[str, tuple[str, ...]]] = (),
+    runners: Iterable[RunnerView] = (),
 ) -> CheckoutManifest:
     """The checkout's manifest, refused past 2.4's limits. ``classify`` names a path's artifact
     type, as the run's storage will."""
@@ -146,6 +187,7 @@ def manifest_of(
         instruction_paths=tuple(p for p in instruction_paths if p in files),
         generated=frozenset(generated),
         checks=tuple(checks),
+        runners=tuple(runners),
     )
 
 
@@ -189,14 +231,15 @@ def source_repository_input(
     current: Mapping[str, str],
     named: Iterable[str],
 ) -> dict[str, Any]:
-    """The task's ``source_repository`` input: the map, the product's instruction files and the
-    current content of the files it names. ``current`` holds each path's latest content: the
+    """The task's ``source_repository`` input: the map, the product's checks and test runners, its
+    instruction files and the current content of the files it names. ``current`` holds each path's latest content: the
     squad's own when it has changed the file, the checkout's otherwise."""
     focus = focus_paths(manifest, named)
     return {
         "commit": manifest.commit,
         "map": repository_map(manifest),
         "checks": [{"id": i, "argv": list(a)} for i, a in manifest.checks],
+        "runners": [r.as_dict() for r in manifest.runners],
         "instructions": {p: current[p] for p in manifest.instruction_paths if p in current},
         "existing_files": {p: current[p] for p in focus if p in current},
     }

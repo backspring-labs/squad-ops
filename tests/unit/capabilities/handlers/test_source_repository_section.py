@@ -62,6 +62,28 @@ async def test_the_developer_is_shown_the_product_its_instructions_and_the_file_
     assert "{{" not in prompt
 
 
+async def test_the_qa_author_is_shown_where_the_products_runners_find_a_test():
+    """SIP-0112 H.4 point 3. Bug caught: a test written where no runner of the product looks, or
+    named as none takes it, which the product's checks never run, so it verifies nothing."""
+    runner = {
+        "runner": "unittest",
+        "checks": ["parse", "ledger"],
+        "roots": ["checks"],
+        "file_pattern": "check_*.py",
+        "covers": ["tally/**"],
+    }
+
+    section = await source_repository_section(
+        _renderer(), {"source_repository": {**REPOSITORY, "runners": [runner]}}
+    )
+
+    assert (
+        "- `unittest`, run by `parse`, `ledger`: a file named `check_*.py` under `checks`, "
+        "testing `tally/**`"
+    ) in section
+    assert "is never run, and verifies\nnothing" in section and "{{" not in section
+
+
 async def test_a_run_without_a_product_renders_no_section():
     """Bug caught: every scaffolded run's prompt carrying an empty product heading."""
     prompt = await _handler()._build_focused_prompt(_inputs(), _renderer())
@@ -78,4 +100,6 @@ async def test_only_the_parts_a_task_has_are_rendered():
 
     assert "instructions for contributors" not in section
     assert "current content of the files" not in section
+    # a run seeded with no derived profile is shown the checks alone, as in 2.4
+    assert "its own runners" not in section and "{{" not in section
     assert "- `CONTRIBUTING.md` (500 bytes)" in section

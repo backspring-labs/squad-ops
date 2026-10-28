@@ -257,7 +257,7 @@ async def _run_create_preflight(
 
 
 async def _seed_derived_contract(
-    vault: Any | None, body: CycleCreateRequest, project_id: str
+    vault: Any | None, body: CycleCreateRequest, project_id: str, *, source_backed: bool
 ) -> str | None:
     """Derive a verification contract from a seeded manifest (#779, M0b).
 
@@ -278,6 +278,10 @@ async def _seed_derived_contract(
     Returns the new artifact id, or None when nothing was derived. An unusable
     manifest raises :class:`PreflightRejectedError`: falling through to author mode
     would hand back a green carrying none of the criteria that were asked for.
+
+    A source-backed cycle that seeds a manifest is refused before anything is derived or
+    stored (SIP-0112 H.4 point 3): the contract would bind a stack's checks beside the
+    product's files, the ``contract_ref`` that E.4.3's guard refuses by name.
     """
 
     overrides = body.execution_overrides or {}
@@ -295,6 +299,14 @@ async def _seed_derived_contract(
     )
     if manifest_content is None:
         return None
+    if source_backed:
+        raise PreflightRejectedError(
+            "source_backed_seeded_manifest: this cycle develops an external product from its own "
+            "tree at the pinned commit, and plan_artifact_refs seeds an interface manifest, from "
+            "which a stack's verification contract would be derived and bound beside the "
+            "product's files. Seed no manifest for a cycle of an external Project: its own "
+            "declared checks verify it"
+        )
 
     try:
         return await derive_and_store_contract(vault, project_id, manifest_content)
@@ -712,7 +724,9 @@ async def prepare_cycle(
     # the contract it implies and pin it as an artifact, so bind mode engages
     # exactly as it does for an operator who ingested one by hand. After this the
     # effective config must be recomputed — the new ref is part of it.
-    derived_ref = await _seed_derived_contract(ports.artifact_vault, body, project_id)
+    derived_ref = await _seed_derived_contract(
+        ports.artifact_vault, body, project_id, source_backed=source_context is not None
+    )
     if derived_ref is not None:
         body.execution_overrides = {
             **(body.execution_overrides or {}),
