@@ -1,6 +1,6 @@
 ---
 template_id: request.strategy_propose_product_increment
-version: "1"
+version: "2"
 required_variables:
   - objective_statement
   - objective_measurement
@@ -79,6 +79,7 @@ prd_delta:
 footprint:               # the product files the change touches, as path globs
   - "src/ledgerkit/export.py"
   - "src/ledgerkit/cli.py"
+  - "web/src/views/ExportView.jsx"
 criteria:
   - id: T1
     statement: The export command writes CSV when asked to
@@ -87,8 +88,24 @@ criteria:
     observable: "with --format csv, stdout's first line is the header 'date,amount,memo'"
     paths:                         # optional: the product paths it exercises (default: footprint)
       - "src/ledgerkit/export.py"
+  - id: T2
+    statement: The export page offers CSV
+    surface_kind: client_route
+    surface: "/export"             # a page this change adds
+    observable: "the page lists 'CSV' among the formats it offers"
+    anchor: "export-view"          # only on a page this change adds: its view's root data-testid
+    paths:
+      - "web/src/views/ExportView.jsx"
 must_not_break: []                 # earlier criteria ids, from the list above
 ```
+
+**A criterion on a page this change adds names its view's `anchor`.** At acceptance each page is
+opened in a browser on the built product. A page this change adds holds only when an element on it
+carries `data-testid` equal to the anchor, so the build gives the view's root element that
+attribute, as `<section data-testid="export-view">` in the example. A page with no element carrying
+it rejects the increment. Write the anchor as a letter followed by letters, digits, `-` or `_`. A
+page acceptance already reads is judged by its own view's anchor, so a criterion there names none,
+and a criterion on anything but a page never names one.
 
 There is no interface manifest here, so write no `manifest_delta`: a proposal that has one is
 refused. The framework places each criterion's own test file under the product's runner that tests

@@ -156,6 +156,11 @@ class ContextAssemblyContract:
     #: told the rule through ``request.increment_test_scope_appendix``. Declared on the task that
     #: authors the suite; its repair inherits it through ``REPAIR_PRESENCE_KEYS``.
     increment_test_scope: bool = False
+    #: SIP-0109 §24cp: a repository-backed increment's view author is handed the pages its change
+    #: adds, each with the anchor its view renders on its root element (``increment_views``), so
+    #: the build renders what acceptance reads the page for. The suite's author sees them in its
+    #: test scope, and the plan authors in their indexes.
+    increment_views: bool = False
     #: SIP-0110 §0.9: the authoring seam this task is, where cross-cycle memory is supplied and
     #: where its pre-authoring state is captured for replay (#2105). Plan writing is not declared
     #: here: it is the #2058 call site, read from ``plan_rejection_context``
@@ -268,6 +273,7 @@ _PLAN_PROPOSAL_TEMPLATES = (
     "request.plan_increment_frozen_appendix",
     "request.plan_increment_regenerated_appendix",
     "request.increment_test_scope_appendix",
+    "request.increment_views_appendix",
     *_SHARED_CONTEXT_TEMPLATES,
 )
 #: Inputs a build author carries for its evaluation, never shown in its prompt.
@@ -298,6 +304,7 @@ CONTEXT_CONTRACTS: dict[str, ContextAssemblyContract] = {
         # on the same transport repairs have always used.
         manifest_surfaces=_DEV_SURFACES,
         prior_cycle_brief=True,
+        increment_views=True,
         authoring_seam=AuthoringSeam.BUILD_AUTHORING,
         prompt_templates=(
             (
@@ -307,6 +314,8 @@ CONTEXT_CONTRACTS: dict[str, ContextAssemblyContract] = {
             "request.development_develop_narrative_criteria_appendix",
             "request.development_develop_prior_artifacts_appendix",
             "request.cycle_repair_contract_expectations_appendix",
+            # SIP-0109 §24cp: the pages the change adds, with the anchor each view renders.
+            "request.increment_views_appendix",
             *_DEVELOP_APPENDIX_TEMPLATES,
             *_SHARED_CONTEXT_TEMPLATES,
             *_CYCLE_TASK_RETRY_TEMPLATES,
@@ -366,6 +375,7 @@ CONTEXT_CONTRACTS: dict[str, ContextAssemblyContract] = {
             "request.cycle_repair_anchored_edit_appendix",
             "request.cycle_repair_current_files",
             "request.increment_test_scope_appendix",
+            "request.increment_views_appendix",
             *_SHARED_CONTEXT_TEMPLATES,
             *_CYCLE_TASK_RETRY_TEMPLATES,
         ),
@@ -514,6 +524,9 @@ CONTEXT_CONTRACTS: dict[str, ContextAssemblyContract] = {
             "request.strategy_propose_product_increment",
             "request.proposal_product_profile",
             "request.proposal_product_gaps",
+            # SIP-0109 §24cp: the pages acceptance already reads, which a criterion names no
+            # anchor on.
+            "request.proposal_judged_routes",
             "request.proposal_previous_verification",
             "request.proposal_requirements_source",
             "request.proposal_product_tree",

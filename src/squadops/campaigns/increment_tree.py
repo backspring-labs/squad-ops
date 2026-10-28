@@ -604,7 +604,11 @@ def increment_test_scope(resolved_config: Any, change_request: str | None) -> di
     request = load_stored_change_request(change_request)
     block = resolved_config.get("campaign_proposal") or {}
     retired = set(retired_criteria(change_request))
+    views = page_views(request)
     return {
+        # SIP-0109 §24cp: the pages the change adds, each with the anchor its view renders, which
+        # acceptance reads the page for. Only when one is named, so every other scope is unchanged.
+        **({"views": views} if views else {}),
         "criteria": [
             {"id": c.id, "statement": c.statement, "observable": c.observable}
             for c in request.criteria
@@ -642,6 +646,29 @@ def test_scope_lines(scope: Mapping[str, Any]) -> str:
         for f in scope.get("frozen") or ()
     ]
     return "\n".join(lines) or "- none"
+
+
+def page_views(request: Any) -> list[dict[str, Any]]:
+    """The pages an approved change request adds, each with the anchor its view renders on its
+    root element and the criteria asserted there (SIP-0109 §24cp): the ``client_route`` criteria
+    that name an anchor, by route, in order. The rails name an anchor only on a page the product's
+    profile doesn't judge, and one per page, so this is the anchor acceptance reads the page for
+    (``product_routes.requested_routes``)."""
+    by_route: dict[str, dict[str, Any]] = {}
+    for c in request.criteria:
+        if c.surface_kind is SurfaceKind.CLIENT_ROUTE and c.anchor:
+            view = by_route.setdefault(c.surface, {"route": c.surface, "anchor": c.anchor})
+            view.setdefault("criteria", []).append(c.id)
+    return list(by_route.values())
+
+
+def view_lines(views: Iterable[Mapping[str, Any]]) -> str:
+    """``page_views`` as ``request.increment_views_appendix``'s index: data only, one line per
+    page, the prose the asset's (#448)."""
+    return "\n".join(
+        f"- page `{v['route']}`: anchor `{v['anchor']}` (criteria {', '.join(v['criteria'])})"
+        for v in views
+    )
 
 
 async def starting_tree_refs(

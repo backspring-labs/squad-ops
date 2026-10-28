@@ -104,9 +104,9 @@ PAGES = {
 CHANGES = {"shelfkeeper/web.py": b"PAGES = 5\n"}
 
 
-async def render_product_routes(*, runner, requested_routes=(), **kw) -> ProductRoutes:
+async def render_product_routes(*, runner, requested_routes=None, **kw) -> ProductRoutes:
     """The renderer the runtime root builds over the sandbox's runner, rendering once."""
-    return await DeclaredStartRoutes(runner).render(requested_routes=requested_routes, **kw)
+    return await DeclaredStartRoutes(runner).render(requested_routes=requested_routes or {}, **kw)
 
 
 def _configuration(start=START) -> DevelopmentConfiguration:
@@ -149,7 +149,7 @@ async def _render(tmp_path, *, pages=PAGES, configuration=None, runner="sandbox"
         runner=_runner(tmp_path, _Browser(pages)) if runner == "sandbox" else runner,
         candidate=candidate,
         verified_candidate_revision=kw.pop("verified", revision),
-        requested_routes=kw.pop("requested", ()),
+        requested_routes=kw.pop("requested", {}),
     )
 
 
@@ -444,7 +444,7 @@ async def test_a_route_the_change_request_adds_is_judged_and_never_held_without_
     archive = f"http://{APP_IP}:5173/shelves/archive"
     pages = {**PAGES, **({archive: page} if page is not None else {})}
 
-    routes = await _render(tmp_path, pages=pages, requested=["/shelves/archive", "/add"])
+    routes = await _render(tmp_path, pages=pages, requested={"/shelves/archive": "", "/add": ""})
 
     held = _held(routes)
     assert held["/shelves/archive"] == ("blocked_unverified", NO_ANCHOR_REQUESTED)
@@ -463,11 +463,11 @@ async def test_an_added_route_blocks_the_increment_and_a_dropped_pinned_one_reje
     an added route accepted; a pinned route the candidate dropped read as anything but broken."""
     from squadops.campaigns.acceptance import IncrementVerdict, increment_acceptance
 
-    added = await _render(tmp_path / "added", requested=["/shelves/archive"])
+    added = await _render(tmp_path / "added", requested={"/shelves/archive": ""})
     dropped = await _render(
         tmp_path / "dropped",
         pages={**PAGES, f"http://{APP_IP}:5173/add": _dom("not-found-view")},
-        requested=["/shelves/archive"],
+        requested={"/shelves/archive": ""},
     )
 
     blocked = increment_acceptance((), (), added.results)
@@ -482,7 +482,7 @@ async def test_a_product_with_no_blueprint_judges_the_routes_its_request_adds(tm
     """A product whose profile names no route (no blueprint, so no manifest) can still add a page
     under its ui_base. Bug caught: no pinned routes read as nothing to judge, so the added page is
     never read and the increment is accepted on its criteria alone."""
-    routes = await _render(tmp_path, profile=_profile(), initialization=None, requested=["/report"])
+    routes = await _render(tmp_path, profile=_profile(), initialization=None, requested={"/report": ""})
 
     assert _held(routes) == {"/report": ("blocked_unverified", NO_ANCHOR_REQUESTED)}
 

@@ -129,7 +129,9 @@ def proposal_context_from(
 
 def product_context(product: dict) -> ProductContext:
     """The rails' reading of a ``product_proposal`` input: each public surface as ``(kind,
-    value)``, and each runner's placement."""
+    value)``, each runner's placement, and the client routes acceptance already judges (§24cp).
+    An input composed before §24cp names no routes, so every page criterion reads as adding one,
+    and must name its anchor: stricter, never looser."""
     profile = product["profile"]
     return ProductContext(
         surfaces=tuple(
@@ -137,6 +139,7 @@ def product_context(product: dict) -> ProductContext:
         ),
         placements=tuple(RunnerPlacement.from_dict(p) for p in profile.get("placements") or ()),
         test_files=tuple(str(g) for g in profile.get("test_files") or ()),
+        judged_routes=tuple(str(r) for r in profile.get("client_routes") or ()),
     )
 
 
@@ -431,6 +434,14 @@ async def product_sections(
         "placement_lines": "\n".join(_placement_line(p) for p in profile.get("placements") or ())
         or "- none: the product declares no test runner",
     }
+    judged = profile.get("client_routes") or []
+    if judged:
+        # SIP-0109 §24cp: a page criterion on one of these names no anchor; on any other, one.
+        rendered = await renderer.render(
+            "request.proposal_judged_routes",
+            {"route_lines": "\n".join(f"- `{r}`" for r in judged)},
+        )
+        profile_variables["judged_routes_section"] = rendered.content
     gaps = profile.get("gaps") or []
     if gaps:
         lines = "\n".join(

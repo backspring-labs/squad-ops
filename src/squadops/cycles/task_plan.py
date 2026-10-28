@@ -758,6 +758,13 @@ def _inject_increment_indexes(
         from squadops.campaigns.increment_tree import test_scope_lines
 
         inputs["increment_test_scope_index"] = test_scope_lines(test_scope)
+        # SIP-0109 §24cp: the pages the change adds and the anchor each view renders, so the plan
+        # gives the view's task the anchor acceptance reads the page for.
+        if test_scope.get("views"):
+            # deferred (cycle): campaigns.increment_tree loads this module
+            from squadops.campaigns.increment_tree import view_lines
+
+            inputs["increment_views_index"] = view_lines(test_scope["views"])
 
 
 def _increment_criterion_files(
@@ -857,6 +864,10 @@ def _increment_inputs(
     # declaration; its repair inherits the key through REPAIR_PRESENCE_KEYS.
     if test_scope is not None and get_context_contract(task_type).increment_test_scope:
         return {"increment_test_scope": dict(test_scope)}
+    # SIP-0109 §24cp: the view's author is handed the pages the change adds, with each anchor.
+    # WHO is the registry's declaration (``increment_views``).
+    if test_scope and test_scope.get("views") and get_context_contract(task_type).increment_views:
+        return {"increment_views": [dict(v) for v in test_scope["views"]]}
     return {}
 
 

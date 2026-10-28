@@ -90,6 +90,9 @@ INCREMENT_SURFACES = (
         "scope_lines",
         "increment_test_scope_index",
     ),
+    # SIP-0109 §24cp: the pages a repository-backed change adds, and the anchor each view
+    # renders, which acceptance reads the page for.
+    ("request.increment_views_appendix", "view_lines", "increment_views_index"),
 )
 
 
