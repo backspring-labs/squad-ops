@@ -2305,6 +2305,10 @@ have: each failure's class, and a vitest reader. #2757 placed the reader before 
   application defines the name.
 - **vitest's reader is validated on 2.1.9,** the blueprint's pin. Output from another major that doesn't add up
   reads unreadable, never clean.
+- **The derivation names vitest's reader from the runner's kind, not from its output** (the MacBook lane's G4,
+  2026-10-28). On a product with another vitest major, a configured reporter, or stderr merged into stdout, nothing
+  shows at capture, and every criterion reads `blocked_unverified` at the first increment. Closing it is H.7's
+  derivation, the MacBook lane's, placed with H.4's recipe.
 
 **Evidence:**
 - **Real output:** pytest 9.0.2 under `--tb`'s default, `short` and `no`, and vitest 2.1.9 run by the product's
