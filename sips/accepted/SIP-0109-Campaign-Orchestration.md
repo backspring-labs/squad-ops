@@ -137,6 +137,7 @@ Kept by the rule in CLAUDE.md ("SIP System"): one row per part, updated in the P
 | a Campaign on a repository-backed Project, point 3's regression baseline: an increment on a head compared with the verification that made it, the record's commit with its inherited baseline; with §24ci (a)'s pytest exception-class reader and the product-runner discrimination rule (§24bv point 3, §24ci (a); SIP-0112 H.10) | **shipped** | 2.5.0, PR #2764 |
 | a Campaign on a repository-backed Project, point 5: the proposal's input read at the head, the change request on a product with each criterion's test placed under the product's runners, the scope's reading there, the continuation's change request, and the creation rules (§24bv point 5, §24cj; SIP-0112 H.4, H.11) | **shipped** | 2.5.0, PR #2771 |
 | a Campaign on a repository-backed Project, point 6: acceptance on the product's runner, runtime-side in the sandbox at the increment's delivery, each overlay a revision of its tree, in place of `qa.evaluate_increment`, which a branch increment's plan no longer carries (§24cd point 6, §24cl; its criterion files are §24cj's placed ones; SIP-0112 H.11's drop) | **shipped**, except route rendering on a product (§24cl item 6, next row) | 2.5.0, PR #2774 |
+| a Campaign on a repository-backed Project, point 4: upstream moving. The branch is rebased onto the commit and revision its Project reconciled, its head verified by the product's checks, a pending repair or retry superseded as `upstream_moved` (D10), the conflict and regression escalations, and the ref's follow (§24bv point 4, §24cd points 2–5, §24cj) | **shipped**, except §24cd point 5's frozen bundles at the rebase (next row) | 2.5.0, PR #9999 |
 | a Campaign on a repository-backed Project, the rest: route rendering on a product, in the sandbox from contract 7's start, a release-level gap the supervisor schedules with #2414's remainder (§24bv point 3, §24cl item 6); upstream moving (point 4, with §24cd point 5's frozen bundles at the rebase, run by `frozen_on_runner`, §24cl item 10) (§24bv, §24cd; SIP-0112 H.4); and the supervisor's review-request push (§24ci (b)) | **placed** | 2.5.0, #2619 |
 | a vitest test-id reader, so a vitest-only criterion can be read as discriminating (§24ci (a)) | **shipped**: from vitest's default reporter, as the product's own command prints it (SIP-0112 H.10) | 2.5.0, PR #2764, closes #2757 |
 | a Campaign cycle held on its instruction bindings escalates as `binding_hold`, released by re-supply and never parked (§24bw; SIP-0110 §A.3.6) | **shipped** | 2.4.0, PR #2628 (#2178's Campaign half) |
@@ -4780,3 +4781,51 @@ takes the outside review SIP-0112 H.12 provides before the merge. That review (t
 the owner, 2026-10-28) requested changes. Its two findings are items 13 and 6: item 13 is fixed here, and item 6 is
 named as the release-level gap it called it. Item 13 also changes #2764's `held_on_runner` and
 `discrimination_on_runner`, and adds `passed` to H.5's readings, additively.
+### 24cj. §24bv point 4 as built: the base is a commit and a revision, the reconciled commit needs no verification, and the frozen bundles wait on point 6 (2026-10-28, §8.1, §12b, §17, §24bv point 4, §24cd points 2–5; #2619; the supervisor's build, for the owner, with the MacBook lane's G4 on the port)
+
+**What was built.** §24cd points 2–5, before each launch (`squadops.campaigns.branch_rebase`, called by the launcher as `before_launch`):
+- the Project's own gates run at its pin first (`reconciled_at_pin`: READY, H.2's drift, the inherited baseline, H.8's blocking gap), so the launcher never reconciles;
+- the branch's commits are replayed onto the pin in the managed clone (`SourceRepositoryPort.rebase`);
+- the rebased head is verified by the product's checks against upstream's inherited baseline;
+- one `BRANCH_REBASED` row moves the accepted tree and supersedes a pending repair or retry;
+- the ref follows by compare-and-swap, and the existing startup and sweep re-sync moves a ref a stop left behind.
+
+**Where the build differs from §24bv and §24cd's text:**
+1. **The base is a commit and a Development Configuration revision.** §24bv compares the branch's base with upstream's commit. But the head's verification is read only at the revision it ran at (`previous_verification_baseline` refuses another, FR-20). So a Project re-configured at the same commit would refuse every later increment. The launcher rebases when either differs. A revision-only rebase moves no commit and re-verifies the head at the new revision.
+2. **A rebased head that is the reconciled commit itself runs no verification.** That happens after the owner's merge (§24cd point 4), or when the Project reconciles before any increment is accepted. That commit's regression baseline is the inherited one, captured at reconciliation. The row names `verification: inherited_baseline` and no `verification_ref`. `require_campaign_head` already accepts a head at the Project's baseline commit with none. This answers the second half of #2761's G4 note 2.
+3. **Where the rebase's verification is kept.** It is a `source-verification/v1` document in the vault beside the Project. Its `cycle_id` and `run_id` are null, since no run made it, and its `rebase` block names the campaign, the base and head before, and the commits replayed and dropped. `head()` reads `verification_ref` from a `BRANCH_REBASED` row as it reads a PROMOTE row's, so the next increment's delivery compares with it (§24bv point 3). This answers the first half of the G4 note.
+4. **An unverified rebased head escalates as `REBASED_HEAD_REGRESSED` too.** That is a head no check executed and passed on. It can't be a regression baseline, which must be accepted. The refusal gives the verification's own summary, which says which it was, and its vault id.
+5. **How the refusals escalate.** Each is the launch's refusal (`LAUNCH_REFUSED`, the campaign escalated with the intent pending, #1971), named by its code: `CAMPAIGN_BRANCH_CONFLICT` with the commit and the paths, or `REBASED_HEAD_REGRESSED`. Drift and a blocking gap use the cycle-create path's own gates, so their codes are that path's (`STALE_SOURCE_PRECONDITION`, `PROJECT_STATE_CONFLICT`). Nothing is rebased, and nothing superseded, before a refusal.
+6. **The supersession's state and its proposal.**
+   - The row moves the campaign from `repairing` or `retrying` to `at_proposal`, an edge §17 didn't draw. It is added to the lifecycle.
+   - When row 6's proposal can't be built, the row escalates the campaign instead, naming why (`unbuilt`), as a decision does. Today that is every repository-backed campaign, until §24bv point 5 builds a proposal from the product's tree.
+   - The supersession reads the intent under the campaign's lock. One launched or superseded meanwhile refuses the rebase as `stale_state`.
+7. **No limit is checked at the rebase.** The fresh proposal replaces the launch the repair would have been, one for one. The next decision counts its cycle, its tokens and the elapsed time. Tests hold that five rebases in a row still reach `max_cycles`, the budget and the elapsed time, and count toward no `max_unaccepted_increments` (D10).
+8. **The mechanism.**
+   - Each commit is merged onto what was replayed before it, with its parent as the base (`git merge-tree --write-tree`). No working tree is touched, and only objects are written.
+   - A result with no change is dropped, as a rebase drops a change upstream holds.
+   - Each new commit keeps the original's author, message and committer date. So the same rebase writes the same commits, and a replay after a restart is a replay.
+   - The port's new `rebase` is a change to SIP-0112's source-repository port, for the MacBook lane's G4.
+9. **SIP-0109's migration range is full.** `1600–1699` is used to `1699`. Its later migrations take `2000–2099`, starting with `2000_campaign_branch_rebased.sql`.
+
+**Not built, and why: the frozen criteria's bundles at the rebase (§24cd point 5's second half).**
+- A product's bundles run on its own runner, in the sandbox, runtime-side. That runner is §24cd point 6's evaluator: it builds each overlay as a revision of the tree and reads each criterion by its test id. It isn't built. The role-container evaluator §8.4 has today holds no product toolchain, so it can't stand in.
+- So the rebase runs the product's checks only. The row names each frozen criterion it left unrun (`frozen_criteria_unrun`), and the digest says so.
+- **The cost:** until point 6 lands, a break upstream causes in a frozen criterion's behaviour isn't found at the rebase. It is found by the next increment's accumulated acceptance, once that runs on the product's runner.
+- **Placed:** with point 6, on #2619.
+
+**Evidence.**
+- **The wiring.** The tests enter at `CampaignLaunchService.drain()` with `before_launch` wired as `main` wires it (`tests/unit/campaigns/test_branch_rebase.py`). They run over the shared fixture's Tally, with a real managed clone, a real sandbox service and a real delivery and baseline capture, and upstream moves by a commit to the fixture's own repository:
+  - a README change upstream rebases the branch, and the increment then launched is pinned at the rebased head. A real delivery on it compares with the rebase's verification;
+  - a pending repair is superseded, and the fresh proposal launches in the same drain. With the real proposal path, it escalates naming §24bv point 5;
+  - a conflicting change, and an upstream check that the rebased head fails, each escalate with the intent pending, and nothing moves;
+  - no baseline at the pin, drift after reconciliation, and a blocking gap each refuse before any rebase;
+  - the owner's merge, and a reconciliation before any acceptance, rebase to the reconciled commit with no verification;
+  - a revision-only reconciliation re-verifies the head where it stands;
+  - upstream moving twice rebases from where the first rebase left the branch;
+  - a follow that failed is moved at `main._resume_campaigns`.
+- **The clone's rebase** is tested against real repositories (`tests/unit/tools/test_git_source.py`): replay keeping each change and its author, determinism, a merge and a squash rebasing to upstream, a conflict named by commit and path, and the edges.
+- **The Postgres registry** holds the supersession and the new CHECK values in one transaction (`tests/integration/cycles/test_postgres_campaign_registry_integration.py`), run by CI's integration job.
+- **Mutations:** twenty, one on each seam; all twenty caught. `branch_base` ignoring a rebase survived the first run, since the rebase's idempotency key masked it, and a test of upstream moving twice now catches it.
+
+**Who ruled.** The supervisor (the Spark lane), building §24cd points 2–5 under the owner's direction of 2026-10-21 and the 2.5 grants. Items 1, 2 and 4 to 7 are the supervisor's calls, for the owner's review. Item 8's port change is for the MacBook lane's G4.
