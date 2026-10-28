@@ -2308,10 +2308,13 @@ have: each failure's class, and a vitest reader. #2757 placed the reader before 
 - **The derivation names vitest's reader from the runner's kind, not from its output** (the MacBook lane's G4,
   2026-10-28). On a product with another vitest major, a configured reporter, or stderr merged into stdout, nothing
   shows at capture, and every criterion reads `blocked_unverified` at the first increment. **Closed 2026-10-28**
-  (the Spark lane, after the MacBook lane's handoff). The derivation gives vitest's reader only where the runner's
-  package (or the repository root's) pins vitest 2, its command names no reporter and doesn't merge stderr into
-  stdout, and no `vitest.config.*` or `vite.config.*` at its root names `reporters`. Anywhere else the runner gets
-  no reader, and `no_test_id_reader` names why at capture. That gap's reason now says what §24ci (a) rules: an
+  (the Spark lane, after the MacBook lane's handoff). The derivation gives vitest's reader only where all of these hold:
+  - the runner's package, or else the repository root's, declares a vitest spec that allows vitest 2 and nothing else (an exact version, `^2`, `~2` or `2.x`). A bound, an alternative major, a hyphen range or an alias is refused;
+  - the command as run (the package script, and what the configured argv forwards to it through npm, pnpm or yarn) names no reporter and doesn't merge stderr into stdout;
+  - the config it runs under names no `reporters`: the file `--config` names, which must be in the tree, or else the conventional `vitest.config.*` and `vite.config.*`;
+  - no `vitest.workspace.*` sits under its root.
+
+  Anywhere else the runner gets no reader, and a `no_test_id_reader` gap, confined to that runner's root, names why at capture. One gap is written per refused runner, so two packages keep their own reasons. A runner kind with no reader at all keeps one unconfined gap. The rule's second review (the owner's outside reviewer, through H.12) asked for the spec, forwarded-argument, `--config` and per-runner cases, and they are built and tested. That gap's reason now says what §24ci (a) rules: an
   unread runner's criterion isn't accepted as discriminating. The old text said each criterion is read by its
   test file's result, which §24ci (a) rejected; the shared fixture's four recorded profiles carry the new wording.
 
