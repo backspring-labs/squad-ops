@@ -12,6 +12,7 @@ from squadops.capabilities.disputed_checks import criterion_identities
 from squadops.capabilities.handlers.base import HandlerResult
 from squadops.capabilities.handlers.context_sections import context_sections
 from squadops.capabilities.handlers.prompt_guard import _guard_prompt_size
+from squadops.capabilities.handlers.source_repository import product_conventions_template
 from squadops.llm.exceptions import LLMError
 from squadops.llm.models import ChatMessage
 from squadops.stacks.development_profiles import (
@@ -482,7 +483,15 @@ class DevelopmentDevelopHandler(_CycleTaskHandler):
         # resolved by the entrypoint), not the handler's step role. On a squad container the
         # two coincide for every registered handler; on a generalist process they do not.
         assembled = context.ports.prompt_service.get_system_prompt(context.role_id)
-        system_prompt = assembled.content + "\n\n" + capability.system_prompt_supplement
+        # SIP-0112 H.13: a product made from a blueprint is shown that blueprint's conventions in
+        # its repository view, and not the profile's prose for the skeleton, which lays files out
+        # by the skeleton ("All backend files go under backend/"). A profile that declares no
+        # product conventions keeps its supplement, as a product with no blueprint does.
+        system_prompt = (
+            assembled.content
+            if product_conventions_template(inputs)
+            else assembled.content + "\n\n" + capability.system_prompt_supplement
+        )
 
         # Resolve model, token budget, and prompt guard
         model_name, max_tokens, context_window = self._resolve_model_budget(

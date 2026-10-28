@@ -226,6 +226,11 @@ _SHARED_CONTEXT_TEMPLATES = (
     "request.source_repository_existing_files_block",
     "request.source_repository_instructions_block",
     "request.source_repository_runners_block",
+    # SIP-0112 H.13: the blueprint's conventions for a product, one stack's at a time.
+    (
+        "request.source_repository_conventions_fullstack_fastapi_react",
+        "request.source_repository_conventions_nextjs_ts",
+    ),
     "request.prior_cycle_brief_appendix",
 )
 #: What a cycle task's re-dispatch appends: the emission retry's feedback and the disputes, and the

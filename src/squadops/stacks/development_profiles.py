@@ -13,7 +13,7 @@ from collections.abc import Mapping
 from dataclasses import dataclass
 from typing import Any
 
-from squadops.stacks.scaffold import resolve_development_profile
+from squadops.stacks.scaffold import development_profile_for, resolve_development_profile
 from squadops.stacks.stack_nextjs_ts import VITEST_SUITE_GLOBS
 
 # ---------------------------------------------------------------------------
@@ -97,6 +97,17 @@ class DevelopmentProfile:
     #: Empty means NO fill-only appendix rather than another stack's — wrong guidance is
     #: worse than none (#818's asymmetric-default rule; this defect is the proof).
     fill_only_template: str = ""
+    #: The managed asset carrying this stack's conventions for a product made from its
+    #: blueprint (SIP-0112 H.13): what its languages, frameworks and tests expect of a change,
+    #: and never where a file or a test goes. A product made from a blueprint is its owner's
+    #: tree from its first commit, so its layout is its own, and its runners say where a test is
+    #: found (H.11). The prose above is another audience's: it describes the skeleton a sample
+    #: application fills ("Place tests in backend/tests/"), where a product's tests can be
+    #: anywhere (``z_shelfnote`` keeps its backend tests in ``tests/``).
+    #:
+    #: Empty means a product's cycle is never pinned to this profile from its blueprint, and a
+    #: source-backed run under it is shown the prose above, as before.
+    product_conventions_template: str = ""
 
 
 # ---------------------------------------------------------------------------
@@ -397,6 +408,9 @@ DEVELOPMENT_PROFILES: dict[str, DevelopmentProfile] = {
         max_completion_tokens=12000,
         test_timeout_seconds=180,
         fill_only_template="request.development_develop_fill_only_appendix",
+        product_conventions_template=(
+            "request.source_repository_conventions_fullstack_fastapi_react"
+        ),
     ),
     # #822 stack #2. Bound to the scaffold stack of the same name by
     # ``ScaffoldStack.development_profile`` (#832), so the two registries can no longer disagree
@@ -539,6 +553,7 @@ DEVELOPMENT_PROFILES: dict[str, DevelopmentProfile] = {
         max_completion_tokens=12000,
         test_timeout_seconds=180,
         fill_only_template="request.development_develop_fill_only_appendix_nextjs_ts",
+        product_conventions_template="request.source_repository_conventions_nextjs_ts",
     ),
 }
 
@@ -584,6 +599,21 @@ def effective_development_profile(resolved_config: Mapping[str, Any] | None) -> 
     """
 
     return resolve_development_profile(resolved_config) or DEFAULT_DEVELOPMENT_PROFILE
+
+
+def blueprint_development_profile(blueprint_stack: str | None) -> str:
+    """The development profile a product made from ``blueprint_stack`` runs under, or ``""``
+    (SIP-0112 H.13).
+
+    The blueprint's own profile, as its scaffold stack binds it (#832), when that profile says
+    what its conventions mean for a product (``product_conventions_template``). ``""`` for no
+    blueprint, an unknown one, or a profile that says nothing for a product: that product's
+    cycle runs under the default profile, as every 2.4 source-backed cycle did, rather than under
+    prose written for a skeleton it doesn't have.
+    """
+    name = development_profile_for(blueprint_stack or "")
+    profile = DEVELOPMENT_PROFILES.get(name)
+    return name if profile is not None and profile.product_conventions_template else ""
 
 
 def matches_test_file_patterns(path: str, patterns: tuple[str, ...]) -> bool:
