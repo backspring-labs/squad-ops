@@ -61,6 +61,8 @@ _SQUADOPS_REF = re.compile(r"^refs/squadops/[A-Za-z0-9_-]+(/[A-Za-z0-9_-]+)*$")
 _NO_REF = "0" * 40
 _IDENTITY = re.compile(r"^[^<>\n]+$")
 _REVIEW_BRANCH = re.compile(r"^squadops/[A-Za-z0-9_-]+$")
+#: A Campaign's id, as its review branch names it (SIP-0109 §24ci (b)).
+_CAMPAIGN_ID = re.compile(r"^cmp_[A-Za-z0-9]+$")
 _BRANCH_REF = re.compile(r"^refs/heads/[A-Za-z0-9_-][A-Za-z0-9._-]*(/[A-Za-z0-9._-]+)*$")
 #: Where a greenfield Project's first commit is made in the clone before it's pushed (E.4.6).
 _INITIAL_REF = "refs/squadops/initial"
@@ -247,6 +249,70 @@ class GitSourceRepository(SourceRepositoryPort):
             locator, f"{ref}:refs/heads/{branch}", step="push",
             config=_authorization(token) if https else None,
         )  # fmt: skip
+
+    async def push_campaign_branch(
+        self,
+        project_id: str,
+        locator: str,
+        *,
+        campaign_id: str,
+        branch: str,
+        token: str,
+        lease: str | None,
+    ) -> None:
+        if not _CAMPAIGN_ID.match(campaign_id) or branch != f"squadops/{campaign_id}":
+            raise SourceUnavailable(
+                f"{branch!r} is not campaign {campaign_id!r}'s review branch: only "
+                "squadops/<campaign> is pushed with a lease",
+                reason="ref_refused",
+            )
+        if lease is not None and not _COMMIT.match(lease):
+            raise SourceUnavailable(f"{lease!r} is not a commit", reason="not_a_commit")
+        https = self._push_target(locator, "a campaign's review branch")
+        await asyncio.to_thread(self._refuse_internal_resolution, locator)
+        await asyncio.to_thread(
+            self._push_with_lease, self._clone_dir(project_id), locator,
+            f"refs/squadops/campaign/{campaign_id}", branch, lease,
+            _authorization(token) if https else None,
+        )  # fmt: skip
+
+    def _push_with_lease(
+        self,
+        clone: Path,
+        locator: str,
+        ref: str,
+        branch: str,
+        lease: str | None,
+        config: Mapping[str, str] | None,
+    ) -> None:
+        """One push of the campaign branch. Git reads a refusal's cause into its error text: a
+        lease no longer held is ``stale info``, a branch with other history ``non-fast-forward``
+        or ``fetch first``. Only that cause, and git's last line, reach the error."""
+        leased = [f"--force-with-lease=refs/heads/{branch}:{lease}"] if lease else []
+        done = self._run(
+            clone, "push", "--quiet", *leased, "--end-of-options", locator,
+            f"{ref}:refs/heads/{branch}", step="push", config=config,
+        )  # fmt: skip
+        if done.returncode == 0:
+            return
+        said = done.stderr.decode(errors="replace")
+        if "stale info" in said:
+            raise SourceUnavailable(
+                f"{branch} moved since the campaign last pushed it at {str(lease)[:12]}: "
+                "refused, never overwritten",
+                reason="lease_refused",
+            )
+        if "non-fast-forward" in said or "fetch first" in said:
+            raise SourceUnavailable(
+                f"{branch} already holds other history, and the campaign has never pushed it: "
+                "refused, never forced",
+                reason="not_fast_forward",
+            )
+        lines = said.strip().splitlines()
+        raise SourceUnavailable(
+            f"git push failed: {lines[-1] if lines else f'exit {done.returncode}'}",
+            reason="push",
+        )
 
     async def initialize(
         self,

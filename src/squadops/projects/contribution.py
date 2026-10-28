@@ -9,6 +9,10 @@ owner's act, once per run. The Project's contribution mode says what it is:
   never forced, and a review request is opened against the Project's base branch, with the
   repository-scoped token the deploy holds for that Project.
 
+A repository-backed Campaign's one review request is pushed through the same path, by the
+supervisor at the Campaign's close or on request (SIP-0109 §24ci (b), ``push_campaign_review``),
+with the token the request carries and none the deploy holds.
+
 Either is recorded ``pending``. A review request opened is not integration (FR-06): the revision
 the product takes is recorded when it takes it (E.4.4). A direct push is integration, which 2.4
 doesn't delegate, so a ``direct_push`` Project is refused by name.
@@ -76,6 +80,11 @@ def capture_ref(cycle_id: str, run_id: str) -> str:
 
 def review_branch(cycle_id: str) -> str:
     return f"squadops/{cycle_id}"
+
+
+def campaign_review_branch(campaign_id: str) -> str:
+    """Where a Campaign's one review request is pushed (SIP-0109 §24ci (b))."""
+    return f"squadops/{campaign_id}"
 
 
 async def contribute(
@@ -149,20 +158,17 @@ async def _open_review_request(
     forge: Any,
     tokens: Mapping[str, str],
 ) -> tuple[str, str]:
-    source = project.source
     token = tokens.get(project.project_id)
-    if not token:
-        raise ContributionRefused(
-            f"no review-request token for Project {project.project_id}: pass the contributor's "
-            "own with the request (`squadops projects contribute --token-from-gh`), or the "
-            "deploy names one (projects.review_request_tokens)"
-        )
-    if forge is None:
-        raise ContributionRefused("this runtime has no forge to open a review request on")
-    if not source.base_ref.startswith(_HEADS):
-        raise ContributionRefused(
-            f"a review request targets a branch, and the Project's base is {source.base_ref}"
-        )
+    source = _review_target(
+        project,
+        token,
+        forge,
+        no_token=(
+            "pass the contributor's own with the request (`squadops projects contribute "
+            "--token-from-gh`), or the deploy names one (projects.review_request_tokens)"
+        ),
+    )
+    assert token is not None
     message = await repository.commit_message(project.project_id, commit)
     title, _, body = message.partition("\n")
     branch = review_branch(cycle_id)
@@ -182,3 +188,76 @@ async def _open_review_request(
         token=token,
     )
     return branch, url
+
+
+def _review_target(project: Any, token: str | None, forge: Any, *, no_token: str) -> Any:
+    """What a review request needs before anything is pushed: a token, a forge, and a base that is
+    a branch. Returns the Project's source.
+
+    Raises:
+        ContributionRefused: One is missing, named, with ``no_token`` saying where a token comes
+            from.
+    """
+    source = project.source
+    if not token:
+        raise ContributionRefused(
+            f"no review-request token for Project {project.project_id}: {no_token}"
+        )
+    if forge is None:
+        raise ContributionRefused("this runtime has no forge to open a review request on")
+    if not source.base_ref.startswith(_HEADS):
+        raise ContributionRefused(
+            f"a review request targets a branch, and the Project's base is {source.base_ref}"
+        )
+    return source
+
+
+async def push_campaign_review(
+    project: Any,
+    campaign_id: str,
+    *,
+    lease: str | None,
+    review_url: str | None,
+    title: str,
+    body: str,
+    repository: Any,
+    forge: Any,
+    token: str,
+) -> str:
+    """SIP-0109 §24ci (b): push a Campaign's branch to the product as its review branch, forced
+    only with ``lease`` (``SourceRepositoryPort.push_campaign_branch``), and open its review
+    request against the Project's base branch the first time (``review_url`` ``None``). A later
+    push moves the branch the open request follows, and is answered with its address. The token
+    comes with the request alone: a Campaign's push has no deploy token to fall back on.
+
+    Raises:
+        ContributionRefused: No token, no forge, or a base that isn't a branch. Nothing pushed.
+        SourceUnavailable: The product refused the push (``lease_refused``: the branch moved).
+        ReviewRequestFailed: The forge refused to open the request, after the push.
+    """
+    source = _review_target(
+        project,
+        token,
+        forge,
+        no_token="a campaign's review request is pushed with the supervisor's own token, passed "
+        "with the request (`squadops campaigns push-review --token-from-gh`)",
+    )
+    branch = campaign_review_branch(campaign_id)
+    await repository.push_campaign_branch(
+        project.project_id,
+        source.repo_uri,
+        campaign_id=campaign_id,
+        branch=branch,
+        token=token,
+        lease=lease,
+    )
+    if review_url is not None:
+        return review_url
+    return await forge.open_review_request(
+        repo_uri=source.repo_uri,
+        head=branch,
+        base=source.base_ref.removeprefix(_HEADS),
+        title=title,
+        body=body,
+        token=token,
+    )

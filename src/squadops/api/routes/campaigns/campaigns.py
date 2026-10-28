@@ -43,9 +43,11 @@ from squadops.api.campaign_schemas import (
     PackageDigestResponse,
     PackageMaterializedResponse,
     ResumeRequest,
+    ReviewPushRequest,
+    ReviewPushResponse,
     WorkClassDTO,
 )
-from squadops.api.errors import error_body
+from squadops.api.errors import error_body, http_error
 from squadops.api.middleware.auth import holds_scopes, require_scopes
 from squadops.api.paging import Page, page
 from squadops.api.routes.cycles.cancellation import cancel_cycle_by_the_existing_path
@@ -63,7 +65,9 @@ from squadops.api.runtime.deps import (
     get_memory_store,
     get_project_registry,
     get_reference_resolvers,
+    get_review_requests,
     get_scenario_store,
+    get_source_repository,
 )
 from squadops.auth.models import Identity, Role, Scope
 from squadops.campaigns import lifecycle
@@ -106,9 +110,13 @@ from squadops.campaigns.progress import (
 )
 from squadops.campaigns.projection import project
 from squadops.campaigns.repository_backed import creation_refusal
+from squadops.campaigns.review_push import ReviewPushRefused, push_review
 from squadops.cycles.gate_attribution import compose_decided_by
 from squadops.cycles.models import CycleStatus, ProjectNotFoundError
 from squadops.memory.pinning import pin_campaign
+from squadops.ports.projects.review_request import ReviewRequestFailed
+from squadops.projects.contribution import ContributionRefused
+from squadops.projects.models import SourceUnavailable
 from squadops.scenarios.suites import SuiteRefused, pin_campaign_suite, require_pinnable
 
 logger = logging.getLogger(__name__)
@@ -493,6 +501,53 @@ async def classify_proposal(
         },
     )
     return _result(await apply_control(request, campaign_id, transition, identity))
+
+
+@router.post("/{campaign_id}/review-pushes", status_code=201)
+async def push_review_request(
+    request: Request,
+    campaign_id: str,
+    body: ReviewPushRequest,
+    identity: Identity | None = Depends(require_scopes(Scope.CAMPAIGNS_MANAGE)),
+) -> ReviewPushResponse:
+    """Push a repository-backed Campaign's review request to the product (SIP-0109 §24ci (b)):
+    the supervisor's act, at the Campaign's close or when the owner asks, with the supervisor's
+    own token in the request and none the deploy holds. The first push opens the review request;
+    one after a rebase is forced with a lease on the commit last pushed, so a branch someone else
+    moved is refused (409 ``REVIEW_BRANCH_MOVED``), never overwritten. Each push is a
+    ``review_pushed`` record, accepted on a completed Campaign."""
+    actor, role = actor_from(identity)
+    try:
+        pushed = await push_review(
+            campaign_id,
+            campaigns=_registry(request),
+            projects=get_project_registry(request),
+            repository=get_source_repository(request),
+            forge=get_review_requests(request),
+            token=body.token.get_secret_value(),
+            actor=actor,
+            actor_role=role,
+            idempotency_key=body.idempotency_key,
+            record=lambda t: apply_control(request, campaign_id, t, identity),
+        )
+    except (ReviewPushRefused, ContributionRefused) as e:
+        raise http_error(409, "REVIEW_PUSH_REFUSED", str(e)) from e
+    except SourceUnavailable as e:
+        if e.reason == "lease_refused":
+            raise http_error(409, "REVIEW_BRANCH_MOVED", str(e)) from e
+        raise http_error(502, "REVIEW_PUSH_FAILED", f"{e.reason}: {e}") from e
+    except ReviewRequestFailed as e:
+        raise http_error(502, "REVIEW_PUSH_FAILED", str(e)) from e
+    return ReviewPushResponse(
+        campaign_id=campaign_id,
+        branch=pushed.branch,
+        commit=pushed.commit,
+        lease=pushed.lease,
+        forced=pushed.forced,
+        review_url=pushed.review_url,
+        entry_id=pushed.entry_id,
+        replayed=pushed.replayed,
+    )
 
 
 @router.get("/{campaign_id}/escalations")

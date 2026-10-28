@@ -133,6 +133,10 @@ class ControlOperation(StrEnum):
     #: head's verification. A pending repair or retry built on the old head is superseded in the
     #: same transaction, its increment abandoned as ``upstream_moved``.
     BRANCH_REBASED = "branch_rebased"
+    #: The supervisor pushed the Campaign's review request to the product (§24ci (b)): the branch,
+    #: the commit, and the lease it was pushed under. A record, accepted on a completed campaign,
+    #: since the push is made at the Campaign's close.
+    REVIEW_PUSHED = "review_pushed"
 
     @property
     def records_only(self) -> bool:
@@ -152,6 +156,7 @@ class ControlOperation(StrEnum):
             ControlOperation.ESCALATION_ANSWERED,
             ControlOperation.REBIND,
             ControlOperation.INSTRUCT,
+            ControlOperation.REVIEW_PUSHED,
         )
 
     @property

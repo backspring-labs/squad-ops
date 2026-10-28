@@ -13,6 +13,7 @@ import yaml
 from squadops.cli import exit_codes
 from squadops.cli.client import CLIError
 from squadops.cli.client import get_client as _get_client
+from squadops.cli.forge_token import gh_token as _gh_token
 from squadops.cli.output import print_detail, print_error, print_json, print_success, print_table
 from squadops.projects.derived_profile import parse_profile
 from squadops.projects.models import ProjectLifecycleStatus
@@ -427,22 +428,6 @@ def initialize(
         f"{len(initialization['files'])} files of the {initialization['stack']} blueprint{again}. "
         f"Next: squadops projects validate {project_id}"
     )
-
-
-def _gh_token() -> str:
-    """The caller's own GitHub token, from the GitHub CLI's login. Never printed."""
-    import subprocess
-
-    try:
-        done = subprocess.run(["gh", "auth", "token"], capture_output=True, text=True, timeout=30)
-    except (OSError, subprocess.TimeoutExpired) as e:
-        print_error(f"--token-from-gh needs the GitHub CLI logged in: {type(e).__name__}")
-        raise typer.Exit(code=2) from e
-    token = done.stdout.strip()
-    if done.returncode != 0 or not token:
-        print_error("--token-from-gh: `gh auth token` gave no token; run `gh auth login` first")
-        raise typer.Exit(code=2)
-    return token
 
 
 @app.command("sync")

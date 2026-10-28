@@ -124,11 +124,43 @@ class SourceRepositoryPort(ABC):
         """Push a captured ref (``refs/squadops/...``) to the product's repository as
         ``refs/heads/<branch>`` (``squadops/...``), authenticated by ``token`` over https, or to
         a local repository under a configured root. Never forced: a branch the product already
-        holds with other history is refused (FR-06's review_request).
+        holds with other history is refused (FR-06's review_request). A Campaign's review branch
+        is the one push that may rewrite a branch, by its own method (``push_campaign_branch``).
 
         Raises:
             SourceUnavailable: The locator is refused or ssh, the branch or ref isn't one of
                 ours, or the product refused the push.
+        """
+
+    @abstractmethod
+    async def push_campaign_branch(
+        self,
+        project_id: str,
+        locator: str,
+        *,
+        campaign_id: str,
+        branch: str,
+        token: str,
+        lease: str | None,
+    ) -> None:
+        """Push a Campaign's branch (``refs/squadops/campaign/<campaign_id>``) to the product as
+        ``refs/heads/<branch>``, where ``branch`` is ``squadops/<campaign_id>`` and nothing else
+        (SIP-0109 §24ci (b)), with ``token`` over https or to a local repository under a
+        configured root.
+
+        **The one push that may rewrite a branch, and only this branch.** With ``lease`` (the
+        commit the Campaign's control log last recorded as pushed), the product's branch moves
+        only while it names that commit (Git's ``--force-with-lease``): a rebased head replaces
+        what was pushed, and a branch someone else moved since is refused, never overwritten.
+        With no lease (the Campaign's first push) it is never forced, and a branch the product
+        already holds with other history is refused. A branch already at the commit is up to
+        date. ``token`` is used for this push only, never stored or written to an argument.
+
+        Raises:
+            SourceUnavailable: The locator is refused or ssh; the campaign or branch isn't one
+                of ours (``ref_refused``); the branch moved since the lease (``lease_refused``);
+                it holds other history and no lease was given (``not_fast_forward``); or the
+                product refused the push.
         """
 
     @abstractmethod
