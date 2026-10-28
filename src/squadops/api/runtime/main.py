@@ -658,6 +658,9 @@ async def _init_cycle_subsystem(state, config, pool) -> None:
         vault=artifact_vault,
         campaigns=campaign_registry,
         clock=lambda: datetime.now(UTC),
+        # #2414: a repository-backed cycle's captured commit and declared start.
+        projects=project_registry,
+        repository=state.source_repository,
     )
     campaign_progress = CampaignProgress(
         campaigns=projected_campaigns,

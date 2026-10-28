@@ -49,6 +49,7 @@ from squadops.scenarios.runner import (
     DeclaredStart,
     ReadinessUnsupported,
     RunnerUnavailable,
+    SecretUnavailable,
     StartUndeclared,
     TreeEvaluation,
 )
@@ -295,16 +296,23 @@ async def evaluate_cycle(
     declared: DeclaredStart | None = None,
     served: frozenset[SurfaceKind] | None = None,
     environment: Mapping[str, str] | None = None,
-    unstartable: StartUndeclared | ReadinessUnsupported | None = None,
+    unstartable: StartUndeclared | ReadinessUnsupported | SecretUnavailable | None = None,
+    tree: Mapping[str, bytes] | None = None,
+    executable: Collection[str] = (),
 ) -> EvaluationRecord:
     """Evaluate ``cycle``'s delivered app against an approved suite, and write the record.
 
     A blueprint cycle starts by its stack (``build_profile``). Any other Project passes its
     ``declared`` start and the ``served`` surface kinds of its entry points, or the refusal it met
-    reading its declaration as ``unstartable``, whose ``reason`` blocks every applicable scenario."""
+    reading its declaration as ``unstartable``, whose ``reason`` blocks every applicable scenario.
+
+    ``tree`` is the evaluated tree when the caller has it whole, with its ``executable`` bits: a
+    repository-backed cycle's, its captured commit (#2414). Otherwise it is read from the vault, by
+    SIP-0109's own selection."""
     suite = (await require_pinnable(store, suite_digest)).suite
-    refs = await evaluated_tree_refs(vault, cycle)
-    tree = {path: (await vault.retrieve(art))[1] for path, art in refs.items()}
+    if tree is None:
+        refs = await evaluated_tree_refs(vault, cycle)
+        tree = {path: (await vault.retrieve(art))[1] for path, art in refs.items()}
     identity = FileTree.of(tree).identity
     kinds = served if served is not None else BLUEPRINT_SURFACES
     applicable = [s for s in suite.scenarios if {k.kind for k in s.surfaces} <= kinds]
@@ -362,7 +370,7 @@ async def evaluate_cycle(
             evaluated = await runner.evaluate_tree(
                 tree=tree,
                 tree_identity=identity,
-                executable=(),
+                executable=sorted(executable),
                 stack=stack,
                 declared=declared,
                 scenarios=contents,

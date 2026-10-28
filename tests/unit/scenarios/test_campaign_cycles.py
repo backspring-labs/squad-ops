@@ -109,6 +109,8 @@ async def _world(monkeypatch, *, pinned=True, tree=True, log=()):
         vault=_Vault(),
         campaigns=_Campaigns(list(log)),
         clock=lambda: T0,
+        projects=None,
+        repository=None,
     )
     return evaluator, store, runner, suite
 
