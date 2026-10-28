@@ -1913,3 +1913,11 @@ checks:
       t = pathlib.Path(p.__file__).parent / "request_templates"
       print(RefusalKind.MANIFEST_DELTA_ON_PRODUCT.value, CRITERION_STEM, (t / "request.strategy_propose_product_increment.md").is_file())
     expect: manifest_delta_on_product criterion_ True
+  - id: "2771-review"
+    what: a proposal's criteria never share a test file, and a stored placement is hashed and checked whole on load (SIP-0109 §24cj, the outside review of #2771)
+    container: squadops-runtime-api
+    code: |
+      from squadops.campaigns.change_request import RefusalKind, placement_inconsistency
+      from squadops.stacks.scaffold import criterion_module_name
+      print(RefusalKind.CRITERION_FILE_COLLISION.value, criterion_module_name("T-1") == criterion_module_name("T_1"), callable(placement_inconsistency))
+    expect: criterion_file_collision True True

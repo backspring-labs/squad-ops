@@ -4431,7 +4431,7 @@ text can't be built as written, or leaves a choice:
    - `basis`;
    - `footprint`, authored as path globs, and hashed, so a footprint widened after the ruling is refused when loaded;
    - a criterion's optional `paths`, the product paths it exercises;
-   - the derived `criterion_files`.
+   - the derived `criterion_files`, hashed with the footprint (the outside review's P2, below).
 
    `SurfaceKind` adds `command` and `package`. The rails are:
    - a `manifest_delta` is refused (`manifest_delta_on_product`);
@@ -4516,7 +4516,7 @@ text can't be built as written, or leaves a choice:
 - **The rails and the placement:** `test_product_change_request.py` and `test_criterion_placement.py`. These cover
   Tally's recorded profile, an invented pytest-and-vitest product, each refusal, the stored hash holding the authored
   footprint, and §24cj's scope reading at the rails and at the tier (`test_plan_review_tier.py`).
-- **Eighteen mutants, each caught:**
+- **Eighteen mutants, each caught** (eight more for the review, below):
   - the basis read from the manifest's presence;
   - the seed needing a manifest;
   - placed files left out of the footprint;
@@ -4535,6 +4535,42 @@ text can't be built as written, or leaves a choice:
   - the framing gate reading no footprint;
   - the evidence step refusing a branch increment;
   - the product sent the manifest's template.
+
+**The outside review (SIP-0112 H.12) on PR #2771: request changes, two findings, both fixed in that PR.**
+- **P1: two criteria could share one test file.** A test file is named by its criterion's id kept to letters, digits
+  and `_`, so `T-1` and `T_1` name one file. Placement checked a placed path against the product's files only, never
+  against the other criteria's. Now:
+  - the rule is single-sourced (`scaffold.criterion_module_name`);
+  - on both bases, the rails refuse an id named twice (`duplicate_criterion`), and ids whose files would be one file,
+    a frozen criterion's included (`criterion_file_collision`);
+  - on a product, the placed paths are checked unique across the request whatever placed them.
+
+  This also fixes the same collision on a sample application, which predates point 5.
+- **P2: the stored placement wasn't integrity-checked.** `criterion_files` was left out of the hash, and the loader
+  didn't revalidate it.
+  - **Chosen: the placement is bound into the hash, and checked whole on every load** (`placement_inconsistency`).
+    Each criterion is placed exactly once, at a path of its own, in the footprint, and named for it.
+  - **Why this, not revalidation against the pinned profile:** every reader after the ruling is pure and holds no
+    profile: the framing, the plan authors, the framing gate and the evaluation's inputs. And the placement is part
+    of what the supervisor approves, the file the build writes and the evaluation freezes.
+  - **What it does on a failure:** a placement changed after the ruling fails the hash, and an inconsistent one is
+    refused by name, at `load_stored_change_request`. So it fails closed in the framing's provisioning, and the
+    framing gate now refuses a branch plan whose request can't be read (`_unreadable_branch_request`) rather than
+    skip its rules.
+  - **What it doesn't cover:** the hash is no signature. A writer that also recomputes the hash isn't caught, as for
+    any field of the request. A placement edited in the vault, though, is caught.
+- **Evidence:** `test_product_change_request.py` covers:
+  - two ids naming one file, one id twice, and an id naming a frozen criterion's file, on both bases;
+  - a malformed placement putting two criteria at one path;
+  - a stored placement renamed, moved, dropped, doubled, left out of the footprint, or placed for another criterion;
+  - one moved where only the hash can tell;
+  - a sample application's request carrying a placement.
+
+  `test_product_increment_seams.py` covers a tampered placement refused at `approved_change_request` and at the
+  framing gate.
+- **Eight more mutants, each caught:** no identity check; a duplicate let through; a frozen criterion's file not read;
+  placed paths not checked unique; the placement unhashed; the placement never checked; a file not held to its
+  criterion's name; the gate failing open.
 
 **Who ruled.** The owner placed point 5 in 2.5 (2026-10-21), ruled D10's requirements source (2026-10-24), and moved
 the MacBook lane's point 5 to the Spark lane (2026-10-28). The supervisor (the Spark lane) designed and built it. Item
