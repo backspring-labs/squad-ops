@@ -247,12 +247,12 @@ class BranchRebase:
         made = await self._rebased(campaign, project, base, before, onto)
         launch = unbuilt = None
         if intent.cycle_kind in _CONTINUING:
+            accepted = campaign.accepted
+            assert accepted is not None  # a branch has a base, so its tree was promoted
             moved = dataclasses.replace(
                 campaign,
                 accepted=dataclasses.replace(
-                    campaign.accepted,  # type: ignore[arg-type]
-                    identity=made.tree_identity,
-                    commit=made.rebased.commit,
+                    accepted, identity=made.tree_identity, commit=made.rebased.commit
                 ),
             )
             built = await self._propose(moved, _continued(intent))

@@ -111,7 +111,9 @@ async def reconciled_at_pin(ports: CreationPorts, project: Project, intent: Laun
         assert context is not None  # only a repository-backed Project's branch rebases
         await require_reconciled_upstream(ports.project_registry, context)
         await require_inherited_baseline(ports.project_registry, context)
-        await require_no_blocking_gap(ports.project_registry, ports.artifact_vault, context, request)
+        await require_no_blocking_gap(
+            ports.project_registry, ports.artifact_vault, context, request
+        )
     except CycleError as e:
         status, detail = cycle_error_envelope(e)
         if status >= 500:
