@@ -528,6 +528,13 @@ checks:
       )
       print(verdict.approves)
     expect: "True"
+  - id: "2754"
+    what: a declared catch-all client route is read where no declared route is served
+    container: squadops-eve
+    code: |
+      from squadops.capabilities.handlers.route_rendering import catch_all_path
+      print(catch_all_path("*"), catch_all_path("/docs/*"), catch_all_path("/runs/:run_id"))
+    expect: "/__squadops_unmatched__ /docs/__squadops_unmatched__ None"
   - id: "2743"
     what: a proposal's scope check leaves the stack's qa test namespace to the framework
     container: squadops-nat

@@ -8,6 +8,7 @@ import pytest
 from squadops.capabilities.handlers.probe_runner import DEFAULT_PROFILE, profile_for_stack
 from squadops.capabilities.handlers.route_rendering import (
     RenderSteps,
+    catch_all_path,
     render_profile_for,
     render_routes,
 )
@@ -170,3 +171,46 @@ def test_a_page_written_with_a_braced_parameter_is_read_at_its_created_id():
 
     assert seen["read"] == ["/runs/r-7"]
     assert rendered == {"/runs/{run_id}": frozenset({"run-detail-view", "capacity-status"})}
+
+
+def test_a_catch_all_route_is_read_where_no_declared_route_is_served():
+    """#2754, entered where the increment's evaluation enters: a manifest that declares the
+    router's catch-all (``*`` → its not-found view) is read at a path nothing else serves, and its
+    anchors come back. Bug caught: ``*`` requested as written, which is no URL, so the page read
+    as never rendered and every increment on that manifest ended ``blocked_unverified``
+    (``cmp_9c9df268084a``, 2026-10-28)."""
+    pages = {
+        **PAGES,
+        "/__squadops_unmatched__": (
+            '<main data-testid="not-found-view"><p data-testid="not-found-message">gone</p></main>'
+        ),
+    }
+    read: list[str] = []
+
+    def dump_dom(url):
+        path = "/" + url.split("/", 3)[3] if url.count("/") >= 3 else "/"
+        read.append(path)
+        return pages.get(path)
+
+    steps, _ = _steps(dump_dom=dump_dom)
+
+    rendered = _render(steps, routes={**ROUTES, "*": ("not-found-view", "not-found-message")})
+
+    assert rendered["*"] == frozenset({"not-found-view", "not-found-message"})
+    assert read == ["/", "/runs/r-7", "/__squadops_unmatched__"]
+
+
+@pytest.mark.parametrize(
+    ("route", "path"),
+    [
+        ("*", "/__squadops_unmatched__"),
+        ("/docs/*", "/docs/__squadops_unmatched__"),
+        ("/runs/:run_id", None),
+        ("/", None),
+        ("/runs/*/edit", None),
+    ],
+)
+def test_only_a_catch_all_route_is_read_at_the_unmatched_path(route, path):
+    """Bug caught: an ordinary route, or a ``*`` inside a path, read at the unmatched path, so a
+    real page is judged by the not-found view."""
+    assert catch_all_path(route) == path

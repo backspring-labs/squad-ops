@@ -245,3 +245,46 @@ async def test_a_replaced_verifier_is_frozen_anew_from_the_candidate(candidate_f
         assert document["new_bundles"]["F1"]["test_path"] == _F1
     else:
         assert "F1" not in document["new_bundles"]
+
+
+async def test_a_declared_catch_all_route_is_read_and_judged_through_the_handler(monkeypatch):
+    """#2754, entered at the handler the increment's evaluation runs, with the real renderer and
+    only the browser and servers faked: a manifest declaring the router's catch-all (``*`` → its
+    not-found view) is read at a path nothing else serves. Bug caught: ``*`` requested as written,
+    no page at all, so a correct increment read ``blocked_unverified`` on ``route *: not
+    rendered`` (``cmp_9c9df268084a``'s increment and its repair, 2026-10-28)."""
+    import functools
+
+    from squadops.capabilities.handlers import route_rendering
+
+    read: list[str] = []
+
+    def dump_dom(url):
+        path = "/" + url.split("/", 3)[3] if url.count("/") >= 3 else "/"
+        read.append(path)
+        return (
+            '<main data-testid="not-found-view"><p data-testid="not-found-message">x</p></main>'
+            if path == "/__squadops_unmatched__"
+            else None
+        )
+
+    steps = route_rendering.RenderSteps(
+        install_frontend=lambda path: None,
+        start=lambda cwd, argv: object(),
+        stop=lambda proc: None,
+        ready=lambda url, timeout: True,
+        seed=lambda url, body: {"id": "r1"},
+        dump_dom=dump_dom,
+    )
+    monkeypatch.setattr(
+        "squadops.capabilities.handlers.cycle.evaluate_increment.render_routes",
+        functools.partial(route_rendering.render_routes, steps=steps),
+    )
+
+    _, document = await _evaluate(
+        increment_declared_routes={"*": ["not-found-view", "not-found-message"]}
+    )
+
+    assert read == ["/__squadops_unmatched__"]
+    assert document["verdict"] == "accepted"
+    assert [(r["path"], r["held"]) for r in document["routes"]] == [("*", "held")]
