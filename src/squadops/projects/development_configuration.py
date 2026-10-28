@@ -417,25 +417,30 @@ def _commands_document(commands: Commands) -> dict[str, Any]:
         ],
     }
     if commands.start is not None:
-        s = commands.start
-        doc["start"] = {
-            "working_directory": s.working_directory,
-            **({"install": [list(a) for a in s.install]} if s.install else {}),
-            **({"build": [list(a) for a in s.build]} if s.build else {}),
-            "start": list(s.start),
-            "readiness": {
-                "kind": s.readiness.kind,
-                "target": s.readiness.target,
-                "timeout_seconds": _number(s.readiness.timeout_seconds),
-            },
-            "entry_points": [{"kind": e.kind, "url": e.url} for e in s.entry_points],
-            **(
-                {"evaluation_environment": dict(s.evaluation_environment)}
-                if s.evaluation_environment
-                else {}
-            ),
-        }
+        doc["start"] = start_document(commands.start)
     return doc
+
+
+def start_document(start: StartDeclaration) -> dict[str, Any]:
+    """Contract 7's start declaration as it is stored (§8.2.1), and as the scenario runner reads
+    it (``scenarios.runner.declared_start``)."""
+    return {
+        "working_directory": start.working_directory,
+        **({"install": [list(a) for a in start.install]} if start.install else {}),
+        **({"build": [list(a) for a in start.build]} if start.build else {}),
+        "start": list(start.start),
+        "readiness": {
+            "kind": start.readiness.kind,
+            "target": start.readiness.target,
+            "timeout_seconds": _number(start.readiness.timeout_seconds),
+        },
+        "entry_points": [{"kind": e.kind, "url": e.url} for e in start.entry_points],
+        **(
+            {"evaluation_environment": dict(start.evaluation_environment)}
+            if start.evaluation_environment
+            else {}
+        ),
+    }
 
 
 def _number(value: float) -> int | float:

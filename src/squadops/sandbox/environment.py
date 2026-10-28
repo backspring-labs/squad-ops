@@ -41,6 +41,10 @@ SANDBOX_ENV_IMAGE = "squadops-sandbox-env:py3.12-node20-1.4"
 #: 2.4 plan's §1.3), so it moves whenever the image's sources, or the lint config each request
 #: carries, do: ``test_evaluator_image.py`` pins their digest to it.
 EVALUATOR_IMAGE = "squadops-evaluator:lighthouse13.5-axe4.14-ruff0.16-eslint10.12-7"
+#: The Chromium the evaluator image installs (its Dockerfile's ``CHROME_PATH``). SIP-0109 §24co: a
+#: product's client routes are read by it directly, as the qa role reads a sample application's
+#: (``route_rendering.DUMP_DOM_FLAGS``), so its driver, and the image's tag, are unchanged.
+EVALUATOR_BROWSER = "/usr/bin/chromium"
 
 
 @dataclass(frozen=True)

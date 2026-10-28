@@ -214,3 +214,51 @@ def test_only_a_catch_all_route_is_read_at_the_unmatched_path(route, path):
     """Bug caught: an ordinary route, or a ``*`` inside a path, read at the unmatched path, so a
     real page is judged by the not-found view."""
     assert catch_all_path(route) == path
+
+
+@pytest.mark.parametrize(
+    ("dom", "anchors"),
+    [
+        (
+            '<main data-testid="runs-list"><a data-testid="run-item">x</a></main>',
+            {"runs-list", "run-item"},
+        ),
+        ('<div id="root"></div><script>h = \'<p data-testid="ghost">\'</script>', set()),
+        ('<p>data-testid="in-the-text"</p>', set()),
+        ('<div data-testid="">', set()),
+    ],
+    ids=["elements", "a-scripts-text", "a-text-node", "an-empty-id"],
+)
+def test_a_products_page_counts_only_the_ids_its_elements_carry(dom, anchors):
+    """SIP-0109 §24co's reading of a product's page. Bug caught: a test id in a script's source or
+    a page's text counted as rendered, so a route is held whose view never rendered (the qa
+    reading's pattern counts both: read live on the evaluator image, 2026-10-28)."""
+    from squadops.capabilities.handlers.route_rendering import view_anchors
+
+    assert view_anchors(dom) == anchors
+
+
+def test_the_qa_reading_and_a_products_read_a_page_with_one_set_of_flags(monkeypatch):
+    """Bug caught: the qa role's flags edited apart from the sandbox's, so a sample application's
+    route and a product's are read differently and a verdict changes with where it was read."""
+    from squadops.capabilities.handlers import route_rendering
+
+    argvs = []
+
+    class _Done:
+        timed_out, returncode, stdout = False, 0, b"<html></html>"
+
+    def run(argv, cwd, timeout):
+        argvs.append((argv, timeout))
+        return _Done()
+
+    monkeypatch.setattr(route_rendering, "run_bounded_sync", run)
+
+    route_rendering._dump_dom("http://127.0.0.1:5173/runs")
+
+    assert argvs == [
+        (
+            ["chromium", *route_rendering.DUMP_DOM_FLAGS, "http://127.0.0.1:5173/runs"],
+            route_rendering.DUMP_DOM_TIMEOUT_S,
+        )
+    ]

@@ -17,6 +17,7 @@ becomes the caller.
 from __future__ import annotations
 
 import hmac
+from typing import Any
 
 from fastapi import Depends, FastAPI, Header, HTTPException, Request, Response
 from fastapi.responses import JSONResponse
@@ -38,7 +39,7 @@ from squadops.sandbox.workspace import (
     WorkspaceEscapeError,
     WorkspaceStoreError,
 )
-from squadops.scenarios.runner import DeclaredStart
+from squadops.scenarios.runner import DeclaredStart, RouteRequest
 
 
 def _error(status_code: int, code: str, message: str) -> HTTPException:
@@ -76,6 +77,9 @@ class EvaluationRequest(BaseModel):
     pages: list[str]
     #: §10j, §10n (#2562): the seeded reading's plan (``campaigns.seed_plan``), or none.
     seed: dict | None = None
+    #: SIP-0109 §24co: client routes the browser reads on the started tree, each a
+    #: ``RouteRequest``. A client asking for none sends ``[]`` or leaves it out.
+    routes: list[dict] = Field(default_factory=list)
 
 
 class OperationRequest(BaseModel):
@@ -193,6 +197,12 @@ async def _handle_evaluation(service: SandboxService, body: EvaluationRequest) -
     runner = service.scenario_runner
     if runner is None:
         raise _error(503, "RUNNER_UNAVAILABLE", "this sandbox runs no scenario runner")
+    # Each is passed only when asked for, so a runner that takes neither is called as before.
+    optional: dict[str, Any] = {}
+    if body.seed:
+        optional["seed"] = SeedPlan.from_dict(body.seed)
+    if body.routes:
+        optional["routes"] = [RouteRequest.from_dict(r) for r in body.routes]
     try:
         binary = decode_binary(body.binary_tree, alongside=body.tree)
         result = await runner.evaluate_tree(
@@ -204,7 +214,7 @@ async def _handle_evaluation(service: SandboxService, body: EvaluationRequest) -
             scenarios=body.scenarios,
             environment=body.environment,
             pages=body.pages,
-            **({"seed": SeedPlan.from_dict(body.seed)} if body.seed else {}),
+            **optional,
         )
     except (KeyError, TypeError, ValueError) as e:
         raise _error(400, "INVALID_EVALUATION", str(e)) from e

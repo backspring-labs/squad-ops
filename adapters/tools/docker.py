@@ -124,6 +124,10 @@ class DockerAdapter(ContainerPort):
         for port in spec.publish_ports:
             args.extend(["-p", f"127.0.0.1:0:{port}"])
 
+        # SIP-0109 §24co: a program other than the image's entrypoint, before the image.
+        if spec.entrypoint is not None:
+            args.extend(["--entrypoint", spec.entrypoint])
+
         # Add image
         args.append(spec.image)
 

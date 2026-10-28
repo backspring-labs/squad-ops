@@ -20,6 +20,7 @@ import tempfile
 import time
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field
+from html.parser import HTMLParser
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
@@ -36,7 +37,19 @@ logger = logging.getLogger(__name__)
 #: The headless browser the qa role's image declares (``agents/instances/qa/system-packages.txt``).
 BROWSER = "chromium"
 _NPM_INSTALL_TIMEOUT_S = 600
-_DUMP_DOM_TIMEOUT_S = 60
+#: How long one page's reading may take. A product's page, read in the sandbox, has the same bound
+#: (SIP-0109 §24co).
+DUMP_DOM_TIMEOUT_S = 60
+#: How a page is read (§8.3): headless, its virtual time run for 8 s so the client router has
+#: rendered the view, and the DOM it built written out. The qa role reads a sample application's
+#: pages with these flags, and the sandbox reads a product's with them (SIP-0109 §24co).
+DUMP_DOM_FLAGS = (
+    "--headless",
+    "--disable-gpu",
+    "--no-sandbox",
+    "--virtual-time-budget=8000",
+    "--dump-dom",
+)
 _TESTID = re.compile(r'data-testid="([^"]+)"')
 
 
@@ -190,6 +203,29 @@ def catch_all_path(route: str) -> str | None:
     return None
 
 
+def literal_path(route: str) -> str | None:
+    """The path ``route`` is read at without a seed: a catch-all's unmatched path
+    (``catch_all_path``), or the route as written when it has no parameter. ``None`` for a
+    parameterized route, whose page only a seed brings into being."""
+    if (unmatched := catch_all_path(route)) is not None:
+        return unmatched
+    if not any(route_param(s) is not None for s in route.split("/")):
+        return route
+    return None
+
+
+def seeded_path(route: str, seed: Mapping[str, Any], created: Any) -> str | None:
+    """The path a parameterized ``route`` is read at once its seed's create answered
+    ``created``: its parameter filled with the created resource's ``id``. ``None`` when the
+    answer names no id (a seed the app refused answers nothing)."""
+    identifier = created.get("id") if isinstance(created, Mapping) else None
+    if identifier in (None, ""):
+        return None
+    # The segment as the manifest wrote it; a seed stored before #1973 names only its param.
+    segment = seed.get("segment") or f":{seed['param']}"
+    return route.replace(str(segment), str(identifier))
+
+
 def _reachable_path(
     route: str, seed: Mapping[str, Any] | None, api: str, steps: RenderSteps
 ) -> str | None:
@@ -197,21 +233,37 @@ def _reachable_path(
     parameter with no seed, or a seed the app refused or answered without an ``id``. A
     catch-all is read where nothing else is served (``catch_all_path``)."""
 
-    if (unmatched := catch_all_path(route)) is not None:
-        return unmatched
-    if not any(route_param(s) is not None for s in route.split("/")):
-        return route
+    if (path := literal_path(route)) is not None:
+        return path
     if seed is None:
         logger.warning("route rendering: no seed brings %s into being, so it is not read", route)
         return None
-    created = steps.seed(api + str(seed["path"]), seed["json"])
-    identifier = created.get("id") if isinstance(created, Mapping) else None
-    if identifier in (None, ""):
+    path = seeded_path(route, seed, steps.seed(api + str(seed["path"]), seed["json"]))
+    if path is None:
         logger.warning("route rendering: seeding %s produced no id", route)
-        return None
-    # The segment as the manifest wrote it; a seed stored before #1973 names only its param.
-    segment = seed.get("segment") or f":{seed['param']}"
-    return route.replace(str(segment), str(identifier))
+    return path
+
+
+class _Anchors(HTMLParser):
+    """Each ``data-testid`` an element of a page carries, and nothing else."""
+
+    def __init__(self) -> None:
+        super().__init__(convert_charrefs=True)
+        self.found: set[str] = set()
+
+    def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
+        self.found.update(v for k, v in attrs if k == "data-testid" and v)
+
+
+def view_anchors(dom: str) -> frozenset[str]:
+    """The test ids a dumped page's elements carry (§8.3), read from its elements' attributes.
+    A product's page is read this way (SIP-0109 §24co): a ``data-testid="…"`` in a script's text
+    or a text node is no element the page rendered, and the pattern the qa role reads with
+    (``_TESTID``) counts it."""
+    parser = _Anchors()
+    parser.feed(dom)
+    parser.close()
+    return frozenset(parser.found)
 
 
 # --- the real steps ---------------------------------------------------------------------------
@@ -287,17 +339,9 @@ def _seed(url: str, body: Mapping[str, Any]) -> Any:
 
 
 def _dump_dom(url: str) -> str | None:
-    argv = [
-        BROWSER,
-        "--headless",
-        "--disable-gpu",
-        "--no-sandbox",
-        "--virtual-time-budget=8000",
-        "--dump-dom",
-        url,
-    ]
+    argv = [BROWSER, *DUMP_DOM_FLAGS, url]
     try:
-        completed = run_bounded_sync(argv, cwd=None, timeout=_DUMP_DOM_TIMEOUT_S)
+        completed = run_bounded_sync(argv, cwd=None, timeout=DUMP_DOM_TIMEOUT_S)
     except OSError as e:
         logger.warning("route rendering: %s could not read %s: %s", BROWSER, url, e)
         return None
@@ -306,7 +350,7 @@ def _dump_dom(url: str) -> str | None:
             "route rendering: %s could not read %s: no exit within %ss",
             BROWSER,
             url,
-            _DUMP_DOM_TIMEOUT_S,
+            DUMP_DOM_TIMEOUT_S,
         )
         return None
     return completed.stdout.decode("utf-8", "replace") or None

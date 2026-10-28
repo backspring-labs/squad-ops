@@ -15,7 +15,7 @@ from typing import TYPE_CHECKING, Any
 from squadops.scenarios.evaluation import EvaluationRecord, QualityRemeasure
 from squadops.scenarios.evidence import ScenarioEvidence
 from squadops.scenarios.models import CampaignSuitePin, SuiteRecord
-from squadops.scenarios.runner import DeclaredStart, TreeEvaluation
+from squadops.scenarios.runner import DeclaredStart, RouteRequest, TreeEvaluation
 
 if TYPE_CHECKING:  # the plan is the campaigns side's; the port only carries it
     from squadops.campaigns.seed_plan import SeedPlan
@@ -92,6 +92,7 @@ class ScenarioRunnerPort(ABC):
         environment: Mapping[str, str],
         pages: Sequence[str],
         seed: SeedPlan | None = None,
+        routes: Sequence[RouteRequest] = (),
     ) -> TreeEvaluation:
         """Stand the tree up in a disposable copy and run the scenarios against it.
         ``declared`` is a non-blueprint Project's start (contract 7). Without one, the
@@ -99,4 +100,6 @@ class ScenarioRunnerPort(ABC):
         evaluation secrets, resolved (Q40), and is never written anywhere. ``pages`` are the
         declared pages Lighthouse and axe measure before any scenario runs (§4.2, #2416).
         ``seed``, when given, is §10j's: a second instance of the tree, seeded through its own API
-        and measured on every page the plan names (``quality_seeded``)."""
+        and measured on every page the plan names (``quality_seeded``). ``routes``, when given,
+        are client routes read by the browser after the scenarios, at the declared UI base, each
+        one's test ids returned (``TreeEvaluation.routes``, SIP-0109 §24co)."""

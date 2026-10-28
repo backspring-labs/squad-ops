@@ -7,8 +7,11 @@ One evaluation is one call:
 4. once it is ready, and before any scenario writes to it, the evaluator's image measures its
    declared pages with Lighthouse and axe, on the app network (§4.2, #2416);
 5. each scenario's steps run from the service, outside the app's process;
-6. the app stops and the copy is removed, whatever happened;
-7. #1937's lint reads the tree as delivered, in the evaluator's image with no network, whatever the
+6. each client route asked for is read by the evaluator image's Chromium, its page's test ids
+   returned (SIP-0109 §24co): after the scenarios, so a route's seed reaches neither the quality
+   reading nor a scenario;
+7. the app stops and the copy is removed, whatever happened;
+8. #1937's lint reads the tree as delivered, in the evaluator's image with no network, whatever the
    start did (§4.2, #2416).
 
 Nothing a scenario caused reaches a workspace, a revision or a commit (contract 3). The steps
@@ -26,9 +29,10 @@ import dataclasses
 import json
 import shlex
 import shutil
+import socket
 import time
 import uuid
-from collections.abc import Callable, Collection, Mapping, Sequence
+from collections.abc import Awaitable, Callable, Collection, Mapping, Sequence
 from pathlib import Path
 from typing import Any
 
@@ -46,9 +50,16 @@ from squadops.capabilities.delivered_lint import (
     ruff_findings,
     tools_reading,
 )
+from squadops.capabilities.handlers.route_rendering import (
+    DUMP_DOM_FLAGS,
+    DUMP_DOM_TIMEOUT_S,
+    literal_path,
+    seeded_path,
+    view_anchors,
+)
 from squadops.ports.scenarios import ScenarioRunnerPort
 from squadops.ports.tools.container import ContainerPort
-from squadops.sandbox.environment import get_environment_contract
+from squadops.sandbox.environment import EVALUATOR_BROWSER, get_environment_contract
 from squadops.sandbox.models import OperationName, content_bytes, declared_argv
 from squadops.sandbox.workspace import WorkspaceEscapeError, tree_path, working_directory
 from squadops.scenarios.evidence import ScenarioEvidence, kept
@@ -59,7 +70,13 @@ from squadops.scenarios.quality import (
     QualityStatus,
     evaluator_pages,
 )
-from squadops.scenarios.runner import DeclaredStart, ReadinessKind, TreeEvaluation
+from squadops.scenarios.runner import (
+    DeclaredStart,
+    ReadinessKind,
+    RouteReading,
+    RouteRequest,
+    TreeEvaluation,
+)
 from squadops.scenarios.steps import (
     Browse,
     BrowseAnswer,
@@ -106,6 +123,7 @@ class _Start:
         api_path: str,
         ui_port: int | None,
         ui_serve: tuple[str, ...],
+        ui_path: str = "",
     ) -> None:
         self.setup, self.start, self.port = setup, start, port
         self.ready_kind, self.ready_path, self.require_2xx, self.ready_timeout = (
@@ -121,6 +139,8 @@ class _Start:
         self.api_port, self.api_path = api_port, api_path
         # Where its pages are served (#2416), and what serves them beside the app when it doesn't.
         self.ui_port, self.ui_serve = ui_port, ui_serve
+        # The declared ui_base's path, which a client route is read under (SIP-0109 §24co).
+        self.ui_path = ui_path
 
     @property
     def ports(self) -> tuple[int, ...]:
@@ -154,6 +174,7 @@ class ContainerScenarioRunner(ScenarioRunnerPort):
         evaluator_image: str,
         evaluator_timeout_seconds: float = 300.0,
         browse_deadline_seconds: float = 90.0,
+        resolve_host: Callable[[str], Awaitable[str]] | None = None,
     ) -> None:
         # #2451 part 4 (the MacBook lane's review of #2460): the app, which holds the evaluation
         # secrets, runs on the app network by name with no host port and no route out. ``None``, as
@@ -175,6 +196,10 @@ class ContainerScenarioRunner(ScenarioRunnerPort):
         # SIP-0113 §10p ruling 5: a segment's own deadline, inside the container's, so the driver
         # always answers with the step it reached.
         self._browse_deadline = browse_deadline_seconds
+        # SIP-0109 §24co: the app's address on the app network, which Chromium is pointed at. A
+        # UI server may refuse a Host it doesn't know (Vite's preview does), so a page is read at
+        # the app's IP, as the driver reads one (``driver.mjs``).
+        self._resolve_host = resolve_host or _ipv4_of
 
     async def evaluate_tree(
         self,
@@ -188,6 +213,7 @@ class ContainerScenarioRunner(ScenarioRunnerPort):
         environment: Mapping[str, str],
         pages: Sequence[str],
         seed: SeedPlan | None = None,
+        routes: Sequence[RouteRequest] = (),
     ) -> TreeEvaluation:
         built = FileTree.of(tree).identity
         if built != tree_identity:
@@ -211,7 +237,7 @@ class ContainerScenarioRunner(ScenarioRunnerPort):
             self._write_copy(copy, tree, executable)
             evaluation = await self._evaluate(
                 copy, tree_identity, start, scenarios, environment, pages, started,
-                snapshot=snapshot, timings=timings,
+                snapshot=snapshot, timings=timings, routes=routes,
             )  # fmt: skip
             if seed is not None and snapshot is not None and evaluation.started:
                 seeded = await self._seeded(snapshot, start, seed, environment, timings)
@@ -307,6 +333,7 @@ class ContainerScenarioRunner(ScenarioRunnerPort):
                 declared.api_path,
                 declared.ui_port,
                 (),  # a product serves its own pages, at its ui_base
+                declared.ui_path,
             )
         if not stack:
             raise ValueError("a tree with no start declaration names its stack")
@@ -365,7 +392,7 @@ class ContainerScenarioRunner(ScenarioRunnerPort):
 
     async def _evaluate(
         self, copy, identity, start, scenarios, environment, pages, started, *, snapshot=None,
-        timings=None,
+        timings=None, routes=(),
     ):  # fmt: skip
         try:
             await self._setup(copy, start)
@@ -388,7 +415,9 @@ class ContainerScenarioRunner(ScenarioRunnerPort):
             except ToolContainerError as e:
                 raise _StartFailed(f"the start could not run: {e}") from e
             try:
-                runs, quality = await self._serve(container_id, spec, start, scenarios, pages)
+                runs, quality, read = await self._serve(
+                    container_id, spec, start, scenarios, pages, routes
+                )
             finally:
                 await self._teardown(container_id)
         except _StartFailed as failed:
@@ -407,6 +436,7 @@ class ContainerScenarioRunner(ScenarioRunnerPort):
             duration_seconds=round(time.monotonic() - started, 3),
             configuration_revision=start.configuration_revision,
             quality=quality,
+            routes=read,
         )
 
     async def _setup(self, copy: Path, start: _Start) -> None:
@@ -428,7 +458,8 @@ class ContainerScenarioRunner(ScenarioRunnerPort):
         start: _Start,
         scenarios: Sequence[Mapping[str, Any]],
         pages: Sequence[str],
-    ) -> tuple[tuple[ScenarioRun, ...], QualityReading]:
+        routes: Sequence[RouteRequest] = (),
+    ) -> tuple[tuple[ScenarioRun, ...], QualityReading, tuple[RouteReading, ...]]:
         try:
             host, port = await address(self._container, container_id, spec, start.port)
             api_host, api_port = await address(self._container, container_id, spec, start.api_port)
@@ -469,7 +500,82 @@ class ContainerScenarioRunner(ScenarioRunnerPort):
 
             browse = self._browse(spec, start)
             runs = [await run_scenario(scenario, send, browse) for scenario in scenarios]
-            return tuple(runs), quality
+            # §10n ruling 8's address for a seed: the app's own, each path as the manifest writes it.
+            read = await self._render(spec, start, routes, client, f"http://{api_host}:{api_port}")
+            return tuple(runs), quality, read
+
+    async def _render(
+        self,
+        spec: ContainerSpec,
+        start: _Start,
+        routes: Sequence[RouteRequest],
+        client: httpx.AsyncClient,
+        seed_base: str,
+    ) -> tuple[RouteReading, ...]:
+        """Each client route's page read by the evaluator image's Chromium on the app network,
+        with the flags the qa role reads a sample application's with (SIP-0109 §24co, §8.3): its
+        test ids, or why it wasn't read. A page is read at the declared UI base (SIP-0113 §4.1: "a
+        path from its declared UI base"), a catch-all at a path no route serves (#2754), and a
+        parameterized route once its seed's create has brought its page into being."""
+        if not routes:
+            return ()
+
+        def unread(why: str) -> tuple[RouteReading, ...]:
+            return tuple(RouteReading(r.route, None, None, why) for r in routes)
+
+        if start.ui_port is None:
+            return unread("the start declares no ui_base, so no page of it can be read")
+        if spec.network is None or not spec.name:
+            return unread("no app network, so no browser can reach the app")
+        if not await self._container.has_image(self._evaluator_image):
+            return unread(f"the evaluator's image is absent: {self._evaluator_image}")
+        try:
+            host = await self._resolve_host(spec.name)
+        except OSError as e:
+            return unread(f"the app's address didn't resolve: {e}")
+        base = f"http://{host}:{start.ui_port}{start.ui_path}"
+        read: list[RouteReading] = []
+        for request in routes:
+            path = literal_path(request.route)
+            if path is None:
+                if request.seed is None:
+                    why = "no seed brings its page into being"
+                    read.append(RouteReading(request.route, None, None, why))
+                    continue
+                created = await _created(client, seed_base, request.seed)
+                path = seeded_path(request.route, request.seed, created)
+                if path is None:
+                    why = "its seed's create was refused or named no id"
+                    read.append(RouteReading(request.route, None, None, why))
+                    continue
+            read.append(await self._dump(spec, request.route, path, base + path))
+        return tuple(read)
+
+    async def _dump(self, spec: ContainerSpec, route: str, path: str, url: str) -> RouteReading:
+        """One page's DOM, dumped by Chromium in the evaluator's image beside the app, and the
+        test ids its elements carry (``route_rendering.view_anchors``)."""
+        try:
+            run = await self._container.run(
+                ContainerSpec(
+                    image=self._evaluator_image,
+                    entrypoint=EVALUATOR_BROWSER,
+                    command=[*DUMP_DOM_FLAGS, url],
+                    network=spec.network,
+                    timeout_seconds=DUMP_DOM_TIMEOUT_S + 30.0,
+                    memory_limit=self._limits[0],
+                    cpu_limit=self._limits[1],
+                    pids_limit=self._limits[2],
+                    cap_drop_all=True,
+                    no_new_privileges=True,
+                )
+            )
+        except ToolContainerError as e:
+            return RouteReading(route, path, None, f"the browser's container didn't run: {e}")
+        if run.exit_code != 0:
+            return RouteReading(route, path, None, f"the browser exited {run.exit_code}")
+        if not run.stdout.strip():
+            return RouteReading(route, path, None, "the browser read no page")
+        return RouteReading(route, path, tuple(sorted(view_anchors(run.stdout))))
 
     def _browse(self, spec: ContainerSpec, start: _Start) -> Browse | None:
         """Each segment of a scenario's browser steps, run by the evaluator's image on the app
@@ -846,4 +952,30 @@ def _redacted(evaluation: TreeEvaluation, secrets: Collection[str]) -> TreeEvalu
         runs=tuple(dataclasses.replace(run, detail=scrub(run.detail)) for run in evaluation.runs),
         quality=scrubbed(evaluation.quality),
         quality_seeded=scrubbed(evaluation.quality_seeded),
+        routes=tuple(dataclasses.replace(r, detail=scrub(r.detail)) for r in evaluation.routes),
     )
+
+
+async def _ipv4_of(name: str) -> str:
+    """The IPv4 address ``name`` resolves to on the app network, as the service sees it."""
+    found = await asyncio.get_running_loop().getaddrinfo(name, None, family=socket.AF_INET)
+    if not found:
+        raise OSError(f"{name} resolved to no IPv4 address")
+    return str(found[0][4][0])
+
+
+async def _created(client: httpx.AsyncClient, base: str, seed: Mapping[str, Any]) -> Any:
+    """A route seed's create, sent to the app (SIP-0109 §24co): what it answered, or ``None`` when
+    it refused or answered nothing readable. ``route_rendering.seeded_path`` reads its id."""
+    try:
+        response = await client.request(
+            str(seed.get("method") or "POST"), base + str(seed["path"]), json=seed.get("json")
+        )
+    except httpx.HTTPError:
+        return None
+    if not response.is_success:
+        return None
+    try:
+        return response.json()
+    except ValueError:
+        return None
