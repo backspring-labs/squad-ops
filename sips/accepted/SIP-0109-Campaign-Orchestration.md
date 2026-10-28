@@ -133,7 +133,8 @@ Kept by the rule in CLAUDE.md ("SIP System"): one row per part, updated in the P
 | a fresh proposal is shown each proposal its campaign never approved, with the ruling's reason (§24bu) | **shipped** | 2.4.0, PR #2598, issue #2593 |
 | a Campaign on a repository-backed Project, point 1: calibration as a record, not a cycle (§24bv point 1, §24cc) | **shipped** | 2.5.0, PR #2738 |
 | a Campaign on a repository-backed Project, point 2: the accepted tree is a campaign branch, an increment promoted onto it from its own capture (§24bv point 2, §24cd, §24ce) | **shipped** | 2.5.0, PR #2740 |
-| a Campaign on a repository-backed Project, the rest: point 2's launcher handoff, an increment's pin and acceptance on the product's runner (point 3), upstream moving (point 4), proposals from the product's tree (point 5) (§24bv, §24cd; SIP-0112 H.4), with §24ci's pytest exception-class reader and the supervisor's review-request push | **placed** | 2.5.0, #2619 |
+| a Campaign on a repository-backed Project, point 2's launcher handoff: the head read at drain and handed to cycle creation, and a repository-backed increment's intent binding no tree (§24cd point 1; SIP-0112 H.9) | **shipped** | 2.5.0, PR #2763 |
+| a Campaign on a repository-backed Project, the rest: an increment's regression baseline and acceptance on the product's runner (point 3), upstream moving (point 4), proposals from the product's tree (point 5) (§24bv, §24cd; SIP-0112 H.4), with §24ci's pytest exception-class reader and the supervisor's review-request push | **placed** | 2.5.0, #2619 |
 | a vitest test-id reader, so a vitest-only criterion can be read as discriminating (§24ci (a)) | **placed**: before `z_shelfnote`'s demonstration, whose frontend tests with vitest | 2.5.0, #2757 |
 | a Campaign cycle held on its instruction bindings escalates as `binding_hold`, released by re-supply and never parked (§24bw; SIP-0110 §A.3.6) | **shipped** | 2.4.0, PR #2628 (#2178's Campaign half) |
 
