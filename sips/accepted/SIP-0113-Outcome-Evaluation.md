@@ -2176,7 +2176,7 @@ baseline, so no series compares `-5` with `-6`.
 for 2.4.0 only, with their fix to follow in 2.5 (2026-10-23), and adopted the 2.5 plan (2026-10-24). The supervisor
 wrote this.
 
-### 10y. §10o's finer quality reading: the design, for the owner's approval (2026-10-24; #2637; the supervisor's draft under the 2.5 plan's D7, reviewed by a fresh agent, approved by the owner)
+### 10y. §10o's finer quality reading: the design (2026-10-24, approved 2026-10-28; #2637; the supervisor's draft under the 2.5 plan's D7, reviewed by a fresh agent, approved by the owner)
 
 **Why.** §10o found Lighthouse's category scores and axe's rule counts coarser than this app's increments: on six
 seeded pairs, no measure moved on a page an increment changed. That is because of how the evaluator reads them
@@ -2311,4 +2311,4 @@ notes. All thirteen are taken above:
 - the Chromium pin;
 - and the paragraph below.
 
-**Who ruled:** pending. The owner approves this design (the 2.5 plan's D7) before any of it is built.
+**Who ruled:** the owner approved this design on 2026-10-28 (the 2.5 plan's D7), taking the supervisor's recommendation to approve it: "Go with your recommendations". The supervisor drafted it, and a fresh agent reviewed it (three blocking findings and ten notes, all taken in revision `75b2b13b`). Nothing in it was built before the approval.
