@@ -33,7 +33,9 @@ from squadops.stacks.scaffold import (
     MANIFEST_ELEMENT_KEYS,
     InterfaceManifest,
     expand,
+    is_qa_test_path_for_stack,
     qa_test_namespace,
+    qa_test_namespace_for_stack,
     undefined_manifest_keys,
 )
 from squadops.stacks.scaffold_contract import emit_contract_dict
@@ -504,14 +506,28 @@ class ProposalContext:
     shown_goal_statements: tuple[tuple[str, str], ...] = field(default_factory=tuple)
 
 
-def outside_allowed_scope(paths: Iterable[str], allowed_scope: Sequence[str]) -> list[str]:
-    """The paths no entry of the objective's allowed scope covers, in their order. An entry is a
-    glob (``backend/**``) or a path prefix (``backend``). One reading for the proposal's rails
-    (§9.1) and the plan-review tier (§24bj), so the two cannot disagree on what is in scope."""
+def qa_namespace_paths(paths: Iterable[str], stack: str) -> tuple[str, ...]:
+    """The paths in ``stack``'s qa test namespace, in their order: the footprint's ``<dir>**``
+    patterns and any test file a plan names there. The framework places these (§7.2: derived,
+    never authored), so the objective's scope never reads them (#2743, the owner's ruling of
+    2026-10-28). An unknown stack has no namespace, and every path stays the scope's."""
+    return tuple(p for p in paths if is_qa_test_path_for_stack(p, stack))
+
+
+def outside_allowed_scope(
+    paths: Iterable[str], allowed_scope: Sequence[str], *, stack: str
+) -> list[str]:
+    """The paths no entry of the objective's allowed scope covers, in their order, leaving out
+    ``stack``'s qa test namespace (``qa_namespace_paths``). An entry is a glob (``backend/**``)
+    or a path prefix (``backend``). One reading for the proposal's rails (§9.1) and the
+    plan-review tier (§24bj), so the two cannot disagree on what is in scope."""
+    paths = tuple(paths)
+    framework = set(qa_namespace_paths(paths, stack))
     return [
         p
         for p in paths
-        if not any(
+        if p not in framework
+        and not any(
             _path_match(p, scope) or p.startswith(scope.rstrip("*")) for scope in allowed_scope
         )
     ]
@@ -556,13 +572,20 @@ def validate_proposal(authored: dict, context: ProposalContext) -> ProposalVerdi
         return ProposalVerdict(None, tuple(refusals), candidate)
 
     footprint = derive_footprint(context.baseline_manifest, candidate)
-    outside = outside_allowed_scope(footprint, context.allowed_scope)
+    outside = outside_allowed_scope(footprint, context.allowed_scope, stack=context.expected_stack)
     if outside:
+        namespace = qa_test_namespace_for_stack(context.expected_stack)
         refusals.append(
             ProposalRefusal(
                 RefusalKind.OUT_OF_SCOPE,
                 f"the delta reaches {', '.join(outside)}, outside the objective's allowed scope "
-                f"({', '.join(context.allowed_scope)}); a proposal is refused, never trimmed",
+                f"({', '.join(context.allowed_scope)}); a proposal is refused, never trimmed"
+                + (
+                    f". The qa test namespace ({', '.join(namespace)}) is the framework's, "
+                    "and the scope does not read it"
+                    if namespace
+                    else ""
+                ),
             )
         )
     if request.kind is not ChangeKind.REFACTOR and not footprint_product_files(footprint):

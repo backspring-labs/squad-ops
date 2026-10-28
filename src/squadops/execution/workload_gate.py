@@ -62,6 +62,7 @@ from squadops.cycles.gate_promotion import promote_run_artifacts
 from squadops.cycles.manifest_authoring import (
     MANIFEST_ARTIFACT_TYPE,
     cited_late_answers,
+    manifest_stack,
     open_decisions,
 )
 from squadops.cycles.models import (
@@ -602,6 +603,7 @@ class WorkloadGate:
             open_questions=questions,
             footprint=plan_footprint(await self._load_run_plan_yaml(run)),
             allowed_scope=campaign.objective.allowed_scope,
+            stack=manifest_stack(manifest),
             refused_framing_runs=refused,
             answered_on_record=carried,
         )

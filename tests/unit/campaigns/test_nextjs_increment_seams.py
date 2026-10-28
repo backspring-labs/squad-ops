@@ -59,10 +59,15 @@ def test_the_scope_check_reads_brackets_literally_too():
     the route's own files."""
     from squadops.campaigns.change_request import outside_allowed_scope
 
-    assert outside_allowed_scope(("app/runs/[run_id]/page.tsx",), ("app/runs/[run_id]/**",)) == []
-    assert outside_allowed_scope(("app/runs/r/page.tsx",), ("app/runs/[run_id]/**",)) == [
-        "app/runs/r/page.tsx"
-    ]
+    assert (
+        outside_allowed_scope(
+            ("app/runs/[run_id]/page.tsx",), ("app/runs/[run_id]/**",), stack="nextjs_ts"
+        )
+        == []
+    )
+    assert outside_allowed_scope(
+        ("app/runs/r/page.tsx",), ("app/runs/[run_id]/**",), stack="nextjs_ts"
+    ) == ["app/runs/r/page.tsx"]
 
 
 _NEXTJS_MANIFEST = """\

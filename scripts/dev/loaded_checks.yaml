@@ -523,7 +523,8 @@ checks:
       from squadops.campaigns.plan_review_tier import plan_review_tier
       verdict = plan_review_tier(
           kind=CycleKind.CALIBRATION, open_questions=(), footprint=("assembly_notes.md",),
-          allowed_scope=("backend/**",), refused_framing_runs=(), answered_on_record={},
+          allowed_scope=("backend/**",), stack="fullstack_fastapi_react", refused_framing_runs=(),
+          answered_on_record={},
       )
       print(verdict.approves)
     expect: "True"

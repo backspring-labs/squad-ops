@@ -29,6 +29,7 @@ def _verdict(**overrides):
         open_questions=(),
         footprint=("backend/routes.py", "backend/tests/test_runs.py"),
         allowed_scope=SCOPE,
+        stack="fullstack_fastapi_react",
         refused_framing_runs=(),
         answered_on_record={},
     )
@@ -44,7 +45,10 @@ def test_a_plan_every_condition_holds_for_is_approved_with_each_reading_in_its_n
     notes = verdict.notes()
     assert "Plan validation passed" in notes
     assert "no_open_question: held: the design asks nothing" in notes
-    assert "inside_scope: held: all 2 files inside (backend/**, frontend/**)" in notes
+    assert (
+        "inside_scope: held: the 1 product file inside (backend/**, frontend/**); 1 in the qa test "
+        "namespace, the framework's: backend/tests/test_runs.py"
+    ) in notes
     assert "framed_once: held: the framing ran once" in notes
 
 
@@ -141,3 +145,44 @@ summary:
 def test_an_absent_or_unreadable_plan_has_no_footprint_so_it_escalates(plan):
     assert plan_footprint(plan) == ()
     assert not _verdict(footprint=plan_footprint(plan)).approves
+
+
+@pytest.mark.parametrize(
+    ("stack", "held", "reading"),
+    [
+        (
+            "fullstack_fastapi_react",
+            True,
+            "the 1 product file inside (backend/routes.py); 1 in the qa test namespace, the "
+            "framework's: backend/tests/criteria/test_c1.py",
+        ),
+        ("", False, "outside (backend/routes.py): backend/tests/criteria/test_c1.py"),
+    ],
+)
+def test_a_criterion_test_is_read_against_the_scope_only_where_no_stack_names_its_namespace(
+    stack, held, reading
+):
+    """#2743: the stack's qa test namespace is the framework's, so a plan's criterion test never
+    reads against the owner's scope. With no manifest to name the stack there is no namespace,
+    and the path stays the scope's. Bug caught: the tier refusing the framework's own test path
+    under a narrow scope; or, the mirror, a namespace assumed where none can be named, which
+    would wave an unknown tree's paths past the scope."""
+    footprint = ("backend/routes.py", "backend/tests/criteria/test_c1.py")
+    verdict = _verdict(footprint=footprint, allowed_scope=("backend/routes.py",), stack=stack)
+
+    [scope] = [c for c in verdict.checks if c.condition is TierCondition.INSIDE_SCOPE]
+    assert scope.held is held
+    assert scope.reading == reading
+
+
+def test_a_product_file_outside_the_scope_still_fails_beside_the_frameworks_tests():
+    """#2743's exemption covers the qa namespace only. Bug caught: a test path in the footprint
+    carrying the product file beside it past the scope."""
+    verdict = _verdict(
+        footprint=("backend/models.py", "backend/tests/test_runs.py"),
+        allowed_scope=("backend/routes.py",),
+    )
+
+    [scope] = [c for c in verdict.checks if c.condition is TierCondition.INSIDE_SCOPE]
+    assert scope.held is False
+    assert scope.reading.startswith("outside (backend/routes.py): backend/models.py;")

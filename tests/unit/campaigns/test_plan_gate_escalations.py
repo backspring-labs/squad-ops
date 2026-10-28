@@ -134,6 +134,7 @@ async def _world():
         open_questions=(QUESTION,),
         footprint=("backend/routes.py",),
         allowed_scope=("backend/**",),
+        stack="fullstack_fastapi_react",
         refused_framing_runs=(),
         answered_on_record={},
     )
@@ -307,6 +308,7 @@ def test_an_escalation_pending_when_its_campaign_ended_reads_cancelled():
         open_questions=(QUESTION,),
         footprint=("backend/routes.py",),
         allowed_scope=("backend/**",),
+        stack="fullstack_fastapi_react",
         refused_framing_runs=(),
         answered_on_record={},
     )
@@ -420,6 +422,7 @@ async def test_a_late_answer_follows_its_question_with_one_sentence_end(question
         open_questions=(question,),
         footprint=("backend/routes.py",),
         allowed_scope=("backend/**",),
+        stack="fullstack_fastapi_react",
         refused_framing_runs=(),
         answered_on_record={},
     )

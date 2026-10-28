@@ -661,6 +661,7 @@ async def _escalation(world: _World, *, ended: str | None) -> str:
         open_questions=("which order does the runs list use?",),
         footprint=("backend/main.py",),
         allowed_scope=("backend/**",),
+        stack="fullstack_fastapi_react",
         refused_framing_runs=(),
         answered_on_record={},
     )
