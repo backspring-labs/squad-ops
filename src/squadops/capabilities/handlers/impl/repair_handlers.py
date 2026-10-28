@@ -438,10 +438,9 @@ class _RepairPromptMixin:
         inputs = {
             **inputs,
             "test_scope_section": await self._render_test_scope_section(context, inputs),
+            # SIP-0109 §24cp: "" but for a dev repair on an increment that adds a page.
+            "increment_views_section": await self._render_increment_views_section(context, inputs),
         }
-        views = await self._render_increment_views_section(context, inputs)
-        if views:
-            inputs = {**inputs, "increment_views_section": views}
         loop_state = await self._render_loop_state_section(context, inputs)
         if loop_state:
             inputs = {**inputs, "loop_state_section": loop_state}
