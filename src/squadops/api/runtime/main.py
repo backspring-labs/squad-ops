@@ -90,6 +90,7 @@ from squadops.projects.cutover import (
 )
 from squadops.projects.registration import LocatorPolicy
 from squadops.scenarios.campaign_cycles import CampaignCycleEvaluator
+from squadops.scenarios.declared_routes import DeclaredStartRoutes
 
 from .deps import PORT_SLOTS
 from .logging_setup import configure_logging, quiet_routine_successes
@@ -729,6 +730,9 @@ async def _init_cycle_subsystem(state, config, pool) -> None:
         # and the sandbox its candidate is verified in.
         source_repository=state.source_repository,
         sandbox=sandbox_client,
+        # SIP-0109 §24co: a repository-backed increment's client routes are read on the product
+        # started from its declaration, by the same runner the cycle-end hook evaluates with.
+        route_renderer=DeclaredStartRoutes(scenario_runner),
     )
 
     state.project_registry = project_registry

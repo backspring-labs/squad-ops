@@ -17,7 +17,7 @@ What bugs would these catch?
   argv instead of its own frozen invocation;
 - a bundle that can't round-trip through the document a promotion stores it from;
 - an overlay judged on a candidate other than the one delivery verified;
-- a product's declared routes passed because nothing rendered them.
+- a product's rendered routes dropped from its verdict.
 """
 
 from __future__ import annotations
@@ -35,6 +35,7 @@ from squadops.campaigns.acceptance import (
     DiscriminationReason,
     Held,
     IncrementVerdict,
+    RouteResult,
 )
 from squadops.campaigns.acceptance_run import (
     FrozenCriterion,
@@ -209,6 +210,7 @@ async def _evaluate(sandbox, accepted, candidate, *, profile=None, frozen=(), ne
         new=new,
         frozen=frozen,
         retired=kw.get("retired", ()),
+        routes=kw.get("routes", ()),
         replaced=kw.get("replaced", ()),
     )
     document = evaluation_document(
@@ -587,7 +589,7 @@ async def test_nothing_is_judged_on_a_revision_other_than_its_overlay(sandbox, h
 
     evaluation, done = await evaluate_on_runner(
         runs, increment_id="p", accepted=SandboxTree(F1_HEAD), candidate=candidate,
-        new=[], frozen=[f1], retired=(),
+        new=[], frozen=[f1], retired=(), routes=(),
     )  # fmt: skip
 
     [result] = evaluation.frozen
@@ -680,12 +682,12 @@ async def test_a_candidate_other_than_the_verified_one_is_refused(sandbox):
 
     evaluation, _r = await evaluate_on_runner(
         runs, increment_id="p", accepted=accepted, candidate=candidate,
-        new=[NewCriterion("C1", CRITERION)], frozen=(), retired=(),
+        new=[NewCriterion("C1", CRITERION)], frozen=(), retired=(), routes=(),
     )  # fmt: skip
     with pytest.raises(CandidateNotDelivered, match="the tree judged isn't the tree delivered"):
         await evaluate_on_runner(
             other, increment_id="p", accepted=accepted, candidate=candidate,
-            new=[NewCriterion("C1", CRITERION)], frozen=(), retired=(),
+            new=[NewCriterion("C1", CRITERION)], frozen=(), retired=(), routes=(),
         )  # fmt: skip
 
     assert evaluation.acceptance.verdict is IncrementVerdict.ACCEPTED
@@ -708,7 +710,7 @@ async def test_a_sandbox_that_runs_nothing_blocks_every_criterion():
 
     evaluation, _runs = await evaluate_on_runner(
         runs, increment_id="p", accepted=accepted, candidate=candidate,
-        new=[NewCriterion("C1", CRITERION)], frozen=[f1], retired=(),
+        new=[NewCriterion("C1", CRITERION)], frozen=[f1], retired=(), routes=(),
     )  # fmt: skip
 
     assert evaluation.acceptance.verdict is IncrementVerdict.BLOCKED_UNVERIFIED
@@ -716,25 +718,44 @@ async def test_a_sandbox_that_runs_nothing_blocks_every_criterion():
     assert evaluation.acceptance.blocked[1].startswith("frozen F1: the bundle never executed")
 
 
-async def test_a_profiles_client_routes_are_blocked_never_passed(sandbox):
-    """§24bv point 3 and §24cl item 6: rendering a product's routes isn't built. Bug caught: a
-    route nothing read counted as rendered, so a blueprint product's increment is accepted with
-    its pages unread. With no routes named, none is judged (not applicable)."""
+@pytest.mark.parametrize(
+    ("route", "verdict", "unmet", "blocked"),
+    [
+        (RouteResult("/shelves", Held.HELD), "accepted", [], []),
+        (
+            RouteResult("/shelves", Held.BROKEN, ("shelf-list",)),
+            "rejected",
+            ["route /shelves: missing shelf-list"],
+            [],
+        ),
+        (
+            RouteResult("/shelves", Held.BLOCKED_UNVERIFIED, detail="start failed: not ready"),
+            "blocked_unverified",
+            [],
+            ["route /shelves: not rendered: start failed: not ready"],
+        ),
+    ],
+    ids=["rendered", "its-anchor-missing", "unread"],
+)
+async def test_the_routes_rendered_decide_the_verdict_beside_the_criteria(
+    sandbox, route, verdict, unmet, blocked
+):
+    """§24co: the routes are rendered apart (``execution.product_routes``) and handed in, and the
+    verdict reads them as a sample application's. Bugs caught: the routes handed in dropped, so an
+    increment with a broken page is accepted on its criteria; an unread route's reason lost from
+    what the campaign and a successor's brief read; or the reason written onto a route that
+    rendered."""
     accepted, candidate = _trees()
 
-    _e, _r, routed = await _evaluate(
-        sandbox, accepted, candidate, profile=_profile(client_routes=["/shelves"])
-    )
-    _e2, _r2, unrouted = await _evaluate(sandbox, accepted, candidate, profile=_profile())
+    _e, _r, document = await _evaluate(sandbox, accepted, candidate, routes=(route,))
 
-    assert routed["routes"] == [
-        {"path": "/shelves", "held": "blocked_unverified", "missing": [], "not_shown": []}
-    ]
-    assert (routed["verdict"], routed["blocked"]) == (
-        "blocked_unverified",
-        ["route /shelves: not rendered"],
+    assert (document["verdict"], document["unmet"], document["blocked"]) == (
+        verdict,
+        unmet,
+        blocked,
     )
-    assert (unrouted["routes"], unrouted["verdict"]) == ([], "accepted")
+    [entry] = document["routes"]
+    assert entry.get("detail") == (route.detail or None)
 
 
 class _VitestSandbox:
@@ -819,7 +840,7 @@ async def test_a_vitest_criterion_runs_by_its_name_in_its_package_and_reads_by_t
 
     evaluation, _runs = await evaluate_on_runner(
         runs, increment_id="p", accepted=accepted, candidate=candidate,
-        new=[NewCriterion("C1", path)], frozen=(), retired=(),
+        new=[NewCriterion("C1", path)], frozen=(), retired=(), routes=(),
     )  # fmt: skip
 
     assert [a["argv"] for a in sandbox.asked] == [

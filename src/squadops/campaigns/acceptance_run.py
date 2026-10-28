@@ -244,6 +244,9 @@ def evaluation_document(
                 "held": str(r.held),
                 "missing": list(r.missing),
                 "not_shown": list(r.not_shown),
+                # SIP-0109 §24co: only a route whose reader said why it wasn't read carries it,
+                # so a sample application's document is as it was.
+                **({"detail": r.detail} if r.detail else {}),
             }
             for r in evaluation.routes
         ],

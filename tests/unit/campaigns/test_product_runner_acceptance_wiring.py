@@ -363,3 +363,164 @@ async def test_a_product_evaluations_bundle_is_frozen_at_promotion_and_pinned_wh
     [frozen] = frozen_criteria_from([pin], {"R1": json.loads(stored)})
     assert frozen.bundle == bundle
     assert frozen.bundle.invocation[-2:] == ("-p", "check_criterion_R1.py")
+
+
+# --- SIP-0109 §24co: the profile's client routes, rendered on the candidate at its delivery ---
+
+#: Tally given a blueprint's routes, as a product made from one names them (H.7), and a start that
+#: serves its pages at a ui_base. Tally serves none, so the browser's answers are the fake's.
+_ROUTED = "/"
+_TALLY_PAGES = {
+    "http://10.89.0.7:8080/": '<html><body><main data-testid="counter-list"></main></body></html>',
+    "http://10.89.0.7:8080/__squadops_unmatched__": (
+        '<html><body><p data-testid="not-found-view"></p></body></html>'
+    ),
+}
+_TALLY_MANIFEST = """
+version: 1
+kind: interface_manifest
+project_id: tally
+stack: fullstack_fastapi_react
+entities: []
+api: {base_path: "", endpoints: []}
+frontend:
+  routes:
+    - {path: "/", view: CounterListView, testids: [counter-list]}
+    - {path: "*", view: NotFoundView, testids: [not-found-view]}
+"""
+
+
+def _routed(world_, *, pages, start_argv=None):
+    """The world's executor with the product's routes to render: its profile names them, its
+    initialization's manifest anchors them, its start serves a ui_base, and the sandbox's
+    scenario runner stands it up."""
+    from adapters.sandbox.scenario_runner import ContainerScenarioRunner
+    from squadops.projects.development_configuration import EntryPoint
+    from squadops.projects.initialization import ProjectInitialization
+    from squadops.scenarios.declared_routes import DeclaredStartRoutes
+    from tests.unit.sandbox.test_scenario_runner import EVALUATOR
+    from tests.unit.sandbox.test_scenario_runner_routes import _app, _Browser, _ip
+
+    repo, vault, executor, cycle, run = world_
+    registry = executor._project_registry
+    profile = registry.get_derived_profile.return_value
+    registry.get_derived_profile.return_value = dataclasses.replace(
+        profile, blueprint_stack="fullstack_fastapi_react", client_routes=(_ROUTED, "*")
+    )
+    configuration = registry.get_development_configuration.return_value
+    start = dataclasses.replace(
+        configuration.commands.start,
+        start=tuple(start_argv or configuration.commands.start.start),
+        entry_points=(
+            *configuration.commands.start.entry_points,
+            EntryPoint("ui_base", "http://127.0.0.1:8080/"),
+        ),
+        # No secret is resolved before #2421's approval record: Tally's would block every route.
+        evaluation_environment=(),
+    )
+    registry.get_development_configuration.return_value = dataclasses.replace(
+        configuration, commands=dataclasses.replace(configuration.commands, start=start)
+    )
+    registry.get_initialization.return_value = ProjectInitialization(
+        "prj-tally", repo.second_commit, "main", "fullstack_fastapi_react", "sha256:t",
+        _TALLY_MANIFEST, (), "owner", NOW,
+    )  # fmt: skip
+    container = _Browser(pages)
+    executor._route_renderer = DeclaredStartRoutes(
+        ContainerScenarioRunner(
+            container=container,
+            root=repo.path.parent / "scenario-sandbox",
+            image="sandbox:pinned",
+            http_client_factory=_app([]),
+            poll_interval_seconds=0.01,
+            app_network="squadops-sandbox-apps",
+            evaluator_image=EVALUATOR,
+            resolve_host=_ip,
+        )
+    )
+    return container
+
+
+async def test_a_branch_increments_routes_are_rendered_on_its_candidate_at_delivery(world):  # noqa: F811
+    """The live path, entered at the executor's end of plan: delivery verifies and captures the
+    candidate, and its acceptance starts it from the configuration's declared start in the
+    sandbox and reads each of the profile's routes. Bugs caught: the routes never rendered at the
+    live caller (the runner not wired into the executor), rendered on a tree other than the
+    candidate delivery verified, started by anything but the declared start, or their evidence
+    left off the document the campaign reads."""
+    repo = world[0]
+    container = _routed(world, pages=_TALLY_PAGES)
+    report = tracked_files(repo.path, repo.second_commit)[REPORT]
+
+    document = await _judged(world, {REPORT: report + _LINE, R1: _R1_TEST})
+
+    assert document["routes"] == [
+        {"path": "*", "held": "held", "missing": [], "not_shown": []},
+        {"path": "/", "held": "held", "missing": [], "not_shown": []},
+    ]
+    assert not [b for b in document["blocked"] if b.startswith("route")]
+    [(_v, raw)] = _of_type(world[1], SOURCE_VERIFICATION_TYPE)
+    verification = json.loads(raw)
+    rendered = document["renderings"]
+    assert rendered["start"] == {
+        "tree_identity": verification["candidate_tree_identity"],
+        "configuration_revision": 1,
+        "started": True,
+        "detail": None,
+    }
+    assert [(r["route"], r["anchor"], r["read_at"], r["seen"]) for r in rendered["routes"]] == [
+        ("*", "not-found-view", "/__squadops_unmatched__", ["not-found-view"]),
+        ("/", "counter-list", "/", ["counter-list"]),
+    ]
+    # Started by the declared start: its build step, then its start argv, in a copy of the
+    # candidate, which carries the squad's change.
+    build, app = [s for s in container.specs if s.image == "sandbox:pinned"]
+    assert (build.command, app.command[:3]) == (
+        ["python3", "tools/build.py"],
+        ["python3", "-m", "tally"],
+    )
+    assert container.held[0][REPORT] == report + _LINE
+
+
+async def test_a_route_the_candidate_no_longer_serves_rejects_the_increment(world):  # noqa: F811
+    """§8.3, as a sample application's increment reads it: a page without its view's root anchor
+    is broken, and the increment is rejected whatever its criteria read. Bug caught: a product's
+    broken page read only as blocked, so a change that drops a page is retried, never refused."""
+    repo = world[0]
+    _routed(
+        world,
+        pages={**_TALLY_PAGES, "http://10.89.0.7:8080/": "<html><body><h1>404</h1></body></html>"},
+    )
+    report = tracked_files(repo.path, repo.second_commit)[REPORT]
+
+    document = await _judged(world, {REPORT: report + _LINE})
+
+    assert document["verdict"] == "rejected"
+    assert "route /: missing counter-list" in document["unmet"]
+
+
+async def test_a_branch_increment_whose_start_fails_has_every_route_blocked(world):  # noqa: F811
+    """Contract 7's "start failed", at the live caller. Bug caught: a start that failed read as
+    every page broken, so the squad is told its pages are wrong when nothing stood up."""
+
+    repo = world[0]
+    container = _routed(world, pages=_TALLY_PAGES)
+
+    async def refused(spec):
+        from squadops.tools.exceptions import ToolContainerError
+
+        raise ToolContainerError("docker: the start image is gone")
+
+    container.run_detached = refused
+    report = tracked_files(repo.path, repo.second_commit)[REPORT]
+
+    document = await _judged(world, {REPORT: report + _LINE})
+
+    routes = [b for b in document["blocked"] if b.startswith("route")]
+    assert routes == [
+        "route *: not rendered: start failed: the start could not run: docker: the start image "
+        "is gone",
+        "route /: not rendered: start failed: the start could not run: docker: the start image "
+        "is gone",
+    ]
+    assert document["renderings"]["start"]["started"] is False

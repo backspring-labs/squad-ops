@@ -31,9 +31,8 @@ runtime-side, at its delivery (§24cd point 6). The decisions are the same modul
 - **A frozen criterion** holds by ``held_on_runner``: its bundle run alone on the candidate-verifier
   overlay (§8.1). ``frozen_on_runner`` is that half alone, which a rebase's verification calls
   with the rebased head as its tree (§24cd point 5).
-- **A route** the profile names (§24bv point 3) is read by nothing here: route rendering on a
-  product isn't built, so each is ``blocked_unverified`` and the increment with it (SIP-0096),
-  never passed by omission (§24cl item 6).
+- **A route** the profile names (§24bv point 3) is rendered on the candidate started from the
+  product's declared start (``execution.product_routes``, §24co), and its result is handed in.
 """
 
 from __future__ import annotations
@@ -41,7 +40,7 @@ from __future__ import annotations
 import logging
 import posixpath
 import sys
-from collections.abc import Iterable, Mapping
+from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass, field
 from fnmatch import fnmatch
 from pathlib import PurePosixPath
@@ -51,10 +50,10 @@ from squadops.campaigns.acceptance import (
     Discrimination,
     DiscriminationReason,
     FrozenResult,
+    RouteResult,
     discrimination_on_runner,
     held_on_runner,
     increment_acceptance,
-    route_rendering,
 )
 from squadops.campaigns.acceptance_run import (
     FrozenCriterion,
@@ -534,11 +533,13 @@ async def evaluate_on_runner(
     new: Iterable[NewCriterion],
     frozen: Iterable[FrozenCriterion],
     retired: Iterable[str],
+    routes: Sequence[RouteResult],
     replaced: Iterable[NewCriterion] = (),
 ) -> tuple[IncrementEvaluation, tuple[OverlayRun, ...]]:
     """The increment's acceptance on the product's runner (§8, §24cd point 6): discrimination,
     accumulated acceptance and the profile's routes, as ``acceptance_run.evaluate_increment``
-    judges a sample application's, and the runs it made.
+    judges a sample application's, and the runs it made. ``routes`` are the profile's routes as
+    rendered on the candidate (``execution.product_routes``, §24co): empty where it names none.
 
     ``replaced`` is each frozen criterion whose verifier the change request replaces, at its own
     test file (§8.1): frozen anew from the candidate and run as a frozen criterion is."""
@@ -585,7 +586,7 @@ async def evaluate_on_runner(
     )
     done.extend(made)
     held = changed_verifiers_blocked(held, list(frozen), candidate.file_tree)
-    routes = profile_routes(runs.profile)
+    routes = tuple(routes)
     return (
         IncrementEvaluation(
             acceptance=increment_acceptance(tuple(discriminations), held, routes),
@@ -596,14 +597,6 @@ async def evaluate_on_runner(
         ),
         tuple(done),
     )
-
-
-def profile_routes(profile: Any) -> tuple:
-    """§24bv point 3: route rendering applies where the profile names client routes, and is
-    recorded as not applicable elsewhere (no route at all). Rendering a product's routes isn't
-    built, so each one it names is unread: ``blocked_unverified``, never a pass (§24cl item 6)."""
-    named = tuple(profile.client_routes or ())
-    return route_rendering({r: () for r in named}, {r: None for r in named}, unseeded=())
 
 
 __all__ = [
@@ -618,6 +611,5 @@ __all__ = [
     "evaluate_on_runner",
     "freeze_product_bundle",
     "frozen_on_runner",
-    "profile_routes",
     "single_file_argv",
 ]
