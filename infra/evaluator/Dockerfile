@@ -36,7 +36,7 @@ COPY --from=ruff /ruff /usr/local/bin/ruff
 WORKDIR /evaluator
 COPY package.json package-lock.json ./
 RUN npm ci --omit=dev --no-audit --no-fund
-COPY driver.mjs browser.mjs puppeteer_page.mjs ./
+COPY driver.mjs browser.mjs page_reading.mjs puppeteer_page.mjs ./
 
 USER node
 ENTRYPOINT ["node", "/evaluator/driver.mjs"]

@@ -445,12 +445,27 @@ async def test_on_the_app_network_a_declared_api_is_reached_by_name_on_its_own_p
 # SIP-0113 §4.2 (#2416): Lighthouse and axe on the declared pages, before any scenario
 # --------------------------------------------------------------------------------------------
 
+#: SIP-0113 §10y: what the evaluator's -7 reads beside the scores and rule counts, as its driver
+#: answers (``infra/evaluator/page_reading.mjs``). Invented values.
+_FINER = {
+    "axe_nodes": {"critical": 0, "serious": 0, "moderate": 5, "minor": 0},
+    "failing": {
+        "accessibility": ["heading-order"],
+        "best_practices": [],
+        "environment": ["is-on-https", "redirects-http"],
+        "axe": ["heading-order", "region"],
+    },
+    "errored": {"accessibility": [], "best_practices": [], "environment": []},
+    "best_practices_app": 1,
+    "best_practices_app_error": None,
+}
 _ANSWER = {
     "pages": [
         {
             "path": "/",
             "lighthouse": {"performance": 0.93, "accessibility": 0.96, "best-practices": 0.78},
             "axe": {"critical": 0, "serious": 0, "moderate": 2, "minor": 0},
+            **_FINER,
             "error": None,
         }
     ]
@@ -462,6 +477,15 @@ _MEASURED = QualityReading(
             "/",
             {"performance": 0.93, "accessibility": 0.96, "best_practices": 0.78},
             {"critical": 0, "serious": 0, "moderate": 2, "minor": 0},
+            axe_nodes={"critical": 0, "serious": 0, "moderate": 5, "minor": 0},
+            failing={
+                "accessibility": ("heading-order",),
+                "best_practices": (),
+                "environment": ("is-on-https", "redirects-http"),
+                "axe": ("heading-order", "region"),
+            },
+            errored={"accessibility": (), "best_practices": (), "environment": ()},
+            best_practices_app=1,
         ),
     ),
     evaluator=EVALUATOR,
@@ -552,6 +576,25 @@ _NO_ANSWER = ContainerResult("", 0, "", "")
             NotMeasured.EVALUATOR_FAILED,
             "other pages",
         ),
+        (
+            # §10y: a scored page without the finer reading (a driver older than -7's under its
+            # tag) is refused, never read as zero nodes and no failing id.
+            "apps",
+            True,
+            ContainerResult(
+                "",
+                0,
+                json.dumps(
+                    {"pages": [{k: v for k, v in _ANSWER["pages"][0].items() if k not in _FINER}]}
+                )
+                + "\n",
+                "",
+            ),
+            True,
+            ("/",),
+            NotMeasured.EVALUATOR_FAILED,
+            "page /: no axe_nodes, failing, errored, best_practices_app, which -7's evaluator reads",
+        ),
         ("apps", True, _NO_ANSWER, False, ("/",), NotMeasured.UI_NOT_READY, "nothing answered"),
         ("apps", True, _NO_ANSWER, True, (), NotMeasured.NO_DECLARED_PAGE, None),
     ],
@@ -560,6 +603,7 @@ _NO_ANSWER = ContainerResult("", 0, "", "")
         "no-evaluator-image",
         "the-evaluator-fails",
         "it-answers-for-other-pages",
+        "a-scored-page-without-the-finer-reading",
         "the-ui-never-answers",
         "no-declared-page",
     ],
@@ -769,6 +813,7 @@ class _Seeding(_OnTheNetwork):
             page = {
                 "lighthouse": {"performance": 0.9, "accessibility": 0.96, "best-practices": 0.78},
                 "axe": {"critical": 0, "serious": 0, "moderate": 2, "minor": 0},
+                **_FINER,
                 "error": None,
             }
             answer = {"pages": [{"path": p, **page} for p in asked]}

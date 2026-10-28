@@ -339,3 +339,114 @@ def test_a_re_measure_against_anything_but_its_own_series_is_refused(current, ot
     evaluation, so the delta measures the deploys and reads as the increment's."""
     with pytest.raises(NotComparable, match=why):
         quality_deltas(current(), other(), against=Against.PREVIOUS)
+
+
+# §10y (#2637): the finer reading, like with like only. Invented ids and counts.
+
+TAG6 = "squadops-evaluator:lighthouse13.5-axe4.14-ruff0.16-eslint10.12-6"
+TAG7 = "squadops-evaluator:lighthouse13.5-axe4.14-ruff0.16-eslint10.12-7"
+LISTS = {
+    "accessibility": ("label",),
+    "best_practices": (),
+    "environment": ("is-on-https", "redirects-http"),
+    "axe": ("label", "region"),
+}
+NO_ERRORS = {"accessibility": (), "best_practices": (), "environment": ()}
+
+
+def _finer(*, nodes=None, failing=None, app=1.0, app_error=None, scores=SCORES) -> PageMeasure:
+    return PageMeasure(
+        "/runs",
+        scores,
+        AXE,
+        axe_nodes={**{"critical": 0, "serious": 3, "moderate": 2, "minor": 0}, **(nodes or {})},
+        failing={**LISTS, **(failing or {})},
+        errored=NO_ERRORS,
+        best_practices_app=app,
+        best_practices_app_error=app_error,
+    )
+
+
+def _finer_pair(before: PageMeasure, after: PageMeasure, *, tags=(TAG7, TAG7)):
+    calibration = _record(CAL, None, quality=_pages(before, evaluator=tags[0]), lint=None)
+    increment = _record(INC1, CAL, quality=_pages(after, evaluator=tags[1]), lint=None)
+    return quality_deltas(increment, calibration, against=Against.PREVIOUS)
+
+
+def _page_only(read):
+    return tuple(s for s in read.not_compared if s[0] != "lint")
+
+
+def test_the_finer_reading_moves_by_node_by_app_score_and_by_the_ids_introduced_and_resolved():
+    """Bug caught: nodes compared across impacts, ``best_practices_app`` left out, or a list read
+    as a count, so an increment that fixes one rule and breaks another reads as no move."""
+    read = _finer_pair(
+        _finer(),
+        _finer(
+            nodes={"serious": 7},
+            failing={"accessibility": ("button-name",), "axe": ("button-name", "region")},
+            app=0.95,
+        ),
+    )
+
+    moved = {(d.measure, d.page): (d.before, d.after) for d in read.deltas if d.delta}
+    assert moved == {
+        ("axe_nodes:serious", "/runs"): (3, 7),
+        ("lighthouse:best_practices_app", "/runs"): (1.0, 0.95),
+    }
+    assert {(f.measure, f.introduced, f.resolved) for f in read.failing if f.moved} == {
+        ("failing:accessibility", ("button-name",), ("label",)),
+        ("failing:axe", ("button-name",), ("label",)),
+    }
+    assert {f.measure for f in read.failing if not f.moved} == {
+        "failing:best_practices",
+        "failing:environment",
+    }
+    assert _page_only(read) == ()
+
+
+@pytest.mark.parametrize(
+    ("after", "skipped"),
+    [
+        (
+            # An audit errored: accessibility scored null, so its list is null, never empty.
+            _finer(
+                scores={**SCORES, "accessibility": None}, failing={"accessibility": None}, app=1.0
+            ),
+            ("failing:accessibility on /runs", "null after (its category scored null)"),
+        ),
+        (
+            _finer(app=None, app_error="recomputed 0.74 with the environment's audits"),
+            (
+                "lighthouse:best_practices_app on /runs",
+                "null after (recomputed 0.74 with the environment's audits)",
+            ),
+        ),
+    ],
+    ids=["an-errored-audit", "a-failed-recomputation"],
+)
+def test_a_null_finer_measure_is_named_not_compared_and_never_read_as_resolved(after, skipped):
+    """§10y: an errored audit isn't resolved. Bug caught: a null list compared as an empty one,
+    so ``label`` reads as resolved the round an unrelated audit errored; or a null
+    ``best_practices_app`` read as 0."""
+    read = _finer_pair(_finer(), after)
+
+    assert _page_only(read) == (skipped,)
+    measure = skipped[0].split(" on ")[0]
+    assert [f for f in read.failing if f.measure == measure] == []
+    assert [d for d in read.deltas if d.measure == measure] == []
+    assert not any(f.resolved for f in read.failing)
+
+
+def test_no_delta_crosses_the_tag_so_minus_six_is_never_compared_with_minus_seven():
+    """§10p ruling 6, §10y. Bug caught: a -6 reading (no finer keys) compared with a -7 one, so
+    every page's nodes and lists read as introduced by the increment, or its scores as moved by
+    it."""
+    before = PageMeasure("/runs", SCORES, AXE)
+
+    read = _finer_pair(before, _finer(), tags=(TAG6, TAG7))
+
+    assert (read.deltas, read.failing) == ((), ())
+    assert _page_only(read) == (
+        ("lighthouse and axe", f"lighthouse and axe: measured by {TAG6} before and {TAG7} after"),
+    )

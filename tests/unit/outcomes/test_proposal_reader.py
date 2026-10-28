@@ -309,6 +309,52 @@ async def test_quality_moves_against_the_calibration_averaged_over_pages_without
     assert "/entries" not in json.dumps(evidence.to_inputs())
 
 
+def _finer(nodes: int, app: float) -> QualityReading:
+    """Both pages read by -7, with §10y's finer reading: invented counts and ids."""
+    pages = tuple(
+        dataclasses.replace(
+            page,
+            axe_nodes={"critical": 0, "serious": nodes, "moderate": 0, "minor": 0},
+            failing={
+                "accessibility": ("label",) if nodes else (),
+                "best_practices": (),
+                "environment": ("is-on-https", "redirects-http"),
+                "axe": ("label",) if nodes else (),
+            },
+            errored={"accessibility": (), "best_practices": (), "environment": ()},
+            best_practices_app=app,
+        )
+        for page in _quality((0.8, 0.6)).pages
+    )
+    return QualityReading(QualityStatus.MEASURED, pages=pages, evaluator="t")
+
+
+async def test_the_proposal_is_shown_only_the_measures_it_was_shown_before_the_finer_reading(
+    monkeypatch,
+):
+    """§10y: the finer reading is reporting-only, and whether the proposal sees it is the owner's
+    ruling. Bug caught: its node counts or ``best_practices_app`` averaged into the proposal's
+    quality moves the day -7 deploys, because every unseeded delta is passed through."""
+    store = await _store(
+        dataclasses.replace(_record("cyc_cal", "a" * 64, None), quality=_finer(0, 1.0)),
+        dataclasses.replace(_record("cyc_inc1", "b" * 64, "a" * 64), quality=_finer(4, 0.95)),
+    )
+
+    evidence = await _reader(store, _calibrated(), monkeypatch=monkeypatch).for_proposal(
+        campaign_id=CID, accepted_cycle_id="cyc_inc1"
+    )
+
+    assert [q.measure for q in evidence.quality] == [
+        "lighthouse:performance",
+        "lighthouse:accessibility",
+        "lighthouse:best_practices",
+        "axe:serious",  # the fixture's only axe impact
+        "lint:total",
+    ]
+    shown = json.dumps(evidence.to_inputs())
+    assert "axe_nodes" not in shown and "best_practices_app" not in shown and "label" not in shown
+
+
 def _request(cycle: str, *sections: tuple[str, PrdOp, str]) -> str:
     request = ChangeRequest(
         proposal_id=f"prop_{cycle}",

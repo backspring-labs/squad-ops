@@ -18,6 +18,7 @@ _SOURCES = (
     _EVALUATOR / "Dockerfile",
     _EVALUATOR / "driver.mjs",
     _EVALUATOR / "browser.mjs",
+    _EVALUATOR / "page_reading.mjs",
     _EVALUATOR / "puppeteer_page.mjs",
     _EVALUATOR / "package.json",
     _EVALUATOR / "package-lock.json",
@@ -38,6 +39,10 @@ _CUT = {
     # click (#2659), and the lock's advisories fixed, the peer puppeteer pinned to 25.14.0 and fast-uri
     # 3.1.9 (#2712, #2469). Every baseline is re-read on it (the 2.5 plan's §2.2).
     "squadops-evaluator:lighthouse13.5-axe4.14-ruff0.16-eslint10.12-6": "cecd430f253e0567",
+    # §10y's finer reading (#2637): the driver reads axe by node, the failing audits by id and the
+    # environment's apart (page_reading.mjs). browser.mjs, the Chromium pin and the lock are -6's,
+    # byte for byte. Every quality series on -6 or earlier stays its own.
+    "squadops-evaluator:lighthouse13.5-axe4.14-ruff0.16-eslint10.12-7": "8006d83c1f37dc28",
 }
 
 
