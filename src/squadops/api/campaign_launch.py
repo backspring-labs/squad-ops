@@ -5,7 +5,8 @@ what it needs and does what follows it:
 - **the cycle** is built by the cycle-create path itself (``prepare_cycle``), from the request
   the intent carries, preflighted as an operator's cycle is, and naming its campaign and kind.
   A repository-backed campaign's cycle is pinned at its campaign branch's head, read at drain
-  (SIP-0109 §24cd point 1);
+  (SIP-0109 §24cd point 1), after the branch is rebased onto the commit its Project reconciled,
+  when upstream moved (§24bv point 4, ``BranchRebase``, gated by ``reconciled_at_pin``);
 - **its first run**: every drain reconciles each live campaign's launched intents, so a launched
   cycle without a run gets its first one, and a first run still queued that this process has not
   started is started. A crash between the mark and the run, or between the run and its start,
@@ -26,12 +27,27 @@ from typing import Any
 import pydantic
 
 from squadops.api.cycle_schemas import CycleCreateRequest
-from squadops.api.routes.cycles.cycles import CreationPorts, first_run, prepare_cycle
+from squadops.api.routes.cycles.cycles import (
+    CreationPorts,
+    derived_profile_at_pin,
+    first_run,
+    pin_source_context,
+    prepare_cycle,
+    require_inherited_baseline,
+    require_no_blocking_gap,
+    require_reconciled_upstream,
+)
 from squadops.api.routes.cycles.errors import cycle_error_envelope
 from squadops.api.routes.cycles.mapping import cycle_status_of
 from squadops.campaigns.campaign_branch import CampaignHead, NoCampaignHead, head
 from squadops.campaigns.launch_requests import bound_at_head, increment_id_of
-from squadops.campaigns.launcher import BoxVerdict, CampaignLauncher, LaunchRefused, unblocked
+from squadops.campaigns.launcher import (
+    BeforeLaunch,
+    BoxVerdict,
+    CampaignLauncher,
+    LaunchRefused,
+    unblocked,
+)
 from squadops.campaigns.models import (
     Campaign,
     CampaignState,
@@ -40,7 +56,16 @@ from squadops.campaigns.models import (
     LaunchIntent,
     LaunchIntentState,
 )
-from squadops.cycles.models import Cycle, CycleError, CycleStatus, Run, RunInitiator, RunStatus
+from squadops.cycles.models import (
+    Cycle,
+    CycleError,
+    CycleStatus,
+    Project,
+    ProjectNotReadyError,
+    Run,
+    RunInitiator,
+    RunStatus,
+)
 from squadops.events.types import EventType
 from squadops.memory.cycle_bindings import instructions_bound_for, missing_from, names_current
 from squadops.memory.lessons import UnitKind
@@ -63,6 +88,43 @@ _CONTINUING = frozenset({CycleKind.REPAIR, CycleKind.RETRY})
 LAUNCHER_ACTOR = "campaign-launcher"
 
 
+async def reconciled_at_pin(ports: CreationPorts, project: Project, intent: LaunchIntent) -> None:
+    """SIP-0109 §24cd point 3: the launcher rebases a campaign branch only onto a commit its
+    Project has reconciled, and never reconciles it. So before a rebase, the cycle-create path's
+    own gates run at the Project's pin, on the launch's request: a Project not READY, a relevant
+    drift no reconciliation followed (H.2), no inherited baseline at the pin, or a blocking gap
+    the launch's work meets (H.8) refuses the launch, which escalates with the intent pending.
+
+    Raises:
+        LaunchRefused: A gate refused it, named by its error code.
+    """
+    try:
+        request = CycleCreateRequest(**intent.cycle_request["body"])
+    except pydantic.ValidationError as e:
+        raise LaunchRefused(f"VALIDATION_ERROR: {e}") from e
+    try:
+        if not project.lifecycle_status.accepts_cycles:
+            raise ProjectNotReadyError(
+                f"Project {project.project_id} is {project.lifecycle_status.value}: a Cycle "
+                "needs it READY"
+            )
+        context = pin_source_context(project, None)
+        assert context is not None  # only a repository-backed Project's branch rebases
+        await require_reconciled_upstream(ports.project_registry, context)
+        await require_inherited_baseline(ports.project_registry, context)
+        await require_no_blocking_gap(
+            await derived_profile_at_pin(ports.project_registry, context),
+            ports.artifact_vault,
+            context,
+            request,
+        )
+    except CycleError as e:
+        status, detail = cycle_error_envelope(e)
+        if status >= 500:
+            raise
+        raise LaunchRefused(f"{detail['error']['code']}: {e}") from e
+
+
 class CampaignLaunchService:
     def __init__(
         self,
@@ -72,6 +134,7 @@ class CampaignLaunchService:
         flow_executor,
         event_bus,
         box_verdict: BoxVerdict,
+        before_launch: BeforeLaunch | None = None,
     ) -> None:
         self._campaigns = campaigns
         self._creation = creation
@@ -83,6 +146,7 @@ class CampaignLaunchService:
             self._build_cycle,
             actor=LAUNCHER_ACTOR,
             box_verdict=box_verdict,
+            before_launch=before_launch,
         )
         self._lock = asyncio.Lock()
         self._running: set[asyncio.Task] = set()

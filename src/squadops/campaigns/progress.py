@@ -1573,6 +1573,24 @@ class CampaignProgress:
             return f"no decided cycle to {action}"
         return await self._bound_launch(campaign, cycle, kind, latest)
 
+    async def proposal_after_rebase(
+        self, campaign: Campaign, continued_cycle_id: str | None
+    ) -> LaunchRequest | str:
+        """§24cd point 2: row 6's fresh proposal, on the head a rebase left ``campaign`` at, when
+        the rebase superseded a repair or retry of ``continued_cycle_id``'s increment. The
+        proposal is shown that increment's brief as row 13's is, marked ``upstream_moved``: the
+        squad's work didn't fail, the tree under it moved. Or why it can't be launched."""
+        abandoned: dict[str, Any] | None = None
+        if continued_cycle_id is not None:
+            cycle = await self._cycles.get_cycle(continued_cycle_id)
+            abandoned = {
+                **(await self._prior_cycle_brief(cycle, None) or {"cycle_id": continued_cycle_id}),
+                "abandoned_as": "upstream_moved",
+            }
+        return await self._propose_launch(
+            campaign, abandoned, abandoned_cycle_id=continued_cycle_id
+        )
+
     async def _bound_launch(
         self,
         campaign: Campaign,

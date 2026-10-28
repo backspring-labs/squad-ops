@@ -128,6 +128,11 @@ class ControlOperation(StrEnum):
     #: A task instruction was added to, revised on or withdrawn from one of the campaign's cycles
     #: after its admission (SIP-0110 Appendix A §3.5; #2178). A record, and an intervention.
     INSTRUCT = "instruct"
+    #: A repository-backed campaign's branch rebased onto the commit its Project reconciled
+    #: (§24bv point 4, §24cd point 2): the accepted tree's base and head move, with the rebased
+    #: head's verification. A pending repair or retry built on the old head is superseded in the
+    #: same transaction, its increment abandoned as ``upstream_moved``.
+    BRANCH_REBASED = "branch_rebased"
 
     @property
     def records_only(self) -> bool:
@@ -204,6 +209,9 @@ class LaunchIntentState(StrEnum):
 
     PENDING = "pending"
     LAUNCHED = "launched"
+    #: A repair or retry a campaign branch's rebase left nothing to continue (§24cd point 2): its
+    #: candidate was built on the head the rebase replaced. Never launched, and never drained.
+    SUPERSEDED = "superseded"
 
 
 # =============================================================================
@@ -688,6 +696,10 @@ class CampaignTransition:
     tree a promotion makes the campaign's accepted tree, and only a promotion carries one.
     ``submitted`` is the proposal a submission puts at the increment gate, and ``ruling`` the
     ruling on it; each operation, and only it, carries its own.
+
+    A branch's rebase (§24cd point 2) names the tree it makes the accepted one, as a promotion
+    does, and ``supersedes`` is the pending repair's or retry's launch id it marks superseded in
+    the same transaction, when there is one. Only a rebase supersedes.
     """
 
     operation: ControlOperation
@@ -704,6 +716,7 @@ class CampaignTransition:
     accepted: AcceptedTree | None = None
     submitted: SubmittedProposal | None = None
     ruling: IncrementRuling | None = None
+    supersedes: str | None = None
 
     def __post_init__(self) -> None:
         _require_text(
@@ -725,8 +738,16 @@ class CampaignTransition:
             )
         if self.launch is not None and self.operation.records_only:
             raise ValueError(f"{self.operation} records a fact; it cannot launch")
-        if (self.operation is ControlOperation.PROMOTE) != (self.accepted is not None):
-            raise ValueError("a promotion, and only a promotion, names the tree it accepts")
+        moves_the_tree = self.operation in (
+            ControlOperation.PROMOTE,
+            ControlOperation.BRANCH_REBASED,
+        )
+        if moves_the_tree != (self.accepted is not None):
+            raise ValueError(
+                "a promotion or a branch's rebase, and only those, names the tree it accepts"
+            )
+        if self.supersedes is not None and self.operation is not ControlOperation.BRANCH_REBASED:
+            raise ValueError("only a branch's rebase supersedes a pending launch (§24cd point 2)")
         if (self.operation is ControlOperation.SUBMIT) != (self.submitted is not None):
             raise ValueError("a submission, and only a submission, names the proposal it submits")
         if (self.operation is ControlOperation.RULE) != (self.ruling is not None):

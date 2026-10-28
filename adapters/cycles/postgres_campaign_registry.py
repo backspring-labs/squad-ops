@@ -322,6 +322,9 @@ async def _commit(
         campaign.campaign_id,
     )
     refusal = verdict.refusal
+    superseded = await _superseded(conn, transition)
+    if refusal is None:
+        refusal = lifecycle.supersession_refusal(campaign, transition, superseded)
     lease = None
     if refusal is None and lease_change is not None:
         current, runs_in_flight = lease_change
@@ -394,6 +397,7 @@ async def _commit(
             f"VALUES ({_placeholders(_INTENT_COLUMNS)})",
             *_intent_args(intent),
         )
+    await _mark_superseded(conn, superseded)
     if lease is not None:
         # An upsert, not an update: a lease row that went missing (a truncated campaigns table
         # cascades to it) must not turn a committed change into one that wrote nothing.
@@ -410,6 +414,32 @@ async def _commit(
             lease.expires_at,
         )
     return TransitionResult(entry=entry, campaign=updated, intent=intent, replayed=False)
+
+
+async def _superseded(
+    conn: asyncpg.Connection, transition: CampaignTransition
+) -> LaunchIntent | None:
+    """The intent a rebase supersedes (§24cd point 2), read under the campaign's lock, which every
+    write of its intents holds; ``None`` when it names none, or none such exists."""
+    if transition.supersedes is None:
+        return None
+    row = await conn.fetchrow(
+        f"SELECT {_INTENT_COLUMNS} FROM campaign_launch_intents WHERE launch_id = $1",
+        transition.supersedes,
+    )
+    return _row_to_intent(row) if row else None
+
+
+async def _mark_superseded(conn: asyncpg.Connection, superseded: LaunchIntent | None) -> None:
+    """The applied rebase's supersession, in its transaction: adjudicated pending above."""
+    if superseded is None:
+        return
+    await conn.execute(
+        "UPDATE campaign_launch_intents SET state = $2 WHERE launch_id = $1 AND state = $3",
+        superseded.launch_id,
+        LaunchIntentState.SUPERSEDED.value,
+        LaunchIntentState.PENDING.value,
+    )
 
 
 _LEASE_COLUMNS = "holder, held_by, campaign_id, acquired_at, expires_at"

@@ -14,6 +14,7 @@ performs no configuration load, no secret resolution and no construction.
 """
 
 import asyncio
+import functools
 import logging
 import os
 import time
@@ -27,7 +28,11 @@ from fastapi.middleware.cors import CORSMiddleware
 from adapters.persistence.pool import create_pool
 from squadops import __version__ as SQUADOPS_VERSION
 from squadops._version import resolve_git_sha
-from squadops.api.campaign_launch import CampaignLaunchService
+from squadops.api.campaign_launch import (
+    LAUNCHER_ACTOR,
+    CampaignLaunchService,
+    reconciled_at_pin,
+)
 from squadops.api.error_handlers import register_domain_error_handlers
 from squadops.api.middleware.auth import AuthMiddleware, RequestIDMiddleware
 from squadops.api.routes.agent_status import HEARTBEAT_PATH
@@ -64,6 +69,7 @@ from squadops.api.runtime.startup_reaps import (
 )
 from squadops.bootstrap.secrets import secret_provider_for
 from squadops.campaigns.box_reading import BoxReader
+from squadops.campaigns.branch_rebase import BranchRebase, ProductRunnerFrozen
 from squadops.campaigns.campaign_branch import CampaignBranch
 from squadops.campaigns.progress import CampaignProgress
 from squadops.campaigns.projection import ProjectingCampaignRegistry
@@ -381,6 +387,28 @@ async def _cut_over_project_registry(provider: str, registry, pool) -> None:
             len(unknown),
             unknown,
         )
+
+
+def _branch_rebase(state, *, campaigns, projects, vault, creation) -> BranchRebase:
+    """SIP-0109 §24bv point 4: before each launch, a repository-backed campaign's branch is
+    rebased onto the commit its Project reconciled, when upstream moved, and its head
+    re-verified: by the product's checks, and (§24cd point 5) by every frozen criterion's bundle
+    on the product's runner in the sandbox (#2774's ``frozen_on_runner``, §24cl item 10), which
+    fails closed (§24cm)."""
+    return BranchRebase(
+        campaigns=campaigns,
+        projects=projects,
+        repository=state.source_repository,
+        sandbox=state.sandbox_client,
+        vault=vault,
+        branch=CampaignBranch(projects=projects, repository=state.source_repository),
+        reconciled=functools.partial(reconciled_at_pin, creation),
+        propose=state.campaign_progress.proposal_after_rebase,
+        actor=LAUNCHER_ACTOR,
+        frozen_on_runner=ProductRunnerFrozen(
+            sandbox=state.sandbox_client, projects=projects, vault=vault
+        ),
+    )
 
 
 async def _init_cycle_subsystem(state, config, pool) -> None:
@@ -748,22 +776,28 @@ async def _init_cycle_subsystem(state, config, pool) -> None:
 
     # SIP-0109 §12b: a campaign's launches become cycles by the cycle-create path itself.
 
+    creation = CreationPorts(
+        project_registry=project_registry,
+        squad_profile=squad_profile,
+        cycle_registry=cycle_registry,
+        deploy_registry=deploy_registry,
+        llm=llm_adapter,
+        artifact_vault=artifact_vault,
+        memory_records=state.memory_records,
+        reference_resolvers=state.reference_resolvers,
+        memory_store=state.memory_store,
+    )
+    branch_rebase = _branch_rebase(
+        state, campaigns=projected_campaigns, projects=project_registry, vault=artifact_vault,
+        creation=creation,
+    )  # fmt: skip
     state.campaign_launch = CampaignLaunchService(
         campaigns=projected_campaigns,
-        creation=CreationPorts(
-            project_registry=project_registry,
-            squad_profile=squad_profile,
-            cycle_registry=cycle_registry,
-            deploy_registry=deploy_registry,
-            llm=llm_adapter,
-            artifact_vault=artifact_vault,
-            memory_records=state.memory_records,
-            reference_resolvers=state.reference_resolvers,
-            memory_store=state.memory_store,
-        ),
+        creation=creation,
         flow_executor=flow_executor,
         event_bus=event_bus,
         box_verdict=state.box_reader.verdict,
+        before_launch=branch_rebase.before_launch,
     )
 
 
@@ -950,6 +984,7 @@ _CAMPAIGN_SWEEP_INTERVAL_S = 60
 async def _sweep_campaigns(state) -> None:
     """§9.2, §9.5 (§24ae): every interval, each increment gate waiting past a seat's ruling bound
     is recorded as overdue; §9.3 (#1802): each launch the box refused is re-attempted when due;
+    §24cm: each pending launch a fault left behind is drained again;
     §24v (#1972): each launched cycle that ended with no decision is re-heard, so a completion
     hook that failed while the process stayed up is not left until the next restart; SIP-0110
     §5ad: each running campaign cycle's binding a re-binding couldn't reach is filled. A sweep
@@ -964,6 +999,13 @@ async def _sweep_campaigns(state) -> None:
             await state.campaign_launch.retry_blocked()
         except Exception:
             logger.exception("campaign_launch_retry_sweep_failed")
+        try:
+            # SIP-0109 §24cm: a launch that faulted (a campaign branch's rebase whose clone timed
+            # out, say) is left pending and its campaign where it was; it's repeated here, so it
+            # never waits on the next row that writes an intent.
+            await state.campaign_launch.drain()
+        except Exception:
+            logger.exception("campaign_launch_drain_sweep_failed")
         try:
             # SIP-0110 §5ad: a running campaign cycle's binding a re-binding couldn't reach.
             await state.campaign_launch.reconcile_bindings()

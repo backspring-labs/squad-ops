@@ -15,7 +15,7 @@ import pytest
 
 from adapters.tools.git_source import GitSourceRepository
 from squadops.campaigns.evaluator_trees import FileTree
-from squadops.projects.models import RefMoved, SourceUnavailable
+from squadops.projects.models import RebaseConflict, Rebased, RefMoved, SourceUnavailable
 from squadops.projects.registration import LocatorPolicy
 from tests.fixtures.shared_contract.repository import build_repository, recorded
 
@@ -475,3 +475,151 @@ async def test_the_token_never_reaches_the_error_git_reports(product, tmp_path):
 
     assert all("127.0.0.1" in f for f in failures)  # git's own text, naming the host it tried
     assert not any(token in f or basic in f or "s3cr3t" in f for f in failures)
+
+
+# --- SIP-0109 §24bv point 4: a campaign branch rebased onto the commit its Project reconciled ---
+
+
+async def _branch_of_two(clones, base: str) -> tuple[str, str]:
+    """A campaign branch on ``base``: two captures, one on the other, as two promotions leave it.
+    The first appends to the report module, the second adds a new file."""
+    tree = await clones.tree_at("prj-tally", base)
+    report = tree.files["tally/report.py"] + b"\n\ndef total(ledger):\n    return len(ledger)\n"
+    first = await clones.commit_tree(
+        "prj-tally", parent=base, files={**tree.files, "tally/report.py": report},
+        executable=tree.executable, ref="refs/squadops/cyc_1/run_1", message="first increment\n",
+    )  # fmt: skip
+    second = await clones.commit_tree(
+        "prj-tally", parent=first,
+        files={**tree.files, "tally/report.py": report, "docs/notes.md": b"notes\n"},
+        executable=tree.executable, ref="refs/squadops/cyc_2/run_2", message="second increment\n",
+    )  # fmt: skip
+    return first, second
+
+
+def _upstream(product, path: str, content: str, message: str) -> None:
+    target = product.path / path
+    target.parent.mkdir(parents=True, exist_ok=True)
+    target.write_text(content)
+    _git(product.path, "add", "-A")
+    _git(product.path, "commit", "-q", "-m", message)
+
+
+async def test_a_branch_rebases_onto_upstream_keeping_each_change_and_its_author(product, clones):
+    """§24bv point 4. Bugs caught:
+    - a rebase that squashes the branch, or drops an increment's change;
+    - upstream's own change lost from the rebased head (the branch's tree copied over it);
+    - a new commit losing its message or author, so the review request reads as another's;
+    - a second rebase of the same branch writing other commits, so a replay after a restart is
+      read as a conflicting row (the row's key names the base; its content names the head)."""
+    base = await clones.sync("prj-tally", str(product.path), "refs/heads/main")
+    first, second = await _branch_of_two(clones, base)
+    _upstream(product, "README.md", "Tally, as upstream now describes it\n", "upstream docs")
+    onto = await clones.sync("prj-tally", str(product.path), "refs/heads/main")
+
+    rebased = await clones.rebase("prj-tally", base=base, head=second, onto=onto)
+    again = await clones.rebase("prj-tally", base=base, head=second, onto=onto)
+
+    clone = clones._clone_dir("prj-tally")
+    [(old_first, new_first), (old_second, new_second)] = rebased.replayed
+    assert (old_first, old_second, new_second, rebased.dropped) == (
+        first,
+        second,
+        rebased.commit,
+        (),
+    )
+    assert _git(clone, "rev-parse", f"{new_first}^") == onto
+    assert _git(clone, "log", "-1", "--format=%s|%an", new_first) == "first increment|SquadOps"
+    files = (await clones.tree_at("prj-tally", rebased.commit)).files
+    assert files["README.md"] == b"Tally, as upstream now describes it\n"
+    assert files["tally/report.py"].endswith(b"def total(ledger):\n    return len(ledger)\n")
+    assert files["docs/notes.md"] == b"notes\n"
+    assert again == rebased
+    assert await clones.ref_commit("prj-tally", "refs/squadops/cyc_2/run_2") == second
+
+
+async def test_a_change_upstream_already_holds_rebases_to_upstream_itself(product, clones):
+    """§24cd point 4: the owner's merge is a rebase that ends at the merge commit. Here upstream
+    took the branch by a merge, and separately by a squash of the same change. Bugs caught: the
+    branch's commits replayed on top as empty or duplicate commits, so the next increment's pin
+    is a commit upstream never had and its baseline isn't upstream's; or a merge refused as a
+    conflict."""
+    base = await clones.sync("prj-tally", str(product.path), "refs/heads/main")
+    _first, second = await _branch_of_two(clones, base)
+    clone = str(clones._clone_dir("prj-tally"))
+    _git(product.path, "fetch", "-q", clone, f"{second}:refs/heads/review")
+    _git(product.path, "merge", "-q", "--no-ff", "-m", "Merge the review request", "review")
+    merged = await clones.sync("prj-tally", str(product.path), "refs/heads/main")
+    _git(product.path, "checkout", "-q", "-b", "squash", base)
+    _git(product.path, "merge", "-q", "--squash", "review")
+    _git(product.path, "commit", "-q", "-m", "Squash the review request")
+    squash = _git(product.path, "rev-parse", "HEAD")
+    _git(product.path, "checkout", "-q", "main")
+    _git(product.path, "reset", "-q", "--hard", squash)
+    assert await clones.sync("prj-tally", str(product.path), "refs/heads/main") == squash
+
+    by_merge = await clones.rebase("prj-tally", base=base, head=second, onto=merged)
+    by_squash = await clones.rebase("prj-tally", base=base, head=second, onto=squash)
+
+    assert (by_merge.commit, by_merge.replayed) == (merged, ())
+    assert (by_squash.commit, by_squash.replayed) == (squash, ())
+    assert len(by_merge.dropped) == len(by_squash.dropped) == 2
+
+
+async def test_a_branch_commit_that_conflicts_upstream_is_named_and_writes_no_ref(product, clones):
+    """§24bv point 4: a conflict refuses, and nothing resolves itself. Bugs caught: a conflict
+    resolved by taking one side, so upstream's change or the increment's is silently lost; the
+    conflict reported without the commit and the file a reader resolves; a ref moved anyway."""
+    base = await clones.sync("prj-tally", str(product.path), "refs/heads/main")
+    first, second = await _branch_of_two(clones, base)
+    report = (product.path / "tally" / "report.py").read_text()
+    _upstream(product, "tally/report.py", report + "\n\ndef top(ledger):\n    return None\n", "up")
+    onto = await clones.sync("prj-tally", str(product.path), "refs/heads/main")
+
+    with pytest.raises(RebaseConflict) as conflict:
+        await clones.rebase("prj-tally", base=base, head=second, onto=onto)
+
+    assert (conflict.value.commit, conflict.value.paths) == (first, ("tally/report.py",))
+    assert conflict.value.reason == "rebase_conflict"
+    assert await clones.ref_commit("prj-tally", "refs/squadops/cyc_2/run_2") == second
+
+
+@pytest.mark.parametrize(
+    ("case", "reason"),
+    [
+        ("same-base", None),
+        ("base-not-in-history", "not_an_ancestor"),
+        ("bad-id", "not_a_commit"),
+        ("a-merge-on-the-branch", "not_linear"),
+        ("a-head-the-clone-lacks", "commit_missing"),
+        ("onto-the-clone-lacks", "commit_missing"),
+    ],
+)
+async def test_a_rebase_with_nothing_to_move_or_no_history_to_move(product, clones, case, reason):
+    """The edges, each refused by a reason the launcher sorts on (SIP-0109 §24cm). A base equal to
+    the commit rebased onto is a revision-only reconciliation: the head stays. Bugs caught: the
+    head rewritten for nothing; a base that isn't in the head's history replaying commits that
+    aren't the branch's own; an id passed to git unchecked; a merge commit replayed as if linear;
+    a commit the clone lacks read as git failing (a fault the next drain repeats forever) rather
+    than named."""
+    base = await clones.sync("prj-tally", str(product.path), "refs/heads/main")
+    first, second = await _branch_of_two(clones, base)
+    clone = clones._clone_dir("prj-tally")
+    merged = _git(
+        clone, "commit-tree", f"{second}^{{tree}}", "-p", first, "-p", base, "-m", "a merge"
+    )
+    arguments = {
+        "same-base": dict(base=base, head=second, onto=base),
+        "base-not-in-history": dict(base=second, head=base, onto=base),
+        "bad-id": dict(base="--all", head=second, onto=base),
+        "a-merge-on-the-branch": dict(base=base, head=merged, onto=product.first_commit),
+        "a-head-the-clone-lacks": dict(base=base, head="e" * 40, onto=base),
+        "onto-the-clone-lacks": dict(base=base, head=second, onto="e" * 40),
+    }[case]
+
+    if reason is None:
+        assert await clones.rebase("prj-tally", **arguments) == Rebased(second, (), ())
+        return
+    with pytest.raises(SourceUnavailable) as refused:
+        await clones.rebase("prj-tally", **arguments)
+    assert refused.value.reason == reason

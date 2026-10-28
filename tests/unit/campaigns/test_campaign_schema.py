@@ -43,8 +43,11 @@ def _check_values(sql: str, column: str) -> set[str]:
         # Replaced whole by 1640 (the increment gate's submit, stale_binding, illegal_ruling).
         # Replaced whole again by 1650 (the owner's start), 1660 (the classification), 1680
         # (the ruling bound), 1690 (the box lease and a blocked launch, #1802) and 1695 (a
-        # launch the cycle-create path refused, #1971).
-        ("1791_campaign_instruct.sql", "operation", ControlOperation),
+        # launch the cycle-create path refused, #1971), and later by 1790 and 1791 (SIP-0110's
+        # re-binding and instruction) and 2000 (a campaign branch's rebase, §24cd point 2).
+        ("2000_campaign_branch_rebased.sql", "operation", ControlOperation),
+        # Replaced whole by 2000 (a superseded repair or retry, §24cd point 2).
+        ("2000_campaign_branch_rebased.sql", "state", LaunchIntentState),
         ("1690_box_lease.sql", "refusal", RefusalReason),
         ("1690_box_lease.sql", "holder", LeaseHolder),
         ("1600_campaigns.sql", "cycle_kind", CycleKind),
@@ -60,7 +63,8 @@ def test_the_control_logs_outcome_and_the_intents_state_match_their_enums():
     sql = (_MIGRATIONS / "1600_campaigns.sql").read_text()
     lists = [set(re.findall(r"'([^']+)'", m)) for m in re.findall(r"IN \(([^()]*)\)", sql)]
     assert {m.value for m in ControlOutcome} in lists
-    assert {m.value for m in LaunchIntentState} in lists
+    # 2000 adds ``superseded`` to the intents' states; 1600's list stays as it was written.
+    assert {m.value for m in LaunchIntentState} - {LaunchIntentState.SUPERSEDED.value} in lists
 
 
 def test_a_column_with_no_check_list_is_reported_not_passed():

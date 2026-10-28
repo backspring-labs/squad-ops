@@ -9,7 +9,7 @@ implementation reuses the agents' Git conventions (``adapters/tools``) under its
 from abc import ABC, abstractmethod
 from collections.abc import Collection, Mapping
 
-from squadops.projects.models import CheckoutTree
+from squadops.projects.models import CheckoutTree, Rebased
 
 
 class SourceRepositoryPort(ABC):
@@ -67,6 +67,28 @@ class SourceRepositoryPort(ABC):
                 which, and nothing moved.
             SourceUnavailable: The clone doesn't hold ``new_commit`` as a commit, or the ref isn't
                 one of ours.
+        """
+
+    @abstractmethod
+    async def rebase(self, project_id: str, *, base: str, head: str, onto: str) -> Rebased:
+        """Replay the commits in ``base..head`` (a campaign branch's own, oldest first) onto
+        ``onto`` in the managed clone, and return the rebased head (SIP-0109 §24bv point 4).
+
+        Each commit keeps its author, message and committer date, so the same rebase makes the
+        same commits. A commit whose change ``onto`` already holds is dropped, and a ``head``
+        that ``onto`` already contains rebases to ``onto`` itself: the owner's merge (§24cd
+        point 4). ``base`` equal to ``onto`` returns ``head`` unchanged. Only objects are
+        written: no ref moves (the caller's compare-and-swap follows its own record), nothing is
+        pushed, and no working tree is touched.
+
+        Raises:
+            RebaseConflict: A commit doesn't apply on ``onto`` with what was replayed before it,
+                naming the commit and its conflicting paths. Nothing was written to a ref.
+            SourceUnavailable: By a reason a caller can sort on: the clone doesn't exist
+                (``not_cloned``) or doesn't hold one of the commits (``commit_missing``); ``base``
+                isn't in ``head``'s history (``not_an_ancestor``); the history between them holds
+                a merge (``not_linear``); an id isn't one (``not_a_commit``). Anything else
+                (``timeout``, a git failure) is the clone's fault, not the branch's.
         """
 
     @abstractmethod

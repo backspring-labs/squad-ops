@@ -89,6 +89,29 @@ class RefMoved(SourceUnavailable):
         self.held = held
 
 
+class RebaseConflict(SourceUnavailable):
+    """A campaign branch's commit that doesn't apply on the commit it is rebased onto (SIP-0109
+    §24bv point 4): ``commit`` is the branch's commit that conflicted, and ``paths`` the files it
+    conflicts on. Nothing was written to any ref, and nothing is resolved by itself."""
+
+    def __init__(self, message: str, *, commit: str, paths: tuple[str, ...]) -> None:
+        super().__init__(message, reason="rebase_conflict")
+        self.commit = commit
+        self.paths = paths
+
+
+@dataclass(frozen=True)
+class Rebased:
+    """A campaign branch's commits replayed onto another commit in the managed clone (SIP-0109
+    §24bv point 4). ``commit`` is the rebased head: ``onto`` itself when upstream already holds
+    every change (the owner merged them, §24cd point 4). ``replayed`` pairs each commit replayed
+    with the commit it became, in order, and ``dropped`` names those upstream already held."""
+
+    commit: str
+    replayed: tuple[tuple[str, str], ...]
+    dropped: tuple[str, ...]
+
+
 @dataclass(frozen=True)
 class CheckoutTree:
     """A commit's tracked tree, as the sandbox can carry it (X-1, X-2): files as bytes and the

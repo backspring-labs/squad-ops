@@ -24,6 +24,7 @@ from squadops.campaigns.models import (
     ControlLogEntry,
     ControlOperation,
     ControlOutcome,
+    CycleKind,
     LaunchIntent,
     LaunchIntentState,
     PlanGate,
@@ -73,8 +74,10 @@ _FORWARD: dict[CampaignState, frozenset[CampaignState]] = {
         }
     ),
     CampaignState.PROMOTING: frozenset({CampaignState.AT_PROPOSAL}),
-    CampaignState.REPAIRING: frozenset({CampaignState.EVALUATING}),
-    CampaignState.RETRYING: frozenset({CampaignState.EVALUATING}),
+    # A repair or retry is built on the head its increment failed on. A rebase before it
+    # launches supersedes it, and the campaign proposes on the rebased head (§24cd point 2).
+    CampaignState.REPAIRING: frozenset({CampaignState.EVALUATING, CampaignState.AT_PROPOSAL}),
+    CampaignState.RETRYING: frozenset({CampaignState.EVALUATING, CampaignState.AT_PROPOSAL}),
 }
 
 
@@ -150,6 +153,9 @@ def transition_request_hash(transition: CampaignTransition) -> str:
     for added in ("calibration_record_id", "commit"):
         if payload["accepted"] is not None and payload["accepted"][added] is None:
             del payload["accepted"][added]
+    # §24cd point 2: only a rebase supersedes, so every row written before one hashes as it did.
+    if payload["supersedes"] is None:
+        del payload["supersedes"]
     if transition.operation.records_only:
         payload = {k: payload[k] for k in ("operation", "target", "binding")}
     return _digest(payload)
@@ -256,6 +262,31 @@ def ruling_refusal(campaign: Campaign, transition: CampaignTransition) -> Refusa
     ):
         return RefusalReason.STALE_BINDING
     return None
+
+
+def supersession_refusal(
+    campaign: Campaign, transition: CampaignTransition, superseded: LaunchIntent | None
+) -> RefusalReason | None:
+    """A rebase superseding a pending repair or retry (§24cd point 2) acts on the outbox as it
+    read it: the intent must still be this campaign's, pending, and a continuation. One launched
+    or superseded meanwhile is a state the caller no longer acts on, so the rebase is refused as
+    stale and the launcher reads the campaign again. ``superseded`` is the intent the
+    transition names, read under the campaign's lock, or ``None`` when there is none such."""
+    if transition.supersedes is None:
+        return None
+    if (
+        superseded is None
+        or superseded.campaign_id != campaign.campaign_id
+        or superseded.state is not LaunchIntentState.PENDING
+        or superseded.cycle_kind not in (CycleKind.REPAIR, CycleKind.RETRY)
+    ):
+        return RefusalReason.STALE_STATE
+    return None
+
+
+def superseded_intent(intent: LaunchIntent) -> LaunchIntent:
+    """The intent a rebase superseded: never launched, and never drained again."""
+    return dataclasses.replace(intent, state=LaunchIntentState.SUPERSEDED)
 
 
 def control_log_entry(
