@@ -145,6 +145,7 @@ async def test_the_review_request_is_pushed_then_forced_under_its_lease_after_a_
     )
     assert world.remote() == rebased
     [request] = world.forge.opened
+    assert world.forge.calls == 1  # the later push reads the address from its row, asks no forge
     assert (request["head"], request["base"], request["token"]) == (BRANCH, "main", TOKEN)
     rows = await world.pushes()
     assert [(r.binding["commit"], r.binding["lease"]) for r in rows] == [
