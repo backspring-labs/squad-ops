@@ -3,7 +3,9 @@
 The launcher turns each pending intent into exactly one cycle record. This service supplies
 what it needs and does what follows it:
 - **the cycle** is built by the cycle-create path itself (``prepare_cycle``), from the request
-  the intent carries, preflighted as an operator's cycle is, and naming its campaign and kind;
+  the intent carries, preflighted as an operator's cycle is, and naming its campaign and kind.
+  A repository-backed campaign's cycle is pinned at its campaign branch's head, read at drain
+  (SIP-0109 §24cd point 1);
 - **its first run**: every drain reconciles each live campaign's launched intents, so a launched
   cycle without a run gets its first one, and a first run still queued that this process has not
   started is started. A crash between the mark and the run, or between the run and its start,
@@ -27,7 +29,8 @@ from squadops.api.cycle_schemas import CycleCreateRequest
 from squadops.api.routes.cycles.cycles import CreationPorts, first_run, prepare_cycle
 from squadops.api.routes.cycles.errors import cycle_error_envelope
 from squadops.api.routes.cycles.mapping import cycle_status_of
-from squadops.campaigns.launch_requests import increment_id_of
+from squadops.campaigns.campaign_branch import CampaignHead, NoCampaignHead, head
+from squadops.campaigns.launch_requests import bound_at_head, increment_id_of
 from squadops.campaigns.launcher import BoxVerdict, CampaignLauncher, LaunchRefused, unblocked
 from squadops.campaigns.models import (
     Campaign,
@@ -92,8 +95,17 @@ class CampaignLaunchService:
         exist, a request it cannot validate) is ``LaunchRefused``, which escalates the campaign
         (#1971). Anything else is a fault, and propagates for the next drain to repeat."""
         campaign = await self._campaigns.get_campaign(intent.campaign_id)
+        # SIP-0109 §24cd point 1: a repository-backed cycle is pinned at the campaign branch's
+        # head, read now from the row and its log, and bound into the request. A campaign with
+        # no head passes none, and ``prepare_cycle`` refuses a repository-backed increment
+        # without one: never a default.
+        at = await self._head(campaign)
         try:
-            request = CycleCreateRequest(**intent.cycle_request["body"])
+            cycle_request = bound_at_head(intent.cycle_kind, intent.cycle_request, at)
+        except ValueError as e:
+            raise LaunchRefused(f"VALIDATION_ERROR: {e}") from e
+        try:
+            request = CycleCreateRequest(**cycle_request["body"])
         except pydantic.ValidationError as e:
             raise LaunchRefused(f"VALIDATION_ERROR: {e}") from e
         # #2578 part 2: the cycle's increment, from this launch's own binding. An intent that
@@ -112,6 +124,7 @@ class CampaignLaunchService:
                 campaign_id=campaign.campaign_id,
                 kind=intent.cycle_kind.value,
                 increment_id=increment_id,
+                campaign_head=at,
             )
         except CycleError as e:
             status, detail = cycle_error_envelope(e)
@@ -133,6 +146,15 @@ class CampaignLaunchService:
         await self._carry_instructions(intent, prepared.cycle)
         await self._bind_for_cycle(campaign, prepared.cycle)
         return prepared.cycle
+
+    async def _head(self, campaign: Campaign) -> CampaignHead | None:
+        """The campaign branch's head (§24cd point 1), from the campaign's row and its control
+        log, never the clone's ref. ``None`` when its accepted tree names no commit: a sample
+        application's, or a campaign with nothing promoted yet."""
+        try:
+            return head(campaign, await self._campaigns.control_log(campaign.campaign_id))
+        except NoCampaignHead:
+            return None
 
     async def _bind_for_cycle(self, campaign: Campaign, cycle: Cycle) -> None:
         """SIP-0110 §5ad (the owner's ruling of 2026-10-20): the campaign's snapshot fixes which

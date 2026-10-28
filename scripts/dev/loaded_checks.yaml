@@ -1831,3 +1831,14 @@ checks:
       moved = FailingDelta("failing:axe", "/", ("region",), ("label", "region"))
       print(moved.introduced, moved.resolved, _shown("axe:serious"), _shown("axe_nodes:serious"), _shown("lighthouse:best_practices_app"))
     expect: "('label',) () True False False"
+  - id: "2619-launcher-head"
+    what: the campaign launcher binds a repository-backed increment at the campaign branch's head read at drain, and the intent binds no tree (SIP-0109 §24cd point 1)
+    container: squadops-runtime-api
+    code: |
+      from squadops.campaigns.campaign_branch import CampaignHead
+      from squadops.campaigns.launch_requests import bound_at_head
+      from squadops.campaigns.models import CycleKind
+      request = {"body": {"execution_overrides": {"campaign_proposal": {"proposal_id": "p"}}}}
+      bound = bound_at_head(CycleKind.INCREMENT, request, CampaignHead("a" * 40, "t" * 64, None))
+      print(bound["body"]["execution_overrides"]["campaign_proposal"]["baseline_tree"][:4])
+    expect: tttt
