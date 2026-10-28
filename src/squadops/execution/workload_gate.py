@@ -41,7 +41,11 @@ from squadops.campaigns.gate import (
     binding_from_change_request,
     submission,
 )
-from squadops.campaigns.increment_tree import increment_basis, proposal_change_request
+from squadops.campaigns.increment_tree import (
+    approved_change_request,
+    increment_basis,
+    proposal_change_request,
+)
 from squadops.campaigns.models import (
     ControlOperationRefused,
     CycleKind,
@@ -606,8 +610,22 @@ class WorkloadGate:
             stack=manifest_stack(manifest),
             refused_framing_runs=refused,
             answered_on_record=carried,
+            placed=await self._placed_criterion_files(run_cycle),
         )
         return _TierReading(verdict, decisions)
+
+    async def _placed_criterion_files(self, cycle: Cycle) -> tuple[str, ...]:
+        """SIP-0109 §24cj: on a repository-backed increment, the criterion test files the
+        framework placed (its approved change request's ``criterion_files``), which the scope
+        doesn't read. ``()`` for every other cycle, whose stack's qa namespace is the framework's
+        instead (§24ch)."""
+        basis = increment_basis(cycle.resolved_config())
+        if basis is None or basis.has_manifest:
+            return ()
+        document = await approved_change_request(self._artifact_vault, cycle)
+        if document is None:
+            return ()
+        return tuple(f.path for f in load_stored_change_request(document).criterion_files)
 
     async def _approve_gate_by_tier(
         self, project_id: str, run_id: str, cycle_id: str, gate_name: str, tier: TierVerdict

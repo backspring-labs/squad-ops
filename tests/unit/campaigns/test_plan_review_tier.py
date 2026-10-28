@@ -186,3 +186,30 @@ def test_a_product_file_outside_the_scope_still_fails_beside_the_frameworks_test
     [scope] = [c for c in verdict.checks if c.condition is TierCondition.INSIDE_SCOPE]
     assert scope.held is False
     assert scope.reading.startswith("outside (backend/routes.py): backend/models.py;")
+
+
+@pytest.mark.parametrize(
+    ("footprint", "held"),
+    [
+        (("tally/report.py", "checks/check_criterion_R1.py"), True),
+        (("tally/report.py", "checks/check_criterion_R1.py", "checks/check_report.py"), False),
+    ],
+    ids=["the placed criterion file", "the product's own test beside it"],
+)
+def test_on_a_product_only_the_criterion_files_the_framework_placed_are_the_frameworks(
+    footprint, held
+):
+    """SIP-0109 §24cj, the tier's half of the one reading (§24ch): a repository-backed Project has
+    no stack, so no namespace. Bugs caught: the framework's placed criterion file read against the
+    scope, so a scope of the product's source refuses every plan; or the product's own test,
+    which the scope governs, waved through beside it."""
+    verdict = _verdict(
+        footprint=footprint,
+        allowed_scope=("tally/**",),
+        stack="",
+        placed=("checks/check_criterion_R1.py",),
+    )
+
+    [scope] = [c for c in verdict.checks if c.condition is TierCondition.INSIDE_SCOPE]
+    assert scope.held is held
+    assert ("checks/check_report.py" in scope.reading) is (not held)
