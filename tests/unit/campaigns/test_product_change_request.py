@@ -358,3 +358,141 @@ def test_a_sample_applications_request_carrying_a_placement_is_refused():
 
     with pytest.raises(ValueError, match="a sample application's request places no criterion"):
         load_stored_change_request(yaml.safe_dump(data, sort_keys=False))
+
+
+# --- §24cp (#2779): a page criterion names its view's anchor where the change adds the page -----
+
+#: Tally with a UI base, its profile judging two pages (SIP-0112 H.7's ``client_routes``).
+_WITH_PAGES = dataclasses.replace(
+    _PRODUCT,
+    surfaces=(*_PRODUCT.surfaces, ("ui_base", "http://127.0.0.1:18408/")),
+    judged_routes=("/", "*"),
+)
+#: The hash ``origin/main`` (before §24cp) computes for ``_on_a_page("/")`` under this context:
+#: a request that names no anchor keeps the document and the hash it had.
+_HASH_BEFORE_ANCHORS = "83b4cece33099bb2d7ba1205a44151c8d585e756306a10bfa9458133b91cdf40"
+
+
+def _on_a_page(route: str, anchor: object = None, cid: str = "R1") -> dict:
+    criterion = {
+        "id": cid,
+        "statement": "The report page shows the total",
+        "surface_kind": "client_route",
+        "surface": route,
+        "observable": "the page's last line reads 'total 7'",
+    }
+    if anchor is not None:
+        criterion["anchor"] = anchor
+    return criterion
+
+
+def test_a_page_the_change_adds_is_accepted_with_its_anchor_stored_and_bound_by_the_ruling():
+    """The accepted shape. Bugs caught: the anchor dropped by the parse or the stored document, so
+    acceptance never learns it and the added page blocks forever; or left out of the hash, so an
+    anchor changed after the ruling (to one the candidate happens to render) loads as ruled."""
+    verdict = validate_proposal(
+        _request(criteria=[_on_a_page("/totals", "totals-view")]), _context(product=_WITH_PAGES)
+    )
+
+    assert verdict.accepted, verdict.refusals
+    stored = stored_change_request(verdict.change_request)
+    data = yaml.safe_load(stored)
+    assert data["criteria"][0]["anchor"] == "totals-view"
+    assert load_stored_change_request(stored).criteria[0].anchor == "totals-view"
+    data["criteria"][0]["anchor"] = "report-view"
+    with pytest.raises(ValueError, match="does not match its hash"):
+        load_stored_change_request(yaml.safe_dump(data, sort_keys=False))
+
+
+def test_a_request_that_names_no_anchor_keeps_the_document_and_hash_it_had():
+    """Additive: stored only when set. Bug caught: an empty ``anchor`` written into every
+    criterion, so each request stored before §24cp fails its hash on load and every campaign in
+    flight refuses its own approved change request."""
+    verdict = validate_proposal(_request(criteria=[_on_a_page("/")]), _context(product=_WITH_PAGES))
+
+    assert verdict.accepted, verdict.refusals
+    assert verdict.change_request.content_hash == _HASH_BEFORE_ANCHORS
+    [criterion] = yaml.safe_load(stored_change_request(verdict.change_request))["criteria"]
+    assert "anchor" not in criterion
+
+
+@pytest.mark.parametrize(
+    ("criteria", "kind", "detail"),
+    [
+        ([_on_a_page("/totals")], RefusalKind.ANCHOR_REQUIRED, "/totals, a page this change adds"),
+        (
+            [_on_a_page("/", "list-view")],
+            RefusalKind.ANCHOR_ON_JUDGED_ROUTE,
+            "names anchor 'list-view' on /, a page acceptance already reads",
+        ),
+        (
+            [_on_a_page("/totals", "totals-view"), _on_a_page("/totals", "sum-view", "R2")],
+            RefusalKind.ANCHORS_DISAGREE,
+            "criteria on /totals name 2 anchors (R2: 'sum-view'; R1: 'totals-view')",
+        ),
+    ],
+    ids=["an added page with none", "a judged page with one", "one added page, two anchors"],
+)
+def test_a_page_criterion_whose_anchor_disagrees_with_its_page_is_refused_by_name(
+    criteria, kind, detail
+):
+    """§24cp's rails. Bugs caught: an added page proposed with no anchor, which can only block at
+    acceptance (#2779); an anchor on a judged page, which nothing reads, so the proposer believes
+    it holds the view to it; two roots named for one view, of which acceptance reads one."""
+    verdict = validate_proposal(_request(criteria=criteria), _context(product=_WITH_PAGES))
+
+    assert [r.kind for r in verdict.refusals] == [kind]
+    assert detail in verdict.refusals[0].detail
+
+
+def test_two_criteria_on_one_added_page_naming_one_anchor_are_accepted():
+    """The edge beside the disagreement. Bug caught: the second criterion on a page refused as a
+    disagreement with the first."""
+    criteria = [_on_a_page("/totals", "totals-view"), _on_a_page("/totals", "totals-view", "R2")]
+
+    verdict = validate_proposal(_request(criteria=criteria), _context(product=_WITH_PAGES))
+
+    assert verdict.accepted, verdict.refusals
+
+
+@pytest.mark.parametrize(
+    "anchor",
+    ["", "totals view", 'totals"view', "7-up", "totals/view", 7, "t" * 65],
+    ids=["empty", "a space", "a quote", "a leading digit", "a slash", "a number", "too long"],
+)
+def test_an_anchor_that_is_no_data_testid_value_is_refused_as_malformed(anchor):
+    """Bug caught: an anchor no element's attribute and no selector can name exactly, so the page
+    reading and the criterion's test look for different things, or nothing is found at all."""
+    verdict = validate_proposal(
+        _request(criteria=[_on_a_page("/totals", anchor)]), _context(product=_WITH_PAGES)
+    )
+
+    assert [r.kind for r in verdict.refusals] == [RefusalKind.MALFORMED]
+    assert "is no data-testid value" in verdict.refusals[0].detail
+
+
+def test_an_anchor_off_a_page_or_on_a_sample_application_is_refused_as_malformed():
+    """Bugs caught: an anchor on a package criterion stored, where nothing renders a view; one on
+    a sample application's request, whose views are anchored by its manifest delta, so two
+    sources name one view's root."""
+    on_a_package = _request()
+    on_a_package["criteria"][0]["anchor"] = "report-view"
+    sample = dataclasses.replace(_context(), product=None, baseline_manifest="api: {}\n")
+    on_a_sample = _request(criteria=[_on_a_page("/", "list-view")])
+    del on_a_sample["footprint"]
+
+    off_a_page = validate_proposal(on_a_package, _context(product=_WITH_PAGES))
+    sampled = validate_proposal(on_a_sample, sample)
+
+    assert [r.kind for r in off_a_page.refusals] == [RefusalKind.MALFORMED]
+    assert "this criterion asserts at a package, which has none" in off_a_page.refusals[0].detail
+    assert [r.kind for r in sampled.refusals] == [RefusalKind.MALFORMED]
+    assert "anchor is named only on a repository-backed Project" in sampled.refusals[0].detail
+
+
+def test_a_page_on_a_product_with_no_ui_base_is_refused_by_its_surface_alone():
+    """Bug caught: a page the product can't serve also told to name an anchor, so the proposer
+    is sent to fix the anchor of a page no start declaration serves."""
+    verdict = validate_proposal(_request(criteria=[_on_a_page("/totals")]), _context())
+
+    assert [r.kind for r in verdict.refusals] == [RefusalKind.UNKNOWN_SURFACE]

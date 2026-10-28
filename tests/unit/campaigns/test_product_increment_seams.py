@@ -331,3 +331,89 @@ async def test_a_branch_increments_proposal_is_shown_no_outcome_evidence_and_not
 
     assert composed == [envelope]
     port.for_proposal.assert_not_called()
+
+
+# --- SIP-0109 §24cp (#2779): the anchor of a page the change adds, shown to its authors --------
+
+
+def _anchored() -> str:
+    """Tally's request with R1 on ``/totals``, a page its profile doesn't judge, naming the
+    anchor its view renders, as the rails accepted and stored it."""
+    from tests.unit.campaigns.test_product_change_request import _WITH_PAGES, _on_a_page
+
+    verdict = validate_proposal(
+        _request(criteria=[_on_a_page("/totals", "totals-view")]), _context(product=_WITH_PAGES)
+    )
+    assert verdict.accepted, verdict.refusals
+    return stored_change_request(verdict.change_request)
+
+
+_VIEW_LINE = "- page `/totals`: anchor `totals-view` (criteria R1)"
+
+
+def _renderer():
+    from adapters.prompts.factory import DEFAULT_TEMPLATES_PATH, create_prompt_asset_source
+    from squadops.prompts.renderer import RequestTemplateRenderer
+
+    return RequestTemplateRenderer(
+        asset_source=create_prompt_asset_source(
+            provider="filesystem", templates_path=DEFAULT_TEMPLATES_PATH
+        )
+    )
+
+
+async def test_a_branch_increments_plan_authors_are_shown_the_anchor_of_each_page_it_adds():
+    """Entered at ``generate_task_plan`` (framing), then the plan authors' real render of the
+    increment surfaces (``render_surfaces``, which the proposers and the sole-author merger call).
+    Bugs caught: the anchor stored and never shown, so the plan never gives the view's task the
+    anchor acceptance reads the page for; or shown on a request that names none."""
+    from squadops.capabilities.handlers._plan_authoring import INCREMENT_SURFACES, render_surfaces
+    from squadops.cycles.task_plan import generate_task_plan
+
+    run = Run("run_f", "cyc_inc", 2, "running", "system", "cfg", workload_type="framing")
+
+    anchored = generate_task_plan(_cycle(), run, _profile(), change_request=_anchored())
+    plain = generate_task_plan(_cycle(), run, _profile(), change_request=STORED)
+
+    [merge] = [e for e in anchored if e.task_type == "governance.merge_plan"]
+    assert merge.inputs["increment_views_index"] == _VIEW_LINE
+    assert all("increment_views_index" not in e.inputs for e in plain)
+    rendered = await render_surfaces(_renderer(), merge.inputs, INCREMENT_SURFACES)
+    assert "## The pages this change adds, and the anchor each one's view renders" in rendered
+    assert '`<section data-testid="export-view">`' in rendered
+    assert rendered.endswith(_VIEW_LINE)
+
+
+async def test_a_branch_increments_view_and_suite_authors_are_shown_the_anchor(monkeypatch):
+    """Entered at ``generate_task_plan`` (implementation), then each author's prompt as its
+    handler builds it: the developer's focused prompt, and the qa author's whole ``handle()``.
+    Bugs caught: the developer, who writes the view, never told the anchor, so the page renders
+    without it and the increment is rejected; the suite's author never told it, so the criterion's
+    test looks for the view by another id; either told it on an increment that adds no page."""
+    from squadops.capabilities.handlers.cycle.develop import DevelopmentDevelopHandler
+    from squadops.cycles.task_plan import generate_task_plan
+    from tests.unit.campaigns.test_increment_test_scope import _qa_prompt
+    from tests.unit.cycles.test_increment_evaluation_wiring import _PLAN
+
+    run = Run("run_i", "cyc_inc", 3, "running", "system", "cfg", workload_type="implementation")
+    anchored = generate_task_plan(_cycle(), run, _profile(), plan=_PLAN, change_request=_anchored())
+    plain = generate_task_plan(_cycle(), run, _profile(), plan=_PLAN, change_request=STORED)
+    [dev] = [e for e in anchored if e.task_type == "development.develop"]
+    [qa] = [e for e in anchored if e.task_type == "qa.test"]
+
+    view = {"route": "/totals", "anchor": "totals-view", "criteria": ["R1"]}
+    assert dev.inputs["increment_views"] == [view]
+    assert qa.inputs["increment_test_scope"]["views"] == [view]
+    assert "increment_views" not in qa.inputs  # the suite's author has it in its scope
+    for e in plain:
+        assert "increment_views" not in e.inputs
+        assert "views" not in (e.inputs.get("increment_test_scope") or {})
+    handler = DevelopmentDevelopHandler()
+    handler._resolved_config = {}  # as handle() sets it before the prompt is built
+    dev_prompt = await handler._build_focused_prompt(
+        {**dev.inputs, "prd": "Tally", "artifact_contents": {}}, _renderer()
+    )
+    qa_prompt = await _qa_prompt(qa, monkeypatch)
+    for prompt in (dev_prompt, qa_prompt):
+        assert "## The pages this change adds, and the anchor each one's view renders" in prompt
+        assert _VIEW_LINE in prompt

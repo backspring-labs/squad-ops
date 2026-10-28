@@ -617,3 +617,69 @@ async def test_a_page_whose_anchor_its_markup_hides_rejects_the_increment(world)
 
     assert document["verdict"] == "rejected"
     assert "route /: missing counter-list" in document["unmet"]
+
+
+def _adds_totals(anchor: str) -> str:
+    """The stored request with R1 asserted on ``/totals``, a page the profile doesn't pin, naming
+    its view's anchor (§24cp), re-hashed as the rails would have stored it."""
+    from squadops.campaigns.change_request import (
+        SurfaceKind,
+        content_hash,
+        load_stored_change_request,
+        stored_change_request,
+    )
+
+    request = load_stored_change_request(STORED)
+    [r1, *rest] = request.criteria
+    on_a_page = dataclasses.replace(
+        r1, surface_kind=SurfaceKind.CLIENT_ROUTE, surface="/totals", anchor=anchor
+    )
+    changed = dataclasses.replace(request, criteria=(on_a_page, *rest))
+    return stored_change_request(dataclasses.replace(changed, content_hash=content_hash(changed)))
+
+
+@pytest.mark.parametrize(
+    ("page", "held", "verdict"),
+    [
+        # R1 is unread on Tally's runner (§24ci (a)), so the increment still blocks, on R1 alone.
+        (
+            '<html><body><section data-testid="totals-view"></section></body></html>',
+            "held",
+            "blocked_unverified",
+        ),
+        (
+            '<html><body><main data-testid="counter-list"></main></body></html>',
+            "broken",
+            "rejected",
+        ),
+    ],
+    ids=["the-candidate-renders-it", "the-candidate-renders-another-view"],
+)
+async def test_an_added_route_is_judged_at_delivery_by_the_anchor_its_request_names(  # noqa: F811
+    world, page, held, verdict
+):
+    """#2779, at the live caller: the executor's end of plan delivers the candidate, and the
+    approved change request's anchor reaches the renderer through ``requested_routes``. Bugs
+    caught: the anchor lost between the stored request and the judgement, so an added page still
+    blocks however it renders; or a candidate whose new page shows another view accepted."""
+    repo = world[0]
+    _routed(world, pages={**_TALLY_PAGES, "http://10.89.0.7:8080/totals": page})
+    report = tracked_files(repo.path, repo.second_commit)[REPORT]
+
+    document = await _judged(
+        world, {REPORT: report + _LINE, R1: _R1_TEST}, request=_adds_totals("totals-view")
+    )
+
+    routes = {r["path"]: (r["held"], r["missing"]) for r in document["routes"]}
+    assert routes == {
+        "*": ("held", []),
+        "/": ("held", []),
+        "/totals": (held, [] if held == "held" else ["totals-view"]),
+    }
+    assert not [b for b in document["blocked"] if b.startswith("route")]
+    [totals] = [r for r in document["renderings"]["routes"] if r["route"] == "/totals"]
+    assert (totals["source"], totals["anchor"]) == ("change_request", "totals-view")
+    assert document["verdict"] == verdict
+    assert [u for u in document["unmet"] if u.startswith("route")] == (
+        [] if held == "held" else ["route /totals: missing totals-view"]
+    )
