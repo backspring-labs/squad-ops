@@ -1,7 +1,7 @@
 # 2.5.0 — pre-registration of the QA output-budget replay (#2253)
 
-**Status: REGISTERED 2026-10-24, before any call.** The run waits for the supervisor's go-ahead. Nothing in it has
-been sent to an engine.
+**Status: REGISTERED 2026-10-24, before any call. RUN 2026-10-27 on the two-lane engine (§10), READ 2026-10-28 (§11):
+rule 2 holds, so the instruction goes to the second check on first calls that finished. Nothing ships on this run.**
 
 **What had to be true before it was registered, all met:**
 1. **The population is fixed and committed:** `2-5-0-qa-budget-population-2253.json` (§2).
@@ -361,3 +361,93 @@ from calls nothing overlapped, and the record says it was measured on two lanes.
 **The resumed first call.** It sent the whole multi-entry key file as one header because the branch predated #2742's
 key reader. h11 refused it before sending, and the refusal's text carried the key. The three rows it wrote were
 removed, and nothing reached the engine. The defect is #2744.
+
+## 11. The reading, 2026-10-28
+
+The run went as §10 set it out, from 19:42Z on 2026-10-27 to 01:37Z on 2026-10-28: 46 raised-cap calls, the 3 prefix
+calls, 46 instruction calls, then the score in `squadops-eve` at framework `5aaece83`. No call failed. The leak scan
+after it found nothing. The records are in `var/engine_replay/2026-10-27-qa-budget-2253-parallel2/`:
+`scores.jsonl` (sha256 `58fc7ae4c6e75a1e…`), and `readout.txt` (`ad08f69e7ec02a40…`), which `read_2253.py` beside it
+prints from the summaries, the scores and the control's record.
+
+**Nothing else used the engine.** TensorFold's log over the run holds 95 `done` lines, which are the run's 95 calls,
+and three `GET /v1/models`. So every wall time below is a call alone on the two-lane engine.
+
+**The prefix check passes.** All three 12,288 calls were cut at 12,288, and each one's thinking and answer are a prefix
+of its raised-cap call. The raised cap ran past 12,288 on all three (one finished at 15,086 tokens, two were cut at
+16,384), so §4.4 predicts a cut for each, and that is what happened. So the resampled arm is read from the raised cap's
+samples, as §4.4 says.
+
+**The reproducibility panel (§10) matches 32 of 32.** Each of the 32 single-lane calls from 2026-10-24 has the same
+`token_sha`, finish and completion tokens as the same envelope's call in the new first arm.
+
+### 11.1 The readings (§6)
+
+| reading, all 46 | today's cap, resampled | raised cap (16,384) | instruction (12,288) |
+|---|---|---|---|
+| 1. finished (`stop`) | 14 | **36** | **39** |
+| 2. median reasoning tokens | the raised cap's | 9,514 | 6,252 |
+| 4. first answers passed | 9 | 17 | **18** |
+| 5. tokens to an answer, summed | 783,110 | 705,493 | **480,137** |
+| 6. wall time, median / total | (not run) | 231 s / 179 min | 159 s / 128 min |
+
+- **Reasoning (2):** the instruction's call reasoned less than the raised cap's in 43 of the 46 envelopes.
+- **What the raised cap bought (3):** 14 finished within 12,288, which is the resample alone. 22 finished between
+  12,289 and 16,384, bought by the raise, and 8 of those passed. 10 were cut at 16,384.
+- **The deadline (6):** 8 of the raised cap's 40 `qa.test` calls ran past production's 300 s, the longest 373.5 s.
+  The longest that finished took 318.6 s. None of the instruction's calls passed 300 s.
+- **Cut while thinking:** 2 of the raised cap's 10 cuts and 2 of the instruction's 7 had no answer at all.
+- **Decode rate:** a median of 57.9 tok/s for the raised cap and 55.7 for the instruction.
+- **The control (7)** is §6's: 0 of 46 passed, 38 of 46 re-asks finished, 170 minutes of cut first calls and
+  102 minutes of re-asks.
+
+**By group, as observed** (none of these is read as clear):
+
+| group | n | resampled fin / pass | raised cap fin / pass | instruction fin / pass |
+|---|---|---|---|---|
+| `qa.test` | 40 | 11 / 6 | 32 / 13 | 35 / 14 |
+| `qa.test_repair` | 6 | 3 / 3 | 4 / 4 | 4 / 4 |
+| Next.js | 43 | 12 / 7 | 33 / 14 | 36 / 15 |
+| FastAPI/React | 3 | 2 / 2 | 3 / 3 | 3 / 3 |
+
+### 11.2 The predictions (§7)
+
+- **P1 holds:** 36 of 46 ended `stop` under the raised cap (at least 24 needed).
+- **P2 holds,** both halves: 39 of 46 ended `stop` under the instruction, and the instruction's call reasoned less in
+  43 of 46 (at least 24 each). The re-ask's instruction shortens a first call's reasoning too.
+
+### 11.3 The decision rule (§8)
+
+Each comparison is the exact two-sided sign test on the discordant envelopes.
+
+| comparison | first only | second only | p |
+|---|---|---|---|
+| raised cap vs resampled, finished | 22 | 0 | 4.8e-7, **clear** |
+| raised cap vs instruction, finished | 2 | 5 | 0.45 |
+| instruction vs resampled, finished | 27 | 2 | 1.6e-6, **clear** |
+| instruction vs resampled, passed | 11 | 2 | 0.022, **clear** |
+
+- **Rule 1, raise the cap, does not hold.** It finishes clearly more often than today's cap, but not more often than
+  the instruction: it finished alone on 2 envelopes, and the instruction on 5. It also passed less (17 against 18). So no
+  deadline is named.
+- **Rule 2, keep the instruction on QA's first call, holds.** All three conditions are met:
+  - it finishes clearly more often than today's cap resampled;
+  - its first answers pass more often (18 against 9);
+  - it spends fewer tokens in all (480,137 against 783,110).
+
+**The result is rule 2's.** As §8 says, it does not ship on this evidence. It opens the second pre-registered check:
+the instruction on a seeded sample of `qa.test` and `qa.test_repair` first calls from the same window that were not
+cut, against their own captured answers' verdicts. Until that check reads, no profile, prompt or deadline changes.
+
+### 11.4 What the reading does not cover
+
+- **The verdicts come from today's handler, which no longer asks the captured question exactly.** In 45 of the 46
+  envelopes, `first_call_is_the_capture` is false: today's handler, given the captured inputs, builds a first call whose
+  messages differ from the capture's (a digest comparison, `scripts/dev/authoring_score.py:99`). What differs was not
+  read. The comparison is still paired, since one handler reads every arm's answer to an envelope. But the pass counts
+  are not a production pass rate.
+- **The resampled arm's verdicts are the raised cap's,** on the 14 envelopes it finished within 12,288. The prefix
+  check makes that exact for the tokens. The verdict follows from the same answer.
+- **Two lanes, used one call at a time.** The wall times are the two-lane engine's with nothing else running. Production
+  shares the engine with the nostromo crews, so a call there can take longer.
+- **The FastAPI/React cells** hold 3 envelopes, too few to read alone, as §2 said.
