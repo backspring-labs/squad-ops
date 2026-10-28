@@ -1,6 +1,7 @@
 # 2.5.0 — pre-registration of the first-call instruction check on QA calls that were not cut (#2253)
 
-**Status: REGISTERED 2026-10-28, before any call.** Nothing in it has been sent to an engine.
+**Status: REGISTERED 2026-10-28, before any call. RUN 01:48Z–06:42Z the same day, READ (§10): rule 1, a proposal
+for the owner. Nothing changes on this record alone.**
 
 **Why it exists.** The QA output-budget replay (`2-5-0-qa-budget-preregistration.md`, read in its §11) ended in its
 decision rule 2. On the 46 QA calls production cut at 12,288 tokens, the re-ask's instruction sent on the first call
@@ -261,3 +262,84 @@ or what the text says:
 
 The first replay's §8 and §11.3 still name "their own captured answers' verdicts". A pointer there names §4 above,
 which replaces them.
+
+## 10. The reading, 2026-10-28
+
+The run went as §5 set it out:
+- the baseline's 80 calls from 01:48Z;
+- the instruction's 80 from 04:18Z;
+- the score in `squadops-eve` at framework `5aaece83`, written 06:41Z. The deploy that followed started after it.
+
+No call failed. The leak scan found nothing. The records are in
+`var/engine_replay/2026-10-28-qa-first-call-instruction-2253/`: `scores.jsonl` (sha256 `2287d5e681cf2edb…`) and
+`readout.txt` (`c079fe8b4d93160e…`). `readout.txt` is printed by `read_check2.py` beside it, which was written before
+the run finished.
+
+**Overlap.** TensorFold served 11 other clients' calls over the run. 2 of the baseline's calls overlapped one, and
+none of the instruction's did. Their tokens, finishes and verdicts stand, and their wall times are left out of the
+medians below.
+
+### 10.1 The readings (§6)
+
+| reading, the 80 calls | baseline (12,288) | instruction (12,288) |
+|---|---|---|
+| 1. finished (`stop`) | 76 | 77 |
+| 2. median reasoning tokens | 4,358.5 | 2,147 |
+| 3. first answers passed | 63 | 61 |
+| 5. tokens, summed (a cut priced at 12,288 + 7,238) | 551,880 | 358,168 |
+| 7. wall time, median / total | 103 s / 150 min | 64 s / 100 min |
+
+- **Reasoning (2):** the instruction's call reasoned less in 68 of the 80 envelopes.
+- **Passes (3):** the baseline alone passed 8 envelopes, and the instruction alone passed 6. By stratum:
+
+  | stratum | sampled | baseline passed | instruction passed | weighted `Δ_pass` |
+  |---|---|---|---|---|
+  | `qa.test`, FastAPI/React | 40 | 31 | 31 | 0 |
+  | `qa.test`, Next.js | 24 | 16 | 15 | −4.46 |
+  | `qa.test_repair`, FastAPI/React | 8 | 8 | 7 | −2.25 |
+  | `qa.test_repair`, Next.js | 8 | 8 | 8 | 0 |
+
+  The `qa.test_repair` FastAPI/React loss is one call, and the instruction's call there was cut.
+- **The weighted differences over the window's 374 calls (4, 5):** `Δ_pass` is −6.71, and `Δ_tok` is −973,337.
+- **The cuts:** the baseline cut 4 calls and the instruction 3. Two of each had no answer at all.
+- **The captured record (6):**
+  - Of the 3 envelopes the handler asked again when captured, the instruction passed 2 and the baseline 1.
+  - `first_call_is_the_capture` holds in 10 of the 80, not the 1 of 46 that §9.8 assumed from the other population.
+  - The comparison is still paired, so the reading stands as §9.8 said.
+- **Wall time (7):** no `qa.test` call passed 300 s in either arm. The median time to first token was 4.9 s in both, so
+  the order of the arms (§9.10) shows no prefix-cache effect.
+
+**The net over the window, joined to the first replay:**
+- `net_pass = +9 − 6.71 = +2.29`, with a 90% bootstrap interval of [−29.3, +34.6];
+- `net_tok = −302,973 − 973,337 = −1,276,310`, with an interval of [−1,489,446, −1,065,783].
+
+### 10.2 The predictions (§7)
+
+- **P3 holds:** the instruction reasoned less in 68 of 80, against 54 needed. It shortens reasoning on calls that
+  already fit, as on those that were cut.
+- **P4 holds:** the instruction finished 77 against the baseline's 76.
+
+### 10.3 The decision rule (§8)
+
+**Rule 1 holds, all four conditions:**
+- the baseline does not pass clearly more often: 8 against 6, p = 0.79;
+- `net_pass` is +2.29, above 0;
+- the instruction finishes at least as often: 77 against 76;
+- `net_tok` is −1,276,310, at most 0.
+
+**The result is rule 1: propose the instruction on QA's first call.** As §8 says, it is a proposal, not a change. It
+goes into the line's plan through the #2253 row and a PR of its own, for the owner to read.
+
+### 10.4 What the result means, and what it does not
+
+- **The tokens and the time are clear.** The whole interval for `net_tok` is below zero: about 1.3 M fewer tokens over
+  the window's 423 QA calls, about 35% fewer on calls that were not cut. The median call is 39 s shorter.
+- **The passes are not clear.** On calls that were not cut, the point estimate is a loss of about 6.7 first answers
+  of the window's 374 (1.8%). That is below the 2.4% break-even §6 set, so the cut calls' gain of 9 covers it, by
+  2.3 passes. The interval runs from a loss of 29 to a gain of 35. As §6 says, this reads as "no loss this sample can
+  see, and the point estimate favours it", not as a gain shown.
+- **The losses sit in two strata:** Next.js `qa.test` (one envelope, weighted 4.46) and FastAPI/React
+  `qa.test_repair` (one, weighted 2.25). FastAPI/React `qa.test`, the window's largest stratum, did not move.
+- **Not measured:** outcomes in a cycle (§1). The verdicts are the handler's on a first answer, not whether the suite
+  catches what it should. A regression roll measures that, and the instruction changes what a roll measures. That is
+  why the change needs a plan row.
