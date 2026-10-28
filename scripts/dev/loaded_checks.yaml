@@ -2033,3 +2033,10 @@ checks:
       from squadops.capabilities.handlers.route_rendering import view_anchors
       print(sorted(view_anchors('<p data-testid="not-found"></p><template><main data-testid="v"></main></template><noscript><i data-testid="n"></i></noscript>')))
     expect: "['not-found']"
+  - id: "2777-review-hidden"
+    what: a product's page counts no anchor its own or an ancestor's markup hides (the hidden attribute, aria-hidden, an inline display/visibility/content-visibility) (SIP-0109 §24co item 13, #2777's final review)
+    container: squadops-sandbox-service
+    code: |
+      from squadops.capabilities.handlers.route_rendering import view_anchors
+      print(sorted(view_anchors('<p data-testid="shown"></p><form data-testid="a" hidden=""></form><div style="display: none"><b data-testid="b"></b></div><div aria-hidden="true"><i data-testid="c"></i></div>')))
+    expect: "['shown']"

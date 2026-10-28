@@ -221,6 +221,15 @@ async def test_each_route_renders_its_view_on_the_candidate_started_from_its_dec
         'data-testid="add-shelf-view"></form></template></body></html>',
         '<html><body><p data-testid="not-found-view"></p><noscript><form '
         'data-testid="add-shelf-view"></form></noscript></body></html>',
+        # §24co item 13. A script that sends /add to / leaves home's view in the dump (read live).
+        _dom("shelf-list", "add-shelf-link"),
+        _dom("not-found-view"),
+        '<html><body><p data-testid="not-found-view"></p><form data-testid="add-shelf-view" '
+        'hidden=""></form></body></html>',
+        '<html><body><p data-testid="not-found-view"></p><section style="display: none"><form '
+        'data-testid="add-shelf-view"></form></section></body></html>',
+        '<html><body><div aria-hidden="true"><form data-testid="add-shelf-view"></form></div>'
+        "</body></html>",
     ],
     ids=[
         "another-views-page",
@@ -228,6 +237,11 @@ async def test_each_route_renders_its_view_on_the_candidate_started_from_its_dec
         "the-app-doesnt-serve-it",
         "a-fallback-with-the-anchor-only-in-a-template",
         "a-fallback-with-the-anchor-only-in-a-noscript",
+        "a-redirect-that-renders-home",
+        "a-fallback-that-renders-another-view",
+        "the-anchor-hidden-by-its-attribute",
+        "the-anchor-hidden-by-an-ancestors-inline-style",
+        "the-anchor-under-an-aria-hidden-ancestor",
     ],
 )
 async def test_a_route_whose_page_lacks_its_views_root_anchor_is_broken(tmp_path, page):
@@ -471,3 +485,26 @@ async def test_a_product_with_no_blueprint_judges_the_routes_its_request_adds(tm
     routes = await _render(tmp_path, profile=_profile(), initialization=None, requested=["/report"])
 
     assert _held(routes) == {"/report": ("blocked_unverified", NO_ANCHOR_REQUESTED)}
+
+
+async def test_two_routes_whose_views_share_a_root_anchor_can_neither_hold(tmp_path):
+    """§24co item 13: a fallback or a redirect is read broken because it shows another view's root
+    anchor, which holds only while no two routes share one (#2780 makes them unique at the rails).
+    Bug caught: a route held on a page that is another route's view with the same root anchor."""
+    shared = MANIFEST.replace(
+        "testids: [add-shelf-view, shelf-title-input]", "testids: [shelf-list, shelf-title-input]"
+    )
+    initialization = dataclasses.replace(INITIALIZATION, manifest=shared)
+
+    routes = await _render(tmp_path, initialization=initialization)
+
+    held = _held(routes)
+    assert held["/"] == (
+        "blocked_unverified",
+        "its view's root anchor is also /add's, so its page can't be told from that one's",
+    )
+    assert held["/add"] == (
+        "blocked_unverified",
+        "its view's root anchor is also /'s, so its page can't be told from that one's",
+    )
+    assert held["/shelves/:shelf_id"] == ("held", "")

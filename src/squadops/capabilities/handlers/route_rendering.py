@@ -249,23 +249,68 @@ def _reachable_path(
 #: so a ``<noscript>``'s content is never rendered, though its serialized text parses as markup
 #: here. An anchor inside either is no evidence the view rendered (SIP-0109 §24co item 12).
 INERT_ELEMENTS = frozenset({"template", "noscript"})
+#: The inline declarations that hide an element and all it holds (SIP-0109 §24co item 13).
+HIDING_DECLARATIONS = frozenset(
+    {
+        ("display", "none"),
+        ("visibility", "hidden"),
+        ("visibility", "collapse"),
+        ("content-visibility", "hidden"),
+    }
+)
+#: HTML's void elements: they hold nothing, and the serializer writes no end tag for them.
+_VOID = frozenset(
+    {
+        "area", "base", "br", "col", "embed", "hr", "img", "input", "keygen", "link", "meta",
+        "param", "source", "track", "wbr",
+    }
+)  # fmt: skip
+
+
+def hidden_in_markup(attrs: list[tuple[str, str | None]]) -> bool:
+    """Whether an element's own markup hides it, and so everything it holds (SIP-0109 §24co item
+    13): the ``hidden`` attribute (whatever its value), ``aria-hidden="true"``, or an inline
+    ``style`` declaring ``display: none``, ``visibility: hidden`` or ``collapse``, or
+    ``content-visibility: hidden``. A stylesheet's rule can't be read from the markup: §24co item
+    13 names what that leaves unjudged."""
+    values = {k: (v or "") for k, v in attrs}
+    if "hidden" in values:
+        return True
+    if values.get("aria-hidden", "").strip().lower() == "true":
+        return True
+    for declaration in values.get("style", "").split(";"):
+        prop, _, value = declaration.partition(":")
+        value = value.lower().replace("!important", "").strip()
+        if (prop.strip().lower(), value) in HIDING_DECLARATIONS:
+            return True
+    return False
 
 
 class _Anchors(HTMLParser):
-    """Each ``data-testid`` a rendered element of a page carries, and nothing else: none inside an
-    inert element (``INERT_ELEMENTS``), however deep."""
+    """Each ``data-testid`` a rendered element of a page carries, and nothing else: none on an
+    element inside an inert one (``INERT_ELEMENTS``) or hidden by its own or an ancestor's markup
+    (``hidden_in_markup``), however deep. The open elements are held as a stack: Chromium's
+    serializer writes every non-void element's end tag, so the stack is the document's tree."""
 
     def __init__(self) -> None:
         super().__init__(convert_charrefs=True)
         self.found: set[str] = set()
-        self._inert = 0
+        self._open: list[tuple[str, bool]] = []
+        self._suppressing = 0
+
+    def _count(self, attrs: list[tuple[str, str | None]]) -> None:
+        if not self._suppressing:
+            self.found.update(v for k, v in attrs if k == "data-testid" and v)
 
     def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
-        if tag in INERT_ELEMENTS:
-            self._inert += 1
+        suppresses = tag in INERT_ELEMENTS or hidden_in_markup(attrs)
+        if tag in _VOID:
+            if not suppresses:
+                self._count(attrs)
             return
-        if not self._inert:
-            self.found.update(v for k, v in attrs if k == "data-testid" and v)
+        self._open.append((tag, suppresses))
+        self._suppressing += suppresses
+        self._count(attrs)
 
     def handle_startendtag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
         # HTML ignores a self-closing slash on a non-void element, so ``<template/>`` opens one,
@@ -273,20 +318,27 @@ class _Anchors(HTMLParser):
         self.handle_starttag(tag, attrs)
 
     def handle_endtag(self, tag: str) -> None:
-        if tag in INERT_ELEMENTS and self._inert:
-            self._inert -= 1
+        """Close ``tag`` and whatever it still holds open. An end tag that opened nothing is
+        ignored, so a stray one never ends a hidden or inert region early."""
+        at = next((i for i in range(len(self._open) - 1, -1, -1) if self._open[i][0] == tag), None)
+        if at is None:
+            return
+        for _tag, suppresses in self._open[at:]:
+            self._suppressing -= suppresses
+        del self._open[at:]
 
 
 def view_anchors(dom: str) -> frozenset[str]:
     """The test ids a dumped page's rendered elements carry (§8.3), read from their attributes.
-    A product's page is read this way (SIP-0109 §24co). Three things don't count:
+    A product's page is read this way (SIP-0109 §24co items 5, 12 and 13). These don't count:
     - a ``data-testid="…"`` in a script's text or a text node, which is no element (the qa role's
       pattern, ``_TESTID``, counts it; #2776);
     - an element inside a ``<template>``, whose content is never connected to the document;
-    - an element inside a ``<noscript>``, which a scripted page never renders.
+    - an element inside a ``<noscript>``, which a scripted page never renders;
+    - an element its own markup or an ancestor's hides (``hidden_in_markup``).
 
-    A page whose inert element never closes reads every element after it as inert, so it can only
-    lose anchors and read broken, never gain one (fail-closed)."""
+    An inert or hidden element that never closes leaves every element after it uncounted, so a
+    page can only lose anchors and read broken, never gain one (fail-closed)."""
     parser = _Anchors()
     parser.feed(dom)
     parser.close()

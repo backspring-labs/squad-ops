@@ -236,6 +236,22 @@ def test_only_a_catch_all_route_is_read_at_the_unmatched_path(route, path):
         ('<template/><p data-testid="after-a-self-closed-template"></p>', set()),
         ('<template><p data-testid="never-closed">', set()),
         ('<br data-testid="void"/><p data-testid="p"></p>', {"void", "p"}),
+        ('<form data-testid="add-view" hidden=""></form><p data-testid="shown"></p>', {"shown"}),
+        ('<div hidden="until-found"><form data-testid="add-view"></form></div>', set()),
+        ('<div aria-hidden="TRUE "><form data-testid="add-view"></form></div>', set()),
+        ('<div aria-hidden="false"><form data-testid="add-view"></form></div>', {"add-view"}),
+        ('<section style="color: red;display: none"><b data-testid="a"></b></section>', set()),
+        ('<section style="DISPLAY:None !important"><b data-testid="a"></b></section>', set()),
+        ('<section style="visibility: hidden"><b data-testid="a"></b></section>', set()),
+        ('<section style="visibility:collapse"><b data-testid="a"></b></section>', set()),
+        ('<section style="content-visibility: hidden"><b data-testid="a"></b></section>', set()),
+        ('<section style="display: flex"><b data-testid="a"></b></section>', {"a"}),
+        ('<img hidden data-testid="img"><p data-testid="after-img"></p>', {"after-img"}),
+        (
+            '<div hidden></span><p data-testid="in"></p></div><p data-testid="out"></p>',
+            {"out"},
+        ),
+        ('<div hidden><p data-testid="never-closed">', set()),
     ],
     ids=[
         "elements",
@@ -247,6 +263,19 @@ def test_only_a_catch_all_route_is_read_at_the_unmatched_path(route, path):
         "a-self-closed-template",
         "a-template-never-closed",
         "a-void-element",
+        "the-hidden-attribute",
+        "hidden-until-found",
+        "an-aria-hidden-ancestor",
+        "aria-hidden-false",
+        "an-inline-display-none-ancestor",
+        "display-none-shouted-and-important",
+        "visibility-hidden",
+        "visibility-collapse",
+        "content-visibility-hidden",
+        "a-style-that-hides-nothing",
+        "a-hidden-void-element",
+        "a-stray-end-tag-inside-a-hidden-one",
+        "a-hidden-element-never-closed",
     ],
 )
 def test_a_products_page_counts_only_the_ids_its_elements_carry(dom, anchors):
@@ -254,7 +283,9 @@ def test_a_products_page_counts_only_the_ids_its_elements_carry(dom, anchors):
     script's source or a page's text counted as rendered (the qa reading's pattern counts both);
     one inside an inert ``<template>`` or a ``<noscript>``, which Chromium's dump carries though
     the page never rendered it (both read live on the evaluator image, 2026-10-28); and the
-    elements after an inert one lost, or an unclosed one read as anything but inert."""
+    elements after an inert one lost, or an unclosed one read as anything but inert; and (item 13)
+    an anchor its own or an ancestor's markup hides counted, a stray end tag ending a hidden region
+    early, or a style that hides nothing read as hiding."""
     from squadops.capabilities.handlers.route_rendering import view_anchors
 
     assert view_anchors(dom) == anchors

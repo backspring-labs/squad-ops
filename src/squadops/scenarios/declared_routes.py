@@ -43,6 +43,7 @@ from squadops.campaigns.product_routes import (
     NO_RUNNER,
     NO_START_DECLARATION,
     SECRET_NOT_AVAILABLE,
+    SHARED_ANCHOR,
     START_FAILED,
     ProductRoutes,
     route_record,
@@ -83,6 +84,23 @@ def product_start(configuration: Any) -> tuple[DeclaredStart | None, str | None]
         return None, f"{SECRET_NOT_AVAILABLE}: {e}"
     except ReadinessUnsupported as e:
         return None, f"{NO_RUNNER}: {e}"
+
+
+def _shared_roots(anchors: dict[str, tuple[str, ...]]) -> dict[str, str]:
+    """Each route whose view's root anchor another route's view shares, with one of those
+    routes (§24co item 13). A fallback page or a redirect renders another view, and is read broken
+    only because that view's root anchor isn't the requested one. Two views with one root anchor
+    can't be told apart, so neither route can hold (fail-closed)."""
+    by_root: dict[str, list[str]] = {}
+    for route, ids in anchors.items():
+        if ids:
+            by_root.setdefault(ids[0], []).append(route)
+    return {
+        route: next(o for o in sorted(routes) if o != route)
+        for routes in by_root.values()
+        if len(routes) > 1
+        for route in routes
+    }
 
 
 class DeclaredStartRoutes:
@@ -180,9 +198,14 @@ class DeclaredStartRoutes:
             )
         }
         results = []
+        shared = _shared_roots(anchors)
         for route in sorted(named):
             if not anchors[route]:
                 why = NO_ANCHOR_REQUESTED if route in sources else NO_ANCHOR
+                results.append(RouteResult(route, Held.BLOCKED_UNVERIFIED, detail=why))
+                continue
+            if route in shared:
+                why = SHARED_ANCHOR.format(other=shared[route])
                 results.append(RouteResult(route, Held.BLOCKED_UNVERIFIED, detail=why))
                 continue
             result = judged[route]

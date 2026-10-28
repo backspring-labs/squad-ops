@@ -29,6 +29,12 @@ NO_MANIFEST = "the approved manifest its routes were read from can't be read"
 NO_ANCHOR_REQUESTED = (
     "the change request adds it, and names no anchor of its view, so no page can show it rendered"
 )
+#: §24co item 13: a fallback or a redirect shows another view's root anchor, so the root-anchor rule
+#: reads it broken only while no two routes share one (#2780 makes them unique at the rails). Where
+#: two do, neither page can be told from the other's.
+SHARED_ANCHOR = (
+    "its view's root anchor is also {other}'s, so its page can't be told from that one's"
+)
 #: Where a route in the expected set came from (the record's ``source``).
 FROM_MANIFEST, FROM_CHANGE_REQUEST = "approved_manifest", "change_request"
 
@@ -124,6 +130,7 @@ __all__ = [
     "NO_RUNNER",
     "NO_ANCHOR_REQUESTED",
     "NO_START_DECLARATION",
+    "SHARED_ANCHOR",
     "SECRET_NOT_AVAILABLE",
     "START_FAILED",
     "ProductRoutes",

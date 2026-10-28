@@ -5025,6 +5025,36 @@ says what the build settled where the text leaves a choice, and the rule each re
     - **The sample applications:** the qa role still reads with its pattern, which counts a template's and a
       `<noscript>`'s content as well as a script's text. Changing that changes counted evidence, so it's added to #2776
       and not changed here.
+13. **The evidence that the intended view rendered** (the outside review of PR #2777 at `c1cfe48a`, P2, 2026-10-28).
+    - **The rule:** a route renders when *the requested route's own root anchor is carried by a connected, not inert,
+      not-hidden-in-markup element, in the page the browser rendered at that route*. A successful browser exit adds
+      nothing: exit 0 with an empty dump is unread, and exit 0 with no qualifying anchor is broken.
+    - **Hidden in markup, fail-closed** (`route_rendering.hidden_in_markup`). An anchor doesn't count when its element,
+      or any ancestor, has:
+      - the `hidden` attribute, whatever its value (`until-found` included);
+      - `aria-hidden="true"`;
+      - an inline `style` declaring `display: none`, `visibility: hidden` or `collapse`, or `content-visibility:
+        hidden`, `!important` or not.
+      These are treated like item 12's inert markup. A descendant that re-shows itself (`visibility: visible` under a
+      hidden ancestor) still doesn't count: fail-closed.
+    - **How:** the open elements are now read as a stack. Chromium's serializer writes every non-void element's end
+      tag, so the stack is the document's tree. An end tag that opened nothing is ignored, so a stray one can't end a
+      hidden region early. An unclosed hidden or inert element leaves the rest of the page uncounted.
+    - **Fallbacks and redirects.** A client route on a single-page app answers 200 with `index.html` for any path. So
+      an HTTP status says nothing about a client route, and `--dump-dom` shows neither the status nor whether the
+      navigation stayed on the route. Read live on the `-7` image: a script that sends `/settings` to `/` leaves
+      home's DOM in the dump.
+      - What the dump does show is which view rendered. A fallback or a redirect renders another view, whose root
+        anchor isn't the requested one, so the root-anchor rule reads it broken.
+      - That holds only while no two routes share a root anchor. PR #2780 makes them unique at the rails (SIP-0109
+        §24cp). The renderer refuses it here too: two routes in the expected set whose views share a root anchor are
+        both `blocked_unverified`, "its view's root anchor is also <the other>'s", since neither page can be told
+        from the other's (fail-closed).
+    - **Not judged here, named:** hiding by a stylesheet rule (a class, a media query, a parent's rule) can't be seen
+      in a dump. Judging it, with the final URL and the status, needs the live DOM through the evaluator's driver.
+      That moves the image's tag and ends the `-7` series (item 4). It's filed for the next evaluator tag as #2782.
+    - **The sample applications:** the qa role's pattern counts a hidden element's anchor too. That's #2776's change to
+      counted evidence, and it isn't changed here.
 
 **The cost.** One more start of the product for each increment whose expected set isn't empty: its install, build and
 start. And one Chromium container for each route.
@@ -5033,6 +5063,8 @@ start. And one Chromium container for each route.
 - the qa role's reading of a sample application's pages from their elements (#2776);
 - an approved secret resolved for the start (#2421, 2.6);
 - an anchor a change request names for a route it adds, so an added route can hold (item 11; #2779).
+- a visibility reading from the live DOM, with the final URL and the status, for hiding by a stylesheet rule (item 13;
+  #2782, the next evaluator tag).
 
 **Evidence.**
 - **The wiring, entered at the live caller:** `test_product_runner_acceptance_wiring.py` enters at the executor's end
@@ -5078,7 +5110,28 @@ start. And one Chromium container for each route.
   - the wiring test at the executor's end of plan: a fallback page with `/`'s anchor only in a template rejects the
     increment, and its record shows only `not-found-view` seen;
   - read live on the `-7` image's Chromium, the dump of such a page: as item 12 says.
-- **Mutants:** thirty-seven, all caught: items 1 to 10's twenty-seven, five on item 11, and five on item 12. Item 12's
+- **Item 13's evidence** (the outside review's P2 at `c1cfe48a`):
+  - `test_route_rendering.py`: no anchor counted under each hiding attribute or inline declaration, on an element or
+    its ancestor; `aria-hidden="false"` and a style that hides nothing still counted; a hidden void element, a stray end
+    tag inside a hidden region, and an unclosed hidden element;
+  - `test_product_routes.py`: a redirect that renders home, a fallback that renders another view, and an anchor hidden
+    by its attribute, an ancestor's inline style or an `aria-hidden` ancestor, each read broken, never held; and two
+    routes sharing a root anchor, both blocked;
+  - the wiring test at the executor's end of plan: `/`'s anchor only under an inline `display:none`, beside a
+    visible fallback, rejects the increment;
+  - read live on the `-7` image's Chromium (2026-10-28): the dump of a page whose anchors are hidden by `hidden=""`
+    and by an inline `display: none` reads `not-found` alone, and a redirect's dump reads home's anchor alone.
+- **Mutants:** forty-seven, all caught: items 1 to 10's twenty-seven, five on item 11, five on item 12 and ten on item
+  13:
+  - the hidden attribute, `aria-hidden`, an inline style, `display: none`, `visibility: hidden` and
+    `content-visibility: hidden` each ignored;
+  - `!important` read as part of the value;
+  - an ancestor's hiding not inherited;
+  - a stray end tag ending a hidden region;
+  - a hidden void element counted;
+  - a shared root anchor not refused.
+
+  Item 12's
   are a template's content read, a noscript's content read, an inert element never closed, a nested template
   closing the outer one, and a self-closed template read as opening nothing. Item 11's are:
   - the requested routes ignored;
@@ -5087,12 +5140,13 @@ start. And one Chromium container for each route.
   - delivery handing the renderer no requested routes;
   - the record's source lost.
 - **The loaded checks** `2619-product-routes` and `2777-review` (the runtime) and `2619-product-routes-sandbox` and
-  `2777-review-inert` (the sandbox service, which reads the pages)
+  `2777-review-inert` and `2777-review-hidden` (the sandbox service, which reads the pages)
   (`scripts/dev/loaded_checks.yaml`), each run on the source.
 
 **Who ruled.** The supervisor (the Spark lane) built §24bv point 3's rendering under the owner's direction of
-2026-10-21 and the 2.5 grants. Items 1 to 12 are the supervisor's choices, for the owner's review. Items 11 and 12
-answer the outside review's findings on PR #2777 (each a P2, relayed by the owner, 2026-10-28). Its direction was the supervisor's,
+2026-10-21 and the 2.5 grants. Items 1 to 13 are the supervisor's choices, for the owner's review. Items 11 to 13
+answer the outside review's findings on PR #2777 (each a P2, relayed by the owner, 2026-10-28). Item 13's direction was
+the supervisor's, and its unjudged case is named in it (#2782). Its direction was the supervisor's,
 and its choice not to read an anchor from prose is named in it. Item 9 adds a key
 to the `increment_evaluation` document, and item 3 adds a reader of contract 7, so it takes the outside review SIP-0112
 H.12 provides before the merge.
