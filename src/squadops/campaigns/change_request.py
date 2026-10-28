@@ -25,7 +25,7 @@ import hashlib
 import json
 import re
 from collections import Counter
-from collections.abc import Iterable, Sequence
+from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass, field
 from enum import StrEnum
 from fnmatch import fnmatch
@@ -243,6 +243,10 @@ class RefusalKind(StrEnum):
     #: §24cp (the outside review's P2 1): an added route with a parameter or a wildcard, whose
     #: page only a seed brings into being, and a route the request adds has none.
     ADDED_ROUTE_UNSEEDABLE = "added_route_unseedable"
+    #: §24cp (the outside review's final round, P2): an added page's anchor that another page
+    #: already carries, a pinned route's in the approved manifest or another added page's. A page
+    #: the build never made could show it: the app's fallback renders that other view there.
+    ANCHOR_NOT_UNIQUE = "anchor_not_unique"
 
 
 @dataclass(frozen=True)
@@ -775,6 +779,10 @@ class ProductContext:
     #: approved manifest's anchor (§24co item 5). A page criterion on any other route adds it, and
     #: names its view's anchor.
     judged_routes: tuple[str, ...] = ()
+    #: §24cp: each route of the approved manifest the product was initialized from (SIP-0112
+    #: H.1) with every test id its view carries, the first its root (#659). An added page names an
+    #: anchor none of them carries. Empty for a product initialized from no manifest.
+    route_anchors: tuple[tuple[str, tuple[str, ...]], ...] = ()
 
     def serves(self, kind: str) -> tuple[str, ...]:
         return tuple(value for k, value in self.surfaces if k == kind)
@@ -1073,7 +1081,43 @@ def _anchor_refusals(request: ChangeRequest, product: ProductContext) -> list[Pr
                     + "): its view has one root element, so they name one anchor",
                 )
             )
+    single = {route: next(iter(anchors)) for route, anchors in named.items() if len(anchors) == 1}
+    for route, others in sorted(anchor_conflicts(single, dict(product.route_anchors)).items()):
+        anchor, ids = single[route], named[route][single[route]]
+        refusals.append(
+            ProposalRefusal(
+                RefusalKind.ANCHOR_NOT_UNIQUE,
+                f"criteria {', '.join(ids)} name anchor {anchor!r} for {route}, a page this change "
+                f"adds, and {', '.join(others)} already carries it. A page the build never makes "
+                "would show it anyway, as the app's fallback renders that other view there. Name "
+                "an anchor no other page carries, such as one made from this page's own path",
+            )
+        )
     return refusals
+
+
+def anchor_conflicts(
+    added: Mapping[str, str], taken: Mapping[str, Iterable[str]]
+) -> dict[str, list[str]]:
+    """Each added route whose anchor another page carries (§24cp), with those pages, sorted: a
+    route in ``taken`` carrying it among its test ids (the approved manifest's views, each with
+    every id it renders), or another added route naming it. One reading for the rails, which
+    refuse the request, and the renderer, which blocks such a route on a request stored before
+    the rule. An anchor no other page carries is the only evidence that page renders its own
+    view: a reused one reads held on a page the build never made, where the app's fallback renders
+    the other view."""
+    carriers: dict[str, set[str]] = {}
+    for route, ids in taken.items():
+        for testid in ids:
+            carriers.setdefault(testid, set()).add(route)
+    for route, anchor in added.items():
+        if anchor:
+            carriers.setdefault(anchor, set()).add(route)
+    return {
+        route: sorted(carriers[anchor] - {route})
+        for route, anchor in added.items()
+        if anchor and carriers[anchor] - {route}
+    }
 
 
 def _unseedable(route: str) -> bool:

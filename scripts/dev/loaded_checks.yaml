@@ -2121,3 +2121,27 @@ checks:
       text = (pathlib.Path(p.__file__).parent / "request_templates" / "request.cycle_repair_task.md").read_text()
       print(hasattr(DevelopmentCorrectionRepairHandler, "_render_increment_views_section"), "{{increment_views_section}}" in text)
     expect: "True True"
+  - id: "2780-rollout-runtime"
+    what: the runtime hashes and loads an anchored change request as the rails store it; with its pair below, a deploy where only one side carries the anchor fails verification (SIP-0109 §24cp, #2780's final review P3)
+    container: squadops-runtime-api
+    code: |
+      import dataclasses as d
+      from squadops.campaigns.change_request import ChangeKind, ChangeRequest, Criterion, IncrementBasis, PlacedCriterionFile, SurfaceKind, content_hash, load_stored_change_request, stored_change_request
+      c = Criterion("P1", "s", SurfaceKind.CLIENT_ROUTE, "/p", "o", anchor="p-view")
+      f = PlacedCriterionFile("P1", "a/criterion_P1.test.js")
+      r = ChangeRequest("prop_x", 1, "t", ChangeKind.FEATURE, (), (), (c,), (), basis=IncrementBasis.CAMPAIGN_BRANCH, footprint=("a/**", f.path), criterion_files=(f,))
+      h = content_hash(r)
+      print(h, load_stored_change_request(stored_change_request(d.replace(r, content_hash=h))).criteria[0].anchor)
+    expect: "2e1bb4fc15f593403f6f47a6c8ec532ccfa7336e411cdf4c819082a2502dfc3c p-view"
+  - id: "2780-rollout-nat"
+    what: the rails hash and store an anchored change request exactly as the runtime loads it, and refuse an anchor another page carries; the pair of 2780-rollout-runtime (SIP-0109 §24cp, #2780's final review P2 and P3)
+    container: squadops-nat
+    code: |
+      import dataclasses as d
+      from squadops.campaigns.change_request import ChangeKind, ChangeRequest, Criterion, IncrementBasis, PlacedCriterionFile, RefusalKind, SurfaceKind, anchor_conflicts, content_hash, load_stored_change_request, stored_change_request
+      c = Criterion("P1", "s", SurfaceKind.CLIENT_ROUTE, "/p", "o", anchor="p-view")
+      f = PlacedCriterionFile("P1", "a/criterion_P1.test.js")
+      r = ChangeRequest("prop_x", 1, "t", ChangeKind.FEATURE, (), (), (c,), (), basis=IncrementBasis.CAMPAIGN_BRANCH, footprint=("a/**", f.path), criterion_files=(f,))
+      h = content_hash(r)
+      print(h, load_stored_change_request(stored_change_request(d.replace(r, content_hash=h))).criteria[0].anchor, RefusalKind.ANCHOR_NOT_UNIQUE.value, anchor_conflicts({"/x": "home-view"}, {"/": ("home-view",)}))
+    expect: "2e1bb4fc15f593403f6f47a6c8ec532ccfa7336e411cdf4c819082a2502dfc3c p-view anchor_not_unique {'/x': ['/']}"

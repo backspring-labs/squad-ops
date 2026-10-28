@@ -291,3 +291,36 @@ async def test_an_added_parameterized_page_is_refused_and_never_stored_for_a_bui
     assert "/reports/:report_id, a page this change adds" in second
     assert not result.success
     assert not result.outputs.get("artifacts")
+
+
+async def test_an_added_page_reusing_a_pinned_views_anchor_is_returned_and_revised():
+    """The outside review's final round (P2), at ``handle()``: the rails read every anchor of the
+    approved manifest from the input the run composed (``product_context``), so a page this change
+    adds that reuses the home view's root is returned for revision, and only an anchor of its own
+    is stored. Bug caught: the manifest's anchors composed and never read, so the reuse passes and
+    a page never built reads held where the app's fallback renders the home view."""
+    from tests.unit.campaigns.test_product_routes import MANIFEST
+
+    inputs = _with_pages()
+    inputs["product_proposal"]["approved_manifest"] = {
+        "stack": "fullstack_fastapi_react",
+        "commit": "1" * 40,
+        "content": MANIFEST,
+    }
+    reusing = yaml.safe_load(_ADDS_A_PAGE)
+    reusing["criteria"][0]["anchor"] = "shelf-list"  # the home view's root, in MANIFEST
+    own = yaml.safe_load(_ADDS_A_PAGE)
+    own["criteria"][0]["anchor"] = "totals-view"
+    ctx = _ctx(
+        _fenced(yaml.safe_dump(reusing, sort_keys=False)),
+        _fenced(yaml.safe_dump(own, sort_keys=False)),
+    )
+
+    result = await StrategyProposeIncrementHandler().handle(ctx, inputs)
+
+    _first, second = _prompts(ctx)
+    assert "[anchor_not_unique]" in second
+    assert "anchor 'shelf-list' for /totals, a page this change adds, and / already" in second
+    assert result.success, result.error
+    [artifact] = result.outputs["artifacts"]
+    assert yaml.safe_load(artifact["content"])["criteria"][0]["anchor"] == "totals-view"

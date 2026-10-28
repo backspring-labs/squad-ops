@@ -103,9 +103,12 @@ must_not_break: []                 # earlier criteria ids, from the list above
 opened in a browser on the built product. A page this change adds holds only when an element on it
 carries `data-testid` equal to the anchor, so the build gives the view's root element that
 attribute, as `<section data-testid="export-view">` in the example. A page with no element carrying
-it rejects the increment. Write the anchor as a letter followed by letters, digits, `-` or `_`. A
-page acceptance already reads is judged by its own view's anchor, so a criterion there names none,
-and a criterion on anything but a page never names one. A page this change adds is opened at its
+it rejects the increment. Give each page its own anchor, one no other page carries (`export-view`
+for `/export`, never the home page's): a page the build never made can show another page's view
+where the app falls back to it, so an anchor another page carries is refused. Write the anchor as a
+letter followed by letters, digits, `-` or `_`. A page acceptance already reads is judged by its own
+view's anchor, so a criterion there names none, and a criterion on anything but a page never names
+one. A page this change adds is opened at its
 path exactly as written, so give it a fixed path, such as `/reports/latest`: a page this change adds
 whose path has a parameter (`/reports/:report_id`, `/reports/{report_id}`, `/reports/[report_id]`)
 or a `*` is refused, because nothing fills it in.

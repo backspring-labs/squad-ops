@@ -36,8 +36,10 @@ from typing import Any
 import yaml
 
 from squadops.campaigns.acceptance import Held, RouteResult, route_rendering
+from squadops.campaigns.change_request import anchor_conflicts
 from squadops.campaigns.increment_tree import declared_routes, route_seeds, unseeded_routes
 from squadops.campaigns.product_routes import (
+    ANCHOR_NOT_UNIQUE,
     FROM_CHANGE_REQUEST,
     NO_ANCHOR,
     NO_ANCHOR_REQUESTED,
@@ -149,6 +151,11 @@ class DeclaredStartRoutes:
         # view's anchor is the one its criteria name (§24cp). With none it can block, and never
         # hold (§8.3's evidence is the anchor).
         anchors.update({r: (requested_routes[r],) if requested_routes[r] else () for r in added})
+        # §24cp: an added route's anchor another page carries shows nothing of its own view (the
+        # app's fallback renders that other view on a page never built), so it's blocked.
+        reused = anchor_conflicts(
+            {r: requested_routes[r] for r in added}, declared_routes(manifest) if manifest else {}
+        )
         seeds = {r: s for r, s in route_seeds(manifest).items() if r in pinned} if manifest else {}
         start, unstartable = product_start(configuration)
         if unstartable is not None or start is None:
@@ -205,8 +212,14 @@ class DeclaredStartRoutes:
         results = []
         shared = _shared_roots(anchors)
         for route in sorted(named):
-            if not anchors[route]:
-                why = NO_ANCHOR_REQUESTED if route in sources else NO_ANCHOR
+            if not anchors[route] or route in reused:
+                why = (
+                    f"{ANCHOR_NOT_UNIQUE} ({', '.join(reused[route])})"
+                    if route in reused
+                    else NO_ANCHOR_REQUESTED
+                    if route in sources
+                    else NO_ANCHOR
+                )
                 results.append(RouteResult(route, Held.BLOCKED_UNVERIFIED, detail=why))
                 continue
             if route in shared:

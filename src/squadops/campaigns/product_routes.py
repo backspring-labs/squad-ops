@@ -36,6 +36,11 @@ NO_ANCHOR_REQUESTED = (
 SHARED_ANCHOR = (
     "its view's root anchor is also {other}'s, so its page can't be told from that one's"
 )
+
+#: §24cp: an added route whose requested anchor another page carries (``anchor_conflicts``). A page
+#: the build never made would read held there, where the app's fallback renders that other view.
+#: The rails refuse such a request; one stored before the rule is blocked by this.
+ANCHOR_NOT_UNIQUE = "the change request names an anchor another page carries"
 #: Where a route in the expected set came from (the record's ``source``).
 FROM_MANIFEST, FROM_CHANGE_REQUEST = "approved_manifest", "change_request"
 
@@ -128,6 +133,7 @@ def routes_blocked(
 
 
 __all__ = [
+    "ANCHOR_NOT_UNIQUE",
     "NO_ANCHOR",
     "NO_MANIFEST",
     "NO_RUNNER",

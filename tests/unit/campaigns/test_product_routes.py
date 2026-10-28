@@ -628,3 +628,36 @@ def test_the_routes_a_stored_request_names_carry_their_anchors_in_order():
 
     assert requested_routes(stored) == {"/shelves/archive": "archive-view", "/add": ""}
     assert list(requested_routes(stored)) == ["/shelves/archive", "/add"]
+
+
+@pytest.mark.parametrize(
+    ("requested", "blocked"),
+    [
+        ({"/shelves/archive": "shelf-list"}, {"/shelves/archive": "/"}),
+        ({"/shelves/archive": "add-shelf-link"}, {"/shelves/archive": "/"}),
+        (
+            {"/shelves/archive": "archive-view", "/shelves/recent": "archive-view"},
+            {"/shelves/archive": "/shelves/recent", "/shelves/recent": "/shelves/archive"},
+        ),
+    ],
+    ids=["a pinned view's root", "another id a pinned view carries", "two added pages"],
+)
+async def test_an_added_route_whose_anchor_another_page_carries_never_holds(
+    tmp_path, requested, blocked
+):
+    """The outside review's final round (P2), at the renderer, for a request stored before the
+    rails refused it: the candidate never builds the added pages, and the app's fallback renders
+    the home view (or one shared view) there, so each page shows the anchor its request named.
+    Bug caught: such a page read held, an increment accepted with a page that doesn't exist."""
+    fallback = _dom("shelf-list", "add-shelf-link", "archive-view")
+    pages = {**PAGES, **{f"http://{APP_IP}:5173{r}": fallback for r in requested}}
+
+    routes = await _render(tmp_path, pages=pages, requested=requested)
+
+    held = _held(routes)
+    for route, other in blocked.items():
+        assert held[route] == (
+            "blocked_unverified",
+            f"the change request names an anchor another page carries ({other})",
+        )
+    assert held["/"] == ("held", "")  # the pinned page still holds by its own anchor

@@ -683,3 +683,27 @@ async def test_an_added_route_is_judged_at_delivery_by_the_anchor_its_request_na
     assert [u for u in document["unmet"] if u.startswith("route")] == (
         [] if held == "held" else ["route /totals: missing totals-view"]
     )
+
+
+async def test_a_missing_added_route_reusing_a_pinned_views_anchor_is_never_held(world):  # noqa: F811
+    """The outside review's final round (P2), at the executor's end of plan: the request (stored
+    before the rails refused it) names ``/``'s own root, ``counter-list``, for ``/totals``. The
+    candidate never builds ``/totals``, and the app's fallback renders the counter list there.
+    Bugs caught: that page read held, so the increment is accepted with a page that doesn't
+    exist; the pinned ``/`` losing its own judgement."""
+    repo = world[0]
+    home = _TALLY_PAGES["http://10.89.0.7:8080/"]
+    _routed(world, pages={**_TALLY_PAGES, "http://10.89.0.7:8080/totals": home})
+    report = tracked_files(repo.path, repo.second_commit)[REPORT]
+
+    document = await _judged(
+        world, {REPORT: report + _LINE, R1: _R1_TEST}, request=_adds_totals("counter-list")
+    )
+
+    held = {r["path"]: r["held"] for r in document["routes"]}
+    assert held == {"*": "held", "/": "held", "/totals": "blocked_unverified"}
+    assert (
+        "route /totals: not rendered: the change request names an anchor another page carries (/)"
+        in document["blocked"]
+    )
+    assert document["verdict"] != "accepted"

@@ -536,3 +536,56 @@ def test_a_parameterized_page_the_profile_judges_is_not_refused_for_its_seed():
     )
 
     assert verdict.accepted, verdict.refusals
+
+
+#: The approved manifest's routes and the test ids each view carries, as ``product_context`` reads
+#: them from a greenfield product's input: the home page's root and its link, the 404 view's root.
+_ANCHORED_PAGES = dataclasses.replace(
+    _WITH_PAGES,
+    route_anchors=(("/", ("home-view", "add-entry-link")), ("*", ("not-found-view",))),
+)
+
+
+@pytest.mark.parametrize(
+    ("criteria", "refused"),
+    [
+        ([_on_a_page("/export", "home-view")], {"/export": "/"}),
+        ([_on_a_page("/export", "add-entry-link")], {"/export": "/"}),
+        ([_on_a_page("/export", "not-found-view")], {"/export": "*"}),
+        (
+            [_on_a_page("/export", "export-view"), _on_a_page("/archive", "export-view", "R2")],
+            {"/archive": "/export", "/export": "/archive"},
+        ),
+    ],
+    ids=[
+        "a pinned page's root",
+        "another id a pinned view carries",
+        "the fallback view's root",
+        "two added pages, one anchor",
+    ],
+)
+def test_an_added_pages_anchor_another_page_carries_is_refused_by_name(criteria, refused):
+    """The outside review's final round (P2): an added page's anchor is the only evidence its
+    view renders. One another page carries reads held on a page the build never made, where the
+    app's fallback renders that other view. Bugs caught: uniqueness checked within a route only,
+    so ``/export`` reusing the home view's ``home-view`` holds while ``/export`` was never built;
+    only a view's root read, so an id it carries elsewhere is reused; two added pages sharing
+    one."""
+    verdict = validate_proposal(_request(criteria=criteria), _context(product=_ANCHORED_PAGES))
+
+    kinds = [r.kind for r in verdict.refusals]
+    assert kinds == [RefusalKind.ANCHOR_NOT_UNIQUE] * len(refused)
+    for route, other in refused.items():
+        [refusal] = [r for r in verdict.refusals if f"for {route}," in r.detail]
+        assert f"and {other} already carries it" in refusal.detail
+        assert "Name an anchor no other page carries" in refusal.detail
+
+
+def test_an_added_page_with_an_anchor_no_page_carries_is_accepted():
+    """The edge beside the refusal. Bug caught: every anchor refused once a manifest is known."""
+    verdict = validate_proposal(
+        _request(criteria=[_on_a_page("/export", "export-view")]),
+        _context(product=_ANCHORED_PAGES),
+    )
+
+    assert verdict.accepted, verdict.refusals
