@@ -298,6 +298,9 @@ ProjectSourceContext:
   repo_uri: str                            # the authoritative external locator
   development_baseline_commit: str         # Git commit, 40 hex characters
   integrated_upstream_commit: str | null   # last confirmed integrated revision
+  pinned_commit: str                       # what the unit's tree is seeded from (H.9)
+  pinned_from: project_baseline | campaign_branch
+  previous_verification_ref: str | null    # a campaign_branch pin's regression baseline (H.9)
 
 # Contract 5: produced by Outcome Evaluation, stored by this SIP in Project history
 OutcomeEvaluationRef:
@@ -2189,4 +2192,64 @@ nothing to report yet.
   - **Revision 7** restored revision 4's configuration, and its capture reads the original two disclosed gaps.
 
 **Who ruled:** the MacBook lane, under the owner's delegation of 2026-10-18, within H.4 and H.6 as ruled.
+
+## H.9 Contract 1's pin for an increment: a repository-backed Campaign's cycle is pinned at its campaign branch's head (2026-10-28; #2619; the MacBook lane, for the Spark lane's G4)
+
+**Why.** H.4's "Contract 1's pin, for an increment" and SIP-0109 §24cd point 1 have a repository-backed Campaign's
+increment pinned at its campaign branch's head, never at the Project's baseline. The Spark lane's G4 on #2733 agreed
+the shape. `development_baseline_commit` keeps meaning the Project's baseline, because H.2's gate
+(`require_reconciled_upstream`) keys a sync's findings on it. Reusing it for the head would let every increment
+through the drift gate.
+
+**What's added to `ProjectSourceContext`** (schema `project-source-context/v1`, additive):
+- **`pinned_commit`:** the commit the unit's tree is seeded from, verified against and captured on.
+- **`pinned_from`:** `project_baseline`, or `campaign_branch`.
+- **`previous_verification_ref`:** a `campaign_branch` pin's regression baseline. That's the source verification
+  (`source_verification` in the vault) of the increment whose promotion made the head. It's null at the Project's
+  baseline, and at the calibration record's commit, whose baseline is its inherited one (SIP-0109 §24bv point 1).
+
+**How it's pinned.** The Campaign launcher reads the head at drain and hands `prepare_cycle` a `CampaignHead(commit,
+tree_identity, previous_verification_ref)` (SIP-0109 §24cd point 1). For a repository-backed Campaign's cycle of any
+kind but the calibration:
+- **with no head, it's refused** with 409 `PROJECT_STATE_CONFLICT`, never pinned at the Project's baseline by default.
+  The launcher escalates on it, with the intent pending;
+- **a head with no verification** must be the Project's baseline commit, where the calibration record leaves the
+  branch;
+- **a head with a verification** must name an accepted source verification of the head's own tree. Otherwise the
+  increment has no regression baseline, and it's refused.
+
+**What reads it:**
+- **The seed** (`seed_checkout_artifacts`) reads the tree, its manifest and its provenance at `pinned_commit`.
+- **Delivery** (`deliver_source_change`) verifies on, and captures onto, `pinned_commit`. A `campaign_branch` pin
+  is refused at delivery for now, naming SIP-0109 §24bv point 3. Its comparison with the previous verification is
+  the Spark lane's to build, and until then no candidate built on a head is judged against a baseline it wasn't
+  built on.
+- **H.2's gate, the inherited-baseline check and the derived profile** (H.8) keep reading the Project's baseline:
+  `development_baseline_commit` and its revision.
+
+**A context stored before 2.5** has none of the three fields. Every unit that stored one was pinned at its Project's
+baseline, so that's how it reads. A stored context with only some of the three is refused, as is a `project_baseline`
+pin that names another commit.
+
+**The shared fixture** records the three fields in all four of `project_source_context`'s forms. The stale form names
+the first commit in every commit field.
+
+**The evidence:**
+- **`tests/unit/shared_contract/test_contract1_source_context.py`**, entered at `prepare_cycle`: an increment with no
+  head; a head past the baseline with no verification; a verification the vault doesn't hold, one that regressed, and
+  one of another tree; and the accepted verification of the head's tree, which pins at the head with the Project's
+  baseline intact and round-trips as stored. Also the reader: a context from before the pin, and three malformed
+  pins. The first increment after the calibration pins the same tree as a standalone create, from the campaign
+  branch.
+- **`tests/unit/cycles/test_source_backed_run.py`**, entered at `RunProvisioning.seed` on the fixture's real clone:
+  an increment pinned at the first commit is seeded there, without the second commit's `tally/report.py`. Delivery
+  refuses a `campaign_branch` pin before reading any baseline.
+- **Four mutants, each caught:**
+  - the seed reading the Project's baseline;
+  - an increment with no head let through;
+  - the verification's tree not compared;
+  - a context from before the pin refused.
+
+**Who ruled:** the MacBook lane, under the owner's delegation of 2026-10-18. The shape is the one the Spark lane's G4
+on #2733 agreed. The Spark lane's G4 on this contract change is on its PR.
 
