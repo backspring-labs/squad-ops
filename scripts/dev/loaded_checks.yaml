@@ -2051,3 +2051,50 @@ checks:
       p = inspect.signature(CampaignCycleEvaluator.__init__).parameters
       print("projects" in p, "repository" in p, "tree" in inspect.signature(evaluate_cycle).parameters, SecretUnavailable.reason.value)
     expect: "True True True secret_not_available"
+  - id: "2779-runtime"
+    what: an added route is judged by the anchor its change request names, and the plan and the view's author are handed the pages a change adds with their anchors (SIP-0109 §24cp)
+    container: squadops-runtime-api
+    code: |
+      import inspect
+      from squadops.campaigns.increment_tree import view_lines
+      from squadops.campaigns.product_routes import requested_routes
+      from squadops.capabilities.context_assembly import get_context_contract
+      print(view_lines([{"route": "/a", "anchor": "a-view", "criteria": ["C1"]}]), get_context_contract("development.develop").increment_views, inspect.signature(requested_routes).return_annotation)
+    expect: "- page `/a`: anchor `a-view` (criteria C1) True dict[str, str]"
+  - id: "2779-nat"
+    what: the proposer's rails require a page the change adds to name its view's anchor, read the pages the profile judges, and its request teaches the field (SIP-0109 §24cp)
+    container: squadops-nat
+    code: |
+      import pathlib, squadops.prompts as p
+      from squadops.campaigns.change_request import RefusalKind
+      from squadops.capabilities.handlers.planning.proposal import product_context
+      text = (pathlib.Path(p.__file__).parent / "request_templates" / "request.strategy_propose_product_increment.md").read_text()
+      print(RefusalKind.ANCHOR_REQUIRED.value, product_context({"profile": {"client_routes": ["/"]}}).judged_routes, 'anchor: "export-view"' in text)
+    expect: "anchor_required ('/',) True"
+  - id: "2779-neo"
+    what: the developer and the dev plan author are shown the pages a change adds, each with its view's anchor (SIP-0109 §24cp)
+    container: squadops-neo
+    code: |
+      import pathlib, squadops.prompts as p
+      from squadops.capabilities.handlers.cycle import develop
+      from squadops.capabilities.handlers._plan_authoring import INCREMENT_SURFACES
+      text = (pathlib.Path(p.__file__).parent / "request_templates" / "request.development_develop.focused_build_task.md").read_text()
+      print(hasattr(develop, "increment_views_section"), "{{increment_views_section}}" in text, INCREMENT_SURFACES[-1][0])
+    expect: "True True request.increment_views_appendix"
+  - id: "2779-eve"
+    what: the suite's author and the qa plan author are shown the pages a change adds, each with its view's anchor (SIP-0109 §24cp)
+    container: squadops-eve
+    code: |
+      import inspect
+      from squadops.capabilities.handlers import increment_test_scope as s
+      from squadops.capabilities.handlers._plan_authoring import INCREMENT_SURFACES
+      print('scope.get("views")' in inspect.getsource(s.increment_test_scope_section), INCREMENT_SURFACES[-1][0])
+    expect: "True request.increment_views_appendix"
+  - id: "2779-max"
+    what: the sole-author plan merger is shown the pages a change adds, each with its view's anchor (SIP-0109 §24cp)
+    container: squadops-max
+    code: |
+      import pathlib, squadops.prompts as p
+      from squadops.capabilities.handlers._plan_authoring import INCREMENT_SURFACES
+      print(INCREMENT_SURFACES[-1], (pathlib.Path(p.__file__).parent / "request_templates" / "request.increment_views_appendix.md").is_file())
+    expect: "('request.increment_views_appendix', 'view_lines', 'increment_views_index') True"
