@@ -434,3 +434,47 @@ def test_escalations_lists_each_ones_state_failed_conditions_and_late_answer(get
             "list-ordering: insertion order",
         ],
     ]
+
+
+_PUSHED = {
+    "campaign_id": "cmp_1",
+    "branch": "squadops/cmp_1",
+    "commit": "b" * 40,
+    "lease": "a" * 40,
+    "forced": True,
+    "review_url": "https://forge.example.invalid/pull/7",
+    "entry_id": "ctl_1",
+    "replayed": False,
+}
+
+
+@patch("squadops.cli.commands.campaigns.gh_token", return_value="tok_invented_cli")
+@patch("squadops.cli.commands.campaigns._get_client")
+def test_push_review_sends_the_callers_own_token_and_says_how_it_pushed(get_client, _token):
+    """SIP-0109 §24ci (b). Bugs caught: the token left off, so the deploy would need one stored;
+    the token printed; the force and its lease not said, so a supervisor can't tell a rewrite."""
+    client = _client(post=_PUSHED)
+    get_client.return_value = client
+
+    result = runner.invoke(
+        app, ["campaigns", "push-review", "cmp_1", "--token-from-gh", "--idempotency-key", "k-1"]
+    )
+
+    assert result.exit_code == 0, result.output
+    client.post.assert_called_once_with(
+        "/api/v1/campaigns/cmp_1/review-pushes",
+        json={"idempotency_key": "k-1", "token": "tok_invented_cli"},
+    )
+    assert f"forced with a lease on {'a' * 12}" in result.output
+    assert "tok_invented_cli" not in result.output
+
+
+@patch("squadops.cli.commands.campaigns._get_client")
+def test_push_review_without_its_own_token_sends_nothing(get_client):
+    """The edge: no --token-from-gh. Bug caught: a request with no token, whose only way to
+    succeed would be a token stored in the deploy, which nothing stores for this push."""
+    result = runner.invoke(app, ["campaigns", "push-review", "cmp_1"])
+
+    assert result.exit_code == 2
+    assert "--token-from-gh" in result.output
+    get_client.assert_not_called()

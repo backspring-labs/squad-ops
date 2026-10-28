@@ -623,3 +623,134 @@ async def test_a_rebase_with_nothing_to_move_or_no_history_to_move(product, clon
     with pytest.raises(SourceUnavailable) as refused:
         await clones.rebase("prj-tally", **arguments)
     assert refused.value.reason == reason
+
+
+# --- SIP-0109 §24ci (b): a Campaign's review branch, forced only with a lease ---
+
+_CAMPAIGN = "cmp_review000001"
+_CAMPAIGN_REF = f"refs/squadops/campaign/{_CAMPAIGN}"
+_CAMPAIGN_BRANCH = f"squadops/{_CAMPAIGN}"
+
+
+async def _campaign_at(clones, commit: str, expected: str | None) -> None:
+    await clones.update_ref("prj-tally", _CAMPAIGN_REF, new_commit=commit, expected_commit=expected)
+
+
+async def _push(clones, product, lease):
+    await clones.push_campaign_branch(
+        "prj-tally", str(product.path), campaign_id=_CAMPAIGN, branch=_CAMPAIGN_BRANCH,
+        token="tok_invented_for_the_test", lease=lease,
+    )  # fmt: skip
+
+
+async def test_a_campaigns_review_branch_is_rewritten_only_under_its_lease(product, clones):
+    """§24ci (b). The first push creates the branch unforced; after a rebase the push replaces it
+    under a lease on what was pushed; a retry of a push that landed is up to date; and a branch
+    someone else moved since is refused and left as they left it. Bugs caught:
+    - a rebased head refused for good, so the review request never shows upstream's change;
+    - a force with no lease, so an outside reviewer's commit on the branch is overwritten;
+    - a retry after a push whose row never committed read as a moved branch."""
+    base = await clones.sync("prj-tally", str(product.path), "refs/heads/main")
+    first, second = await _branch_of_two(clones, base)
+    rebased = await clones.commit_tree(
+        "prj-tally", parent=base, files=(await clones.tree_at("prj-tally", second)).files,
+        executable=(), ref="refs/squadops/cyc_3/run_3", message="the rebased second\n",
+    )  # fmt: skip
+    await _campaign_at(clones, first, None)
+
+    await _push(clones, product, None)
+    pushed_first = _git(product.path, "rev-parse", f"refs/heads/{_CAMPAIGN_BRANCH}")
+    await _campaign_at(clones, rebased, first)
+    await _push(clones, product, first)
+    await _push(clones, product, first)  # the retry: the branch is already at the commit
+    pushed_rebased = _git(product.path, "rev-parse", f"refs/heads/{_CAMPAIGN_BRANCH}")
+    clone = str(clones._clone_dir("prj-tally"))
+    _git(product.path, "fetch", "-q", clone, f"+{second}:refs/heads/{_CAMPAIGN_BRANCH}")  # another
+    await _campaign_at(clones, first, rebased)
+
+    with pytest.raises(SourceUnavailable) as moved:
+        await _push(clones, product, rebased)
+
+    assert (pushed_first, pushed_rebased) == (first, rebased)
+    assert moved.value.reason == "lease_refused"
+    assert _git(product.path, "rev-parse", f"refs/heads/{_CAMPAIGN_BRANCH}") == second
+    assert "tok_invented_for_the_test" not in str(moved.value)
+
+
+async def test_a_campaigns_first_push_never_forces_over_a_branch_already_there(product, clones):
+    """The edge: no push recorded yet, and the product already holds the branch with other
+    history. Bug caught: a first push forced over it, since with no lease there is nothing to
+    say the branch is the Campaign's."""
+    base = await clones.sync("prj-tally", str(product.path), "refs/heads/main")
+    first, _second = await _branch_of_two(clones, base)
+    await _campaign_at(clones, first, None)
+    other = await clones.commit_tree(
+        "prj-tally", parent=base, files={"other.txt": b"other\n"}, executable=(),
+        ref="refs/squadops/cyc_9/run_9", message="someone else's\n",
+    )  # fmt: skip
+    _git(
+        product.path,
+        "fetch",
+        "-q",
+        str(clones._clone_dir("prj-tally")),
+        f"{other}:refs/heads/{_CAMPAIGN_BRANCH}",
+    )
+
+    with pytest.raises(SourceUnavailable) as refused:
+        await _push(clones, product, None)
+
+    assert refused.value.reason == "not_fast_forward"
+    assert _git(product.path, "rev-parse", f"refs/heads/{_CAMPAIGN_BRANCH}") == other
+
+
+@pytest.mark.parametrize(
+    ("campaign_id", "branch", "lease", "reason"),
+    [
+        ("cmp_review000001", "squadops/cyc_1", None, "ref_refused"),
+        ("cmp_review000001", "main", None, "ref_refused"),
+        ("cyc_1", "squadops/cyc_1", None, "ref_refused"),
+        ("cmp_review000001", "squadops/cmp_review000001", "HEAD~1", "not_a_commit"),
+    ],
+    ids=["a-runs-branch", "the-products-branch", "not-a-campaign", "a-lease-not-a-commit"],
+)
+async def test_only_a_campaigns_own_branch_is_pushed_with_a_lease(
+    product, clones, campaign_id, branch, lease, reason
+):
+    """The widening of "never forced" is for a Campaign's review branch alone. Bugs caught: a
+    lease used to rewrite a run's review branch or the product's own; a lease git would read as
+    a revision expression."""
+    with pytest.raises(SourceUnavailable) as refused:
+        await clones.push_campaign_branch(
+            "prj-tally", str(product.path), campaign_id=campaign_id, branch=branch, token="t",
+            lease=lease,
+        )  # fmt: skip
+    assert refused.value.reason == reason
+
+
+async def test_a_leased_push_carries_its_token_in_the_environment_never_an_argument(
+    product, clones, monkeypatch
+):
+    """The token's rule for a contribution holds for a Campaign's push: an environment header for
+    this one push. Bugs caught: the token in an argument, which a process listing shows; the
+    lease left off the command, so the push isn't forced at all, or forced without one."""
+    await clones.sync("prj-tally", str(product.path), "refs/heads/main")
+    monkeypatch.setattr("socket.getaddrinfo", lambda *a, **k: [(2, 1, 6, "", ("140.82.112.3", 0))])
+    calls = []
+
+    def run(command, **kwargs):
+        calls.append((command, kwargs["env"]))
+        return subprocess.CompletedProcess(command, 0, b"", b"")
+
+    monkeypatch.setattr("adapters.tools.git_source.subprocess.run", run)
+    await clones.push_campaign_branch(
+        "prj-tally", "https://github.com/owner/tally.git", campaign_id=_CAMPAIGN,
+        branch=_CAMPAIGN_BRANCH, token="github_pat_inv3nted", lease="a" * 40,
+    )  # fmt: skip
+
+    [(command, env)] = calls
+    assert not any("inv3nted" in arg for arg in command)
+    assert f"--force-with-lease=refs/heads/{_CAMPAIGN_BRANCH}:{'a' * 40}" in command
+    assert command[-2:] == ["https://github.com/owner/tally.git",
+                            f"{_CAMPAIGN_REF}:refs/heads/{_CAMPAIGN_BRANCH}"]  # fmt: skip
+    header = base64.b64decode(env["GIT_CONFIG_VALUE_0"].removeprefix("Authorization: Basic "))
+    assert header == b"x-access-token:github_pat_inv3nted"
