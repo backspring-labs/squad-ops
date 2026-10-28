@@ -331,6 +331,21 @@ def test_a_stored_placement_changed_after_the_ruling_is_refused_by_name(edit, re
         load_stored_change_request(_stored(**edit))
 
 
+def test_the_ruling_binds_the_placement_where_nothing_else_tells_it_apart():
+    """The hash half of P2: a placement moved to another file of the footprint named for its
+    criterion, the footprint untouched, is consistent on its face. Bug caught: the placement left
+    out of the hash, so the build writes, and the evaluation freezes, a file nobody approved."""
+    authored = _request(footprint=["tally/report.py", "tests/check_criterion_R1.py"])
+    context = _context(scope=("tally/**", "tests/**"))
+    data = yaml.safe_load(
+        stored_change_request(validate_proposal(authored, context).change_request)
+    )
+    data["criterion_files"] = [{"criterion_id": "R1", "path": "tests/check_criterion_R1.py"}]
+
+    with pytest.raises(ValueError, match="does not match its hash"):
+        load_stored_change_request(yaml.safe_dump(data, sort_keys=False))
+
+
 def test_a_sample_applications_request_carrying_a_placement_is_refused():
     """The mirror: a sample application's stack places its criteria. Bug caught: a placement
     written into its stored request read by ``increment_criterion_files`` over the stack's."""
