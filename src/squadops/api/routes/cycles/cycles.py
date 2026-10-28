@@ -2,6 +2,7 @@
 Cycle API routes (SIP-0064 §9.3).
 """
 
+import json
 import logging
 import uuid
 from dataclasses import dataclass
@@ -45,6 +46,7 @@ from squadops.api.runtime.deps import (
 )
 from squadops.auth.models import AuditEvent, Identity, Scope
 from squadops.campaigns.change_request import load_stored_change_request
+from squadops.campaigns.models import CycleKind
 from squadops.campaigns.proposal_rating import (
     PROPOSAL_RATING_ARTIFACT_TYPE,
     PROPOSAL_RATING_FILENAME,
@@ -104,8 +106,14 @@ from squadops.memory.records import RecordRefused, Source, SourceKind
 from squadops.memory.reference_binding import bound_for_cycle
 from squadops.memory.task_instructions import admitted, requested_references
 from squadops.ports.llm.provider import LLMCapability
-from squadops.projects.source_context import ProjectSourceContext
+from squadops.projects.source_context import (
+    CAMPAIGN_BRANCH,
+    PROJECT_BASELINE,
+    ProjectSourceContext,
+)
 from squadops.projects.sync import unreconciled
+from squadops.projects.verification import ACCEPTED as VERIFICATION_ACCEPTED
+from squadops.projects.verification import SOURCE_VERIFICATION_TYPE
 from squadops.sandbox.environment import get_environment_contract
 from squadops.sandbox.main import sandbox_config_from_env
 from squadops.sandbox.preflight import sandbox_environment_decision
@@ -429,17 +437,20 @@ def first_run(cycle: Cycle, *, initiated_by: str) -> Run:
 
 
 def pin_source_context(
-    project: Project, precondition: SourcePreconditionDTO | None
+    project: Project, precondition: SourcePreconditionDTO | None, head: Any = None
 ) -> ProjectSourceContext | None:
     """SIP-0112 contract 1 (FR-04, FR-09, §D.3): an external Project's source, resolved from the
     registry's record and pinned before dispatch. A sample application has none. A stated
     precondition the Project has moved past is refused; an absent one pins the current source,
-    which is persisted all the same."""
+    which is persisted all the same.
+
+    ``head`` is a repository-backed Campaign increment's ``CampaignHead`` (H.4, SIP-0109 §24cd
+    point 1): its tree is pinned there, and the Project's baseline stays recorded beside it."""
     if project.source is None:
-        if precondition is not None:
+        if precondition is not None or head is not None:
             raise ValidationError(
                 f"Project {project.project_id} is a sample application: it has no external "
-                "source to state a precondition for"
+                "source to state a precondition for, or campaign branch to pin"
             )
         return None
     commit = project.development_baseline_commit
@@ -466,7 +477,53 @@ def pin_source_context(
         repo_uri=project.source.repo_uri,
         development_baseline_commit=commit,
         integrated_upstream_commit=project.integrated_upstream_commit,
+        pinned_commit=head.commit if head is not None else commit,
+        pinned_from=CAMPAIGN_BRANCH if head is not None else PROJECT_BASELINE,
+        previous_verification_ref=head.previous_verification_ref if head is not None else None,
     )
+
+
+async def require_campaign_head(
+    vault: Any | None, context: ProjectSourceContext, head: Any, *, kind: str | None
+) -> None:
+    """H.4, SIP-0109 §24cd point 1: a repository-backed Campaign's cycle is pinned at its campaign
+    branch's head, never at the Project's baseline by default, and its regression baseline is the
+    accepted verification that made that head. The calibration is the record of the Project's
+    inherited baseline (§24bv point 1), so the first head is the Project's baseline commit, with
+    no verification before it."""
+    if head is None:
+        raise ProjectStateConflictError(
+            f"Project {context.project_id}'s Campaign {kind or 'cycle'} is pinned at its campaign "
+            "branch's head, and its launch names none (SIP-0109 §24cd point 1): it is refused, "
+            "never pinned at the Project's baseline"
+        )
+    ref = head.previous_verification_ref
+    if ref is None:
+        if head.commit != context.development_baseline_commit:
+            raise ProjectStateConflictError(
+                f"the campaign branch's head {head.commit} names no verification, and only the "
+                f"calibration record's commit {context.development_baseline_commit} has none"
+            )
+        return
+    if vault is None:
+        raise RuntimeError("ArtifactVaultPort not configured: an increment's head can't be read")
+    got = await retrieve_or_absent(vault, ref)
+    document = None
+    if got is not None and getattr(got[0], "artifact_type", None) == SOURCE_VERIFICATION_TYPE:
+        try:
+            document = json.loads(got[1])
+        except ValueError:
+            document = None
+    if (
+        not isinstance(document, dict)
+        or document.get("verdict") != VERIFICATION_ACCEPTED
+        or document.get("candidate_tree_identity") != head.tree_identity
+    ):
+        raise ProjectStateConflictError(
+            f"the campaign branch's head {head.commit} names verification {ref}, which isn't an "
+            "accepted source verification of that tree, so the increment has no regression "
+            "baseline to be compared with (SIP-0109 §24bv point 3)"
+        )
 
 
 async def require_reconciled_upstream(registry: Any, context: ProjectSourceContext) -> None:
@@ -583,6 +640,7 @@ async def prepare_cycle(
     kind: str | None = None,
     increment_id: str | None = None,
     instructed_by: str | None = None,
+    campaign_head: Any = None,
 ) -> PreparedCycle:
     """Build and preflight a cycle and its first run from a create request: the route's body,
     or a campaign launch's (SIP-0109 §12b), which also names the campaign and the cycle's kind.
@@ -593,8 +651,10 @@ async def prepare_cycle(
         raise ProjectNotReadyError(
             f"Project {project_id} is {project.lifecycle_status.value}: a Cycle needs it READY"
         )
-    source_context = pin_source_context(project, body.source_precondition)
+    source_context = pin_source_context(project, body.source_precondition, campaign_head)
     gap_warnings: tuple[Finding, ...] = ()
+    if source_context is not None and campaign_id is not None and kind != CycleKind.CALIBRATION:
+        await require_campaign_head(ports.artifact_vault, source_context, campaign_head, kind=kind)
     if source_context is not None:
         await require_reconciled_upstream(ports.project_registry, source_context)
         await require_inherited_baseline(ports.project_registry, source_context)

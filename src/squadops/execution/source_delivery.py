@@ -44,6 +44,7 @@ from squadops.cycles.task_plan import REPAIR_TASK_TYPES
 from squadops.projects.checkout import SOURCE_CHECKOUT
 from squadops.projects.configuration import baseline_tree
 from squadops.projects.contribution import capture_ref
+from squadops.projects.source_context import CAMPAIGN_BRANCH
 from squadops.projects.verification import (
     ACCEPTED,
     SOURCE_VERIFICATION_FILENAME,
@@ -154,7 +155,16 @@ async def deliver_source_change(
             "a source-backed run is verified in the sandbox and captured in the managed clone, "
             "and this runtime has " + ("neither" if repository is sandbox else "only one")
         )
-    commit = context.development_baseline_commit
+    commit = context.pinned_commit
+    if context.pinned_from == CAMPAIGN_BRANCH:
+        # SIP-0109 §24bv point 3: an increment on a campaign branch is compared with the
+        # verification that made its head, never with the Project's baseline it was not built on.
+        raise SourceDeliveryRefused(
+            f"cycle {cycle.cycle_id} is pinned at its campaign branch's head {commit}, whose "
+            "regression baseline is the previous increment's verification "
+            f"({context.previous_verification_ref or 'the calibration record'}): that comparison "
+            "is SIP-0109 §24bv point 3's, and isn't built yet"
+        )
     project = await registry.get_project(cycle.project_id)
     configuration = await registry.get_development_configuration(
         cycle.project_id, context.development_configuration_revision

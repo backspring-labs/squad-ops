@@ -573,3 +573,45 @@ async def test_a_framing_run_delivers_nothing_and_completes(world):
     await _end_of_plan(executor, cycle, run, vault, {}, task_type="governance.review_plan")
 
     assert _of_type(vault, SOURCE_VERIFICATION_TYPE) == []
+
+
+async def test_an_increment_is_seeded_at_its_pin_not_at_the_projects_baseline(world):
+    """H.4's increment pin (SIP-0109 §24cd point 1), entered at ``RunProvisioning.seed``. A
+    repository-backed Campaign's increment builds on its campaign branch's head. Here that's the
+    fixture's first commit, while the Project's baseline is its second. Bug caught: the seed
+    reading the Project's baseline, so an increment starts from a tree its branch never held."""
+    repo, vault, executor, cycle, run = world
+    pinned = dataclasses.replace(
+        cycle.source_context, pinned_commit=repo.first_commit, pinned_from="campaign_branch"
+    )
+
+    seeded = await _seed(executor, dataclasses.replace(cycle, source_context=pinned), run)
+
+    refs = [vault.stored[i][0] for i in seeded]
+    assert {r.metadata["checkout_commit"] for r in refs} == {repo.first_commit}
+    assert "tally/report.py" not in {r.filename for r in refs}  # added by the second commit
+    assert pinned.development_baseline_commit == repo.second_commit  # H.2's gate still keys here
+
+
+async def test_a_campaign_branch_increment_is_never_compared_with_the_projects_baseline(world):
+    """SIP-0109 §24bv point 3: an increment's regression baseline is the verification that made
+    its head. Until that comparison is built, delivery refuses rather than reading the Project's
+    baseline, which describes a tree the increment wasn't built on. Bug caught: a candidate built
+    on the branch's head judged against the wrong baseline, and accepted or refused for it."""
+    from squadops.execution.source_delivery import SourceDeliveryRefused, deliver_source_change
+
+    repo, vault, executor, cycle, run = world
+    pinned = dataclasses.replace(
+        cycle.source_context,
+        pinned_commit=repo.first_commit,
+        pinned_from="campaign_branch",
+        previous_verification_ref="art_verification",
+    )
+
+    with pytest.raises(SourceDeliveryRefused, match="§24bv point 3"):
+        await deliver_source_change(
+            dataclasses.replace(cycle, source_context=pinned), run.run_id, [],
+            vault=vault, registry=executor._project_registry,
+            repository=executor._source_repository, sandbox=executor._sandbox,
+        )  # fmt: skip
+    executor._project_registry.get_inherited_baseline.assert_not_awaited()
