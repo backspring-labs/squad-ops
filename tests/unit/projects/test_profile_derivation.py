@@ -336,21 +336,30 @@ def test_each_vitest_runner_is_read_on_its_own_output_and_its_gap_is_confined_to
         % (b"shelfnote-admin", b"vitest run", b', "devDependencies": {"vitest": "1.6.0"}'),
         "admin/src/Admin.jsx": b"",
         "admin/src/Admin.test.jsx": b"",
+        "kiosk/package.json": _PKG % (b"shelfnote-kiosk", b"vitest run --reporter=dot", _V2),
+        "kiosk/src/Kiosk.jsx": b"",
+        "kiosk/src/Kiosk.test.jsx": b"",
     }
     checks = (
         *_SHELFNOTE_CHECKS,
         Check("admin_tests", ("npm", "--prefix", "admin", "test", "--silent")),
+        Check("kiosk_tests", ("npm", "--prefix", "kiosk", "test", "--silent")),
     )
     configuration = _configuration(checks, stack="fullstack_fastapi_react")
 
     profile = derive_profile(files, configuration, _baseline(checks))
 
     readers = {r.roots: r.test_ids for r in profile.runners if r.runner == "vitest"}
-    assert readers == {("frontend",): "vitest", ("admin",): None}
+    assert readers == {("frontend",): "vitest", ("admin",): None, ("kiosk",): None}
     assert [(g.paths, g.reason) for g in profile.gaps if g.id == "no_test_id_reader"] == [
         (
             ("admin/**",),
             "vitest's reader can't read this product's output under admin: its package's vitest "
             "'1.6.0' allows more than vitest 2, the major the reader is validated on" + _TAIL,
-        )
+        ),
+        (
+            ("kiosk/**",),
+            "vitest's reader can't read this product's output under kiosk: its test command "
+            "names a reporter" + _TAIL,
+        ),
     ]
