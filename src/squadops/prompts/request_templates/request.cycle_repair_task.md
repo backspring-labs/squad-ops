@@ -1,6 +1,6 @@
 ---
 template_id: request.cycle_repair_task
-version: "15"
+version: "16"
 required_variables:
   - prd
   - role
@@ -23,6 +23,7 @@ optional_variables:
   - app_traceback_section
   - frozen_surface_section
   - test_scope_section
+  - increment_views_section
   - loop_state
   - qa_fill_mode_section
   - current_files_section
@@ -45,6 +46,7 @@ You are repairing a failed `{{failed_task_type}}` task. Your job is to re-produc
 {{app_traceback_section}}
 {{frozen_surface_section}}
 {{test_scope_section}}
+{{increment_views_section}}
 
 ### Failed Task Contract
 

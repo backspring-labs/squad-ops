@@ -417,3 +417,100 @@ async def test_a_branch_increments_view_and_suite_authors_are_shown_the_anchor(m
     for prompt in (dev_prompt, qa_prompt):
         assert "## The pages this change adds, and the anchor each one's view renders" in prompt
         assert _VIEW_LINE in prompt
+
+
+async def _dev_repair_prompt(change_request: str) -> tuple[dict, str]:
+    """A failed ``development.develop`` of the implementation ``generate_task_plan`` makes for
+    ``change_request``, through the correction loop (``run_correction_protocol``, a patch
+    decision), then the repair it dispatches through ``DevelopmentCorrectionRepairHandler``'s whole
+    ``handle()`` with the real assets: the repair's inputs and its prompt's user turn."""
+    from squadops.capabilities.handlers.impl.repair_handlers import (
+        DevelopmentCorrectionRepairHandler,
+    )
+    from squadops.cycles.task_plan import generate_task_plan
+    from squadops.tasks.models import TaskResult
+    from tests.unit.cycles.test_correction_runner import TestCorrectionRunnerStandalone
+    from tests.unit.cycles.test_increment_evaluation_wiring import _PLAN
+
+    run = Run("run_i", "cyc_inc", 3, "running", "system", "cfg", workload_type="implementation")
+    [dev] = [
+        e
+        for e in generate_task_plan(
+            _cycle(), run, _profile(), plan=_PLAN, change_request=change_request
+        )
+        if e.task_type == "development.develop"
+    ]
+    captured: list = []
+
+    def responder(envelope):
+        if envelope.task_type == "governance.correction_decision":
+            return TaskResult(
+                task_id=envelope.task_id,
+                status="SUCCEEDED",
+                outputs={
+                    "correction_path": "patch",
+                    "decision_rationale": "the view is patchable",
+                    "affected_task_types": ["development.develop"],
+                },
+            )
+        if envelope.task_type == "development.correction_repair":
+            captured.append(envelope)
+        return TaskResult(task_id=envelope.task_id, status="SUCCEEDED", outputs={})
+
+    runner, *_ = TestCorrectionRunnerStandalone()._make_runner(responder)
+    cycle = dataclasses.replace(
+        _cycle(), applied_defaults={"correction_steps": ["analyze", "decide", "repair"]}
+    )
+    await runner.run_correction_protocol(
+        run_id="run_i", cycle=cycle, envelope=dev,
+        result=TaskResult(task_id=dev.task_id, status="FAILED", error="the view failed"),
+        correction_attempts=0, prior_outputs={}, all_artifact_refs=[], stored_artifacts=[],
+        completed_task_ids=[], plan_delta_refs=[], correction_budget=3,
+    )  # fmt: skip
+    [repair] = captured
+    ctx = MagicMock()
+    ctx.role_id = "dev"
+    ctx.task_id = repair.task_id
+    ctx.correlation_context = None
+    ctx.ports.llm.chat_stream_with_usage = AsyncMock(
+        return_value=MagicMock(
+            content="no fences", prompt_tokens=1, completion_tokens=1, reasoning_tokens=None
+        )
+    )
+    ctx.ports.llm.default_model = "m"
+    ctx.ports.llm_observability = None
+    ctx.ports.prompt_service.get_system_prompt.return_value = MagicMock(
+        content="system", assembly_hash="h"
+    )
+    ctx.ports.request_renderer = _renderer()
+    await DevelopmentCorrectionRepairHandler().handle(
+        ctx, {**repair.inputs, "prd": "Tally", "failed_task_type": "development.develop"}
+    )
+    return repair.inputs, ctx.ports.llm.chat_stream_with_usage.await_args_list[0].args[0][
+        -1
+    ].content
+
+
+async def test_a_dev_repair_of_an_added_pages_view_keeps_its_anchor():
+    """The outside review of #2780 (P2 2): a developer correcting a failed view of a page the
+    change adds is shown the anchor acceptance reads the page for, as its first author was.
+    Entered at the correction loop on an anchored ``development.develop``. Bugs caught:
+    ``increment_views`` dropped at the repair handoff (``REPAIR_PRESENCE_KEYS``), so the repair
+    rewrites the view without the anchor and the increment is rejected; or carried and never
+    rendered (#1289's shape)."""
+    inputs, prompt = await _dev_repair_prompt(_anchored())
+
+    assert inputs["increment_views"] == [
+        {"route": "/totals", "anchor": "totals-view", "criteria": ["R1"]}
+    ]
+    assert "## The pages this change adds, and the anchor each one's view renders" in prompt
+    assert _VIEW_LINE in prompt
+    assert "{{increment_views_section}}" not in prompt
+
+
+async def test_a_dev_repair_on_an_increment_that_adds_no_page_is_shown_none():
+    """The edge. Bug caught: the views section rendered empty, or from nothing, on every repair."""
+    inputs, prompt = await _dev_repair_prompt(STORED)
+
+    assert "increment_views" not in inputs
+    assert "The pages this change adds" not in prompt

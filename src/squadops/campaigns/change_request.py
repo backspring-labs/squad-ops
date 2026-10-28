@@ -240,6 +240,9 @@ class RefusalKind(StrEnum):
     ANCHOR_ON_JUDGED_ROUTE = "anchor_on_judged_route"
     #: §24cp: two criteria on one added route naming different anchors: a view has one root.
     ANCHORS_DISAGREE = "anchors_disagree"
+    #: §24cp (the outside review's P2 1): an added route with a parameter or a wildcard, whose
+    #: page only a seed brings into being, and a route the request adds has none.
+    ADDED_ROUTE_UNSEEDABLE = "added_route_unseedable"
 
 
 @dataclass(frozen=True)
@@ -1018,8 +1021,9 @@ def _anchor_refusals(request: ChangeRequest, product: ProductContext) -> list[Pr
     """§24cp: a page criterion on a route the profile doesn't judge adds that route, and names the
     anchor its view renders, which is what acceptance reads the page for (§8.3). One on a judged
     route names none: that route is judged by its approved manifest's anchor (§24co item 5), and a
-    second anchor would be one nothing reads. The criteria on one added route name one anchor. A
-    criterion on a page the product can't serve is refused by its surface alone."""
+    second anchor would be one nothing reads. The criteria on one added route name one anchor. An
+    added route whose page needs a seed (``_unseedable``) is refused: nothing seeds it, so it could
+    only block. A criterion on a page the product can't serve is refused by its surface alone."""
     judged = set(product.judged_routes)
     refusals: list[ProposalRefusal] = []
     named: dict[str, dict[str, list[str]]] = {}
@@ -1035,6 +1039,18 @@ def _anchor_refusals(request: ChangeRequest, product: ProductContext) -> list[Pr
                         "acceptance already reads by its own view's anchor. Leave anchor out",
                     )
                 )
+            continue
+        if _unseedable(c.surface):
+            refusals.append(
+                ProposalRefusal(
+                    RefusalKind.ADDED_ROUTE_UNSEEDABLE,
+                    f"criterion {c.id} asserts at {c.surface}, a page this change adds whose path "
+                    "has a parameter or a wildcard. Acceptance opens an added page at its path as "
+                    "written, and nothing fills in a parameter for a page the change adds, so it "
+                    "could never be shown rendered. Assert at a fixed path instead, such as "
+                    "/reports/latest for /reports/:report_id",
+                )
+            )
             continue
         if not c.anchor:
             refusals.append(
@@ -1058,6 +1074,21 @@ def _anchor_refusals(request: ChangeRequest, product: ProductContext) -> list[Pr
                 )
             )
     return refusals
+
+
+def _unseedable(route: str) -> bool:
+    """Whether an added route's page needs a seed to exist (§24cp, the outside review's P2 1): a
+    segment that is a parameter as the route renderer reads one (``:x`` or ``{x}``,
+    ``increment_tree.route_param``), a bracketed one (``[x]``, a Next.js dynamic segment) or a
+    wildcard (``*``). Seeds come from an approved manifest's creates, which only a pinned route
+    has (§24co item 6), so such a page is never read and its route could only block."""
+    # deferred (cycle): campaigns.increment_tree imports this module at load
+    from squadops.campaigns.increment_tree import route_param
+
+    return any(
+        route_param(s) is not None or (s.startswith("[") and s.endswith("]")) or "*" in s
+        for s in route.split("/")
+    )
 
 
 def _unserved(c: Criterion, product: ProductContext) -> str | None:

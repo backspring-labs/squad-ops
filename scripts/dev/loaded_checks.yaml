@@ -2098,3 +2098,26 @@ checks:
       from squadops.capabilities.handlers._plan_authoring import INCREMENT_SURFACES
       print(INCREMENT_SURFACES[-1], (pathlib.Path(p.__file__).parent / "request_templates" / "request.increment_views_appendix.md").is_file())
     expect: "('request.increment_views_appendix', 'view_lines', 'increment_views_index') True"
+  - id: "2780-review-runtime"
+    what: a dev repair of a view a repository-backed change adds is handed its anchor through the repair handoff (SIP-0109 §24cp, #2780's review P2 2)
+    container: squadops-runtime-api
+    code: |
+      from squadops.capabilities.context_assembly import REPAIR_PRESENCE_KEYS
+      print("increment_views" in REPAIR_PRESENCE_KEYS)
+    expect: "True"
+  - id: "2780-review-nat"
+    what: the rails refuse an added page whose path needs a seed (SIP-0109 §24cp, #2780's review P2 1)
+    container: squadops-nat
+    code: |
+      from squadops.campaigns.change_request import RefusalKind, _unseedable
+      print(RefusalKind.ADDED_ROUTE_UNSEEDABLE.value, _unseedable("/r/[id]"), _unseedable("/r/latest"))
+    expect: "added_route_unseedable True False"
+  - id: "2780-review-neo"
+    what: the development correction repair renders the pages a change adds with their anchors (SIP-0109 §24cp, #2780's review P2 2)
+    container: squadops-neo
+    code: |
+      import pathlib, squadops.prompts as p
+      from squadops.capabilities.handlers.impl.repair_handlers import DevelopmentCorrectionRepairHandler
+      text = (pathlib.Path(p.__file__).parent / "request_templates" / "request.cycle_repair_task.md").read_text()
+      print(hasattr(DevelopmentCorrectionRepairHandler, "_render_increment_views_section"), "{{increment_views_section}}" in text)
+    expect: "True True"

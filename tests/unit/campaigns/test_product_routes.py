@@ -559,6 +559,21 @@ async def test_an_added_route_with_its_anchor_that_nothing_read_is_blocked_with_
     assert _held(routes)["/shelves/archive"] == ("blocked_unverified", "the browser read no page")
 
 
+async def test_an_added_parameterized_route_stored_before_the_rule_still_blocks_unseeded(tmp_path):
+    """Fail-closed kept (the outside review of #2780, P2 1): the rails now refuse an added route
+    whose page needs a seed, and a request stored before them may still name one. Nothing seeds
+    it, so it blocks, never holds, whatever anchor it names. Bug caught: the requested anchor
+    taken as enough, so the route is read at its path as written (``:shelf_id`` literally)."""
+    pages = {**PAGES, f"http://{APP_IP}:5173/shelves/:shelf_id/notes": _dom("notes-view")}
+
+    routes = await _render(
+        tmp_path, pages=pages, requested={"/shelves/:shelf_id/notes": "notes-view"}
+    )
+
+    [notes] = [r for r in routes.results if r.path == "/shelves/:shelf_id/notes"]
+    assert (notes.held, notes.unseeded) == (Held.BLOCKED_UNVERIFIED, True)
+
+
 async def test_a_pinned_route_is_judged_by_its_manifests_anchor_whatever_the_request_names(
     tmp_path,
 ):

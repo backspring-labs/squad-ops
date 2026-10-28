@@ -105,7 +105,10 @@ carries `data-testid` equal to the anchor, so the build gives the view's root el
 attribute, as `<section data-testid="export-view">` in the example. A page with no element carrying
 it rejects the increment. Write the anchor as a letter followed by letters, digits, `-` or `_`. A
 page acceptance already reads is judged by its own view's anchor, so a criterion there names none,
-and a criterion on anything but a page never names one.
+and a criterion on anything but a page never names one. A page this change adds is opened at its
+path exactly as written, so give it a fixed path, such as `/reports/latest`: a page this change adds
+whose path has a parameter (`/reports/:report_id`, `/reports/{report_id}`, `/reports/[report_id]`)
+or a `*` is refused, because nothing fills it in.
 
 There is no interface manifest here, so write no `manifest_delta`: a proposal that has one is
 refused. The framework places each criterion's own test file under the product's runner that tests

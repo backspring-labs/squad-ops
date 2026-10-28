@@ -269,3 +269,25 @@ async def test_a_product_whose_profile_judges_no_page_is_shown_none():
     await StrategyProposeIncrementHandler().handle(ctx, _inputs())
 
     assert "The pages acceptance already reads" not in _prompts(ctx)[0]
+
+
+async def test_an_added_parameterized_page_is_refused_and_never_stored_for_a_build():
+    """The outside review of #2780 (P2 1), end to end under the supervisor's refusal: an added
+    page whose path needs a seed is refused at every attempt, so no change request is stored and
+    nothing is built to block at delivery. The proposer is told the rule before its first attempt
+    and why at its second. Bugs caught: the rule taught nowhere; the refusal reaching no revision;
+    a request stored anyway, so the supervisor rules on, and the squad builds, a page acceptance
+    can never read."""
+    unseedable = yaml.safe_load(_ADDS_A_PAGE)
+    unseedable["criteria"][0].update(surface="/reports/:report_id", anchor="report-view")
+    reply = _fenced(yaml.safe_dump(unseedable, sort_keys=False))
+    ctx = _ctx(reply, reply)
+
+    result = await StrategyProposeIncrementHandler().handle(ctx, _with_pages())
+
+    first, second = _prompts(ctx)
+    assert "a page this change adds\nwhose path has a parameter" in first
+    assert "[added_route_unseedable]" in second
+    assert "/reports/:report_id, a page this change adds" in second
+    assert not result.success
+    assert not result.outputs.get("artifacts")

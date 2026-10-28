@@ -496,3 +496,43 @@ def test_a_page_on_a_product_with_no_ui_base_is_refused_by_its_surface_alone():
     verdict = validate_proposal(_request(criteria=[_on_a_page("/totals")]), _context())
 
     assert [r.kind for r in verdict.refusals] == [RefusalKind.UNKNOWN_SURFACE]
+
+
+@pytest.mark.parametrize(
+    "route",
+    [
+        "/reports/:report_id",
+        "/reports/{report_id}",
+        "/reports/[report_id]",
+        "/reports/[...slug]",
+        "/docs/*",
+    ],
+)
+def test_an_added_page_whose_path_needs_a_seed_is_refused_by_name(route):
+    """The outside review of #2780 (P2 1): an added page's anchor is read at its path as written,
+    and nothing seeds a page the change adds, so a parameter or a wildcard there could only block
+    at acceptance. Bug caught: such a page passing the rails with its anchor, and the increment
+    built only to block on it at delivery, every time."""
+    verdict = validate_proposal(
+        _request(criteria=[_on_a_page(route, "report-view")]), _context(product=_WITH_PAGES)
+    )
+
+    assert [r.kind for r in verdict.refusals] == [RefusalKind.ADDED_ROUTE_UNSEEDABLE]
+    assert f"asserts at {route}, a page this change adds" in verdict.refusals[0].detail
+    assert "such as /reports/latest" in verdict.refusals[0].detail
+
+
+def test_a_parameterized_page_the_profile_judges_is_not_refused_for_its_seed():
+    """The edge: a pinned parameterized route is seeded from its approved manifest (§24co item
+    6). Bug caught: the seed rule applied to every page, so a criterion on an existing detail page
+    is refused."""
+    judging_a_detail_page = dataclasses.replace(
+        _WITH_PAGES, judged_routes=(*_WITH_PAGES.judged_routes, "/shelves/:shelf_id")
+    )
+
+    verdict = validate_proposal(
+        _request(criteria=[_on_a_page("/shelves/:shelf_id")]),
+        _context(product=judging_a_detail_page),
+    )
+
+    assert verdict.accepted, verdict.refusals

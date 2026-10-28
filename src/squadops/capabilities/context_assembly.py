@@ -638,6 +638,8 @@ REPAIR_CONTEXT_CONTRACT = ContextAssemblyContract(
         # them this is a few tokens over.
         "request.keep_reasoning_short",
         "request.disputed_checks_appendix",
+        # SIP-0109 §24cp: a dev repair of a view a repository-backed change adds.
+        "request.increment_views_appendix",
         *_DEVELOP_APPENDIX_TEMPLATES,
     ),
     # The repair shows the failed task's named files from the accepted tree (its current-files
@@ -720,6 +722,9 @@ REPAIR_PRESENCE_KEYS: tuple[str, ...] = (
     # #1884: the correction loop builds a repair's envelope, not ``_increment_inputs``, so a
     # qa repair re-authoring an increment's suite sees the rule only if the scope rides here.
     "increment_test_scope",
+    # SIP-0109 §24cp: a dev repair of a view a repository-backed change adds is shown the anchor
+    # acceptance reads the page for, as the view's first author was (``increment_views``).
+    "increment_views",
 )
 
 #: #1264: the failed task's own emitted files, forwarded to its repair from the failed
