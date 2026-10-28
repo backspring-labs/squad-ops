@@ -104,7 +104,7 @@ sandbox, which the Spark lane owns, are named as cross-lane tasks (§8.2.2).
   review, was approved by the owner as written, 2026-10-17 (§8.2 contract 7). This PR stays proposal-only until the
   owner approves it, and no integration branch is created yet.
 
-## Delivery ledger (current as of 2026-10-23)
+## Delivery ledger (current as of 2026-10-28)
 
 One row per part that ships separately, from Appendix E.4. Statuses: *shipped* (the release, the PR,
 and the issue it closed), *placed* (the release and the open issue tracking it, labelled `sip:NNNN` once
@@ -125,7 +125,7 @@ update history and archive/restore are features. Dependencies are in E.4. Game-s
 | E.4.2 repository-native discovery and the inherited baseline, with the start declaration (§8.2 contract 7) | **shipped**: the managed clone and validation; the versioned Development Configuration with contract 7's start declaration and the repository's instruction sources; seeding with the commit-to-revision mapping (contract 3's seeding half); the inherited baseline through X-3a. Capture back to Git is E.4.3's (#2410) | 2.4.0, PR #2468, issue #2409 |
 | E.4.3 the first scoped feature through the shared cycle path | **shipped**: the source-backed run, from the product's tree to a verified change contributed through its own process (#2484); the sync's attribution of SquadOps's own contributions and its hold on Cycles until drift is reconciled (#2610, H.2); the brownfield demonstration read against its pre-registration, with IR-2 passing live (#2611). The deletion form and a regression's repair round are deferred follow-ups, each with its own issue | 2.4.0, PRs #2484, #2610 and #2611, issue #2410 |
 | E.4.4 the second feature after an outside contribution | **shipped**: a product's upstream read against its approved baseline, its contributions' standing, and the repository reference resolver (#2565); the sync's attribution and its hold on Cycles until drift is reconciled (#2610, H.2); the brownfield demonstration's second feature after an outside change, read (#2611); IR-3 as H.3 restates it (#2616) | 2.4.0, PRs #2565, #2610 and #2611, issue #2411 |
-| H.4 a repository-backed Project's development profile derived from its tree, its capability gaps named, and Campaigns run on it (found as #2619; the owner, 2026-10-21) | **placed** | 2.5.0, #2619 |
+| H.4 a repository-backed Project's development profile derived from its tree, its capability gaps named, and Campaigns run on it (found as #2619; the owner, 2026-10-21) | **placed**. On main so far: contract 8 (H.6), the derivation (H.7), blocking gaps (H.8), contract 1's pin for an increment (H.9), the recipe (H.11), and a blueprint's conventions without its test placement (H.13; the Spark lane, since the MacBook lane's handoff of 2026-10-28). It remains open for SIP-0109 §24bv point 5's proposal input, the `qa.evaluate_increment` drop, and what H.13 names as not built | 2.5.0, #2619 |
 | E.4.5 lifecycle completeness: update history, archive/restore, concurrency and conflict recovery (before close; not required in 2.4) | **placed** (the owner, 2026-10-23) | 2.6.0, #2709 |
 | E.4.6 greenfield Project creation at an owner-approved external destination (required, Q34; shipped by the 2.4 cut, G6) | **shipped** | 2.4.0, PR #2584, closes #2412: the greenfield proof ran on the Spark's deploy (`cyc_7bf35ffb4cc5`; `backspring-labs/z_shelfnote#1`, merged as `9bcdc7c0`) and is read in `docs/plans/2-4-0-demonstrations-readout.md`. IR-7, a greenfield Project's first Campaign, waits on H.4 (#2619, 2.5.0), as the integration record says |
 | E.4.7 direct attachment: writing in place in an existing checkout (optional, FR-02) | **unplaced**, deliberately: optional. The 2.6 plan ships it or drops it by a numbered amendment, since the SIP closes in 2.6 (the owner, 2026-10-23) | — |
@@ -2430,3 +2430,131 @@ ChatGPT".
 - **The rest of G4 stands:** the contract named, a wiring test, additive only.
 
 **Who ruled.** The owner. The supervisor (the Spark lane) recorded it.
+
+## H.13 A product made from a blueprint runs under its development profile, and is shown its conventions without its test placement (2026-10-28; #2619; the Spark lane, from the MacBook lane's handoff)
+
+**What was found**, read in the code before building:
+- **A product's cycle runs under `python_cli`.** A source-backed cycle runs under the default development profile
+  unless its request names one, and none of the profiles a product's cycle runs on does (`campaign-increment-source`,
+  `implement`, `validate`). So a frontend change on `z_shelfnote` got:
+  - the developer's system supplement for a Python package ("Use relative imports within the package");
+  - a completion ceiling of 4,000 tokens, where the blueprint's profile has 12,000;
+  - a `.py`-only source filter for the test author's own run, with pytest as its only framework;
+  - a collected-test vocabulary with no vitest names in it, for a repaired suite (`_repaired_suite_files`).
+- **Which of the blueprint's prose would place a test.** Taken whole, the blueprint's profile places files and tests by
+  the skeleton's layout. On the plan's tasks, which take the focused prompts, just one piece of its prose reaches the
+  model: the developer's system supplement ("All backend files go under backend/, all frontend files under
+  frontend/").
+  - "Place tests in backend/tests/" reaches only the plan-less test author's prompt, which isn't shown the product.
+  - Framing's stack narrative ("Tests are pytest for the backend under `backend/tests/`") is keyed on
+    `build_profile`, which a product's cycle never has.
+
+**The choice: the handoff's shape, with the profile's skeleton prose withheld and a product's conventions in its
+place.**
+1. **The development profile is pinned at `prepare_cycle`.** When the derived profile at the pin names a blueprint,
+   that blueprint's development profile goes into `execution_overrides`, as `_seed_derived_contract` pins a
+   `contract_ref`. Pinning beats deriving it at each consumer:
+   - it's one value on the cycle record;
+   - every reader of `effective_development_profile` reads it, without change: the developer and the test author,
+     patch acceptance, plan validation, the correction loop's ownership veto, fault injection, and create's own
+     preflight, which runs after it;
+   - a retry or repair is prepared the same way, so it reads the same value.
+2. **Test placement comes from the runners, as H.11 shows them.** The profile's prose for the skeleton is withheld
+   wherever the product's repository view is shown. In its place, the view shows the blueprint's conventions for a
+   product: a managed asset per stack that the profile names (`product_conventions_template`, beside
+   `fill_only_template`). It says what the stack's languages, frameworks and tests expect of a change, and never
+   where a file or a test goes.
+   - **Why a second asset, not an edit to the profile's prose.** The two are for different readers: the skeleton a
+     sample application fills, and a product's tree, whose layout is its own from its first commit. That's the
+     split `stack_narratives/` and `profile_narratives/` already make.
+   - **Why the profile's prose is left as it is.** The verification sets measure the sample applications under it.
+3. **No pin for a plan-less cycle.** Only the plan's tasks are shown the product, with its runners. A plan-less test
+   author would be given the blueprint's own placement, so such a cycle keeps the default.
+
+**What's built:**
+- **The pin:** `_pin_blueprint_conventions` (`api/routes/cycles/cycles.py:322`), called in `prepare_cycle` (`:741`)
+  before the effective config is read. It reads the derived profile once, through `derived_profile_at_pin` (`:630`),
+  and the blocking-gap check takes the same read. Nothing is pinned in any of these cases:
+  - no profile at the pin;
+  - no blueprint, or a blueprint whose profile declares no product conventions;
+  - a `development_profile` the request already names, since the operator's choice stands;
+  - no implementation plan.
+- **`blueprint_development_profile(stack)`** (`stacks/development_profiles.py:604`): the scaffold stack's bound
+  profile (#832), when it declares product conventions, or `""`.
+- **`DevelopmentProfile.product_conventions_template`** (`:110`), set for `fullstack_fastapi_react` and `nextjs_ts`.
+  Its two assets are `request.source_repository_conventions_fullstack_fastapi_react` and
+  `request.source_repository_conventions_nextjs_ts`.
+- **The repository view** (`capabilities/handlers/source_repository.py:31`, `:64`):
+  - `product_conventions_template(inputs)` is the source-backed run's asset, or `""`;
+  - `request.source_repository_appendix` (version 3) shows it between the map and the checks, so the runners, which
+    place tests, come after it.
+- **The developer's system prompt** (`capabilities/handlers/cycle/develop.py:492`) leaves out the profile's
+  supplement where the view shows product conventions.
+- **The composer's budget** counts the larger of the two assets among the shared context slots
+  (`context_assembly.py`).
+
+**What a product with no blueprint keeps** (`z_continuum`, or a baseline with no derived profile): exactly 2.4's
+behaviour.
+- `python_cli`, with its system supplement, its 4,000-token ceiling, pytest, and the `.py` filter.
+- No conventions block.
+- A repository view rendered byte for byte as before, since the appendix's new slot collapses when it's empty.
+
+A sample application is unchanged too: the conventions are keyed on the run's repository view, which only a
+source-backed run has.
+
+**What changes for a product made from a blueprint**, beyond the prompt text:
+- The test author's own run takes the blueprint's frameworks: pytest and vitest, with the frontend build check, for
+  `fullstack_fastapi_react`.
+- Its sources there are only the squad's own files, never the checkout. So a frontend with no `package.json` among
+  them skips its build, and a skip is never a failure.
+- A frontend build that fails on the squad's own files fails the task, as it does on any fullstack run.
+
+**What stays:**
+- `seeds_skeleton` is false for every pin this makes: a `development_profile` lays down nothing. E.4.3's guard still
+  refuses `build_profile` and `contract_ref`.
+- Contract 8 is unchanged. Its `blueprint` field gains one reader, the pin.
+
+**Not built here (remaining on #2619):**
+- **`nextjs_ts`'s collected-test vocabulary places tests.** It's the scaffold's `__tests__/` rule (#1534), and patch
+  acceptance reads a repaired suite by it, not by the product's runners. `fullstack_fastapi_react`'s vocabulary is
+  names alone, so `z_shelfnote` is unaffected. Reading the runners there is the follow-up.
+- **A plan-less product cycle's test author isn't shown the product.** The monolithic test prompt has no repository
+  view, with or without a blueprint. Every source-backed profile in use takes the plan, which is why such a cycle
+  isn't pinned (point 3 above).
+- **The repairs (`qa.test_repair`, `development.correction_repair`) are shown neither** the product's view nor the
+  profile's prose, as before.
+
+**The evidence** (`tests/unit/cycles/test_blueprint_conventions.py`):
+- **At `prepare_cycle`,** on `campaign-increment-source`, for five pins:
+  - a product made from `fullstack_fastapi_react` is pinned to it, and one made from `nextjs_ts` to `nextjs_ts`;
+  - a product with no blueprint runs under `python_cli`, and so does a pin with no profile;
+  - an operator's `python_api` stands;
+  - none of them seeds a skeleton.
+  A plan-less cycle isn't pinned, and a sample application's registry is never asked.
+- **At the developer's and the test author's `handle`,** with the prepared cycle's own `resolved_config()`, a
+  shelfnote-shaped repository view (pytest at `.`, vitest under `frontend`), and the shipped assets:
+  - the model is shown the conventions block and both runners;
+  - none of the skeleton's placements reaches it: `backend/tests`, `frontend/src/__tests__`, "All backend files go
+    under backend/", `__tests__/`;
+  - the developer's system prompt carries no supplement, and its ceiling is 12,000;
+  - the test author's own run is `both`.
+  The no-blueprint product's developer gets `python_cli`'s supplement byte for byte and 4,000, and its test author's
+  run is `pytest`.
+- **A sample application** under the same profile keeps its skeleton supplement.
+- **The rendered developer prompt:** 513 words over its sections, in order:
+  1. the task;
+  2. the product, with its map, the conventions, its checks and runners;
+  3. the expected files;
+  4. the PRD.
+- **Nine mutants, each caught:**
+  - the pin never made, or read from no blueprint;
+  - the pin overriding the operator, or reaching a plan-less cycle;
+  - a blueprint pinned without its product conventions;
+  - the conventions shown to a sample application, or never rendered;
+  - the skeleton supplement kept on a product's run;
+  - a test placement written into the conventions asset.
+- **Loaded checks:** `2619-blueprint-conventions` (the runtime) and `2619-blueprint-conventions-neo`, each run on the
+  source.
+
+**Who ruled.** The Spark lane built it, within H.4 point 3 as the owner ruled it (2026-10-21) and H.11's
+narrowing. The second review is an outside reviewer's, through the owner (H.12), recorded on the PR.
