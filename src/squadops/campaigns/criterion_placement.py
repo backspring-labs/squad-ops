@@ -31,6 +31,8 @@ from fnmatch import fnmatch
 from pathlib import PurePosixPath
 from typing import Any
 
+from squadops.stacks.scaffold import criterion_module_name
+
 #: The stem every placed criterion file takes, before the id: a product's own test files never
 #: start with it by convention, so a placed file is told from the product's by its name.
 CRITERION_STEM = "criterion_"
@@ -173,18 +175,12 @@ def place_criterion(
         if p.template is None:
             reasons.append(str(p.refused))
             continue
-        path = p.template.replace(_CRITERION, _module_safe(criterion_id))
+        path = p.template.replace(_CRITERION, criterion_module_name(criterion_id))
         if path in p.taken:
             reasons.append(f"{path} is a file of the product's already, never overwritten")
             continue
         return path
     raise Unplaceable(f"criterion {criterion_id}: " + "; ".join(reasons))
-
-
-def _module_safe(criterion_id: str) -> str:
-    """The id kept to letters, digits and ``_``, as ``scaffold.criterion_test_path`` keeps it, so
-    the file is a valid module name on every runner."""
-    return re.sub(r"[^A-Za-z0-9_]", "_", criterion_id)
 
 
 def _literal(glob: str) -> str:

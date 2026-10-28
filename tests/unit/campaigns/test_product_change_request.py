@@ -209,3 +209,137 @@ def test_a_sample_applications_request_still_refuses_a_footprint_and_criterion_p
     assert "paths are named only on a repository-backed Project" in (
         validate_proposal(criterion, sample).refusals[0].detail
     )
+
+
+# --- the outside review of #2771 (§24cj): unique placements, and a placement bound and checked --
+
+
+def _two(first: str, second: str) -> dict:
+    authored = _request()
+    authored["criteria"].append({**authored["criteria"][0], "id": second})
+    authored["criteria"][0]["id"] = first
+    return authored
+
+
+@pytest.mark.parametrize(
+    ("ids", "prior", "kind", "named"),
+    [
+        (("T-1", "T_1"), (), RefusalKind.CRITERION_FILE_COLLISION, "criteria T-1, T_1 would share"),
+        (("R1", "R1"), (), RefusalKind.DUPLICATE_CRITERION, "criterion R1 is named 2 times"),
+        (("T-1", "R2"), ("T_1",), RefusalKind.CRITERION_FILE_COLLISION, "rename T-1"),
+    ],
+    ids=["two ids one file", "one id twice", "an id naming a frozen criterion's file"],
+)
+@pytest.mark.parametrize("basis", ["product", "sample application"])
+def test_two_criteria_that_would_share_a_test_file_are_refused_by_name(
+    ids, prior, kind, named, basis
+):
+    """The review's P1. ``T-1`` and ``T_1`` both name ``check_criterion_T_1.py``. Bugs caught: the
+    second criterion's test overwriting the first's, one verifier bundle frozen for two criteria,
+    and on a later increment a new criterion's file overwriting a frozen one's. Both bases name a
+    file the same way (``scaffold.criterion_module_name``), so both refuse it."""
+    context = _context(prior=prior)
+    if basis == "sample application":
+        context = dataclasses.replace(context, product=None, baseline_manifest="api: {}\n")
+    authored = _two(*ids)
+    if basis == "sample application":
+        del authored["footprint"]
+
+    verdict = validate_proposal(authored, context)
+
+    assert not verdict.accepted
+    [refusal] = [r for r in verdict.refusals if r.kind is kind]
+    assert named in refusal.detail
+
+
+def test_a_placement_that_puts_two_criteria_at_one_path_is_refused_whatever_placed_them():
+    """Unique placed paths across the proposal, checked on the placements themselves, not only on
+    the ids. Bug caught: a runner whose template names no criterion (a malformed placement handed
+    to the rails as data) placing every criterion at one file, accepted."""
+    from squadops.campaigns.criterion_placement import RunnerPlacement
+
+    one_file = RunnerPlacement("unittest", ("report",), ("tally/**",), "checks/check_fixed.py")
+    context = _context(product=dataclasses.replace(_PRODUCT, placements=(one_file,)))
+
+    verdict = validate_proposal(_two("R1", "R2"), context)
+
+    [refusal] = verdict.refusals
+    assert refusal.kind is RefusalKind.CRITERION_FILE_COLLISION
+    assert refusal.detail.startswith("criteria R1, R2 would all be placed at checks/check_fixed.py")
+
+
+def _stored(**edit) -> str:
+    """The accepted request's stored document, with ``edit`` applied to its data after the
+    ruling, its hash left as the ruling bound it."""
+    data = yaml.safe_load(
+        stored_change_request(validate_proposal(_request(), _context()).change_request)
+    )
+    for key, value in edit.items():
+        data[key] = value(data) if callable(value) else value
+    return yaml.safe_dump(data, sort_keys=False)
+
+
+@pytest.mark.parametrize(
+    ("edit", "refused"),
+    [
+        # Moved, with its footprint entry moved to match: only the hash can tell.
+        (
+            {
+                "criterion_files": [
+                    {"criterion_id": "R1", "path": "checks/check_criterion_R1x.py"}
+                ],
+                "footprint": ["tally/report.py", "checks/check_criterion_R1x.py"],
+            },
+            "not named for it",
+        ),
+        (
+            {
+                "criterion_files": [{"criterion_id": "R1", "path": "tests/check_criterion_R1.py"}],
+                "footprint": ["tally/report.py", "tests/check_criterion_R1.py"],
+            },
+            "does not match its hash",
+        ),
+        ({"criterion_files": []}, "its criteria are R1, and it places none"),
+        (
+            {
+                "criterion_files": [{"criterion_id": "R1", "path": "checks/check_criterion_R1.py"}]
+                * 2
+            },
+            "each criterion once",
+        ),
+        ({"footprint": ["tally/report.py"]}, "is not in the footprint"),
+        (
+            {"criterion_files": [{"criterion_id": "R9", "path": "checks/check_criterion_R9.py"}]},
+            "it places R9",
+        ),
+    ],
+    ids=[
+        "renamed for no criterion",
+        "moved under another root",
+        "dropped",
+        "placed twice",
+        "left out of the footprint",
+        "placed for another criterion",
+    ],
+)
+def test_a_stored_placement_changed_after_the_ruling_is_refused_by_name(edit, refused):
+    """The review's P2. The placement is derived, and every reader after the ruling reads it from
+    the stored request. Bugs caught: a placement edited in the vault (the test moved, dropped,
+    doubled, renamed, left out of what the build may write) read as the one ruled on, so the build
+    writes, and the evaluation freezes, a file nobody approved."""
+    with pytest.raises(ValueError, match=refused):
+        load_stored_change_request(_stored(**edit))
+
+
+def test_a_sample_applications_request_carrying_a_placement_is_refused():
+    """The mirror: a sample application's stack places its criteria. Bug caught: a placement
+    written into its stored request read by ``increment_criterion_files`` over the stack's."""
+    from tests.unit.campaigns.test_change_request import _STORED_REQUESTS
+
+    stored = _STORED_REQUESTS[0].read_text()  # a request stored by a live campaign, as stored
+    load_stored_change_request(stored)
+    data = yaml.safe_load(stored)
+    data["criterion_files"] = [{"criterion_id": "T1", "path": "backend/tests/x.py"}]
+
+    with pytest.raises(ValueError, match="a sample application's request places no criterion"):
+        load_stored_change_request(yaml.safe_dump(data, sort_keys=False))

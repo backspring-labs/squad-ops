@@ -23,6 +23,8 @@ import copy
 import dataclasses
 import hashlib
 import json
+import re
+from collections import Counter
 from collections.abc import Iterable, Sequence
 from dataclasses import dataclass, field
 from enum import StrEnum
@@ -31,13 +33,19 @@ from typing import Any
 
 import yaml
 
-from squadops.campaigns.criterion_placement import RunnerPlacement, Unplaceable, place_criterion
+from squadops.campaigns.criterion_placement import (
+    CRITERION_STEM,
+    RunnerPlacement,
+    Unplaceable,
+    place_criterion,
+)
 from squadops.cycles.acceptance_check_spec import parse_method_path
 from squadops.cycles.manifest_gates import assess_winnability
 from squadops.cycles.verification_contract import VerificationContract
 from squadops.stacks.scaffold import (
     MANIFEST_ELEMENT_KEYS,
     InterfaceManifest,
+    criterion_module_name,
     expand,
     is_qa_test_path_for_stack,
     qa_test_namespace,
@@ -207,6 +215,10 @@ class RefusalKind(StrEnum):
     MANIFEST_DELTA_ON_PRODUCT = "manifest_delta_on_product"
     #: §24bv point 5: no runner of the product's can host the criterion's own test file.
     UNPLACEABLE_CRITERION = "unplaceable_criterion"
+    #: §24cj: one id named by two criteria of one request.
+    DUPLICATE_CRITERION = "duplicate_criterion"
+    #: §24cj: two criteria whose own test files would be one file (``T-1`` and ``T_1``).
+    CRITERION_FILE_COLLISION = "criterion_file_collision"
 
 
 @dataclass(frozen=True)
@@ -430,14 +442,51 @@ def load_stored_change_request(document: str) -> ChangeRequest:
     except (KeyError, TypeError) as e:
         raise ChangeRequestError(f"the stored change request has no {e}") from e
     stored_hash = str(data.get("content_hash") or "")
-    if content_hash(request) != stored_hash:
+    restored = dataclasses.replace(
+        request,
+        footprint=() if basis.has_manifest else _paths(data.get("footprint"), "footprint"),
+        criterion_files=placed,
+    )
+    # §24cj: the placement is checked whole before the hash, so a stored placement that disagrees
+    # with its own criteria is refused by name, whatever hash it carries.
+    inconsistent = placement_inconsistency(restored)
+    if inconsistent:
+        raise ChangeRequestError(
+            f"the stored change request's placement is refused: {inconsistent}"
+        )
+    if content_hash(restored) != stored_hash:
         raise ChangeRequestError("the stored change request's content does not match its hash")
     return dataclasses.replace(
-        request,
-        footprint=tuple(data.get("footprint") or ()),
-        criterion_files=placed,
-        content_hash=stored_hash,
+        restored, footprint=tuple(data.get("footprint") or ()), content_hash=stored_hash
     )
+
+
+def placement_inconsistency(request: ChangeRequest) -> str | None:
+    """Why a request's criterion placement can't be its own (§24cj), or ``None``. A sample
+    application's places nothing: its stack does. A campaign branch's places each criterion
+    exactly once, at a path of its own, in the footprint, named by that criterion's id as the
+    rails name it (``criterion_<id>``). The rails write only such a placement, so anything else
+    was written by something else, and every reader refuses it rather than build on it."""
+    placed = request.criterion_files
+    if request.basis.has_manifest:
+        return "a sample application's request places no criterion file" if placed else None
+    ids = [c.id for c in request.criteria]
+    by_id = Counter(f.criterion_id for f in placed)
+    if sorted(by_id) != sorted(set(ids)) or any(n != 1 for n in by_id.values()):
+        return (
+            f"its criteria are {', '.join(ids) or 'none'}, and it places "
+            f"{', '.join(f.criterion_id for f in placed) or 'none'}: each criterion once"
+        )
+    paths = [f.path for f in placed]
+    if len(set(paths)) != len(paths):
+        return f"two criteria are placed at one path ({', '.join(sorted(paths))})"
+    for f in placed:
+        if f.path not in request.footprint:
+            return f"criterion {f.criterion_id}'s file {f.path} is not in the footprint"
+        stem = re.escape(CRITERION_STEM + criterion_module_name(f.criterion_id))
+        if not re.search(stem + r"(?![A-Za-z0-9_])", f.path.rsplit("/", 1)[-1]):
+            return f"criterion {f.criterion_id}'s file {f.path} is not named for it"
+    return None
 
 
 def _text(raw: Any, key: str) -> str:
@@ -467,19 +516,20 @@ def _retirements(raw: Any) -> tuple[Retirement, ...]:
 
 def content_hash(request: ChangeRequest) -> str:
     """The hash a ruling binds to (§9.2): the authored content, not the derived fields or the
-    proposal's identity. On a campaign branch the footprint is authored (§24bv point 5), so it is
-    hashed, without the placed criterion files appended to it: a footprint changed after the
-    ruling is a request nobody ruled on."""
+    proposal's identity.
+
+    On a campaign branch (§24bv point 5, §24cj) it binds what the build is held to as well: the
+    footprint, authored with the placed criterion files appended, and the placement itself. The
+    placement is derived, but every reader after the ruling reads it from the stored request and
+    none can derive it again (they hold no profile), so a placement changed after the ruling must
+    be a request nobody ruled on, as a changed footprint is."""
     payload = _authored_fields(dataclasses.asdict(request))
     for derived in ("content_hash", "proposal_id", "version", "baseline_tree"):
         payload.pop(derived)
     payload.pop("basis", None)
-    payload.pop("criterion_files", None)
     if request.basis.has_manifest:
         payload.pop("footprint")
-    else:
-        placed = {f.path for f in request.criterion_files}
-        payload["footprint"] = [p for p in payload["footprint"] if p not in placed]
+        payload.pop("criterion_files", None)
     canonical = json.dumps(payload, sort_keys=True, separators=(",", ":"), default=str)
     return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
 
@@ -872,6 +922,9 @@ def _validate_product_proposal(
             )
         except Unplaceable as e:
             refusals.append(ProposalRefusal(RefusalKind.UNPLACEABLE_CRITERION, str(e)))
+    if not any(r.kind in _IDENTITY_REFUSALS for r in refusals):
+        # A collision the ids already show is named once, by them.
+        refusals.extend(_placed_collision_refusals(placed))
     if refusals:
         return ProposalVerdict(None, tuple(refusals))
     final = dataclasses.replace(
@@ -918,6 +971,57 @@ def _unserved(c: Criterion, product: ProductContext) -> str | None:
     )
 
 
+def _criterion_identity_refusals(request: ChangeRequest, prior: set[str]) -> list[ProposalRefusal]:
+    """§24cj, on every basis: each criterion is proven in its own test file (§8.1), named by its id
+    kept to a module name (``scaffold.criterion_module_name``). So a request may name an id once,
+    and no two of its ids, or one of its ids and a frozen one, may name one file: the second
+    criterion's test would overwrite the first's, and one bundle would be frozen for both."""
+    counts = Counter(c.id for c in request.criteria)
+    refusals = [
+        ProposalRefusal(
+            RefusalKind.DUPLICATE_CRITERION,
+            f"criterion {cid} is named {n} times; each criterion takes an id of its own (§8.1)",
+        )
+        for cid, n in sorted(counts.items())
+        if n > 1
+    ]
+    named: dict[str, set[str]] = {}
+    for cid in (*counts, *prior):
+        named.setdefault(criterion_module_name(cid), set()).add(cid)
+    for name, ids in sorted(named.items()):
+        new = sorted(ids & set(counts))
+        if len(ids) > 1 and new:
+            refusals.append(
+                ProposalRefusal(
+                    RefusalKind.CRITERION_FILE_COLLISION,
+                    f"criteria {', '.join(sorted(ids))} would share one test file (each is named "
+                    f"{name!r} there): rename {', '.join(new)} so its letters, digits and _ differ",
+                )
+            )
+    return refusals
+
+
+_IDENTITY_REFUSALS = frozenset(
+    {RefusalKind.DUPLICATE_CRITERION, RefusalKind.CRITERION_FILE_COLLISION}
+)
+
+
+def _placed_collision_refusals(placed: list[PlacedCriterionFile]) -> list[ProposalRefusal]:
+    """§24cj, on a product: no two criteria are placed at one path, whatever placed them there."""
+    by_path: dict[str, set[str]] = {}
+    for f in placed:
+        by_path.setdefault(f.path, set()).add(f.criterion_id)
+    return [
+        ProposalRefusal(
+            RefusalKind.CRITERION_FILE_COLLISION,
+            f"criteria {', '.join(sorted(ids))} would all be placed at {path}; each criterion's test is a "
+            "file of its own",
+        )
+        for path, ids in sorted(by_path.items())
+        if len(ids) > 1
+    ]
+
+
 def _criteria_refusals(request: ChangeRequest, context: ProposalContext) -> list[ProposalRefusal]:
     refusals: list[ProposalRefusal] = []
     if request.kind is not ChangeKind.REFACTOR and not request.criteria:
@@ -928,6 +1032,7 @@ def _criteria_refusals(request: ChangeRequest, context: ProposalContext) -> list
             )
         )
     prior = set(context.prior_criteria)
+    refusals.extend(_criterion_identity_refusals(request, prior))
     # §8.1: a criterion pins its own verifier bundle by id for the rest of the campaign, so a new
     # criterion under a frozen one's id would share its file and its bundle.
     reused = sorted({c.id for c in request.criteria} & prior)

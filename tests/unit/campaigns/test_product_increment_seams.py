@@ -153,14 +153,17 @@ async def test_a_branch_increments_continuation_carries_its_approved_change_requ
 
 def test_a_branch_requests_criterion_files_are_the_placed_ones_with_no_stack():
     """Bug caught: ``scaffold.criterion_test_path`` asked for a product's file, which raises with
-    no stack, so the framing gate skips the criterion-file rule and the evaluation finds no file."""
+    no stack, so the framing gate skips the criterion-file rule and the evaluation finds no file; or a
+    request whose placement was dropped read as placing nothing (§24cj: it is refused)."""
     [placed] = increment_criterion_files(STORED, "")
     unplaced = dataclasses.replace(_REQUEST, criterion_files=(), footprint=("tally/report.py",))
     data = yaml.safe_load(stored_change_request(unplaced))
 
     assert (placed.criterion_id, placed.path) == ("R1", "checks/check_criterion_R1.py")
     assert _REQUEST.criterion_files == (PlacedCriterionFile("R1", placed.path),)
-    with pytest.raises(ValueError, match="placed no test file for R1"):
+    with pytest.raises(
+        ValueError, match="placement is refused: its criteria are R1, and it places none"
+    ):
         increment_criterion_files(yaml.safe_dump(data), "")
 
 
@@ -213,18 +216,69 @@ def _plan(*artifacts: str) -> str:
 
 
 class _GateVault(_Vault):
-    def __init__(self, plan: str) -> None:
+    def __init__(self, plan: str, document: str = STORED) -> None:
         super().__init__(promoted=True)
         self.plan = ArtifactRef(
             "art_plan", "prj-tally", "control_implementation_plan", "implementation_plan.yaml",
             "h", 1, "text/yaml", NOW, cycle_id="cyc_inc", run_id="run_f",
         )  # fmt: skip
         self.plan_text = plan
+        self.document = document
 
     async def retrieve(self, artifact_id):
         if artifact_id == "art_plan":
             return self.plan, self.plan_text.encode()
-        return await super().retrieve(artifact_id)
+        return self.ref, self.document.encode()
+
+
+def _executor(vault):
+    from squadops.execution.dispatched_flow_executor import DispatchedFlowExecutor
+
+    executor = DispatchedFlowExecutor(
+        cycle_registry=AsyncMock(), artifact_vault=vault,
+        queue=AsyncMock(), squad_profile=AsyncMock(), task_timeout=5.0, project_registry=None,
+        campaign_registry=None, campaign_progress=None, box_verdict=None,
+        failure_recall=NoOpFailurePatternRecall(), proposal_evidence=NoOpProposalEvidence(),
+    )  # fmt: skip
+    executor._cycle_event_bus = MagicMock()
+    return executor
+
+
+def _tampered() -> str:
+    """The stored request with its criterion's file moved after the ruling (the review's P2)."""
+    data = yaml.safe_load(STORED)
+    data["criterion_files"] = [{"criterion_id": "R1", "path": "tests/check_criterion_R1.py"}]
+    data["footprint"] = ["tally/report.py", "tests/check_criterion_R1.py"]
+    return yaml.safe_dump(data, sort_keys=False)
+
+
+async def test_a_tampered_placement_fails_closed_at_each_reader_after_the_ruling():
+    """The review's P2, at the live readers: the framing's provisioning
+    (``approved_change_request``, which ``RunProvisioning.prepare`` calls) and the framing gate.
+    Bugs caught: the moved file read as the one ruled on; or, at the gate, the unreadable request
+    read as no rule to apply (its sample-application rules skip on an unreadable input, #473), so a
+    product's plan passes held to nothing."""
+    from squadops.campaigns.increment_tree import approved_change_request
+
+    plan = _plan(
+        ("tally/report.py", "development.develop", "dev"),
+        ("tests/check_criterion_R1.py", "qa.test", "qa"),
+    )
+    vault = _GateVault(plan, _tampered())
+    run = Run(
+        "run_f", "cyc_inc", 2, "completed", "system", "cfg",
+        workload_type="framing", artifact_refs=("art_plan",),
+    )  # fmt: skip
+    cycle = _cycle(plan_artifact_refs=["art_cr"])
+
+    with pytest.raises(ValueError, match="does not match its hash"):
+        await approved_change_request(vault, cycle)
+    errors = await _executor(vault)._reject_invalid_plan_before_workload_gate(
+        run, cycle, "progress_plan_review"
+    )
+
+    [held] = [e for e in errors if "can't be held to its footprint and criterion files" in e]
+    assert held.endswith("the stored change request's content does not match its hash")
 
 
 @pytest.mark.parametrize(
@@ -249,15 +303,7 @@ async def test_the_framing_gate_holds_a_branch_increments_plan_to_its_request(ar
     """The plan validator enforces the authored footprint as today (§24bv point 5), entered at
     ``_reject_invalid_plan_before_workload_gate``. Bugs caught: the footprint rule skipped because
     the cycle carries no manifest; the criterion-file rule skipped because no stack places it."""
-    from squadops.execution.dispatched_flow_executor import DispatchedFlowExecutor
-
-    executor = DispatchedFlowExecutor(
-        cycle_registry=AsyncMock(), artifact_vault=_GateVault(_plan(*artifacts)),
-        queue=AsyncMock(), squad_profile=AsyncMock(), task_timeout=5.0, project_registry=None,
-        campaign_registry=None, campaign_progress=None, box_verdict=None,
-        failure_recall=NoOpFailurePatternRecall(), proposal_evidence=NoOpProposalEvidence(),
-    )  # fmt: skip
-    executor._cycle_event_bus = MagicMock()
+    executor = _executor(_GateVault(_plan(*artifacts)))
     run = Run(
         "run_f", "cyc_inc", 2, "completed", "system", "cfg",
         workload_type="framing", artifact_refs=("art_plan",),

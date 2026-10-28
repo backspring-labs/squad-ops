@@ -293,7 +293,8 @@ class FramingGateCheck:
                     "validate_increment_footprint",
                     parsed_plan.validate_increment_footprint(
                         await self._increment_footprint(cycle, interface_content)
-                    ),
+                    )
+                    + await self._unreadable_branch_request(cycle),
                 )
             )
             # SIP-0109 §8.1, §19 item 12e: no task writes an earlier criterion's frozen file.
@@ -588,6 +589,24 @@ class FramingGateCheck:
                 exc_info=True,
             )
             return ()
+
+    async def _unreadable_branch_request(self, cycle: Cycle) -> list[str]:
+        """SIP-0109 §24cj: a repository-backed increment's plan is held to its stored change
+        request's footprint and placement, which nothing at the gate can derive again. One that
+        can't be read, or whose placement is refused (``placement_inconsistency``), refuses the
+        plan, named: never skipped, as a sample application's rule may be, since nothing else
+        holds a product's plan to its change. Returned, not raised (#473)."""
+        basis = increment_basis(cycle.resolved_config())
+        if basis is None or basis.has_manifest:
+            return []
+        try:
+            document = await approved_change_request(self._artifact_vault, cycle)
+        except Exception as e:  # noqa: BLE001 — refused by name, never a crash (#473)
+            return [
+                f"the approved change request can't be read, so this plan can't be held to its "
+                f"footprint and criterion files: {e}"
+            ]
+        return [] if document is not None else ["the increment's approved change request is absent"]
 
     async def _increment_footprint(self, cycle: Cycle, run_manifest: str | None) -> Any:
         """The increment's footprint, or ``None`` for a cycle that is not an increment (or

@@ -2220,7 +2220,14 @@ def criterion_test_path(stack: str, criterion_id: str, surface_kind: str) -> str
             f"stack {stack!r} declares no criterion test file for a {surface_kind!r} criterion "
             f"(declared: {sorted(templates)})"
         )
-    return template.format(criterion=re.sub(r"[^A-Za-z0-9_]", "_", criterion_id))
+    return template.format(criterion=criterion_module_name(criterion_id))
+
+
+def criterion_module_name(criterion_id: str) -> str:
+    """A criterion's id as its test file names it: kept to letters, digits and ``_``, so the file
+    is a valid module name on every runner. Two ids can name one file (``T-1``, ``T_1``), so a
+    proposal's ids must name distinct ones (SIP-0109 §24cj)."""
+    return re.sub(r"[^A-Za-z0-9_]", "_", criterion_id)
 
 
 def skeleton_pins_success_status_for(stack: str) -> bool:
