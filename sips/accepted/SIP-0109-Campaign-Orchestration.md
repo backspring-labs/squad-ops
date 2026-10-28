@@ -5171,17 +5171,17 @@ anchor is a typed field.
      footprint does (§24cj). The ruling's binding (§9.2) is the hash, so it binds the anchor too.
    - **It's stored only when set,** as a criterion's `paths` is (`_authored_fields`). A request that names none keeps
      its document and its hash. The test pins the hash `origin/main` computes for such a request.
-   - **The parse refuses it, as `malformed`, naming why** (`_anchor`, `change_request.py:378`):
+   - **The parse refuses it, as `malformed`, naming why** (`_anchor`, `change_request.py:381`):
      - on a sample application's request: its views are anchored by its manifest delta's `testids`;
      - on a criterion that isn't a page (`endpoint`, `command`, `package`): there's no view;
      - when it isn't a `data-testid` value. That's a letter, then letters, digits, `-` or `_`, at most 64 characters
-       (`_ANCHOR`, `:375`). Nothing in it needs quoting in an attribute or a selector, so the page's reading and
+       (`_ANCHOR`, `:378`). Nothing in it needs quoting in an attribute or a selector, so the page's reading and
        the criterion's test name one element.
 
      The load runs the same parse, so a stored request is held to the same checks.
-2. **The rails (`_anchor_refusals`, `change_request.py:1017`, run by `_validate_product_proposal` at `:968`).** A
+2. **The rails (`_anchor_refusals`, `change_request.py:1020`, run by `_validate_product_proposal` at `:971`).** A
    page "the change adds" is one whose route the profile's `client_routes` doesn't name. Those are the routes
-   acceptance pins (§24co item 11), read here as `ProductContext.judged_routes` (`:774`).
+   acceptance pins (§24co item 11), read here as `ProductContext.judged_routes` (`:777`).
    - **Required on a page the change adds (`anchor_required`).** The choice was required, not optional:
      - an added page with no anchor can only block at acceptance (§24co item 11), so a request that names none
        is an increment the campaign can't accept with its own page;
