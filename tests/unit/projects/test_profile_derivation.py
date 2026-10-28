@@ -58,7 +58,10 @@ _SHELFNOTE = {
     "backend/requirements.txt": b"fastapi\n",
     "conftest.py": b"",
     "tests/test_books_api.py": b"",
-    "frontend/package.json": b'{"name": "shelfnote-frontend", "private": true, "scripts": {"test": "vitest run"}}',
+    "frontend/package.json": (
+        b'{"name": "shelfnote-frontend", "private": true, "scripts": {"test": "vitest run"},'
+        b' "devDependencies": {"vitest": "^2.1.9"}}'
+    ),
     "frontend/package-lock.json": b"{}",
     "frontend/src/App.jsx": b"",
     "frontend/src/App.test.jsx": b"",
@@ -229,3 +232,55 @@ def test_each_gap_is_named_with_its_kind_and_the_paths_it_applies_to(
     profile = derive_profile(files, _configuration(checks), _baseline(checks, **results))
 
     assert expected in _gaps(profile)
+
+
+_PKG = b'{"name": "shelfnote-frontend", "private": true, "scripts": {"test": "%s"}%s}'
+
+
+@pytest.mark.parametrize(
+    ("script", "deps", "extra", "why"),
+    [
+        ("vitest run", b', "devDependencies": {"vitest": "^2.1.9"}', {}, None),
+        ("vitest run", b', "dependencies": {"vitest": "~2.0.5"}', {}, None),
+        ("vitest run", b', "devDependencies": {"vitest": "1.6.0"}', {},
+         "its package pins vitest '1.6.0', and the reader is validated on vitest 2"),
+        ("vitest run", b', "devDependencies": {"vitest": "workspace:*"}', {},
+         "its package pins vitest 'workspace:*', and the reader is validated on vitest 2"),
+        ("vitest run", b"", {},
+         "no package.json at its root or the repository's declares a vitest version"),
+        ("vitest run --reporter=dot", b', "devDependencies": {"vitest": "^2.1.9"}', {},
+         "its test command names a reporter"),
+        ("vitest run 2>&1", b', "devDependencies": {"vitest": "^2.1.9"}', {},
+         "its test command merges stderr into stdout"),
+        ("vitest run", b', "devDependencies": {"vitest": "^2.1.9"}',
+         {"frontend/vitest.config.ts": b"export default { test: { reporters: ['junit'] } }"},
+         "frontend/vitest.config.ts configures reporters"),
+    ],
+    ids=["pinned 2", "range 2 in dependencies", "another major", "unpinned spec", "no version",
+         "a reporter flag", "stderr merged", "a reporters config"],
+)  # fmt: skip
+def test_vitest_is_given_its_reader_only_where_the_products_output_is_what_it_reads(
+    script, deps, extra, why
+):
+    """SIP-0112 H.10's blind spot (the MacBook lane's G4 on #2764). Bug caught: the reader given by
+    the runner's kind, so a product on another vitest major, another reporter, or stderr merged into
+    stdout shows nothing at capture, and every criterion reads blocked_unverified at its first
+    increment instead of the gap naming why here."""
+    files = {**_SHELFNOTE, "frontend/package.json": _PKG % (script.encode(), deps), **extra}
+    configuration = _configuration(_SHELFNOTE_CHECKS, stack="fullstack_fastapi_react")
+
+    profile = derive_profile(files, configuration, _baseline(_SHELFNOTE_CHECKS))
+
+    vitest = next(r for r in profile.runners if r.runner == "vitest")
+    gap = next(
+        (g for g in profile.gaps if g.id == "no_test_id_reader" and g.subject == "vitest"), None
+    )
+    if why is None:
+        assert (vitest.test_ids, gap) == ("vitest", None)
+    else:
+        assert vitest.test_ids is None
+        assert gap.reason == (
+            f"vitest's reader can't read this product's output: {why}, so a criterion's "
+            "discrimination is unread and it isn't accepted as discriminating (SIP-0109 §24ci (a))"
+        )
+        assert gap.closes_by == "vitest 2 run with its default reporter, its stderr apart"

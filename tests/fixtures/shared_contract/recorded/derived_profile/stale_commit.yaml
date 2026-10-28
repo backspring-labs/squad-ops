@@ -54,5 +54,5 @@ gaps:
     kind: disclosed
     subject: unittest
     paths: ["**"]
-    reason: "no findings reader names unittest's tests one by one, so each criterion is read by its own test file's result"
+    reason: "no findings reader names unittest's tests one by one, so a criterion's discrimination is unread and it isn't accepted as discriminating (SIP-0109 §24ci (a))"
     closes_by: "a unittest reader in squadops.sandbox.findings"
