@@ -3,11 +3,15 @@
 A launch intent carries the whole cycle-create request, built here from the campaign's policy
 when the deciding row is written, so a launch re-drained after a restart creates the cycle the
 decision named, not one rebuilt from whatever the profiles say by then.
+
+One thing is bound at drain instead: a repository-backed increment's tree, the campaign branch's
+head, which can move after the decision (SIP-0109 §24cd point 1, ``bound_at_head``).
 """
 
 from __future__ import annotations
 
 import uuid
+from typing import TYPE_CHECKING
 
 from squadops.campaigns.calibration_record import BINDING_KEY, CalibrationRecord
 from squadops.campaigns.models import (
@@ -19,6 +23,9 @@ from squadops.campaigns.models import (
     LaunchRequest,
 )
 from squadops.contracts.cycle_request_profiles import cycle_request_body, load_profile
+
+if TYPE_CHECKING:
+    from squadops.campaigns.campaign_branch import CampaignHead
 
 
 def _stack_values(campaign: Campaign) -> dict:
@@ -98,6 +105,11 @@ def increment_launch(
     ``unapproved`` is each proposal the campaign ruled on and never approved, by its last ruling
     (#2593), when there is any.
 
+    **A repository-backed increment's intent binds no tree** (§24cd point 1). Its accepted tree is
+    the campaign branch's head, which a rebase can move between this decision and the drain
+    (§24bv point 4), so the launcher binds the head it reads at drain (``bound_at_head``). A
+    sample application's tree is the vault's, never moves but by promotion, and is bound here.
+
     Raises ``ValueError`` for a campaign whose accepted tree is no cycle's: one with none, or a
     calibration record's (§24cc), whose proposal reads the product's tree instead (§24bv point 5).
     Every seam downstream reads ``accepted_cycle_id`` as the cycle the increment builds on, so it
@@ -123,7 +135,11 @@ def increment_launch(
                     "campaign_proposal": {
                         "proposal_id": f"prop_{uuid.uuid4().hex[:12]}",
                         "version": 1,
-                        "baseline_tree": campaign.accepted.identity,
+                        **(
+                            {}
+                            if campaign.accepted.commit is not None
+                            else {"baseline_tree": campaign.accepted.identity}
+                        ),
                         # The cycle whose delivered files the increment builds on (§7.1).
                         "accepted_cycle_id": campaign.accepted.cycle_id,
                         "baseline_manifest": baseline_manifest,
@@ -190,6 +206,42 @@ def increment_id_of(kind: CycleKind, cycle_request: dict) -> str | None:
     if not (isinstance(proposal_id, str) and proposal_id.strip()):
         raise ValueError(f"a {kind} launch's campaign_proposal block names no proposal_id")
     return proposal_id
+
+
+def bound_at_head(kind: CycleKind, cycle_request: dict, head: CampaignHead | None) -> dict:
+    """§24cd point 1: the cycle request a repository-backed launch is built from, bound at the
+    campaign branch's head the launcher read at drain. ``head`` is ``None`` for a sample
+    application (its tree names no commit), and its request is returned as it was written.
+
+    - **An increment** binds no tree in its intent (``increment_launch``), so the head's tree
+      is bound here: its proposal is given, and its ruling binds to, the tree it is built on.
+    - **A repair or a retry** continues a candidate built on the tree its block names
+      (``CONTINUED_KEYS``), so that tree must still be the head. One the head has moved past
+      was built on another tree, and nothing it built can follow the head (§24bv point 2).
+    - **A calibration** carries no block, and is returned as it was written.
+
+    Raises ``ValueError`` for an increment whose intent names a tree other than the head, or a
+    continuation whose tree is not the head or that names none: refused, never re-bound."""
+    if head is None:
+        return cycle_request
+    body = cycle_request.get("body") or {}
+    overrides = body.get("execution_overrides") or {}
+    block = overrides.get("campaign_proposal")
+    if not isinstance(block, dict):
+        return cycle_request
+    named = block.get("baseline_tree")
+    if named is None and kind is CycleKind.INCREMENT:
+        block = {**block, "baseline_tree": head.tree_identity}
+    elif named != head.tree_identity:
+        raise ValueError(
+            f"the {kind} is bound to tree {str(named)[:12]}, and the campaign branch's head is "
+            f"{head.commit[:12]}, tree {head.tree_identity[:12]}: a launch is built on the head "
+            "(SIP-0109 §24cd point 1)"
+        )
+    return {
+        **cycle_request,
+        "body": {**body, "execution_overrides": {**overrides, "campaign_proposal": block}},
+    }
 
 
 #: The workloads each bound cycle runs (§10a): a retry frames afresh and builds; a repair builds

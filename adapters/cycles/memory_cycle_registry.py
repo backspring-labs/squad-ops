@@ -40,6 +40,7 @@ from squadops.cycles.run_loop_summary import RunLoopSummary
 from squadops.cycles.verification_integrity import RunVerificationSummary
 from squadops.memory.authoring_envelope import envelope_id
 from squadops.ports.cycles.cycle_registry import CycleRegistryPort
+from squadops.projects.source_context import ProjectSourceContext
 
 
 class MemoryCycleRegistry(CycleRegistryPort):
@@ -408,6 +409,10 @@ class MemoryCycleRegistry(CycleRegistryPort):
             )
             d["task_flow_policy"] = TaskFlowPolicy(mode=tfp["mode"], gates=gates)
         d["expected_artifact_types"] = tuple(d.get("expected_artifact_types", ()))
+        # Contract 1's pin, read back as the Postgres registry reads it: a stored dict would
+        # leave every reader of ``source_context.pinned_commit`` an AttributeError.
+        if isinstance(d.get("source_context"), dict):
+            d["source_context"] = ProjectSourceContext(**d["source_context"])
         d["cancelled"] = d.get("cycle_id", data.get("cycle_id")) in self._cancelled_cycles
         return Cycle(**d)
 
