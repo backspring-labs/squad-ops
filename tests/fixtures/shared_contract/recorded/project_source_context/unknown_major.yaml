@@ -8,3 +8,6 @@ development_configuration_revision: 1
 repo_uri: https://code.example.invalid/tally/tally.git
 development_baseline_commit: 962858eb0e321ed084463637c9faf661c179a41e
 integrated_upstream_commit: 962858eb0e321ed084463637c9faf661c179a41e
+pinned_commit: 962858eb0e321ed084463637c9faf661c179a41e
+pinned_from: project_baseline
+previous_verification_ref: null

@@ -1,4 +1,4 @@
-# The stale_commit form: both commits name the first commit: a precondition the Project has moved past. Otherwise identical to valid.yaml.
+# The stale_commit form: every commit names the first commit: a precondition the Project has moved past. Otherwise identical to valid.yaml.
 # Contract 1 (SIP-0112 §8.2.1): the source context the next Cycle pins before dispatch.
 # Produced by the MacBook lane; read by Cycle preparation, the Campaign launcher and Outcome Evaluation.
 schema: project-source-context/v1
@@ -8,3 +8,6 @@ development_configuration_revision: 1
 repo_uri: https://code.example.invalid/tally/tally.git
 development_baseline_commit: 15c7a12b8ed45f63ae47e90e3e854f6b3a2775f1
 integrated_upstream_commit: 15c7a12b8ed45f63ae47e90e3e854f6b3a2775f1
+pinned_commit: 15c7a12b8ed45f63ae47e90e3e854f6b3a2775f1
+pinned_from: project_baseline
+previous_verification_ref: null

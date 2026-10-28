@@ -59,14 +59,14 @@ async def seed_checkout_artifacts(
         cycle.project_id,
         context.repo_uri,
         project.source.base_ref,
-        context.development_baseline_commit,
+        context.pinned_commit,
     )
     if tree.capability_gaps:
         raise SourceCheckoutRefused(
             "capability gap: the run cannot carry " + "; ".join(tree.capability_gaps)
         )
     manifest = manifest_of(
-        context.development_baseline_commit,
+        context.pinned_commit,
         tree.files,
         tree.executable,
         [s.path for s in configuration.instruction_sources],
@@ -75,7 +75,7 @@ async def seed_checkout_artifacts(
     )
     provenance = {
         "producing_task_type": SOURCE_CHECKOUT,
-        "checkout_commit": context.development_baseline_commit,
+        "checkout_commit": context.pinned_commit,
     }
     ids = [
         await _store(

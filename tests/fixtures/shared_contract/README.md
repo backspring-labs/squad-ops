@@ -51,7 +51,7 @@ header says, and `test_shared_fixture.py` holds them to that.
 
 | output | lane | contract | missing field | unknown major | stale commit |
 |---|---|---|---|---|---|
-| `project_source_context` | MacBook | 1 | `development_baseline_commit` | `project-source-context/v2` | both commits name the first |
+| `project_source_context` | MacBook | 1 | `development_baseline_commit` | `project-source-context/v2` | every commit names the first |
 | `development_configuration` | MacBook | 7 (`technical.commands.start`) | `configuration.revision` | `.../v2` | validated at the first commit |
 | `workspace_commit_mapping` | MacBook | 3 and 4 | the captured entry's `commit` | `workspace-commit-mapping/v2` | the captured entry names the first commit |
 | `inherited_baseline` | MacBook | none (FR-20, IR-9) | `commit` | `inherited-baseline/v2` | captured at the first commit |
