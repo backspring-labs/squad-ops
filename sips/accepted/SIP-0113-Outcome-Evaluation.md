@@ -89,7 +89,7 @@ contribution separates from acceptance.
 | phase 1: the declared start at the cycle-end hook, read from a repository-backed Project's Development Configuration (§4.1, contract 7; §10l) | **placed**, re-placed from 2.4 on 2026-10-21: its only consumer is a Campaign on such a Project, which SIP-0112 H.4 places in 2.5 (#2619). The browser runner moved to #2564 (§10k) | 2.5.0, #2414 |
 | phase 1: the browser runner and page scenarios, in the evaluator's image (§4.1, A2, A3; §10k, reviewed in §10p: eight steps, revision 5's page scenarios approved by the supervisor under the owner's delegation) | **shipped** (§10p, §10q, §10r): built in eight PRs; revision 5 approved; B1 and B2 **hold**, and B3 is **falsified as written** by one public value, not a leak (§10r) | 2.4.0, PRs #2646, #2647, #2651, #2652, #2653, #2655, #2656 and #2657, issue #2564 |
 | phase 1: the evaluator's next tag. Its base and Chromium are pinned so a tag names one image (#2583), and it carries ruling 5's measured bound of 5 s (§10r) | **shipped**: `…-eslint10.12-5`. The base is pinned by index digest and Debian's archives by a dated snapshot, and its 260 packages are `-4`'s exactly | 2.4.0, PR #2661, issue #2583 |
-| phase 1 amendment: a click that is skipped when its control is unavailable, so a page scenario can read an outcome a delivery builds in either form (§10r; #2659) | **unplaced**: it changes the driver, so it waits for a design review | the next even release, or dropped by amendment |
+| phase 1 amendment: a click that is skipped when its control is unavailable, so a page scenario can read an outcome a delivery builds in either form (§10r; #2659) | **shipped** in the evaluator's `-6` (§10x); this row read unplaced until 2026-10-28 | 2.5.0, PR #2717, issue #2659 |
 | phase 1: the evaluation record and its reference (§4.1, contract 5) | **shipped** (§10b) | 2.4.0, PR #2449, issue #2415 |
 | phase 1: the quality baselines, Lighthouse, axe and lint, in the evaluator's image (§4.2) | **shipped** (§10f): Lighthouse and axe on each evaluated instance's declared pages, and #1937's lint. Prediction 4, the done-when, read at the window's close: **holds** (spread 0 within a session, at most 0.03 between sessions) | 2.4.0, PRs #2474 and #2479, issue #2416 |
 | phase 1: the intervention ledger's classifications (§4.3) | **shipped** (§10d) | 2.4.0, PR #2454, issue #2417 |
@@ -98,7 +98,7 @@ contribution separates from acceptance.
 | phase 2: the objective's scenario measure, read by SIP-0109 §10 row 3, as a SIP-0109 amendment (§4.7) | **unplaced**, held by D4 (§10s) until a reading shows contribution separating from acceptance (prediction 3 was falsified as written at the window's close) | the next even release at the earliest, on that reading |
 | quality gates where phase 1's data supports a threshold (§4.2, §6) | **unplaced** | with §4.7, each with its phase-1 evidence (§10s) |
 | phase 1 amendment: Lighthouse and axe on a seeded instance, parameterised pages included (§10j; reviewed in §10n) | **shipped** (§10n, §10o): a second instance of each evaluated tree, seeded through its own API and measured on every page the seed names, and the window's 20 trees re-measured as their own series. S1 **holds**, S2 **falsified** (§10o) | 2.4.0, PRs #2632, #2633, #2634 and #2635, issue #2562 |
-| phase 1 amendment: a finer quality reading, axe by element, failing audits by id, the HTTPS audits read as the environment's (§10o; designed, reviewed and approved in §10y) | **placed**: §10y's built list is built as the evaluator's `…-eslint10.12-7` in PR #2762, with `remeasure_quality.py --fault` for its positive control. What remains is the pre-registered series (S1, S2a, S2b, E and the positive control) on a deploy carrying `-7`, read per measure | 2.5.0, #2637 |
+| phase 1 amendment: a finer quality reading, axe by element, failing audits by id, the HTTPS audits read as the environment's (§10o; designed, reviewed and approved in §10y) | **shipped**: built as the evaluator's `…-eslint10.12-7` (PR #2762) and read on its pre-registered series (§10z): S1 and E hold, S2a falls for both new measures, and the positive control falls as written, so every new measure stays reporting-only | 2.5.0, PR #2762 and the PR recording §10z, issue #2637 |
 | a repository-backed Project's Campaign: its baseline reading, an evaluation of the calibration record's commit (§10l; SIP-0112 H.4, SIP-0109 §24bv) | **placed** | 2.5.0, #2619 |
 
 **What closes this SIP:** phase 1 shipped and phase 2 shipped, or phase 2 dropped by a numbered amendment the owner
@@ -2312,3 +2312,59 @@ notes. All thirteen are taken above:
 - and the paragraph below.
 
 **Who ruled:** the owner approved this design on 2026-10-28 (the 2.5 plan's D7), taking the supervisor's recommendation to approve it: "Go with your recommendations". The supervisor drafted it, and a fresh agent reviewed it (three blocking findings and ten notes, all taken in revision `75b2b13b`). Nothing in it was built before the approval.
+
+### 10z. §10y's series, read: stable on an unchanged tree, blind to two of three capacity increments, and the control's prediction wrong about `region` (2026-10-28; #2637, #2765; the supervisor's reading, under the owner's rulings of 2026-10-28)
+
+**What ran.** The evaluator's `…-eslint10.12-7` (PR #2762), deployed from `b850471c` (`verify_loaded`: 196
+loaded, 0 not). The 2.4 window's 20 trees, seeded, three rounds each, 13:51Z to 15:34Z, with
+`remeasure_quality.py <cycle> 3 --record "2.5, finer"`. Then the positive control on `cyc_4145fa7e4b4a`, three
+rounds of the faulted tree beside the tree it was made from. The reader (`read_finer.py`), the control's spec and
+its prediction were written, and their hashes taken, before any `-7` reading existed. The records are in
+`var/window/2-5-0-finer/` (`readout.txt`, `pre-run.sha256`, `progress.log`).
+
+**One deviation, named.** Two trees, `cyc_840e72247f38` and `cyc_e5370cec344f`, were measured but refused at
+`--record`. On 2026-10-24, the suite-revision-6 validation's `read_scenarios.py --fault` had stored faulted trees'
+evaluations against those real cycles, so each cycle's latest evaluation read another tree (#2765). Both were
+re-measured through the same path without `--record`. Their readings are in the window's records, and no
+`quality_remeasures` rows are stored for them.
+
+**The verdicts, per measure, as pre-registered:**
+- **S1 holds for all three measures.** On 120 page-readings (20 trees, the unseeded reading's 2 pages and the seeded
+  reading's 4), every page's node counts by impact, failing-id sets and `best_practices_app` were identical across
+  the three rounds. No page was left uncompared.
+- **S2a falls for both new measures.** Round 1 against round 1, on the run's detail pages:
+  - node counts moved on one pair of three: campaign 1's `cyc_f9930df7c925` against `cyc_4145fa7e4b4a`, moderate
+    7 → 8 on both `#partial` and `#at_capacity`;
+  - campaign 2's (`cyc_e5370cec344f`) and campaign 3's (`cyc_840e72247f38`) moved nothing;
+  - no pair introduced or resolved a failing id.
+- **S2b, reported:** the three sorting pairs moved nothing on `/`, the honest zero expected. Campaign 4's
+  capacity-display increment (`cyc_9915bf056615`, built on `cyc_42ad92a3290d`, read from the evaluation store)
+  moved moderate 8 → 9 on both detail pages.
+- **E holds.** On 360 page-readings, every page's `failing.environment` names both `is-on-https` and
+  `redirects-http`, and `best_practices_app`'s invariant held. Every round-1 page had only those two failing, so
+  every page's `best_practices_app` is 1.0: it can't discriminate anything on this app yet.
+- **The positive control falls as written.** In all three rounds, on both detail pages:
+  - the injected faults read exactly as predicted: `axe_nodes:critical` 0 → 3, and `image-alt` (axe and
+    accessibility) and `errors-in-console` (best practices) introduced, nothing resolved;
+  - but `axe_nodes:moderate` also rose 7 → 10, where the prediction was unchanged. That falsifies it.
+
+**Why the control and S2a read as they do.** The app's detail page has no `main` landmark (`landmark-one-main`
+fails on every tree read), so axe's `region` rule reports each top-level block of the page outside a landmark: the
+base page's 7 moderate nodes. The control's three images went in as new top-level blocks, so they added three
+`region` nodes beside their three `image-alt` nodes. §10y's premise, that content added inside an already-reported
+container adds no node, holds for content added inside an existing block. A new block adds a node. That fits S2a:
+campaign 1's increment (and campaign 4's) added a block to the detail page, and campaigns 2 and 3 changed blocks
+already there. This reading is the supervisor's, from the counts; the DOM of each increment wasn't diffed.
+
+**What follows, by §10y's rule.** S2a fell for node counts and failing ids, so both stay recorded and
+reporting-only, and the proposal keeps seeing only today's measures (`_SHOWN_MEASURES`). `best_practices_app` passed
+S1 and E but reads 1.0 on every page, so it shows nothing yet; it stays reporting-only too. The measurement path is
+not in doubt: the control's faults were read exactly where the injected rule and audit are counted. The node count
+it reads is a count of top-level blocks outside landmarks while the app has no `main`, not a count of what an
+increment adds.
+
+**What this doesn't decide:** a threshold, gate or weight (§4.7, held); whether a later measure (a DOM diff of the
+changed page, or node counts once an app has landmarks) is worth a design; and #2765's fix.
+
+**Who ruled.** The supervisor read the pre-registered predictions, under the owner's rulings of 2026-10-28, which
+approved §10y's design and its series. No prediction was changed after a reading existed.
