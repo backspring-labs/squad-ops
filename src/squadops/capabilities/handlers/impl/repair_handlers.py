@@ -1103,7 +1103,9 @@ class _RepairPromptMixin:
         ``development.develop`` (``increment_views``), or from a failed ``qa.test``'s scope, so a
         repair of a view keeps the anchor acceptance reads the page for. A qa repair is shown them
         in its test scope already."""
-        if self._role != "dev":
+        # Read as the mixin's other renderers read it; through getattr, since the mixin declares no
+        # ``_role`` and the type ratchet counts each bare read (its baseline holds the others).
+        if getattr(self, "_role", "") != "dev":
             return ""
         scope = inputs.get("increment_test_scope")
         views = inputs.get("increment_views") or (
