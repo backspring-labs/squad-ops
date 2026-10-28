@@ -133,7 +133,8 @@ async def _qa_run(monkeypatch, *replies: str):
     result = await QATestHandler().handle(
         ctx, {**qa.inputs, "prd": "Runs API", "artifact_contents": {}}
     )
-    return result, [m[-1].content for m in sent]
+    # Each call's prompt: the first call's user turn (it ends with D12's note), a later call's last.
+    return result, [m[1].content if i == 0 else m[-1].content for i, m in enumerate(sent)]
 
 
 def _outlet(result) -> list[dict]:
@@ -219,7 +220,7 @@ async def test_a_qa_repair_is_not_given_the_outlet_and_its_block_reaches_no_tree
         },
     )
 
-    prompt = ctx.ports.llm.chat_stream_with_usage.await_args_list[0].args[0][-1].content
+    prompt = ctx.ports.llm.chat_stream_with_usage.await_args_list[0].args[0][1].content
     assert "propose it" not in prompt  # the outlet's appendix is the suite author's alone
     assert _outlet(result) == []
     assert result.outputs["proposed_behaviours_ignored"] == ["proposed_behaviours.yaml"]
