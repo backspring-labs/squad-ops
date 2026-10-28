@@ -1842,3 +1842,27 @@ checks:
       bound = bound_at_head(CycleKind.INCREMENT, request, CampaignHead("a" * 40, "t" * 64, None))
       print(bound["body"]["execution_overrides"]["campaign_proposal"]["baseline_tree"][:4])
     expect: tttt
+  - id: "2619-regression-baseline"
+    what: an increment on a campaign branch's head is compared with the verification that made it, and the runtime reads a reading's classes (SIP-0109 §24bv point 3, §24ci (a))
+    container: squadops-runtime-api
+    code: |
+      from squadops.campaigns.acceptance import discrimination_on_runner
+      from squadops.projects.verification import previous_verification_baseline
+      from squadops.sandbox.findings import FindingsReading
+      doc = {"schema": "source-verification/v1", "project_id": "p", "verdict": "accepted",
+             "development_configuration_revision": 1, "candidate_tree_identity": "t" * 64,
+             "checks": [{"id": "lint", "result": "PASS"}]}
+      baseline, tree = previous_verification_baseline(doc, ref="a", project_id="p", commit="c" * 40, revision=1)
+      read = FindingsReading.from_dict({"reader": "pytest", "version": 1, "readable": True,
+                                        "counts": {"FAILED t.py::x": 1}, "classes": {"FAILED t.py::x": "ImportError"}})
+      print(baseline.checks[0].result, tree[:4], discrimination_on_runner("c", None, None, None).reason.value, read.classes["FAILED t.py::x"])
+    expect: PASS tttt no_test_id_reader ImportError
+  - id: "2757"
+    what: the sandbox reads vitest's default reporter by test id with each failure's class (#2757, SIP-0112 H.10)
+    container: squadops-sandbox-service
+    code: |
+      from squadops.sandbox.findings import read
+      err = "⎯⎯ Failed Tests 1 ⎯⎯\n\n FAIL  src/a.test.js > shows it\nAssertionError: expected 1 to be 2\n"
+      reading = read("vitest", " Tests  1 failed | 1 passed (2)\n", err, 1)
+      print(reading.readable, reading.collected, dict(reading.classes))
+    expect: "True 2 {'FAILED src/a.test.js > shows it': 'AssertionError'}"
