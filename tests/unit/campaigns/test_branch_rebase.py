@@ -1208,3 +1208,49 @@ async def test_frozen_criteria_with_nothing_to_run_them_fail_closed(tmp_path, ca
     assert refusal.startswith("REBASED_HEAD_UNVERIFIABLE: "), refusal
     assert refusal.endswith("unread: crit_kept")
     assert await world.rows(ControlOperation.BRANCH_REBASED) == []
+
+
+async def test_the_runtime_rebases_with_the_products_runner_wired(tmp_path):
+    """The third review's P1: the rebase the runtime builds (``main._branch_rebase``, which
+    ``_init_cycle_subsystem`` calls) runs the frozen criteria on the product's runner. Entered
+    there over this world's clone, sandbox and records, then drained with a criterion upstream
+    breaks. Bugs caught: the runtime building its rebase with no runner, so every rebase with
+    frozen criteria escalates as unverifiable (or, failing open, passes unread); the runner given
+    another sandbox than the checks run in."""
+    from types import SimpleNamespace
+
+    from squadops.api.runtime import main
+
+    world = _World(tmp_path)
+    await world.started()
+    await world.accepted()
+    await _frozen(world, {"crit_readme": (BROKEN_PATH, _broken_test(world))})
+    onto = world.upstream({"README.md": b"Tally, rewritten\n"}, "docs")
+    await _reconciled_with_pytest(world, onto)
+    await world.proposing()
+    await _reading_sandbox(world)
+    state = SimpleNamespace(
+        source_repository=world.clones,
+        sandbox_client=world.sandbox,
+        campaign_progress=world.progress,
+    )
+    squads = AsyncMock()
+    squads.resolve_snapshot.return_value = (_squad(), "sha256:abc")
+    creation = CreationPorts(
+        project_registry=world.projects, squad_profile=squads, cycle_registry=world.cycles,
+        deploy_registry=_Deploys(), artifact_vault=world.vault,
+    )  # fmt: skip
+    rebase = main._branch_rebase(
+        state, campaigns=world.campaigns, projects=world.projects, vault=world.vault,
+        creation=creation,
+    )  # fmt: skip
+    service = CampaignLaunchService(
+        campaigns=world.campaigns, creation=creation, flow_executor=_Executor(),
+        event_bus=MagicMock(), box_verdict=quiet_box, before_launch=rebase.before_launch,
+    )  # fmt: skip
+
+    await service.drain()
+
+    refusal = (await world.campaigns.control_log(CID))[-1].binding["refusal"]
+    assert refusal.startswith("REBASED_HEAD_REGRESSED: "), refusal
+    assert "crit_readme (broken" in refusal

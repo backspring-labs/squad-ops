@@ -14,6 +14,7 @@ performs no configuration load, no secret resolution and no construction.
 """
 
 import asyncio
+import functools
 import logging
 import os
 import time
@@ -386,6 +387,28 @@ async def _cut_over_project_registry(provider: str, registry, pool) -> None:
             len(unknown),
             unknown,
         )
+
+
+def _branch_rebase(state, *, campaigns, projects, vault, creation) -> BranchRebase:
+    """SIP-0109 §24bv point 4: before each launch, a repository-backed campaign's branch is
+    rebased onto the commit its Project reconciled, when upstream moved, and its head
+    re-verified: by the product's checks, and (§24cd point 5) by every frozen criterion's bundle
+    on the product's runner in the sandbox (#2774's ``frozen_on_runner``, §24cl item 10), which
+    fails closed (§24cm)."""
+    return BranchRebase(
+        campaigns=campaigns,
+        projects=projects,
+        repository=state.source_repository,
+        sandbox=state.sandbox_client,
+        vault=vault,
+        branch=CampaignBranch(projects=projects, repository=state.source_repository),
+        reconciled=functools.partial(reconciled_at_pin, creation),
+        propose=state.campaign_progress.proposal_after_rebase,
+        actor=LAUNCHER_ACTOR,
+        frozen_on_runner=ProductRunnerFrozen(
+            sandbox=state.sandbox_client, projects=projects, vault=vault
+        ),
+    )
 
 
 async def _init_cycle_subsystem(state, config, pool) -> None:
@@ -764,24 +787,10 @@ async def _init_cycle_subsystem(state, config, pool) -> None:
         reference_resolvers=state.reference_resolvers,
         memory_store=state.memory_store,
     )
-    # SIP-0109 §24bv point 4: before each launch, a repository-backed campaign's branch is rebased
-    # onto the commit its Project reconciled, when upstream moved, and its head re-verified.
-    branch_rebase = BranchRebase(
-        campaigns=projected_campaigns,
-        projects=project_registry,
-        repository=state.source_repository,
-        sandbox=state.sandbox_client,
-        vault=artifact_vault,
-        branch=CampaignBranch(projects=project_registry, repository=state.source_repository),
-        reconciled=partial(reconciled_at_pin, creation),
-        propose=state.campaign_progress.proposal_after_rebase,
-        actor=LAUNCHER_ACTOR,
-        # §24cd point 5: every frozen criterion's bundle on the rebased head, on the product's
-        # runner in the sandbox (#2774's frozen_on_runner, §24cl item 10). Fails closed (§24cm).
-        frozen_on_runner=ProductRunnerFrozen(
-            sandbox=state.sandbox_client, projects=project_registry, vault=artifact_vault
-        ),
-    )
+    branch_rebase = _branch_rebase(
+        state, campaigns=projected_campaigns, projects=project_registry, vault=artifact_vault,
+        creation=creation,
+    )  # fmt: skip
     state.campaign_launch = CampaignLaunchService(
         campaigns=projected_campaigns,
         creation=creation,
