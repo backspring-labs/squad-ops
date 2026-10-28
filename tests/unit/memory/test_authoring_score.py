@@ -8,6 +8,7 @@ today's handler asks the question the answer was written for.
 
 from __future__ import annotations
 
+import copy
 import importlib.util
 import sys
 from pathlib import Path
@@ -57,6 +58,25 @@ async def test_an_answer_the_handler_asks_again_for_is_scored_with_the_reason():
 
     assert record["verdict"] == "asked_again", record
     assert "not valid YAML" in record["asked"]
+
+
+@pytest.mark.parametrize("termination, verdict", [("stop", "pass"), (None, "asked_again")])
+async def test_an_answer_that_finished_past_the_envelopes_cap_is_read_by_how_it_ended(
+    termination, verdict
+):
+    """#2253's raised-cap arm: an answer that finished past the envelope's own cap, its last fence left
+    open as #431 allows. Handed TensorFold's termination, as production's adapter hands it on, the
+    handler keeps the answer, as it would at the raised cap. Without one, the token count against the
+    envelope's cap reads it as cut, and every such answer would be scored as asked again."""
+    envelope = copy.deepcopy(await _captured_envelope())
+    # The QA role's profile budget, as every #2253 envelope carries it.
+    envelope["inputs"]["agent_config_overrides"] = {"max_completion_tokens": 12288}
+    open_fence = _fenced(_REFERENCE).rstrip().removesuffix("```")
+    answer = _answer(open_fence, completion_tokens=14000) | {"termination": termination}
+
+    record = await _module.score(envelope, answer, *_tools())
+
+    assert record["verdict"] == verdict, record
 
 
 async def test_a_handler_that_raises_on_the_answer_is_never_a_pass():

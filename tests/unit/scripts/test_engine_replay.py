@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import importlib.util
 import json
 import sys
@@ -193,6 +194,7 @@ def test_a_recorded_answer_keeps_the_counts_the_cap_check_reads(tmp_path):
         "content": "```py:a.py\nx = ",
         "reasoning_text": "plan ",
         "finish": "length",
+        "termination": "length",
         "prompt_tokens": 9,
         "completion_tokens": 12288,
     }
@@ -213,11 +215,13 @@ def test_a_recorded_answer_keeps_the_counts_the_cap_check_reads(tmp_path):
             ),
         ],
     )
-    assert (ollama["content"], ollama["reasoning_text"], ollama["completion_tokens"]) == (
-        "ok",
-        "t",
-        30,
-    )
+    # Ollama's adapter reports no termination, so the handler reads the cap from the count, as live.
+    assert (
+        ollama["content"],
+        ollama["reasoning_text"],
+        ollama["completion_tokens"],
+        ollama["termination"],
+    ) == ("ok", "t", 30, None)
 
 
 def test_an_answer_with_no_thinking_hands_the_handler_none(tmp_path):
@@ -347,3 +351,168 @@ def test_the_draft_checks_overrides_land_on_each_engines_own_fields(engine, read
     options = plain["options"] if engine == "ollama" else plain
     assert options.get("num_predict", options.get("max_tokens")) == 12288
     assert options.get("temperature") in (None, 1.0)
+
+
+# --- #2253: the budget measurement's overrides ------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    "engine, cap",
+    [("ollama", lambda b: b["options"]["num_predict"]), ("tensorfold", lambda b: b["max_tokens"])],
+)
+def test_max_tokens_sends_the_call_above_the_envelopes_cap(engine, cap, monkeypatch):
+    """The raised-cap arm sends 16,384 on envelopes captured at 12,288. The draft check's
+    ``--max-tokens-cap`` only lowers a cap, so an arm run with it would have sent 12,288 and measured
+    nothing; a cap written to a field the engine ignores would send the envelope's own."""
+    monkeypatch.setattr(er, "api_key", lambda: "k")
+    env = envelope("medium", 12288)
+    _, raised, _ = er._request(env, engine, 1001, ("served", "medium"), None, False, None, 16384)
+    _, capped, _ = er._request(env, engine, 1001, ("served", "medium"), None, False, 16384)
+    assert (cap(raised), cap(capped)) == (16384, 12288)
+
+
+_ASSET = (
+    "---\ntemplate_id: request.retry\nrequired_variables:\n  - completion_tokens\n---\n"
+    "### Your previous response was cut off\n\nIt used {{completion_tokens}} tokens. Write the answer "
+    "again, and keep any reasoning short so that the output fits.\n"
+)
+_QUOTE = "keep any reasoning short so that the output fits."
+
+
+def test_the_note_is_the_assets_own_words_sent_after_the_envelopes_messages(tmp_path, monkeypatch):
+    """A note paraphrased from the re-ask's asset measures some other instruction, and one merged into
+    the envelope's messages changes the captured prompt for every later call. It goes last, as the
+    re-ask sends its fact (#2149), on both engines."""
+    asset = tmp_path / "retry.md"
+    asset.write_text(_ASSET)
+    note = er.first_call_note(asset, _QUOTE)
+    assert (note["text"], note["asset_sha256"]) == (
+        _QUOTE,
+        hashlib.sha256(_ASSET.encode()).hexdigest(),
+    )
+    monkeypatch.setattr(er, "api_key", lambda: "k")
+    env = envelope("medium")
+    for engine in ("ollama", "tensorfold"):
+        _, body, _ = er._request(
+            env, engine, 1001, ("served", "medium"), None, False, None, None, note["text"]
+        )
+        assert body["messages"] == [*env["messages"], {"role": "user", "content": _QUOTE}]
+    assert env["messages"] == envelope("medium")["messages"]
+
+
+@pytest.mark.parametrize(
+    "asset_text, quote, refusal",
+    [
+        (_ASSET, "keep your reasoning short.", "word for word"),  # a paraphrase
+        (
+            _ASSET,
+            "template_id: request.retry",
+            "word for word",
+        ),  # the front matter is not the asset
+        (_ASSET, None, "template variable"),  # the whole asset, its variable unrendered
+        ("---\ntemplate_id: x\nno closing line\n", None, "front matter"),
+    ],
+)
+def test_a_note_the_asset_does_not_hold_word_for_word_is_refused(
+    tmp_path, asset_text, quote, refusal
+):
+    asset = tmp_path / "retry.md"
+    asset.write_text(asset_text)
+    with pytest.raises(SystemExit, match=refusal):
+        er.first_call_note(asset, quote)
+
+
+def _two_envelope_plan(tmp_path) -> Path:
+    doc = {
+        "held_out": [
+            {
+                "envelope_id": e,
+                "task_type": "qa.test",
+                "seam": "build_authoring",
+                "stack": "nextjs_ts",
+            }
+            for e in ("a", "b")
+        ],
+        "order": [["a", 1], ["b", 1]],
+        "panel": [],
+        "panel_seed": 1001,
+    }
+    path = tmp_path / "plan.json"
+    path.write_text(json.dumps(doc))
+    return path
+
+
+def test_an_arm_records_its_overrides_and_a_restart_with_other_settings_is_refused(
+    tmp_path, monkeypatch
+):
+    """Entered at ``run``, as the measurement calls it. Without the manifest, a restart with other
+    settings appends to the first arm's summary and skips every call that arm made: one folder, two
+    arms, and nothing to say which row is which."""
+    plan = _two_envelope_plan(tmp_path)
+    sent: list[tuple[int, str]] = []
+
+    def fake_call(url, body, headers, raw_path, engine):
+        sent.append((body["options"]["num_predict"], body["messages"][-1]["content"]))
+        return {"wall_s": 1.0, "finish": "stop"}
+
+    monkeypatch.setattr(
+        er,
+        "envelope",
+        lambda eid: (
+            envelope("medium", 12288)
+            | {"messages": [{"role": "user", "content": eid}], "messages_sha256": eid}
+        ),
+    )
+    monkeypatch.setattr(er, "stream_call", fake_call)
+    note = {"asset": "a.md", "asset_sha256": "s", "quote": None, "text": "be brief"}
+    note["text_sha256"] = hashlib.sha256(b"be brief").hexdigest()
+    arm = tmp_path / f"ollama-max16384-note-{note['text_sha256'][:8]}" / "held-out"
+
+    def go(greedy: bool = False) -> int:
+        return er.run(
+            plan, "held-out", None, "ollama", None, tmp_path, None, None, None, greedy, 16384, note
+        )
+
+    assert go() == 0
+    settings = json.loads((arm / "manifest.json").read_text())["settings"]
+    assert (settings["max_tokens"], settings["first_call_note"]["text"]) == (16384, "be brief")
+    rows = [json.loads(r) for r in (arm / "summary.jsonl").read_text().splitlines()]
+    assert [(r["envelope_id"], r["max_tokens"], r["captured_max_tokens"]) for r in rows] == [
+        ("a", 16384, 12288),
+        ("b", 16384, 12288),
+    ]
+    assert {(r["messages_sent"], r["first_call_note_sha256"]) for r in rows} == {
+        (2, note["text_sha256"])
+    }
+    assert sent == [(16384, "be brief")] * 2
+
+    assert go() == 0  # the same settings resume, and nothing is left to call
+    assert len(sent) == 2
+    with pytest.raises(SystemExit, match="greedy"):
+        go(greedy=True)
+    assert len(sent) == 2
+
+
+def test_two_arms_under_one_name_are_refused_before_any_is_scored(tmp_path, monkeypatch):
+    """Arms recorded under one name in two folders share every key, and the scorer's table would hand
+    one arm's answers to both."""
+    arms = []
+    for out in ("first", "second"):
+        part = tmp_path / out / "tensorfold-qwen27b-nvfp4" / "held-out"
+        part.mkdir(parents=True)
+        row = {"envelope_id": "e", "seed": 1001, "task_type": "qa.test", "seam": "build_authoring"}
+        row |= {"stack": "nextjs_ts", "engine": "tensorfold-qwen27b-nvfp4", "raw": "e-g1.jsonl"}
+        (part / "summary.jsonl").write_text(json.dumps(row) + "\n")
+        (part / "e-g1.jsonl").write_text(
+            json.dumps({"request": {}}) + "\n" + json.dumps({"t": 0, "line": "data: [DONE]"})
+        )
+        arms.append(part.parent)
+    monkeypatch.syspath_prepend(str(ROOT / "scripts" / "dev"))
+    monkeypatch.setattr(er, "envelope", lambda eid: {"role": "qa"})
+
+    def no_container(*args, **kwargs):  # the refusal comes first: no agent container is reached
+        raise AssertionError(f"reached a container: {args[0]}")
+
+    monkeypatch.setattr(er.subprocess, "run", no_container)
+    with pytest.raises(SystemExit, match="share a key"):
+        er.score(arms, tmp_path / "scores.jsonl")
