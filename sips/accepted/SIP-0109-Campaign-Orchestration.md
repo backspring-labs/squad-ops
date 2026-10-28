@@ -137,7 +137,7 @@ Kept by the rule in CLAUDE.md ("SIP System"): one row per part, updated in the P
 | a Campaign on a repository-backed Project, point 3's regression baseline: an increment on a head compared with the verification that made it, the record's commit with its inherited baseline; with §24ci (a)'s pytest exception-class reader and the product-runner discrimination rule (§24bv point 3, §24ci (a); SIP-0112 H.10) | **shipped** | 2.5.0, PR #2764 |
 | a Campaign on a repository-backed Project, point 5: the proposal's input read at the head, the change request on a product with each criterion's test placed under the product's runners, the scope's reading there, the continuation's change request, and the creation rules (§24bv point 5, §24cj; SIP-0112 H.4, H.11) | **shipped** | 2.5.0, PR #2771 |
 | a Campaign on a repository-backed Project, point 6: acceptance on the product's runner, runtime-side in the sandbox at the increment's delivery, each overlay a revision of its tree, in place of `qa.evaluate_increment`, which a branch increment's plan no longer carries (§24cd point 6, §24cl; its criterion files are §24cj's placed ones; SIP-0112 H.11's drop) | **shipped**, except route rendering on a product (§24cl item 6, next row) | 2.5.0, PR #2774 |
-| a Campaign on a repository-backed Project, the rest: route rendering on a product, in the sandbox from contract 7's start (§24bv point 3, §24cl item 6); upstream moving (point 4, with §24cd point 5's frozen bundles at the rebase, run by `frozen_on_runner`, §24cl item 10) (§24bv, §24cd; SIP-0112 H.4); and the supervisor's review-request push (§24ci (b)) | **placed** | 2.5.0, #2619 |
+| a Campaign on a repository-backed Project, the rest: route rendering on a product, in the sandbox from contract 7's start, a release-level gap the supervisor schedules with #2414's remainder (§24bv point 3, §24cl item 6); upstream moving (point 4, with §24cd point 5's frozen bundles at the rebase, run by `frozen_on_runner`, §24cl item 10) (§24bv, §24cd; SIP-0112 H.4); and the supervisor's review-request push (§24ci (b)) | **placed** | 2.5.0, #2619 |
 | a vitest test-id reader, so a vitest-only criterion can be read as discriminating (§24ci (a)) | **shipped**: from vitest's default reporter, as the product's own command prints it (SIP-0112 H.10) | 2.5.0, PR #2764, closes #2757 |
 | a Campaign cycle held on its instruction bindings escalates as `binding_hold`, released by re-supply and never parked (§24bw; SIP-0110 §A.3.6) | **shipped** | 2.4.0, PR #2628 (#2178's Campaign half) |
 
@@ -4586,7 +4586,8 @@ product's toolchain exists only there. It builds each overlay as a revision of t
 this, a product's increment still planned `qa.evaluate_increment` (§24cj, "Not built here"). That task runs in the qa
 role's container, which holds no product toolchain. And `discrimination_on_runner` and `held_on_runner` (#2764) had no
 live caller. Each item below says what the build settled where the text leaves a choice. One part
-isn't built: item 6.
+isn't built: route rendering on a product (item 6), a release-level gap. Item 13 is the outside review's first
+finding (SIP-0112 H.12), fixed here.
 
 **What was built, and each choice the text left.**
 1. **When: at delivery, after the capture** (`DispatchedFlowExecutor._deliver_source_change`, which calls
@@ -4607,6 +4608,10 @@ isn't built: item 6.
    (`agent_patch`). The overlay is then cut on it (`acceptance_assembly`). So an overlay's parent revision is the tree it
    overlays.
    - The candidate's revision must be the one delivery verified, or nothing is judged (`CandidateNotDelivered`).
+   - **Nothing runs on a revision other than its overlay** (item 13). Each revision cut on the way (the checkout, the
+     candidate, the overlay) must be the one its content names (`compute_revision_id`, with the executable bits a patch
+     keeps). A seed or a patch that cut another, or a patch that wasn't applied, stops the run before its command:
+     the run is unexecuted, with why. A command that reports another revision than the overlay's is no result either.
    - **The choice:** one workspace per overlay, not one per tree with overlays patched in turn. A store's patch needs
      the live tree to match its base, and a deleted file loses its executable bit, so a chain of overlays would make
      each revision depend on the order of the ones before it.
@@ -4624,19 +4629,24 @@ isn't built: item 6.
      its imports". Without its markers, a test under a package directory imports as a top-level module, and the product
      may not be on its path.
    - **Its invocation** is the runner's one-file argv, with the file named in it as H.6's `{path}` or `{name}`.
-6. **Route rendering on a product isn't built.** §24bv point 3 has routes rendered where the profile names client
-   routes: a greenfield product made from a blueprint. Nothing here can render them, since the sample stacks' renderer
-   stands the app up in the qa container from the stack's own probe profile. So each route the profile names is
-   `blocked_unverified`, never passed by omission (SIP-0096), and the increment is blocked with it. A profile that names
-   none has no routes, and they are not applicable.
-   - **The cost:** every increment on such a product blocks. `z_shelfnote` is one: its profile carries its manifest's
-     routes (H.7). Building the renderer in the sandbox, from contract 7's start declaration, is placed on #2619.
+6. **Route rendering on a product isn't built: a release-level gap** (the outside review's second finding, SIP-0112
+   H.12). §24bv point 3 has routes rendered where the profile names client routes: a greenfield product made from a
+   blueprint. Nothing here can render them, since the sample stacks' renderer stands the app up in the qa container
+   from the stack's own probe profile. So each route the profile names is `blocked_unverified`, never passed by
+   omission (SIP-0096), and the increment is blocked with it. A profile that names none has no routes, and they are not
+   applicable.
+   - **The cost:** every increment on a blueprint product blocks, so 2.5 can't claim a Campaign on one is accepted
+     until the renderer exists. `z_shelfnote` is such a product: its profile carries its manifest's routes (H.7).
+   - **Where it is:** the supervisor schedules the renderer separately, with #2414's remainder (the declared start at
+     the cycle-end hook), since both stand the product up from contract 7's start declaration. It is not built in this
+     PR, and its row stays placed on #2619.
 7. **Which runner, which argv, which reader** (H.6's ownership rule).
    - A new criterion's file is run by the runner that holds it (`DerivedProfile.runner_for`), and read by that runner's
      test-id reader.
    - A frozen bundle runs by its own frozen invocation (§8.1: "by the bundle's frozen invocation"), even after a
-     reconciliation changes the runner's argv. It is read by the reader of the runner that holds its file now, and by
-     its exit status where no runner holds it or the runner has no reader (H.6's `per_test_reading`).
+     reconciliation changes the runner's argv. It is read by the reader of the runner that holds its file now. Where
+     no runner holds it, or the runner has no reader, it is read by its exit status, and item 13 says what that can
+     show.
    - **A runner with no test-id reader isn't run for a new criterion** (§24ci (a)). Its criterion is unread and blocks,
      and its bundle is still frozen.
    - Each argv runs as the configuration's checks run, in their working directory, after their install and build
@@ -4660,23 +4670,55 @@ isn't built: item 6.
    it is a change to `discrimination_on_runner`, #2764's decision, and this doesn't make it. It is the supervisor's to
    rule.
 10. **The rebase's frozen bundles** (§24cd point 5; #2770 records them as `frozen_criteria_unrun` "until point 6").
-    `runner_acceptance.frozen_on_runner` is the frozen half alone. It runs on any tree, with no candidate changes.
-    The rebase calls it with the rebased head's tree from the managed clone (`repository.tree_at`, files and executable
-    bits), the campaign's frozen pins (`frozen_criteria(log)`) with their bundles read as a launch's are
-    (`frozen_bundle_contents`) and rebuilt by `frozen_criteria_from`, the profile at the reconciled pin, and the
-    rebase's key as `subject_id`. A result that isn't `held` is `REBASED_HEAD_REGRESSED`. That call is #2770's to
-    make, in whichever of the two PRs merges second. It isn't wired here.
+    `runner_acceptance.frozen_on_runner` is the frozen half alone, and its signature is held stable for the call. It
+    runs on any tree, with no candidate changes. The supervisor wires it after #2770 and #2774 merge. The call needs:
+    - `runs`: a `RunnerAcceptance` with the runtime's sandbox, the derived profile at the reconciled pin, a
+      `RunnerSetup.of(configuration.commands)` for the reconciled revision, a workspace prefix of the rebase's own, and
+      no `verified_candidate_revision`, since the tree carries no changes;
+    - `subject_id`: the rebase's key, which each result is keyed by;
+    - `tree`: a `SandboxTree` of the rebased head from the managed clone (`repository.tree_at`: its files and
+      executable bits);
+    - `frozen`: the campaign's frozen pins (`frozen_criteria(log)`), their bundles read as a launch's are
+      (`frozen_bundle_contents`), rebuilt by `frozen_criteria_from`;
+    - `surface`: `ProductTestSurface.of(profile, <the pins' test paths>)`.
+
+    A result that isn't `held` refuses the rebase as `REBASED_HEAD_REGRESSED`, a blocked one included, since item 13's
+    blocked result is a head nothing showed holds. It isn't wired here.
 11. **What refuses, and fails the run** (`ProductAcceptanceRefused`, `CandidateNotDelivered`): no derived profile at
     the pin, no sandbox, no approved change request, or a candidate other than the verified one. A run that can't be
     judged fails, as a `qa.evaluate_increment` that can't be judged fails its task. Nothing is accepted unjudged.
 12. **The cost.** Each overlay seeds the whole tree and runs the configuration's install and build steps before its
     one file: two runs for each new criterion with a reader, and one for each frozen criterion. A product whose install
     is slow pays it on every run.
+13. **A frozen criterion holds only on evidence that its tests ran and passed** (the outside review's first finding,
+    SIP-0112 H.12; SIP-0096: "only executed-and-passed credits"). Before this, a run that failed nothing could read
+    `held` with no test run:
+    - a runner with no test-id reader read exit 0 as held, and unittest's discovery exits 0 when every test was skipped;
+    - a reader's reading that counted no failure read as held when its tests were skipped, since a skip is collected;
+    - and a run could be made on the unpatched tree when an overlay's patch wasn't applied (item 4).
+
+    **What changed** (`acceptance.held_on_runner` and `acceptance.discrimination_on_runner`, #2764's, changed here):
+    - **With no test-id reader,** exit 0 is `blocked_unverified`, never held. A non-zero exit is still broken: the
+      frozen test ran against the candidate's code and didn't pass. That is §24ci (a)'s rule for discrimination,
+      applied to holding. It narrows H.6's `per_test_reading` ("each criterion is read by its own test file's result")
+      for a frozen criterion: a whole file's pass is no evidence that a test ran. One cost: unittest exits 5 when a
+      file holds no test, and that reads broken, not blocked. Neither reads held.
+    - **With one,** a frozen criterion holds only when every test it collected passed. A test that was skipped, or
+      expected to fail, blocks it, naming how many.
+    - **On discrimination's candidate side,** a run that skipped a test reads as not run, since the skipped test may
+      be the one that failed on the baseline.
+    - **The evidence:** each reading of a test runner now carries `passed`, the tests that ran and passed by the
+      runner's own summary (`squadops.sandbox.findings`, pytest's counts line and vitest's `Tests` line). Like a class
+      (H.10), it changes no key and no readable rule, so no reader's version. A reading stored before it has none, and
+      reads back unchanged.
+    - **What a reading with no pass count reads:** not run, and blocked. So the sandbox service is rebuilt with the
+      runtime API, or every criterion blocks until it is.
 
 **Not built here, and where it is:**
-- route rendering on a product (item 6): #2619;
-- the rebase's call (item 10): #2770, or whichever merges second;
-- §24ci (b)'s review-request push: #2619.
+- route rendering on a product (item 6): a release-level gap, which the supervisor schedules with #2414's remainder,
+  on #2619;
+- the rebase's call (item 10): the supervisor wires it after #2770 and #2774 merge;
+- §24ci (b)'s review-request push: #2772.
 
 **Evidence.**
 - **The wiring, entered at the live callers:**
@@ -4684,7 +4726,7 @@ isn't built: item 6.
     (`_execute_sequential`, which delivers). It runs over the shared fixture's Tally, with a real managed clone and a
     real sandbox service, whose one stand-in runs X-3a's disposable copy as local processes:
     - a branch increment is delivered, captured and judged, and its document is stored on its run. Tally's unittest
-      names no test, so its new criterion blocks, and its frozen criterion holds by exit status;
+      names no test, so its new criterion blocks, and its frozen criterion's exit 0 blocks too (item 13);
     - a change that keeps every check of Tally's but breaks the frozen criterion is rejected;
     - no profile at the pin fails the run;
     - a standalone source-backed cycle is never judged;
@@ -4704,8 +4746,14 @@ isn't built: item 6.
     - a sandbox that runs nothing;
     - routes;
     - the placeholders and the package markers;
-    - a vitest runner under a package, read from recorded vitest 2.1.9 output, since this box has no vitest.
-- **Mutants:** seventeen, one on each seam, and all seventeen caught:
+    - a vitest runner under a package, read from recorded vitest 2.1.9 output, since this box has no vitest;
+    - item 13, each on a real run: a skipped verifier file, an expected failure, zero tests collected, a no-reader
+      runner that skipped every test, and a criterion its candidate skips;
+    - item 4's refusals: an overlay patch not applied, a patch that cut another revision, and a command that passed
+      on another revision.
+  - `tests/unit/campaigns/test_runner_acceptance.py` holds `held_on_runner`'s table, and
+    `tests/unit/sandbox/test_findings_readers.py` the pass count from real pytest and vitest output.
+- **Mutants, after the review:** twenty-seven, the first build's seventeen again and ten on item 13's and item 4's seams, and all twenty-seven caught. The ten: a no-reader exit 0 read as held; a skipped frozen test read as held; a reading with no pass count read as all passed; a candidate's skip read as a pass; the reader counting a skip as passed; the pass count never stored; a seed, a patch, or an unapplied patch of another revision run on; and a run on another revision credited. The seed's mutant survived the first pass, since a patch after it caught the stray file, and a tree that is already its own overlay now catches it. The first build's seventeen were:
   - the overlay keeping the tree's test files;
   - the baseline run on the candidate;
   - a no-reader runner run and read whole;
@@ -4721,10 +4769,14 @@ isn't built: item 6.
   - delivery never judging, or judging every source-backed cycle;
   - the document stored off its run;
   - the pinned frozen criteria never read.
-- **The loaded check** `2619-product-acceptance` (`scripts/dev/loaded_checks.yaml`), run on the source.
+- **The loaded checks** `2619-product-acceptance`, `2774-review` (the runtime) and `2774-review-sandbox` (the
+  sandbox service) (`scripts/dev/loaded_checks.yaml`), each run on the source.
 
 **Who ruled.** The supervisor (the Spark lane) built §24cd point 6 under the owner's direction of 2026-10-21 and the
 2.5 grants, with the owner's delegation of 2026-10-28 (§24cj item 6). Items 1 to 12 are the supervisor's choices, for
 the owner's review. Item 6 leaves the routes unbuilt and the increments blocked. Item 9 names a difference for the
 supervisor to rule. Item 8 adds two keys to the `increment_evaluation` document, which other readers depend on, so it
-takes the outside review SIP-0112 H.12 provides before the merge.
+takes the outside review SIP-0112 H.12 provides before the merge. That review (the outside reviewer's, relayed by
+the owner, 2026-10-28) requested changes. Its two findings are items 13 and 6: item 13 is fixed here, and item 6 is
+named as the release-level gap it called it. Item 13 also changes #2764's `held_on_runner` and
+`discrimination_on_runner`, and adds `passed` to H.5's readings, additively.
