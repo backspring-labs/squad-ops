@@ -244,8 +244,9 @@ The Spark is one GPU and one deploy. Everything that measures runs one thing at 
    measures on the old yardstick.
 3. **Track D, before the demonstration.** #2578's migration changes the campaign cycle records the demonstration
    exercises, so it lands first, on its own deploy, read by one uncounted sample-application Campaign before anything
-   counts on it. **As of 2026-10-27:** #2578 has merged and is deployed (`dep_43b625954eae`), and the Campaign hasn't
-   run. It runs once phase 1–2's run-path fixes are merged and deployed.
+   counts on it. **Run and read 2026-10-28** (`cmp_9c9df268084a`, uncounted, on `dep_fbeecffcc625` and, after #2754's
+   fix, `dep_31949f050a30`): #2578's records hold on every cycle kind (R1–R4), and the campaign ended `success`
+   (`verification-sets/2-5-0-track-d-campaign-preregistration.md` §7).
 4. **Track A's builds, then its two demonstrations.** H.4's contract and profile, then the recipe, the proposal's
    input, the increment's pin and §24bv, then §10l and #2592. **§24bv's regression baseline, its acceptance on the
    product's runner and the rebase wait for contract 1's increment pin** (the MacBook lane's
