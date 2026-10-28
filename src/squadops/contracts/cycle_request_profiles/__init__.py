@@ -28,6 +28,8 @@ CAMPAIGN_PROFILES = (
     "campaign-proposal",
     "campaign-increment",
     "campaign-increment-asks",
+    # SIP-0112 H.4 point 3 (2.5): a repository-backed Project's increments, with no stack.
+    "campaign-increment-source",
 )
 
 _PROFILES_PACKAGE = "squadops.contracts.cycle_request_profiles.profiles"

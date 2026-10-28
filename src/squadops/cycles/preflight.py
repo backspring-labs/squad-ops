@@ -265,10 +265,21 @@ def builder_build_profile_decision(
 _STACK_TREE_KEYS = ("build_profile", "contract_ref")
 
 
+def seeds_skeleton(config: Mapping[str, Any]) -> bool:
+    """Whether a cycle of ``config`` would lay a stack's starting tree beside a product's files:
+    a skeleton and its authored manifest (``build_profile``), or a seeded contract
+    (``contract_ref``). SIP-0112 H.4 point 3's rule, the one both lanes call: E.4.3's guard
+    refuses a source-backed cycle that would, and a repository-backed Campaign's increment profile
+    must not (SIP-0109 §24bv point 1). ``development_profile`` alone shapes the prompts and
+    seeds nothing. A manifest seeded in ``plan_artifact_refs`` would derive a contract too; that
+    is read from the vault at create (``_seed_derived_contract``), not from the config."""
+    return any(config.get(k) for k in _STACK_TREE_KEYS)
+
+
 def source_backed_stack_decision(
     config: Mapping[str, Any], *, source_backed: bool
 ) -> PreflightDecision:
-    """Block a source-backed cycle that names a stack (SIP-0112 E.4.3).
+    """Block a source-backed cycle that would seed a skeleton (SIP-0112 E.4.3, H.4 point 3).
 
     A Cycle that pins an external Project's source starts from that product's tree at the
     pinned commit. A ``build_profile`` would also have framing author an interface manifest and
@@ -276,9 +287,9 @@ def source_backed_stack_decision(
     stack's seeded contract. Neither describes the product, so the cycle is refused at create.
     ``development_profile`` alone only shapes the developer's prompt, and stays allowed.
     """
-    named = [k for k in _STACK_TREE_KEYS if config.get(k)]
-    if not source_backed or not named:
+    if not source_backed or not seeds_skeleton(config):
         return PreflightDecision()
+    named = [k for k in _STACK_TREE_KEYS if config.get(k)]
     return PreflightDecision(
         blocking=(
             Finding(

@@ -1,0 +1,63 @@
+name: campaign-increment-source
+description: "SIP-0112 H.4 point 3, SIP-0109 §24bv point 1: a repository-backed Project's increment cycle. It is `campaign-increment` with no stack: it seeds no skeleton, the product's own tree is the starting tree, and the product's declared checks verify it."
+defaults:
+  correction_steps: [analyze, decide, repair]
+  build_strategy: fresh
+  # No `build_profile` or `development_profile` (H.4 point 3: the recipe is derived, not pinned).
+  # A build_profile would seed a skeleton and a contract beside the product's files, which
+  # `seeds_skeleton` refuses for a source-backed cycle; the derived profile names the product's
+  # runners, which every authoring task is shown.
+  # SIP-0109 §7.3: an increment's framing runs the plan proposers, where the increment's
+  # footprint, criteria and frozen indexes are taught (#1870: without contributors the merger
+  # authored alone).
+  plan_authoring_contributors:
+    - development
+    - qa
+    - strategy
+  # The in-task revisions the proposal's rails buy, as campaign-proposal declares them.
+  proposal_max_attempts: 3
+  task_flow_policy:
+    mode: sequential
+    gates:
+      # §9.2: the supervisor's ruling, bound to the proposal version and the accepted tree. A
+      # workload follows it, as one must: the sequence ends on its last workload before that
+      # workload's gate (§24f), so a gate on the last workload would never be ruled. Named as a
+      # progression gate (SIP-0076): the ruling decides whether framing begins.
+      - name: progress_increment_ruling
+        description: The supervisor rules on the proposed change — approve, request revision, or reject.
+        # A workload gate only: a task boundary would pause the proposal run mid-flight, before
+        # its proposal is submitted to the campaign (§24k).
+        after_task_types: []
+      - name: progress_plan_review
+        description: Review planning artifacts before implementation begins.
+        after_task_types:
+          - governance.review
+  expected_artifact_types:
+    - document
+    - source
+    - test
+    - config
+  workload_sequence:
+    - type: proposal
+      gate: progress_increment_ruling
+    # The plan covers only the approved change's footprint (#1843); no manifest is seeded
+    # (§24bv point 5: a repository-backed change request carries no manifest_delta).
+    - type: framing
+      gate: progress_plan_review
+    # Starts from the campaign branch's head (§24bv points 2 and 3, SIP-0112 H.9).
+    - type: implementation
+      gate: null
+  implementation_plan: true
+  output_validation: true
+  max_self_eval_passes: 3
+  max_correction_attempts: 3
+  max_build_subtasks: 15
+  typed_acceptance: true
+  command_acceptance_checks: true
+  # No `required_checks`. `frontend_build` and `required_files` are a stack's checks over its
+  # skeleton, and `tests_pass` is the qa container's suite, which runs one framework, not the
+  # product's runners. The product's own checks verify the change at delivery, under
+  # no-introduced-regression (SIP-0112 FR-20), as for every standalone source-backed cycle.
+  time_budget_seconds: 10800
+  experiment_context: {}
+  notes: "Campaign increment cycle on a repository-backed Project (SIP-0109 §24bv)"

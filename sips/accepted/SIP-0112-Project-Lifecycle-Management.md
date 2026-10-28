@@ -2323,3 +2323,89 @@ have: each failure's class, and a vitest reader. #2757 placed the reader before 
 **Who ruled.** The owner (SIP-0109 §24ci (a), 2026-10-28) placed the reader and the classes with #2619. The Spark
 lane built them. Item 3 changes contract 8's derivation, so it needs the MacBook lane's G4.
 
+## H.11 H.4's recipe, as built: a product's cycle seeds no skeleton, and is shown its own test runners (2026-10-28; #2619; the MacBook lane, for the Spark lane's G4)
+
+**What's narrowed.** H.4 point 3 removes the stack from the request profiles, with a resolution-parity test over every
+sample application's Campaign definition. Built that way, it would change the profiles that every pinned definition and
+verification set resolves through:
+- under SIP-0109 §24bs, an undeclared `policy.stack` is "the campaign profiles' own stack";
+- the request-profile taxonomy (#316, R2.4) freezes every released profile byte for byte, so a pinned config resolves
+  to what it ran.
+
+So the sample applications' profiles keep their stack. A repository-backed Project's increments get a profile of their
+own with none, `campaign-increment-source`. The parity test guarded a removal that isn't made. The taxonomy's own pins
+(`test_a_pinned_config_resolves_as_it_did`, `test_every_released_profile_is_frozen_byte_for_byte`) hold every definition
+and profile as they were, and pass unchanged. The Spark lane agreed the narrowing on 2026-10-28, and the 2.5 plan's
+row for the recipe points at this PR.
+
+**What's built:**
+1. **`seeds_skeleton(config)`** (`squadops.cycles.preflight`): true for a `build_profile` (a skeleton and its
+   authored manifest) or a `contract_ref` (a seeded contract), and never for `development_profile` alone.
+   - E.4.3's guard calls it. Its check was already this narrow in effect; now it's one rule, by the name point 3 gives
+     it.
+   - SIP-0109 §24bv point 1's creation rule calls the same rule on the resolved `proposal_profile`, so any profile
+     that seeds nothing passes it, whatever its name.
+2. **`campaign-increment-source`**, a campaign profile: `campaign-increment` without the stack.
+   - **No `build_profile` or `development_profile`.**
+   - **No `manifest_max_attempts`:** framing authors no manifest without a `build_profile`.
+   - **No `build_tasks`:** a legacy flag that the workload sequence replaces.
+   - **No `required_checks`.** `frontend_build` and `required_files` are a stack's checks over its skeleton. `tests_pass`
+     is the qa container's suite, which runs one framework, not the product's runners. The product's own checks verify
+     the change at delivery (FR-20), as they do for every standalone source-backed cycle.
+
+   Campaign creation accepts it (`_require_profiles`), and a bound retry or repair runs from it. The taxonomy lists it
+   with the campaign's profiles, as the one added since the taxonomy froze them.
+3. **A product's cycle that seeds a manifest is refused** (422, `source_backed_seeded_manifest`), before a contract is
+   derived or stored. #779 derives a verification contract from any manifest seeded in `plan_artifact_refs`. That was
+   the way around E.4.3's `contract_ref` refusal. A sample application's seeded manifest still derives its contract.
+4. **QA writes for the product's runner.** The run's checkout manifest records each runner of the derived profile
+   (`runners`, additive). The profile is read at the Project's pin, as SIP-0109 §24cd point 3 rules, so a Campaign's
+   increments are shown the same runners between reconciliations.
+   - Every authoring task's repository view shows them in its checks block: the checks that run each runner, the file
+     names it takes, its roots, and the paths it tests (`request.source_repository_runners_block`).
+   - A pin with no derived profile is shown its checks alone, as in 2.4. Create has already warned
+     (`derived_profile_absent`).
+   - A checkout manifest stored before this reads with no runners.
+
+**Not built here:**
+- **A blueprint's conventions without its template.** Point 3 gives a greenfield product that follows a blueprint that
+  blueprint's QA and check conventions.
+  - A stack's conventions live in its development profile, and that profile's QA text places tests by the stack's
+    layout. `fullstack_fastapi_react`'s says "Place tests in backend/tests/".
+  - `z_shelfnote`, made from that blueprint, keeps its backend tests in `tests/` (H.7: pytest at `.`).
+  - Taking the blueprint's development profile whole would show QA two places for one test.
+
+  So a repository-backed cycle runs under the default development profile, as every 2.4 standalone source-backed
+  cycle did, and its tests are placed by the runners above. A blueprint's conventions without their test placement
+  remain on #2619.
+- **The `qa.evaluate_increment` drop** stays held until the Spark lane's acceptance on the product's runner (SIP-0109
+  §24cd point 6) is on main.
+- **Where a criterion's test file goes** on the product's runner is SIP-0109 §24bv point 5's: the change request names
+  each criterion's surface, and the file follows from the runner that tests it.
+- **A repository-backed increment's bound retry or repair** carries its change request without a candidate manifest,
+  since its change request has no `manifest_delta` (§24bv point 5). `increment_seed` reads a seed only where a manifest
+  was promoted. That's point 5's to settle with the Spark lane's launches.
+
+**The evidence:**
+- **`tests/unit/cycles/test_source_backed_recipe.py`**, entered at `prepare_cycle` (the create route's and the
+  launcher's one path) with the shared fixture's Project:
+  - a product's cycle on `campaign-increment-source` is prepared and pinned;
+  - one on `campaign-increment` is refused, naming `build_profile`;
+  - a seeded manifest is refused before any contract is stored, while a sample application's still derives one;
+  - `seeds_skeleton`'s table;
+  - Campaign creation and a bound retry and repair on the new profile.
+- **`tests/unit/cycles/test_source_backed_run.py`**, entered at `RunProvisioning.seed` and the envelope a live task is
+  dispatched with, on the fixture's real clone:
+  - an increment pinned at the first commit is shown Tally's unittest runner, read at the Project's pin;
+  - the rendered section names it;
+  - a pin with no profile is shown its checks alone.
+- **`test_source_repository_section.py`** renders the block with the real renderer and the shipped assets.
+  **`test_checkout.py`** round-trips the runners and reads a manifest stored before them.
+- **Nine mutants, each caught:**
+  - `development_profile` counted as seeding;
+  - the manifest refusal dropped, or applied to every cycle;
+  - the runners read at the increment's own commit, never seeded, dropped from the view, or never rendered;
+  - the new profile pinning a stack, or losing its ruling gate.
+
+**Who ruled:** the MacBook lane, under the owner's delegation of 2026-10-18. The owner confirmed the work on
+2026-10-28. The narrowing was agreed with the Spark lane, whose G4 is on the PR.

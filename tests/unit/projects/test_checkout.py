@@ -8,6 +8,7 @@ from squadops.projects.checkout import (
     MAX_WORKSPACE_BYTES,
     CheckoutManifest,
     CheckoutTooLarge,
+    RunnerView,
     focus_paths,
     manifest_of,
     repository_map,
@@ -81,6 +82,9 @@ def test_the_focus_is_the_named_text_files_in_order_within_the_budget():
     assert focus_paths(manifest, ["a.py", "big.py", "c.py"]) == ["a.py"]
 
 
+_RUNNER = RunnerView("pytest", ("tests",), ("tests",), "test_*.py", ("src/**",))
+
+
 def test_the_input_carries_the_map_the_checks_the_instructions_and_the_named_files():
     manifest = manifest_of(
         COMMIT,
@@ -89,6 +93,7 @@ def test_the_input_carries_the_map_the_checks_the_instructions_and_the_named_fil
         ["CONTRIBUTING.md"],
         classify=_classify,
         checks=[("tests", ("python3", "-m", "pytest", "tests"))],
+        runners=[_RUNNER],
     )
     assert CheckoutManifest.from_json(manifest.to_json()) == manifest
 
@@ -96,6 +101,28 @@ def test_the_input_carries_the_map_the_checks_the_instructions_and_the_named_fil
 
     assert view["commit"] == COMMIT
     assert view["checks"] == [{"id": "tests", "argv": ["python3", "-m", "pytest", "tests"]}]
+    # SIP-0112 H.4 point 3: where a test goes so the product's checks run it
+    assert view["runners"] == [
+        {
+            "runner": "pytest",
+            "checks": ["tests"],
+            "roots": ["tests"],
+            "file_pattern": "test_*.py",
+            "covers": ["src/**"],
+        }
+    ]
     assert view["instructions"] == {"CONTRIBUTING.md": "rules"}
     assert view["existing_files"] == {"a.py": "new"}
     assert "`a.py`" in view["map"]
+
+
+def test_a_manifest_stored_before_the_runners_reads_with_none():
+    """Bug caught: a run seeded before 2.5 and resumed on a 2.5 deploy failing to read its own
+    checkout manifest, which has no ``runners`` key."""
+    stored = _manifest({"a.py": b"x"}).to_json().replace(b',\n "runners": []', b"")
+    assert b"runners" not in stored
+
+    manifest = CheckoutManifest.from_json(stored)
+
+    assert manifest.runners == ()
+    assert source_repository_input(manifest, {"a.py": "x"}, [])["runners"] == []

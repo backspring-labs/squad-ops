@@ -35,12 +35,21 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 
 from adapters.noop.ports import NoOpFailurePatternRecall, NoOpProposalEvidence
+from adapters.prompts.factory import DEFAULT_TEMPLATES_PATH, create_prompt_asset_source
 from adapters.tools.git_source import GitSourceRepository
 from squadops.campaigns.evaluator_trees import FileTree
 from squadops.capabilities.handlers.cycle.develop import DevelopmentDevelopHandler
 from squadops.capabilities.handlers.cycle.qa_test import QATestHandler
+from squadops.capabilities.handlers.source_repository import source_repository_section
 from squadops.cycles.delivered_tree import StoredArtifact, delivered_files
-from squadops.cycles.models import ArtifactRef, Cycle, Project, Run, TaskFlowPolicy
+from squadops.cycles.models import (
+    ArtifactRef,
+    Cycle,
+    DerivedProfileNotFoundError,
+    Project,
+    Run,
+    TaskFlowPolicy,
+)
 from squadops.cycles.run_ledger import RunLedger
 from squadops.execution.dispatched_flow_executor import DispatchedFlowExecutor, _ExecutionError
 from squadops.execution.run_provisioning import RunProvisioning
@@ -51,10 +60,12 @@ from squadops.execution.source_delivery import (
 )
 from squadops.projects.baseline import parse_baseline
 from squadops.projects.checkout import CHECKOUT_MANIFEST_TYPE, SOURCE_CHECKOUT
+from squadops.projects.derived_profile import parse_profile
 from squadops.projects.development_configuration import parse_configuration
 from squadops.projects.models import ProjectSource
 from squadops.projects.registration import LocatorPolicy
 from squadops.projects.source_context import parse_source_context
+from squadops.prompts.renderer import RequestTemplateRenderer
 from squadops.sandbox.evidence import OperationEvidenceJournal
 from squadops.sandbox.models import CommandOutcome, CommandResult, OperationName, OperationStatus
 from squadops.sandbox.service import SandboxService
@@ -131,6 +142,7 @@ def world(tmp_path):
     registry.get_inherited_baseline.return_value = parse_baseline(
         recorded("inherited_baseline", "valid")
     )
+    registry.get_derived_profile.return_value = parse_profile(recorded("derived_profile", "valid"))
     store = WorkspaceStore(tmp_path / "sandbox")
     sandbox = SandboxService(
         store=store,
@@ -298,6 +310,62 @@ async def test_the_developer_sees_the_files_its_task_names_as_they_are_now(world
         if vault.stored[i][0].artifact_type in ("source", "test", "config")
     }
     assert set(delivered) == workspace and "README.md" not in delivered
+
+
+async def test_every_task_is_shown_the_products_runners_as_its_projects_pin_derives_them(world):
+    """SIP-0112 H.4 point 3, entered at ``RunProvisioning.seed`` and the envelope a live task is
+    dispatched with. An increment pinned at its branch's head reads the profile at the Project's
+    pin, as SIP-0109 §24cd point 3 rules. Bugs caught: the runners never reaching the task, so a
+    test is written where no product check runs it; or read at the increment's own commit, so one
+    Campaign's increments are shown different runners between reconciliations."""
+    repo, vault, executor, cycle, run = world
+    pinned = dataclasses.replace(
+        cycle.source_context, pinned_commit=repo.first_commit, pinned_from="campaign_branch"
+    )
+    cycle = dataclasses.replace(cycle, source_context=pinned)
+    seeded = await _seed(executor, cycle, run)
+
+    envelope = await executor._enrich_envelope(
+        _envelope(cycle, []), {}, list(seeded), [(i, vault.stored[i][0]) for i in seeded]
+    )
+
+    executor._project_registry.get_derived_profile.assert_awaited_once_with(
+        cycle.project_id,
+        at=(pinned.development_baseline_commit, pinned.development_configuration_revision),
+    )
+    assert envelope.inputs["source_repository"]["runners"] == [
+        {
+            "runner": "unittest",
+            "checks": ["parse", "ledger", "server", "report", "notify"],
+            "roots": ["checks"],
+            "file_pattern": "check_*.py",
+            "covers": ["tally/**"],
+        }
+    ]
+    renderer = RequestTemplateRenderer(
+        asset_source=create_prompt_asset_source(
+            provider="filesystem", templates_path=DEFAULT_TEMPLATES_PATH
+        )
+    )
+    section = await source_repository_section(renderer, envelope.inputs)
+    assert "a file named `check_*.py` under `checks`, testing `tally/**`" in section
+
+
+async def test_a_pin_with_no_derived_profile_is_shown_its_checks_alone(world):
+    """Contract 8's absence (H.6): a baseline captured before 2.5 has no profile. Bug caught: the
+    seed failing, where create only warned (``derived_profile_absent``)."""
+    _repo, vault, executor, cycle, run = world
+    executor._project_registry.get_derived_profile.side_effect = DerivedProfileNotFoundError(
+        "prj-tally"
+    )
+    seeded = await _seed(executor, cycle, run)
+
+    envelope = await executor._enrich_envelope(
+        _envelope(cycle, []), {}, list(seeded), [(i, vault.stored[i][0]) for i in seeded]
+    )
+
+    repository = envelope.inputs["source_repository"]
+    assert repository["runners"] == [] and len(repository["checks"]) == 6
 
 
 async def test_a_task_from_an_operators_plan_is_not_refused_for_want_of_framing(world):
