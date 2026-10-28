@@ -60,7 +60,7 @@ deferred until a second stack exists — see the §4.2 status note),
 SIP-Edge-Deployment-Profile (remote sandbox adapter target),
 SIP-Capability-Backed-Agents (toolchain-as-capability, 2.0 arc).
 
-## Delivery ledger (current as of 2026-10-23)
+## Delivery ledger (current as of 2026-10-28)
 
 Kept by the rule in CLAUDE.md ("SIP System"): one row per part, updated in the PR that ships or re-places it, read at each release cut. Built from the read-only SIP-portfolio audit of 2026-10-04; `sips/PORTFOLIO.md` indexes it.
 
@@ -86,6 +86,7 @@ Kept by the rule in CLAUDE.md ("SIP System"): one row per part, updated in the P
 | the apps the service starts, on the internal `sandbox-apps` network by container name, with no host port (§11h; #2451 part 4) | **shipped** | 2.4.0, PR #2460 |
 | a pinned revision's content, read through the port from the live tree only while it matches its pin (§11i; SIP-0112's E.4.3 capture) | **shipped** | 2.4.0, PR #2461 |
 | a seeded workspace released through the port, the operation journal kept by every removal (§11j) | **shipped** | 2.4.0, PR #2527, issue #2473 |
+| a started tree's client routes read by the scenario runner, with the evaluator image's own Chromium as its entrypoint, for a repository-backed product's acceptance (§11k; SIP-0109 §24co) | **shipped** | 2.5.0, PR #2777 |
 
 **What closes this SIP:** Steps 3, 5, 6, 7 shipped or dropped. Until a clean-room requirement returns, they are unplaced by ruling (§11c, 2026-10-04).
 
@@ -858,3 +859,34 @@ directory removal, the journalled cases of both tests fail.
 **Who ruled it.** The Spark lane raised it in its G4 review of #2468. The sandbox's port and service are
 that lane's files by ownership (CLAUDE.md's lanes; this SIP was its 1.4 headline), so the explicit
 release is the implementer's choice, for the MacBook lane's review as its caller and the owner's.
+
+### 11k. The scenario runner reads a started tree's client routes, with the evaluator image's own Chromium (2026-10-28, §4.6, §7 items 2, 9 and 10; §11e, §11h; SIP-0109 §24co; #2619; implementer's record, for the owner)
+
+**Why.** SIP-0109 §24co renders a repository-backed product's client routes at its increment's acceptance. The product
+can only be started here, from its declaration (§11e). §11c's dropped row, campaign evaluation through this sandbox,
+stands for a sample application, whose routes are still read in the qa container. For a repository-backed product,
+its acceptance (SIP-0109 §24cl) and its routes run here.
+
+**What changed.**
+- **`POST /api/v1/evaluations` takes `routes`:** each one a client route and, for a parameterized one, its seed
+  (`RouteRequest`). The answer carries each route's reading (`TreeEvaluation.routes`: the path it was read at, the
+  test ids its page's elements carried, or why it wasn't read). It defaults to none, so every existing caller's request
+  and answer are as they were.
+- **When:** after the quality reading and the scenarios, so a route's seed reaches neither. The app is the one started
+  from the declaration in the disposable copy, and it's torn down after.
+- **How:** Chromium runs as the evaluator image's entrypoint (`ContainerSpec.entrypoint`, rendered as `docker run
+  --entrypoint`, an inert default for every other spec). It dumps each page's DOM with the flags the qa role reads a
+  sample application's pages with.
+  - It runs on the app network, at the app's IP (a UI server may refuse a name it doesn't know), with caps dropped,
+    no new privileges, nothing mounted and nothing of the app's environment, as the evaluator's other runs are (§11h).
+  - The image's driver isn't run, so the image and its tag are unchanged.
+- **A seed** is sent to the app's own address, with the path as the manifest writes it (SIP-0113 §10n ruling 8).
+- **What reads unread, with why:** no `ui_base`, no app network, the image absent, the browser's container not run, a
+  non-zero exit, nothing dumped, no seed, or a seed refused. A reading's detail is scrubbed of the evaluation's
+  secrets, as every free text is (§11e).
+
+**Evidence.** `tests/unit/sandbox/test_scenario_runner_routes.py` and `test_http_surface.py`, and the live read
+SIP-0109 §24co records: the `-7` image's Chromium as its entrypoint, on a throwaway network, with nothing left running.
+
+**Who ruled it.** The implementer, building SIP-0109 §24co, for the owner's review. The sandbox's service is the Spark
+lane's by ownership.
