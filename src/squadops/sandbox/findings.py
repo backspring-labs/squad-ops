@@ -348,8 +348,9 @@ def _vitest_failures(stderr: str) -> tuple[Counter[str], dict[str, str], dict[st
             group.append(key)
         elif group and line.strip():
             error = _VITEST_CLASS.match(line.strip())
-            for key in group if error else ():
-                classes[key] = error["cls"].rsplit(".", 1)[-1]
+            if error:
+                for key in group:
+                    classes[key] = error["cls"].rsplit(".", 1)[-1]
             group = []
     return counts, classes, declared
 
