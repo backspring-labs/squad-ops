@@ -336,10 +336,10 @@ def test_the_ruling_binds_the_placement_where_nothing_else_tells_it_apart():
     criterion, the footprint untouched, is consistent on its face. Bug caught: the placement left
     out of the hash, so the build writes, and the evaluation freezes, a file nobody approved."""
     authored = _request(footprint=["tally/report.py", "tests/check_criterion_R1.py"])
-    context = _context(scope=("tally/**", "tests/**"))
-    data = yaml.safe_load(
-        stored_change_request(validate_proposal(authored, context).change_request)
-    )
+    authored["criteria"][0]["paths"] = ["tally/report.py"]
+    verdict = validate_proposal(authored, _context(scope=("tally/**", "tests/**")))
+    assert verdict.accepted, verdict.refusals
+    data = yaml.safe_load(stored_change_request(verdict.change_request))
     data["criterion_files"] = [{"criterion_id": "R1", "path": "tests/check_criterion_R1.py"}]
 
     with pytest.raises(ValueError, match="does not match its hash"):
