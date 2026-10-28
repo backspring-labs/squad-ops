@@ -2583,7 +2583,7 @@ class DispatchedFlowExecutor(FlowExecutionPort):
                 raise _ExecutionError(f"increment acceptance: {e}") from e
             produced.all_artifact_refs.append(evaluation)
             if self._cycle_registry is not None:
-                await self._cycle_registry.append_artifact_refs(run_id, [evaluation])
+                await self._cycle_registry.append_artifact_refs(run_id, (evaluation,))
 
     async def _seed_verification_scaffold_artifacts(
         self,

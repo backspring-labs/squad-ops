@@ -385,7 +385,8 @@ async def frozen_on_runner(
     invocation is its own, as frozen. A missing bundle is never run, and is
     ``blocked_unverified``."""
     candidate = tree.file_tree
-    results, done = [], []
+    results: list[FrozenResult] = []
+    done: list[OverlayRun] = []
     for criterion in frozen:
         bundle = criterion.bundle
         if bundle is None:
@@ -486,9 +487,12 @@ async def evaluate_on_runner(
     new, replaced = tuple(new), tuple(replaced)
     retired = frozenset(retired)
     frozen = tuple(c for c in frozen if c.criterion_id not in retired)
-    placed = {c.test_path for c in (*new, *frozen, *replaced)}
+    placed = {c.test_path for c in new} | {c.test_path for c in frozen}
+    placed |= {c.test_path for c in replaced}
     surface = ProductTestSurface.of(runs.profile, placed)
-    discriminations, bundles, done = [], {}, []
+    discriminations: list[Discrimination] = []
+    bundles: dict[str, VerifierBundle] = {}
+    done: list[OverlayRun] = []
     for criterion in new:
         decided, bundle, made = await _discriminated(
             runs, criterion, accepted=accepted, candidate=candidate, surface=surface

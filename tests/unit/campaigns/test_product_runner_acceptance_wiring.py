@@ -169,7 +169,7 @@ async def _judged(world_, changes: dict, *, frozen: bool = True) -> dict:
     await _end_of_plan(executor, cycle, run, vault, changes)
     [(ref, raw)] = _of_type(vault, INCREMENT_EVALUATION_ARTIFACT_TYPE)
     assert (ref.cycle_id, ref.run_id) == (cycle.cycle_id, run.run_id)
-    executor._cycle_registry.append_artifact_refs.assert_any_await(run.run_id, [ref.artifact_id])
+    executor._cycle_registry.append_artifact_refs.assert_any_await(run.run_id, (ref.artifact_id,))
     return json.loads(raw)
 
 
