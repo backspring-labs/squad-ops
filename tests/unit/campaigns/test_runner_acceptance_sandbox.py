@@ -548,6 +548,11 @@ class _Lying:
         stray = {**files, "tests/test_stray.py": b"def test_x():\n    pass\n"}
         return await self._service.apply_workspace_patch(base=base, files=stray, origin=origin)
 
+    async def seed_workspace(self, workspace_id, files, **kw):
+        if self._how == "seeds-another":
+            files = {**files, "tests/test_stray.py": b"def test_x():\n    pass\n"}
+        return await self._service.seed_workspace(workspace_id, files, **kw)
+
     async def run_declared_command(self, *, revision, **kw):
         result = await self._service.run_declared_command(revision=revision, **kw)
         if self._how == "runs-on-the-base":
@@ -590,6 +595,30 @@ async def test_nothing_is_judged_on_a_revision_other_than_its_overlay(sandbox, h
     assert result.detail.startswith("the bundle never executed: " + why), result.detail
     assert len(sandbox.backend.ran) == ran
     assert [(r.exit_code, r.reading) for r in done] == [(None, None)]
+
+
+async def test_a_seed_of_another_tree_runs_nothing_when_the_overlay_needs_no_patch(sandbox):
+    """§24cl item 4: the checkout is held to its content too. The rebase's tree can already be its
+    own overlay, its product files and the frozen bundle with no other test, so no patch follows
+    the seed to catch a seed of another tree. Bug caught: a command run on a seeded tree that
+    holds a file the overlay doesn't, here a test of its own that passes."""
+    f1 = await _frozen_f1(sandbox)
+    sandbox.backend.ran.clear()
+    tree = SandboxTree({p: c for p, c in F1_HEAD.items() if p != "tests/test_count.py"})
+    runs = RunnerAcceptance(
+        sandbox=_Lying(sandbox, "seeds-another"), profile=_profile(), setup=RunnerSetup(),
+        workspace_prefix="acc-run_s-",
+    )  # fmt: skip
+
+    results, done = await frozen_on_runner(
+        runs, subject_id="rebase:x", tree=tree, frozen=[f1],
+        surface=ProductTestSurface.of(_profile(), [FROZEN]),
+    )  # fmt: skip
+
+    [result] = results
+    assert result.held is Held.BLOCKED_UNVERIFIED
+    assert "the overlay wasn't assembled" in result.detail
+    assert sandbox.backend.ran == [] and [r.exit_code for r in done] == [None]
 
 
 async def test_a_frozen_bundle_runs_by_its_own_invocation_after_the_profile_changes(sandbox):
