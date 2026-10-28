@@ -249,6 +249,43 @@ def test_a_nextjs_route_criterions_bundle_carries_the_route_caller():
     assert told.removeprefix("@/") + ".ts" == ROUTE_CALLER_PATH
 
 
+def test_a_nextjs_page_criterions_bundle_carries_the_page_loader_and_the_route_caller():
+    """#2602: a page criterion's test on Next.js loads its page through the scaffold's page
+    loader and answers its fetches through the route caller, and its bundle is what runs on the
+    accepted tree, which may predate both. Bugs caught: the loader left out of the bundle (it is
+    not under the qa namespace, so only ``test_config_files`` carries it), so an older accepted
+    tree fails at collection again; or the import the author is told naming some other file than
+    the one the scaffold emits."""
+    from squadops.stacks.scaffold import (
+        criterion_test_path,
+        expand,
+        page_loader_import_for,
+        route_caller_import_for,
+    )
+    from squadops.stacks.stack_nextjs_ts import PAGE_LOADER_PATH, ROUTE_CALLER_PATH, STACK_NAME
+    from tests.unit.capabilities._stack_fixtures import manifest_for_stack
+
+    told = page_loader_import_for(STACK_NAME)
+    test_path = criterion_test_path(STACK_NAME, "T2", "client_route")
+    test = (
+        f"import {{ loadPage }} from '{told}'\n"
+        f"import {{ callRoute }} from '{route_caller_import_for(STACK_NAME)}'\n"
+        "const Page = await loadPage('/archive')\n"
+    )
+    files = {f["name"]: f["content"] for f in expand(manifest_for_stack(STACK_NAME))}
+
+    bundle = freeze_bundle(
+        "T2",
+        FileTree.of({**files, test_path: test}),
+        test_path,
+        TestSurface.for_stack(STACK_NAME),
+        (),
+    )
+
+    assert {test_path, PAGE_LOADER_PATH, ROUTE_CALLER_PATH} <= set(bundle.files.paths())
+    assert told.removeprefix("@/") + ".ts" == PAGE_LOADER_PATH
+
+
 def test_an_overlay_identity_moves_with_the_tests_and_the_accepted_tree_is_unchanged():
     first = baseline_evaluator_overlay(ACCEPTED, CANDIDATE, SURFACE)
     edited = FileTree.of({**CANDIDATE.as_dict(), "frontend/src/__tests__/views.test.jsx": "edited"})

@@ -62,12 +62,13 @@ APP_INVOCATION = AppInvocation(
     invocation_import=(
         JS_MODULE_LOAD
         + r"""['"`][^'"`]*(?:app/api/|app/(?:[^'"`]*/)?page(?:\.tsx?)?['"`]|components/"""
-        # #2577: the frozen route caller loads and calls the route module itself.
-        + r"""|vitest\.routes(?:\.ts)?['"`])"""
+        # #2577: the frozen route caller loads and calls the route module itself, and #2602's
+        # frozen page loader loads the page module.
+        + r"""|vitest\.(?:routes|pages)(?:\.ts)?['"`])"""
     ),
     subject_mock=(
         r"""(?:vi|jest)\s*\.\s*mock\s*\(\s*['"`][^'"`]*"""
-        r"""(?:app/api/|app/(?:[^'"`]*/)?page(?:\.tsx?)?['"`]|vitest\.routes(?:\.ts)?['"`])"""
+        r"""(?:app/api/|app/(?:[^'"`]*/)?page(?:\.tsx?)?['"`]|vitest\.(?:routes|pages)(?:\.ts)?['"`])"""
     ),
     network_seam_mock=(
         NETWORK_SEAM_FETCH_STUB
@@ -77,7 +78,8 @@ APP_INVOCATION = AppInvocation(
         "an import of an `app/api/**/route` handler module, called directly with a "
         "`new Request(...)` — the in-process model — or a route called through the frozen "
         "`callRoute` from `@/vitest.routes`, or, for a page, rendering the real "
-        "`app/**/page` (or a `components/` component) with `fetch` or the frozen `@/lib/api` "
+        "`app/**/page` (or one loaded through the frozen `loadPage` from `@/vitest.pages`, or a "
+        "`components/` component) with `fetch` or the frozen `@/lib/api` "
         "client stubbed beneath it; `@/lib/api` alone is the browser client and reaches no "
         "server under vitest"
     ),
@@ -376,53 +378,21 @@ describe('page test harness', () => {
 ROUTE_CALLER_PATH = "vitest.routes.ts"
 ROUTE_CALLER_IMPORT = "@/vitest.routes"
 
-#: Scaffold-owned route caller (frozen, #2577), the counterpart of stack #1's ``client`` fixture.
-#: A criterion's test runs on the accepted application, where it must fail, and on the change,
-#: where it must pass (SIP-0109 §8.2). This stack's tests import a route's module, and a route the
-#: change adds has no module on the accepted tree, so the file failed at collection: a setup
-#: failure, never counted as the criterion failing, and the 2.4 window's campaign 2 seed increment
-#: was rejected however correct its build. Through ``callRoute`` the route is found when the call
-#: is made, as the App Router finds it, and a path no route serves answers 404.
-_ROUTE_CALLER = """// Scaffold-owned (frozen): call a route handler by method and path, as a client calls the
-// running application. The route is found when the call is made, the way the App Router finds
-// it: a static folder wins over a [param] folder, segment by segment; a (group) folder adds no
-// segment and a _private folder routes nothing. A path no route serves answers 404, a method its
-// route does not export 405, HEAD is served by GET, OPTIONS answers 204 with Allow, and a path
-// with a trailing slash is redirected (308), as `next start` does.
-//
-// A criterion's test calls its route here, never by importing the route module: on the
-// application before the change that module may not exist, and an import of it fails the file
-// before any assertion runs.
-import { existsSync, readdirSync } from 'node:fs'
+#: The App Router's resolution, written once and emitted into both the route caller and the page
+#: loader (#2602), so the two never route one path differently. Each emitted file carries its own
+#: copy: a criterion's bundle carries the test-config files, and a stored bundle's caller is the
+#: one it was frozen with, so neither file may import the other.
+_NODE_IMPORTS = """import { existsSync, readdirSync } from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
+"""
 
-type Handler = (
-  request: Request,
-  context: { params: Record<string, string> },
-) => Response | Promise<Response>
-
-const METHODS = ['GET', 'HEAD', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS']
-// As vitest.config.ts finds the root: a literal `new URL(..., import.meta.url)` is rewritten to an
+_APP_DIR = """// As vitest.config.ts finds the root: a literal `new URL(..., import.meta.url)` is rewritten to an
 // http URL in a DOM suite, and `fileURLToPath` refuses it.
 const APP = path.join(path.dirname(fileURLToPath(import.meta.url)), 'app')
+"""
 
-function routes(dir: string, segments: string[] = []): { file: string; segments: string[] }[] {
-  if (!existsSync(dir)) return []
-  const found: { file: string; segments: string[] }[] = []
-  for (const entry of readdirSync(dir, { withFileTypes: true })) {
-    if (entry.isDirectory()) {
-      if (entry.name.startsWith('_')) continue
-      const group = entry.name.startsWith('(') && entry.name.endsWith(')')
-      found.push(...routes(path.join(dir, entry.name), group ? segments : [...segments, entry.name]))
-    } else if (entry.name === 'route.ts') {
-      found.push({ file: path.join(dir, entry.name), segments })
-    }
-  }
-  return found
-}
-
-function match(segments: string[], parts: string[]): Record<string, string> | null {
+_SEGMENT_MATCH = """function match(segments: string[], parts: string[]): Record<string, string> | null {
   if (segments.length !== parts.length) return null
   const params: Record<string, string> = {}
   for (let i = 0; i < segments.length; i++) {
@@ -436,7 +406,64 @@ function match(segments: string[], parts: string[]): Record<string, string> | nu
 function specificity(segments: string[]): string {
   return segments.map((s) => (s.startsWith('[') ? '1' : '0')).join('')
 }
+"""
 
+
+def _app_tree_walk(function: str, is_entry: str) -> str:
+    """The walk of ``app/`` that lists each file ``is_entry`` accepts with its URL segments: a
+    ``_private`` folder is skipped and a ``(group)`` folder adds no segment, as the App Router
+    routes them."""
+    return f"""function {function}(dir: string, segments: string[] = []): {{ file: string; segments: string[] }}[] {{
+  if (!existsSync(dir)) return []
+  const found: {{ file: string; segments: string[] }}[] = []
+  for (const entry of readdirSync(dir, {{ withFileTypes: true }})) {{
+    if (entry.isDirectory()) {{
+      if (entry.name.startsWith('_')) continue
+      const group = entry.name.startsWith('(') && entry.name.endsWith(')')
+      found.push(...{function}(path.join(dir, entry.name), group ? segments : [...segments, entry.name]))
+    }} else if ({is_entry}) {{
+      found.push({{ file: path.join(dir, entry.name), segments }})
+    }}
+  }}
+  return found
+}}
+"""
+
+
+#: Scaffold-owned route caller (frozen, #2577), the counterpart of stack #1's ``client`` fixture.
+#: A criterion's test runs on the accepted application, where it must fail, and on the change,
+#: where it must pass (SIP-0109 §8.2). This stack's tests import a route's module, and a route the
+#: change adds has no module on the accepted tree, so the file failed at collection: a setup
+#: failure, never counted as the criterion failing, and the 2.4 window's campaign 2 seed increment
+#: was rejected however correct its build. Through ``callRoute`` the route is found when the call
+#: is made, as the App Router finds it, and a path no route serves answers 404.
+_ROUTE_CALLER = (
+    """// Scaffold-owned (frozen): call a route handler by method and path, as a client calls the
+// running application. The route is found when the call is made, the way the App Router finds
+// it: a static folder wins over a [param] folder, segment by segment; a (group) folder adds no
+// segment and a _private folder routes nothing. A path no route serves answers 404, a method its
+// route does not export 405, HEAD is served by GET, OPTIONS answers 204 with Allow, and a path
+// with a trailing slash is redirected (308), as `next start` does.
+//
+// A criterion's test calls its route here, never by importing the route module: on the
+// application before the change that module may not exist, and an import of it fails the file
+// before any assertion runs.
+"""
+    + _NODE_IMPORTS
+    + """
+type Handler = (
+  request: Request,
+  context: { params: Record<string, string> },
+) => Response | Promise<Response>
+
+const METHODS = ['GET', 'HEAD', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS']
+"""
+    + _APP_DIR
+    + "\n"
+    + _app_tree_walk("routes", "entry.name === 'route.ts'")
+    + "\n"
+    + _SEGMENT_MATCH
+    + """
 export async function callRoute(method: string, url: string, init: RequestInit = {}): Promise<Response> {
   const target = new URL(url, 'http://localhost')
   if (target.pathname.length > 1 && target.pathname.endsWith('/')) {
@@ -469,6 +496,79 @@ export async function callRoute(method: string, url: string, init: RequestInit =
     : response
 }
 """
+)
+
+#: Where the scaffold's page loader lives, and how a criterion test imports it (#2602): the page
+#: counterpart of the route caller, a test-config file beside it for the same reason.
+PAGE_LOADER_PATH = "vitest.pages.ts"
+PAGE_LOADER_IMPORT = "@/vitest.pages"
+
+#: Scaffold-owned page loader (frozen, #2602), the page half of ``_ROUTE_CALLER``. A page
+#: criterion's test (``client_route``) renders its page. A page the change adds has no
+#: ``app/**/page`` module on the accepted tree, so a test that imports it failed at collection,
+#: a setup failure §8.2 never counts, and the increment was refused however correct its build.
+#: Through ``loadPage`` the page is found when the test runs, by the route caller's own
+#: resolution, and a path no page serves renders a not-found page: the test fails at its anchor's
+#: assertion, as §8.2 counts "a missing view rendering without its declared test ids". No JSX, so
+#: the file is ``.ts`` like the caller and needs no compile setting of its own.
+_PAGE_LOADER = (
+    """// Scaffold-owned (frozen): load the page the App Router serves for a path, to render it in a
+// page suite (`.test.tsx`). The page is found when the test runs, as vitest.routes.ts finds a
+// route: a static folder wins over a [param] folder, segment by segment; a (group) folder adds no
+// segment and a _private folder routes nothing. The page is rendered with its `params` and
+// `searchParams` props, as the App Router passes them. A path no page serves renders a not-found
+// page instead, as `next start` answers it.
+//
+// A criterion's test loads its page here, never by importing the page module: on the application
+// before the change that module may not exist, and an import of it fails the file before any
+// assertion runs.
+"""
+    + _NODE_IMPORTS
+    + """import { createElement, type ComponentType } from 'react'
+
+type PageProps = { params: Record<string, string>; searchParams: Record<string, string> }
+
+const PAGE_FILES = ['page.tsx', 'page.ts', 'page.jsx', 'page.js']
+"""
+    + _APP_DIR
+    + "\n"
+    + _app_tree_walk("pages", "PAGE_FILES.includes(entry.name)")
+    + "\n"
+    + _SEGMENT_MATCH
+    + """
+function NotFound() {
+  return createElement(
+    'main',
+    null,
+    createElement('h1', null, '404'),
+    createElement('p', null, 'This page could not be found.'),
+  )
+}
+
+export async function loadPage(url: string): Promise<ComponentType> {
+  const target = new URL(url, 'http://localhost')
+  let parts: string[]
+  try {
+    parts = target.pathname.split('/').filter(Boolean).map(decodeURIComponent)
+  } catch {
+    return NotFound
+  }
+  const candidates = pages(APP)
+    .map((p) => ({ ...p, params: match(p.segments, parts) }))
+    .filter((c): c is { file: string; segments: string[]; params: Record<string, string> } => c.params !== null)
+    .sort((a, b) => specificity(a.segments).localeCompare(specificity(b.segments)))
+  const chosen = candidates[0]
+  if (chosen === undefined) return NotFound
+  const loaded = (await import(/* @vite-ignore */ chosen.file)) as { default?: ComponentType<PageProps> }
+  const Page = loaded.default
+  if (Page === undefined) throw new Error(`${chosen.file} has no default-exported page component`)
+  const props: PageProps = { params: chosen.params, searchParams: Object.fromEntries(target.searchParams) }
+  return function LoadedPage() {
+    return createElement(Page, props)
+  }
+}
+"""
+)
 
 _HARNESS_TEST_HEAD = """// Scaffold-owned harness (SIP-0100). QA suites consume the seams this proves, and must
 // not reach past them into the app entry — the boundary that killed pf-25/26 on stack #1.
@@ -881,6 +981,7 @@ def expand_nextjs_ts(manifest: InterfaceManifest) -> list[dict[str, str]]:
         {"name": "__tests__/harness.test.ts", "content": _harness_test_source(manifest)},
         {"name": "__tests__/harness-dom.test.tsx", "content": _HARNESS_DOM_TEST},
         {"name": ROUTE_CALLER_PATH, "content": _ROUTE_CALLER},
+        {"name": PAGE_LOADER_PATH, "content": _PAGE_LOADER},
         # #598: rendered from the environment contract and frozen, not builder-authored.
         *render_packaging("nextjs_ts"),
     ]

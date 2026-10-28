@@ -62,6 +62,8 @@ from squadops.stacks.stack_fastapi_react import (
 )
 from squadops.stacks.stack_nextjs_ts import APP_INVOCATION as _APP_INVOCATION_NEXTJS_TS
 from squadops.stacks.stack_nextjs_ts import CLIENT_SURFACE as _CLIENT_SURFACE_NEXTJS_TS
+from squadops.stacks.stack_nextjs_ts import PAGE_LOADER_IMPORT as _PAGE_LOADER_IMPORT_NEXTJS_TS
+from squadops.stacks.stack_nextjs_ts import PAGE_LOADER_PATH as _PAGE_LOADER_PATH_NEXTJS_TS
 from squadops.stacks.stack_nextjs_ts import ROUTE_CALLER_IMPORT as _ROUTE_CALLER_IMPORT_NEXTJS_TS
 from squadops.stacks.stack_nextjs_ts import ROUTE_CALLER_PATH as _ROUTE_CALLER_PATH_NEXTJS_TS
 from squadops.stacks.stack_nextjs_ts import STACK_NAME as _NEXTJS_TS_NAME
@@ -2013,6 +2015,16 @@ class ScaffoldStack:
     #: How a criterion test imports the stack's frozen route caller (#2577), which the stack
     #: declares among its ``test_config_files`` so every criterion's bundle carries it.
     route_caller_import: str = ""
+    #: #2602: the request asset that tells a page criterion's (``client_route``) test author how
+    #: to load its page and answer its fetches so the test fails on the application before the
+    #: change at its anchor's assertion, not at collection (SIP-0109 §8.2). Empty for a stack
+    #: whose page tests reach a page through a frozen entry: stack #1's render the frozen ``App``
+    #: under a ``MemoryRouter`` at the page's path, and on the accepted tree a path its ``App``
+    #: doesn't route renders the shell without the view's test ids.
+    criterion_page_harness: str = ""
+    #: How a criterion test imports the stack's frozen page loader (#2602), declared among its
+    #: ``test_config_files`` beside the route caller.
+    page_loader_import: str = ""
     #: SIP-0109 §8.3: how this stack's app is stood up so its pages can be read — a *name*
     #: in ``handlers.route_rendering``, like ``probe_profile``. Empty means its pages cannot
     #: be read, and every declared route is ``blocked_unverified``, never passed.
@@ -2082,8 +2094,14 @@ _STACKS: dict[str, ScaffoldStack] = {
         name=_NEXTJS_TS_NAME,
         expand=_expand_nextjs_ts,
         fill_slots=_fill_slots_nextjs_ts,
-        # #2577: the frozen route caller rides every criterion's bundle, as the setup does.
-        test_config_files=("vitest.config.ts", "vitest.setup.ts", _ROUTE_CALLER_PATH_NEXTJS_TS),
+        # #2577, #2602: the frozen route caller and page loader ride every criterion's bundle,
+        # as the setup does.
+        test_config_files=(
+            "vitest.config.ts",
+            "vitest.setup.ts",
+            _ROUTE_CALLER_PATH_NEXTJS_TS,
+            _PAGE_LOADER_PATH_NEXTJS_TS,
+        ),
         # Co-located `__tests__/` beside source, not a directory prefix at the tree root —
         # one of the three FastAPI-shaped assumptions S2 selected this stack to break. The
         # bare name is the declaration of that convention; `within_namespace` reads it as a
@@ -2122,6 +2140,10 @@ _STACKS: dict[str, ScaffoldStack] = {
         # #2577: an endpoint criterion's test calls its route through the frozen route caller.
         criterion_route_harness="request.increment_route_harness_appendix_nextjs_ts",
         route_caller_import=_ROUTE_CALLER_IMPORT_NEXTJS_TS,
+        # #2602: a page criterion's test loads its page through the frozen page loader, and
+        # answers the page's fetches through the route caller.
+        criterion_page_harness="request.increment_page_harness_appendix_nextjs_ts",
+        page_loader_import=_PAGE_LOADER_IMPORT_NEXTJS_TS,
         # #1950: the frozen types write an optional field ``field?: type`` and the frozen store
         # adds no default, so what a create without it returns is each build's handler's choice.
         # 225 stored handlers return it left out, null and "" (#1950's comment of 2026-10-05).
@@ -2169,6 +2191,19 @@ def route_caller_import_for(stack: str) -> str:
     """How ``stack``'s criterion tests import its frozen route caller (#2577), or ``""``."""
     known = _STACKS.get(stack) if stack else None
     return known.route_caller_import if known else ""
+
+
+def criterion_page_harness_for(stack: str) -> str:
+    """The request asset telling ``stack``'s page criterion tests how to load a page (#2602), or
+    ``""`` when the stack needs none, or isn't registered."""
+    known = _STACKS.get(stack) if stack else None
+    return known.criterion_page_harness if known else ""
+
+
+def page_loader_import_for(stack: str) -> str:
+    """How ``stack``'s criterion tests import its frozen page loader (#2602), or ``""``."""
+    known = _STACKS.get(stack) if stack else None
+    return known.page_loader_import if known else ""
 
 
 def criterion_test_path(stack: str, criterion_id: str, surface_kind: str) -> str:

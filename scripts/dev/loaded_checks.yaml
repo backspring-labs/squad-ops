@@ -1567,6 +1567,17 @@ checks:
       asset = pathlib.Path(p.__file__).parent / "request_templates" / (criterion_route_harness_for("nextjs_ts") + ".md")
       print("vitest.routes.ts" in test_config_files_for_stack("nextjs_ts"), APP_INVOCATION.invokes("import { callRoute } from '@/vitest.routes'\n"), asset.is_file())
     expect: "True True True"
+  - id: "2602"
+    what: a Next.js page criterion's test loads its page through the frozen page loader, which every bundle carries, the containment check counts and the qa author is told of with the route caller for its fetch stub (#2602)
+    container: squadops-eve
+    code: |
+      import pathlib, squadops.prompts as p
+      from squadops.stacks.scaffold import criterion_page_harness_for, test_config_files_for_stack
+      from squadops.stacks.stack_nextjs_ts import APP_INVOCATION
+      from squadops.stacks.development_profiles import DEVELOPMENT_PROFILES
+      asset = pathlib.Path(p.__file__).parent / "request_templates" / (criterion_page_harness_for("nextjs_ts") + ".md")
+      print("vitest.pages.ts" in test_config_files_for_stack("nextjs_ts"), APP_INVOCATION.invokes("import { loadPage } from '@/vitest.pages'\n"), asset.is_file(), "return callRoute(" in DEVELOPMENT_PROFILES["nextjs_ts"].test_prompt_supplement)
+    expect: "True True True True"
   - id: "2595"
     what: an accepted repair's or retry's promotion reads its criteria's statements from its own launch, and the digest names a criterion frozen without one (#2595)
     container: squadops-runtime-api

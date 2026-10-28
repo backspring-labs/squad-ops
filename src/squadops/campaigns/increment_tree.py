@@ -536,6 +536,11 @@ def increment_test_scope(resolved_config: Any, change_request: str | None) -> di
         "route_criteria": [
             c.id for c in request.criteria if c.surface_kind is SurfaceKind.ENDPOINT
         ],
+        # #2602: the criteria proven on a page, whose test loads it as the stack says
+        # (``scaffold.criterion_page_harness_for``).
+        "page_criteria": [
+            c.id for c in request.criteria if c.surface_kind is SurfaceKind.CLIENT_ROUTE
+        ],
         "stack": scaffold_stack_for(resolved_config),
     }
 

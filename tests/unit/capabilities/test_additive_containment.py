@@ -179,11 +179,88 @@ async def test_the_route_caller_idiom_the_appendix_teaches_passes_the_qa_handler
     ]
 
 
+def _fenced(source: str, lang: str) -> str:
+    """The one ``lang`` fence in a prompt's text: the example its author is shown."""
+    import re
+
+    [example] = re.findall(rf"```{lang}\n(.*?)```", source, re.S)
+    return example
+
+
+def _page_appendix_example() -> str:
+    from pathlib import Path
+
+    from squadops.stacks.scaffold import page_loader_import_for, route_caller_import_for
+
+    asset = (
+        Path(__file__).resolve().parents[3]
+        / "src/squadops/prompts/request_templates"
+        / "request.increment_page_harness_appendix_nextjs_ts.md"
+    ).read_text()
+    return (
+        _fenced(asset, "tsx")
+        .replace("{{page_loader_import}}", page_loader_import_for("nextjs_ts"))
+        .replace("{{route_caller_import}}", route_caller_import_for("nextjs_ts"))
+    )
+
+
+def _supplement_page_example() -> str:
+    from squadops.stacks.development_profiles import DEVELOPMENT_PROFILES
+
+    return _fenced(DEVELOPMENT_PROFILES["nextjs_ts"].test_prompt_supplement, "tsx")
+
+
+#: A page criterion about structure (#2547) fetches nothing worth answering, so its test stubs
+#: ``fetch`` with data of its own beneath the page it loads: legitimate, as beneath a page it
+#: imports, because the page rendered is the application's.
+_STRUCTURAL_PAGE_TEST = """import { expect, it, vi } from 'vitest'
+import { render, screen } from '@testing-library/react'
+import { loadPage } from '@/vitest.pages'
+
+vi.stubGlobal('fetch', async () => Response.json({ titles: [] }))
+
+it('shows the archive heading', async () => {
+  const Page = await loadPage('/archive')
+  render(<Page />)
+  expect(await screen.findByTestId('archive-heading')).toBeInTheDocument()
+})
+"""
+
+
+@pytest.mark.parametrize(
+    "suite",
+    [_STRUCTURAL_PAGE_TEST, _page_appendix_example(), _supplement_page_example()],
+    ids=["structural-page-through-the-loader", "page-appendix-example", "supplement-page-example"],
+)
+async def test_the_page_idioms_2602_teaches_pass_the_qa_handlers_containment(suite):
+    """#2602, wiring (anti-pattern 6a), entered at the qa handler's typed-acceptance seam. A page
+    criterion's test loads its page through the frozen `loadPage`, and the appendix and the
+    stack's supplement both route a page's fetch stub through `callRoute`. Bugs caught: a page
+    loaded through the loader read as invoking nothing, so a test that stubs `fetch` beneath it
+    is refused as self-mocking (`no_application_invocation`) and its finding tells the author to
+    import the page module, the import #2602 replaces; or either taught example refused."""
+    from squadops.capabilities.handlers.cycle.qa_test import QATestHandler
+
+    checks: list[dict] = []
+    await QATestHandler()._evaluate_typed_acceptance(
+        {"acceptance_criteria": [], "resolved_config": {"build_profile": "nextjs_ts"}},
+        [{"name": "__tests__/criteria/T7.test.tsx", "type": "test", "content": suite}],
+        checks,
+        [],
+        {},
+    )
+    rows = [c for c in checks if c["check"] == "acceptance:additive_containment"]
+    assert [(r["params"]["file"], r["status"]) for r in rows] == [
+        ("__tests__/criteria/T7.test.tsx", "passed")
+    ]
+
+
 @pytest.mark.parametrize(
     "not_a_load",
     [
         "vi.mock('@/app/api/runs/route')",
         "vi.mock('@/vitest.routes')",
+        "vi.mock('@/vitest.pages')",
         "const actual = await vi.importActual('@/app/api/runs/route')",
         "vi.mock('@/app/api/runs/route', () => import('./fake-route'))",
     ],
