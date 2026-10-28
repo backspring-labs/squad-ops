@@ -184,7 +184,9 @@ async def test_handle_authors_under_the_qa_brief_and_merges_into_the_current_she
     )
 
     # D12's note is rendered with the call, after the request: the request's renders are these.
-    calls = [c for c in renderer.render.await_args_list if c.args[0] != "request.keep_reasoning_short"]
+    calls = [
+        c for c in renderer.render.await_args_list if c.args[0] != "request.keep_reasoning_short"
+    ]
     rendered = [c.args[0] for c in calls]
     assert rendered[:2] == [
         "request.qa_test_fill_mode_appendix",

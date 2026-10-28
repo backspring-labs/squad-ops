@@ -535,6 +535,18 @@ checks:
       from squadops.capabilities.handlers.route_rendering import catch_all_path
       print(catch_all_path("*"), catch_all_path("/docs/*"), catch_all_path("/runs/:run_id"))
     expect: "/__squadops_unmatched__ /docs/__squadops_unmatched__ None"
+  - id: "2253"
+    what: a qa first call is sent the cut-off re-ask's clause, and only a qa first call (D12)
+    container: squadops-eve
+    code: |
+      import importlib.resources as r
+      from squadops.capabilities.handlers.cycle.base import _CycleTaskHandler
+      from squadops.tasks.task_types import TaskType as T
+      asset = r.files("squadops.prompts").joinpath("request_templates/request.keep_reasoning_short.md")
+      print(T.QA_TEST.first_call_keeps_reasoning_short, T.QA_TEST_REPAIR.first_call_keeps_reasoning_short,
+            T.DEVELOPMENT_REPAIR.first_call_keeps_reasoning_short,
+            hasattr(_CycleTaskHandler, "_first_call_messages"), asset.is_file())
+    expect: "True True False True True"
   - id: "2743"
     what: a proposal's scope check leaves the stack's qa test namespace to the framework
     container: squadops-nat
