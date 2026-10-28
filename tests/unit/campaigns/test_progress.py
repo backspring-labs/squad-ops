@@ -1921,6 +1921,7 @@ async def _a_late_answer_on_record(
         open_questions=(question,),
         footprint=("backend/main.py",),
         allowed_scope=("backend/**",),
+        stack="fullstack_fastapi_react",
         refused_framing_runs=(),
         answered_on_record={},
     )

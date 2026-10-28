@@ -133,6 +133,18 @@ def open_decisions(manifest_content: str | None) -> tuple[tuple[str, str], ...]:
     )
 
 
+def manifest_stack(manifest_content: str | None) -> str:
+    """The stack the manifest names, or ``""`` when there is none to read. The plan-review tier
+    reads its qa test namespace by it (#2743), and an unreadable manifest is the gate net's to
+    report, as for ``open_decisions``: no stack is no namespace, so every path stays the scope's."""
+    if not manifest_content:
+        return ""
+    try:
+        return InterfaceManifest.from_yaml(manifest_content).stack or ""
+    except Exception:  # noqa: BLE001 - unreadable manifests are the gate net's to report
+        return ""
+
+
 def resolve_answered_questions(
     manifest_content: str, *, answer: str, answered_by: str, answered_at: str, where: str
 ) -> str:

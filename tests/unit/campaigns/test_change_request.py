@@ -102,6 +102,79 @@ def test_an_out_of_scope_delta_is_refused_not_trimmed():
     assert "frontend/src/views/RunDetailView.jsx" in refusal.detail
 
 
+def _ordering_fix() -> dict:
+    """#2743's reproduction on this baseline: a backend-only fix that declares the runs list's
+    order, with one endpoint criterion. Invented for the test, after the issue's shape."""
+    return {
+        "kind": "fix",
+        "prd_delta": [],
+        "manifest_delta": [
+            {
+                "op": "modify",
+                "target": "endpoint",
+                "key": "GET /runs",
+                "definition": {
+                    "method": "GET",
+                    "path": "/runs",
+                    "summary": "list all runs",
+                    "response": "list[Run]",
+                    "order": {"field": "datetime", "direction": "asc"},
+                },
+            }
+        ],
+        "criteria": [
+            {
+                "id": "C1",
+                "statement": "The runs list is ordered by datetime, earliest first",
+                "surface_kind": "endpoint",
+                "surface": "GET /runs",
+                "observable": "two runs created later-first come back earliest-first",
+            }
+        ],
+        "must_not_break": [],
+    }
+
+
+def test_a_backend_only_fix_passes_a_scope_of_its_route_and_one_test_file():
+    """#2743, entered where the proposal handler enters: the owner scoped the change to the route
+    file and one test file. The qa test namespace is the framework's (§7.2, the owner's ruling of
+    2026-10-28), so the scope reads the product files only, and the footprint still names the
+    namespace the build may write. Bug caught: every namespace glob checked against the owner's
+    scope, which refused each narrowly scoped increment (cmp_b79783b2…, exhausted)."""
+    verdict = validate_proposal(
+        _ordering_fix(),
+        _context(
+            allowed_scope=("backend/routes.py", "backend/tests/test_runs.py"), prior_criteria=()
+        ),
+    )
+
+    assert verdict.accepted, verdict.refusals
+    assert verdict.change_request.footprint == (
+        "backend/routes.py",
+        "backend/tests/**",
+        "frontend/src/__tests__/**",
+        "frontend/src/tests/**",
+    )
+
+
+def test_a_product_file_outside_the_scope_is_still_refused_and_the_namespace_is_named():
+    """The exemption is the namespace's alone. Bug caught: a scope of test files only admitting
+    the product change; or a refusal that lists the framework's namespace as the delta's reach,
+    which tells the owner to widen the wrong thing."""
+    verdict = validate_proposal(
+        _ordering_fix(), _context(allowed_scope=("backend/tests/test_runs.py",), prior_criteria=())
+    )
+
+    [refusal] = verdict.refusals
+    assert refusal.kind is RefusalKind.OUT_OF_SCOPE
+    assert refusal.detail == (
+        "the delta reaches backend/routes.py, outside the objective's allowed scope "
+        "(backend/tests/test_runs.py); a proposal is refused, never trimmed. The qa test "
+        "namespace (backend/tests/, frontend/src/__tests__/, frontend/src/tests/) is the "
+        "framework's, and the scope does not read it"
+    )
+
+
 def test_a_delta_the_manifest_gates_refuse_never_reaches_the_gate():
     """§7.2: the SIP-0103 gates run on the manifest the delta produces. Here the detail route
     loses its test ids, so qa would have no anchor to query."""
