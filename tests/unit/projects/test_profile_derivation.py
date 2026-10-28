@@ -172,10 +172,9 @@ def test_shelfnote_runs_pytest_at_its_root_and_vitest_through_its_frontends_npm_
         "fullstack_fastapi_react",
         ("/", "/create", "/runs/:id"),
     )
-    assert _gaps(profile) == [
-        ("no_start_declaration", "disclosed", None, ("**",)),
-        ("no_test_id_reader", "disclosed", "vitest", ("**",)),
-    ]
+    # #2757 (SIP-0109 §24ci (a)): vitest's tests are named one by one, as pytest's are.
+    assert (pytest_runner.test_ids, vitest.test_ids) == ("pytest", "vitest")
+    assert _gaps(profile) == [("no_start_declaration", "disclosed", None, ("**",))]
 
 
 @pytest.mark.parametrize(

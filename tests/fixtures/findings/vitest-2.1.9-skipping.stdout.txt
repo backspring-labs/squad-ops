@@ -1,0 +1,10 @@
+
+ RUN  v2.1.9 /work/frontend
+
+ ✓ src/__tests__/skipping.test.js (3 tests | 2 skipped) 1ms
+
+ Test Files  1 passed (1)
+      Tests  1 passed | 1 skipped | 1 todo (3)
+   Start at  13:42:28
+   Duration  137ms (transform 10ms, setup 0ms, collect 8ms, tests 1ms, environment 0ms, prepare 31ms)
+

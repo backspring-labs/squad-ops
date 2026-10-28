@@ -36,7 +36,7 @@ from squadops.projects.derived_profile import (
     Surface,
     Toolchain,
 )
-from squadops.sandbox.findings import PYTEST
+from squadops.sandbox.findings import PYTEST, VITEST
 from squadops.stacks.scaffold import InterfaceManifest
 
 if TYPE_CHECKING:
@@ -52,6 +52,9 @@ _OTHER_MANIFESTS = {"go.mod": ("go", "go"), "Cargo.toml": ("rust", "cargo")}
 _NODE_TOOLS = ("npm", "pnpm", "yarn")
 _LINT_TOOLS = ("ruff", "flake8", "pylint", "mypy", "eslint", "tsc", "svelte-check", "biome")
 _PYTEST_FILES = ("test_*.py", "*_test.py")
+#: The findings reader that names each runner's tests one by one (H.6's ``test_ids``): #2609's
+#: pytest reader and #2757's vitest reader (SIP-0109 §24ci (a)). unittest and jest have none.
+_TEST_ID_READERS = {"pytest": PYTEST, "vitest": VITEST}
 _JS_FILES = ("*.test.*", "*.spec.*")
 _JS_SETUP = ("setupTests.", "vitest.setup.", "jest.setup.", "test-setup.")
 #: A file named like a test by any runner this recognises, so one no runner owns is unclassed.
@@ -350,7 +353,7 @@ def _runners(found: list[tuple[Check, _Found]], tree: _Tree) -> tuple[Runner, ..
                     file_pattern=pattern,
                     suite_argv=suite,
                     single_file_argv=single,
-                    test_ids=PYTEST if kind == "pytest" else None,
+                    test_ids=_TEST_ID_READERS.get(kind),
                     support_files=_support(kind, root, tree),
                 )
             )

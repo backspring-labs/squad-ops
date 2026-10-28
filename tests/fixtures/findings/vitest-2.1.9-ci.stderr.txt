@@ -1,0 +1,73 @@
+[31m⎯⎯⎯⎯⎯⎯[1m[7m Failed Suites 1 [27m[22m⎯⎯⎯⎯⎯⎯⎯[39m
+
+[31m[1m[7m FAIL [27m[22m[39m src/__tests__/missing.test.js[2m [ src/__tests__/missing.test.js ][22m
+[31m[1mError[22m: Failed to load url ../Pagination.js (resolved id: ../Pagination.js) in /work/frontend/src/__tests__/missing.test.js. Does the file exist?[39m
+[90m [2m❯[22m loadAndTransform node_modules/vite/dist/node/chunks/dep-BK3b2jBa.js:[2m51969:17[22m[39m
+
+[31m[2m⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/5]⎯[22m[39m
+
+[31m⎯⎯⎯⎯⎯⎯⎯[1m[7m Failed Tests 4 [27m[22m⎯⎯⎯⎯⎯⎯⎯[39m
+
+[31m[1m[7m FAIL [27m[22m[39m src/__tests__/asserting.test.js[2m > [22mBook form[2m > [22mrefuses an empty title
+[31m[1mAssertionError[22m: expected '' to be 'a title' // Object.is equality[39m
+
+[32m- Expected[39m
+[31m+ Received[39m
+
+[32m- a title[39m
+
+[36m [2m❯[22m src/__tests__/asserting.test.js:[2m5:16[22m[39m
+    [90m  3| [39m[34mdescribe[39m([32m'Book form'[39m[33m,[39m () [33m=>[39m {
+    [90m  4| [39m  [34mit[39m([32m'refuses an empty title'[39m[33m,[39m () [33m=>[39m {
+    [90m  5| [39m    [34mexpect[39m([32m''[39m)[33m.[39m[34mtoBe[39m([32m'a title'[39m)
+    [90m   | [39m               [31m^[39m
+    [90m  6| [39m  })
+    [90m  7| [39m  [34mit[39m([32m'passes alone'[39m[33m,[39m () [33m=>[39m {
+
+[31m[2m⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[2/5]⎯[22m[39m
+
+[31m[1m[7m FAIL [27m[22m[39m src/__tests__/asserting.test.js[2m > [22mBook form[2m > [22mwhen saved > twice[2m > [22mnames the duplicate
+[31m[1mAssertionError[22m: expected { a: 1 } to deeply equal { a: 2 }[39m
+
+[32m- Expected[39m
+[31m+ Received[39m
+
+[2m  Object {[22m
+[32m-   "a": 2,[39m
+[31m+   "a": 1,[39m
+[2m  }[22m
+
+[36m [2m❯[22m src/__tests__/asserting.test.js:[2m12:24[22m[39m
+    [90m 10| [39m  [34mdescribe[39m([32m'when saved > twice'[39m[33m,[39m () [33m=>[39m {
+    [90m 11| [39m    [34mit[39m([32m'names the duplicate'[39m[33m,[39m () [33m=>[39m {
+    [90m 12| [39m      [34mexpect[39m({ a[33m:[39m [34m1[39m })[33m.[39m[34mtoEqual[39m({ a[33m:[39m [34m2[39m })
+    [90m   | [39m                       [31m^[39m
+    [90m 13| [39m    })
+    [90m 14| [39m  })
+
+[31m[2m⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[3/5]⎯[22m[39m
+
+[31m[1m[7m FAIL [27m[22m[39m src/__tests__/asserting.test.js[2m > [22mBook form[2m > [22mthrows inside the app
+[31m[1mTypeError[22m: Cannot read properties of undefined (reading 'books')[39m
+[36m [2m❯[22m src/__tests__/asserting.test.js:[2m17:18[22m[39m
+    [90m 15| [39m  [34mit[39m([32m'throws inside the app'[39m[33m,[39m () [33m=>[39m {
+    [90m 16| [39m    [35mconst[39m shelf [33m=[39m undefined
+    [90m 17| [39m    [35mreturn[39m shelf[33m.[39mbooks[33m.[39mlength
+    [90m   | [39m                 [31m^[39m
+    [90m 18| [39m  })
+    [90m 19| [39m})
+
+[31m[2m⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[4/5]⎯[22m[39m
+
+[31m[1m[7m FAIL [27m[22m[39m src/__tests__/asserting.test.js[2m > [22mSetup that breaks[2m > [22mnever reaches its body
+[31m[1mTypeError[22m: the fixture is broken[39m
+[36m [2m❯[22m src/__tests__/asserting.test.js:[2m23:11[22m[39m
+    [90m 21| [39m[34mdescribe[39m([32m'Setup that breaks'[39m[33m,[39m () [33m=>[39m {
+    [90m 22| [39m  [34mbeforeEach[39m(() [33m=>[39m {
+    [90m 23| [39m    [35mthrow[39m [35mnew[39m [33mTypeError[39m([32m'the fixture is broken'[39m)
+    [90m   | [39m          [31m^[39m
+    [90m 24| [39m  })
+    [90m 25| [39m  [34mit[39m([32m'never reaches its body'[39m[33m,[39m () [33m=>[39m {
+
+[31m[2m⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[5/5]⎯[22m[39m
+
