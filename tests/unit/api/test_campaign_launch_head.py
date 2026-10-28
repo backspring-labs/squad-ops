@@ -38,9 +38,7 @@ from squadops.campaigns.models import (
     ControlOperation,
     CycleKind,
     LaunchIntentState,
-    LaunchRequest,
 )
-from squadops.contracts.cycle_request_profiles import cycle_request_body
 from squadops.cycles.models import AgentProfileEntry, Project, SquadProfile
 from squadops.projects.baseline import parse_baseline
 from squadops.projects.derived_profile import parse_profile

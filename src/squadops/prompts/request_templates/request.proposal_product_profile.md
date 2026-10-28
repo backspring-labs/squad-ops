@@ -15,8 +15,9 @@ name a package exports. A criterion on anything else is refused.
 {{surface_lines}}
 
 **Its test runners, and where a criterion's test goes under each.** The runner is the first one
-listed whose tested paths hold every path the criterion exercises. A criterion whose paths no runner
-tests, or only one that hosts no criterion, is refused:
+listed whose tested paths hold every path the criterion exercises: its `paths`, or your footprint's
+product files when it names none. So a change across two runners' paths names each criterion's
+`paths`. A criterion whose paths no runner tests, or only one that hosts no criterion, is refused:
 {{placement_lines}}
 
 {{gaps_section}}

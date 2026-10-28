@@ -187,14 +187,20 @@ def _module_safe(criterion_id: str) -> str:
     return re.sub(r"[^A-Za-z0-9_]", "_", criterion_id)
 
 
+def _literal(glob: str) -> str:
+    """A path glob's literal part, before its first wildcard, without a trailing ``/``."""
+    return re.split(r"[*?\[]", glob, maxsplit=1)[0].rstrip("/")
+
+
 def _covered(path: str, covers: Iterable[str]) -> bool:
-    """Whether product path (or glob) ``path`` lies inside one of ``covers``: its literal part,
-    before any wildcard, is the cover or under it. A cover of ``.`` holds the whole tree."""
-    literal = re.split(r"[*?\[]", path, maxsplit=1)[0].rstrip("/")
+    """Whether product path (or glob) ``path`` lies inside one of ``covers`` (contract 8's globs,
+    ``tally/**``): its literal part is the cover's or under it, or the cover matches it. A cover
+    of ``.`` or ``**`` holds the whole tree."""
+    literal = _literal(path)
     for cover in covers:
-        c = cover.rstrip("/")
+        c = _literal(cover)
         if c in (".", ""):
             return True
-        if literal == c or literal.startswith(c + "/"):
+        if literal == c or literal.startswith(c + "/") or fnmatch(path, cover):
             return True
     return False

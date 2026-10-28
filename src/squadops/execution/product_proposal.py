@@ -173,9 +173,7 @@ async def _requirements(cycle: Cycle, named: Any, repository: Any, vault: Any) -
     assert context is not None
     if source.path is not None:
         try:
-            content = await repository.file_at(
-                cycle.project_id, context.pinned_commit, source.path
-            )
+            content = await repository.file_at(cycle.project_id, context.pinned_commit, source.path)
         except SourceUnavailable as e:
             raise _ExecutionError(
                 f"the requirements source {named} can't be read at the head "

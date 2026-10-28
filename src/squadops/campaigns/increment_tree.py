@@ -125,6 +125,21 @@ def approved_footprint(change_request: str) -> tuple[str, ...]:
     return load_stored_change_request(change_request).footprint
 
 
+def plan_footprint(
+    resolved_config: Any, candidate: Any, change_request: str | None
+) -> tuple[str, ...] | None:
+    """The footprint an increment's plan is shown and held to (§7.3): derived from the manifests
+    on a sample application (``increment_footprint``), its approved change request's own on a
+    campaign branch (``approved_footprint``). ``None`` for any cycle that is not an increment, or
+    whose inputs aren't in hand yet."""
+    basis = increment_basis(resolved_config)
+    if basis is None:
+        return None
+    if basis.has_manifest:
+        return increment_footprint(resolved_config, candidate)
+    return approved_footprint(change_request) if change_request else None
+
+
 def increment_baseline(resolved_config: Any) -> str | None:
     """The accepted manifest an increment cycle's launch carries, or ``None`` for any other
     cycle, and for a repository-backed increment, which has none (§24bv point 5). Whether a cycle

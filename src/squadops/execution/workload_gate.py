@@ -784,12 +784,18 @@ class WorkloadGate:
         """
 
         basis = increment_basis(cycle.resolved_config())
-        if basis is not None and not basis.has_manifest:
-            await promote_run_artifacts(self._artifact_vault, run.run_id)
-            return
-        stored = await self._artifact_vault.list_artifacts(run_id=run.run_id)
-        if any(r.metadata.get("producing_task_type") == INCREMENT_SEED_PRODUCER for r in stored):
-            return
+        if basis is None or basis.has_manifest:
+            stored = await self._artifact_vault.list_artifacts(run_id=run.run_id)
+            if any(
+                r.metadata.get("producing_task_type") == INCREMENT_SEED_PRODUCER for r in stored
+            ):
+                return
+            await self._store_candidate_seed(cycle, run)
+        await promote_run_artifacts(self._artifact_vault, run.run_id)
+
+    async def _store_candidate_seed(self, cycle: Cycle, run: Any) -> None:
+        """A sample application's seed (§7.3): the candidate manifest (the accepted one with the
+        approved delta applied) and the contract derived from it."""
         request = load_stored_change_request(await self._change_request_document(run))
         block = cycle.resolved_config().get("campaign_proposal") or {}
         baseline = str(block.get("baseline_manifest") or "")
@@ -828,4 +834,3 @@ class WorkloadGate:
             cycle_id=cycle.cycle_id,
             run_id=run.run_id,
         )
-        await promote_run_artifacts(self._artifact_vault, run.run_id)

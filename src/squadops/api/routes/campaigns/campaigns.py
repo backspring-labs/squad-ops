@@ -105,8 +105,8 @@ from squadops.campaigns.progress import (
     owner_held,
 )
 from squadops.campaigns.projection import project
-from squadops.cycles.gate_attribution import compose_decided_by
 from squadops.campaigns.repository_backed import creation_refusal
+from squadops.cycles.gate_attribution import compose_decided_by
 from squadops.cycles.models import CycleStatus, ProjectNotFoundError
 from squadops.memory.pinning import pin_campaign
 from squadops.scenarios.suites import SuiteRefused, pin_campaign_suite, require_pinnable

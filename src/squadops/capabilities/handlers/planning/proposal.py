@@ -41,12 +41,10 @@ from squadops.capabilities.handlers._plan_authoring import retry_yaml_call
 from squadops.capabilities.handlers.base import HandlerEvidence, HandlerResult
 from squadops.capabilities.handlers.cross_cycle_lessons import cross_cycle_lessons_section
 from squadops.capabilities.handlers.planning.base import _PlanningTaskHandler
-from squadops.capabilities.handlers.source_repository import source_repository_section
 from squadops.capabilities.handlers.task_instructions import (
     project_instructions_section,
     task_instructions_section,
 )
-from squadops.projects.derived_profile import SURFACES
 from squadops.outcomes.proposal_evidence import (
     PROPOSAL_EVIDENCE_INPUT,
     accepted_prd_lines,
@@ -55,6 +53,7 @@ from squadops.outcomes.proposal_evidence import (
     shown_goal_ids,
     shown_goal_statements,
 )
+from squadops.projects.derived_profile import SURFACES
 from squadops.stacks.scaffold import frozen_conventions_for
 from squadops.tasks.task_types import TaskType
 
@@ -137,6 +136,7 @@ def product_context(product: dict) -> ProductContext:
             (str(s["kind"]), _surface_value(s)) for s in profile.get("public_surfaces") or ()
         ),
         placements=tuple(RunnerPlacement.from_dict(p) for p in profile.get("placements") or ()),
+        test_files=tuple(str(g) for g in profile.get("test_files") or ()),
     )
 
 
@@ -441,9 +441,10 @@ async def product_sections(
         )
         rendered = await renderer.render("request.proposal_product_gaps", {"gap_lines": lines})
         profile_variables["gaps_section"] = rendered.content
+    head = str(product["head"]["commit"])
     return {
-        "head_commit": str(product["head"]["commit"]),
-        "source_repository_section": await source_repository_section(renderer, inputs),
+        "head_commit": head,
+        "product_tree_section": await _tree_section(renderer, inputs, head),
         "product_profile_section": (
             await renderer.render("request.proposal_product_profile", profile_variables)
         ).content,
@@ -470,6 +471,24 @@ async def product_sections(
             )
         ).content,
     }
+
+
+async def _tree_section(renderer: Any, inputs: dict[str, Any], head: str) -> str:
+    """The head's tree, from the task's bounded ``source_repository`` view (SIP-0112 E.4.3): its
+    map and the product's own instruction files. Not the view's whole appendix, which tells a
+    build task how to emit files: the proposal emits none. ``""`` for a task given no view."""
+    repository = inputs.get("source_repository")
+    if not isinstance(repository, dict):
+        return ""
+    variables = {"head_commit": head, "repository_map": str(repository["map"])}
+    instructions = repository.get("instructions") or {}
+    if instructions:
+        files = "\n\n".join(f"**{p}:**\n```\n{c}\n```" for p, c in instructions.items())
+        block = await renderer.render(
+            "request.source_repository_instructions_block", {"files": files}
+        )
+        variables["instructions"] = block.content
+    return (await renderer.render("request.proposal_product_tree", variables)).content
 
 
 def _surface_value(surface: dict) -> str:
@@ -500,7 +519,9 @@ def _check_line(check: dict) -> str:
     if findings:
         keys = ", ".join(f"`{k}`" for k in findings["keys"])
         more = findings["count"] - len(findings["keys"])
-        line += f"; {findings['count']} finding keys: {keys}" + (f" and {more} more" if more else "")
+        line += f"; {findings['count']} finding keys: {keys}" + (
+            f" and {more} more" if more else ""
+        )
     return line
 
 

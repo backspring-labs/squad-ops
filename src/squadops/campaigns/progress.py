@@ -1856,9 +1856,7 @@ class CampaignProgress:
         brief, what qa proposed, and each proposal never approved (§24w, §24br, §24bu)."""
         log = await self._campaigns.control_log(campaign.campaign_id)
         frozen = frozen_criteria(log)
-        built = [
-            c for c in (campaign.accepted.cycle_id, abandoned_cycle_id) if c is not None
-        ]
+        built = [c for c in (campaign.accepted.cycle_id, abandoned_cycle_id) if c is not None]
         proposed = await self._qa_proposed_behaviours(built)
         unapproved = [
             unapproved_proposal(

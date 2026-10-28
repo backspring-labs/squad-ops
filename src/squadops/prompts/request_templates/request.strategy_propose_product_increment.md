@@ -11,7 +11,7 @@ required_variables:
   - previous_verification_section
   - requirements_section
 optional_variables:
-  - source_repository_section
+  - product_tree_section
   - frozen_conventions_section
   - supervisor_note_section
   - unapproved_proposals_section
@@ -61,7 +61,7 @@ behaviour where a caller reaches it.
 {{abandoned_increment_section}}
 {{qa_proposed_behaviours_section}}
 {{task_instructions_section}}{{project_instructions_section}}{{cross_cycle_lessons_section}}
-{{source_repository_section}}
+{{product_tree_section}}
 
 ### What you emit
 

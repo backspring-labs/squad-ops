@@ -787,9 +787,8 @@ def _require_change_request_for_increment(
     # deferred (cycle): campaigns.increment_tree loads this module
     from squadops.campaigns.increment_tree import is_increment
 
-    in_an_increment = (
-        run.workload_type in _CHANGE_REQUEST_WORKLOADS
-        and is_increment(resolved_config)
+    in_an_increment = run.workload_type in _CHANGE_REQUEST_WORKLOADS and is_increment(
+        resolved_config
     )
     if in_an_increment and not change_request:
         raise CycleError(
@@ -938,13 +937,20 @@ def inject_contract_inputs(
     born of a failing probe can be aimed at the slot that owns the endpoint.
 
     Author mode (``contract is None``) injects nothing — contract-less cycles
-    stay byte-identical.
+    stay byte-identical — but for a repository-backed increment (SIP-0109 §24bv point 5): it has
+    no manifest, so no contract, and its plan authors are still shown its footprint, criterion
+    files, frozen files and test scope before the framing gate holds the plan to them (#686).
 
     #663 S3: WHO receives each bind-mode input class is the registry's
     declaration (``bind_criteria_index`` / ``bind_behavioral_surface``); this
     composer owns only the contract/manifest derivation mechanics.
     """
     if contract is None:
+        increment = footprint is not None or criterion_files or test_scope is not None
+        if increment and get_context_contract(task_type).bind_criteria_index:
+            _inject_increment_indexes(
+                inputs, footprint, criterion_files, frozen_files, frozenset(), test_scope
+            )
         return
     task_contract = get_context_contract(task_type)
     if task_contract.bind_criteria_index:
@@ -1396,9 +1402,10 @@ def _plan_facts(
     framing_rejection_context = resolved_config.pop("framing_rejection_context", None)
     # SIP-0109 §7.3 (#1705 d): an increment cycle's footprint, for its plan authors.
     # deferred (cycle): campaigns.increment_tree loads this module
-    from squadops.campaigns.increment_tree import increment_footprint
+    from squadops.campaigns.increment_tree import plan_footprint
 
-    footprint = increment_footprint(resolved_config, interface_manifest)
+    # A repository-backed increment's is its approved change request's (§24bv point 5).
+    footprint = plan_footprint(resolved_config, interface_manifest, change_request)
     criterion_files = _increment_criterion_files(change_request, resolved_config)
     # deferred (cycle): campaigns.increment_tree loads this module
     from squadops.campaigns.increment_tree import increment_frozen_files

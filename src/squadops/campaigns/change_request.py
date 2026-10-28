@@ -655,9 +655,16 @@ class ProductContext:
     #: ``command`` with its argv joined, a ``package`` with its name.
     surfaces: tuple[tuple[str, str], ...]
     placements: tuple[RunnerPlacement, ...]
+    #: Contract 8's ``files.test``: the globs that class the product's own test files.
+    test_files: tuple[str, ...] = ()
 
     def serves(self, kind: str) -> tuple[str, ...]:
         return tuple(value for k, value in self.surfaces if k == kind)
+
+    def product_paths(self, paths: Iterable[str]) -> tuple[str, ...]:
+        """``paths`` without the product's own test files: what a criterion exercises when it
+        names no paths of its own is the footprint's product files, never the tests it edits."""
+        return tuple(p for p in paths if not any(_path_match(p, g) for g in self.test_files))
 
 
 def qa_namespace_paths(paths: Iterable[str], stack: str) -> tuple[str, ...]:
@@ -843,7 +850,7 @@ def _validate_product_proposal(
     refusals.extend(_product_surface_refusals(request, product))
     placed: list[PlacedCriterionFile] = []
     for c in request.criteria:
-        paths = c.paths or footprint
+        paths = c.paths or product.product_paths(footprint)
         stray = [p for p in c.paths if not in_footprint(p, footprint)]
         if stray:
             refusals.append(
@@ -855,7 +862,9 @@ def _validate_product_proposal(
             )
             continue
         try:
-            placed.append(PlacedCriterionFile(c.id, place_criterion(c.id, paths, product.placements)))
+            placed.append(
+                PlacedCriterionFile(c.id, place_criterion(c.id, paths, product.placements))
+            )
         except Unplaceable as e:
             refusals.append(ProposalRefusal(RefusalKind.UNPLACEABLE_CRITERION, str(e)))
     if refusals:
@@ -889,7 +898,7 @@ def _unserved(c: Criterion, product: ProductContext) -> str | None:
         if not product.serves("http_base"):
             return "the product declares no HTTP base its start serves, so no endpoint is reached"
         if parse_method_path(c.surface) is None:
-            return f"{c.surface!r} is no endpoint: write it as \"METHOD /path\""
+            return f'{c.surface!r} is no endpoint: write it as "METHOD /path"'
         return None
     if c.surface_kind is SurfaceKind.CLIENT_ROUTE:
         if not product.serves("ui_base"):
@@ -899,9 +908,8 @@ def _unserved(c: Criterion, product: ProductContext) -> str | None:
     joiner = " " if c.surface_kind is SurfaceKind.COMMAND else "."
     if any(c.surface == d or c.surface.startswith(d + joiner) for d in declared):
         return None
-    return (
-        f"no {c.surface_kind} {c.surface!r} among the product's declared surfaces"
-        + (f" ({', '.join(declared)})" if declared else " (it declares none of that kind)")
+    return f"no {c.surface_kind} {c.surface!r} among the product's declared surfaces" + (
+        f" ({', '.join(declared)})" if declared else " (it declares none of that kind)"
     )
 
 
