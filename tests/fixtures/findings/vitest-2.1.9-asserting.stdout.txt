@@ -1,0 +1,18 @@
+
+ RUN  v2.1.9 /work/frontend
+
+ ❯ src/__tests__/asserting.test.js (5 tests | 4 failed) 6ms
+   × Book form > refuses an empty title 3ms
+     → expected '' to be 'a title' // Object.is equality
+   × Book form > when saved > twice > names the duplicate 2ms
+     → expected { a: 1 } to deeply equal { a: 2 }
+   × Book form > throws inside the app 0ms
+     → Cannot read properties of undefined (reading 'books')
+   × Setup that breaks > never reaches its body 0ms
+     → the fixture is broken
+
+ Test Files  1 failed (1)
+      Tests  4 failed | 1 passed (5)
+   Start at  13:42:29
+   Duration  122ms (transform 12ms, setup 0ms, collect 8ms, tests 6ms, environment 0ms, prepare 28ms)
+

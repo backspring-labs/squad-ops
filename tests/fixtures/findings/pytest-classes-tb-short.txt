@@ -1,0 +1,57 @@
+.FFFFEFF.F                                                               [100%]
+==================================== ERRORS ====================================
+________________ ERROR at setup of test_needs_a_broken_fixture _________________
+tests/test_probe.py:27: in broken
+    raise RuntimeError("the fixture is broken")
+E   RuntimeError: the fixture is broken
+=================================== FAILURES ===================================
+_____________________________ test_asserts_a_value _____________________________
+tests/test_probe.py:9: in test_asserts_a_value
+    assert "" == "a title"
+E   AssertionError: assert '' == 'a title'
+E     
+E     - a title
+_________________________ test_asserts_with_a_message __________________________
+tests/test_probe.py:13: in test_asserts_with_a_message
+    assert [1] == [2], "the shelf kept its order"
+E   AssertionError: the shelf kept its order
+E   assert [1] == [2]
+E     
+E     At index 0 diff: 1 != 2
+E     Use -v to get more diff
+__________________________ test_raises_inside_the_app __________________________
+tests/test_probe.py:18: in test_raises_inside_the_app
+    return shelf.books
+           ^^^^^^^^^^^
+E   AttributeError: 'NoneType' object has no attribute 'books'
+___________________ test_imports_what_only_the_candidate_has ___________________
+tests/test_probe.py:22: in test_imports_what_only_the_candidate_has
+    from shelfnote.pagination import pages  # noqa: F401
+    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E   ModuleNotFoundError: No module named 'shelfnote'
+_ test_a_test_whose_name_is_long_enough_to_push_the_short_summary_past_eighty_columns_of_width _
+tests/test_probe.py:35: in test_a_test_whose_name_is_long_enough_to_push_the_short_summary_past_eighty_columns_of_width
+    assert {"a": 1} == {"a": 2}
+E   AssertionError: assert {'a': 1} == {'a': 2}
+E     
+E     Differing items:
+E     {'a': 1} != {'a': 2}
+E     Use -v to get more diff
+____________________________ test_fails_explicitly _____________________________
+tests/test_probe.py:39: in test_fails_explicitly
+    pytest.fail("the response had no shelves")
+E   Failed: the response had no shelves
+_________________________ TestShelfList.test_counts[2] _________________________
+tests/test_probe.py:45: in test_counts
+    assert n == 1
+E   assert 2 == 1
+=========================== short test summary info ============================
+FAILED tests/test_probe.py::test_asserts_a_value - AssertionError: assert '' ...
+FAILED tests/test_probe.py::test_asserts_with_a_message - AssertionError: the...
+FAILED tests/test_probe.py::test_raises_inside_the_app - AttributeError: 'Non...
+FAILED tests/test_probe.py::test_imports_what_only_the_candidate_has - Module...
+FAILED tests/test_probe.py::test_a_test_whose_name_is_long_enough_to_push_the_short_summary_past_eighty_columns_of_width
+FAILED tests/test_probe.py::test_fails_explicitly - Failed: the response had ...
+FAILED tests/test_probe.py::TestShelfList::test_counts[2] - assert 2 == 1
+ERROR tests/test_probe.py::test_needs_a_broken_fixture - RuntimeError: the fi...
+7 failed, 2 passed, 1 error in 0.03s

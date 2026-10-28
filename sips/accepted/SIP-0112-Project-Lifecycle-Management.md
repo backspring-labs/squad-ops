@@ -2253,3 +2253,73 @@ the first commit in every commit field.
 **Who ruled:** the MacBook lane, under the owner's delegation of 2026-10-18. The shape is the one the Spark lane's G4
 on #2733 agreed. The Spark lane's G4 on this contract change is on its PR.
 
+## H.10 A vitest test-id reader, and each failing test's exception class (2026-10-28; #2757, #2619; the Spark lane, for the MacBook lane's G4)
+
+**Why.** SIP-0109 §24ci (a), the owner's ruling of 2026-10-28, keeps §8.2's "for the intended reason" on a product's
+own runner. A criterion that fails on the baseline only by an import or setup failure isn't discriminating. On a
+runner with no test-id reader, a criterion's discrimination is unread. That needs two things H.5 and H.7 don't
+have: each failure's class, and a vitest reader. #2757 placed the reader before `z_shelfnote`'s demonstration.
+
+**What changed:**
+1. **A fourth findings reader, `vitest` (v1),** in H.5's closed set (`squadops.sandbox.findings.READERS`):
+
+   | reader | a finding's key | readable when |
+   |---|---|---|
+   | `vitest` | `"FAILED <file> > <name path>"` for a test, `"ERROR <file>"` for a suite that never loaded (or `"ERROR <file> > <suite>"` for a failed hook), the file relative to its package | exit 0 or 1, with its `Tests` summary, no unhandled error, and the rows of its `Failed Tests` and `Failed Suites` sections adding up to their counts and to the summary's |
+
+   It reads vitest 2's default reporter, as a product's own command prints it with no TTY, with its colour codes
+   taken out. The product's command is the product's own (`npm --prefix frontend test --silent` on `z_shelfnote`),
+   so the reader takes the output it already prints. It doesn't add `--reporter=json`, as #2757's text assumed.
+2. **pytest's and vitest's readings carry each failing key's exception class** (`classes`), where the output prints
+   it.
+   - pytest's comes from its long report: the line ending a failure's traceback (`<path>:<line>: <Class>`), or,
+     under `--tb=short`, its first `E   <Class>:` line. It never comes from the short summary, which pytest cuts at
+     80 columns ("Module…", or nothing after a long node id).
+   - vitest's comes from the error line under each failure.
+   - A class is extra, not a key or a readable rule, so no reader's version changes. A reading with no classes is
+     stored as before.
+3. **H.7's derivation:** a vitest runner's `test_ids` is `vitest`, so it no longer carries `no_test_id_reader`.
+   - A jest or unittest runner still carries it.
+   - A profile is never edited (H.6), so one recorded before this keeps its gap until the next capture.
+   - `z_shelfnote`'s next capture reads one disclosed gap, `no_start_declaration`.
+
+**How a class is read** (SIP-0109 §24ci (a), `squadops.campaigns.acceptance.discrimination_on_runner`):
+- A test fails for the intended reason when its key is `FAILED` and its class was read and isn't a setup class.
+- Every `ERROR` key is setup: pytest's setup, teardown and collection errors, and vitest's suites that never
+  loaded.
+- The setup classes are the import family and what the sample applications' stacks read as a suite's own defect
+  (`test_runner._OWN_FRAME_SHAPES`):
+  - pytest: `ImportError`, `ModuleNotFoundError`, `SyntaxError`, `NameError`;
+  - vitest: `SyntaxError`, `ReferenceError`.
+- A failure whose class wasn't read is never read as the test's own.
+
+**Blind spots, named:**
+- **pytest under `--tb=no`, `line` or `native`** prints no class, so every failure reads as unread. A
+  configuration that wants its criteria read keeps pytest's default traceback. A bare `assert` under `--tb=short`
+  is unread too.
+- **One test name in two files** leaves both classes unread, since pytest's section head names the test without
+  its file.
+- **vitest gives a `beforeEach` failure to its test,** so it reads with the test's own class.
+- **The sample stacks' message-specific `TypeError` shapes** need the application's source, which a class doesn't
+  carry. So a `TypeError` or `AttributeError` reads as the test's own, as it does on those stacks when the
+  application defines the name.
+- **vitest's reader is validated on 2.1.9,** the blueprint's pin. Output from another major that doesn't add up
+  reads unreadable, never clean.
+- **The derivation names vitest's reader from the runner's kind, not from its output** (the MacBook lane's G4,
+  2026-10-28). On a product with another vitest major, a configured reporter, or stderr merged into stdout, nothing
+  shows at capture, and every criterion reads `blocked_unverified` at the first increment. Closing it is H.7's
+  derivation, the MacBook lane's, placed with H.4's recipe.
+
+**Evidence:**
+- **Real output:** pytest 9.0.2 under `--tb`'s default, `short` and `no`, and vitest 2.1.9 run by the product's
+  own command shape, with and without `CI` (which colours it), whole and one file at a time. All over invented
+  tests (`tests/fixtures/findings/pytest-classes*.txt`, `vitest-2.1.9-*.txt`), read by
+  `tests/unit/sandbox/test_findings_readers.py`.
+- **The decisions on those readings:** `tests/unit/campaigns/test_runner_acceptance.py`.
+- **The derivation:** `test_profile_derivation.py`, where `z_shelfnote`'s vitest runner now names its tests.
+- **Mutants, each caught:** pytest's crash line ignored, a shared head given a class, vitest's rows not held to
+  its summary, its unhandled errors read as true, its classes not read, and its runner given no reader.
+
+**Who ruled.** The owner (SIP-0109 §24ci (a), 2026-10-28) placed the reader and the classes with #2619. The Spark
+lane built them. Item 3 changes contract 8's derivation, so it needs the MacBook lane's G4.
+

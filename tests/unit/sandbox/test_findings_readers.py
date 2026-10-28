@@ -190,4 +190,159 @@ def test_a_reading_round_trips_and_one_with_an_undeclared_reader_is_refused():
     for bad in ("5", -1, True):
         with pytest.raises(ValueError, match="collected"):
             FindingsReading.from_dict({**reading.as_dict(), "collected": bad})
-    assert set(READERS) == {"ruff", "pytest", "lines"}
+    with pytest.raises(ValueError, match="classes"):
+        FindingsReading.from_dict({**reading.as_dict(), "classes": {"FAILED uncounted": "Error"}})
+    assert set(READERS) == {"ruff", "pytest", "lines", "vitest"}
+
+
+# ---- SIP-0109 §24ci (a): each failure's exception class, and a vitest reader (#2757) ----------
+# pytest-classes*.txt is pytest 9.0.2's output, `pytest -q -p no:cacheprovider` with --tb's default,
+# `short` and `no`, over an invented module of nine tests: an assertion, one with a message, an
+# AttributeError in the test, an import of a module only a candidate would have, a fixture that
+# raises, a name long enough that the short summary drops its message, pytest.fail, and a
+# parametrized method that fails one case. vitest-2.1.9-*.txt is vitest 2.1.9 run by a product's own
+# `npm --prefix frontend test --silent` (`"test": "vitest run"`) with no TTY, as the sandbox runs a
+# check, over invented files: the whole suite (`default`, and `ci` with CI=true, which colours it),
+# and one file at a time through `-- <name>`, as H.7's one-file argv does.
+
+_PROBE = "tests/test_probe.py::"
+_ALL_CLASSES = {
+    f"ERROR {_PROBE}test_needs_a_broken_fixture": "RuntimeError",
+    f"FAILED {_PROBE}TestShelfList::test_counts[2]": "AssertionError",
+    f"FAILED {_PROBE}test_a_test_whose_name_is_long_enough_to_push_the_short_summary_past_eighty"
+    "_columns_of_width": "AssertionError",
+    f"FAILED {_PROBE}test_asserts_a_value": "AssertionError",
+    f"FAILED {_PROBE}test_asserts_with_a_message": "AssertionError",
+    f"FAILED {_PROBE}test_fails_explicitly": "Failed",
+    f"FAILED {_PROBE}test_imports_what_only_the_candidate_has": "ModuleNotFoundError",
+    f"FAILED {_PROBE}test_raises_inside_the_app": "AttributeError",
+}
+
+
+@pytest.mark.parametrize(
+    ("name", "unread"),
+    [
+        ("pytest-classes.txt", set()),
+        # --tb=short prints no crash line: a bare assert's E line names no class.
+        ("pytest-classes-tb-short.txt", {f"FAILED {_PROBE}TestShelfList::test_counts[2]"}),
+        ("pytest-classes-tb-no.txt", set(_ALL_CLASSES)),
+    ],
+    ids=["tb-auto", "tb-short", "tb-no"],
+)
+def test_pytest_carries_each_failures_class_from_its_report_and_never_guesses_one(name, unread):
+    """Bugs caught: a class read from the short summary, which pytest cuts at 80 columns
+    ("Module…", or nothing past a long node id); an import failure read as an assertion; a class
+    guessed where the report prints none, so an unread failure reads as the test's own."""
+    reading = read("pytest", _out(name), "", 1)
+
+    assert reading.readable and set(reading.counts) == set(_ALL_CLASSES)
+    assert reading.classes == {k: v for k, v in _ALL_CLASSES.items() if k not in unread}
+
+
+def test_a_class_two_tests_name_alike_could_be_is_left_unread():
+    """The edge: one test name in two files, so a section's head names either. Bug caught: the
+    class of one file's failure given to the other's."""
+    report = (
+        "=================================== FAILURES ===================================\n"
+        "___________________________________ test_x ___________________________________\n"
+        "tests/a/test_m.py:3: ImportError\n"
+        "=========================== short test summary info ============================\n"
+        "FAILED tests/a/test_m.py::test_x\nFAILED tests/b/test_m.py::test_x\n"
+        "2 failed in 0.01s\n"
+    )
+
+    reading = read("pytest", report, "", 1)
+
+    assert (reading.readable, reading.classes) == (True, {})
+
+
+def _vitest(name: str, exit_code: int) -> FindingsReading:
+    return read(
+        "vitest", _out(f"vitest-2.1.9-{name}.stdout.txt"), _out(f"vitest-2.1.9-{name}.stderr.txt"),
+        exit_code,
+    )  # fmt: skip
+
+
+_ASSERTING = "FAILED src/__tests__/asserting.test.js > "
+
+
+def test_vitest_keys_each_failure_by_its_file_and_name_path_with_its_class():
+    """#2757. Bugs caught: a test-id reader that splits a name holding " > " ("when saved >
+    twice"); a file that never loaded read as clean, or as a test's own failure; the colours a CI
+    run adds read as other keys."""
+    reading = _vitest("default", 1)
+
+    assert (reading.readable, reading.collected) == (True, 7)
+    assert reading.counts == {
+        "ERROR src/__tests__/missing.test.js": 1,
+        f"{_ASSERTING}Book form > refuses an empty title": 1,
+        f"{_ASSERTING}Book form > when saved > twice > names the duplicate": 1,
+        f"{_ASSERTING}Book form > throws inside the app": 1,
+        f"{_ASSERTING}Setup that breaks > never reaches its body": 1,
+    }
+    assert reading.classes == {
+        "ERROR src/__tests__/missing.test.js": "Error",
+        f"{_ASSERTING}Book form > refuses an empty title": "AssertionError",
+        f"{_ASSERTING}Book form > when saved > twice > names the duplicate": "AssertionError",
+        f"{_ASSERTING}Book form > throws inside the app": "TypeError",
+        # vitest gives a beforeEach failure to its test: it reads as the test's own (H.10).
+        f"{_ASSERTING}Setup that breaks > never reaches its body": "TypeError",
+    }
+    assert _vitest("ci", 1) == reading
+
+
+@pytest.mark.parametrize(
+    ("name", "exit_code", "counts", "collected"),
+    [
+        ("passing", 0, {}, 2),
+        ("skipping", 0, {}, 3),
+        ("missing", 1, {"ERROR src/__tests__/missing.test.js": 1}, 0),
+    ],
+    ids=["one-file-passing", "skipped-and-todo-counted", "a-file-that-never-loaded"],
+)
+def test_vitest_reads_one_file_as_the_one_file_argv_runs_it(name, exit_code, counts, collected):
+    reading = _vitest(name, exit_code)
+
+    assert (reading.readable, reading.counts, reading.collected) == (True, counts, collected)
+
+
+_SUMMARY = " Test Files  1 failed (1)\n      Tests  1 failed | 1 passed (2)\n"
+_ONE_FAILED = "⎯⎯ Failed Tests 1 ⎯⎯\n\n FAIL  src/a.test.js > shows it\nAssertionError: no\n"
+
+
+@pytest.mark.parametrize(
+    ("stdout", "stderr", "exit_code", "reason"),
+    [
+        (_out("vitest-2.1.9-nofile.stdout.txt"), _out("vitest-2.1.9-nofile.stderr.txt"), 1,
+         "no summary"),
+        (_SUMMARY, "", 1, "summary has 1 failed, and 0 rows"),
+        (_SUMMARY + "     Errors  1 error\n", _ONE_FAILED, 1, "unhandled errors"),
+        (_SUMMARY, _ONE_FAILED.replace("Tests 1", "Tests 2"), 1, "summary has 1 failed"),
+        (_SUMMARY, _ONE_FAILED + "⎯⎯ Failed Suites 1 ⎯⎯\n", 1, "1 failed suites, and 0 rows"),
+        (_SUMMARY, _ONE_FAILED, 0, "exited 0, and 1 failures read"),
+        (_SUMMARY, _ONE_FAILED, 2, "vitest exited 2"),
+    ],
+    ids=["no-test-files", "failures-unread", "unhandled-errors", "section-short-of-its-count",
+         "suites-short-of-their-count", "exit-0-with-failures", "a-tool-error"],
+)  # fmt: skip
+def test_a_vitest_run_it_cant_account_for_is_unreadable_never_clean(
+    stdout, stderr, exit_code, reason
+):
+    """Bugs caught: "No test files found" read as clean; a run vitest itself says may hold false
+    results read as true; failures the summary counts and no row names, so they vanish."""
+    reading = read("vitest", stdout, stderr, exit_code)
+
+    assert not reading.readable
+    assert reason in reading.reason
+    assert reading.counts == {}
+
+
+def test_a_reading_with_classes_round_trips_and_one_without_is_stored_as_before():
+    """Bug caught: every stored reading's document changed by an empty ``classes`` key, or the
+    classes lost crossing the sandbox's boundary (``as_dict``, then ``from_dict``)."""
+    with_classes = _vitest("default", 1)
+    without = read("ruff", "All checks passed!\n", "", 0)
+
+    assert FindingsReading.from_dict(with_classes.as_dict()) == with_classes
+    assert FindingsReading.from_dict(with_classes.as_dict()).classes == with_classes.classes
+    assert "classes" not in without.as_dict()

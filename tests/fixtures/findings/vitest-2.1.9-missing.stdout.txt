@@ -1,0 +1,10 @@
+
+ RUN  v2.1.9 /work/frontend
+
+ ❯ src/__tests__/missing.test.js (0 test)
+
+ Test Files  1 failed (1)
+      Tests  no tests
+   Start at  13:42:28
+   Duration  130ms (transform 16ms, setup 0ms, collect 0ms, tests 0ms, environment 0ms, prepare 42ms)
+

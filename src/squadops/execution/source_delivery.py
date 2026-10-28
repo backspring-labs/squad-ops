@@ -9,7 +9,9 @@ three steps:
    the run computes from the same content, so the tree verified is the tree delivered.
 2. **Verification.** The product's own checks run against the candidate through X-3a. They are
    attributed against the inherited baseline, which must be the one at the pinned commit and
-   Development Configuration revision (squadops.projects.verification).
+   Development Configuration revision (squadops.projects.verification). A repository-backed
+   Campaign's increment pinned at a head an earlier increment's promotion made is attributed
+   against that increment's accepted verification instead (SIP-0109 §24bv point 3).
 3. **Capture,** for an accepted candidate. The revision is read back from the sandbox, committed
    in the managed clone on the pinned commit (``refs/squadops/<cycle>/<run>``), and read back
    from Git to the same tree identity. It is mapped ``captured``, and the commit's patch is
@@ -41,16 +43,19 @@ from squadops.cycles.emission_integrity import EMISSION_STATUS_FAILED
 from squadops.cycles.models import ArtifactRef, Cycle
 from squadops.cycles.patch_verification import EVIDENCE_ARTIFACT_TYPES
 from squadops.cycles.task_plan import REPAIR_TASK_TYPES
+from squadops.cycles.vault_reads import retrieve_or_absent
+from squadops.projects.baseline import InheritedBaseline
 from squadops.projects.checkout import SOURCE_CHECKOUT
 from squadops.projects.configuration import baseline_tree
 from squadops.projects.contribution import capture_ref
-from squadops.projects.source_context import CAMPAIGN_BRANCH
 from squadops.projects.verification import (
     ACCEPTED,
     SOURCE_VERIFICATION_FILENAME,
     SOURCE_VERIFICATION_TYPE,
+    RegressionBaselineInvalid,
     SourceVerification,
     attributed,
+    previous_verification_baseline,
 )
 from squadops.projects.workspaces import (
     CAPTURED,
@@ -156,33 +161,21 @@ async def deliver_source_change(
             "and this runtime has " + ("neither" if repository is sandbox else "only one")
         )
     commit = context.pinned_commit
-    if context.pinned_from == CAMPAIGN_BRANCH:
-        # SIP-0109 §24bv point 3: an increment on a campaign branch is compared with the
-        # verification that made its head, never with the Project's baseline it was not built on.
-        raise SourceDeliveryRefused(
-            f"cycle {cycle.cycle_id} is pinned at its campaign branch's head {commit}, whose "
-            "regression baseline is the previous increment's verification "
-            f"({context.previous_verification_ref or 'the calibration record'}): that comparison "
-            "is SIP-0109 §24bv point 3's, and isn't built yet"
-        )
     project = await registry.get_project(cycle.project_id)
     configuration = await registry.get_development_configuration(
         cycle.project_id, context.development_configuration_revision
     )
-    baseline = await registry.get_inherited_baseline(cycle.project_id)
-    if (baseline.commit, baseline.development_configuration_revision) != (
-        commit,
-        context.development_configuration_revision,
-    ):
-        raise SourceDeliveryRefused(
-            f"the inherited baseline is at {baseline.commit}, revision "
-            f"{baseline.development_configuration_revision}; the run pins {commit}, revision "
-            f"{context.development_configuration_revision}: a candidate is compared only with "
-            "the baseline of the tree it changed (FR-20)"
-        )
+    baseline, verified_tree = await _regression_baseline(cycle, vault, registry)
     checkout = await baseline_tree(
         repository, cycle.project_id, context.repo_uri, project.source.base_ref, commit
     )
+    if verified_tree is not None and FileTree.of(checkout.files).identity != verified_tree:
+        raise SourceDeliveryRefused(
+            f"verification {context.previous_verification_ref} verified tree "
+            f"{verified_tree[:12]}, and the head {commit[:12]} the run was built on holds "
+            f"{FileTree.of(checkout.files).identity[:12]}: a candidate is compared only with the "
+            "checks of the tree it changed (SIP-0109 §24bv point 3)"
+        )
     contents = {}
     for art_id, _ref in stored_artifacts:
         _stored, contents[art_id] = await vault.retrieve(art_id)
@@ -246,6 +239,7 @@ async def deliver_source_change(
             left_out=left_out,
             environment=environment,
             checks=attributed(results, baseline),
+            regression_baseline_ref=context.previous_verification_ref,
         )
         ids = [
             await _store(
@@ -297,6 +291,56 @@ async def deliver_source_change(
         return SourceDelivery(verification, tuple(ids), captured_commit=new_commit)
     finally:
         await _release(sandbox, workspace_id, raising=sys.exc_info()[0] is None)
+
+
+async def _regression_baseline(
+    cycle: Cycle, vault: Any, registry: Any
+) -> tuple[InheritedBaseline, str | None]:
+    """What the run's candidate is compared with (FR-20; SIP-0109 §24bv point 3), and the tree
+    identity it verified when that isn't the inherited baseline's.
+
+    - **Pinned at the Project's baseline,** or at a campaign branch's head that is the
+      calibration record's commit (no ``previous_verification_ref``): the inherited baseline at
+      that commit and revision, as a standalone cycle's.
+    - **Pinned at a head an increment's promotion made:** that increment's accepted source
+      verification, ``previous_verification_ref``, never the Project's baseline, which describes
+      a tree the run wasn't built on.
+
+    Delivery runs the product's checks only. The frozen criteria's bundles run in the increment's
+    accumulated acceptance (§8.1, §24cd point 6) and in a rebase's verification (§24cd point 5),
+    not here."""
+    context = cycle.source_context
+    assert context is not None
+    commit, revision = context.pinned_commit, context.development_configuration_revision
+    ref = context.previous_verification_ref
+    if ref is None:
+        baseline = await registry.get_inherited_baseline(cycle.project_id)
+        if (baseline.commit, baseline.development_configuration_revision) != (commit, revision):
+            raise SourceDeliveryRefused(
+                f"the inherited baseline is at {baseline.commit}, revision "
+                f"{baseline.development_configuration_revision}; the run pins {commit}, revision "
+                f"{revision}: a candidate is compared only with the baseline of the tree it "
+                "changed (FR-20)"
+            )
+        return baseline, None
+    # Contract 1's reader holds a verification to a campaign branch's pin (``parse_source_context``).
+    got = await retrieve_or_absent(vault, ref)
+    if got is None or getattr(got[0], "artifact_type", None) != SOURCE_VERIFICATION_TYPE:
+        raise SourceDeliveryRefused(
+            f"the campaign branch's head {commit[:12]} names verification {ref}, and the vault "
+            "holds no source verification there: the increment has no regression baseline "
+            "(SIP-0109 §24bv point 3)"
+        )
+    try:
+        document = json.loads(got[1])
+    except ValueError:
+        document = None
+    try:
+        return previous_verification_baseline(
+            document, ref=ref, project_id=cycle.project_id, commit=commit, revision=revision
+        )
+    except RegressionBaselineInvalid as e:
+        raise SourceDeliveryRefused(f"no regression baseline (SIP-0109 §24bv point 3): {e}") from e
 
 
 async def _release(sandbox: Any, workspace_id: str, *, raising: bool) -> None:
