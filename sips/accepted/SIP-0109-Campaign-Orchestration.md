@@ -4965,15 +4965,40 @@ says what the build settled where the text leaves a choice, and the rule each re
 10. **The wire** (SIP-0102 §11k). `POST /api/v1/evaluations` takes `routes`, and answers each one's reading. A service
     that predates it ignores the field and answers none, so each route reads unread and blocks, never passes. Both
     sides deploy together (SIP-0113 §10p ruling 7).
+11. **The expected set: the pinned routes and the routes the change request adds** (the outside review of PR #2777,
+    P2, 2026-10-28). Before this item, only the profile's routes were judged. A route the increment added fell
+    outside the checks, so a broken new page couldn't affect acceptance.
+    - **The pinned routes** are the profile's, with their anchors and seeds from the approved manifest (H.7), as
+      items 5 and 6 read them. They stay in the set whatever the request names, so a route the candidate drops still
+      reads broken.
+    - **The added routes** are the surfaces of the approved change request's `client_route` criteria (§7.2's
+      surface kinds; §24bv point 5: "an endpoint the start declaration serves", whose page counterpart point 5's
+      rails check against the declared `ui_base`). Each is one the profile doesn't pin, taken once. A route the
+      request names and the profile pins is judged once, by its pinned anchor.
+    - **Where they come from, read against the code first.** A product's change request carries no `manifest_delta`
+      (§24bv point 5: "**`manifest_delta`** is absent, and refused if present"), and its schema has no anchor field. A
+      `client_route` criterion names a path, a statement and a free-text `observable`. Its footprint names files,
+      not routes. So the criteria's surfaces are the only record of the routes an increment adds.
+    - **What an added route reads: blocked, whatever its page shows.** Nothing names its view's root anchor, and §8.3's
+      evidence that a route rendered is that anchor on its page (item 5). So it is `blocked_unverified`, "the change
+      request adds it, and names no anchor of its view". It's still rendered, so its record shows what the page
+      carried. An increment that adds a route can't be accepted with it, which is fail-closed (SIP-0096).
+    - **The choice: an anchor isn't read from the criterion's free-text `observable`.** A `data-testid` a proposer
+      wrote in prose is an unstructured claim, and parsing it would make the observable's wording a contract nobody
+      declared. A typed anchor on a `client_route` criterion would change the change request's schema and the
+      proposer's prompt (§7.2), which belongs in a design of its own. It's filed as #2779. Until then, every product
+      increment that adds a page blocks on that page.
+    - **The record:** each route in `renderings` names its `source`, `approved_manifest` or `change_request`.
+    - **A product with no blueprint** pins no route, and still has the routes its request adds judged. Before this
+      item it had none.
 
-**The cost.** One more start of the product for each increment whose profile names routes: its install, build and
+**The cost.** One more start of the product for each increment whose expected set isn't empty: its install, build and
 start. And one Chromium container for each route.
 
 **Not built here:**
 - the qa role's reading of a sample application's pages from their elements (#2776);
 - an approved secret resolved for the start (#2421, 2.6);
-- a route set that moves with the product. The routes are the approved manifest's, as H.7 derives them, so a route an
-  increment adds is never read until the profile is re-derived from a manifest that names it.
+- an anchor a change request names for a route it adds, so an added route can hold (item 11; #2779).
 
 **Evidence.**
 - **The wiring, entered at the live caller:** `test_product_runner_acceptance_wiring.py` enters at the executor's end
@@ -5005,11 +5030,25 @@ start. And one Chromium container for each route.
   - the one the app doesn't serve read broken: `settings-view` missing, `not-found` seen;
   - the page whose script names two other views showed only its own two ids;
   - the copy was removed, and nothing was left running.
-- **Mutants:** twenty-seven, all caught.
-- **The loaded checks** `2619-product-routes` (the runtime) and `2619-product-routes-sandbox` (the sandbox service)
+- **Item 11's evidence** (the outside review's P2):
+  - `test_product_routes.py`: an added route blocked whether its page renders, is broken or reads nothing; the pinned
+    routes still judged beside it; an increment with an added route blocked; one that drops a pinned route rejected;
+    a product with no blueprint judging its added route;
+  - the wiring test at the executor's end of plan: a change request whose criterion is on `/totals`, a page the
+    candidate serves broken, and the increment not accepted, with the pinned routes still held.
+- **Mutants:** thirty-two, all caught: item 1 to 10's twenty-seven, and five on item 11:
+  - the requested routes ignored;
+  - an added route held on any page read;
+  - the pinned routes dropped when one is added;
+  - delivery handing the renderer no requested routes;
+  - the record's source lost.
+- **The loaded checks** `2619-product-routes` and `2777-review` (the runtime) and `2619-product-routes-sandbox` (the
+  sandbox service)
   (`scripts/dev/loaded_checks.yaml`), each run on the source.
 
 **Who ruled.** The supervisor (the Spark lane) built §24bv point 3's rendering under the owner's direction of
-2026-10-21 and the 2.5 grants. Items 1 to 10 are the supervisor's choices, for the owner's review. Item 9 adds a key
+2026-10-21 and the 2.5 grants. Items 1 to 11 are the supervisor's choices, for the owner's review. Item 11 answers
+the outside review's finding on PR #2777 (P2, relayed by the owner, 2026-10-28). Its direction was the supervisor's,
+and its choice not to read an anchor from prose is named in it. Item 9 adds a key
 to the `increment_evaluation` document, and item 3 adds a reader of contract 7, so it takes the outside review SIP-0112
 H.12 provides before the merge.

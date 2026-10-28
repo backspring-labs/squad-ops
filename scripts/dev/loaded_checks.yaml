@@ -2017,3 +2017,12 @@ checks:
       r = TreeEvaluation.from_dict({"tree_identity": "t", "started": True, "routes": [{"route": "/", "path": "/", "testids": ["a"], "detail": None}]}).routes[0]
       print(a[a.index("--entrypoint") + 1], r.testids, "routes" in EvaluationRequest.model_fields)
     expect: "/usr/bin/chromium ('a',) True"
+  - id: "2777-review"
+    what: a route the approved change request adds is in the expected set, and blocks with no anchor its view must render (SIP-0109 §24co item 11, #2777's review P2)
+    container: squadops-runtime-api
+    code: |
+      import inspect
+      from squadops.campaigns.product_routes import FROM_CHANGE_REQUEST, NO_ANCHOR_REQUESTED, requested_routes
+      from squadops.scenarios.declared_routes import DeclaredStartRoutes
+      print(FROM_CHANGE_REQUEST, "requested_routes" in inspect.signature(DeclaredStartRoutes.render).parameters, NO_ANCHOR_REQUESTED.startswith("the change request adds it"))
+    expect: "change_request True True"

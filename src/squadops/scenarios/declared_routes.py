@@ -28,6 +28,7 @@ Nothing here reads a suite or a scenario's steps: the runner is asked to run non
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from typing import Any
 
 import yaml
@@ -35,7 +36,9 @@ import yaml
 from squadops.campaigns.acceptance import Held, RouteResult, route_rendering
 from squadops.campaigns.increment_tree import declared_routes, route_seeds, unseeded_routes
 from squadops.campaigns.product_routes import (
+    FROM_CHANGE_REQUEST,
     NO_ANCHOR,
+    NO_ANCHOR_REQUESTED,
     NO_MANIFEST,
     NO_RUNNER,
     NO_START_DECLARATION,
@@ -98,27 +101,39 @@ class DeclaredStartRoutes:
         initialization: Any,
         candidate: SandboxTree,
         verified_candidate_revision: str | None,
+        requested_routes: Sequence[str],
     ) -> ProductRoutes:
-        """Each route the profile names, rendered on the candidate started from its declaration,
-        and judged as a sample application's is (§8.3). A profile that names none has no routes:
-        not applicable (§24bv point 3).
+        """Each route the increment is expected to serve, rendered on the candidate started from
+        its declaration, and judged as a sample application's is (§8.3). The expected set is the
+        routes the profile names, pinned from the approved manifest (so a route the candidate drops
+        reads broken), and the routes the approved change request's criteria are asserted on
+        (``requested_routes``), which the candidate adds or changes. None at all is not applicable
+        (§24bv point 3).
 
         Raises:
             CandidateNotDelivered: The candidate's content isn't the revision delivery verified.
         """
-        named = tuple(profile.client_routes or ())
+        pinned = tuple(profile.client_routes or ())
+        added = tuple(r for r in dict.fromkeys(requested_routes) if r not in pinned)
+        named = (*pinned, *added)
+        sources = {r: FROM_CHANGE_REQUEST for r in added}
         if not named:
             return ProductRoutes((), None)
-        manifest = _manifest(initialization)
-        if manifest is None:
-            return routes_blocked(named, NO_MANIFEST)
-        anchors = {r: declared_routes(manifest).get(r, ()) for r in named}
-        seeds = {r: s for r, s in route_seeds(manifest).items() if r in anchors}
+        manifest = _manifest(initialization) if pinned else None
+        if pinned and manifest is None:
+            return routes_blocked(named, NO_MANIFEST, sources=sources)
+        anchors = {r: declared_routes(manifest).get(r, ()) for r in pinned} if manifest else {}
+        # A product's change request carries no manifest delta (§24bv point 5): an added route's
+        # view names no anchor, so it can block, and never hold (§8.3's evidence is the anchor).
+        anchors.update({r: () for r in added})
+        seeds = {r: s for r, s in route_seeds(manifest).items() if r in pinned} if manifest else {}
         start, unstartable = product_start(configuration)
         if unstartable is not None or start is None:
-            return routes_blocked(named, unstartable or NO_START_DECLARATION)
+            return routes_blocked(named, unstartable or NO_START_DECLARATION, sources=sources)
         if self._runner is None:
-            return routes_blocked(named, f"{NO_RUNNER}: this runtime runs no scenario runner")
+            return routes_blocked(
+                named, f"{NO_RUNNER}: this runtime runs no scenario runner", sources=sources
+            )
         # deferred (pair): squadops.sandbox imports campaigns at load, as runner_acceptance's do
         from squadops.sandbox.models import compute_revision_id
 
@@ -144,7 +159,7 @@ class DeclaredStartRoutes:
                 routes=[RouteRequest(r, seeds.get(r)) for r in named],
             )
         except RunnerUnavailable as e:
-            return routes_blocked(named, f"{NO_RUNNER}: {e}")
+            return routes_blocked(named, f"{NO_RUNNER}: {e}", sources=sources)
         started = {
             "tree_identity": identity,
             "configuration_revision": configuration.revision,
@@ -152,7 +167,9 @@ class DeclaredStartRoutes:
             "detail": evaluation.start_detail,
         }
         if not evaluation.started:
-            return routes_blocked(named, f"{START_FAILED}: {evaluation.start_detail}", started)
+            return routes_blocked(
+                named, f"{START_FAILED}: {evaluation.start_detail}", started, sources
+            )
         read = {r.route: r for r in evaluation.routes}
         judged = {
             r.path: r
@@ -165,7 +182,8 @@ class DeclaredStartRoutes:
         results = []
         for route in sorted(named):
             if not anchors[route]:
-                results.append(RouteResult(route, Held.BLOCKED_UNVERIFIED, detail=NO_ANCHOR))
+                why = NO_ANCHOR_REQUESTED if route in sources else NO_ANCHOR
+                results.append(RouteResult(route, Held.BLOCKED_UNVERIFIED, detail=why))
                 continue
             result = judged[route]
             if result.held is Held.BLOCKED_UNVERIFIED and not result.unseeded:
@@ -177,7 +195,7 @@ class DeclaredStartRoutes:
                 )
                 result = RouteResult(route, result.held, detail=why)
             results.append(result)
-        return ProductRoutes(tuple(results), route_record(results, anchors, read, started))
+        return ProductRoutes(tuple(results), route_record(results, anchors, read, started, sources))
 
 
 __all__ = ["DeclaredStartRoutes", "product_start"]

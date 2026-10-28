@@ -49,7 +49,7 @@ from squadops.campaigns.increment_tree import (
     increment_basis,
     increment_evaluation_inputs,
 )
-from squadops.campaigns.product_routes import routes_blocked
+from squadops.campaigns.product_routes import requested_routes, routes_blocked
 from squadops.campaigns.runner_acceptance import (
     RunnerAcceptance,
     RunnerSetup,
@@ -144,10 +144,13 @@ async def evaluate_product_increment(
         workspace_prefix=acceptance_workspace_prefix(run_id),
         verified_candidate_revision=delivery.verification.candidate_revision_id,
     )
-    # §24co: the profile's routes, rendered on the candidate started from its declaration.
+    # §24co: the profile's routes and the change request's, rendered on the candidate started
+    # from its declaration.
+    requested = requested_routes(change_request)
     if route_renderer is None:
         routes = routes_blocked(
-            tuple(profile.client_routes or ()), "no route renderer: this runtime wires none"
+            tuple(dict.fromkeys((*(profile.client_routes or ()), *requested))),
+            "no route renderer: this runtime wires none",
         )
     else:
         routes = await route_renderer.render(
@@ -158,6 +161,7 @@ async def evaluate_product_increment(
             else None,
             candidate=candidate,
             verified_candidate_revision=delivery.verification.candidate_revision_id,
+            requested_routes=requested,
         )
     evaluation, done = await evaluate_on_runner(
         runs,

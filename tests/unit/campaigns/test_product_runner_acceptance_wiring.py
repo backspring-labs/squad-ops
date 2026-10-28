@@ -128,7 +128,7 @@ def _f1_bundle(repo) -> dict:
     }
 
 
-def _increment(world_, *, frozen: bool):
+def _increment(world_, *, frozen: bool, request: str = STORED):
     """The world's cycle as a repository-backed increment's implementation sees it: its block names
     the campaign branch, its launch pinned F1 (when ``frozen``), and its approved change request
     (R1, a summary line in the report module) is forwarded in its plan refs."""
@@ -153,7 +153,7 @@ def _increment(world_, *, frozen: bool):
         "run_prop",
         CHANGE_REQUEST_ARTIFACT_TYPE,
         "change_request.yaml",
-        STORED.encode(),
+        request.encode(),
     )
     block = {**_cycle().execution_overrides["campaign_proposal"], "frozen_criteria": pins}
     increment = dataclasses.replace(
@@ -165,8 +165,8 @@ def _increment(world_, *, frozen: bool):
     return repo, vault, executor, increment, run
 
 
-async def _judged(world_, changes: dict, *, frozen: bool = True) -> dict:
-    repo, vault, executor, cycle, run = _increment(world_, frozen=frozen)
+async def _judged(world_, changes: dict, *, frozen: bool = True, request: str = STORED) -> dict:
+    repo, vault, executor, cycle, run = _increment(world_, frozen=frozen, request=request)
     await _end_of_plan(executor, cycle, run, vault, changes)
     [(ref, raw)] = _of_type(vault, INCREMENT_EVALUATION_ARTIFACT_TYPE)
     assert (ref.cycle_id, ref.run_id) == (cycle.cycle_id, run.run_id)
@@ -524,3 +524,47 @@ async def test_a_branch_increment_whose_start_fails_has_every_route_blocked(worl
         "is gone",
     ]
     assert document["renderings"]["start"]["started"] is False
+
+
+async def test_a_route_the_change_request_adds_keeps_the_increment_from_acceptance(world):  # noqa: F811
+    """The outside review of #2777 (P2), at the live caller: the approved change request asserts
+    its criterion on a client route the profile doesn't pin, the page the candidate serves there
+    is broken, and the pinned routes still render. Bugs caught: the added route never rendered,
+    so a broken new page is accepted; or the pinned routes dropped when one is added."""
+    from squadops.campaigns.change_request import (
+        SurfaceKind,
+        content_hash,
+        load_stored_change_request,
+        stored_change_request,
+    )
+    from squadops.campaigns.product_routes import NO_ANCHOR_REQUESTED
+
+    request = load_stored_change_request(STORED)
+    [r1, *rest] = request.criteria
+    on_a_page = dataclasses.replace(r1, surface_kind=SurfaceKind.CLIENT_ROUTE, surface="/totals")
+    changed = dataclasses.replace(request, criteria=(on_a_page, *rest))
+    adds_a_page = stored_change_request(
+        dataclasses.replace(changed, content_hash=content_hash(changed))
+    )
+    repo = world[0]
+    _routed(
+        world,
+        pages={
+            **_TALLY_PAGES,
+            "http://10.89.0.7:8080/totals": "<html><body><h1>500</h1></body></html>",
+        },
+    )
+    report = tracked_files(repo.path, repo.second_commit)[REPORT]
+
+    document = await _judged(world, {REPORT: report + _LINE, R1: _R1_TEST}, request=adds_a_page)
+
+    assert document["verdict"] != "accepted"
+    assert f"route /totals: not rendered: {NO_ANCHOR_REQUESTED}" in document["blocked"]
+    held = {r["path"]: r["held"] for r in document["routes"]}
+    assert held == {"*": "held", "/": "held", "/totals": "blocked_unverified"}
+    sources = {r["route"]: r["source"] for r in document["renderings"]["routes"]}
+    assert sources == {
+        "*": "approved_manifest",
+        "/": "approved_manifest",
+        "/totals": "change_request",
+    }

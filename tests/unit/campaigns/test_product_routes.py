@@ -26,7 +26,12 @@ import pytest
 
 from adapters.sandbox.scenario_runner import ContainerScenarioRunner
 from squadops.campaigns.acceptance import Held, RouteResult
-from squadops.campaigns.product_routes import NO_ANCHOR, NO_MANIFEST, ProductRoutes
+from squadops.campaigns.product_routes import (
+    NO_ANCHOR,
+    NO_ANCHOR_REQUESTED,
+    NO_MANIFEST,
+    ProductRoutes,
+)
 from squadops.campaigns.runner_acceptance import CandidateNotDelivered, SandboxTree
 from squadops.projects.development_configuration import (
     Commands,
@@ -99,9 +104,9 @@ PAGES = {
 CHANGES = {"shelfkeeper/web.py": b"PAGES = 5\n"}
 
 
-async def render_product_routes(*, runner, **kw) -> ProductRoutes:
+async def render_product_routes(*, runner, requested_routes=(), **kw) -> ProductRoutes:
     """The renderer the runtime root builds over the sandbox's runner, rendering once."""
-    return await DeclaredStartRoutes(runner).render(**kw)
+    return await DeclaredStartRoutes(runner).render(requested_routes=requested_routes, **kw)
 
 
 def _configuration(start=START) -> DevelopmentConfiguration:
@@ -144,6 +149,7 @@ async def _render(tmp_path, *, pages=PAGES, configuration=None, runner="sandbox"
         runner=_runner(tmp_path, _Browser(pages)) if runner == "sandbox" else runner,
         candidate=candidate,
         verified_candidate_revision=kw.pop("verified", revision),
+        requested_routes=kw.pop("requested", ()),
     )
 
 
@@ -187,6 +193,7 @@ async def test_each_route_renders_its_view_on_the_candidate_started_from_its_dec
     by_route = {r["route"]: r for r in routes.record["routes"]}
     assert by_route["/shelves/:shelf_id"] == {
         "route": "/shelves/:shelf_id",
+        "source": "approved_manifest",
         "held": "held",
         "anchor": "shelf-detail",
         "read_at": "/shelves/sh-9",
@@ -387,3 +394,68 @@ def test_a_blocked_routes_reason_reaches_what_the_campaign_reads():
     )
 
     assert acceptance.blocked == ("route /add: not rendered: start failed: boom",)
+
+
+@pytest.mark.parametrize(
+    "page",
+    [
+        _dom("archive-view"),  # the new view renders: still no anchor the request names
+        "<html><body><h1>500</h1></body></html>",  # the new route is broken
+        None,  # the browser read nothing there
+    ],
+    ids=["it-renders", "it-is-broken", "nothing-read"],
+)
+async def test_a_route_the_change_request_adds_is_judged_and_never_held_without_an_anchor(
+    tmp_path, page
+):
+    """The outside review of #2777 (P2): a route the candidate adds was outside the route checks,
+    so it could be broken without affecting acceptance. The change request's ``client_route``
+    criteria name it, so it's in the expected set beside the pinned ones. A product's request
+    carries no manifest delta (§24bv point 5), so nothing names its view's anchor: it blocks,
+    whatever its page shows, and the increment can't be accepted with it. Bugs caught: an added
+    route left out; one held because its page was read; the pinned routes dropped when one is
+    added, so removing an existing page goes unseen."""
+    archive = f"http://{APP_IP}:5173/shelves/archive"
+    pages = {**PAGES, **({archive: page} if page is not None else {})}
+
+    routes = await _render(tmp_path, pages=pages, requested=["/shelves/archive", "/add"])
+
+    held = _held(routes)
+    assert held["/shelves/archive"] == ("blocked_unverified", NO_ANCHOR_REQUESTED)
+    # The pinned routes are judged as before; a route the request names and the profile pins is
+    # judged once, by its pinned anchor.
+    assert (held["/"], held["/add"]) == (("held", ""), ("held", ""))
+    by_route = {r["route"]: r for r in routes.record["routes"]}
+    assert (by_route["/shelves/archive"]["source"], by_route["/add"]["source"]) == (
+        "change_request",
+        "approved_manifest",
+    )
+
+
+async def test_an_added_route_blocks_the_increment_and_a_dropped_pinned_one_rejects_it(tmp_path):
+    """The verdict the campaign reads (``increment_acceptance``). Bugs caught: an increment with
+    an added route accepted; a pinned route the candidate dropped read as anything but broken."""
+    from squadops.campaigns.acceptance import IncrementVerdict, increment_acceptance
+
+    added = await _render(tmp_path / "added", requested=["/shelves/archive"])
+    dropped = await _render(
+        tmp_path / "dropped",
+        pages={**PAGES, f"http://{APP_IP}:5173/add": _dom("not-found-view")},
+        requested=["/shelves/archive"],
+    )
+
+    blocked = increment_acceptance((), (), added.results)
+    rejected = increment_acceptance((), (), dropped.results)
+    assert blocked.verdict is IncrementVerdict.BLOCKED_UNVERIFIED
+    assert f"route /shelves/archive: not rendered: {NO_ANCHOR_REQUESTED}" in blocked.blocked
+    assert rejected.verdict is IncrementVerdict.REJECTED
+    assert rejected.unmet == ("route /add: missing add-shelf-view",)
+
+
+async def test_a_product_with_no_blueprint_judges_the_routes_its_request_adds(tmp_path):
+    """A product whose profile names no route (no blueprint, so no manifest) can still add a page
+    under its ui_base. Bug caught: no pinned routes read as nothing to judge, so the added page is
+    never read and the increment is accepted on its criteria alone."""
+    routes = await _render(tmp_path, profile=_profile(), initialization=None, requested=["/report"])
+
+    assert _held(routes) == {"/report": ("blocked_unverified", NO_ANCHOR_REQUESTED)}
