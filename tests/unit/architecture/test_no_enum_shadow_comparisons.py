@@ -109,6 +109,14 @@ _ALLOWLIST: set[tuple[str, str]] = {
     ("src/squadops/cycles/container_packaging.py", "add"),
     # - a plan proposer's parse-error text ("malformed" names the YAML failure).
     ("src/squadops/capabilities/handlers/planning/propose.py", "malformed"),
+    # SIP-0109 §24bv point 5 made "command" and "package" criterion surfaces (SurfaceKind). These
+    # three use the words for something else:
+    # - a pulse check's ``command`` key in its raw dict;
+    ("src/squadops/cycles/pulse_models.py", "command"),
+    # - a runner error's text, read for "command not found";
+    ("src/squadops/cycles/verification_normalize.py", "command"),
+    # - a campaign evidence artifact's ``part`` metadata (the package, §14).
+    ("src/squadops/campaigns/progress.py", "package"),
 }
 
 # Enum values this short/common that they produce coincidental matches are not

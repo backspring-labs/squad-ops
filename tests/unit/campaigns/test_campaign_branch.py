@@ -124,7 +124,9 @@ class _World:
 
     async def started(self) -> None:
         """The baseline captured, and the campaign started by its record: promoted and decided
-        (§24cc). Row 5's proposal escalates on §24bv point 5."""
+        (§24cc). Row 5's proposal escalates: its profile is one the deploy doesn't hold, so the
+        owner's word launches each increment here (``delivered``), as these tests are about the
+        promotion, not the proposal (§24bv point 5 is ``test_campaign_calibration_record``'s)."""
         await capture_inherited_baseline(
             PROJECT,
             registry=self.projects,
@@ -136,7 +138,11 @@ class _World:
         draft = campaign(
             CID,
             project_id=PROJECT,
-            policy=policy(calibration_profile="validated-fullstack", squad_profile="full-38"),
+            policy=policy(
+                calibration_profile="validated-fullstack",
+                squad_profile="full-38",
+                proposal_profile="no-such-profile",
+            ),
         )
         await self.campaigns.create_campaign(
             draft, actor="owner", actor_role="admin", reason="r", idempotency_key="create"
@@ -302,9 +308,9 @@ async def test_an_accepted_increment_moves_the_branch_to_its_capture(tmp_path):
     assert "tree_ref" not in promote.binding
     assert await world.branch() == captured
     assert head(stored, log) == CampaignHead(captured, identity, verification.artifact_id)
-    # Row 7 proposes; a proposal on the product's tree is §24bv point 5, not built yet.
+    # Row 7 proposes. Its profile is none the deploy holds here (``started``), so it escalates.
     assert (decide.binding["row"], decide.binding["verdict"]) == (7, "accepted")
-    assert "§24bv point 5" in decide.binding["unbuilt"]
+    assert "proposal profile cannot be loaded" in decide.binding["unbuilt"]
     assert "promotion_refused" not in decide.binding
     _identity, _package, digest_id = await world.progress.materialize_package(CID)
     _ref, digest = await world.vault.retrieve(digest_id)

@@ -14,6 +14,7 @@ import uuid
 from typing import TYPE_CHECKING
 
 from squadops.campaigns.calibration_record import BINDING_KEY, CalibrationRecord
+from squadops.campaigns.change_request import IncrementBasis
 from squadops.campaigns.models import (
     Campaign,
     CampaignState,
@@ -83,7 +84,7 @@ def start_transition(
 
 def increment_launch(
     campaign: Campaign,
-    baseline_manifest: str,
+    baseline_manifest: str | None,
     frozen: tuple[dict, ...] = (),
     abandoned: dict | None = None,
     qa_proposed: list[dict] | None = None,
@@ -110,20 +111,50 @@ def increment_launch(
     (§24bv point 4), so the launcher binds the head it reads at drain (``bound_at_head``). A
     sample application's tree is the vault's, never moves but by promotion, and is bound here.
 
-    Raises ``ValueError`` for a campaign whose accepted tree is no cycle's: one with none, or a
-    calibration record's (§24cc), whose proposal reads the product's tree instead (§24bv point 5).
-    Every seam downstream reads ``accepted_cycle_id`` as the cycle the increment builds on, so it
-    is never written empty."""
+    **A repository-backed increment** (§24bv point 5) proposes on the campaign branch, whose
+    accepted tree is a commit, not a vault tree with a manifest. Its block names that basis
+    (``basis: campaign_branch``), the one marker every increment seam reads, and carries no
+    manifest and no accepted cycle: what its proposal reads of the product is composed at its run,
+    at the head its cycle pins (``execution.product_proposal``). Its objective carries its
+    requirements source.
+
+    Raises ``ValueError`` for a sample application's campaign whose accepted tree is no cycle's,
+    or one given no manifest: every seam downstream reads ``accepted_cycle_id`` as the cycle the
+    increment builds on, and its manifest as the tree it changes, so neither is written empty.
+    And for a manifest given to a campaign branch's, which has none to change."""
     policy = campaign.policy
-    if campaign.accepted is None or campaign.accepted.cycle_id is None:
+    accepted = campaign.accepted
+    on_branch = accepted is not None and accepted.commit is not None
+    if accepted is None or (not on_branch and accepted.cycle_id is None):
         raise ValueError(
             f"campaign {campaign.campaign_id}'s accepted tree names no cycle to propose on: "
             + (
-                f"it is calibration record {campaign.accepted.calibration_record_id}'s"
-                if campaign.accepted is not None
+                f"it is calibration record {accepted.calibration_record_id}'s"
+                if accepted is not None
                 else "it has none"
             )
         )
+    if on_branch == (baseline_manifest is not None):
+        raise ValueError(
+            f"campaign {campaign.campaign_id}'s increment is proposed on "
+            + (
+                "its campaign branch, which has no interface manifest to be given"
+                if on_branch
+                else "its accepted cycle's tree, and is given no manifest of it"
+            )
+        )
+    tree: dict = (
+        # §24cd point 1: bound at drain (``bound_at_head``). §24bv point 5: no manifest.
+        {"basis": str(IncrementBasis.CAMPAIGN_BRANCH)}
+        if on_branch
+        else {
+            "baseline_tree": accepted.identity,
+            # The cycle whose delivered files the increment builds on (§7.1).
+            "accepted_cycle_id": accepted.cycle_id,
+            "baseline_manifest": baseline_manifest,
+        }
+    )
+    requirements = campaign.objective.requirements
     return LaunchRequest(
         CycleKind.INCREMENT,
         {
@@ -135,18 +166,12 @@ def increment_launch(
                     "campaign_proposal": {
                         "proposal_id": f"prop_{uuid.uuid4().hex[:12]}",
                         "version": 1,
-                        **(
-                            {}
-                            if campaign.accepted.commit is not None
-                            else {"baseline_tree": campaign.accepted.identity}
-                        ),
-                        # The cycle whose delivered files the increment builds on (§7.1).
-                        "accepted_cycle_id": campaign.accepted.cycle_id,
-                        "baseline_manifest": baseline_manifest,
+                        **tree,
                         "objective": {
                             "statement": campaign.objective.statement,
                             "allowed_scope": list(campaign.objective.allowed_scope),
                             "measurement": campaign.objective.measurement,
+                            **({"requirements": requirements} if requirements else {}),
                         },
                         "prior_criteria": [f["criterion_id"] for f in frozen],
                         "frozen_criteria": [dict(f) for f in frozen],
@@ -181,6 +206,8 @@ CONTINUED_KEYS = (
     "proposal_id",
     "version",
     "baseline_tree",
+    # §24bv point 5: a repository-backed increment's continuation is one too.
+    "basis",
     "accepted_cycle_id",
     "baseline_manifest",
     "objective",

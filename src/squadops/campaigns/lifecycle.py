@@ -167,16 +167,17 @@ def creation_request_hash(
     so a creation stored before it, or made without a file, keeps the hash it was stored with. The
     plan gate (§24bj) enters only when it is not ``supervised``: a creation stored before it existed
     ran supervised and was hashed without it, so its retry still replays. The stack (§24bs) enters
-    only when declared, for the same reason, and so does the objective's work class (SIP-0113
-    §4.6, #2418)."""
+    only when declared, for the same reason, and so do the objective's work class (SIP-0113
+    §4.6, #2418) and its requirements source (SIP-0109 §24bv point 5)."""
     policy = dataclasses.asdict(campaign.policy)
     if policy["plan_gate"] is PlanGate.SUPERVISED:
         del policy["plan_gate"]
     if policy["stack"] is None:
         del policy["stack"]
     objective = dataclasses.asdict(campaign.objective)
-    if objective["work_class"] is None:
-        del objective["work_class"]
+    for key in ("work_class", "requirements"):
+        if objective[key] is None:
+            del objective[key]
     content = {
         "operation": ControlOperation.CREATE,
         "campaign_id": campaign.campaign_id,

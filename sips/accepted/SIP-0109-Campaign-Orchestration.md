@@ -135,7 +135,8 @@ Kept by the rule in CLAUDE.md ("SIP System"): one row per part, updated in the P
 | a Campaign on a repository-backed Project, point 2: the accepted tree is a campaign branch, an increment promoted onto it from its own capture (§24bv point 2, §24cd, §24ce) | **shipped** | 2.5.0, PR #2740 |
 | a Campaign on a repository-backed Project, point 2's launcher handoff: the head read at drain and handed to cycle creation, and a repository-backed increment's intent binding no tree (§24cd point 1; SIP-0112 H.9) | **shipped** | 2.5.0, PR #2763 |
 | a Campaign on a repository-backed Project, point 3's regression baseline: an increment on a head compared with the verification that made it, the record's commit with its inherited baseline; with §24ci (a)'s pytest exception-class reader and the product-runner discrimination rule (§24bv point 3, §24ci (a); SIP-0112 H.10) | **shipped** | 2.5.0, PR #2764 |
-| a Campaign on a repository-backed Project, the rest: acceptance on the product's runner, runtime-side in the sandbox, in place of `qa.evaluate_increment` (§24cd point 6; waits on point 5 and H.4's recipe for where a criterion's test goes), upstream moving (point 4, with §24cd point 5's frozen bundles at the rebase), proposals from the product's tree (point 5) (§24bv, §24cd; SIP-0112 H.4), and the supervisor's review-request push (§24ci (b)) | **placed** | 2.5.0, #2619 |
+| a Campaign on a repository-backed Project, point 5: the proposal's input read at the head, the change request on a product with each criterion's test placed under the product's runners, the scope's reading there, the continuation's change request, and the creation rules (§24bv point 5, §24cj; SIP-0112 H.4, H.11) | **shipped** | 2.5.0, PR #2771 |
+| a Campaign on a repository-backed Project, the rest: acceptance on the product's runner, runtime-side in the sandbox, in place of `qa.evaluate_increment` (§24cd point 6; its criterion files are §24cj's placed ones), upstream moving (point 4, with §24cd point 5's frozen bundles at the rebase) (§24bv, §24cd; SIP-0112 H.4), and the supervisor's review-request push (§24ci (b)) | **placed** | 2.5.0, #2619 |
 | a vitest test-id reader, so a vitest-only criterion can be read as discriminating (§24ci (a)) | **shipped**: from vitest's default reporter, as the product's own command prints it (SIP-0112 H.10) | 2.5.0, PR #2764, closes #2757 |
 | a Campaign cycle held on its instruction bindings escalates as `binding_hold`, released by re-supply and never parked (§24bw; SIP-0110 §A.3.6) | **shipped** | 2.4.0, PR #2628 (#2178's Campaign half) |
 
@@ -4376,3 +4377,202 @@ Two mutations are each caught: the route not reading the outbox, and attaching b
 **Evidence:** §24cd point 7's reading of `sandbox/findings.py:154-179`, `projects/contribution.py:81-152` and `ports/projects/source_repository.py:79`; the token reading of `contribution.py`'s `_open_review_request`, which refuses a request with no token for the Project and names both sources.
 
 **Who ruled.** The owner (2026-10-28), on the supervisor's recommendations. The supervisor (the Spark lane) builds both with #2619.
+
+### 24cj. §24bv point 5 as built: a repository-backed proposal reads the product at its head, and each criterion's test is placed under the product's runners (2026-10-28, §7.2, §9.1, §10a, §24bv point 5, §24cc, §24ch; SIP-0112 H.4, H.6, H.11; #2619; the supervisor's design and ruling under the owner's delegation, for the owner)
+
+**Why.** §24bv point 5 says what a repository-backed proposal is given and how its change request reads. Until this,
+the calibration record's row 5 escalated as unbuilt (§24cc), and H.11 left point 5 two more things: where a criterion's
+test file goes with no stack, and a repair or retry with no manifest to seed. Building it found four places where the
+text can't be built as written, or leaves a choice:
+- **Ten seams decided "is this an increment?" by the launch's manifest** (`increment_baseline`), which a
+  repository-backed increment has none of. Each would read it as no increment, and its framing would design the
+  product anew.
+- **Where a criterion's test goes:** `scaffold.criterion_test_path` raises with no stack.
+- **What scope reads on a product:** §24ch made a stack's qa test namespace the framework's. A product has no stack,
+  and it has tests of its own.
+- **When the input is bound:** §24cd point 1's intent binds no tree, so nothing about the head is known at the
+  decision.
+
+**What changed.**
+1. **One marker: the block's `basis`** (`IncrementBasis`, `campaigns/change_request.py:89`; read by
+   `increment_basis`, `increment_tree.py:156`). `increment_launch` writes `basis: campaign_branch` for a campaign whose
+   accepted tree names a commit, the calibration record's or an increment's on the branch (`launch_requests.py:148`).
+   A block that names none and carries a manifest reads `manifest`, so every block written before this reads as it
+   did. An unknown basis is refused. The seams ask `is_increment` or the basis, and read the manifest only where the
+   basis has one: the change request's framing, the seed, the frozen files, the test scope, the planning steps, the
+   builder offer, the framing gate, the proposal gate's seed and the proposal's evidence.
+2. **The launch** (`progress.py:1842`, `_propose_on_branch`). A repository-backed proposal launches with no manifest
+   and no accepted cycle. It reads none of a sample application's manifest inputs (§24ad's answer, the seed fault,
+   §24bm's late answer), and keeps rows 6, 7, 13 and 16's: the frozen criteria, the abandoned brief, what qa proposed,
+   each proposal never approved. Its objective carries `objective.requirements`. This changes §24cc point 2:
+   `increment_launch` now raises only for a sample application's tree that names no cycle, and for a manifest given
+   to a branch's.
+3. **The input is composed at the proposal's run, at the head its cycle pins** (`execution/product_proposal.py`,
+   in `RunProvisioning.prepare`), as SIP-0113's evidence is. It reaches the task that authors the change request
+   (`TaskType.authors_change_request`) as `product_proposal`:
+   - the head's commit and tree;
+   - the derived profile at the Project's pin (§24cd point 3): its languages, public surfaces and file classes, each
+     runner with its criterion placement, and its disclosed gaps;
+   - the previous increment's verification, or the record's inherited baseline for the first. It's read by
+     `source_delivery.regression_baseline`, the one delivery compares the candidate with, with up to 20 finding keys
+     per check;
+   - the requirements source, read at the head (`repo:file:<path>@current` bound as `repo:file:<path>@<head>`), or
+     a stored artifact;
+   - a greenfield product's approved manifest (H.1), beside them.
+
+   A read that fails raises, so the run fails and the campaign proposes again under §24bn's bound.
+   - **Narrowed: the tree view is the map and the instruction files.** §24bv names "framing's `source_repository`
+     view". Its appendix also tells a build task how to emit files, which a proposer doesn't. The checks are shown
+     with their results instead, as the previous verification.
+   - **Not shown: outcome evidence** (SIP-0113 §4.5). Nothing evaluates a head yet (§10l).
+4. **The change request on a product** (`_validate_product_proposal`, `change_request.py:788`). It takes four
+   additive fields. Each is stored only when it isn't its default, so every request stored before keeps its document
+   and its hash:
+   - `basis`;
+   - `footprint`, authored as path globs, and hashed, so a footprint widened after the ruling is refused when loaded;
+   - a criterion's optional `paths`, the product paths it exercises;
+   - the derived `criterion_files`, hashed with the footprint (the outside review's P2, below).
+
+   `SurfaceKind` adds `command` and `package`. The rails are:
+   - a `manifest_delta` is refused (`manifest_delta_on_product`);
+   - a `feature` or `fix` with no footprint is refused (`nothing_to_build`);
+   - a footprint outside `allowed_scope` is refused;
+   - a criterion's surface must be one the profile names: an endpoint needs an HTTP base, a page a UI base, and a
+     command or package must be declared, or a subcommand or name under one;
+   - a criterion's `paths` must lie in the footprint;
+   - each criterion is placed, or refused (`unplaceable_criterion`);
+   - the placed files are appended to the footprint;
+   - the criteria, goal and retirement rails are unchanged.
+5. **Placement** (`campaigns/criterion_placement.py`). The runner is the first, in the profile's order, whose
+   `covers` holds every path the criterion exercises: its `paths`, or the footprint's product files.
+   - **The file** goes under the runner's first root, named by its `file_pattern`, with `criterion_<id>` for the
+     first `*`.
+   - **A second `*` is the extension,** the one the runner's own test files take most. Tally's is
+     `checks/check_criterion_<id>.py`, and a vitest frontend's `<root>/criterion_<id>.test.jsx`.
+   - **Refused, named:**
+     - a runner with no one-file argv, or one a `runner_not_scopable` gap names (a later covering runner may host
+       it);
+     - a pattern naming no single file;
+     - an extension no test file gives;
+     - a placed path that is a product file already.
+
+   The placement is stored with the request, and every reader after the proposal reads it:
+   `increment_criterion_files` (`increment_tree.py:327`), the plan authors, the framing gate and the evaluation's
+   inputs.
+6. **The scope on a product: the supervisor's ruling, under the owner's delegation of 2026-10-28 ("use your best
+   judgement on all other items").** Only the criterion test files the framework places are the framework's.
+   - Every other file, the product's own tests included, is the product's, and stays inside `allowed_scope`.
+   - Editing an existing test needs it in scope, as editing any product file does.
+   - `outside_allowed_scope` takes the placed files (`placed`), so the proposal's rails and the plan-review tier
+     (§24bj) read one rule, as §24ch requires.
+   - **The reading rejected:** exempting the profile's `files.test` classes. It would let a change rewrite a
+     product's tests outside the owner's scope. That is the control §24ch kept for product files, and a product's
+     tests are its own.
+7. **The continuation carries its change request** (`increment_seed`, `increment_tree.py:233`). A repository-backed
+   increment's seed is its approved change request alone: no candidate manifest and no contract. So its repair and
+   its retry carry it, as `plan_artifact_refs`, and `CONTINUED_KEYS` carries `basis`. The proposal gate's seed
+   (`WorkloadGate._seed_increment`) only promotes the run's artifacts. `bound_at_head` still refuses a continuation
+   whose tree isn't the head.
+8. **The plan authors are taught before the gate enforces it** (#686). A product's increment has no contract, and its
+   indexes used to reach plan authors only in bind mode. `inject_contract_inputs` now gives them its footprint,
+   criterion files, frozen files and test scope without one (`task_plan.py:949`). The framing gate holds the plan to
+   the stored footprint and the placed files.
+9. **Creation** (`repository_backed.creation_refusal`, called at `POST /api/v1/campaigns`, 422, naming the field):
+   - a repository-backed Campaign must name `objective.requirements`;
+   - its increments must seed no skeleton, by `seeds_skeleton` over the proposal profile under the policy's stack.
+     That refuses `policy.stack`, or a stacked profile such as `campaign-increment`, as §24bv point 1 asks;
+   - a sample application's Campaign may not name a requirements source;
+   - a requirements source at a fixed revision, or in another family, is refused, since an increment that edits the
+     PRD would then never be shown it;
+   - a Project the registry doesn't hold is left to the start (§24cc).
+
+**Not built here, and where it is:**
+- **§24cd point 6's evaluator, and the `qa.evaluate_increment` drop** (#2619). Until point 6 lands, a repository-backed
+  increment's implementation still plans `qa.evaluate_increment`, with its placed criterion files as inputs.
+- **The plan-review tier on a product.** It reads the placed files, but escalates on condition 3, since a product has
+  no manifest to read questions from. So a product's increment under `plan_gate: tier` is ruled by the supervisor at
+  its plan gate.
+- **Point 1's `calibration_profile: inherited_baseline` rule.** No such profile exists, and a repository-backed start
+  writes its record whatever the profile names.
+- **Point 4's rebase and the review-request push** are separate builds.
+
+**Evidence.**
+- **The wiring, entered at the live callers:**
+  - `test_campaign_calibration_record.py`: `POST /api/v1/campaigns/{id}/start` on Tally's real clone. Row 5 launches,
+    through the drain and `prepare_cycle`, a cycle pinned at the record's commit. Its block names `campaign_branch`
+    and the record's tree, carries the requirements source, and has no manifest or accepted cycle.
+  - `test_product_proposal.py`: `RunProvisioning.prepare` on Tally's real clone. At the record's commit, the proposal
+    task alone is given the recorded profile's placement, its two disclosed gaps, the inherited baseline's checks and
+    `README.md` read at the head. On a head committed past the record, with its verification, it is given that head,
+    that verification and the README as the head has it. A greenfield product is given its approved manifest. A
+    requirements file the head lacks, an artifact not stored, and no profile at the pin each fail the run, named.
+  - `test_strategy_propose_product_increment.py`: `handle()` with the real assets. The prompt shows the head, surfaces,
+    placement, gaps, checks, requirements and tree, and not the manifest prompt. The stored request carries its basis,
+    footprint and placed file, and a manifest delta is returned for revision.
+  - `test_product_increment_seams.py`: `CampaignProgress._bound_seeds` (the continuation carries the change request
+    once approved), `generate_task_plan` (the indexes without a contract), the framing gate (a file outside the
+    footprint and an unplanned criterion refused), and `with_proposal_evidence`.
+  - `test_campaign_repository_creation.py`: `POST /api/v1/campaigns`, each refusal and the accepted creation.
+- **The rails and the placement:** `test_product_change_request.py` and `test_criterion_placement.py`. These cover
+  Tally's recorded profile, an invented pytest-and-vitest product, each refusal, the stored hash holding the authored
+  footprint, and §24cj's scope reading at the rails and at the tier (`test_plan_review_tier.py`).
+- **Eighteen mutants, each caught** (eight more for the review, below):
+  - the basis read from the manifest's presence;
+  - the seed needing a manifest;
+  - placed files left out of the footprint;
+  - the footprint unhashed;
+  - the product's tests exempt from scope;
+  - the tier reading placed files against scope;
+  - the input never composed;
+  - the requirements read at the Project's baseline;
+  - any command accepted;
+  - a guessed extension;
+  - an unscopable runner hosting;
+  - creation not reading the Project;
+  - the launch with no basis;
+  - the continuation dropping it;
+  - no indexes without a contract;
+  - the framing gate reading no footprint;
+  - the evidence step refusing a branch increment;
+  - the product sent the manifest's template.
+
+**The outside review (SIP-0112 H.12) on PR #2771: request changes, two findings, both fixed in that PR.**
+- **P1: two criteria could share one test file.** A test file is named by its criterion's id kept to letters, digits
+  and `_`, so `T-1` and `T_1` name one file. Placement checked a placed path against the product's files only, never
+  against the other criteria's. Now:
+  - the rule is single-sourced (`scaffold.criterion_module_name`);
+  - on both bases, the rails refuse an id named twice (`duplicate_criterion`), and ids whose files would be one file,
+    a frozen criterion's included (`criterion_file_collision`);
+  - on a product, the placed paths are checked unique across the request whatever placed them.
+
+  This also fixes the same collision on a sample application, which predates point 5.
+- **P2: the stored placement wasn't integrity-checked.** `criterion_files` was left out of the hash, and the loader
+  didn't revalidate it.
+  - **Chosen: the placement is bound into the hash, and checked whole on every load** (`placement_inconsistency`).
+    Each criterion is placed exactly once, at a path of its own, in the footprint, and named for it.
+  - **Why this, not revalidation against the pinned profile:** every reader after the ruling is pure and holds no
+    profile: the framing, the plan authors, the framing gate and the evaluation's inputs. And the placement is part
+    of what the supervisor approves, the file the build writes and the evaluation freezes.
+  - **What it does on a failure:** a placement changed after the ruling fails the hash, and an inconsistent one is
+    refused by name, at `load_stored_change_request`. So it fails closed in the framing's provisioning, and the
+    framing gate now refuses a branch plan whose request can't be read (`_unreadable_branch_request`) rather than
+    skip its rules.
+  - **What it doesn't cover:** the hash is no signature. A writer that also recomputes the hash isn't caught, as for
+    any field of the request. A placement edited in the vault, though, is caught.
+- **Evidence:** `test_product_change_request.py` covers:
+  - two ids naming one file, one id twice, and an id naming a frozen criterion's file, on both bases;
+  - a malformed placement putting two criteria at one path;
+  - a stored placement renamed, moved, dropped, doubled, left out of the footprint, or placed for another criterion;
+  - one moved where only the hash can tell;
+  - a sample application's request carrying a placement.
+
+  `test_product_increment_seams.py` covers a tampered placement refused at `approved_change_request` and at the
+  framing gate.
+- **Eight more mutants, each caught:** no identity check; a duplicate let through; a frozen criterion's file not read;
+  placed paths not checked unique; the placement unhashed; the placement never checked; a file not held to its
+  criterion's name; the gate failing open.
+
+**Who ruled.** The owner placed point 5 in 2.5 (2026-10-21), ruled D10's requirements source (2026-10-24), and moved
+the MacBook lane's point 5 to the Spark lane (2026-10-28). The supervisor (the Spark lane) designed and built it. Item
+6's scope reading is the supervisor's judgement under the owner's delegation of 2026-10-28. Items 3 and 4 change the
+change request's schema, a shared contract, so they take the outside review SIP-0112 H.12 provides before the merge.

@@ -566,13 +566,13 @@ def _resolve_workload_steps(
         # plan_authoring_contributors config. Empty/missing contributors
         # → sole-author route through the merger.
         # deferred (cycle): campaigns.increment_tree loads this module
-        from squadops.campaigns.increment_tree import increment_baseline
+        from squadops.campaigns.increment_tree import is_increment
 
         contributors = (resolved_config or {}).get("plan_authoring_contributors")
         steps = build_planning_steps(
             contributors,
             authors_manifest=authors_interface_manifest(resolved_config),
-            increment=increment_baseline(resolved_config) is not None,
+            increment=is_increment(resolved_config),
         )
     elif workload_type == WorkloadType.REFINEMENT:
         _check_required_roles(
@@ -785,11 +785,10 @@ def _require_change_request_for_increment(
     handed one. Without it the framing would design the accepted application again from its
     PRD; given to another run, it would frame a cycle that never proposed it."""
     # deferred (cycle): campaigns.increment_tree loads this module
-    from squadops.campaigns.increment_tree import increment_baseline
+    from squadops.campaigns.increment_tree import is_increment
 
-    in_an_increment = (
-        run.workload_type in _CHANGE_REQUEST_WORKLOADS
-        and increment_baseline(resolved_config) is not None
+    in_an_increment = run.workload_type in _CHANGE_REQUEST_WORKLOADS and is_increment(
+        resolved_config
     )
     if in_an_increment and not change_request:
         raise CycleError(
@@ -906,6 +905,24 @@ def _inject_rejection_context(
         inputs["prior_manifest_yaml"] = manifest_yaml
 
 
+def inject_branch_increment_inputs(
+    inputs: dict,
+    task_type: str,
+    footprint: tuple[str, ...] | None,
+    criterion_files: tuple[Any, ...],
+    frozen_files: tuple[tuple[str, str], ...],
+    test_scope: Mapping[str, Any] | None,
+) -> None:
+    """SIP-0109 §24bv point 5 (§24cj): a repository-backed increment has no manifest, so no
+    contract, and ``inject_contract_inputs`` gives it nothing. Its plan authors are still shown
+    its footprint, criterion files, frozen files and test scope before the framing gate holds the
+    plan to them (#686). WHO receives them is the same declaration (``bind_criteria_index``)."""
+    if get_context_contract(task_type).bind_criteria_index:
+        _inject_increment_indexes(
+            inputs, footprint, criterion_files, frozen_files, frozenset(), test_scope
+        )
+
+
 def inject_contract_inputs(
     inputs: dict,
     contract: VerificationContract | None,
@@ -938,7 +955,8 @@ def inject_contract_inputs(
     born of a failing probe can be aimed at the slot that owns the endpoint.
 
     Author mode (``contract is None``) injects nothing — contract-less cycles
-    stay byte-identical.
+    stay byte-identical. A repository-backed increment, which has no contract, is given its
+    increment's indexes by ``inject_branch_increment_inputs`` instead.
 
     #663 S3: WHO receives each bind-mode input class is the registry's
     declaration (``bind_criteria_index`` / ``bind_behavioral_surface``); this
@@ -1377,6 +1395,8 @@ class _PlanFacts:
     frozen_files: tuple[tuple[str, str], ...]
     test_scope: dict[str, list[dict[str, str]]] | None
     evaluation: _IncrementEvaluation
+    #: SIP-0109 §24bv point 5: a repository-backed increment, on its campaign branch.
+    on_branch: bool = False
 
 
 def _plan_facts(
@@ -1396,9 +1416,11 @@ def _plan_facts(
     framing_rejection_context = resolved_config.pop("framing_rejection_context", None)
     # SIP-0109 §7.3 (#1705 d): an increment cycle's footprint, for its plan authors.
     # deferred (cycle): campaigns.increment_tree loads this module
-    from squadops.campaigns.increment_tree import increment_footprint
+    from squadops.campaigns.increment_tree import increment_basis, plan_footprint
 
-    footprint = increment_footprint(resolved_config, interface_manifest)
+    # A repository-backed increment's is its approved change request's (§24bv point 5).
+    footprint = plan_footprint(resolved_config, interface_manifest, change_request)
+    basis = increment_basis(resolved_config)
     criterion_files = _increment_criterion_files(change_request, resolved_config)
     # deferred (cycle): campaigns.increment_tree loads this module
     from squadops.campaigns.increment_tree import increment_frozen_files
@@ -1419,6 +1441,7 @@ def _plan_facts(
         frozen_files=frozen_files,
         test_scope=test_scope,
         evaluation=evaluation,
+        on_branch=basis is not None and not basis.has_manifest,
     )
 
 
@@ -1525,6 +1548,10 @@ def _step_inputs(
         frozen_files,
         test_scope,
     )
+    if facts.on_branch:
+        inject_branch_increment_inputs(
+            inputs, task_type, footprint, criterion_files, frozen_files, test_scope
+        )
     _inject_rejection_context(inputs, framing_rejection_context, task_type)
     inputs.update(_increment_inputs(run, task_type, change_request, evaluation, test_scope))
     inputs.update(_prior_cycle_inputs(resolved_config, task_type))

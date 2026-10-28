@@ -10,6 +10,11 @@ The strategy role authors a change request; everything here is the framework's, 
 - ``validate_proposal`` runs the rails in order and returns the change request or every
   refusal. An out-of-scope proposal is refused, never trimmed (§9.1), and a delta the SIP-0103
   manifest gates refuse is refused with their findings (§7.2).
+
+On a repository-backed Project (§24bv point 5, §24cj) there is no manifest: the request names its
+basis (``campaign_branch``), authors its footprint as path globs, and asserts at the derived
+profile's public surfaces; each criterion's own test file is placed under the product's runners
+(``criterion_placement``) and stored with it. ``_validate_product_proposal`` runs those rails.
 """
 
 from __future__ import annotations
@@ -18,6 +23,8 @@ import copy
 import dataclasses
 import hashlib
 import json
+import re
+from collections import Counter
 from collections.abc import Iterable, Sequence
 from dataclasses import dataclass, field
 from enum import StrEnum
@@ -26,12 +33,19 @@ from typing import Any
 
 import yaml
 
+from squadops.campaigns.criterion_placement import (
+    CRITERION_STEM,
+    RunnerPlacement,
+    Unplaceable,
+    place_criterion,
+)
 from squadops.cycles.acceptance_check_spec import parse_method_path
 from squadops.cycles.manifest_gates import assess_winnability
 from squadops.cycles.verification_contract import VerificationContract
 from squadops.stacks.scaffold import (
     MANIFEST_ELEMENT_KEYS,
     InterfaceManifest,
+    criterion_module_name,
     expand,
     is_qa_test_path_for_stack,
     qa_test_namespace,
@@ -75,10 +89,32 @@ class DeltaTarget(StrEnum):
 
 
 class SurfaceKind(StrEnum):
-    """A criterion's public surface: something a caller or a browser reaches (§7.2)."""
+    """A criterion's public surface: something a caller or a browser reaches (§7.2). On a
+    repository-backed Project, also a command-line entry point or a package's public interface,
+    whichever the derived profile names (§24bv point 5)."""
 
     ENDPOINT = "endpoint"
     CLIENT_ROUTE = "client_route"
+    COMMAND = "command"
+    PACKAGE = "package"
+
+
+class IncrementBasis(StrEnum):
+    """What an increment's accepted tree is, as its launch's ``campaign_proposal`` block names it
+    (§24bv point 5). The one marker every increment seam reads, never whether a manifest is
+    present: a repository-backed increment carries none."""
+
+    #: A sample application's: the vault's accepted tree and its interface manifest.
+    MANIFEST = "manifest"
+    #: A repository-backed Project's: the campaign branch's head (§24bv point 2), which has no
+    #: interface manifest. Contract 1 names its pin the same way (``pinned_from``).
+    CAMPAIGN_BRANCH = "campaign_branch"
+
+    @property
+    def has_manifest(self) -> bool:
+        """Whether the change is a typed delta to an interface manifest, whose footprint the
+        stack's scaffold map derives. On the campaign branch it is authored instead."""
+        return self is IncrementBasis.MANIFEST
 
 
 @dataclass(frozen=True)
@@ -108,6 +144,19 @@ class Criterion:
     surface: str
     #: What the criterion's test observes there.
     observable: str
+    #: §24bv point 5, on a repository-backed Project only: the product paths it exercises, which
+    #: choose the runner its test is placed under. Empty, the footprint's are. Left out of the
+    #: document and its hash when empty, so every request stored before keeps its identity.
+    paths: tuple[str, ...] = ()
+
+
+@dataclass(frozen=True)
+class PlacedCriterionFile:
+    """A criterion's own test file on a repository-backed Project (§24bv point 5): placed by the
+    framework under the runner that covers it, never authored."""
+
+    criterion_id: str
+    path: str
 
 
 @dataclass(frozen=True)
@@ -135,7 +184,14 @@ class ChangeRequest:
     #: after the build by the ledger; left out of the document and its hash when empty, so every
     #: request stored before §4.5 keeps its identity. Only the proposer and the supervisor see it.
     moves_goals: tuple[str, ...] = ()
+    #: §24bv point 5: the accepted tree it changes. Stored only for a campaign branch.
+    basis: IncrementBasis = IncrementBasis.MANIFEST
+    #: Derived from the manifest delta on a sample application. On a campaign branch, authored as
+    #: path globs, with the framework's placed criterion files appended.
     footprint: tuple[str, ...] = ()
+    #: §24bv point 5: each criterion's test file on a campaign branch, placed by the framework.
+    #: Empty on a sample application, whose stack places it (``scaffold.criterion_test_path``).
+    criterion_files: tuple[PlacedCriterionFile, ...] = ()
     content_hash: str = ""
 
 
@@ -155,6 +211,14 @@ class RefusalKind(StrEnum):
     SURFACE_OUTSIDE_FOOTPRINT = "surface_outside_footprint"
     UNKNOWN_GOAL = "unknown_goal"
     GOAL_TEXT_COPIED = "goal_text_copied"
+    #: §24bv point 5: a repository-backed Project has no interface manifest to apply a delta to.
+    MANIFEST_DELTA_ON_PRODUCT = "manifest_delta_on_product"
+    #: §24bv point 5: no runner of the product's can host the criterion's own test file.
+    UNPLACEABLE_CRITERION = "unplaceable_criterion"
+    #: §24cj: one id named by two criteria of one request.
+    DUPLICATE_CRITERION = "duplicate_criterion"
+    #: §24cj: two criteria whose own test files would be one file (``T-1`` and ``T_1``).
+    CRITERION_FILE_COLLISION = "criterion_file_collision"
 
 
 @dataclass(frozen=True)
@@ -184,14 +248,36 @@ class ChangeRequestError(ValueError):
 # Parsing the authored document
 # =============================================================================
 
-#: Fields the framework derives; a document that authors them is refused, not corrected.
-_DERIVED_FIELDS = ("footprint", "content_hash", "proposal_id", "version", "baseline_tree")
+#: Fields the framework derives; a document that authors them is refused, not corrected. On a
+#: campaign branch the footprint is authored instead (§24bv point 5), and every other one stays.
+_DERIVED_FIELDS = (
+    "footprint",
+    "content_hash",
+    "proposal_id",
+    "version",
+    "baseline_tree",
+    "basis",
+    "criterion_files",
+)
+
+
+def _derived_fields(basis: IncrementBasis) -> tuple[str, ...]:
+    """The fields a document on ``basis`` may not author."""
+    if basis.has_manifest:
+        return _DERIVED_FIELDS
+    return tuple(f for f in _DERIVED_FIELDS if f != "footprint")
 
 
 def parse_change_request(
-    authored: dict, *, proposal_id: str, version: int, baseline_tree: str
+    authored: dict,
+    *,
+    proposal_id: str,
+    version: int,
+    baseline_tree: str,
+    basis: IncrementBasis = IncrementBasis.MANIFEST,
 ) -> ChangeRequest:
-    """The typed change request an authored document describes.
+    """The typed change request an authored document describes. On a campaign branch (§24bv
+    point 5) the document authors its ``footprint``, and a criterion may name its ``paths``.
 
     Raises:
         ChangeRequestError: If a required field is missing, a value is outside its vocabulary,
@@ -199,7 +285,7 @@ def parse_change_request(
     """
     if not isinstance(authored, dict):
         raise ChangeRequestError("a change request is a mapping")
-    authored_derived = [f for f in _DERIVED_FIELDS if f in authored]
+    authored_derived = [f for f in _derived_fields(basis) if f in authored]
     if authored_derived:
         raise ChangeRequestError(
             f"the framework derives {', '.join(authored_derived)}; the proposal may not author it"
@@ -223,20 +309,13 @@ def parse_change_request(
                 )
                 for o in authored.get("manifest_delta") or ()
             ),
-            criteria=tuple(
-                Criterion(
-                    id=_text(c, "id"),
-                    statement=_text(c, "statement"),
-                    surface_kind=SurfaceKind(c["surface_kind"]),
-                    surface=_text(c, "surface"),
-                    observable=_text(c, "observable"),
-                )
-                for c in authored.get("criteria") or ()
-            ),
+            criteria=tuple(_criterion(c, basis) for c in authored.get("criteria") or ()),
             must_not_break=tuple(str(i) for i in authored.get("must_not_break") or ()),
             retires=_retirements(authored.get("retires")),
             replaces_verifiers=_retirements(authored.get("replaces_verifiers")),
             moves_goals=_goal_ids(authored.get("moves_goals")),
+            basis=basis,
+            footprint=() if basis.has_manifest else _paths(authored.get("footprint"), "footprint"),
         )
     except (KeyError, TypeError, ValueError) as e:
         if isinstance(e, ChangeRequestError):
@@ -251,10 +330,40 @@ def parse_change_request(
     return request
 
 
+def _criterion(raw: Any, basis: IncrementBasis) -> Criterion:
+    if basis.has_manifest and "paths" in raw:
+        raise ChangeRequestError(
+            f"criterion {raw.get('id')!r}: paths are named only on a repository-backed Project; "
+            "on this application the stack places a criterion's test"
+        )
+    return Criterion(
+        id=_text(raw, "id"),
+        statement=_text(raw, "statement"),
+        surface_kind=SurfaceKind(raw["surface_kind"]),
+        surface=_text(raw, "surface"),
+        observable=_text(raw, "observable"),
+        paths=_paths(raw.get("paths"), f"criterion {raw.get('id')!r} paths"),
+    )
+
+
+def _paths(raw: Any, field_name: str) -> tuple[str, ...]:
+    """Repository-relative path globs, as a footprint or a criterion's paths are authored: each
+    inside the product, never absolute and never climbing out of it."""
+    if raw is None:
+        return ()
+    if not isinstance(raw, list) or not all(isinstance(p, str) and p.strip() for p in raw):
+        raise ChangeRequestError(f"{field_name} is a list of repository-relative path globs")
+    for p in raw:
+        if p.strip().startswith("/") or ".." in p.strip().split("/"):
+            raise ChangeRequestError(f"{field_name}: {p!r} leaves the product's repository")
+    return tuple(dict.fromkeys(p.strip() for p in raw))
+
+
 def stored_change_request(request: ChangeRequest) -> str:
     """The document the proposal run stores (``change_request.yaml``), which
     ``load_stored_change_request`` reads back: every field, the derived ones included, as plain
-    YAML data. ``moves_goals`` only when it names a goal (§10t ruling 4)."""
+    YAML data. ``moves_goals`` only when it names a goal (§10t ruling 4); ``basis``,
+    ``criterion_files`` and a criterion's ``paths`` only on a campaign branch (§24bv point 5)."""
     return _dumped(_authored_fields(dataclasses.asdict(request)))
 
 
@@ -270,8 +379,21 @@ def role_view(document: str) -> str:
 
 
 def _authored_fields(payload: dict) -> dict:
-    """``payload`` without an empty ``moves_goals``: absent, as in every request before §4.5."""
-    return {k: v for k, v in payload.items() if k != "moves_goals" or v}
+    """``payload`` without what a request before them never carried, when it is empty: absent, as
+    in every request before §4.5 (``moves_goals``) and §24bv point 5 (``basis``,
+    ``criterion_files``, a criterion's ``paths``). So every stored request keeps its document and
+    its hash."""
+    out = {
+        k: v
+        for k, v in payload.items()
+        if not (k in ("moves_goals", "criterion_files") and not v)
+        and not (k == "basis" and v == IncrementBasis.MANIFEST)
+    }
+    if "criteria" in out:
+        out["criteria"] = [
+            {k: v for k, v in c.items() if k != "paths" or v} for c in out["criteria"]
+        ]
+    return out
 
 
 def _dumped(data: dict) -> str:
@@ -297,20 +419,74 @@ def load_stored_change_request(document: str) -> ChangeRequest:
     if not isinstance(data, dict):
         raise ChangeRequestError("a stored change request is a mapping")
     try:
+        basis = IncrementBasis(str(data.get("basis") or IncrementBasis.MANIFEST))
+    except ValueError as e:
+        raise ChangeRequestError(f"the stored change request's basis is unknown: {e}") from e
+    try:
+        placed = tuple(
+            PlacedCriterionFile(str(f["criterion_id"]), str(f["path"]))
+            for f in data.get("criterion_files") or ()
+        )
+        authored = {k: v for k, v in data.items() if k not in _derived_fields(basis)}
+        if not basis.has_manifest:
+            # The stored footprint is the authored globs with the placed files appended.
+            stored = {f.path for f in placed}
+            authored["footprint"] = [p for p in data.get("footprint") or () if p not in stored]
         request = parse_change_request(
-            {k: v for k, v in data.items() if k not in _DERIVED_FIELDS},
+            authored,
             proposal_id=str(data["proposal_id"]),
             version=int(data["version"]),
             baseline_tree=str(data["baseline_tree"]),
+            basis=basis,
         )
-    except KeyError as e:
+    except (KeyError, TypeError) as e:
         raise ChangeRequestError(f"the stored change request has no {e}") from e
     stored_hash = str(data.get("content_hash") or "")
-    if content_hash(request) != stored_hash:
+    restored = dataclasses.replace(
+        request,
+        footprint=() if basis.has_manifest else _paths(data.get("footprint"), "footprint"),
+        criterion_files=placed,
+    )
+    # §24cj: the placement is checked whole before the hash, so a stored placement that disagrees
+    # with its own criteria is refused by name, whatever hash it carries.
+    inconsistent = placement_inconsistency(restored)
+    if inconsistent:
+        raise ChangeRequestError(
+            f"the stored change request's placement is refused: {inconsistent}"
+        )
+    if content_hash(restored) != stored_hash:
         raise ChangeRequestError("the stored change request's content does not match its hash")
     return dataclasses.replace(
-        request, footprint=tuple(data.get("footprint") or ()), content_hash=stored_hash
+        restored, footprint=tuple(data.get("footprint") or ()), content_hash=stored_hash
     )
+
+
+def placement_inconsistency(request: ChangeRequest) -> str | None:
+    """Why a request's criterion placement can't be its own (§24cj), or ``None``. A sample
+    application's places nothing: its stack does. A campaign branch's places each criterion
+    exactly once, at a path of its own, in the footprint, named by that criterion's id as the
+    rails name it (``criterion_<id>``). The rails write only such a placement, so anything else
+    was written by something else, and every reader refuses it rather than build on it."""
+    placed = request.criterion_files
+    if request.basis.has_manifest:
+        return "a sample application's request places no criterion file" if placed else None
+    ids = [c.id for c in request.criteria]
+    by_id = Counter(f.criterion_id for f in placed)
+    if sorted(by_id) != sorted(set(ids)) or any(n != 1 for n in by_id.values()):
+        return (
+            f"its criteria are {', '.join(ids) or 'none'}, and it places "
+            f"{', '.join(f.criterion_id for f in placed) or 'none'}: each criterion once"
+        )
+    paths = [f.path for f in placed]
+    if len(set(paths)) != len(paths):
+        return f"two criteria are placed at one path ({', '.join(sorted(paths))})"
+    for f in placed:
+        if f.path not in request.footprint:
+            return f"criterion {f.criterion_id}'s file {f.path} is not in the footprint"
+        stem = re.escape(CRITERION_STEM + criterion_module_name(f.criterion_id))
+        if not re.search(stem + r"(?![A-Za-z0-9_])", f.path.rsplit("/", 1)[-1]):
+            return f"criterion {f.criterion_id}'s file {f.path} is not named for it"
+    return None
 
 
 def _text(raw: Any, key: str) -> str:
@@ -340,10 +516,20 @@ def _retirements(raw: Any) -> tuple[Retirement, ...]:
 
 def content_hash(request: ChangeRequest) -> str:
     """The hash a ruling binds to (§9.2): the authored content, not the derived fields or the
-    proposal's identity."""
+    proposal's identity.
+
+    On a campaign branch (§24bv point 5, §24cj) it binds what the build is held to as well: the
+    footprint, authored with the placed criterion files appended, and the placement itself. The
+    placement is derived, but every reader after the ruling reads it from the stored request and
+    none can derive it again (they hold no profile), so a placement changed after the ruling must
+    be a request nobody ruled on, as a changed footprint is."""
     payload = _authored_fields(dataclasses.asdict(request))
-    for derived in ("footprint", "content_hash", "proposal_id", "version", "baseline_tree"):
+    for derived in ("content_hash", "proposal_id", "version", "baseline_tree"):
         payload.pop(derived)
+    payload.pop("basis", None)
+    if request.basis.has_manifest:
+        payload.pop("footprint")
+        payload.pop("criterion_files", None)
     canonical = json.dumps(payload, sort_keys=True, separators=(",", ":"), default=str)
     return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
 
@@ -504,6 +690,36 @@ class ProposalContext:
     shown_goals: tuple[str, ...] = field(default_factory=tuple)
     #: Each shown goal's id and statement, which nothing every role reads may copy (§10t ruling 7).
     shown_goal_statements: tuple[tuple[str, str], ...] = field(default_factory=tuple)
+    #: §24bv point 5: a repository-backed Project's proposal reads its derived profile in place of
+    #: a manifest. ``None`` on a sample application.
+    product: ProductContext | None = None
+
+
+#: §24bv point 5: the proposal task's input on a repository-backed Project, composed at its run
+#: (``execution.product_proposal``) and read by its handler, which builds the rails' context.
+PRODUCT_PROPOSAL_INPUT = "product_proposal"
+
+
+@dataclass(frozen=True)
+class ProductContext:
+    """What a repository-backed Project's rails read of its derived profile (§24bv point 5): the
+    public surfaces a criterion may assert on, and each runner a criterion's test is placed under.
+    """
+
+    #: Each surface as ``(kind, value)``: ``http_base`` and ``ui_base`` with their URL, a
+    #: ``command`` with its argv joined, a ``package`` with its name.
+    surfaces: tuple[tuple[str, str], ...]
+    placements: tuple[RunnerPlacement, ...]
+    #: Contract 8's ``files.test``: the globs that class the product's own test files.
+    test_files: tuple[str, ...] = ()
+
+    def serves(self, kind: str) -> tuple[str, ...]:
+        return tuple(value for k, value in self.surfaces if k == kind)
+
+    def product_paths(self, paths: Iterable[str]) -> tuple[str, ...]:
+        """``paths`` without the product's own test files: what a criterion exercises when it
+        names no paths of its own is the footprint's product files, never the tests it edits."""
+        return tuple(p for p in paths if not any(_path_match(p, g) for g in self.test_files))
 
 
 def qa_namespace_paths(paths: Iterable[str], stack: str) -> tuple[str, ...]:
@@ -515,14 +731,21 @@ def qa_namespace_paths(paths: Iterable[str], stack: str) -> tuple[str, ...]:
 
 
 def outside_allowed_scope(
-    paths: Iterable[str], allowed_scope: Sequence[str], *, stack: str
+    paths: Iterable[str],
+    allowed_scope: Sequence[str],
+    *,
+    stack: str,
+    placed: Iterable[str] = (),
 ) -> list[str]:
     """The paths no entry of the objective's allowed scope covers, in their order, leaving out
-    ``stack``'s qa test namespace (``qa_namespace_paths``). An entry is a glob (``backend/**``)
-    or a path prefix (``backend``). One reading for the proposal's rails (§9.1) and the
-    plan-review tier (§24bj), so the two cannot disagree on what is in scope."""
+    the framework's: ``stack``'s qa test namespace (``qa_namespace_paths``), and on a
+    repository-backed Project the criterion test files the framework itself placed (``placed``,
+    §24bv point 5). A product's own test files stay the scope's, as every other product file does.
+    An entry is a glob (``backend/**``) or a path prefix (``backend``). One reading for the
+    proposal's rails (§9.1) and the plan-review tier (§24bj), so the two cannot disagree on what
+    is in scope."""
     paths = tuple(paths)
-    framework = set(qa_namespace_paths(paths, stack))
+    framework = set(qa_namespace_paths(paths, stack)) | set(placed)
     return [
         p
         for p in paths
@@ -535,7 +758,10 @@ def outside_allowed_scope(
 
 def validate_proposal(authored: dict, context: ProposalContext) -> ProposalVerdict:
     """Every rail, every refusal. A malformed document or a delta that does not fit stops the
-    rails that need a candidate manifest; the rest still run."""
+    rails that need a candidate manifest; the rest still run. A repository-backed Project's
+    proposal runs its own rails (``_validate_product_proposal``)."""
+    if context.product is not None:
+        return _validate_product_proposal(authored, context, context.product)
     try:
         request = parse_change_request(
             authored,
@@ -614,6 +840,188 @@ def validate_proposal(authored: dict, context: ProposalContext) -> ProposalVerdi
     )
 
 
+def _validate_product_proposal(
+    authored: dict, context: ProposalContext, product: ProductContext
+) -> ProposalVerdict:
+    """§24bv point 5's rails, on a repository-backed Project. Its change request is read against
+    the product, not a manifest:
+    - ``manifest_delta`` is refused: there is no interface manifest to apply it to;
+    - ``footprint`` is authored, as path globs, and must lie inside the objective's scope. A
+      product's own test files are product files, and stay the scope's (the supervisor's ruling
+      under the owner's delegation, 2026-10-28; §24cj);
+    - each criterion's surface is one the derived profile names, its paths lie inside the
+      footprint, and its own test file is placed by the framework under the runner that covers
+      them (``criterion_placement``). Those placed files are the framework's, so the scope never
+      reads them, and they are appended to the footprint the build may write.
+    The criteria, goal and retirement rails are the sample application's, unchanged."""
+    try:
+        request = parse_change_request(
+            authored,
+            proposal_id=context.proposal_id,
+            version=context.version,
+            baseline_tree=context.baseline_tree,
+            basis=IncrementBasis.CAMPAIGN_BRANCH,
+        )
+    except ChangeRequestError as e:
+        kind = (
+            RefusalKind.AUTHORED_DERIVED_FIELD
+            if "the framework derives" in str(e)
+            else RefusalKind.MALFORMED
+        )
+        return ProposalVerdict(None, (ProposalRefusal(kind, str(e)),))
+    refusals = (
+        _criteria_refusals(request, context)
+        + _goal_refusals(request, context)
+        + _goal_copy_refusals(request, context)
+    )
+    if request.manifest_delta:
+        refusals.append(
+            ProposalRefusal(
+                RefusalKind.MANIFEST_DELTA_ON_PRODUCT,
+                "this product has no interface manifest, so a manifest_delta has nothing to apply "
+                "to. Leave it out, and name the files your change touches in footprint",
+            )
+        )
+    footprint = request.footprint
+    if request.kind is not ChangeKind.REFACTOR and not footprint:
+        refusals.append(
+            ProposalRefusal(
+                RefusalKind.NOTHING_TO_BUILD,
+                f"this {request.kind} names no file for a build to change: footprint lists the "
+                "product's files (path globs) the change touches",
+            )
+        )
+    outside = outside_allowed_scope(footprint, context.allowed_scope, stack="")
+    if outside:
+        refusals.append(
+            ProposalRefusal(
+                RefusalKind.OUT_OF_SCOPE,
+                f"the footprint reaches {', '.join(outside)}, outside the objective's allowed "
+                f"scope ({', '.join(context.allowed_scope)}); a proposal is refused, never "
+                "trimmed. Each criterion's own test file is the framework's and is not read "
+                "against the scope; every other file, the product's own tests included, is",
+            )
+        )
+    refusals.extend(_product_surface_refusals(request, product))
+    placed: list[PlacedCriterionFile] = []
+    for c in request.criteria:
+        paths = c.paths or product.product_paths(footprint)
+        stray = [p for p in c.paths if not in_footprint(p, footprint)]
+        if stray:
+            refusals.append(
+                ProposalRefusal(
+                    RefusalKind.SURFACE_OUTSIDE_FOOTPRINT,
+                    f"criterion {c.id} exercises {', '.join(stray)}, which the footprint leaves "
+                    "out, so the build may not touch it and the criterion cannot be met",
+                )
+            )
+            continue
+        try:
+            placed.append(
+                PlacedCriterionFile(c.id, place_criterion(c.id, paths, product.placements))
+            )
+        except Unplaceable as e:
+            refusals.append(ProposalRefusal(RefusalKind.UNPLACEABLE_CRITERION, str(e)))
+    if not any(r.kind in _IDENTITY_REFUSALS for r in refusals):
+        # A collision the ids already show is named once, by them.
+        refusals.extend(_placed_collision_refusals(placed))
+    if refusals:
+        return ProposalVerdict(None, tuple(refusals))
+    final = dataclasses.replace(
+        request,
+        footprint=(*footprint, *(f.path for f in placed if f.path not in footprint)),
+        criterion_files=tuple(placed),
+    )
+    return ProposalVerdict(dataclasses.replace(final, content_hash=content_hash(final)), ())
+
+
+def _product_surface_refusals(
+    request: ChangeRequest, product: ProductContext
+) -> list[ProposalRefusal]:
+    """Each criterion's surface must be one the derived profile names (§24bv point 5): an endpoint
+    or a page the start declaration serves, a declared command (or a subcommand of one), or a
+    declared package (or a name inside it)."""
+    refusals = []
+    for c in request.criteria:
+        reason = _unserved(c, product)
+        if reason:
+            refusals.append(
+                ProposalRefusal(RefusalKind.UNKNOWN_SURFACE, f"criterion {c.id}: {reason}")
+            )
+    return refusals
+
+
+def _unserved(c: Criterion, product: ProductContext) -> str | None:
+    if c.surface_kind is SurfaceKind.ENDPOINT:
+        if not product.serves("http_base"):
+            return "the product declares no HTTP base its start serves, so no endpoint is reached"
+        if parse_method_path(c.surface) is None:
+            return f'{c.surface!r} is no endpoint: write it as "METHOD /path"'
+        return None
+    if c.surface_kind is SurfaceKind.CLIENT_ROUTE:
+        if not product.serves("ui_base"):
+            return "the product declares no UI base its start serves, so no page is reached"
+        return None if c.surface.startswith("/") else f"{c.surface!r} is no route path"
+    declared = product.serves(str(c.surface_kind))
+    joiner = " " if c.surface_kind is SurfaceKind.COMMAND else "."
+    if any(c.surface == d or c.surface.startswith(d + joiner) for d in declared):
+        return None
+    return f"no {c.surface_kind} {c.surface!r} among the product's declared surfaces" + (
+        f" ({', '.join(declared)})" if declared else " (it declares none of that kind)"
+    )
+
+
+def _criterion_identity_refusals(request: ChangeRequest, prior: set[str]) -> list[ProposalRefusal]:
+    """§24cj, on every basis: each criterion is proven in its own test file (§8.1), named by its id
+    kept to a module name (``scaffold.criterion_module_name``). So a request may name an id once,
+    and no two of its ids, or one of its ids and a frozen one, may name one file: the second
+    criterion's test would overwrite the first's, and one bundle would be frozen for both."""
+    counts = Counter(c.id for c in request.criteria)
+    refusals = [
+        ProposalRefusal(
+            RefusalKind.DUPLICATE_CRITERION,
+            f"criterion {cid} is named {n} times; each criterion takes an id of its own (§8.1)",
+        )
+        for cid, n in sorted(counts.items())
+        if n > 1
+    ]
+    named: dict[str, set[str]] = {}
+    for cid in (*counts, *prior):
+        named.setdefault(criterion_module_name(cid), set()).add(cid)
+    for name, ids in sorted(named.items()):
+        new = sorted(ids & set(counts))
+        if len(ids) > 1 and new:
+            refusals.append(
+                ProposalRefusal(
+                    RefusalKind.CRITERION_FILE_COLLISION,
+                    f"criteria {', '.join(sorted(ids))} would share one test file (each is named "
+                    f"{name!r} there): rename {', '.join(new)} so its letters, digits and _ differ",
+                )
+            )
+    return refusals
+
+
+_IDENTITY_REFUSALS = frozenset(
+    {RefusalKind.DUPLICATE_CRITERION, RefusalKind.CRITERION_FILE_COLLISION}
+)
+
+
+def _placed_collision_refusals(placed: list[PlacedCriterionFile]) -> list[ProposalRefusal]:
+    """§24cj, on a product: no two criteria are placed at one path, whatever placed them there."""
+    by_path: dict[str, set[str]] = {}
+    for f in placed:
+        by_path.setdefault(f.path, set()).add(f.criterion_id)
+    return [
+        ProposalRefusal(
+            RefusalKind.CRITERION_FILE_COLLISION,
+            f"criteria {', '.join(sorted(ids))} would all be placed at {path}; each criterion's test is a "
+            "file of its own",
+        )
+        for path, ids in sorted(by_path.items())
+        if len(ids) > 1
+    ]
+
+
 def _criteria_refusals(request: ChangeRequest, context: ProposalContext) -> list[ProposalRefusal]:
     refusals: list[ProposalRefusal] = []
     if request.kind is not ChangeKind.REFACTOR and not request.criteria:
@@ -624,6 +1032,7 @@ def _criteria_refusals(request: ChangeRequest, context: ProposalContext) -> list
             )
         )
     prior = set(context.prior_criteria)
+    refusals.extend(_criterion_identity_refusals(request, prior))
     # §8.1: a criterion pins its own verifier bundle by id for the rest of the campaign, so a new
     # criterion under a frozen one's id would share its file and its bundle.
     reused = sorted({c.id for c in request.criteria} & prior)

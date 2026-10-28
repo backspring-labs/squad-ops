@@ -65,14 +65,26 @@ def test_an_accepted_tree_names_exactly_one_cycle_or_record(names):
         AcceptedTree("sha-tree", **names)
 
 
-def test_an_increment_is_never_launched_on_a_records_tree():
-    """§24cc's last line of refusal, behind ``_propose_launch``'s escalation. Bug caught: a
-    proposal launched with ``accepted_cycle_id`` empty, which ``accepted_cycle_of`` reads as a
-    cycle that is no increment, so its promotion composes the tree on nothing."""
-    on_a_record = campaign(accepted=AcceptedTree("sha-tree", calibration_record_id=RECORD))
+def test_an_increment_on_a_records_tree_is_launched_on_the_branch_and_never_on_a_vault_cycle():
+    """§24cc's last line of refusal, as §24bv point 5 changes it. Bugs caught: a proposal on a
+    record's tree launched with ``accepted_cycle_id`` empty and a manifest, which every increment
+    seam reads as a vault cycle's, so its promotion composes the tree on nothing; or a record with
+    no commit read as a branch. A record names its commit, so its increment is the branch's."""
+    on_a_record = campaign(
+        accepted=AcceptedTree("sha-tree", calibration_record_id=RECORD, commit="c" * 40)
+    )
+    no_commit = campaign(accepted=AcceptedTree("sha-tree", calibration_record_id=RECORD))
 
-    with pytest.raises(ValueError, match=f"calibration record {RECORD}"):
+    block = increment_launch(on_a_record, None).cycle_request["body"]["execution_overrides"][
+        "campaign_proposal"
+    ]
+    with pytest.raises(ValueError, match="no interface manifest to be given"):
         increment_launch(on_a_record, "version: 1\n")
+    with pytest.raises(ValueError, match=f"calibration record {RECORD}"):
+        increment_launch(no_commit, "version: 1\n")
+
+    assert block["basis"] == "campaign_branch"
+    assert not {"accepted_cycle_id", "baseline_manifest", "baseline_tree"} & set(block)
 
 
 def test_a_cycles_promotion_hashes_as_it_did_before_a_tree_could_name_a_record():

@@ -1701,7 +1701,7 @@ checks:
     code: |
       from squadops.campaigns.launch_requests import CONTINUED_KEYS
       print(len(CONTINUED_KEYS), "repair_of" in CONTINUED_KEYS, "abandoned_increment" in CONTINUED_KEYS)
-    expect: "9 False False"
+    expect: "10 False False"
   - id: "2578-increment"
     what: a campaign cycle names its increment, set by the launcher from the launch's own binding, and its flow runs carry increment and kind tags (#2578 parts 2 and 3, SIP-0109 §24cf)
     container: squadops-runtime-api
@@ -1892,3 +1892,32 @@ checks:
       text = (pathlib.Path(p.__file__).parent / "request_templates" / f"{name}.md").read_text()
       print(name, "backend/tests" in text, product_conventions_template({"resolved_config": {"development_profile": "fullstack_fastapi_react"}}) or "-")
     expect: request.source_repository_conventions_fullstack_fastapi_react False -
+  - id: "2619-proposal-input"
+    what: a repository-backed increment proposes on its campaign branch, given its head, profile, previous verification and requirements, and its continuation carries its basis (SIP-0109 §24bv point 5, §24cj)
+    container: squadops-runtime-api
+    code: |
+      from squadops.campaigns.increment_tree import increment_basis
+      from squadops.campaigns.launch_requests import CONTINUED_KEYS
+      from squadops.campaigns.repository_backed import creation_refusal
+      from squadops.execution.product_proposal import PRODUCT_PROPOSAL_INPUT
+      block = {"campaign_proposal": {"proposal_id": "p", "basis": "campaign_branch"}}
+      print(PRODUCT_PROPOSAL_INPUT, increment_basis(block).value, "basis" in CONTINUED_KEYS, callable(creation_refusal))
+    expect: product_proposal campaign_branch True True
+  - id: "2619-proposal-agent"
+    what: the strategy role proposes on a product with no manifest, its criteria placed under the product's runners, from its own request asset (SIP-0109 §24bv point 5)
+    container: squadops-nat
+    code: |
+      import pathlib, squadops.prompts as p
+      from squadops.campaigns.change_request import RefusalKind
+      from squadops.campaigns.criterion_placement import CRITERION_STEM
+      t = pathlib.Path(p.__file__).parent / "request_templates"
+      print(RefusalKind.MANIFEST_DELTA_ON_PRODUCT.value, CRITERION_STEM, (t / "request.strategy_propose_product_increment.md").is_file())
+    expect: manifest_delta_on_product criterion_ True
+  - id: "2771-review"
+    what: a proposal's criteria never share a test file, and a stored placement is hashed and checked whole on load (SIP-0109 §24cj, the outside review of #2771)
+    container: squadops-runtime-api
+    code: |
+      from squadops.campaigns.change_request import RefusalKind, placement_inconsistency
+      from squadops.stacks.scaffold import criterion_module_name
+      print(RefusalKind.CRITERION_FILE_COLLISION.value, criterion_module_name("T-1") == criterion_module_name("T_1"), callable(placement_inconsistency))
+    expect: criterion_file_collision True True

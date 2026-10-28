@@ -16,6 +16,7 @@ from collections.abc import Iterable, Mapping
 from typing import Any
 
 from squadops.campaigns.change_request import (
+    IncrementBasis,
     SurfaceKind,
     derive_footprint_from,
     load_stored_change_request,
@@ -108,7 +109,8 @@ async def accepted_tree_refs(
 def increment_footprint(resolved_config: Any, candidate: Any) -> tuple[str, ...] | None:
     """The files an increment may touch (§7.2): derived from the accepted manifest its launch
     carries and the candidate manifest its framing binds to, exactly as the change request's
-    footprint was. ``None`` for any cycle that is not an increment."""
+    footprint was. ``None`` for any cycle that is not an increment, and for a repository-backed
+    one, whose footprint is its approved change request's own (``approved_footprint``)."""
 
     baseline = increment_baseline(resolved_config)
     if candidate is None or baseline is None:
@@ -116,9 +118,32 @@ def increment_footprint(resolved_config: Any, candidate: Any) -> tuple[str, ...]
     return derive_footprint_from(InterfaceManifest.from_yaml(baseline), candidate)
 
 
+def approved_footprint(change_request: str) -> tuple[str, ...]:
+    """A repository-backed increment's footprint (§24bv point 5): the stored change request's,
+    the proposer's path globs with the framework's placed criterion files appended. The plan
+    validator holds a plan to it, as it holds a sample application's to the derived one."""
+    return load_stored_change_request(change_request).footprint
+
+
+def plan_footprint(
+    resolved_config: Any, candidate: Any, change_request: str | None
+) -> tuple[str, ...] | None:
+    """The footprint an increment's plan is shown and held to (§7.3): derived from the manifests
+    on a sample application (``increment_footprint``), its approved change request's own on a
+    campaign branch (``approved_footprint``). ``None`` for any cycle that is not an increment, or
+    whose inputs aren't in hand yet."""
+    basis = increment_basis(resolved_config)
+    if basis is None:
+        return None
+    if basis.has_manifest:
+        return increment_footprint(resolved_config, candidate)
+    return approved_footprint(change_request) if change_request else None
+
+
 def increment_baseline(resolved_config: Any) -> str | None:
     """The accepted manifest an increment cycle's launch carries, or ``None`` for any other
-    cycle."""
+    cycle, and for a repository-backed increment, which has none (§24bv point 5). Whether a cycle
+    is an increment at all is ``increment_basis``'s answer, never this one's."""
     if not isinstance(resolved_config, Mapping):
         return None
     block = resolved_config.get("campaign_proposal")
@@ -126,6 +151,37 @@ def increment_baseline(resolved_config: Any) -> str | None:
         return None
     baseline = block.get("baseline_manifest")
     return baseline if isinstance(baseline, str) and baseline.strip() else None
+
+
+def increment_basis(resolved_config: Any) -> IncrementBasis | None:
+    """What an increment's accepted tree is (§24bv point 5), from its launch's
+    ``campaign_proposal`` block, or ``None`` for a cycle that is not an increment.
+
+    - **A repository-backed increment** names its basis, ``campaign_branch``
+      (``launch_requests.increment_launch``). It carries no manifest.
+    - **A sample application's** carries its accepted manifest, and names no basis: every block
+      written before §24bv point 5 reads as it did.
+
+    Raises ``ValueError`` for a basis this reader doesn't know, and for a manifest basis with no
+    manifest: refused, never read as not an increment."""
+    if not isinstance(resolved_config, Mapping):
+        return None
+    block = resolved_config.get("campaign_proposal")
+    if not isinstance(block, Mapping):
+        return None
+    named = block.get("basis")
+    if named is None:
+        return IncrementBasis.MANIFEST if increment_baseline(resolved_config) else None
+    basis = IncrementBasis(str(named))
+    if basis.has_manifest and increment_baseline(resolved_config) is None:
+        raise ValueError("a campaign_proposal block on a manifest carries no baseline_manifest")
+    return basis
+
+
+def is_increment(resolved_config: Any) -> bool:
+    """Whether the cycle is an increment, a repair or a retry of one (§7.3, §10a): the one
+    question the increment seams ask before reading an increment's inputs."""
+    return increment_basis(resolved_config) is not None
 
 
 async def approved_change_request(vault: Any, cycle: Any) -> str | None:
@@ -137,7 +193,7 @@ async def approved_change_request(vault: Any, cycle: Any) -> str | None:
     An increment's framing without its change request is refused, not framed as a new
     application: the approved change is the framed objective, and nothing replaces it."""
 
-    if increment_baseline(cycle.resolved_config()) is None:
+    if not is_increment(cycle.resolved_config()):
         return None
     document = await forwarded_change_request(vault, cycle)
     if document is None:
@@ -182,9 +238,14 @@ async def increment_seed(vault: Any, registry: Any, cycle: Any, completed_run: A
     It binds **every** workload after the proposal, as a creation-time seed binds every workload
     of an ordinary cycle: the framing binds to it, and the implementation's skeleton, accepted
     tree and contract all hang from it (#1842). Read from the registry and the vault, never from
-    the previous workload's forwarding, so a restart's rebuild (#434) forwards the same."""
+    the previous workload's forwarding, so a restart's rebuild (#434) forwards the same.
 
-    if increment_baseline(cycle.resolved_config()) is None:
+    **A repository-backed increment's seed is its change request alone** (§24bv point 5): it has
+    no manifest to seed and no contract derived from one. So its repair and its retry carry their
+    change request, as a sample application's carry their manifest and request (§10a)."""
+
+    basis = increment_basis(cycle.resolved_config())
+    if basis is None:
         return None
     if completed_run.workload_type == WorkloadType.PROPOSAL:
         proposal = completed_run
@@ -203,10 +264,15 @@ async def increment_seed(vault: Any, registry: Any, cycle: Any, completed_run: A
         refs = [a for a in promoted if a.artifact_type == artifact_type]
         return max(refs, key=lambda a: a.created_at).artifact_id if refs else None
 
+    request = latest(CHANGE_REQUEST_ARTIFACT_TYPE)
+    if not basis.has_manifest:
+        # Promoted only at the approval, so before it there is no seed (as with a manifest).
+        if request is None:
+            return None
+        return IncrementSeed(plan_refs=(request,), contract_ref=None, change_request_ref=request)
     manifest = latest(MANIFEST_ARTIFACT_TYPE)
     if manifest is None:
         return None
-    request = latest(CHANGE_REQUEST_ARTIFACT_TYPE)
     return IncrementSeed(
         plan_refs=(manifest, *((request,) if request else ())),
         contract_ref=latest(CONTRACT_ARTIFACT_TYPE),
@@ -227,7 +293,7 @@ async def built_change_request(vault: Any, registry: Any, cycle: Any, run: Any) 
             return None
         _ref, content = await vault.retrieve(seed.change_request_ref)
         return content.decode("utf-8")
-    if increment_baseline(cycle.resolved_config()) is not None:
+    if is_increment(cycle.resolved_config()):
         # Read through the proposal only, an accepted repair froze its criteria without their
         # statements.
         return await forwarded_change_request(vault, cycle)
@@ -260,9 +326,26 @@ class CriterionFile:
 
 def increment_criterion_files(change_request: str, stack: str) -> tuple[CriterionFile, ...]:
     """Each new criterion of the approved change request, with its file on ``stack``
-    (``scaffold.criterion_test_path``). The document is the stored one, hash-checked."""
+    (``scaffold.criterion_test_path``). The document is the stored one, hash-checked.
+
+    On a repository-backed Project there is no stack: each file is the one the proposal's rails
+    placed under the product's runners and stored with the request (``criterion_files``, §24bv
+    point 5), never placed again. A criterion the request placed nowhere raises, as a stack that
+    declares no file for it does."""
 
     request = load_stored_change_request(change_request)
+    if not request.basis.has_manifest:
+        placed = {f.criterion_id: f.path for f in request.criterion_files}
+        missing = [c.id for c in request.criteria if c.id not in placed]
+        if missing:
+            raise ValueError(
+                f"change request {request.proposal_id} v{request.version} placed no test file "
+                f"for {', '.join(missing)} (SIP-0109 §24bv point 5)"
+            )
+        return tuple(
+            CriterionFile(c.id, str(c.surface_kind), c.surface, placed[c.id])
+            for c in request.criteria
+        )
     return tuple(
         CriterionFile(
             c.id,
@@ -496,7 +579,7 @@ def increment_frozen_files(
 ) -> tuple[tuple[str, str], ...]:
     """The test files of the criteria this increment's launch pinned as frozen and its approved
     change does not retire (§8.1), as ``(criterion_id, path)``. Empty for any other cycle."""
-    if not change_request or increment_baseline(resolved_config) is None:
+    if not change_request or not is_increment(resolved_config):
         return ()
     block = resolved_config.get("campaign_proposal") or {}
     retired = set(retired_criteria(change_request))
@@ -515,7 +598,7 @@ def increment_test_scope(resolved_config: Any, change_request: str | None) -> di
 
     The statements of the frozen ones come from the pins (#1938 stores each beside its bundle); a
     pin from before #1938 carries none, and its statement is ``""``."""
-    if not change_request or increment_baseline(resolved_config) is None:
+    if not change_request or not is_increment(resolved_config):
         return None
 
     request = load_stored_change_request(change_request)

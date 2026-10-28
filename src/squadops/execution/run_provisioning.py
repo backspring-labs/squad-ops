@@ -30,6 +30,7 @@ from squadops.events.types import EventType
 from squadops.execution.binding_holds import checked_or_held
 from squadops.execution.blocked_paths import with_blocked_paths
 from squadops.execution.execution_errors import _ExecutionError
+from squadops.execution.product_proposal import with_product_proposal
 from squadops.execution.proposal_evidence import with_proposal_evidence
 from squadops.stacks.scaffold import frozen_paths
 
@@ -75,11 +76,13 @@ class RunProvisioning:
         "_load_interface_manifest_for_run",
         "_load_plan_for_run",
         "_prepare_cycle_for_run",
+        "_project_registry",
         "_proposal_evidence",
         "_seed_checkout_artifacts",
         "_seed_skeleton_artifacts",
         "_seed_verification_scaffold_artifacts",
         "_seeded_manifest_for_authoring",
+        "_source_repository",
         "_squad_profile",
     )
 
@@ -190,6 +193,16 @@ class RunProvisioning:
         # goals and readings, on its own inputs. No other task is, and the cycle's config never
         # holds them.
         plan = await with_proposal_evidence(self._proposal_evidence, plan, cycle=cycle)
+        # SIP-0109 §24bv point 5: a repository-backed increment's proposal is given its head, its
+        # derived profile, the previous verification and its requirements, read at its pin.
+        plan = await with_product_proposal(
+            plan,
+            cycle=cycle,
+            read_profile=self._derived_profile_for,
+            repository=self._source_repository,
+            vault=self._artifact_vault,
+            projects=self._project_registry,
+        )
         # SIP-0112 H.8: a source-backed plan's authors are shown where a blocking gap stops the
         # work, before either plan gate refuses a plan that goes there.
         plan = await with_blocked_paths(self._derived_profile_for, plan, cycle=cycle)

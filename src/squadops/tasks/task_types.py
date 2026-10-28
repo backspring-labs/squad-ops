@@ -138,6 +138,14 @@ class TaskType(StrEnum):
         return self is TaskType.STRATEGY_PROPOSE_INCREMENT
 
     @property
+    def authors_change_request(self) -> bool:
+        """The one step that authors a campaign increment's change request (SIP-0109 §3: only
+        the strategy role proposes). On a repository-backed Project it alone is given the
+        proposal's input: the head, the derived profile, the previous verification and the
+        requirements source (§24bv point 5)."""
+        return self is TaskType.STRATEGY_PROPOSE_INCREMENT
+
+    @property
     def domain(self) -> str:
         """The dotted prefix — the role family that owns the step."""
         return self.value.split(".", 1)[0]
@@ -195,6 +203,12 @@ def shown_outcome_evidence(task_type: object) -> bool:
     """``TaskType.shown_outcome_evidence`` for a value that may be a raw string."""
     member = _member_or_none(task_type)
     return bool(member and member.shown_outcome_evidence)
+
+
+def authors_change_request(task_type: object) -> bool:
+    """``TaskType.authors_change_request`` for a value that may be a raw string."""
+    member = _member_or_none(task_type)
+    return bool(member and member.authors_change_request)
 
 
 def emits_required_files(task_type: object) -> bool:

@@ -328,6 +328,42 @@ class WorkClass:
         return cls(**stored) if stored else None
 
 
+#: §24bv point 5: a file in the product's tree, bound at each increment's head as SIP-0110 §5ad
+#: binds an instruction's (the repository family's one kind, SIP-0112 contract 6).
+_REQUIREMENTS_FILE = re.compile(r"^repo:file:(?P<path>[^@\s]+)@current$")
+#: Or a stored artifact, by its id.
+_REQUIREMENTS_ARTIFACT = re.compile(r"^art_[0-9a-f]+$")
+
+
+@dataclass(frozen=True)
+class RequirementsSource:
+    """A repository-backed Campaign's requirements source (§24bv point 5): exactly one of a path
+    in the product (``repo:file:<path>@current``) and a stored artifact's id."""
+
+    path: str | None = None
+    artifact_id: str | None = None
+
+
+def parse_requirements_source(text: str) -> RequirementsSource:
+    """``objective.requirements`` read. Raises ``ValueError`` naming the field for anything else:
+    a reference to another family, a fixed revision (a PRD an increment changed would be read as
+    it was), a path leaving the product, or no reference at all."""
+    if not isinstance(text, str):
+        raise ValueError("objective.requirements is text")
+    file = _REQUIREMENTS_FILE.match(text.strip())
+    if file is not None:
+        path = file["path"]
+        if path.startswith("/") or ".." in path.split("/"):
+            raise ValueError(f"objective.requirements: {path!r} leaves the product's repository")
+        return RequirementsSource(path=path)
+    if _REQUIREMENTS_ARTIFACT.match(text.strip()):
+        return RequirementsSource(artifact_id=text.strip())
+    raise ValueError(
+        f"objective.requirements {text!r} is neither repo:file:<path>@current, a file in the "
+        "product bound at each increment's head, nor a stored artifact's id (art_…)"
+    )
+
+
 @dataclass(frozen=True)
 class CampaignObjective:
     """What the campaign is for (§15): the statement, the scope it may touch, how success reads.
@@ -345,9 +381,16 @@ class CampaignObjective:
     #: SIP-0113 §4.6: required of every new campaign, as the target is; ``None`` only on a
     #: campaign stored before it existed, which AOR then groups with no class.
     work_class: WorkClass | None
+    #: §24bv point 5 (D10 point 3): a repository-backed Project's requirements source, which such
+    #: a Project has in place of a PRD: ``repo:file:<path>@current``, bound at each increment's
+    #: head, or a stored artifact's id. Required at creation for one, refused for a sample
+    #: application (``requirements_source_refusal``); ``None`` on every other campaign.
+    requirements: str | None = None
 
     def __post_init__(self) -> None:
         _require_text("CampaignObjective", statement=self.statement, measurement=self.measurement)
+        if self.requirements is not None:
+            parse_requirements_source(self.requirements)
         target = self.target_accepted_increments
         if target is not None and (isinstance(target, bool) or not isinstance(target, int)):
             raise ValueError(

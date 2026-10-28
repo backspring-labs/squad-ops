@@ -1776,20 +1776,10 @@ class CampaignProgress:
         if campaign.accepted is None:
             return "the campaign has no accepted tree to propose against"
         accepted_cycle = campaign.accepted.cycle_id
-        if accepted_cycle is None or campaign.accepted.commit is not None:
-            # §24cc: the accepted tree is a calibration record's commit, or (§24bv point 2) an
-            # increment's on the campaign branch, neither with an interface manifest. A
-            # repository-backed proposal reads the product's tree, its derived profile and the
-            # previous verification instead (§24bv point 5), which is not built yet.
-            named = (
-                f"calibration record {campaign.accepted.calibration_record_id}'s commit"
-                if accepted_cycle is None
-                else f"cycle {accepted_cycle}'s capture, on the campaign branch"
-            )
-            return (
-                f"the accepted tree is {named}: a proposal on a repository-backed Project reads "
-                "the product's tree (SIP-0109 §24bv point 5), which is not built yet"
-            )
+        if campaign.accepted.commit is not None:
+            return await self._propose_on_branch(campaign, abandoned, abandoned_cycle_id)
+        if accepted_cycle is None:
+            return "the accepted tree names no cycle, and no commit on a campaign branch"
         baseline = await self._accepted_manifest(accepted_cycle)
         if baseline is None:
             return (
@@ -1846,6 +1836,40 @@ class CampaignProgress:
         ]
         try:
             return increment_launch(campaign, baseline, frozen, abandoned, proposed, unapproved)
+        except FileNotFoundError as e:
+            return f"the policy's proposal profile cannot be loaded: {e}"
+
+    async def _propose_on_branch(
+        self,
+        campaign: Campaign,
+        abandoned: dict[str, Any] | None,
+        abandoned_cycle_id: str | None,
+    ) -> LaunchRequest | str:
+        """§24bv point 5: a repository-backed Campaign's increment, proposed on its campaign
+        branch: after its calibration record (§24cc) or an increment promoted onto the branch
+        (§24ce). Its accepted tree has no interface manifest, so none of a sample application's
+        manifest inputs is read: no answered question (§24ad), no seed fault, no late answer
+        carried (§24bm). What its proposal reads of the product (the head's tree view, its derived
+        profile and gaps, the previous verification, the requirements source) is composed at its
+        run, at the head its cycle pins (``execution.product_proposal``). Rows 6, 7, 13 and 16's
+        inputs are the sample application's: the frozen criteria, the abandoned increment's
+        brief, what qa proposed, and each proposal never approved (§24w, §24br, §24bu)."""
+        accepted = campaign.accepted
+        assert accepted is not None  # ``_propose_launch`` reads it first
+        log = await self._campaigns.control_log(campaign.campaign_id)
+        frozen = frozen_criteria(log)
+        built = [c for c in (accepted.cycle_id, abandoned_cycle_id) if c is not None]
+        proposed = await self._qa_proposed_behaviours(built)
+        unapproved = [
+            unapproved_proposal(
+                entry,
+                await self._ruled_change_request(entry.target),
+                current_tree=accepted.identity,
+            )
+            for entry in unapproved_rulings(log)
+        ]
+        try:
+            return increment_launch(campaign, None, frozen, abandoned, proposed, unapproved)
         except FileNotFoundError as e:
             return f"the policy's proposal profile cannot be loaded: {e}"
 
