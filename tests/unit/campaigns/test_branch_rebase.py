@@ -773,3 +773,30 @@ async def test_a_revision_only_reconciliation_reverifies_the_head_where_it_stand
         b["verification_ref"],
     )
     assert context.development_configuration_revision == 2
+
+
+async def test_upstream_moving_twice_rebases_from_where_the_last_rebase_left_the_branch(tmp_path):
+    """§24bv point 4, twice. Upstream moved, the branch was rebased and an increment launched;
+    upstream moved again. Bugs caught: the branch's base read from the calibration record for
+    good, so the second rebase replays upstream's own first commit as the branch's, and its row
+    names a base the branch left; or the second rebase skipped as a replay of the first."""
+    world = _World(tmp_path)
+    await world.started()
+    await world.accepted()
+    first_onto = world.upstream({"README.md": b"first move\n"}, "docs")
+    await world.reconciled(first_onto)
+    await world.proposing()
+    await world.service().drain()
+    second_onto = world.upstream({"CONTRIBUTING.md": b"second move\n"}, "contributing")
+    await world.reconciled(second_onto)
+    await world.proposing("k-propose-2")
+
+    await world.service().drain()
+
+    first, second = await world.rows(ControlOperation.BRANCH_REBASED)
+    assert (second.binding["base_before"], second.binding["head_before"]) == (
+        first_onto,
+        first.binding["commit"],
+    )
+    assert [old for old, _new in second.binding["replayed"]] == [first.binding["commit"]]
+    assert (second.binding["base"], await world.branch()) == (second_onto, second.binding["commit"])
