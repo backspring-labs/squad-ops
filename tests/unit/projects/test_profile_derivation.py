@@ -58,7 +58,10 @@ _SHELFNOTE = {
     "backend/requirements.txt": b"fastapi\n",
     "conftest.py": b"",
     "tests/test_books_api.py": b"",
-    "frontend/package.json": b'{"name": "shelfnote-frontend", "private": true, "scripts": {"test": "vitest run"}}',
+    "frontend/package.json": (
+        b'{"name": "shelfnote-frontend", "private": true, "scripts": {"test": "vitest run"},'
+        b' "devDependencies": {"vitest": "^2.1.9"}}'
+    ),
     "frontend/package-lock.json": b"{}",
     "frontend/src/App.jsx": b"",
     "frontend/src/App.test.jsx": b"",
@@ -229,3 +232,134 @@ def test_each_gap_is_named_with_its_kind_and_the_paths_it_applies_to(
     profile = derive_profile(files, _configuration(checks), _baseline(checks, **results))
 
     assert expected in _gaps(profile)
+
+
+_PKG = b'{"name": "%s", "private": true, "scripts": {"test": "%s"}%s}'
+_V2 = b', "devDependencies": {"vitest": "^2.1.9"}'
+_NPM = ("npm", "--prefix", "frontend", "test", "--silent")
+_TAIL = (
+    ", so a criterion's discrimination is unread and it isn't accepted as discriminating "
+    "(SIP-0109 §24ci (a))"
+)
+
+
+def _vitest_profile(script, deps, argv=_NPM, extra=None):
+    files = {
+        **_SHELFNOTE,
+        "frontend/package.json": _PKG % (b"shelfnote-frontend", script.encode(), deps),
+        **(extra or {}),
+    }
+    checks = (*_SHELFNOTE_CHECKS[:2], Check("frontend_tests", argv))
+    configuration = _configuration(checks, stack="fullstack_fastapi_react")
+    return derive_profile(files, configuration, _baseline(checks))
+
+
+@pytest.mark.parametrize(
+    ("script", "deps", "argv", "extra", "why"),
+    [
+        # Specs that allow vitest 2 alone keep the reader.
+        ("vitest run", _V2, _NPM, None, None),
+        ("vitest run", b', "dependencies": {"vitest": "~2.0.5"}', _NPM, None, None),
+        ("vitest run", b', "devDependencies": {"vitest": "2.1.9"}', _NPM, None, None),
+        ("vitest run", b', "devDependencies": {"vitest": "2.x"}', _NPM, None, None),
+        # Another major, or a spec that admits one, is refused.
+        ("vitest run", b', "devDependencies": {"vitest": "1.6.0"}', _NPM, None,
+         "its package's vitest '1.6.0' allows more than vitest 2, the major the reader is validated on"),
+        ("vitest run", b', "devDependencies": {"vitest": ">=2.0.0"}', _NPM, None,
+         "its package's vitest '>=2.0.0' allows more than vitest 2, the major the reader is validated on"),
+        ("vitest run", b', "devDependencies": {"vitest": "2.1.9 || ^3.0.0"}', _NPM, None,
+         "its package's vitest '2.1.9 || ^3.0.0' allows more than vitest 2, the major the reader is validated on"),
+        ("vitest run", b', "devDependencies": {"vitest": ">=2 <4"}', _NPM, None,
+         "its package's vitest '>=2 <4' allows more than vitest 2, the major the reader is validated on"),
+        ("vitest run", b', "devDependencies": {"vitest": "npm:vitest@2.1.9"}', _NPM, None,
+         "its package's vitest 'npm:vitest@2.1.9' allows more than vitest 2, the major the reader is validated on"),
+        ("vitest run", b"", _NPM, None,
+         "no package.json at its root or the repository's declares a vitest version"),
+        # The command as run, the script and what the configured argv forwards to it.
+        ("vitest run --reporter=dot", _V2, _NPM, None, "its test command names a reporter"),
+        ("vitest run", _V2, ("npm", "--prefix", "frontend", "test", "--", "--reporter=dot"), None,
+         "its test command names a reporter"),
+        ("vitest run", _V2, ("yarn", "--cwd", "frontend", "test", "--reporter=dot"), None,
+         "its test command names a reporter"),
+        ("vitest run 2>&1", _V2, _NPM, None, "its test command merges stderr into stdout"),
+        # Configs: the conventional ones, the one --config names, and a workspace.
+        ("vitest run", _V2, _NPM,
+         {"frontend/vitest.config.ts": b"export default { test: { reporters: ['junit'] } }"},
+         "frontend/vitest.config.ts configures reporters"),
+        ("vitest run --config testing/custom.ts", _V2, _NPM,
+         {"frontend/testing/custom.ts": b"export default { test: { reporters: ['dot'] } }"},
+         "frontend/testing/custom.ts configures reporters"),
+        ("vitest run --config=testing/missing.ts", _V2, _NPM, None,
+         "its --config testing/missing.ts isn't in the tree, so its reporters can't be read"),
+        ("vitest run", _V2, _NPM, {"frontend/vitest.workspace.ts": b"export default []"},
+         "frontend/vitest.workspace.ts sets its projects, whose reporters aren't read"),
+    ],
+    ids=["^2", "~2 in dependencies", "exact 2", "2.x", "another major", "open-ended",
+         "an alternative major", "a range across majors", "an alias", "no version",
+         "a reporter in the script", "a reporter forwarded by npm", "a reporter forwarded by yarn",
+         "stderr merged", "a reporters config", "a --config naming reporters",
+         "a --config not in the tree", "a workspace"],
+)  # fmt: skip
+def test_vitest_is_given_its_reader_only_where_the_products_output_is_what_it_reads(
+    script, deps, argv, extra, why
+):
+    """SIP-0112 H.10's blind spot (the MacBook lane's G4 on #2764; the second review of #2769).
+    Bug caught: the reader given by the runner's kind or by the script's text alone, so a product
+    on a spec admitting another vitest major, a forwarded or configured reporter, or stderr merged
+    into stdout shows nothing at capture and every criterion reads blocked_unverified at its first
+    increment, instead of the gap naming why here."""
+    profile = _vitest_profile(script, deps, argv, extra)
+
+    vitest = next(r for r in profile.runners if r.runner == "vitest")
+    gaps = [g for g in profile.gaps if g.id == "no_test_id_reader" and g.subject == "vitest"]
+    if why is None:
+        assert (vitest.test_ids, gaps) == ("vitest", [])
+    else:
+        assert vitest.test_ids is None
+        assert [(g.paths, g.reason, g.closes_by) for g in gaps] == [
+            (
+                ("frontend/**",),
+                f"vitest's reader can't read this product's output under frontend: {why}" + _TAIL,
+                "vitest 2 run with its default reporter, its stderr apart",
+            )
+        ]
+
+
+def test_each_vitest_runner_is_read_on_its_own_output_and_its_gap_is_confined_to_it():
+    """The second review's P2. Bug caught: the refusal keyed by the runner's kind, so with two vitest
+    packages one's reason overwrites the other's, a compatible one loses its reader, or the gap reads
+    unconfined instead of naming the package it is about."""
+    files = {
+        **_SHELFNOTE,
+        "frontend/package.json": _PKG % (b"shelfnote-frontend", b"vitest run", _V2),
+        "admin/package.json": _PKG
+        % (b"shelfnote-admin", b"vitest run", b', "devDependencies": {"vitest": "1.6.0"}'),
+        "admin/src/Admin.jsx": b"",
+        "admin/src/Admin.test.jsx": b"",
+        "kiosk/package.json": _PKG % (b"shelfnote-kiosk", b"vitest run --reporter=dot", _V2),
+        "kiosk/src/Kiosk.jsx": b"",
+        "kiosk/src/Kiosk.test.jsx": b"",
+    }
+    checks = (
+        *_SHELFNOTE_CHECKS,
+        Check("admin_tests", ("npm", "--prefix", "admin", "test", "--silent")),
+        Check("kiosk_tests", ("npm", "--prefix", "kiosk", "test", "--silent")),
+    )
+    configuration = _configuration(checks, stack="fullstack_fastapi_react")
+
+    profile = derive_profile(files, configuration, _baseline(checks))
+
+    readers = {r.roots: r.test_ids for r in profile.runners if r.runner == "vitest"}
+    assert readers == {("frontend",): "vitest", ("admin",): None, ("kiosk",): None}
+    assert [(g.paths, g.reason) for g in profile.gaps if g.id == "no_test_id_reader"] == [
+        (
+            ("admin/**",),
+            "vitest's reader can't read this product's output under admin: its package's vitest "
+            "'1.6.0' allows more than vitest 2, the major the reader is validated on" + _TAIL,
+        ),
+        (
+            ("kiosk/**",),
+            "vitest's reader can't read this product's output under kiosk: its test command "
+            "names a reporter" + _TAIL,
+        ),
+    ]

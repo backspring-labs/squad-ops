@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import configparser
 import json
+import re
 import tomllib
 from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass
@@ -56,6 +57,22 @@ _PYTEST_FILES = ("test_*.py", "*_test.py")
 #: pytest reader and #2757's vitest reader (SIP-0109 §24ci (a)). unittest and jest have none.
 _TEST_ID_READERS = {"pytest": PYTEST, "vitest": VITEST}
 _JS_FILES = ("*.test.*", "*.spec.*")
+#: #2757's reader reads vitest 2's default reporter on stdout, the one major it was validated on
+#: (SIP-0112 H.10). Another major, another reporter or stderr merged in prints what it never read,
+#: so the runner is given no reader and the gap says why: at capture, not at a first increment.
+_VITEST_READ_MAJOR = 2
+_VITEST_CONFIGS = tuple(
+    f"{base}.config.{ext}"
+    for base in ("vitest", "vite")
+    for ext in ("ts", "js", "mjs", "cjs", "mts", "cts")
+)
+#: A spec that allows vitest 2 and nothing else: an exact version, a caret or tilde on 2, or a
+#: 2.x wildcard. A bound (``>=``, ``<``), an alternative (``||``), a hyphen range, an alias or any
+#: other form is refused, since it may admit a major the reader never read (the second review).
+_VITEST_2_ONLY = re.compile(
+    r"^(?:[\^~=]|v)?2(?:\.(?:\d+|[x*]))?(?:\.(?:\d+|[x*]))?(?:-[0-9A-Za-z.-]+)?$"
+)
+_CONFIG_FLAG = re.compile(r"(?:^|\s)(?:--config|-c)(?:=|\s+)(\S+)")
 _JS_SETUP = ("setupTests.", "vitest.setup.", "jest.setup.", "test-setup.")
 #: A file named like a test by any runner this recognises, so one no runner owns is unclassed.
 _TEST_LOOKING = (*_PYTEST_FILES, *_JS_FILES)
@@ -94,6 +111,7 @@ def derive_profile(
         if tool is not None:
             lint.append(Lint(check.id, tool, check.findings))
     runners = _runners(found, tree)
+    unread = {(f.runner, f.root): f.unread for _, f in found if f.unread}
     owner = _owners(tree, runners)
     toolchains = _toolchains(commands.checks, results)
     python = _python_interpreter(commands.checks)
@@ -112,7 +130,7 @@ def derive_profile(
         client_routes=_client_routes(configuration, initialization),
         test_files=_test_globs(runners, owner),
         test_support_files=tuple(dict.fromkeys(f for r in runners for f in r.support_files)),
-        gaps=_gaps(tree, configuration, results, runners, owner, lint, toolchains),
+        gaps=_gaps(tree, configuration, results, runners, owner, lint, toolchains, unread),
     )
 
 
@@ -200,6 +218,8 @@ class _Found:
     single: tuple[str, ...] | None
     #: Which argv element names the file pattern (unittest's ``-p`` value), to unify a group's.
     pattern_at: int | None = None
+    #: Why the runner's findings reader can't be given (``_vitest_unread``), or None.
+    unread: str | None = None
 
 
 def _runner_of(check: Check, tree: _Tree, wd: str) -> _Found | None:
@@ -219,11 +239,57 @@ def _runner_of(check: Check, tree: _Tree, wd: str) -> _Found | None:
                 # package a repository-relative path finds nothing: the file is named by its name.
                 placeholder = "{path}" if prefix == "." else "{name}"
                 extra = (placeholder,) if "--" in argv else ("--", placeholder)
-                return _Found(kind, prefix, _JS_FILES, argv, (*argv, *extra))
+                # The command as run: the script, and what the configured argv forwards to it.
+                run = f"{text} {' '.join(argv)}"
+                unread = _vitest_unread(prefix, run, tree) if kind == "vitest" else None
+                return _Found(kind, prefix, _JS_FILES, argv, (*argv, *extra), unread=unread)
         return None
     for kind in ("vitest", "jest"):
         if kind in names:
-            return _Found(kind, wd, _JS_FILES, argv, (*argv, "{path}"))
+            unread = _vitest_unread(wd, " ".join(argv), tree) if kind == "vitest" else None
+            return _Found(kind, wd, _JS_FILES, argv, (*argv, "{path}"), unread=unread)
+    return None
+
+
+def _vitest_unread(root: str, command: str, tree: _Tree) -> str | None:
+    """Why #2757's reader can't read this vitest runner's output, or None. ``command`` is the command
+    as run: a package script with the arguments the configured argv forwards to it. The reader is
+    validated on vitest 2's default reporter on stdout, so a command naming a reporter, a config
+    (the one ``--config`` names, or the conventional ones) naming reporters or that isn't in the
+    tree, a workspace file, stderr merged into stdout, or a package that doesn't pin vitest 2 alone
+    is refused. Doubt refuses: the gap says why at capture."""
+    if "--reporter" in command:
+        return "its test command names a reporter"
+    if "2>&1" in command or "|&" in command:
+        return "its test command merges stderr into stdout"
+    named = _CONFIG_FLAG.search(command)
+    configs = (named.group(1),) if named else _VITEST_CONFIGS
+    for name in configs:
+        path = _join(root, name)
+        text = tree.text(path)
+        if text is None and named:
+            return f"its --config {name} isn't in the tree, so its reporters can't be read"
+        if text is not None and "reporters" in text:
+            return f"{path} configures reporters"
+    for path in tree.under(root):
+        if PurePosixPath(path).name.startswith("vitest.workspace."):
+            return f"{path} sets its projects, whose reporters aren't read"
+    spec = _vitest_spec(root, tree)
+    if spec is None:
+        return "no package.json at its root or the repository's declares a vitest version"
+    if not _VITEST_2_ONLY.match(spec.strip()):
+        return f"its package's vitest {spec!r} allows more than vitest 2, the major the reader is validated on"
+    return None
+
+
+def _vitest_spec(root: str, tree: _Tree) -> str | None:
+    """The vitest version the runner's package declares, else the repository root's."""
+    for where in dict.fromkeys((root, ".")):
+        doc = tree.json(_join(where, "package.json"))
+        for section in ("devDependencies", "dependencies"):
+            spec = (doc.get(section) or {}).get("vitest")
+            if isinstance(spec, str):
+                return spec
     return None
 
 
@@ -353,11 +419,41 @@ def _runners(found: list[tuple[Check, _Found]], tree: _Tree) -> tuple[Runner, ..
                     file_pattern=pattern,
                     suite_argv=suite,
                     single_file_argv=single,
-                    test_ids=_TEST_ID_READERS.get(kind),
+                    test_ids=None if _unread(members) else _TEST_ID_READERS.get(kind),
                     support_files=_support(kind, root, tree),
                 )
             )
     return tuple(runners)
+
+
+def _unread(members: Sequence[tuple[Check, _Found]]) -> str | None:
+    return next((f.unread for _, f in members if f.unread), None)
+
+
+def _unread_gaps(runners: Sequence[Runner], unread: Mapping[tuple[str, str], str]) -> list[Gap]:
+    """``no_test_id_reader``: one per runner kind with no reader at all, unconfined; and one per
+    runner whose reader its output refused, confined to that runner's root and naming why."""
+    tail = ", so a criterion's discrimination is unread and it isn't accepted as discriminating (SIP-0109 §24ci (a))"
+    gaps: list[Gap] = []
+    seen: set[tuple[str, str | None]] = set()
+    for r in runners:
+        if r.test_ids is not None:
+            continue
+        (root,) = r.roots
+        why = unread.get((r.runner, root))
+        key = (r.runner, root if why else None)
+        if key in seen:
+            continue
+        seen.add(key)
+        if why:
+            paths = ("**",) if root == "." else (f"{root}/**",)
+            reason = f"{r.runner}'s reader can't read this product's output under {root}: {why}"
+            fix = "vitest 2 run with its default reporter, its stderr apart"
+        else:
+            paths, reason = ("**",), f"no findings reader names {r.runner}'s tests one by one"
+            fix = f"a {r.runner} reader in squadops.sandbox.findings"
+        gaps.append(Gap("no_test_id_reader", DISCLOSED, r.runner, paths, reason + tail, fix))
+    return gaps
 
 
 def _owners(tree: _Tree, runners: Sequence[Runner]) -> dict[str, Runner]:
@@ -564,8 +660,10 @@ def _gaps(
     owner: Mapping[str, Runner],
     lint: Sequence[Lint],
     toolchains: Sequence[Toolchain],
+    unread: Mapping[tuple[str, str], str],
 ) -> tuple[Gap, ...]:
-    """Each gap, in H.6's table's order."""
+    """Each gap, in H.6's table's order. ``unread`` is why a runner's reader can't be given, by
+    its kind and root."""
     checks = configuration.commands.checks
     gaps: list[Gap] = []
     ran = [c.id for c in checks if c.id in results and results[c.id].result != UNVERIFIED]
@@ -634,18 +732,7 @@ def _gaps(
         )
     gaps += _untested(tree, runners)
     gaps += _unscopable(runners, owner)
-    for kind in dict.fromkeys(r.runner for r in runners if r.test_ids is None):
-        gaps.append(
-            Gap(
-                "no_test_id_reader",
-                DISCLOSED,
-                kind,
-                ("**",),
-                f"no findings reader names {kind}'s tests one by one, so each criterion is read by "
-                "its own test file's result",
-                f"a {kind} reader in squadops.sandbox.findings",
-            )
-        )
+    gaps += _unread_gaps(runners, unread)
     for entry in lint:
         if entry.findings is None:
             gaps.append(
