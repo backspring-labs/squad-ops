@@ -29,8 +29,10 @@ from __future__ import annotations
 from collections.abc import Collection, Mapping
 from dataclasses import dataclass, field
 from enum import StrEnum
+from typing import TYPE_CHECKING
 
-from squadops.sandbox.findings import FAILED, FindingsReading, comparable
+if TYPE_CHECKING:
+    from squadops.sandbox.findings import FindingsReading
 
 
 @dataclass(frozen=True)
@@ -147,6 +149,9 @@ SETUP_CLASSES: Mapping[str, frozenset[str]] = {
 def _intended(reading: FindingsReading) -> set[str]:
     """The failing keys of ``reading`` that are a test's own failure: a ``FAILED`` key whose
     class was read and is no setup class."""
+    # deferred (pair): squadops.sandbox imports this package at load (its API's seed plan)
+    from squadops.sandbox.findings import FAILED
+
     setup = SETUP_CLASSES.get(reading.reader, frozenset())
     return {
         key
@@ -173,6 +178,9 @@ def discrimination_on_runner(
       not run.
     - **Otherwise** it discriminates when a test fails on the baseline for the intended reason
       (``_intended``) and doesn't fail on the candidate."""
+    # deferred (pair): squadops.sandbox imports this package at load (its API's seed plan)
+    from squadops.sandbox.findings import FAILED, comparable
+
     if test_ids is None:
         return Discrimination(criterion_id, False, DiscriminationReason.NO_TEST_ID_READER)
     if (

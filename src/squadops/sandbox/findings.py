@@ -305,7 +305,10 @@ def _read_vitest(stdout: str, stderr: str, exit_code: int | None):
     if summary is None:
         return {}, "vitest printed no summary to read", None, {}
     total = _VITEST_TOTAL.search(summary)
-    failing = sum(int(n) for n, word in _PYTEST_COUNT.findall(summary) if word == "failed")
+    outcomes: Counter[str] = Counter()
+    for n, word in _PYTEST_COUNT.findall(summary):
+        outcomes[word] += int(n)
+    failing = outcomes["failed"]
     counts, classes, declared = _vitest_failures(stderr)
     rows = {
         k: sum(n for key, n in counts.items() if key.startswith(f"{k} ")) for k in (FAILED, ERROR)
