@@ -29,6 +29,7 @@ from dataclasses import dataclass
 from typing import Any
 
 from squadops.campaigns.proposed_behaviours import QA_PROPOSED_BEHAVIOURS_ARTIFACT_TYPE
+from squadops.cycles.scaffold_evidence import CLASS_FILL, CLASS_INFRASTRUCTURE
 from squadops.cycles.write_authorization import normalize_ws_path
 from squadops.memory.authoring_envelope import AuthoringSeam
 from squadops.stacks.response_shape import response_surface_instructions
@@ -266,6 +267,12 @@ _EVALUATION_ONLY_INPUTS = frozenset(
     {"acceptance_workspace_files", "workspace_revision_id", "artifact_refs"}
 )
 
+#: SIP-0104 §13f (#2664): a re-dispatched fill-mode ``qa.test`` re-fills slots whose assertions
+#: failed, and its merge is gated like a repair's. The executor sets this from the failed result
+#: — ``{"failures": [{file, slot_id, line}], "current_files": [{name, content}]}``, the in-slot
+#: failures and the shells they were observed on — and the qa handler builds the guard from it.
+PRIOR_SLOT_FAILURES_KEY = "prior_slot_failures"
+
 CONTEXT_CONTRACTS: dict[str, ContextAssemblyContract] = {
     # --- build tasks (D3): curated prompt context + acceptance workspace ----
     TaskType.DEVELOPMENT_DEVELOP: ContextAssemblyContract(
@@ -354,7 +361,8 @@ CONTEXT_CONTRACTS: dict[str, ContextAssemblyContract] = {
             *_SHARED_CONTEXT_TEMPLATES,
             *_CYCLE_TASK_RETRY_TEMPLATES,
         ),
-        unrendered_inputs=_EVALUATION_ONLY_INPUTS,
+        # #2664: a re-dispatch's open slot failures gate its fill merge and are never rendered.
+        unrendered_inputs=_EVALUATION_ONLY_INPUTS | {PRIOR_SLOT_FAILURES_KEY},
     ),
     # --- planning chain (#657): upstream documents on an envelope-local
     # prior_outputs copy; all four authoring types receive a re-roll's
@@ -695,6 +703,47 @@ REPAIR_FAILED_ARTIFACTS_KEY = "failed_task_artifacts"
 #: On deploy A every such re-take re-emitted the suite whole — zero scoped qa transactions in five
 #: runs on the App Router stack (1.8.1 set record, §10b).
 RETAKE_CURRENT_FILES_KEY = "retake_current_files"
+
+
+def prior_slot_failures(
+    result_outputs: Mapping[str, Any] | None, scaffold_input: Mapping[str, Any] | None
+) -> dict[str, Any] | None:
+    """The open slot failures a failed fill-mode qa result leaves for its next attempt.
+
+    ``None`` when the result ran no suite (no scaffold evidence, or the runner could not
+    execute it): the attempt before it is still the last one observed, so its carry stands.
+    ``{}`` when the suite ran and no slot assertion failed. Otherwise the fill-layer
+    failures, one per slot, and the merged shells they were observed on.
+    """
+    if not isinstance(scaffold_input, Mapping) or not isinstance(result_outputs, Mapping):
+        return None
+    summary = result_outputs.get("scaffold_evidence")
+    if not isinstance(summary, Mapping):
+        return None
+    observations = [o for o in summary.get("observations") or () if isinstance(o, Mapping)]
+    if any(o.get("failure_class") == CLASS_INFRASTRUCTURE for o in observations):
+        return None
+    failures: dict[str, dict[str, Any]] = {}
+    for o in observations:
+        slot_id = str(o.get("slot_id") or "")
+        if o.get("failure_class") == CLASS_FILL and o.get("file") and slot_id not in failures:
+            failures[slot_id] = {"file": str(o["file"]), "slot_id": slot_id, "line": o.get("line")}
+    if not failures:
+        return {}
+    # Only the shells a failure was observed on: the guard reads each failing slot's accepted
+    # body from its own file, and the rest would ride every re-dispatch for nothing.
+    observed = {f["file"] for f in failures.values()}
+    shells = {
+        str(f.get("name"))
+        for f in scaffold_input.get("files") or ()
+        if isinstance(f, Mapping) and f.get("name") in observed
+    }
+    current = [
+        {"name": str(a["name"]), "content": str(a.get("content") or "")}
+        for a in result_outputs.get("artifacts") or ()
+        if isinstance(a, Mapping) and a.get("name") in shells
+    ]
+    return {"failures": list(failures.values()), "current_files": current}
 
 
 def retake_suite_files(result_outputs: Mapping[str, Any] | None) -> dict[str, str]:

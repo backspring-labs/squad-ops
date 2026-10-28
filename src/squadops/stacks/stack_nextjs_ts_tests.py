@@ -42,6 +42,7 @@ from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any
 
 from squadops.stacks.response_shape import ResponseShape, derive_response_shape, element_kinds
+from squadops.stacks.scaffold import error_seam_for, root_persisted_entities
 from squadops.stacks.scaffold_contract import _slug, emit_contract_dict
 from squadops.stacks.stack_nextjs_ts import _segments
 from squadops.stacks.success_status import success_status_for
@@ -604,6 +605,51 @@ def slot_element_kinds_nextjs_ts(manifest: InterfaceManifest) -> dict[str, dict[
         if kinds:
             out[f"slot-{behavior.behavior_id}"] = kinds
     return out
+
+
+def slot_subject_surfaces_nextjs_ts(manifest: InterfaceManifest) -> dict[str, Any]:
+    """What each shell's surfaces declare, for the slot-subject gate (SIP-0104 §13f, #2664).
+
+    The gate refuses a revision that drops a failing assertion's subject unless the
+    declarations show the field absent on that surface (G4 point 5), and it reads "absent"
+    from here, never from the app's code. Three surfaces, from the same ``_Behavior`` list the
+    shells render, so the gate and the spine cannot disagree about a shell's status:
+
+    - **the response**: a 2xx shell's response entity's declared fields (a collection's body is
+      an array, which declares no named field); an error shell's body is the frozen envelope,
+      whose only top-level key is ``error``. A 2xx endpoint naming no declared entity is left
+      out, so the gate can show nothing about it;
+    - **the error envelope**: the frozen envelope's fields on an error shell, none on a 2xx one;
+    - **the store**: each table the frozen store exports, with its entity's declared fields.
+
+    Shape: ``{"slots": {slot_id: {"response": [...], "error_envelope": [...]}}, "tables":
+    {table: [...]}}``. Data for an input, like ``slot_element_kinds_nextjs_ts``.
+    """
+    behaviors, _ = derive_scaffold_behaviors(manifest)
+    entity_fields = {e.name: [f.name for f in e.fields] for e in manifest.entities}
+    responses = {(ep.method.upper(), ep.path): ep.response for ep in manifest.api.endpoints}
+    seam = error_seam_for(manifest.stack)
+    envelope_root = [seam.ENVELOPE_ROOT] if seam else []
+    envelope_fields = list(seam.envelope_fields) if seam else []
+    slots: dict[str, dict[str, list[str]]] = {}
+    for behavior in behaviors:
+        slot_id = f"slot-{behavior.behavior_id}"
+        if not 200 <= behavior.expect_status < 300:
+            slots[slot_id] = {"response": envelope_root, "error_envelope": envelope_fields}
+            continue
+        declared = str(
+            responses.get((behavior.final.method.upper(), behavior.final.url_path)) or ""
+        ).strip()
+        surfaces: dict[str, list[str]] = {"error_envelope": []}
+        if declared.startswith("list[") and declared.endswith("]"):
+            surfaces["response"] = []
+        elif declared in entity_fields:
+            surfaces["response"] = list(entity_fields[declared])
+        slots[slot_id] = surfaces
+    tables = {
+        table: list(entity_fields.get(table, ())) for table in root_persisted_entities(manifest)
+    }
+    return {"slots": slots, "tables": tables}
 
 
 def emit_nextjs_ts_verification_scaffold(

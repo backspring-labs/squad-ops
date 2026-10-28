@@ -1107,9 +1107,19 @@ class ErrorSeam:
     #: invented.
     framework_exception: str = ""
 
+    #: The envelope's one top-level key: a failing request's body is ``{"error": {...}}``.
+    ENVELOPE_ROOT = "error"
+
+    @property
+    def envelope_fields(self) -> tuple[str, ...]:
+        """The fields inside ``error``: what a fill may read off a failing request's body
+        (SIP-0104 §13f — the slot-subject gate's "absent there" for the envelope)."""
+        return ("code", self.body_field)
+
     def envelope_example(self, code: str) -> str:
         """The literal JSON body a failing request returns, for a real declared code."""
-        return f'{{"error": {{"code": "{code}", "{self.body_field}": "..."}}}}'
+        code_field, body_field = self.envelope_fields
+        return f'{{"{self.ENVELOPE_ROOT}": {{"{code_field}": "{code}", "{body_field}": "..."}}}}'
 
 
 ERROR_SEAM_FASTAPI = ErrorSeam(

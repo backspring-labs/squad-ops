@@ -358,6 +358,10 @@ class CorrectionProtocolResult:
     #: naming its path, the producer whose grant excluded it, and why. Such a round is spent:
     #: it emitted files, so it is not the empty emission #1053 refunds.
     repair_dropped: tuple[dict[str, str], ...] = ()
+    #: #2664 (SIP-0104 §13f): the slot revisions the qa repair's merge refused because they
+    #: dropped a failing assertion's subject, each naming the slot and the subject. Such a round
+    #: is spent: the repair failed a gate, it did not emit nothing.
+    repair_subject_dropped: tuple[dict[str, Any], ...] = ()
 
 
 @dataclass(frozen=True)
@@ -1191,6 +1195,7 @@ class CorrectionRunner:
 
         emission_empty = self._correction_repair.judge_emission(repair, correction_attempts)
         repair_dropped = self._correction_repair.dropped_entirely(repair)
+        repair_subject_dropped = self._correction_repair.subject_refused(repair)
 
         # 8. Emit CORRECTION_COMPLETED
         self._event_bus.emit(
@@ -1210,6 +1215,8 @@ class CorrectionRunner:
                 ),
                 # #2521: and a round whose files were all dropped must not read as either.
                 "repair_dropped": [d["path"] for d in repair_dropped],
+                # #2664: and a round whose qa repair dropped a failing assertion's subject.
+                "repair_subject_dropped": [str(d.get("slot_id")) for d in repair_subject_dropped],
             },
         )
 
@@ -1223,6 +1230,7 @@ class CorrectionRunner:
                 any(repair.offered_scoped) if emission_empty and repair.offered_scoped else None
             ),
             repair_dropped=repair_dropped,
+            repair_subject_dropped=repair_subject_dropped,
         )
 
     async def _diagnose(

@@ -86,6 +86,7 @@ from squadops.stacks.scaffold import (
 from squadops.stacks.verification_scaffold_emission import (
     emit_verification_scaffold,
     slot_element_kinds,
+    slot_subject_surfaces,
 )
 from squadops.tasks.models import TaskEnvelope
 from squadops.tasks.task_types import TaskType, authors_qa_suite, authors_source
@@ -1017,6 +1018,10 @@ def inject_contract_inputs(
                     # fields, so a fill asserting a contradicting element kind is
                     # rejected at merge rather than at a retest it then loses.
                     "slot_element_kinds": slot_element_kinds(interface_manifest),
+                    # SIP-0104 §13f (#2664): what each shell's surfaces declare, so a revision
+                    # dropping a failing assertion's subject is refused unless the declarations
+                    # show the field absent there. Read from the manifest, never the app.
+                    "subject_surfaces": slot_subject_surfaces(interface_manifest),
                 }
 
 

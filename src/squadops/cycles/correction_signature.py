@@ -524,12 +524,18 @@ REPAIR_EMPTY_MARKER = "the repair emitted no content"
 REPAIR_DROPPED_MARKER = "write authorization dropped every file the repair emitted"
 
 
+#: The executor's wording for a repair refused because it dropped the subject of a failing slot
+#: assertion (SIP-0104 §13f, #2664): the field the assertion read is declared on its surface, and
+#: the repair kept no assertion on it. Spent, not refunded, and nothing applied, as #2521's drop.
+REPAIR_SUBJECT_DROPPED_MARKER = "the repair dropped a failing slot assertion's subject"
+
+
 def repair_not_applied_in_round(repair_rejections: list[str] | None, round_no: int) -> bool:
     """Whether round ``round_no``'s repair was never applied to the tree (#1129, #1658).
 
     Such a round is not one the signature rule may count: no retest ran, the failed task was
     re-dispatched against the unrepaired tree, and the failure signature repeated *by
-    construction*. Two ways a repair is not applied:
+    construction*. The ways a repair is not applied:
 
     - **refused by patch verification** (#1129) — 1.6.5 FastAPI+React rolls 5 and 6 ended as
       ``plan_defect`` after zero applied repairs, and roll 6's refused patch carried the fix;
@@ -538,14 +544,21 @@ def repair_not_applied_in_round(repair_rejections: list[str] | None, round_no: i
       ``plan_defect`` on such a round, one after zero applied repairs. Where no decision step
       is declared the rule is the carried failures alone, so nothing else shielded it.
     - **every file dropped by write authorization** (#2521) — the round is spent, and the tree
-      the next round fails on is the one this round left unrepaired.
+      the next round fails on is the one this round left unrepaired;
+    - **refused for dropping a failing slot assertion's subject** (#2664) — the same: spent,
+      and nothing of the repair reached the tree.
 
     The carry entries are the executor's own ``"correction attempt N: <marker> …"`` lines; a
     retest that ran and FAILED is a different entry and stays informative.
     """
     prefixes = tuple(
         f"correction attempt {round_no}: {marker}"
-        for marker in (REPAIR_REFUSED_MARKER, REPAIR_EMPTY_MARKER, REPAIR_DROPPED_MARKER)
+        for marker in (
+            REPAIR_REFUSED_MARKER,
+            REPAIR_EMPTY_MARKER,
+            REPAIR_DROPPED_MARKER,
+            REPAIR_SUBJECT_DROPPED_MARKER,
+        )
     )
     return any(str(entry).startswith(prefixes) for entry in repair_rejections or [])
 

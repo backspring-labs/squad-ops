@@ -32,10 +32,15 @@ from squadops.stacks.scaffold import (
     qa_test_namespace,
     verification_scaffold_for,
 )
+from squadops.stacks.slot_subject import SlotAssertion
 from squadops.stacks.stack_nextjs_ts import STACK_NAME as _NEXTJS_TS_NAME
+from squadops.stacks.stack_nextjs_ts_subjects import (
+    read_slot_assertions as read_slot_assertions_nextjs_ts,
+)
 from squadops.stacks.stack_nextjs_ts_tests import (
     emit_nextjs_ts_verification_scaffold,
     slot_element_kinds_nextjs_ts,
+    slot_subject_surfaces_nextjs_ts,
 )
 from squadops.stacks.verification_scaffold import (
     SCAFFOLD_MANIFEST_VERSION,
@@ -104,6 +109,31 @@ def slot_element_kinds(manifest: InterfaceManifest) -> dict[str, dict[str, Any]]
 
     fn = _SLOT_ELEMENT_KINDS.get(verification_scaffold_for(manifest.stack))
     return fn(manifest) if fn else {}
+
+
+#: SIP-0104 §13f (#2664): what each stack's shell surfaces declare, and how its fills are read,
+#: keyed like ``_EMITTERS`` — a stack that emits shells says what they assert on.
+_SLOT_SUBJECT_SURFACES: dict[str, Callable[[InterfaceManifest], dict[str, Any]]] = {
+    _NEXTJS_TS_NAME: slot_subject_surfaces_nextjs_ts,
+}
+_SLOT_ASSERTION_READERS: dict[str, Callable[[str], tuple[SlotAssertion, ...]]] = {
+    _NEXTJS_TS_NAME: read_slot_assertions_nextjs_ts,
+}
+
+
+def slot_subject_surfaces(manifest: InterfaceManifest) -> dict[str, Any]:
+    """The declarations the slot-subject gate reads "absent there" from, or ``{}``.
+
+    Empty for a stack that emits no scaffold: it has no slots, so nothing is gated (G4
+    point 5).
+    """
+    fn = _SLOT_SUBJECT_SURFACES.get(verification_scaffold_for(manifest.stack))
+    return fn(manifest) if fn else {}
+
+
+def slot_assertion_reader(stack: str) -> Callable[[str], tuple[SlotAssertion, ...]] | None:
+    """The reader of ``stack``'s fill language, or ``None`` when it emits no shells."""
+    return _SLOT_ASSERTION_READERS.get(verification_scaffold_for(stack))
 
 
 def emit_verification_scaffold(

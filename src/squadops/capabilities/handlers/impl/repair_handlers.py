@@ -15,6 +15,7 @@ correction-loop flows have distinct, non-overlapping capability ids.
 from __future__ import annotations
 
 import logging
+from collections.abc import Mapping, Sequence
 from typing import TYPE_CHECKING, Any
 
 from squadops.campaigns.proposed_behaviours import is_outlet_file
@@ -49,10 +50,12 @@ from squadops.capabilities.handlers.task_instructions import (
     task_instructions_section,
 )
 from squadops.capabilities.verification_scaffold_fill import (
+    SLOT_SUBJECT_DROPPED_KEY,
     apply_followup_fills,
     merge_fills,
     parse_fill_emission,
     recover_fills,
+    slot_subject_guard,
     strip_fill_blocks,
 )
 from squadops.cycles.contract_expectations import expectation_lines, prose_criteria
@@ -1425,10 +1428,21 @@ class QATestRepairHandler(_RepairPromptMixin, _CycleTaskHandler):
         scaffold_input = inputs.get("verification_scaffold")
         if scaffold_input and isinstance(result.outputs, dict):
             artifacts, evidence = _merge_repair_fills(
-                scaffold_input, list(result.outputs.get("artifacts") or [])
+                scaffold_input,
+                list(result.outputs.get("artifacts") or []),
+                repair_slots=inputs.get("repair_slots") or (),
             )
             result.outputs["artifacts"] = artifacts
             result.outputs["fill_merge"] = evidence
+            if evidence.get("refused"):
+                # SIP-0104 §13f (#2664): the repair resolved a failing slot assertion by
+                # dropping its subject. Nothing of it is applied; the runner spends the round
+                # and tells the next one which slot and subject (#2727's shape).
+                result.outputs[SLOT_SUBJECT_DROPPED_KEY] = list(evidence["refused"])
+                logger.warning(
+                    "qa_test_repair_handler refused: slot_subject_dropped %s",
+                    "; ".join(f"{r['slot_id']}: {r['described']}" for r in evidence["refused"]),
+                )
             logger.info(
                 "qa_test_repair_handler fill merge: applied=%s dropped_shell_rewrites=%s counts=%s",
                 evidence.get("applied"),
@@ -1439,7 +1453,10 @@ class QATestRepairHandler(_RepairPromptMixin, _CycleTaskHandler):
 
 
 def _merge_repair_fills(
-    scaffold_input: dict[str, Any], artifacts: list[dict[str, Any]]
+    scaffold_input: dict[str, Any],
+    artifacts: list[dict[str, Any]],
+    *,
+    repair_slots: Sequence[Mapping[str, Any]] = (),
 ) -> tuple[list[dict[str, Any]], dict[str, Any]]:
     """Merge a repair's fill artifacts into the task's current shells (#970, 1.6.5 D).
 
@@ -1451,6 +1468,13 @@ def _merge_repair_fills(
     kinds) and is emitted at the shell path, so the patch overlay supersedes the
     failed shell by name and the retest runs it. A whole-shell rewrite emitted as a
     path fence is dropped and recorded, as on every other qa path.
+
+    **The slot-subject gate (SIP-0104 §13f, #2664).** ``repair_slots`` are the failed task's
+    in-slot failures, each with the merged shell's line. Every slot among them that the repair
+    revises is judged against its body in ``current_files``, whichever slots the repair was
+    aimed at, since a repair sent for another file may refill them all. One refused slot
+    refuses the repair: nothing of it is returned, and ``evidence["refused"]`` names each
+    refused slot and subject.
     """
 
     record = VerificationScaffoldManifest.from_dict(scaffold_input["manifest"])
@@ -1477,7 +1501,17 @@ def _merge_repair_fills(
         store_tables=scaffold_input.get("store_tables"),
         slot_element_kinds=scaffold_input.get("slot_element_kinds"),
         producer=TaskType.QA_TEST_REPAIR,
+        subject_guard=slot_subject_guard(scaffold_input, repair_slots, current),
     )
+    if merged.subject_verdicts:
+        evidence["subject_gate"] = [v.to_dict() for v in merged.subject_verdicts]
+    if merged.refused:
+        evidence["refused"] = [v.to_dict() for v in merged.refused]
+        evidence["detail"] = (
+            "refused: the repair dropped the subject of a failing slot assertion "
+            "(slot_subject_dropped); nothing of it is applied"
+        )
+        return [], evidence
     touched_paths = {
         f.path for f in record.files if any(s.slot_id in folded.applied for s in f.slots)
     }

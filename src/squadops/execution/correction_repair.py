@@ -32,6 +32,7 @@ from squadops.capabilities.context_assembly import (
     manifest_surface_fragments,
     repair_forwarded_inputs,
 )
+from squadops.capabilities.verification_scaffold_fill import SLOT_SUBJECT_DROPPED_KEY
 from squadops.cycles.acceptance_check_spec import is_frontend_source
 from squadops.cycles.agent_config import resolve_agent_config
 from squadops.cycles.check_registry import CHECK_FRONTEND_BUILD
@@ -271,7 +272,7 @@ def _probe_owned_slots(failure_evidence: Any, failed_inputs: dict[str, Any]) -> 
     return slots
 
 
-def _fill_observations(failure_evidence: Any) -> list[dict[str, str]]:
+def _fill_observations(failure_evidence: Any) -> list[dict[str, Any]]:
     """The scaffold evidence's fill-layer observations, one per (file, slot) (#970).
 
     ``classify_shell_failures`` attributes an assertion failure inside a slot region
@@ -285,7 +286,7 @@ def _fill_observations(failure_evidence: Any) -> list[dict[str, str]]:
     summary = failure_evidence.get("scaffold_evidence")
     observations = (summary.get("observations") or []) if isinstance(summary, dict) else []
     seen: set[tuple[str, str]] = set()
-    out: list[dict[str, str]] = []
+    out: list[dict[str, Any]] = []
     for obs in observations:
         if not isinstance(obs, dict) or obs.get("failure_class") != CLASS_FILL:
             continue
@@ -293,7 +294,16 @@ def _fill_observations(failure_evidence: Any) -> list[dict[str, str]]:
         if not key[0] or key in seen:
             continue
         seen.add(key)
-        out.append({"file": key[0], "slot_id": key[1], "detail": str(obs.get("detail") or "")})
+        # #2664: the merged shell's line, which the slot-subject gate reads the subject at.
+        line = obs.get("line")
+        out.append(
+            {
+                "file": key[0],
+                "slot_id": key[1],
+                "detail": str(obs.get("detail") or ""),
+                "line": line if isinstance(line, int) else None,
+            }
+        )
     return out
 
 
@@ -338,6 +348,13 @@ OWN_ARTIFACT_VETO = "own_artifact_veto"
 def _ownership_dropped(result: Any) -> list[dict[str, str]]:
     """The files write authorization dropped from one repair step's emission (#2521)."""
     rows = (getattr(result, "outputs", None) or {}).get(OWNERSHIP_DROPPED_KEY) or []
+    return [r for r in rows if isinstance(r, dict)]
+
+
+def _slot_subject_dropped(result: Any) -> list[dict[str, Any]]:
+    """The slot revisions the qa repair's merge refused (#2664): each names the slot, the
+    failing assertion's subject, and that the declarations show its field there."""
+    rows = (getattr(result, "outputs", None) or {}).get(SLOT_SUBJECT_DROPPED_KEY) or []
     return [r for r in rows if isinstance(r, dict)]
 
 
@@ -924,6 +941,10 @@ class RepairOutcome:
     #: SIP-0100 enforcement and the #1014 veto — each naming its path, the producer whose grant
     #: excluded it, and why. A repair that kept nothing else emitted files, so it is refused.
     dropped: list[dict[str, str]] = field(default_factory=list)
+    #: #2664 (SIP-0104 §13f): the slot revisions the qa repair's merge refused because they
+    #: dropped a failing assertion's subject. The repair handed back nothing, but it emitted a
+    #: repair that failed a gate, so the round is spent, never refunded as empty.
+    subject_dropped: list[dict[str, Any]] = field(default_factory=list)
 
 
 class CorrectionRepair:
@@ -1006,6 +1027,7 @@ class CorrectionRepair:
         repair_typed_checks: list[dict[str, Any]] = []
         repair_disputes: list[dict[str, Any]] = []
         repair_dropped: list[dict[str, str]] = []
+        repair_subject_dropped: list[dict[str, Any]] = []
         anchored_edits_refused = False
         repair_steps_ran = False
         empty_signatures: list[str] = []
@@ -1163,7 +1185,7 @@ class CorrectionRepair:
                 prior_outputs[role_key] = {
                     k: v
                     for k, v in (repair_result.outputs or {}).items()
-                    if k not in ("artifacts", OWNERSHIP_DROPPED_KEY)
+                    if k not in ("artifacts", OWNERSHIP_DROPPED_KEY, SLOT_SUBJECT_DROPPED_KEY)
                 }
 
                 # #389: surface the repair's emitted files to the executor for
@@ -1183,6 +1205,7 @@ class CorrectionRepair:
                     repair_result
                 )
                 repair_dropped.extend(_ownership_dropped(repair_result))
+                repair_subject_dropped.extend(_slot_subject_dropped(repair_result))
                 # #507: re-home repair files onto the failed task's expected
                 # paths before they reach the overlay — a repair emitted under
                 # the wrong directory otherwise lands as a net-new file, patch
@@ -1235,7 +1258,22 @@ class CorrectionRepair:
             disputes=repair_disputes,
             offered_scoped=offered_scoped,
             dropped=repair_dropped,
+            subject_dropped=repair_subject_dropped,
         )
+
+    @staticmethod
+    def subject_refused(repair: RepairOutcome) -> tuple[dict[str, Any], ...]:
+        """The refused slot revisions, when a step's merge refused any (#2664).
+
+        SIP-0104 §13f: a repair that resolved a failing slot assertion by dropping its subject is
+        refused whole, like a patch write authorization dropped (#2521). Its round is spent, and
+        the next one is told the slot, the subject, and that the declarations show it present.
+        A refusal in one step refuses the round's patch, beside whatever another step emitted:
+        the round was one attempt at the failure.
+        """
+        if not repair.steps_ran:
+            return ()
+        return tuple(repair.subject_dropped)
 
     @staticmethod
     def dropped_entirely(repair: RepairOutcome) -> tuple[dict[str, str], ...]:
@@ -1273,10 +1311,12 @@ class CorrectionRepair:
         # SIP-0107 §22: refused anchored edits are a repair that failed, not an absent one.
         # #2521: so are files write authorization dropped — the repair emitted them, and a
         # refund re-took the round unchanged until the budget was spent (cyc_0df8d7215ef2).
+        # #2664: and so is a repair whose merge refused a slot revision for dropping its subject.
         emission_empty = (
             repair_steps_ran
             and not repair.anchored_edits_refused
             and not repair.dropped
+            and not repair.subject_dropped
             and not _emitted_content(repair_artifacts)
         )
         if emission_empty:

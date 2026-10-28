@@ -68,7 +68,11 @@ from squadops.capabilities.anchored_edits import (
     strip_edit_blocks,
     verbatim_block,
 )
-from squadops.capabilities.context_assembly import RETAKE_CURRENT_FILES_KEY, scaffold_shell_paths
+from squadops.capabilities.context_assembly import (
+    PRIOR_SLOT_FAILURES_KEY,
+    RETAKE_CURRENT_FILES_KEY,
+    scaffold_shell_paths,
+)
 from squadops.capabilities.delivered_lint import LINT_READING_VERSION, lint_delivered
 from squadops.capabilities.handlers.cycle.base import (
     SelfEvalFollowup,
@@ -101,10 +105,13 @@ from squadops.capabilities.handlers.test_runner import (
 )
 from squadops.capabilities.reasoning_policy import reasoning_kwargs, resolve_reasoning_level
 from squadops.capabilities.verification_scaffold_fill import (
+    SLOT_SUBJECT_DROPPED_KEY,
+    SlotSubjectGuard,
     apply_followup_fills,
     measure_assertion_strength,
     merge_fills,
     parse_fill_emission,
+    slot_subject_guard,
     strip_fill_blocks,
 )
 from squadops.cycles.contract_expectations import expectation_lines, prose_criteria
@@ -352,6 +359,12 @@ class _ScaffoldFill(_WholeFileTests):
         self._merged_suite_files: list[dict[str, Any]] = []
         self._merge_evidence: dict[str, Any] = {}
         self._shell_paths: set[str] = set()
+        # SIP-0104 §13f (#2664): a re-dispatched qa.test re-fills slots that have open
+        # failures, so its merge is gated against the shells those failures were observed on.
+        prior = inputs.get(PRIOR_SLOT_FAILURES_KEY) or {}
+        self._subject_guard = slot_subject_guard(
+            self._scaffold, prior.get("failures") or (), prior.get("current_files") or ()
+        )
 
     async def prompt_section(self, context: ExecutionContext) -> str:
         # SIP-0104 P3: the FILL MODE block rides both prompt paths.
@@ -382,6 +395,7 @@ class _ScaffoldFill(_WholeFileTests):
                 self._emission,
                 artifacts,
                 self._handler._app_invocation(self._inputs),
+                subject_guard=self._subject_guard,
             )
         )
         self._shell_paths = {m["filename"] for m in self._merged_suite_files}
@@ -469,6 +483,11 @@ class _ScaffoldFill(_WholeFileTests):
             artifacts,
             self._handler._app_invocation(self._inputs),
         )
+        # #2664: a refused slot revision kept its accepted body; the executor tells the next
+        # correction round which subject this emission tried to drop.
+        refused = self._merge_evidence.get("refused")
+        if refused:
+            outputs[SLOT_SUBJECT_DROPPED_KEY] = list(refused)
 
 
 def _extracted_type(filename: str) -> str:
@@ -1423,6 +1442,8 @@ class QATestHandler(_CycleTaskHandler):
         fill_emission: Any,
         artifacts: list[dict],
         invocation: AppInvocation | None,
+        *,
+        subject_guard: SlotSubjectGuard | None = None,
     ) -> tuple[list[dict], list[dict], dict[str, Any]]:
         """Merge parsed fills into the scaffold and bound the additive surface.
 
@@ -1445,6 +1466,7 @@ class QATestHandler(_CycleTaskHandler):
             store_tables=scaffold_input.get("store_tables"),
             slot_element_kinds=scaffold_input.get("slot_element_kinds"),
             producer=TaskType.QA_TEST,
+            subject_guard=subject_guard,
         )
         merged_artifacts = [
             {
@@ -1471,6 +1493,11 @@ class QATestHandler(_CycleTaskHandler):
             # so the per-roll record reads it from stored state.
             "assertion_strength": measure_assertion_strength(fill_emission),
         }
+        # SIP-0104 §13f (#2664): each gated slot revision's verdict, and the refused ones.
+        if merged.subject_verdicts:
+            evidence["subject_gate"] = [v.to_dict() for v in merged.subject_verdicts]
+        if merged.refused:
+            evidence["refused"] = [v.to_dict() for v in merged.refused]
         self._bank_additive_surface(evidence, kept, invocation)
         merged_suite_files = [{"filename": f.path, "content": f.content} for f in merged.files]
         return kept + merged_artifacts, merged_suite_files, evidence
