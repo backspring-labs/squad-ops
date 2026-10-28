@@ -2175,3 +2175,140 @@ baseline, so no series compares `-5` with `-6`.
 **Who ruled.** The owner placed #2706 and #2659 in 2.5 with suite revision 6 (2026-10-23), accepted the five advisories
 for 2.4.0 only, with their fix to follow in 2.5 (2026-10-23), and adopted the 2.5 plan (2026-10-24). The supervisor
 wrote this.
+
+### 10y. §10o's finer quality reading: the design (2026-10-24, approved 2026-10-28; #2637; the supervisor's draft under the 2.5 plan's D7, reviewed by a fresh agent, approved by the owner)
+
+**Why.** §10o found Lighthouse's category scores and axe's rule counts coarser than this app's increments: on six
+seeded pairs, no measure moved on a page an increment changed. That is because of how the evaluator reads them
+(`infra/evaluator/driver.mjs`'s `measure`), not because the pages were empty:
+- axe is counted by rule, so more elements failing one rule add nothing;
+- Lighthouse is read as category scores, so which audits fail isn't recorded, only the score they leave;
+- best practices is pinned at 0.78 by the sandbox's plain HTTP, not by the app.
+
+This design reads all three more finely. **It changes no gate, no weight and no scenario.** Each new measure is
+reporting only, carries no weight under §4.2's rule until its own S1 and S2 hold, and is versioned by the evaluator's
+tag.
+
+**What the evaluator reads, per declared and seeded page,** beside what it reads today. Today's keys, the raw
+`best_practices` score among them, are kept unchanged.
+1. **axe by element.** `axe_nodes: {critical, serious, moderate, minor}`, the violating nodes per impact, beside the
+   rule count.
+   - The count is of (rule, element) pairs: one element failing two rules counts twice.
+   - Each node counts under its own `impact`, not its violation's: nodes of one violation can differ.
+2. **The failing audits, by id,** in one shape: `failing: {accessibility: [...], best_practices: [...], environment:
+   [...], axe: [...]}`, each sorted.
+   - **Lighthouse's lists:** the ids of the category's audits with a score of 0 and a weight above 0 in that category,
+     read from the result's own `auditRefs`. Lighthouse has already zeroed the weight of a not-applicable, informative
+     or manual audit there.
+   - **axe's list:** the violated rule ids.
+   - **Performance has no list.** Its weighted audits are its five metrics, which score continuously, so "failing" on
+     them would be noise: one metric crossing 1 in one round would break S1, and a 1.00 to 0.99 move would read as an
+     introduced failure. Performance stays the category score, as today.
+   - **An errored audit isn't resolved.** An audit that errors has a null score and keeps its weight, and Lighthouse
+     then scores its category null. The category's list is then null, never empty, and isn't compared. The errored
+     ids are recorded apart, under `errored: {<category>: [...]}`.
+   - A delta names the ids an increment introduced and resolved, not only whether a score moved. The ids are
+     Lighthouse's and axe's own vocabulary, never page or suite content.
+3. **The environment's audits, named apart.** `is-on-https` and `redirects-http` fail on every instance the sandbox
+   serves over plain HTTP, whatever the app does. They are a constant in the driver, named with that reason:
+   `ENVIRONMENT_AUDITS`.
+   - A failing environment audit is listed under `failing.environment`, never under `failing.best_practices`.
+   - **`best_practices_app`:** best practices recomputed from the result's own `auditRefs` weights without those
+     two, rounded as Lighthouse rounds its category scores. It is null, never 0, when the category is null or no
+     weight remains. Today's weights leave 21 of 27, and 21/27 is the 0.78 §10o read.
+   - **Its invariant:** recomputed the same way with the two audits included, it must equal Lighthouse's own
+     `best_practices` score. A page where it doesn't records an error on that measure, never a reading.
+
+**Where it's stored and compared.**
+- **The record.** The reading's per-page record (`squadops.scenarios.quality`'s `PageMeasure`) gains the new keys as
+  optional ones. An earlier reading has none, and reads as not having them, never as zero.
+  - `evaluator_pages` refuses a `-7` page that lacks them, rather than defaulting them to 0.
+- **The comparison.** `squadops.outcomes.quality_deltas` compares like with like only:
+  - node counts by impact, as differences, in the existing `MeasureDelta`;
+  - `best_practices_app`, as a difference;
+  - failing ids, as the sets introduced and resolved, in a new set-valued delta beside `MeasureDelta`, which holds
+    numbers only. The package's `_deltas` (`outcomes/campaign_package.py`) gains the same shape.
+- **The spread.** `squadops.outcomes.quality_spread` compares the failing-id lists across rounds by set equality,
+  for S1.
+- **The proposal is shown none of it.** `proposal_reader._quality_moves` (`outcomes/proposal_reader.py:178-196`)
+  passes every unseeded delta into the proposal's prompt (`capabilities/handlers/planning/proposal.py:110-128`), so
+  the new deltas would otherwise reach it. It gains an allow-list of today's measures, with a test, so the proposal
+  sees exactly what it sees now. Whether it ever sees the new ones is the owner's ruling, later, on S1's and S2's
+  evidence.
+- **The package and digest** show them beside today's measures, under the same reporting-only rule.
+- **The tag moves to `-7`,** since the driver changes (§10p ruling 6). Every quality series on `-6` or earlier stays
+  its own, and no delta crosses the tag. The break is named where ruling 6 says: in the re-read's record and in the
+  2.5 cut's pre-registration.
+- **Ruling 6's unpinned-Chromium item is closed.** #2583 pinned the image's Chromium (`chromium=155.0.8059.79`, from
+  a dated snapshot), so a quality reading's browser is fixed by its tag.
+- **Unchanged:** the browser runner (`browser.mjs`), the scenarios and lint.
+
+**The order, and what it costs the scenario validation.** The 2.5 plan put #2637 in the same tag as #2706, #2659,
+#2712 and #2469. Those shipped first, as `-6` (§10x, #2717), so the changed scenario's validation (the plan's §2.2)
+runs on `-6`, and the baseline re-read waits for `-7` and runs once, there.
+- Under ruling 6 those are two runner versions.
+- So before any baseline is drawn from revision 6 on `-7`, the browser path is shown byte-identical between the two
+  tags: `browser.mjs`, the Chromium pin and the puppeteer lock.
+- If any of them differs, the validation re-runs on `-7`.
+
+**The series, pre-registered here, before any of it is built.**
+- **The trees:** the 2.4 window's 20 evaluated trees, the same as §10o's, seeded, three rounds each, on `-7`
+  (`remeasure_quality.py --record "2.5, finer"`).
+- **Each prediction has a verdict per measure,** as §7 prediction 4's rule has: node counts, failing ids and
+  `best_practices_app` hold or fall separately.
+- **S1, stable on an unchanged tree.** On every tree, across its three rounds:
+  - each page's node counts by impact are identical;
+  - its failing-id sets are identical, a null list being equal only to a null list;
+  - its `best_practices_app` is identical. The bound is 0, not performance's 0.05: one weight-1 audit failing moves
+    it by exactly 0.05, so a 0.05 bound would let a real change through.
+  - Falsified, per measure, by any tree breaking it.
+- **S2a, sees the capacity increments, a prediction and not a derivation.** §10o never read node counts on a base
+  tree. axe's `region` rule reports only the outermost block outside every landmark, so content added inside an
+  already-reported container adds no node. That makes S2a a guess about this app's markup, to be tested:
+  - **The prediction:** on each of §10o's three capacity pairs (`cyc_f9930df7c925`, `cyc_e5370cec344f` and
+    `cyc_840e72247f38`, each against the tree it was built on), at least one new measure differs on the run's detail
+    page: a node count, or a failing id introduced or resolved. The increment adds a capacity display to that page.
+  - **Round 1 is compared with round 1,** never a mean.
+  - A pair reading no difference falsifies S2a for that measure.
+- **The positive control, under #1251's rule.** One base tree is given a known fault and measured through the
+  evaluator's own path (`driver.mjs`'s `measure`). The fault is a fixed number of elements on its detail page, each
+  failing one known axe rule, and one known best-practices audit failing.
+  - **How:** `remeasure_quality.py` gains `--fault`, as `read_scenarios.py` has it: edits to the tree before it is
+    built, recorded under the faulted tree's own identity, a diagnostic and never a reading.
+  - **Predicted:** the node count under that rule's impact rises by exactly that number, and the injected ids appear
+    as introduced.
+  - **Falsified** by any other reading. A call into the counting code with a fixture in hand is a replay of the
+    function, and is named as one.
+- **S2b, reported, not predicted:** the three sorting pairs, and campaign 4's capacity-display increment
+  (`cyc_9915bf056615`, §10o) beside them. Reordering a list adds no element, so an honest zero is expected for the
+  sorting pairs, and each pair's reading is reported.
+- **E, the environment named apart:**
+  - **Predicted:** on every page, `failing.environment` names both `is-on-https` and `redirects-http`, since the
+    sandbox serves every instance over plain HTTP; and on every page, `best_practices_app`'s invariant holds.
+  - **Falsified** by a page where either audit passes, or where the invariant breaks.
+  - **Reported:** the pages where the two were the only failing weighted best-practices audits, and their
+    `best_practices_app`. Those are 1.0 by construction, so they aren't a test.
+
+**If S1 and S2a hold for a measure,** that measure may carry weight in a later phase-2 decision, the owner's. **If
+either falls,** the measure stays recorded, reporting only, and the reading says which fell, as §10o did.
+
+**What this doesn't decide:** any threshold, gate or weight (§4.7, held); what the proposal is shown of the new
+measures (the owner's, later); the seeded reading's seed (§10n, unchanged); and lint (unchanged).
+
+**The review** (a fresh agent, 2026-10-24, PR #2724 issuecomment-6380357476) requested changes: three blocking and ten
+notes. All thirteen are taken above:
+- performance's continuous metrics left out of the failing lists;
+- an errored audit kept apart and a null category left uncompared;
+- the proposal's allow-list;
+- `best_practices_app` read from the result's own weights, with its invariant;
+- E's falsifier;
+- S1's bound at 0;
+- the per-node impact and the pair count;
+- S2a stated as a guess, with a positive control, round 1 against round 1, and `cyc_9915bf056615` reported;
+- per-measure verdicts;
+- the readers the build needs, named;
+- the order change and the runner versions;
+- the Chromium pin;
+- and the paragraph below.
+
+**Who ruled:** the owner approved this design on 2026-10-28 (the 2.5 plan's D7), taking the supervisor's recommendation to approve it: "Go with your recommendations". The supervisor drafted it, and a fresh agent reviewed it (three blocking findings and ten notes, all taken in revision `75b2b13b`). Nothing in it was built before the approval.

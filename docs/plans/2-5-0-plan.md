@@ -140,6 +140,15 @@ IR-1, IR-2 and IR-10 run on the final deploy beside the cut's set, as at 2.4.0 (
 Everything here moves the evaluator's tag, the suite's revision or a measure's version. Each of those re-reads every
 baseline it touches, so the track lands as **one batch**, with one deploy and one re-read (§3, phase 2).
 
+**Amended 2026-10-24: two tags, still one re-read** (the supervisor, under the owner's overnight grant; SIP-0113 §10y).
+The evaluator's fixes (#2706, #2659, #2712, #2469) shipped as `-6` (#2717, SIP-0113 §10x) before #2637's design was
+approved, so #2637 lands as `-7`.
+- **The changed scenario's validation** runs on `-6`.
+- **The re-read** waits for `-7` and runs once, there. Nothing is measured on `-6` for a baseline.
+- **Before a baseline is drawn from revision 6 on `-7`,** the browser path is shown byte-identical between the two
+  tags: `browser.mjs`, the Chromium pin and the puppeteer lock. If any of them differs, the validation re-runs on
+  `-7`.
+
 | item | what | kind | size |
 |---|---|---|---|
 | **#2706** | a correctly labelled field isn't read as absent when its label ends with a colon: the driver's name match drops the trailing colon, or the scenario's names accept it. **Evidence before merge:** round 1's three trees read the field, and no tree that passes today stops passing | evaluator change | S |
