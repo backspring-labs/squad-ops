@@ -41,7 +41,7 @@ from squadops.campaigns.gate import (
     binding_from_change_request,
     submission,
 )
-from squadops.campaigns.increment_tree import proposal_change_request
+from squadops.campaigns.increment_tree import increment_basis, proposal_change_request
 from squadops.campaigns.models import (
     ControlOperationRefused,
     CycleKind,
@@ -777,8 +777,16 @@ class WorkloadGate:
         and authors no manifest (§7.3: the manifest is the baseline's plus the typed delta).
 
         Re-entering the gate after a restart finds the seed already stored and stores nothing.
+
+        **A repository-backed increment** (§24bv point 5) has no manifest to apply a delta to,
+        and no contract to derive: its seed is the approved change request alone, promoted with
+        the run's artifacts, where ``increment_seed`` reads it.
         """
 
+        basis = increment_basis(cycle.resolved_config())
+        if basis is not None and not basis.has_manifest:
+            await promote_run_artifacts(self._artifact_vault, run.run_id)
+            return
         stored = await self._artifact_vault.list_artifacts(run_id=run.run_id)
         if any(r.metadata.get("producing_task_type") == INCREMENT_SEED_PRODUCER for r in stored):
             return

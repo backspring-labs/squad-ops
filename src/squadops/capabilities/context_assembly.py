@@ -509,6 +509,18 @@ CONTEXT_CONTRACTS: dict[str, ContextAssemblyContract] = {
             "request.proposal_supervisor_revision",
             "request.proposal_unapproved_proposals",
             "request.change_request_revision_feedback",
+            # SIP-0109 §24bv point 5: a repository-backed Project's request, in place of the
+            # manifest's, with its ``product_proposal`` input and the product's repository view.
+            "request.strategy_propose_product_increment",
+            "request.proposal_product_profile",
+            "request.proposal_product_gaps",
+            "request.proposal_previous_verification",
+            "request.proposal_requirements_source",
+            "request.source_repository_appendix",
+            "request.source_repository_checks_block",
+            "request.source_repository_runners_block",
+            "request.source_repository_instructions_block",
+            "request.source_repository_existing_files_block",
         ),
     ),
     TaskType.DEVELOPMENT_REPAIR: ContextAssemblyContract(

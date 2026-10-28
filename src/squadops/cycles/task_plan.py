@@ -566,13 +566,13 @@ def _resolve_workload_steps(
         # plan_authoring_contributors config. Empty/missing contributors
         # → sole-author route through the merger.
         # deferred (cycle): campaigns.increment_tree loads this module
-        from squadops.campaigns.increment_tree import increment_baseline
+        from squadops.campaigns.increment_tree import is_increment
 
         contributors = (resolved_config or {}).get("plan_authoring_contributors")
         steps = build_planning_steps(
             contributors,
             authors_manifest=authors_interface_manifest(resolved_config),
-            increment=increment_baseline(resolved_config) is not None,
+            increment=is_increment(resolved_config),
         )
     elif workload_type == WorkloadType.REFINEMENT:
         _check_required_roles(
@@ -785,11 +785,11 @@ def _require_change_request_for_increment(
     handed one. Without it the framing would design the accepted application again from its
     PRD; given to another run, it would frame a cycle that never proposed it."""
     # deferred (cycle): campaigns.increment_tree loads this module
-    from squadops.campaigns.increment_tree import increment_baseline
+    from squadops.campaigns.increment_tree import is_increment
 
     in_an_increment = (
         run.workload_type in _CHANGE_REQUEST_WORKLOADS
-        and increment_baseline(resolved_config) is not None
+        and is_increment(resolved_config)
     )
     if in_an_increment and not change_request:
         raise CycleError(

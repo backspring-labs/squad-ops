@@ -165,7 +165,7 @@ async def deliver_source_change(
     configuration = await registry.get_development_configuration(
         cycle.project_id, context.development_configuration_revision
     )
-    baseline, verified_tree = await _regression_baseline(cycle, vault, registry)
+    baseline, verified_tree = await regression_baseline(cycle, vault, registry)
     checkout = await baseline_tree(
         repository, cycle.project_id, context.repo_uri, project.source.base_ref, commit
     )
@@ -293,7 +293,7 @@ async def deliver_source_change(
         await _release(sandbox, workspace_id, raising=sys.exc_info()[0] is None)
 
 
-async def _regression_baseline(
+async def regression_baseline(
     cycle: Cycle, vault: Any, registry: Any
 ) -> tuple[InheritedBaseline, str | None]:
     """What the run's candidate is compared with (FR-20; SIP-0109 §24bv point 3), and the tree
@@ -308,7 +308,9 @@ async def _regression_baseline(
 
     Delivery runs the product's checks only. The frozen criteria's bundles run in the increment's
     accumulated acceptance (§8.1, §24cd point 6) and in a rebase's verification (§24cd point 5),
-    not here."""
+    not here. The increment's proposal is shown the same baseline, as the previous increment's
+    verification (§24bv point 5, ``product_proposal``), so it reads the result its change is
+    compared with."""
     context = cycle.source_context
     assert context is not None
     commit, revision = context.pinned_commit, context.development_configuration_revision

@@ -66,6 +66,8 @@ TREE = next(
     for e in recorded("workspace_commit_mapping", "valid")["entries"]
     if e["commit"] == COMMIT
 )
+#: §24bv point 5: the objective's requirements source, a file in the product read at the head.
+REQUIREMENTS = "repo:file:README.md@current"
 
 
 @pytest.fixture(autouse=True)
@@ -176,18 +178,26 @@ async def _world(
     tmp_path,
     campaigns: MemoryCampaignRegistry | None = None,
     branch: CampaignBranch | None = None,
+    proposal_profile: str = "campaign-increment-source",
 ) -> _World:
     world = _World(campaigns, project_registry=projects)
     world.progress = _progress(world, tmp_path / "vault", branch)
     world.client.app.state.campaign_progress = world.progress
     world.client.app.state.artifact_vault = FilesystemArtifactVault(tmp_path / "vault")
+    repository_backed = isinstance(world.projects, _Projects)
     await world.campaigns.create_campaign(
         campaign(
             CID,
-            project_id=world.projects.project.project_id
-            if isinstance(world.projects, _Projects)
-            else "group_run",
-            policy=policy(calibration_profile="validated-fullstack", squad_profile="full-38"),
+            project_id=world.projects.project.project_id if repository_backed else "group_run",
+            objective=dataclasses.replace(
+                campaign().objective,
+                requirements=REQUIREMENTS if repository_backed else None,
+            ),
+            policy=policy(
+                calibration_profile="validated-fullstack",
+                squad_profile="full-38",
+                proposal_profile=proposal_profile,
+            ),
         ),
         actor="owner",
         actor_role="admin",
@@ -197,7 +207,7 @@ async def _world(
     return world
 
 
-async def test_a_start_writes_the_record_launches_nothing_and_row_5_proposes(tmp_path):
+async def test_a_start_writes_the_record_and_row_5_launches_a_proposal_on_the_branch(tmp_path):
     """§24bv point 1, the wiring: the start route over Tally with its baseline really captured.
     Bugs caught: a repository-backed start that launches a calibration cycle (IR-2's, which fails
     at provisioning for want of a plan); a record that names anything but the capture's commit,
@@ -205,8 +215,11 @@ async def test_a_start_writes_the_record_launches_nothing_and_row_5_proposes(tmp
     or none; a campaign branch (§24bv point 2) not started at the record's commit, so the first
     increment's capture has no head to follow; or a record never decided, so the campaign sits
     calibrating with nothing to end it.
-    Row 5 proposes, and its launch is the proposal input point 5 has yet to build: it escalates,
-    naming it, which is where this lane's half stops."""
+    §24bv point 5: row 5's proposal launches, on the campaign branch, through the launcher's
+    drain and ``prepare_cycle``. Bugs caught: the record's proposal escalated as unbuilt; its block
+    carrying a manifest or a vault cycle a repository-backed tree has none of, or no basis, so
+    every increment seam reads it as no increment; its tree not the record's; its requirements
+    source dropped; its cycle not pinned at the head."""
     repo = build_repository(tmp_path / "sources" / "tally")
     projects = _Projects(
         _tally(str(repo.path)), parse_configuration(recorded("development_configuration", "valid"))
@@ -233,7 +246,9 @@ async def test_a_start_writes_the_record_launches_nothing_and_row_5_proposes(tmp
     resp = world.start()
 
     log = await world.campaigns.control_log(CID)
-    [start, promote, decide] = [e for e in log if e.operation is not ControlOperation.CREATE]
+    [start, promote, decide, launched] = [
+        e for e in log if e.operation is not ControlOperation.CREATE
+    ]
     record = start.binding[BINDING_KEY]
     stored = await world.campaigns.get_campaign(CID)
     assert resp.status_code == 200, resp.json()
@@ -242,6 +257,7 @@ async def test_a_start_writes_the_record_launches_nothing_and_row_5_proposes(tmp
         ControlOperation.START,
         ControlOperation.PROMOTE,
         ControlOperation.DECIDE,
+        ControlOperation.MARK_LAUNCHED,
     ]
     assert (record["commit"], record["development_configuration_revision"]) == (
         repo.second_commit,
@@ -268,12 +284,19 @@ async def test_a_start_writes_the_record_launches_nothing_and_row_5_proposes(tmp
         "propose",
     )
     assert decide.binding["guard"] == "proceed"
-    assert "§24bv point 5" in decide.binding["unbuilt"]
-    assert stored.state is CampaignState.ESCALATED
-    assert resp.json()["campaign"]["state"] == "escalated"
-    assert await world.campaigns.launch_intents(CID) == []
-    assert await world.cycles.list_cycles(PROJECT) == []
-    assert world.executor.started == []
+    assert "unbuilt" not in decide.binding
+    assert stored.state is CampaignState.AT_PROPOSAL
+    [intent] = await world.campaigns.launch_intents(CID)
+    [cycle] = await world.cycles.list_cycles(PROJECT)
+    assert (intent.cycle_id, launched.target) == (cycle.cycle_id, intent.launch_id)
+    block = cycle.resolved_config()["campaign_proposal"]
+    assert block["basis"] == "campaign_branch"
+    assert block["baseline_tree"] == TREE  # bound at drain, the record's tree
+    assert not {"baseline_manifest", "accepted_cycle_id"} & set(block)
+    assert block["objective"]["requirements"] == REQUIREMENTS
+    context = cycle.source_context
+    assert (context.pinned_commit, context.pinned_from) == (repo.second_commit, "campaign_branch")
+    assert [s[0] for s in world.executor.started] == [cycle.cycle_id]
 
 
 def _blocking(gap_id: str, paths: tuple[str, ...]) -> Gap:
@@ -447,9 +470,10 @@ async def test_a_record_a_restart_left_undecided_is_heard_once_at_startup(tmp_pa
         ControlOperation.START,
         ControlOperation.PROMOTE,
         ControlOperation.DECIDE,
+        ControlOperation.MARK_LAUNCHED,  # §24bv point 5: row 5's proposal, launched once
     ]
     assert stored.accepted is not None and stored.accepted.calibration_record_id is not None
-    assert stored.state is CampaignState.ESCALATED
+    assert stored.state is CampaignState.AT_PROPOSAL
 
 
 async def test_a_record_campaigns_package_reads_its_record(tmp_path):
@@ -476,9 +500,11 @@ async def test_a_record_campaigns_package_reads_its_record(tmp_path):
 async def test_the_owners_word_and_the_ledger_read_a_records_decision(tmp_path):
     """§10's owner's word and §9.4's ledger after a record's decision escalated (§24cc). Bugs
     caught: the resume looking the record's id up as a cycle (the latest decision's target), so
-    the owner's propose answers as a missing cycle instead of naming what isn't built; or the
-    ledger reading every decision as a cycle's, so its read fails from the campaign's start on."""
-    world = await _world(_recorded_projects(), tmp_path)
+    the owner's propose answers as a missing cycle instead of naming why it can't launch; or the
+    ledger reading every decision as a cycle's, so its read fails from the campaign's start on.
+    Since §24bv point 5 a record's proposal launches, so the escalation is a proposal profile the
+    deploy doesn't hold."""
+    world = await _world(_recorded_projects(), tmp_path, proposal_profile="no-such-profile")
     world.start()
 
     resumed = world.client.post(
@@ -489,7 +515,7 @@ async def test_the_owners_word_and_the_ledger_read_a_records_decision(tmp_path):
 
     error = resumed.json()["detail"]["error"]
     assert (resumed.status_code, error["code"]) == (422, "VALIDATION_ERROR")
-    assert "§24bv point 5" in error["message"]
+    assert "proposal profile cannot be loaded" in error["message"]
     assert (await world.campaigns.get_campaign(CID)).state is CampaignState.ESCALATED
     assert (ledger.status_code, ledger.json()) == (200, [])
 

@@ -35,6 +35,10 @@ class CampaignObjectiveDTO(BaseModel):
     #: SIP-0113 §4.6: required of a new campaign, as the target is; ``None`` reads back only for
     #: one stored before the field existed.
     work_class: WorkClassDTO | None = None
+    #: SIP-0109 §24bv point 5 (D10 point 3): a repository-backed Project's requirements source,
+    #: ``repo:file:<path>@current`` or a stored artifact's id. Required at creation for one, and
+    #: refused for a sample application.
+    requirements: str | None = None
 
 
 class CampaignPolicyDTO(BaseModel):

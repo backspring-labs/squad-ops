@@ -18,6 +18,7 @@ from fastapi.testclient import TestClient
 from starlette.middleware.base import BaseHTTPMiddleware
 
 from adapters.auth.keycloak.authz_adapter import KeycloakAuthzAdapter
+from adapters.cycles.factory import create_project_registry
 from adapters.cycles.memory_campaign_registry import MemoryCampaignRegistry
 from adapters.cycles.memory_cycle_registry import MemoryCycleRegistry
 from squadops.api.error_handlers import register_domain_error_handlers
@@ -93,6 +94,8 @@ class _World:
         app.include_router(campaigns_router)
         register_domain_error_handlers(app)
         app.state.campaign_registry = self.campaigns
+        # SIP-0109 §24bv point 5: creation reads the Project's kind; group_run is a sample app.
+        app.state.project_registry = create_project_registry("config")
         app.state.cycle_registry = self.cycles
         app.state.authz_port = KeycloakAuthzAdapter()
         app.state.audit_port = self.audit

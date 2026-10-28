@@ -25,11 +25,15 @@ from typing import TYPE_CHECKING, Any
 import yaml
 
 from squadops.campaigns.change_request import (
+    PRODUCT_PROPOSAL_INPUT,
+    IncrementBasis,
+    ProductContext,
     ProposalContext,
     ProposalVerdict,
     stored_change_request,
     validate_proposal,
 )
+from squadops.campaigns.criterion_placement import RunnerPlacement
 from squadops.campaigns.prior_cycle import brief_lines
 from squadops.campaigns.proposed_behaviours import proposal_lines
 from squadops.campaigns.unapproved_proposals import unapproved_lines
@@ -37,10 +41,12 @@ from squadops.capabilities.handlers._plan_authoring import retry_yaml_call
 from squadops.capabilities.handlers.base import HandlerEvidence, HandlerResult
 from squadops.capabilities.handlers.cross_cycle_lessons import cross_cycle_lessons_section
 from squadops.capabilities.handlers.planning.base import _PlanningTaskHandler
+from squadops.capabilities.handlers.source_repository import source_repository_section
 from squadops.capabilities.handlers.task_instructions import (
     project_instructions_section,
     task_instructions_section,
 )
+from squadops.projects.derived_profile import SURFACES
 from squadops.outcomes.proposal_evidence import (
     PROPOSAL_EVIDENCE_INPUT,
     accepted_prd_lines,
@@ -75,20 +81,34 @@ def proposal_context_from(
     *,
     shown_goals: tuple[str, ...],
     shown_goal_statements: tuple[tuple[str, str], ...],
+    product: dict | None = None,
 ) -> ProposalContext:
     """The rails' context from the cycle's ``campaign_proposal`` block and the fetched manifest,
     and the goals the task's evidence showed it (SIP-0113 §4.5), which its ``moves_goals`` may
-    name."""
+    name.
+
+    On a campaign branch (§24bv point 5) there is no manifest: the rails read the product's
+    surfaces and runners from ``product``, the ``product_proposal`` input its run composed. A
+    branch proposal without it is refused, never read as a sample application's."""
     block = resolved_config.get("campaign_proposal")
     if not isinstance(block, dict):
         raise ProposalContextMissing(
             "the cycle carries no campaign_proposal block: a proposal run is launched by a "
             "campaign, which names the accepted tree and the objective it proposes against"
         )
-    if not baseline_manifest.strip():
+    try:
+        basis = IncrementBasis(str(block.get("basis") or IncrementBasis.MANIFEST))
+    except ValueError as e:
+        raise ProposalContextMissing(f"campaign_proposal names an unknown basis: {e}") from e
+    if basis.has_manifest and not baseline_manifest.strip():
         raise ProposalContextMissing(
             "campaign_proposal carries no baseline_manifest: the accepted manifest is the run's "
             "input (§9.1), persisted with it, not fetched"
+        )
+    if not basis.has_manifest and not isinstance(product, dict):
+        raise ProposalContextMissing(
+            f"the proposal is on a campaign branch and was given no {PRODUCT_PROPOSAL_INPUT}: "
+            "the product's head, profile and requirements are the run's input (§24bv point 5)"
         )
     try:
         objective = block["objective"]
@@ -102,9 +122,22 @@ def proposal_context_from(
             prior_criteria=tuple(str(c) for c in block.get("prior_criteria") or ()),
             shown_goals=shown_goals,
             shown_goal_statements=shown_goal_statements,
+            product=None if basis.has_manifest else product_context(product or {}),
         )
     except (KeyError, TypeError, ValueError) as e:
         raise ProposalContextMissing(f"campaign_proposal is incomplete: {e!r}") from e
+
+
+def product_context(product: dict) -> ProductContext:
+    """The rails' reading of a ``product_proposal`` input: each public surface as ``(kind,
+    value)``, and each runner's placement."""
+    profile = product["profile"]
+    return ProductContext(
+        surfaces=tuple(
+            (str(s["kind"]), _surface_value(s)) for s in profile.get("public_surfaces") or ()
+        ),
+        placements=tuple(RunnerPlacement.from_dict(p) for p in profile.get("placements") or ()),
+    )
 
 
 #: SIP-0113 §4.5 (§10t step 4): what the proposal is shown of its accepted tree's outcomes, each
@@ -228,18 +261,28 @@ class StrategyProposeIncrementHandler(_PlanningTaskHandler):
             )
         resolved_config = inputs.get("resolved_config") or {}
         block = resolved_config.get("campaign_proposal") or {}
+        product = inputs.get(PRODUCT_PROPOSAL_INPUT)
         try:
             proposal_context = proposal_context_from(
                 resolved_config,
                 str(block.get("baseline_manifest") or ""),
                 shown_goals=shown_goal_ids(inputs.get(PROPOSAL_EVIDENCE_INPUT)),
                 shown_goal_statements=shown_goal_statements(inputs.get(PROPOSAL_EVIDENCE_INPUT)),
+                product=product if isinstance(product, dict) else None,
             )
         except ProposalContextMissing as e:
             return self._failure(start_time, inputs, str(e))
 
         variables = _render_variables(block, proposal_context)
         variables.update(await _context_sections(renderer, inputs, block, proposal_context))
+        template_id = self._request_template_id
+        if proposal_context.product is not None:
+            # §24bv point 5: the product's head, tree, profile, verification and requirements,
+            # in place of the accepted manifest.
+            assert isinstance(product, dict)
+            variables.pop("baseline_manifest")
+            variables.update(await product_sections(renderer, inputs, product))
+            template_id = PRODUCT_REQUEST_TEMPLATE
         # SIP-0110 §0.9: the lessons approved for this task, in a slot of their own, apart from a
         # revision's note (SIP-0109 §9.2).
         # SIP-0110 Appendix A §3.6 (#2178): this task's instructions, before the lessons.
@@ -252,7 +295,7 @@ class StrategyProposeIncrementHandler(_PlanningTaskHandler):
         lessons = await cross_cycle_lessons_section(renderer, inputs)
         if lessons:
             variables["cross_cycle_lessons_section"] = lessons
-        rendered = await renderer.render(self._request_template_id, variables)
+        rendered = await renderer.render(template_id, variables)
         assembled = context.ports.prompt_service.assemble(
             role=context.role_id,  # SIP-0108 §10m: the identity layer is what the process IS
             hook="agent_start",
@@ -366,6 +409,99 @@ class StrategyProposeIncrementHandler(_PlanningTaskHandler):
             ),
             error=error,
         )
+
+
+#: §24bv point 5: the request a repository-backed Project's proposal is sent, in place of
+#: ``request.strategy_propose_increment``'s manifest.
+PRODUCT_REQUEST_TEMPLATE = "request.strategy_propose_product_increment"
+
+
+async def product_sections(
+    renderer: Any, inputs: dict[str, Any], product: dict[str, Any]
+) -> dict[str, str]:
+    """The product's parts of the request (§24bv point 5), each through its own managed asset
+    (#448), keyed by the product template's variables. The lines are data; the prose is the
+    assets'."""
+    profile = product["profile"]
+    verification = product["previous_verification"]
+    requirements = product["requirements"]
+    profile_variables = {
+        "surface_lines": "\n".join(_surface_line(s) for s in profile.get("public_surfaces") or ())
+        or "- none: the product declares no start, command or package",
+        "placement_lines": "\n".join(_placement_line(p) for p in profile.get("placements") or ())
+        or "- none: the product declares no test runner",
+    }
+    gaps = profile.get("gaps") or []
+    if gaps:
+        lines = "\n".join(
+            f"- {g['id']}"
+            + (f" ({g['subject']})" if g.get("subject") else "")
+            + f", on `{', '.join(g['paths'])}`: {g['reason']}"
+            for g in gaps
+        )
+        rendered = await renderer.render("request.proposal_product_gaps", {"gap_lines": lines})
+        profile_variables["gaps_section"] = rendered.content
+    return {
+        "head_commit": str(product["head"]["commit"]),
+        "source_repository_section": await source_repository_section(renderer, inputs),
+        "product_profile_section": (
+            await renderer.render("request.proposal_product_profile", profile_variables)
+        ).content,
+        "previous_verification_section": (
+            await renderer.render(
+                "request.proposal_previous_verification",
+                {
+                    "verification_source": str(verification["source"]),
+                    "verification_commit": str(verification["commit"]),
+                    "check_lines": "\n".join(
+                        _check_line(c) for c in verification.get("checks") or ()
+                    )
+                    or "- no check ran",
+                },
+            )
+        ).content,
+        "requirements_section": (
+            await renderer.render(
+                "request.proposal_requirements_source",
+                {
+                    "requirements_ref": str(requirements["ref"]),
+                    "requirements": str(requirements["content"]).strip(),
+                },
+            )
+        ).content,
+    }
+
+
+def _surface_value(surface: dict) -> str:
+    """A contract 8 surface's one value (``SURFACES``): its URL, its argv joined, or its name."""
+    value = surface.get(SURFACES.get(str(surface["kind"]), "url"))
+    return " ".join(str(a) for a in value) if isinstance(value, list) else str(value)
+
+
+def _surface_line(surface: dict) -> str:
+    return f"- {surface['kind']}: `{_surface_value(surface)}`"
+
+
+def _placement_line(placement: dict) -> str:
+    covers = ", ".join(f"`{c}`" for c in placement.get("covers") or ())
+    if placement.get("template"):
+        return (
+            f"- `{placement['runner']}` tests {covers}: a criterion's test is placed at "
+            f"`{placement['template']}`"
+        )
+    return f"- `{placement['runner']}` tests {covers}: hosts no criterion ({placement['refused']})"
+
+
+def _check_line(check: dict) -> str:
+    line = f"- `{check['id']}`: {check['result']}"
+    if check.get("reason"):
+        line += f" ({check['reason']})"
+    findings = check.get("findings")
+    if findings:
+        keys = ", ".join(f"`{k}`" for k in findings["keys"])
+        more = findings["count"] - len(findings["keys"])
+        line += f"; {findings['count']} finding keys: {keys}" + (f" and {more} more" if more else "")
+    return line
 
 
 def _render_variables(block: dict, context: ProposalContext) -> dict[str, str]:

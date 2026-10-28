@@ -106,7 +106,8 @@ from squadops.campaigns.progress import (
 )
 from squadops.campaigns.projection import project
 from squadops.cycles.gate_attribution import compose_decided_by
-from squadops.cycles.models import CycleStatus
+from squadops.campaigns.repository_backed import creation_refusal
+from squadops.cycles.models import CycleStatus, ProjectNotFoundError
 from squadops.memory.pinning import pin_campaign
 from squadops.scenarios.suites import SuiteRefused, pin_campaign_suite, require_pinnable
 
@@ -246,6 +247,7 @@ async def create_campaign(
                 measurement=body.objective.measurement,
                 target_accepted_increments=body.objective.target_accepted_increments,
                 work_class=WorkClass(**body.objective.work_class.model_dump()),
+                requirements=body.objective.requirements,
             ),
             policy=CampaignPolicy(**body.policy.model_dump()),
             state=CampaignState.DRAFT,
@@ -254,6 +256,7 @@ async def create_campaign(
             updated_at=now,
         )
         _require_profiles(campaign.policy)
+        await _require_project_rules(request, campaign)
         definition = CampaignDefinition(**body.definition.model_dump()) if body.definition else None
         scenarios = await _pinnable_scenario_store(request, body.scenario_suite)
         result = await _registry(request).create_campaign(
@@ -286,6 +289,19 @@ async def create_campaign(
         except SuiteRefused as e:
             raise HTTPException(409, error_body(e.code, str(e))) from e
     return _result(result)
+
+
+async def _require_project_rules(request: Request, campaign: Campaign) -> None:
+    """SIP-0109 §24bv point 5: what a Campaign must declare on its Project's kind, refused at
+    creation (422), naming the field. A Project the registry doesn't hold is refused at the
+    start, where its state is read (§24cc), and is not read here."""
+    try:
+        project = await get_project_registry(request).get_project(campaign.project_id)
+    except ProjectNotFoundError:
+        return
+    refusal = creation_refusal(campaign, repository_backed=project.source is not None)
+    if refusal:
+        raise ValueError(refusal)
 
 
 async def _pinnable_scenario_store(request: Request, digest: str | None):
@@ -1035,6 +1051,7 @@ def _campaign(c: Campaign) -> CampaignResponse:
                 if c.objective.work_class
                 else None
             ),
+            requirements=c.objective.requirements,
         ),
         policy=CampaignPolicyDTO(
             **{f: getattr(c.policy, f) for f in CampaignPolicyDTO.model_fields}

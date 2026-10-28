@@ -520,6 +520,8 @@ def _row_to_campaign(row: asyncpg.Record) -> Campaign:
             target_accepted_increments=objective.get("target_accepted_increments"),
             # SIP-0113 §4.6: absent on a campaign stored before the field existed.
             work_class=WorkClass.from_stored(objective.get("work_class")),
+            # SIP-0109 §24bv point 5: absent on a campaign stored before the field existed.
+            requirements=objective.get("requirements"),
         ),
         policy=CampaignPolicy.from_stored(row["policy"]),
         state=CampaignState(row["state"]),

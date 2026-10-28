@@ -19,7 +19,7 @@ from __future__ import annotations
 
 import dataclasses
 
-from squadops.campaigns.increment_tree import accepted_cycle_of
+from squadops.campaigns.increment_tree import accepted_cycle_of, increment_basis
 from squadops.cycles.models import Cycle
 from squadops.execution.execution_errors import _ExecutionError
 from squadops.outcomes.proposal_evidence import PROPOSAL_EVIDENCE_INPUT
@@ -34,6 +34,12 @@ async def with_proposal_evidence(
     """``envelopes`` with the evidence on each task shown it, read once for the run."""
     shown = [i for i, e in enumerate(envelopes) if shown_outcome_evidence(e.task_type)]
     if not shown or cycle.campaign_id is None:
+        return envelopes
+    basis = increment_basis(cycle.resolved_config())
+    if basis is not None and not basis.has_manifest:
+        # SIP-0109 §24bv point 5: a repository-backed increment's accepted tree is the campaign
+        # branch's head, which no evaluation reads yet (SIP-0113 §10l, placed in 2.5). It is
+        # shown its head's verification instead (``product_proposal``), and no goal.
         return envelopes
     accepted = accepted_cycle_of(cycle)
     if accepted is None:

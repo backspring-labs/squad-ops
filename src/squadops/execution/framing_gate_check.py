@@ -25,7 +25,8 @@ from uuid import uuid4
 
 from squadops.campaigns.increment_tree import (
     approved_change_request,
-    increment_baseline,
+    approved_footprint,
+    increment_basis,
     increment_criterion_files,
     increment_footprint,
     increment_frozen_files,
@@ -590,10 +591,25 @@ class FramingGateCheck:
 
     async def _increment_footprint(self, cycle: Cycle, run_manifest: str | None) -> Any:
         """The increment's footprint, or ``None`` for a cycle that is not an increment (or
-        whose candidate manifest cannot be read, which the manifest's own nets report)."""
+        whose candidate manifest cannot be read, which the manifest's own nets report). A
+        repository-backed increment's is its approved change request's own (§24bv point 5)."""
 
-        if increment_baseline(cycle.resolved_config()) is None:
+        basis = increment_basis(cycle.resolved_config())
+        if basis is None:
             return None
+        if not basis.has_manifest:
+            try:
+                document = await approved_change_request(self._artifact_vault, cycle)
+                return approved_footprint(document) if document is not None else None
+            except Exception:
+                # The gate never raises (#473): a framing run without its change request could
+                # not have been provisioned.
+                logger.warning(
+                    "increment footprint unreadable for cycle %s; the footprint rule is skipped",
+                    cycle.cycle_id,
+                    exc_info=True,
+                )
+                return None
         content = run_manifest or await self._load_seeded_manifest_content(cycle)
         if not content:
             return None

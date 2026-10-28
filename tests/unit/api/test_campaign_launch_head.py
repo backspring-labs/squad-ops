@@ -203,23 +203,6 @@ async def _repository_campaign(accepted: AcceptedTree, verification: str | None)
     return reg, await reg.get_campaign(CID)
 
 
-def _proposal_on_record() -> LaunchRequest:
-    """The increment a proposal on the calibration record's commit writes: §24bv point 5's, the
-    MacBook lane's, not built yet. ``increment_launch`` refuses a record's tree, so it is written
-    as point 5 will write it: a block that binds no tree."""
-    return LaunchRequest(
-        CycleKind.INCREMENT,
-        {
-            "body": cycle_request_body(
-                "validate",
-                squad_profile_id="full-38",
-                user_values={"campaign_proposal": {"proposal_id": "prop_onrecord01", "version": 1}},
-                notes="an increment on the calibration record",
-            )
-        },
-    )
-
-
 @pytest.mark.parametrize(
     ("accepted", "verification", "pinned"),
     [
@@ -244,11 +227,8 @@ async def test_a_repository_backed_increment_is_pinned_at_the_head_read_at_drain
     PROMOTE (the verification lost); the intent's tree bound at the decision instead of the
     head's at drain; the Project's baseline overwritten by the head."""
     campaigns, at_head = await _repository_campaign(accepted, verification)
-    launch = (
-        increment_launch(at_head, baseline_manifest="")
-        if accepted.cycle_id
-        else _proposal_on_record()
-    )
+    # §24bv point 5: on the record's commit and after an increment alike, written with no manifest.
+    launch = increment_launch(at_head, baseline_manifest=None)
     await campaigns.transition(CID, move(S.AT_PROPOSAL, "k-propose", launch=launch))
     cycles = MemoryCycleRegistry()
 
@@ -401,9 +381,16 @@ def test_a_branch_trees_increment_intent_binds_no_tree_and_a_sample_applications
     on_branch = campaign(accepted=AcceptedTree(_HEAD_TREE, cycle_id="cyc_inc", commit=_HEAD))
     in_vault = campaign(accepted=AcceptedTree(_HEAD_TREE, cycle_id="cyc_inc"))
 
-    branch_block = _block(increment_launch(on_branch, "").cycle_request)
+    branch_block = _block(increment_launch(on_branch, None).cycle_request)
     vault_block = _block(increment_launch(in_vault, "m").cycle_request)
 
     assert "baseline_tree" not in branch_block
     assert vault_block["baseline_tree"] == _HEAD_TREE
-    assert set(vault_block) - set(branch_block) == {"baseline_tree"}
+    # §24bv point 5: the branch's names its basis, and carries no manifest and no vault cycle.
+    assert set(vault_block) - set(branch_block) == {
+        "baseline_tree",
+        "accepted_cycle_id",
+        "baseline_manifest",
+    }
+    assert set(branch_block) - set(vault_block) == {"basis"}
+    assert branch_block["basis"] == "campaign_branch"
