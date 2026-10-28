@@ -1980,3 +1980,14 @@ checks:
       from squadops.campaigns.branch_rebase import REBASED_HEAD_UNVERIFIABLE, ProductRunnerFrozen
       print("frozen_on_runner=ProductRunnerFrozen(" in inspect.getsource(main._branch_rebase), REBASED_HEAD_UNVERIFIABLE)
     expect: True REBASED_HEAD_UNVERIFIABLE
+  - id: "2619-review-push"
+    what: the supervisor's review-request push, a record accepted on a completed campaign, through a port method only a campaign's own branch may use (SIP-0109 §24ci (b), §24ck)
+    container: squadops-runtime-api
+    code: |
+      from squadops.campaigns.models import ControlOperation
+      from squadops.campaigns.review_push import push_review
+      from squadops.ports.projects.source_repository import SourceRepositoryPort
+      from squadops.projects.contribution import campaign_review_branch
+      print(ControlOperation.REVIEW_PUSHED.records_only, "push_campaign_branch" in SourceRepositoryPort.__abstractmethods__,
+            campaign_review_branch("cmp_x"), callable(push_review))
+    expect: True True squadops/cmp_x True

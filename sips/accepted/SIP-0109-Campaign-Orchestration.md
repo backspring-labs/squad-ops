@@ -137,7 +137,8 @@ Kept by the rule in CLAUDE.md ("SIP System"): one row per part, updated in the P
 | a Campaign on a repository-backed Project, point 3's regression baseline: an increment on a head compared with the verification that made it, the record's commit with its inherited baseline; with §24ci (a)'s pytest exception-class reader and the product-runner discrimination rule (§24bv point 3, §24ci (a); SIP-0112 H.10) | **shipped** | 2.5.0, PR #2764 |
 | a Campaign on a repository-backed Project, point 5: the proposal's input read at the head, the change request on a product with each criterion's test placed under the product's runners, the scope's reading there, the continuation's change request, and the creation rules (§24bv point 5, §24cj; SIP-0112 H.4, H.11) | **shipped** | 2.5.0, PR #2771 |
 | a Campaign on a repository-backed Project, point 6: acceptance on the product's runner, runtime-side in the sandbox at the increment's delivery, each overlay a revision of its tree, in place of `qa.evaluate_increment`, which a branch increment's plan no longer carries (§24cd point 6, §24cl; its criterion files are §24cj's placed ones; SIP-0112 H.11's drop) | **shipped**, except route rendering on a product (§24cl item 6, next row) | 2.5.0, PR #2774 |
-| a Campaign on a repository-backed Project, point 4: upstream moving. The branch is rebased onto the commit and revision its Project reconciled, its head verified by the product's checks, a pending repair or retry superseded as `upstream_moved` (D10), the conflict and regression escalations, and the ref's follow (§24bv point 4, §24cd points 2–5, §24cm) | **shipped**, with §24cd point 5's frozen bundles at the rebase run by #2774's `frozen_on_runner` (§24cm item 11) | 2.5.0, PR #2770 |
+| a Campaign on a repository-backed Project, point 4: upstream moving. The branch is rebased onto the commit and revision its Project reconciled, its head verified by the product's checks, a pending repair or retry superseded as `upstream_moved` (D10), the conflict and regression escalations, and the ref's follow (§24bv point 4, §24cd points 2–5, §24cj) | **shipped**, except §24cd point 5's frozen bundles at the rebase (next row) | 2.5.0, PR #2770 |
+| a Campaign on a repository-backed Project, the supervisor's review-request push: the campaign branch pushed as `squadops/<campaign>` with the supervisor's own token, leased on the last push and refused over a branch someone else moved (§24ci (b), §24ck) | **shipped** | 2.5.0, PR #9998 |
 | a Campaign on a repository-backed Project, the rest: route rendering on a product, in the sandbox from contract 7's start, a release-level gap the supervisor schedules with #2414's remainder (§24bv point 3, §24cl item 6); (§24bv, §24cd; SIP-0112 H.4); and the supervisor's review-request push (§24ci (b)) | **placed** | 2.5.0, #2619 |
 | a vitest test-id reader, so a vitest-only criterion can be read as discriminating (§24ci (a)) | **shipped**: from vitest's default reporter, as the product's own command prints it (SIP-0112 H.10) | 2.5.0, PR #2764, closes #2757 |
 | a Campaign cycle held on its instruction bindings escalates as `binding_hold`, released by re-supply and never parked (§24bw; SIP-0110 §A.3.6) | **shipped** | 2.4.0, PR #2628 (#2178's Campaign half) |
@@ -4845,3 +4846,42 @@ named as the release-level gap it called it. Item 13 also changes #2764's `held_
 - **Mutations:** twenty, one on each seam; all twenty caught. `branch_base` ignoring a rebase survived the first run, since the rebase's idempotency key masked it, and a test of upstream moving twice now catches it. The second review's fixes added ten more, all caught, on the refusal table, the sweep's drain, the linearity check, the missing-commit check and the frozen seam. The third review's fix added eight more. Seven were caught: failing open with no runner or an unrunnable one, a blocked or unread reading accepted, the base's tree run in place of the rebased head's, the bundles never read from the vault, and the runtime wiring no runner. One survived, the surface leaving the pins' test paths out. It is equivalent here: the bundle's own files win at their paths in the overlay, and a single-file invocation collects no other test file.
 
 **Who ruled.** The supervisor (the Spark lane), building §24cd points 2–5 under the owner's direction of 2026-10-21 and the 2.5 grants. Items 1, 2, 4 to 7, 10 and 11 are the supervisor's calls, for the owner's review. Item 10 answers the outside second review's P2, and item 11 its third review's P1 (SIP-0112 H.12). Item 8's port change is for the MacBook lane's G4.
+
+### 24ck. §24ci (b) as built: the supervisor's push, leased on the last push, with its own token and its own route (2026-10-28, §13, §24bv point 2, §24ci (b), §24cj; #2619; the supervisor's build, for the owner, with the MacBook lane's G4 on the port)
+
+**What was built.** §24ci (b)'s rule, as an operator's act that only the supervisor or the owner can make:
+- `squadops campaigns push-review <campaign> --token-from-gh` calls `POST /api/v1/campaigns/{id}/review-pushes`, which takes `campaigns:manage`;
+- the push pushes the campaign branch's head to the product as `squadops/<campaign>`, through the contribution path (`squadops.projects.contribution.push_campaign_review`);
+- the first push opens the review request against the Project's base branch. Later pushes move the branch that request follows;
+- each push is a `review_pushed` row, a record accepted on a completed Campaign: the branch, the commit, the lease, whether it rewrote the branch, and the request's address.
+
+**Where the build differs from §24ci (b)'s text:**
+1. **Its own command and route, on the contribution path's code.** §24ci (b) names `squadops projects contribute`. That command contributes one run's capture and records it in the Project's contributions. A Campaign's push is a different act, of a branch, recorded in the Campaign's control log. So it has its own command and route, beside the Campaign's other operator acts (the `/api/v1` resource lane, `docs/architecture/api-route-lanes.md`). It shares the contribution path's code: `_review_target`'s checks (a token, a forge, a base that is a branch) and the same forge call. It writes no Project contribution row.
+2. **Every push after the first is leased, not only a rebase's.** The lease is the commit the last `review_pushed` row recorded. A push that only adds increments fast-forwards under it. A push after a rebase rewrites under it. Either way, a branch someone else moved is refused (`409 REVIEW_BRANCH_MOVED`), never overwritten. `forced` records whether the push rewrote: the lease isn't an ancestor of the head.
+3. **The first push is never forced.** With no recorded push there is no lease, so a branch the product already holds with other history is refused.
+4. **The token comes with the request, and only with it.** A run's contribution falls back to a token the deploy names (`projects.review_request_tokens`). A Campaign's push has no such fallback, since §24ci (b) says nothing is stored for it. The request's `token` is required, and the CLI refuses without `--token-from-gh`. It is used in memory for the push and the forge call, never written to a row, a response or a log.
+5. **What it refuses before anything leaves** (`409 REVIEW_PUSH_REFUSED`):
+   - a sample application's Campaign;
+   - a Project that doesn't contribute by `review_request`;
+   - a branch at its base, which holds nothing upstream lacks;
+   - a branch whose ref is behind its row. The startup and sweep re-sync moves the ref (§24cd point 2), and the push is retried after.
+6. **A retry is a replay.** A request whose idempotency key is recorded is answered with that push, even after the head has moved. A request for the head last pushed is answered with that push, and nothing is pushed. A push whose row never committed is pushed again, which the product reads as up to date, and then recorded.
+7. **The port's widening is its own method.** `SourceRepositoryPort.push_campaign_branch` pushes only `refs/squadops/campaign/<campaign>` to `refs/heads/squadops/<campaign>`, and refuses any other branch or campaign id (`ref_refused`). `push_capture` stays never forced, and its documentation names the one exception. This is a change to SIP-0112's source-repository port, for the MacBook lane's G4.
+
+**Not built, by the ruling:** an automatic push, and a token stored in the deploy for it.
+
+**Evidence.**
+- **The wiring:** the tests enter at the route (`tests/unit/api/test_campaign_review_push.py`), over `test_branch_rebase`'s world: a real managed clone, real deliveries, a real rebase, and the fixture's own repository as the product:
+  - the first push opens the request, and the push after a rebase is forced under the first's lease;
+  - three pushes across two rebases are each leased on the one before;
+  - a branch someone else moved is refused and left as they left it;
+  - a retried key is answered with its own push, after the head moved;
+  - each refusal is made with nothing pushed or opened;
+  - a completed Campaign is pushed at its close;
+  - the invented token is in no row, response or log.
+- **The clone's push** is tested against a real repository (`tests/unit/tools/test_git_source.py`): the lease rewriting, the retry that is up to date, a moved branch refused, a first push not forced, only a Campaign's own branch, and the token in the environment alone.
+- **The CLI** sends the caller's own token, prints none, and sends nothing without `--token-from-gh` (`tests/unit/cli/test_commands_campaigns.py`).
+- **The Postgres registry** records `review_pushed` on a completed Campaign (migration `2001`), run by CI's integration job.
+- **Mutations:** thirteen, all caught. Two survived the first run: the lease taken from the first push, and a retried key pushing again. Each has a test now.
+
+**Who ruled.** The owner ruled the push (§24ci (b), 2026-10-28). The supervisor (the Spark lane) built it. Items 1 to 6 are the supervisor's calls, for the owner's review. Item 7's port change is for the MacBook lane's G4.
