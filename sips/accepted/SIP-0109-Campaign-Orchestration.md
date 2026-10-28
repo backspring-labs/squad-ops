@@ -136,7 +136,8 @@ Kept by the rule in CLAUDE.md ("SIP System"): one row per part, updated in the P
 | a Campaign on a repository-backed Project, point 2's launcher handoff: the head read at drain and handed to cycle creation, and a repository-backed increment's intent binding no tree (§24cd point 1; SIP-0112 H.9) | **shipped** | 2.5.0, PR #2763 |
 | a Campaign on a repository-backed Project, point 3's regression baseline: an increment on a head compared with the verification that made it, the record's commit with its inherited baseline; with §24ci (a)'s pytest exception-class reader and the product-runner discrimination rule (§24bv point 3, §24ci (a); SIP-0112 H.10) | **shipped** | 2.5.0, PR #2764 |
 | a Campaign on a repository-backed Project, point 5: the proposal's input read at the head, the change request on a product with each criterion's test placed under the product's runners, the scope's reading there, the continuation's change request, and the creation rules (§24bv point 5, §24cj; SIP-0112 H.4, H.11) | **shipped** | 2.5.0, PR #2771 |
-| a Campaign on a repository-backed Project, the rest: acceptance on the product's runner, runtime-side in the sandbox, in place of `qa.evaluate_increment` (§24cd point 6; its criterion files are §24cj's placed ones), upstream moving (point 4, with §24cd point 5's frozen bundles at the rebase) (§24bv, §24cd; SIP-0112 H.4), and the supervisor's review-request push (§24ci (b)) | **placed** | 2.5.0, #2619 |
+| a Campaign on a repository-backed Project, point 6: acceptance on the product's runner, runtime-side in the sandbox at the increment's delivery, each overlay a revision of its tree, in place of `qa.evaluate_increment`, which a branch increment's plan no longer carries (§24cd point 6, §24cl; its criterion files are §24cj's placed ones; SIP-0112 H.11's drop) | **shipped**, except route rendering on a product (§24cl item 6, next row) | 2.5.0, PR #2774 |
+| a Campaign on a repository-backed Project, the rest: route rendering on a product, in the sandbox from contract 7's start (§24bv point 3, §24cl item 6); upstream moving (point 4, with §24cd point 5's frozen bundles at the rebase, run by `frozen_on_runner`, §24cl item 10) (§24bv, §24cd; SIP-0112 H.4); and the supervisor's review-request push (§24ci (b)) | **placed** | 2.5.0, #2619 |
 | a vitest test-id reader, so a vitest-only criterion can be read as discriminating (§24ci (a)) | **shipped**: from vitest's default reporter, as the product's own command prints it (SIP-0112 H.10) | 2.5.0, PR #2764, closes #2757 |
 | a Campaign cycle held on its instruction bindings escalates as `binding_hold`, released by re-supply and never parked (§24bw; SIP-0110 §A.3.6) | **shipped** | 2.4.0, PR #2628 (#2178's Campaign half) |
 
@@ -4576,3 +4577,154 @@ text can't be built as written, or leaves a choice:
 the MacBook lane's point 5 to the Spark lane (2026-10-28). The supervisor (the Spark lane) designed and built it. Item
 6's scope reading is the supervisor's judgement under the owner's delegation of 2026-10-28. Items 3 and 4 change the
 change request's schema, a shared contract, so they take the outside review SIP-0112 H.12 provides before the merge.
+
+### 24cl. §24cd point 6 as built: a repository-backed increment is judged at its delivery, on the product's runner in the sandbox, in place of `qa.evaluate_increment` (2026-10-28, §8.1–§8.4, §24bv point 3, §24cd points 5 and 6, §24ci (a), §24cj; SIP-0112 H.6, H.10, H.11; #2619; the supervisor's build, for the owner)
+
+**Why.** §24cd point 6 moves a repository-backed increment's acceptance into the sandbox, runtime-side, because the
+product's toolchain exists only there. It builds each overlay as a revision of the tree, and drops
+`qa.evaluate_increment` for such an increment. §24bv point 3 says what the bundle and the overlays are on a product. Until
+this, a product's increment still planned `qa.evaluate_increment` (§24cj, "Not built here"). That task runs in the qa
+role's container, which holds no product toolchain. And `discrimination_on_runner` and `held_on_runner` (#2764) had no
+live caller. Each item below says what the build settled where the text leaves a choice. One part
+isn't built: item 6.
+
+**What was built, and each choice the text left.**
+1. **When: at delivery, after the capture** (`DispatchedFlowExecutor._deliver_source_change`, which calls
+   `execution.product_acceptance.evaluate_product_increment`). Point 6 says where the evaluation runs, not when.
+   Delivery is where both trees are in hand: the head the run was built on and the squad's changes to it. A candidate
+   the product's checks reject fails its run first, as before, and isn't judged. That matches a sample application's
+   run that fails before its last task. A framing or proposal run delivers nothing, so it's never judged.
+2. **One evaluator for each increment** (rule 3: a property, not a type compare). `IncrementBasis.evaluated_at_delivery`
+   holds for `campaign_branch`. The plan asks it and plans no `qa.evaluate_increment` (`task_plan._increment_evaluation`),
+   and delivery asks the same property to judge. So a sample application's increment keeps its task, and a standalone
+   source-backed cycle, which is no increment, is never judged.
+3. **The inputs are the ones the plan hands `qa.evaluate_increment`** (`increment_evaluation_inputs`). They come from
+   the same approved change request: the increment's id, each new criterion's placed file (§24cj item 5), the frozen
+   criteria its launch pinned with their stored bundles, and what it retires or replaces. The profile is read at the
+   Project's pin (§24cd point 3). The configuration is read at the revision the cycle pinned.
+4. **Each overlay is a revision of its tree, in a workspace of its own** (`runner_acceptance.RunnerAcceptance`). The
+   tree is seeded as the head's checkout (`git_checkout`), with the squad's changes patched on for the candidate
+   (`agent_patch`). The overlay is then cut on it (`acceptance_assembly`). So an overlay's parent revision is the tree it
+   overlays.
+   - The candidate's revision must be the one delivery verified, or nothing is judged (`CandidateNotDelivered`).
+   - **The choice:** one workspace per overlay, not one per tree with overlays patched in turn. A store's patch needs
+     the live tree to match its base, and a deleted file loses its executable bit, so a chain of overlays would make
+     each revision depend on the order of the ones before it.
+   - Each workspace is released before it is seeded (an earlier attempt's, after a restart) and after its run.
+5. **The product's test files and a criterion's bundle** (`ProductTestSurface`, `freeze_product_bundle`).
+   - **A test file** is one contract 8's `files.test` or `files.test_support` classes, matched on the whole path, or a
+     criterion file the framework placed. Every other tracked file is the product's.
+   - **The overlays are `evaluator_trees`' own** (§7.4). The baseline-evaluator overlay is the head's product files plus
+     the bundle. The candidate-verifier overlay is the candidate's product files plus the bundle. Neither holds the
+     tree's own test files, so a candidate's conftest can't change how a frozen criterion runs.
+   - **A bundle** is the placed test file and the test files it imports, as on a stack, plus the support files of the
+     runner that holds it (§24bv point 3).
+   - **The choice: a Python test file's package markers.** The `__init__.py` of each directory above it, where the tree
+     has one and it is a test file, goes in the bundle. §8.1 freezes "the fixtures and helpers it requires, resolved from
+     its imports". Without its markers, a test under a package directory imports as a top-level module, and the product
+     may not be on its path.
+   - **Its invocation** is the runner's one-file argv, with the file named in it as H.6's `{path}` or `{name}`.
+6. **Route rendering on a product isn't built.** §24bv point 3 has routes rendered where the profile names client
+   routes: a greenfield product made from a blueprint. Nothing here can render them, since the sample stacks' renderer
+   stands the app up in the qa container from the stack's own probe profile. So each route the profile names is
+   `blocked_unverified`, never passed by omission (SIP-0096), and the increment is blocked with it. A profile that names
+   none has no routes, and they are not applicable.
+   - **The cost:** every increment on such a product blocks. `z_shelfnote` is one: its profile carries its manifest's
+     routes (H.7). Building the renderer in the sandbox, from contract 7's start declaration, is placed on #2619.
+7. **Which runner, which argv, which reader** (H.6's ownership rule).
+   - A new criterion's file is run by the runner that holds it (`DerivedProfile.runner_for`), and read by that runner's
+     test-id reader.
+   - A frozen bundle runs by its own frozen invocation (§8.1: "by the bundle's frozen invocation"), even after a
+     reconciliation changes the runner's argv. It is read by the reader of the runner that holds its file now, and by
+     its exit status where no runner holds it or the runner has no reader (H.6's `per_test_reading`).
+   - **A runner with no test-id reader isn't run for a new criterion** (§24ci (a)). Its criterion is unread and blocks,
+     and its bundle is still frozen.
+   - Each argv runs as the configuration's checks run, in their working directory, after their install and build
+     steps (H.6).
+8. **The record is the `increment_evaluation` document a sample application's evaluation writes**
+   (`acceptance_run.evaluation_document`). It is stored on the implementation run, so each reader takes it unchanged:
+   - the completion's verdict, and §24bq's already-met reading (`progress.increment_verdict`, `already_met`,
+     `rejected_only_as_already_met`);
+   - the promotion, which freezes `new_bundles` (`_freeze_bundles`), and the next launch's pin;
+   - a successor's brief (§24br, `prior_cycle`);
+   - the reference report (`reference.py`, `scripts/dev/reference_report.py`).
+
+   Two keys are added for this evaluator alone, and no reader reads them: `evaluated_on: product_runner`, and `runs`.
+   `runs` holds each run's criterion, side, overlay identity, sandbox revision, argv, reader, exit status and reading:
+   §8.4's keys.
+9. **A difference this leaves, named.** A criterion test that can't be collected on the baseline makes pytest exit 2.
+   An example is a module-level import of a module only the candidate has. pytest's reader can't read exit 2, so
+   `discrimination_on_runner` reads the criterion as not run, and it blocks. A sample stack reads the same file as
+   `only_setup_failures`, and the criterion is unmet with its reason. Neither counts it as discriminating, which is
+   §8.2's rule. But a blocked increment is told only "not run", where the sample stack's repair is told why. Changing
+   it is a change to `discrimination_on_runner`, #2764's decision, and this doesn't make it. It is the supervisor's to
+   rule.
+10. **The rebase's frozen bundles** (§24cd point 5; #2770 records them as `frozen_criteria_unrun` "until point 6").
+    `runner_acceptance.frozen_on_runner` is the frozen half alone. It runs on any tree, with no candidate changes.
+    The rebase calls it with the rebased head's tree from the managed clone (`repository.tree_at`, files and executable
+    bits), the campaign's frozen pins (`frozen_criteria(log)`) with their bundles read as a launch's are
+    (`frozen_bundle_contents`) and rebuilt by `frozen_criteria_from`, the profile at the reconciled pin, and the
+    rebase's key as `subject_id`. A result that isn't `held` is `REBASED_HEAD_REGRESSED`. That call is #2770's to
+    make, in whichever of the two PRs merges second. It isn't wired here.
+11. **What refuses, and fails the run** (`ProductAcceptanceRefused`, `CandidateNotDelivered`): no derived profile at
+    the pin, no sandbox, no approved change request, or a candidate other than the verified one. A run that can't be
+    judged fails, as a `qa.evaluate_increment` that can't be judged fails its task. Nothing is accepted unjudged.
+12. **The cost.** Each overlay seeds the whole tree and runs the configuration's install and build steps before its
+    one file: two runs for each new criterion with a reader, and one for each frozen criterion. A product whose install
+    is slow pays it on every run.
+
+**Not built here, and where it is:**
+- route rendering on a product (item 6): #2619;
+- the rebase's call (item 10): #2770, or whichever merges second;
+- §24ci (b)'s review-request push: #2619.
+
+**Evidence.**
+- **The wiring, entered at the live callers:**
+  - `tests/unit/campaigns/test_product_runner_acceptance_wiring.py` enters at the executor's end of plan
+    (`_execute_sequential`, which delivers). It runs over the shared fixture's Tally, with a real managed clone and a
+    real sandbox service, whose one stand-in runs X-3a's disposable copy as local processes:
+    - a branch increment is delivered, captured and judged, and its document is stored on its run. Tally's unittest
+      names no test, so its new criterion blocks, and its frozen criterion holds by exit status;
+    - a change that keeps every check of Tally's but breaks the frozen criterion is rejected;
+    - no profile at the pin fails the run;
+    - a standalone source-backed cycle is never judged;
+    - `generate_task_plan` plans `qa.evaluate_increment` for a sample application's increment and not for a branch's;
+    - `CampaignProgress.cycle_ended` promotes onto the campaign branch from a product document, freezing its bundle at
+      the placed file with an address the next pin holds.
+  - `tests/unit/campaigns/test_runner_acceptance_sandbox.py` runs real pytest in the real sandbox service, on an
+    invented product. Its backend reads each run's whole output with the declared reader. It covers:
+    - discrimination, and each reason it isn't met;
+    - item 9's collection error;
+    - no reader;
+    - nothing to run;
+    - a frozen bundle kept, undone, skipped by a candidate's conftest, or its file rewritten;
+    - the frozen invocation after the profile changes;
+    - the rebase's half;
+    - the verified-candidate refusal;
+    - a sandbox that runs nothing;
+    - routes;
+    - the placeholders and the package markers;
+    - a vitest runner under a package, read from recorded vitest 2.1.9 output, since this box has no vitest.
+- **Mutants:** seventeen, one on each seam, and all seventeen caught:
+  - the overlay keeping the tree's test files;
+  - the baseline run on the candidate;
+  - a no-reader runner run and read whole;
+  - a frozen bundle run by the current argv;
+  - no package markers;
+  - no support files;
+  - the verified-candidate check dropped;
+  - a rewritten frozen file not blocked;
+  - routes never judged;
+  - a frozen bundle read whole;
+  - the product's tests read as product files;
+  - the plan keeping, or dropping everywhere, `qa.evaluate_increment`;
+  - delivery never judging, or judging every source-backed cycle;
+  - the document stored off its run;
+  - the pinned frozen criteria never read.
+- **The loaded check** `2619-product-acceptance` (`scripts/dev/loaded_checks.yaml`), run on the source.
+
+**Who ruled.** The supervisor (the Spark lane) built §24cd point 6 under the owner's direction of 2026-10-21 and the
+2.5 grants, with the owner's delegation of 2026-10-28 (§24cj item 6). Items 1 to 12 are the supervisor's choices, for
+the owner's review. Item 6 leaves the routes unbuilt and the increments blocked. Item 9 names a difference for the
+supervisor to rule. Item 8 adds two keys to the `increment_evaluation` document, which other readers depend on, so it
+takes the outside review SIP-0112 H.12 provides before the merge.

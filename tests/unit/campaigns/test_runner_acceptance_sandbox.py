@@ -536,6 +536,7 @@ async def test_a_profiles_client_routes_are_blocked_never_passed(sandbox):
     _e, _r, routed = await _evaluate(
         sandbox, accepted, candidate, profile=_profile(client_routes=["/shelves"])
     )
+    _e2, _r2, unrouted = await _evaluate(sandbox, accepted, candidate, profile=_profile())
 
     assert routed["routes"] == [
         {"path": "/shelves", "held": "blocked_unverified", "missing": [], "not_shown": []}
@@ -543,6 +544,105 @@ async def test_a_profiles_client_routes_are_blocked_never_passed(sandbox):
     assert (routed["verdict"], routed["blocked"]) == (
         "blocked_unverified",
         ["route /shelves: not rendered"],
+    )
+    assert (unrouted["routes"], unrouted["verdict"]) == ([], "accepted")
+
+
+class _VitestSandbox:
+    """A sandbox that seeds and patches as content addresses do, and answers each run with real
+    vitest 2.1.9 output read by the reader it was asked for: the fixture's failing run on the
+    baseline overlay (the accepted ``count``), and a passing run of as many tests on the
+    candidate's. The vitest toolchain isn't on this box, so the output is the recorded one."""
+
+    def __init__(self) -> None:
+        self.asked: list[dict] = []
+        self.trees: dict[str, dict] = {}
+
+    async def release_workspace(self, workspace_id):
+        return None
+
+    async def seed_workspace(self, workspace_id, files, *, origin, executable=(), created_at=None):
+        revision = WorkspaceRevision.cut(cycle_id=workspace_id, origin=origin, files=files)
+        self.trees[revision.revision_id] = dict(files)
+        return revision
+
+    async def apply_workspace_patch(self, *, base, files, origin):
+        from squadops.sandbox.models import PatchResult
+
+        merged = {**self.trees[base.revision_id]}
+        for path, content in files.items():
+            merged.pop(path, None) if content is None else merged.__setitem__(path, content)
+        revision = WorkspaceRevision.cut(cycle_id=base.cycle_id, origin=origin, files=merged)
+        self.trees[revision.revision_id] = merged
+        return PatchResult(
+            operation=OperationName.APPLY_WORKSPACE_PATCH,
+            workspace_revision_id=base.revision_id,
+            status=OperationStatus.SUCCEEDED,
+            ran=True,
+            new_revision_id=revision.revision_id,
+        )
+
+    async def run_declared_command(self, *, revision, command, working_dir, setup, findings_reader):
+        from tests.unit.campaigns.test_runner_acceptance import _out
+
+        self.asked.append(
+            {"argv": command, "working_dir": working_dir, "setup": setup, "reader": findings_reader}
+        )
+        on_baseline = self.trees[revision.revision_id]["shelf/count.py"] == HEAD["shelf/count.py"]
+        stdout, stderr, code = (
+            (_out("vitest-2.1.9-asserting.stdout.txt"), _out("vitest-2.1.9-asserting.stderr.txt"), 1)
+            if on_baseline
+            else (" Tests  6 passed (6)\n", "", 0)
+        )  # fmt: skip
+        return CommandResult(
+            operation=OperationName.RUN_DECLARED_COMMAND,
+            workspace_revision_id=revision.revision_id,
+            status=OperationStatus.SUCCEEDED if code == 0 else OperationStatus.FAILED,
+            ran=True,
+            command=tuple(command),
+            outcome=CommandOutcome.EXITED,
+            exit_code=code,
+            findings=read(findings_reader, stdout, stderr, code).as_dict(),
+        )
+
+
+async def test_a_vitest_criterion_runs_by_its_name_in_its_package_and_reads_by_test_id():
+    """H.7's vitest runner under a package: its one-file argv names the file by ``{name}``, and
+    it runs in the configuration's working directory after its setup, read by ``vitest``. Bugs
+    caught: the repository path handed to vitest's package-relative filter, which runs no test;
+    the setup or working directory dropped, so the product's own command can't run; the reading
+    asked of no reader, so a vitest-only criterion reads unread for ever (§24ci (a), #2757)."""
+    path = "frontend/src/__tests__/criterion_C1.test.jsx"
+    base = _profile().runners[0]
+    vitest = dataclasses.replace(
+        base, runner="vitest", roots=("frontend/src",), file_pattern="*.test.*",
+        single_file_argv=("npm", "--prefix", "frontend", "test", "--", "{name}"),
+        test_ids="vitest", support_files=(),
+    )  # fmt: skip
+    profile = dataclasses.replace(_profile(), runners=(vitest,), test_files=("frontend/src/**",))
+    sandbox = _VitestSandbox()
+    setup = RunnerSetup(".", (("npm", "--prefix", "frontend", "ci"),))
+    runs = RunnerAcceptance(
+        sandbox=sandbox, profile=profile, setup=setup, workspace_prefix="acc-run_v-"
+    )
+    accepted = SandboxTree(HEAD)
+    candidate = SandboxTree(HEAD, changes={**DISTINCT, path: b"it('counts', () => {})\n"})
+
+    evaluation, _runs = await evaluate_on_runner(
+        runs, increment_id="p", accepted=accepted, candidate=candidate,
+        new=[NewCriterion("C1", path)], frozen=(), retired=(),
+    )  # fmt: skip
+
+    assert [a["argv"] for a in sandbox.asked] == [
+        ("npm", "--prefix", "frontend", "test", "--", "criterion_C1.test.jsx")
+    ] * 2
+    assert {(a["working_dir"], a["setup"], a["reader"]) for a in sandbox.asked} == {
+        (".", (("npm", "--prefix", "frontend", "ci"),), "vitest")
+    }
+    [d] = evaluation.discriminations
+    assert (d.met, d.reason) == (True, DiscriminationReason.DISCRIMINATES)
+    assert (
+        "src/__tests__/asserting.test.js > Book form > refuses an empty title" in d.discriminating
     )
 
 
