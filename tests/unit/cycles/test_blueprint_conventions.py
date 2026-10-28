@@ -142,9 +142,7 @@ def test_only_a_blueprint_whose_profile_speaks_to_a_product_is_pinned(blueprint,
 def test_a_blueprint_profile_with_nothing_for_a_product_is_not_pinned(monkeypatch):
     """Bug caught: a blueprint added without its product conventions, pinned anyway, so its
     skeleton prose reaches the product's tasks."""
-    bare = dataclasses.replace(
-        DEVELOPMENT_PROFILES["nextjs_ts"], product_conventions_template=""
-    )
+    bare = dataclasses.replace(DEVELOPMENT_PROFILES["nextjs_ts"], product_conventions_template="")
     monkeypatch.setitem(DEVELOPMENT_PROFILES, "nextjs_ts", bare)
 
     assert blueprint_development_profile("nextjs_ts") == ""
