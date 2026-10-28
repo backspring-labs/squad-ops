@@ -303,7 +303,9 @@ Applied in this order. The first that holds is the result:
    **It does not ship on this evidence alone.** It changes every QA first call, and this population holds only calls
    that were cut. So it opens a second pre-registered check first, the plan row's "first calls that finished": the
    instruction on a seeded sample of `qa.test` and `qa.test_repair` envelopes from the same window whose first call
-   was not cut, against their own captured answers' verdicts.
+   was not cut, against their own captured answers' verdicts. (That check is
+   `2-5-0-qa-first-call-instruction-preregistration.md`. Its §4 replaces the captured verdicts with a fresh baseline,
+   and says why.)
 3. **Otherwise, no change.** That includes a remedy that finishes more but passes less, and one whose difference is
    not clear. The record then says which reading fell short.
 
@@ -437,7 +439,8 @@ Each comparison is the exact two-sided sign test on the discordant envelopes.
 
 **The result is rule 2's.** As §8 says, it does not ship on this evidence. It opens the second pre-registered check:
 the instruction on a seeded sample of `qa.test` and `qa.test_repair` first calls from the same window that were not
-cut, against their own captured answers' verdicts. Until that check reads, no profile, prompt or deadline changes.
+cut. It is `2-5-0-qa-first-call-instruction-preregistration.md`, whose §4 compares it with a fresh baseline in place
+of the captured verdicts. Until that check reads, no profile, prompt or deadline changes.
 
 ### 11.4 What the reading does not cover
 

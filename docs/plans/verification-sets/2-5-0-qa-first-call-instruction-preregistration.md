@@ -50,7 +50,8 @@ sorted order:
 | `qa.test_repair`, FastAPI/React | 18 | 8 | 2.25 |
 | `qa.test_repair`, Next.js | 22 | 8 | 2.75 |
 
-The FastAPI/React `qa.test` stratum is sampled hardest. It is 229 of the window's 423 QA calls (54%), and only 2 of
+The FastAPI/React `qa.test` stratum is given the most envelopes, 40, though at the lowest rate (18%, against 22%,
+36% and 44%). It is 229 of the window's 423 QA calls (54%), and only 2 of
 those were cut, so the instruction can gain little there and any loss there costs the most.
 
 **As captured:** a median of 6,632 completion tokens. 138.6 minutes of first-call latency in all. In 3 of the 80
@@ -60,9 +61,10 @@ those were cut, so the instruction can gain little there and any loss there cost
 
 | what | value |
 |---|---|
-| the sample | `docs/plans/verification-sets/2-5-0-qa-first-call-instruction-population-2253.json`, its own `sha256` field `fc7998722207942e…` (file sha256 `1e4c33f61964974e…`) |
-| the plan | `docs/plans/verification-sets/2-5-0-qa-first-call-instruction-plan-2253.json`, from `engine_replay.py plan` with seed 2253: its own `sha256` field `4b6bad6cb0fb35bc…` (file sha256 `9ca54b0727e62dd2…`). Its drift panel is not run (§5) |
+| the sample | `docs/plans/verification-sets/2-5-0-qa-first-call-instruction-population-2253.json`, its own `sha256` field `fc7998722207942e…` (file sha256 `9ca54b0727e62dd2…`) |
+| the plan | `docs/plans/verification-sets/2-5-0-qa-first-call-instruction-plan-2253.json`, from `engine_replay.py plan` with seed 2253: its own `sha256` field `4b6bad6cb0fb35bc…` (file sha256 `1e4c33f61964974e…`). Its drift panel is not run (§5) |
 | the captured record | `docs/plans/verification-sets/2-5-0-qa-first-call-instruction-captured-2253.json`, sha256 `aae72d03f86f0446…` |
+| the sampling frame | `docs/plans/verification-sets/2-5-0-qa-first-call-instruction-frame-2253.json`, sha256 `7ce1c5edd7201f3a…`: the 374 ids per stratum, sorted, and the draw (§9) |
 | generations | one per envelope per arm, seed 1001, so 80 calls an arm |
 | the order | the plan's seeded shuffle, the same for both arms |
 | the engine | the live `squadops-tensorfold` on `infra/tensorfold/recipes/candidates/qwen27b-nvfp4-parallel2.yaml` (#2742), the engine the first replay's arms ran on (its §10). It is shared with the nostromo crews. No restart, recipe change or engine switch during the run |
@@ -138,14 +140,17 @@ or `error`, all of which fail).
    baseline passes)`, with §2's weights. It estimates the passes the instruction would gain or lose over the
    window's 374 calls that were not cut. It is reported with a 90% interval from 10,000 bootstrap resamples of
    envelopes within each stratum (seed 2253).
-5. **Tokens:** each arm's sum, and the weighted difference `Δ_tok`, computed the same way. A cut call costs 12,288
-   plus a stand-in re-ask: the median completion tokens of the first replay's 38 finished re-asks (5,897).
+5. **Tokens:** each arm's sum, and the weighted difference `Δ_tok`, computed the same way. A finished call costs its
+   completion tokens, including one the handler asked again, as in the first replay. A cut call, or a failed one,
+   costs 12,288 plus a stand-in re-ask: the mean completion tokens of all 46 of the first replay's control re-asks,
+   7,238, including the 8 that were cut again (§9).
 6. **The captured record, described:** the 3 envelopes the handler asked again, and how each arm's call did on them.
    Each arm's median tokens and wall time are set beside the captured ones.
 7. **Wall time:** each arm's median and total, and the count of `qa.test` calls past production's 300 s deadline.
 
-**The net over the window** joins this check to the first replay. That replay ran its whole population: all 46 cut
-calls, so its differences are counts, not estimates.
+**The net over the window** joins this check to the first replay. That replay ran its whole population, all 46 cut
+calls, but each envelope was one seeded draw, so its differences carry the generations' noise too. The interval in
+reading 4 resamples them with this check's (§9).
 - **Passes:** `net_pass = +9 + Δ_pass`, the instruction's 18 passes against today's cap's 9 on the cut calls, plus
   this check's estimate on the rest.
 - **Tokens:** `net_tok = −302,973 + Δ_tok`, its 480,137 against 783,110, plus this check's estimate.
@@ -187,11 +192,13 @@ Applied in this order. The first that holds is the result:
    **A proposal, not a change.** It goes into the line's plan through the #2253 row and a PR of its own, since it alters
    every QA first call and what a regression roll measures. That PR names this record, its interval and its limit.
    The owner reads it there.
-2. **A scoped proposal,** when rule 1 fails only because the FastAPI/React strata lose:
-   - their weighted pass difference is below 0;
-   - the Next.js strata's weighted difference plus the cut Next.js calls' +8 (15 passes against 7) is above 0;
-   - every other condition of rule 1 holds when it is read on Next.js alone, with the cut Next.js calls' tokens
-     (459,820 against 740,927, so −281,107).
+2. **A scoped proposal,** when rule 1 does not hold and all three of these hold:
+   - the FastAPI/React strata's weighted pass difference, plus the cut FastAPI/React calls' +1 (3 passes against 2),
+     is below 0;
+   - the Next.js strata's weighted pass difference, plus the cut Next.js calls' +8 (15 passes against 7), is above 0;
+   - rule 1's other three conditions hold on Next.js alone: the sign test on the 32 Next.js envelopes, unweighted; the
+     finish count on those 32; and `net_tok` read as −281,107 (459,820 against 740,927) plus the Next.js strata's
+     weighted `Δ_tok`.
 
    The instruction for Next.js QA only is then **named as an option for the owner,** not proposed. A stack-scoped
    prompt is a design question (stack specifics in shared code), not a measurement's call.
@@ -202,5 +209,55 @@ Applied in this order. The first that holds is the result:
 
 ## 9. Changes after registration
 
-None yet. A change to anything above after registration is recorded here with its reason, before the reading it
-affects.
+**2026-10-28, from the second reader's review, made after the run's first call had started (01:48:28Z) and before any
+row of it was read.** None touches the sample, the plan, the arms or the calls. Each fixes how a reading is computed,
+or what the text says:
+
+1. **§3's two file sha256s were swapped.** The population file is `9ca54b07…` and the plan file `1e4c33f6…`. The live
+   arm's manifest names the plan as `1e4c33f6…`.
+2. **A failed call's token cost was undefined.** It is priced as a cut (§6, reading 5).
+3. **The stand-in re-ask was a median of the finished re-asks.** `Δ_tok` is a sum, and the first replay charged each
+   cut its own re-ask, the 8 cut again included. So the stand-in is now the mean of all 46, 7,238, not 5,897. A low
+   stand-in would favour the arm cut more often.
+4. **Rule 2 was broader than its conditions** ("fails only because…"). It now reads "when rule 1 does not hold and all
+   three hold". FastAPI/React gets its cut calls' +1 as Next.js gets its +8, and "read on Next.js alone" names its
+   three parts.
+5. **Rule 1 is read on the 80, unweighted, for its first and third conditions:**
+   - The sign test counts the envelopes where only the baseline passed against those where only the instruction did.
+     "Clearly more often" means p < 0.05 with the baseline's count the larger.
+   - The finish condition compares counts of `stop`, and a tie holds.
+   - The unweighted test gives `qa.test_repair` 16 of 80 envelopes (20%), against 40 of 374 calls (11%). The weighted
+     `net_pass` is the condition that corrects for it.
+6. **The bootstrap.**
+   - **The draw:** `random.Random(2253)`, strata in sorted key order. Each resample draws `n_s` envelopes with
+     replacement from a stratum's paired differences (instruction minus baseline, per envelope), and
+     `Δ = Σ_s (N_s / n_s) × Σ draws`.
+   - **The first replay's 46 cut envelopes** are a fifth stratum, with weight 1. The pair is the instruction against
+     today's cap resampled. So `net_pass` and `net_tok` are resampled whole, rather than holding the +9 and −302,973
+     fixed.
+   - **The interval:** the 5th and 95th percentiles of 10,000 resamples, for both `net_pass` and `net_tok`. It is
+     reported, not used to decide.
+7. **The fresh baseline can be cut.** None of these envelopes was cut when captured, but a fresh call at the same cap
+   can be. Reading 1 counts it, and reading 5 prices it.
+8. **The 45-of-46 `first_call_is_the_capture` figure is from the other population.** It is assumed to hold here, and
+   the scores' count for these 80 is reported.
+9. **The sample can be checked.** The frame file holds the 374 sorted ids per stratum and states the draw:
+   - one `random.Random(22532)` across the strata in sorted key order;
+   - `rng.sample` over each stratum's sorted ids, with k = 8, 8, 40 and 24 for `qa.test_repair` FastAPI/React,
+     `qa.test_repair` Next.js, `qa.test` FastAPI/React and `qa.test` Next.js;
+   - each draw sorted.
+
+   It reproduces the committed sample. **How the allocation was chosen:**
+   - 80 calls fit an overnight window, about 5 h for both arms;
+   - half went to `qa.test` FastAPI/React, which carries the most weight;
+   - 24 went to `qa.test` Next.js;
+   - 8 each went to the two repair strata, as a floor for reading them.
+
+   It was a judgement made before any call, not a computed optimum.
+10. **Time to first token is reported beside wall time** (reading 7). The baseline arm runs first, so a prefix-cache
+    hit can only shorten the instruction's prefill.
+11. **"Asked again" in the captured record is inferred** from a later generation before the next envelope. The capture
+    holds no verdict.
+
+The first replay's §8 and §11.3 still name "their own captured answers' verdicts". A pointer there names §4 above,
+which replaces them.
