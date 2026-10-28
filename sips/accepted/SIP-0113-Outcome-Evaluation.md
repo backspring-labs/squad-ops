@@ -2397,7 +2397,13 @@ started from its declaration. #2414 kept the declared start at the hook (its com
    With no declaration at all, every scenario is applicable, so each reads its reason, never not applicable (§10l).
 4. **Its previous tree: the head it was pinned at** (contract 1's `pinned_commit`, H.9: the campaign branch's head
    for an increment). It's named by its tree identity, never by its commit (§4.1).
-5. **What it doesn't change:** a sample application's cycle, its stack's start and its vault tree; lint, still
+5. **A read that fails never stops the campaign** (the outside review of PR #2778, P2). The hook is heard before the
+   campaign's decision. A failing read of the registry, the configuration or the clone raises to the hearing's
+   reporting boundary, `CampaignProgress._outcome_evaluated`. That boundary is the one a sample application's
+   evaluation already has: it logs `outcome_evaluation_failed`, and the decision is recorded with the evaluation
+   absent. The review's concern was checked against the code, and the boundary already held. A test now holds it for
+   each of the three reads.
+6. **What it doesn't change:** a sample application's cycle, its stack's start and its vault tree; lint, still
    `not_a_scaffold_stack` off a scaffold stack; and phase 1's reporting-only rule.
 
 **Not built here:**
@@ -2415,8 +2421,10 @@ started from its declaration. #2414 kept the declared start at the hook (its com
   - Tally's own recorded secret, and no declaration, each blocking every applicable scenario with its reason;
   - a cycle whose capture is another cycle's, and a capture whose tree isn't the recorded one, each writing no record;
   - an invented tree's executable bits reaching the runner;
-  - the runtime root handing the evaluator the registry and the clone.
-- **Mutants:** eleven, all caught:
+  - the runtime root handing the evaluator the registry and the clone;
+  - a failing clone, configuration or mapping read, with the campaign's decision still recorded (item 5).
+- **Mutants:** twelve, all caught:
+  - the reporting boundary removed, so a failing read stops the decision;
   - the product path skipped;
   - the vault's tree used;
   - the previous tree dropped;

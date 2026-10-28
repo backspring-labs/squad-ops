@@ -141,7 +141,12 @@ class CampaignCycleEvaluator:
     async def _product_cycle_ended(self, cycle: Any, suite_digest: str) -> EvaluationRecord | None:
         """A repository-backed Project's cycle (#2414's remainder): its captured commit, started
         from the Project's own declaration. The vault holds only the squad's changes, so its tree is
-        never read from there: that would name a tree that isn't the product."""
+        never read from there: that would name a tree that isn't the product.
+
+        A read that fails here (the registry, the configuration, the clone) raises to the hearing's
+        reporting boundary, ``CampaignProgress._outcome_evaluated``, which logs it and leaves the
+        evaluation absent, as it does for a sample application's: the campaign's decision is
+        recorded either way."""
         # deferred (pair): the projects package reads the sandbox's findings, which load this one
         from squadops.projects.workspaces import CAPTURED
 

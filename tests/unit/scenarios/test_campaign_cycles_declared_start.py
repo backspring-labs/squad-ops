@@ -27,6 +27,7 @@ import pytest
 
 from adapters.scenarios.memory_scenario_store import MemoryScenarioStore
 from squadops.campaigns.evaluator_trees import FileTree
+from squadops.campaigns.progress import decision_key
 from squadops.cycles.cycle_end import CycleStopReason
 from squadops.scenarios.campaign_cycles import CampaignCycleEvaluator
 from squadops.scenarios.evaluation import BlockedReason, ScenarioResult
@@ -88,7 +89,7 @@ def _without_secret(configuration):
     )
 
 
-async def _heard(tmp_path, *, configure=None, deliver=True):
+async def _heard(tmp_path, *, configure=None, deliver=True, projects=None, repository=None):
     """Tally's campaign started, one increment delivered (or not), and its ending heard by the
     completion path the runtime builds, with the evaluator the runtime builds."""
     world = _World(tmp_path)
@@ -106,8 +107,8 @@ async def _heard(tmp_path, *, configure=None, deliver=True):
         vault=world.vault,
         campaigns=world.campaigns,
         clock=lambda: T0,
-        projects=world.projects,
-        repository=world.clones,
+        projects=projects(world.projects) if projects else world.projects,
+        repository=repository(world.clones) if repository else world.clones,
     )
     progress = world.progress_on(world.clones)
     progress._evaluate_outcome = evaluator.cycle_ended
@@ -115,7 +116,7 @@ async def _heard(tmp_path, *, configure=None, deliver=True):
         cycle, run, captured = await world.delivered("cyc_inc000000001", _added("total"))
     else:
         cycle, run, captured = await _undelivered(world)
-    await progress.cycle_ended(cycle, run, CycleStopReason.SEQUENCE_COMPLETED)
+    world.decision = await progress.cycle_ended(cycle, run, CycleStopReason.SEQUENCE_COMPLETED)
     records = await store.evaluations_for_cycle(cycle.cycle_id)
     return world, runner, records, captured
 
@@ -281,3 +282,56 @@ def test_the_runtime_root_hands_the_evaluator_the_registry_and_the_clone():
         "project_registry",
         "state.source_repository",
     )
+
+
+class _Delegate:
+    """A registry or a clone whose one named read fails, every other read passing through."""
+
+    def __init__(self, inner, failing: str, error: Exception) -> None:
+        self._inner, self._failing, self._error = inner, failing, error
+
+    def __getattr__(self, name):
+        if name == self._failing:
+
+            async def fails(*args, **kwargs):
+                raise self._error
+
+            return fails
+        return getattr(self._inner, name)
+
+
+@pytest.mark.parametrize(
+    ("projects", "repository"),
+    [
+        (None, lambda c: _Delegate(c, "tree_at", OSError("the managed clone is unreadable"))),
+        (
+            lambda p: _Delegate(
+                p, "get_development_configuration", RuntimeError("the registry is down")
+            ),
+            None,
+        ),
+        (lambda p: _Delegate(p, "source_mappings", RuntimeError("the registry is down")), None),
+    ],
+    ids=["the-clone-fails", "the-configuration-read-fails", "the-mapping-read-fails"],
+)
+async def test_a_failing_product_read_never_stops_the_campaigns_decision(
+    tmp_path, caplog, projects, repository
+):
+    """The outside review of #2778 (P2): the evaluation is reporting-only, heard before the
+    decision, and the product path adds reads of the registry, the configuration and the clone.
+    Bug caught: one of them failing propagates out of the hearing, so the campaign's continuation
+    is never recorded and the campaign stalls on a report nothing reads. The failure is logged at
+    the hearing's reporting boundary (``CampaignProgress._outcome_evaluated``), the one a sample
+    application's evaluation already has, and the evaluation is left absent."""
+    with caplog.at_level("ERROR", logger="squadops.campaigns.progress"):
+        world, runner, records, _captured = await _heard(
+            tmp_path, configure=_without_secret, projects=projects, repository=repository
+        )
+
+    # The read failed inside the evaluation, and the reporting boundary logged it.
+    [failed] = [r for r in caplog.records if r.getMessage() == "outcome_evaluation_failed"]
+    assert failed.exc_info is not None
+    assert (records, runner.calls) == ([], [])
+    assert world.decision is not None
+    log = await world.campaigns.control_log(CID)
+    assert decision_key("cyc_inc000000001") in {e.idempotency_key for e in log}
