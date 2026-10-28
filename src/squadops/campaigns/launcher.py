@@ -20,6 +20,10 @@ launched: the campaign moves to ``launch_blocked`` with the intent still pending
 
 An intent whose cycle the cycle-create path refuses (``LaunchRefused``) escalates its campaign at
 once, with the intent still pending (§24e item 5, #1971): the same intent would be refused again.
+
+A repository-backed campaign's branch is brought to its Project's reconciled commit first, when
+upstream moved (``before_launch``, SIP-0109 §24bv point 4): its refusals escalate the same way,
+and a repair or retry it supersedes is replaced by the fresh proposal it wrote.
 """
 
 from __future__ import annotations
@@ -33,6 +37,7 @@ from squadops.campaigns import launch_blocking
 from squadops.campaigns.box import LaunchVerdict
 from squadops.campaigns.lifecycle import HOLDING_STATES
 from squadops.campaigns.models import (
+    Campaign,
     CampaignState,
     ControlLogEntry,
     ControlOperation,
@@ -50,6 +55,10 @@ BuildCycle = Callable[[LaunchIntent], Awaitable[Cycle]]
 
 #: Whether the box allows a launch now (``BoxReader.verdict``).
 BoxVerdict = Callable[[], Awaitable[LaunchVerdict]]
+
+#: The step before a launch (``BranchRebase.before_launch``): the intent to launch now, which a
+#: rebase may have replaced, or ``None`` when nothing launches now. Raises ``LaunchRefused``.
+BeforeLaunch = Callable[[Campaign, LaunchIntent], Awaitable["LaunchIntent | None"]]
 
 logger = logging.getLogger(__name__)
 
@@ -84,12 +93,14 @@ class CampaignLauncher:
         *,
         actor: str,
         box_verdict: BoxVerdict,
+        before_launch: BeforeLaunch | None = None,
     ) -> None:
         self._campaigns = campaigns
         self._cycles = cycles
         self._build_cycle = build_cycle
         self._actor = actor
         self._box_verdict = box_verdict
+        self._before_launch = before_launch
 
     async def drain(self) -> list[Launched]:
         """Launch every pending intent the box allows, oldest first. An intent that fails stays
@@ -136,6 +147,15 @@ class CampaignLauncher:
             await self._block(campaign, intent, verdict)
             return None
         try:
+            if self._before_launch is not None:
+                prepared = await self._before_launch(campaign, intent)
+                if prepared is None:
+                    return None
+                if prepared.launch_id != intent.launch_id:
+                    # A rebase superseded the intent and wrote its fresh proposal: that is the
+                    # launch now, from the state the rebase's row left the campaign in.
+                    intent = prepared
+                    campaign = await self._campaigns.get_campaign(intent.campaign_id)
             return await self.launch(intent)
         except LaunchRefused as refused:
             await self._escalate_refused(campaign, intent, refused)

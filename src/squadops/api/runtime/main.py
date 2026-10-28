@@ -27,7 +27,11 @@ from fastapi.middleware.cors import CORSMiddleware
 from adapters.persistence.pool import create_pool
 from squadops import __version__ as SQUADOPS_VERSION
 from squadops._version import resolve_git_sha
-from squadops.api.campaign_launch import CampaignLaunchService
+from squadops.api.campaign_launch import (
+    LAUNCHER_ACTOR,
+    CampaignLaunchService,
+    reconciled_at_pin,
+)
 from squadops.api.error_handlers import register_domain_error_handlers
 from squadops.api.middleware.auth import AuthMiddleware, RequestIDMiddleware
 from squadops.api.routes.agent_status import HEARTBEAT_PATH
@@ -64,6 +68,7 @@ from squadops.api.runtime.startup_reaps import (
 )
 from squadops.bootstrap.secrets import secret_provider_for
 from squadops.campaigns.box_reading import BoxReader
+from squadops.campaigns.branch_rebase import BranchRebase
 from squadops.campaigns.campaign_branch import CampaignBranch
 from squadops.campaigns.progress import CampaignProgress
 from squadops.campaigns.projection import ProjectingCampaignRegistry
@@ -748,22 +753,37 @@ async def _init_cycle_subsystem(state, config, pool) -> None:
 
     # SIP-0109 §12b: a campaign's launches become cycles by the cycle-create path itself.
 
+    creation = CreationPorts(
+        project_registry=project_registry,
+        squad_profile=squad_profile,
+        cycle_registry=cycle_registry,
+        deploy_registry=deploy_registry,
+        llm=llm_adapter,
+        artifact_vault=artifact_vault,
+        memory_records=state.memory_records,
+        reference_resolvers=state.reference_resolvers,
+        memory_store=state.memory_store,
+    )
+    # SIP-0109 §24bv point 4: before each launch, a repository-backed campaign's branch is rebased
+    # onto the commit its Project reconciled, when upstream moved, and its head re-verified.
+    branch_rebase = BranchRebase(
+        campaigns=projected_campaigns,
+        projects=project_registry,
+        repository=state.source_repository,
+        sandbox=state.sandbox_client,
+        vault=artifact_vault,
+        branch=CampaignBranch(projects=project_registry, repository=state.source_repository),
+        reconciled=partial(reconciled_at_pin, creation),
+        propose=state.campaign_progress.proposal_after_rebase,
+        actor=LAUNCHER_ACTOR,
+    )
     state.campaign_launch = CampaignLaunchService(
         campaigns=projected_campaigns,
-        creation=CreationPorts(
-            project_registry=project_registry,
-            squad_profile=squad_profile,
-            cycle_registry=cycle_registry,
-            deploy_registry=deploy_registry,
-            llm=llm_adapter,
-            artifact_vault=artifact_vault,
-            memory_records=state.memory_records,
-            reference_resolvers=state.reference_resolvers,
-            memory_store=state.memory_store,
-        ),
+        creation=creation,
         flow_executor=flow_executor,
         event_bus=event_bus,
         box_verdict=state.box_reader.verdict,
+        before_launch=branch_rebase.before_launch,
     )
 
 

@@ -2,8 +2,9 @@
 point 2, §24cd points 1 and 2).
 
 The branch is ``refs/squadops/campaign/<campaign_id>`` in the Project's managed clone. It starts at
-the calibration record's commit, and it moves only by promotion: to each accepted increment's
-captured commit, in order. The rebase of §24bv point 4 is a later build.
+the calibration record's commit, and it moves only by promotion, to each accepted increment's
+captured commit in order, or by a rebase onto the commit its Project reconciled (§24bv point 4,
+``squadops.campaigns.branch_rebase``).
 
 **The control log is the authority, and the ref is its projection** (§24cd point 2). A ref can't
 join the registry's transaction, so:
@@ -22,8 +23,8 @@ in order. A capture built on any other commit is refused, and the campaign escal
 A failed increment's capture stays at its own ref (``refs/squadops/<cycle>/<run>``), off the
 branch, as evidence (§7.5).
 
-Nothing here pushes. Whether and when the Campaign's review request is pushed is the owner's
-ruling (§24cd point 7).
+Nothing here pushes. The Campaign's review request is pushed by the supervisor, as an operator's
+act, never by the deploy (§24ci (b)).
 """
 
 from __future__ import annotations
@@ -97,12 +98,47 @@ def head(campaign: Campaign, log: Iterable[ControlLogEntry]) -> CampaignHead:
     verification = None
     for entry in log:
         if (
-            entry.operation is ControlOperation.PROMOTE
+            entry.operation in _MOVES_THE_HEAD
             and entry.outcome is ControlOutcome.APPLIED
             and entry.binding.get("commit") == accepted.commit
         ):
             verification = entry.binding.get("verification_ref")
     return CampaignHead(accepted.commit, accepted.identity, verification)
+
+
+#: The rows that make a commit the branch's head, each naming the verification that made it: a
+#: promotion's run, or a rebase's own verification of the rebased head (§24bv point 4). A rebase
+#: whose head is the reconciled commit itself (the owner's merge, §24cd point 4) names none: that
+#: commit's baseline is the Project's inherited one.
+_MOVES_THE_HEAD = (ControlOperation.PROMOTE, ControlOperation.BRANCH_REBASED)
+
+
+@dataclass(frozen=True)
+class BranchBase:
+    """The upstream commit a campaign's branch is built on, and the Development Configuration
+    revision its head was verified at: the calibration record's, until a rebase moves both."""
+
+    commit: str
+    revision: int
+
+
+def branch_base(log: Iterable[ControlLogEntry]) -> BranchBase | None:
+    """Where ``log``'s campaign branch is based (§24bv point 4), from its last applied row that set
+    it: the calibration record's promotion, or a rebase. ``None`` for a campaign with no branch."""
+    base = None
+    for entry in log:
+        if entry.outcome is not ControlOutcome.APPLIED:
+            continue
+        b = entry.binding
+        if entry.operation is ControlOperation.BRANCH_REBASED:
+            base = BranchBase(b["base"], int(b["development_configuration_revision"]))
+        elif (
+            entry.operation is ControlOperation.PROMOTE
+            and b.get("calibration_record_id")
+            and b.get("commit")
+        ):
+            base = BranchBase(b["commit"], int(b["development_configuration_revision"]))
+    return base
 
 
 @dataclass(frozen=True)

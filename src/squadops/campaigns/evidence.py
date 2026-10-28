@@ -424,9 +424,14 @@ def _accepted(doc: dict) -> list[str]:
     kinds = {cyc["cycle_id"]: cyc["kind"] for cyc in doc["cycles"]}
     lines = []
     for r in doc["control_log"]:
-        if r["operation"] != ControlOperation.PROMOTE or r["outcome"] != ControlOutcome.APPLIED:
+        if r["outcome"] != ControlOutcome.APPLIED:
             continue
         b = r["binding"]
+        if r["operation"] == ControlOperation.BRANCH_REBASED:
+            lines.append(_rebased(b))
+            continue
+        if r["operation"] != ControlOperation.PROMOTE:
+            continue
         if b.get("calibration_record_id"):
             # §24cc: a repository-backed calibration is a record of the product's own commit.
             lines.append(
@@ -452,6 +457,21 @@ def _accepted(doc: dict) -> list[str]:
         if b.get("retired_criteria"):
             lines.append(f"  - retired {', '.join(b['retired_criteria'])}")
     return lines
+
+
+def _rebased(b: dict) -> str:
+    """§24bv point 4: the campaign branch rebased when upstream moved, with what it superseded
+    and the frozen criteria its verification left unrun (§24cj)."""
+    line = (
+        f"- rebased onto `{b['base'][:12]}` (revision {b['development_configuration_revision']}): "
+        f"head `{b['head_before'][:12]}` → `{b['commit'][:12]}`, tree `{b['identity'][:12]}`; "
+        f"{b.get('verification_summary') or b.get('verification')}"
+    )
+    if b.get("superseded_launch_id"):
+        line += f"; superseded {b['superseded_launch_id']}, abandoned as upstream_moved"
+    if b.get("frozen_criteria_unrun"):
+        line += f"; frozen criteria not run: {', '.join(b['frozen_criteria_unrun'])}"
+    return line
 
 
 def _proposals(rows: list[dict]) -> list[str]:

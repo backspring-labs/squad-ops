@@ -36,7 +36,13 @@ from pathlib import Path, PurePosixPath
 from urllib.parse import urlsplit
 
 from squadops.ports.projects.source_repository import SourceRepositoryPort
-from squadops.projects.models import CheckoutTree, RefMoved, SourceUnavailable
+from squadops.projects.models import (
+    CheckoutTree,
+    RebaseConflict,
+    Rebased,
+    RefMoved,
+    SourceUnavailable,
+)
 from squadops.projects.registration import (
     LocatorPolicy,
     LocatorRefused,
@@ -89,6 +95,7 @@ class GitSourceRepository(SourceRepositoryPort):
         self._policy = policy
         self._timeout = timeout_seconds
         self._committer = f"{committer_name} <{committer_email}>"
+        self._committer_name, self._committer_email = committer_name, committer_email
 
     async def sync(
         self, project_id: str, locator: str, ref: str, *, token: str | None = None
@@ -162,6 +169,12 @@ class GitSourceRepository(SourceRepositoryPort):
         await asyncio.to_thread(
             self._update_ref, self._clone_dir(project_id), ref, new_commit, expected_commit
         )
+
+    async def rebase(self, project_id: str, *, base: str, head: str, onto: str) -> Rebased:
+        for commit in (base, head, onto):
+            if not _COMMIT.match(commit):
+                raise SourceUnavailable(f"{commit!r} is not a commit", reason="not_a_commit")
+        return await asyncio.to_thread(self._rebase, self._clone_dir(project_id), base, head, onto)
 
     async def ref_commit(self, project_id: str, ref: str) -> str | None:
         if not _SQUADOPS_REF.match(ref):
@@ -273,6 +286,82 @@ class GitSourceRepository(SourceRepositoryPort):
         return https
 
     # --- the blocking half, run off the event loop ---
+
+    def _rebase(self, clone: Path, base: str, head: str, onto: str) -> Rebased:
+        """Git's own three-way merge, one commit at a time, with no working tree: each of the
+        branch's commits is merged onto what was replayed before it, with its parent as the base
+        (``merge-tree --write-tree``), as a rebase's cherry-pick does. A result whose tree is
+        unchanged is a change upstream already holds, and is dropped as a rebase drops it. Each
+        new commit keeps the original's author, message and committer date, under the clone's
+        committer, so the same rebase writes the same commits."""
+        if not clone.is_dir():
+            raise SourceUnavailable("the managed clone does not exist yet", reason="not_cloned")
+        if not self._is_ancestor(clone, base, head):
+            raise SourceUnavailable(
+                f"{base[:12]} isn't in {head[:12]}'s history: only a branch's own commits rebase",
+                reason="not_an_ancestor",
+            )
+        self._git(clone, "cat-file", "-e", f"{onto}^{{commit}}", step="read")
+        if base == onto:
+            return Rebased(head, (), ())
+        listed = self._git(
+            clone, "rev-list", "--reverse", "--end-of-options", f"{base}..{head}", step="rebase"
+        )
+        commits = listed.decode().split()
+        if self._is_ancestor(clone, head, onto):
+            return Rebased(onto, (), tuple(commits))
+        replayed: list[tuple[str, str]] = []
+        dropped: list[str] = []
+        at = onto
+        for commit in commits:
+            parents = self._git(clone, "rev-list", "--parents", "-n", "1", commit, step="rebase")
+            parent = parents.decode().split()[1:]
+            if len(parent) != 1:
+                raise SourceUnavailable(
+                    f"{commit[:12]} has {len(parent)} parents: a campaign branch is linear",
+                    reason="not_linear",
+                )
+            merged = self._run(
+                clone, "merge-tree", "--write-tree", "--name-only", "--no-messages",
+                f"--merge-base={parent[0]}", at, commit, step="rebase",
+            )  # fmt: skip
+            lines = merged.stdout.decode(errors="replace").splitlines()
+            if merged.returncode == 1 and lines:
+                paths = tuple(sorted({line for line in lines[1:] if line}))
+                raise RebaseConflict(
+                    f"{commit[:12]} doesn't apply on {at[:12]}: it conflicts on "
+                    f"{', '.join(paths) or 'its tree'}",
+                    commit=commit,
+                    paths=paths,
+                )
+            if merged.returncode != 0 or not lines:
+                raise SourceUnavailable(f"git rebase failed on {commit[:12]}", reason="rebase")
+            tree = lines[0].strip()
+            if (
+                tree
+                == self._git(clone, "rev-parse", f"{at}^{{tree}}", step="rebase").decode().strip()
+            ):
+                dropped.append(commit)
+                continue
+            described = self._git(
+                clone, "log", "-1", "--format=%an%x00%ae%x00%aI%x00%cI%x00%B", commit, step="rebase"
+            )  # fmt: skip
+            name, email, authored, committed, message = described.decode().split("\0", 4)
+            created = self._git(
+                clone, "commit-tree", tree, "-p", at, "-F", "-", step="rebase",
+                stdin=message.encode(),
+                env={
+                    "GIT_AUTHOR_NAME": name,
+                    "GIT_AUTHOR_EMAIL": email,
+                    "GIT_AUTHOR_DATE": authored,
+                    "GIT_COMMITTER_NAME": self._committer_name,
+                    "GIT_COMMITTER_EMAIL": self._committer_email,
+                    "GIT_COMMITTER_DATE": committed,
+                },
+            )  # fmt: skip
+            at = created.decode().strip()
+            replayed.append((commit, at))
+        return Rebased(at, tuple(replayed), tuple(dropped))
 
     def _commit_tree(
         self,
@@ -496,19 +585,43 @@ class GitSourceRepository(SourceRepositoryPort):
         step: str,
         stdin: str | bytes | None = None,
         config: Mapping[str, str] | None = None,
+        env: Mapping[str, str] | None = None,
     ) -> bytes:
-        env = {k: v for k, v in os.environ.items() if not k.startswith("GIT_")}
-        env.update(
+        done = self._run(cwd, *args, step=step, stdin=stdin, config=config, env=env)
+        if done.returncode != 0:
+            detail = done.stderr.decode(errors="replace").strip().splitlines()
+            raise SourceUnavailable(
+                f"git {step} failed: {detail[-1] if detail else f'exit {done.returncode}'}",
+                reason=step,
+            )
+        return done.stdout
+
+    def _run(
+        self,
+        cwd: Path,
+        *args: str,
+        step: str,
+        stdin: str | bytes | None = None,
+        config: Mapping[str, str] | None = None,
+        env: Mapping[str, str] | None = None,
+    ) -> subprocess.CompletedProcess:
+        """One isolated git process, its exit read by the caller: ``_git`` for a call whose only
+        success is 0, this for one whose other exits are answers (``merge-tree``'s conflict).
+        ``env`` is only an identity this adapter sets for one commit (``_rebase``)."""
+        environment = {k: v for k, v in os.environ.items() if not k.startswith("GIT_")}
+        environment.update(
             GIT_CONFIG_NOSYSTEM="1",
             GIT_CONFIG_GLOBAL=os.devnull,
             GIT_TERMINAL_PROMPT="0",
             GIT_ASKPASS="/bin/false",
             GIT_SSH_COMMAND="ssh -o BatchMode=yes -o StrictHostKeyChecking=accept-new",
         )
+        environment.update(env or {})
         for i, (key, value) in enumerate((config or {}).items()):
-            env[f"GIT_CONFIG_KEY_{i}"], env[f"GIT_CONFIG_VALUE_{i}"] = key, value
+            environment[f"GIT_CONFIG_KEY_{i}"] = key
+            environment[f"GIT_CONFIG_VALUE_{i}"] = value
         if config:
-            env["GIT_CONFIG_COUNT"] = str(len(config))
+            environment["GIT_CONFIG_COUNT"] = str(len(config))
         file_transport = "always" if self._policy.local_roots else "never"
         command = [
             "git",
@@ -520,10 +633,10 @@ class GitSourceRepository(SourceRepositoryPort):
             *args,
         ]  # fmt: skip
         try:
-            done = subprocess.run(
+            return subprocess.run(
                 command,
                 cwd=cwd,
-                env=env,
+                env=environment,
                 input=stdin.encode() if isinstance(stdin, str) else stdin,
                 capture_output=True,
                 timeout=self._timeout,
@@ -538,10 +651,3 @@ class GitSourceRepository(SourceRepositoryPort):
                     f"the managed clone is missing: {cwd} does not exist", reason="not_cloned"
                 ) from e
             raise SourceUnavailable("git is not installed here", reason="no_git") from e
-        if done.returncode != 0:
-            detail = done.stderr.decode(errors="replace").strip().splitlines()
-            raise SourceUnavailable(
-                f"git {step} failed: {detail[-1] if detail else f'exit {done.returncode}'}",
-                reason=step,
-            )
-        return done.stdout

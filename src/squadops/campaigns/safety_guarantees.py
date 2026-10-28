@@ -61,8 +61,12 @@ def _applied(rows: list[dict], operation: ControlOperation) -> list[dict]:
 
 
 def _accepted_tree_at(rows: list[dict], seq: int) -> str | None:
-    """The tree the campaign had accepted when row ``seq`` was written: its last promotion before."""
-    promoted = [r for r in _applied(rows, ControlOperation.PROMOTE) if r["seq"] < seq]
+    """The tree the campaign had accepted when row ``seq`` was written: its last promotion, or its
+    branch's last rebase (§24bv point 4), before it."""
+    moved = _applied(rows, ControlOperation.PROMOTE) + _applied(
+        rows, ControlOperation.BRANCH_REBASED
+    )
+    promoted = sorted((r for r in moved if r["seq"] < seq), key=lambda r: r["seq"])
     return promoted[-1]["binding"]["identity"] if promoted else None
 
 

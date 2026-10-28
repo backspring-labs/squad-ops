@@ -54,8 +54,9 @@ class RegressionBaselineInvalid(ValueError):
 @dataclass(frozen=True)
 class SourceVerification:
     project_id: str
-    cycle_id: str
-    run_id: str
+    #: ``None`` for a campaign branch's rebased head (SIP-0109 §24bv point 4), which no run made.
+    cycle_id: str | None
+    run_id: str | None
     baseline_commit: str
     development_configuration_revision: int
     candidate_revision_id: str
@@ -70,6 +71,10 @@ class SourceVerification:
     #: branch's head past the calibration record (SIP-0109 §24bv point 3). ``None``: the
     #: inherited baseline at ``baseline_commit``.
     regression_baseline_ref: str | None = None
+    #: What a campaign branch's rebase verified (SIP-0109 §24bv point 4, §24cd point 5): its
+    #: campaign, the branch's base and head before it, and the commits it replayed and dropped.
+    #: ``None`` for a run's candidate. ``baseline_commit`` is then the commit rebased onto.
+    rebase: Mapping[str, Any] | None = None
 
     @property
     def blocking(self) -> list[str]:
@@ -95,7 +100,8 @@ class SourceVerification:
         return f"accepted: {', '.join(passed)} passed{tail}"
 
     def to_document(self) -> dict[str, Any]:
-        return {
+        rebase = {"rebase": dict(self.rebase)} if self.rebase is not None else {}
+        return rebase | {
             "schema": SOURCE_VERIFICATION_SCHEMA,
             "project_id": self.project_id,
             "cycle_id": self.cycle_id,
