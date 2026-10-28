@@ -148,6 +148,7 @@ baseline it touches, so the track lands as **one batch**, with one deploy and on
 | **suite revision 6** | drafted by the supervisor and approved on the owner's delegation, on revision 5's terms: a fresh agent reviews it independently, the approval is recorded with counts only, and it passes `heldout_public_check.py`. **Its contents:** #2659's two-form scenario; the eight step values already public, replaced (SIP-0113 §10w); and nothing else, so the re-read separates the evaluator's change from the suite's | suite change | M |
 | **#2637** | the finer quality reading: axe by element, the failing audits by id, and the HTTPS audits recorded as the environment's. **Its design review comes first** (D7). Each is a new measure version, so no delta compares it with the old one, and it carries no weight until its own S1 and S2 series hold, read by re-measuring the window's 20 trees | instrument | M |
 | **#2557, if D3 rules it in** | the workhorse PRD's core list names its order: the order runs were created, with sorting left in Expansion Tier 1. That is the answer the supervisor gave at every escalation of this question, and the 2.4.0 cut's `#2183` campaign parked on it once. The PRD is every cycle's input, so it lands with this batch and is re-read once | PRD revision | S |
+| **#2723** (deferrable) | held-out suite revision 7: the two limits revision 6's review recorded for the two-form page reading, a disabled input and a skipped click. **It lands only inside this batch,** drafted, reviewed and validated as revision 6 was, before the re-read. If it isn't ready when `-7` is, it moves to 2.6, since a second revision after the re-read would re-cut the yardstick twice. Placed 2026-10-27 | suite | S |
 
 **The changed scenario's validation,** before the re-read derives anything from revision 6. It uses
 `read_scenarios.py`'s fault-injected diagnostic, which runs the reading's own path, as SIP-0113 §10r's page scenarios
@@ -179,6 +180,7 @@ the cut's rolls and the shakeout's calibrations are read for it too, at no extra
 | **#2664** | a repair of a failing slot assertion keeps an assertion on the same field and surface unless the declarations show the field absent there, or it's refused as `slot_subject_dropped`. **The MacBook lane reviews the design first** (G4), since the correction loop's acceptance is its ground. **Evidence before merge:** read against the 9 recorded cases, it refuses `cyc_bb493eb4725b`'s weakening and passes the strengthening and both correct reductions | Spark, after the MacBook lane's G4 | M |
 | **#2253** | QA's output budget, **built on the headroom read already done** (#2253, 2026-10-18): `qa.test` and `qa.test_repair` are the only task types whose p95 is the cap, and on TensorFold 7.9% of `qa.test` calls and 20.8% of `qa.test_repair` calls were cut; most cut calls ran out thinking, not writing. The 2.4.0 cut's Next.js roll 2 had one more. **Before any change:** compare, for both task types, the suites' outcomes and the time spent under the two remedies the read names, a higher cap (a replay of the cut envelopes at it) and a lower reasoning level for test authoring (the finished re-asks against first calls that finished). **"No change" is a valid outcome** if the evidence doesn't favour either | Spark | S–M read, S change |
 | **#2602** | a Next.js page criterion for a page or route the change adds can discriminate: its test's imports and fetch stub resolve on the accepted tree, as #2599 did for endpoints | Spark | M |
+| **#2743** | a proposal's derived footprint no longer forces every QA test namespace the stack declares into the owner's scope, so a backend-only change scoped to one route and one test file can validate. The fix's shape is read from `campaigns/change_request.py` first. **Evidence before merge:** the issue's deterministic reproduction (`validate_proposal` over campaign `cmp_b79783b2…`'s accepted manifest, no model call) passes, and a request naming a test outside the owner's scope is still refused `out_of_scope`. Placed 2026-10-27 | Spark | S–M |
 | **#2521** | a repair whose files the write authorization drops is told why and counted, not refunded and re-taken unchanged | Spark | S–M |
 | **#2553's remainder** | an input refusal's failure record names its class (`input_contract_failure`). It bumps `ATTRIBUTION_REGISTRY_VERSION` from 1, so failure records written before and after it read differently: the Spark lane builds it, since it reads those records, and it lands before the cut's pre-registration, so no counted reading straddles it | Spark | S |
 
@@ -199,12 +201,13 @@ the cut's rolls and the shakeout's calibrations are read for it too, at no extra
 | **#2493** | an agent's service-token expiry is read on the wall clock, so a host sleep doesn't leave every agent sending an expired token | Spark (reproduced by moving the clock, since it shows only on a host that sleeps) | S |
 | **#2561** | the deploy record carries a model digest under TensorFold, read from TensorFold's own model listing | Spark | S |
 | **#2560** | CI's integration job survives `mirror.gcr.io`'s request quota | Spark | S |
-| **#2286** | TensorFold's key file holds labelled operator keys beside the deploy key, so an operator key survives a rotation | Spark | S |
+| **#2286** | TensorFold's key file holds labelled operator keys beside the deploy key, so an operator key survives a rotation. **Partly delivered by the owner's #2742 (2026-10-24):** readers take the `squadops` line by its label, and `ensure` keeps every other label. **What remains:** the `.env` operator-key spec, whether `rotate` keeps the other labels (unverified), the restart on adding a key, and `credential_rotation.md` | Spark | S |
 | **#2672** | a managed clone's missing directory is named as that, not as "git is not installed here" | Spark | S |
 | **#2402** | `run_prose_lane.sh` runs under macOS's bash 3.2 (no `mapfile`) | Spark (tested under bash 3.2 in a container, since it shows only on macOS) | S |
 | **#2710** | `update_sip_status.py` stamps UTC | Spark | S |
 | **#2713** | the release capture names the browser's own load error, and the Spark's capture browser is fixed or replaced (its snap Chromium refuses every local page since 2026-10-22) | Spark | S |
 | **#1469** | `frontend_build`'s per-failure signature (#878's treatment, which #1468 left out) | Spark | S |
+| **#2744** | `engine_replay.py` records a transport exception's type, never its text. A header error's text carries the bearer key, and replay rows are `var/` records that the line's Release tarball carries. Placed 2026-10-27 | Spark | S |
 | **#2287** (deferrable) | the box lease of SIP-0109 §9.3, outside campaigns: built as that section is written, not extended | Spark | M |
 | **#2495** (if D6 rules it in; deferrable) | a scripted squad for machinery cycles: every task answered from a recorded script, with no model. The owner asked for it on 2026-10-19 ("we don't need to test model quality just execution machinery"). It is a test tool, not a squad capability | Spark | L |
 
@@ -232,6 +235,8 @@ The Spark is one GPU and one deploy. Everything that measures runs one thing at 
    suite revision 6 drafted and reviewed. Small fixes from Tracks C and E merge on green. **Each fix that changes a
    path a run executes lands in phases 1–2,** before Track D's uncounted Campaign, so the invalidation rule below voids
    neither that read nor the demonstrations: #2521, #2553's remainder, #2672 and #2493 among them.
+   **Track C's are among them too** (2026-10-27): #2253's outcome, #2664, #2602, #1469 and #2743 land before phase 3's
+   Campaign. Track A's builds go on beside them wherever they're unblocked.
    A fix to a script no run executes, such as #2402, can land at any time.
 2. **Track B's batch, one deploy.** #2706, #2659, #2712 and #2469 in one evaluator tag; #2557 if ruled; #2637's
    measure versions. Then, in order: **the changed scenario's validation** (§2.2), about 2 box-hours as a guide;
@@ -239,10 +244,14 @@ The Spark is one GPU and one deploy. Everything that measures runs one thing at 
    measures on the old yardstick.
 3. **Track D, before the demonstration.** #2578's migration changes the campaign cycle records the demonstration
    exercises, so it lands first, on its own deploy, read by one uncounted sample-application Campaign before anything
-   counts on it.
+   counts on it. **As of 2026-10-27:** #2578 has merged and is deployed (`dep_43b625954eae`), and the Campaign hasn't
+   run. It runs once phase 1–2's run-path fixes are merged and deployed.
 4. **Track A's builds, then its two demonstrations.** H.4's contract and profile, then the recipe, the proposal's
-   input, the increment's pin and §24bv, then §10l and #2592. Both Projects' start declarations are recorded and their
-   suites approved first. The Campaigns run on a deploy carrying all of it: about 6–9 box-hours as a guide, the main
+   input, the increment's pin and §24bv, then §10l and #2592. **§24bv's regression baseline, its acceptance on the
+   product's runner and the rebase wait for contract 1's increment pin** (the MacBook lane's
+   `ProjectSourceContext.pinned_commit` and `pinned_from`, SIP-0109 §24cd point 1). Until it lands, every increment is
+   pinned at the Project's baseline and there is nothing for them to wire into. Both Projects' start declarations are
+   recorded and their suites approved first. The Campaigns run on a deploy carrying all of it: about 6–9 box-hours as a guide, the main
    one 4–6 and the short one about 3.
 5. **The cut** (§4): its pre-registration, the shakeout loop, the counted set, and the integration scenarios beside
    it. About 6 box-hours as a guide, as at 2.4.0.
