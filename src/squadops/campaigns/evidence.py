@@ -469,8 +469,8 @@ def _rebased(b: dict) -> str:
     )
     if b.get("superseded_launch_id"):
         line += f"; superseded {b['superseded_launch_id']}, abandoned as upstream_moved"
-    if b.get("frozen_criteria_unrun"):
-        line += f"; frozen criteria not run: {', '.join(b['frozen_criteria_unrun'])}"
+    if b.get("frozen_criteria_held"):
+        line += f"; frozen criteria held: {', '.join(b['frozen_criteria_held'])}"
     return line
 
 

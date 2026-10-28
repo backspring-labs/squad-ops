@@ -34,6 +34,7 @@ from squadops.campaigns.branch_rebase import (
     REBASE_VERIFICATION,
     UPSTREAM_MOVED,
     BranchRebase,
+    ProductRunnerFrozen,
     RebasedHead,
     rebase_transition,
 )
@@ -73,7 +74,7 @@ from squadops.cycles.models import Run
 from squadops.cycles.verification_integrity import RunVerdict
 from squadops.execution.source_delivery import SOURCE_VERIFICATION_TYPE, deliver_source_change
 from squadops.projects.baseline import FAIL, INTRODUCED
-from squadops.projects.derived_profile import Gap
+from squadops.projects.derived_profile import Gap, parse_profile
 from squadops.projects.development_configuration import parse_configuration
 from squadops.projects.models import Rebased
 from squadops.projects.workspaces import capture_inherited_baseline
@@ -117,6 +118,10 @@ def _sandbox_provider(monkeypatch):
     monkeypatch.setenv("SQUADOPS__SANDBOX__PROVIDER", "noop")
 
 
+#: ``service``'s default: the frozen criteria's runner as ``main`` wires it.
+_AS_MAIN = object()
+
+
 class _World(_BranchWorld):
     """``test_campaign_branch``'s Tally, with upstream that moves and the launcher that sees it."""
 
@@ -156,7 +161,7 @@ class _World(_BranchWorld):
         )
 
     def service(
-        self, *, propose=None, repository=None, frozen_on_runner=None
+        self, *, propose=None, repository=None, frozen_on_runner=_AS_MAIN
     ) -> CampaignLaunchService:
         """The launch service and its rebase, as ``main`` wires them."""
         squads = AsyncMock()
@@ -179,7 +184,11 @@ class _World(_BranchWorld):
             reconciled=partial(reconciled_at_pin, creation),
             propose=propose or self.progress.proposal_after_rebase,
             actor=LAUNCHER_ACTOR,
-            frozen_on_runner=frozen_on_runner,
+            frozen_on_runner=(
+                ProductRunnerFrozen(sandbox=self.sandbox, projects=self.projects, vault=self.vault)
+                if frozen_on_runner is _AS_MAIN
+                else frozen_on_runner
+            ),
         )
         return CampaignLaunchService(
             campaigns=self.campaigns,
@@ -964,17 +973,15 @@ async def _with_a_frozen_criterion(world: _World) -> None:
 
 @pytest.mark.parametrize(
     ("readings", "refused"),
-    [(None, None), ({"crit_total": "held"}, None), ({"crit_total": "broken"}, "crit_total (broken)"),
-     ({}, "crit_total (unread)")],
-    ids=["no-runner-wired", "held", "broken", "unread"],
-)  # fmt: skip
-async def test_the_frozen_criteria_run_through_one_seam_and_any_not_held_regresses(
+    [({"crit_total": ("held", "")}, None), ({}, "crit_total (unread)")],
+    ids=["held", "unread"],
+)
+async def test_the_frozen_criteria_seam_is_given_the_rebase_and_reads_every_criterion(
     tmp_path, readings, refused
 ):
-    """The integration point for #2774's ``frozen_on_runner`` (§24cm): one call, given the
-    rebase's own key, the rebased head's tree and the frozen criteria. Bugs caught: a criterion
-    the runner didn't read accepted as held; a broken one accepted; the row claiming bundles ran
-    when no runner is wired; the runner given the old head's tree."""
+    """What the runner is given at a rebase (§24cm item 11), with a stub in its place. Bugs
+    caught: the runner given the old head's tree, another subject or another pin; a criterion the
+    runner didn't read accepted as held."""
     world = _World(tmp_path)
     await world.started()
     await world.accepted()
@@ -988,8 +995,7 @@ async def test_the_frozen_criteria_run_through_one_seam_and_any_not_held_regress
         seen.append(at)
         return readings
 
-    service = world.service(frozen_on_runner=None if readings is None else runner)
-    await service.drain()
+    await world.service(frozen_on_runner=runner).drain()
 
     rows = await world.rows(ControlOperation.BRANCH_REBASED)
     if refused is not None:
@@ -998,9 +1004,207 @@ async def test_the_frozen_criteria_run_through_one_seam_and_any_not_held_regress
         assert rows == []
         return
     [rebased] = rows
-    assert rebased.binding["frozen_criteria_unrun"] == ([] if readings else ["crit_total"])
-    if readings:
-        [at] = seen
-        assert at.subject_id == rebased.idempotency_key
-        assert (at.pin.commit, [c["criterion_id"] for c in at.frozen]) == (onto, ["crit_total"])
-        assert at.tree.commit == rebased.binding["commit"]
+    assert rebased.binding["frozen_criteria_held"] == ["crit_total"]
+    [at] = seen
+    assert (at.subject_id, at.campaign_id) == (rebased.idempotency_key, CID)
+    assert (at.pin.commit, [c["criterion_id"] for c in at.frozen]) == (onto, ["crit_total"])
+    assert at.tree.commit == rebased.binding["commit"]
+
+
+# --- the third review (SIP-0112 H.12): the frozen criteria, run on the product's runner ---
+
+#: A criterion frozen under a pytest runner with a test-id reader: it reads the head's report
+#: module, which the rebase keeps, so it holds.
+HELD_PATH = "crit/test_report_kept.py"
+_HELD_TEST = b"""from pathlib import Path
+
+
+def test_the_report_module_still_summarizes():
+    assert "def summarize" in Path("tally/report.py").read_text()
+"""
+#: A criterion frozen under Tally's own unittest runner: it asserts the README as it stood, which
+#: upstream rewrote, so on the rebased head it breaks.
+BROKEN_PATH = "checks/check_criterion_readme.py"
+
+
+def _broken_test(world: _World) -> bytes:
+    readme = tracked_files(world.repo.path, world.repo.second_commit)["README.md"]
+    return (
+        b"import unittest\nfrom pathlib import Path\n\n\nclass Readme(unittest.TestCase):\n"
+        b"    def test_the_readme_is_as_it_was(self):\n"
+        b"        self.assertEqual(Path('README.md').read_bytes(), "
+        + repr(readme).encode()
+        + b")\n"
+    )
+
+
+def _with_pytest_runner(profile_document: dict) -> dict:
+    """The derived profile at the pin, with a pytest runner beside Tally's unittest one: it holds
+    ``crit/``, and reads its tests by id."""
+    import sys
+
+    document = dict(profile_document)
+    document["test_runners"] = [
+        *document["test_runners"],
+        {
+            "runner": "pytest", "checks": ["report"], "covers": ["tally/**"], "roots": ["crit"],
+            "file_pattern": "test_*.py", "suite_argv": [sys.executable, "-m", "pytest", "crit"],
+            "single_file_argv": [sys.executable, "-m", "pytest", "-p", "no:cacheprovider", "{path}"],
+            "test_ids": "pytest", "support_files": [],
+        },
+    ]  # fmt: skip
+    document["files"] = {
+        **document["files"],
+        "test": [*document["files"]["test"], "crit/test_*.py"],
+    }
+    return document
+
+
+async def _reading_sandbox(world: _World) -> None:
+    """The world's sandbox, with a backend that reads a command's output by its declared reader,
+    as the container backend does (``test_runner_acceptance_sandbox``)."""
+    from squadops.sandbox.evidence import OperationEvidenceJournal
+    from squadops.sandbox.service import SandboxService
+    from squadops.sandbox.workspace import WorkspaceStore
+    from tests.unit.campaigns.test_runner_acceptance_sandbox import _ReadingBackend
+
+    store = WorkspaceStore(world.tmp_path / "reading-sandbox")
+    world.sandbox = SandboxService(
+        store=store,
+        journal=OperationEvidenceJournal(world.tmp_path / "reading-sandbox"),
+        backend=_ReadingBackend(store),
+    )
+
+
+async def _frozen(world: _World, criteria: dict[str, tuple[str, bytes | None]]) -> None:
+    """Each criterion frozen on the accepted head as a promotion freezes one (§8.1): its bundle
+    frozen from the head's tree with its test file, stored, and pinned on a PROMOTE row. A
+    criterion given no test is pinned to a bundle that was never stored."""
+    from squadops.campaigns.runner_acceptance import ProductTestSurface, freeze_product_bundle
+
+    stored = await world.campaigns.get_campaign(CID)
+    at = head(stored, await world.campaigns.control_log(CID))
+    profile = parse_profile(_with_pytest_runner(recorded("derived_profile", "valid")))
+    files = tracked_files(world.tmp_path / "cache" / "prj-tally.git", at.commit)
+    pins = []
+    for criterion_id, (path, test) in criteria.items():
+        if test is None:
+            pins.append({"criterion_id": criterion_id, "test_path": path,
+                         "bundle_ref": "art_neverstored", "bundle_address": "0" * 64})  # fmt: skip
+            continue
+        bundle = freeze_product_bundle(
+            criterion_id, FileTree.of({**files, path: test}), path,
+            ProductTestSurface.of(profile, [path]), profile.runner_for(path),
+        )  # fmt: skip
+        content = json.dumps({
+            "criterion_id": criterion_id, "address": bundle.address, "test_path": path,
+            "invocation": list(bundle.invocation),
+            "files": {p: c.decode() for p, c in bundle.files.files},
+        }).encode()  # fmt: skip
+        cycle = await world.cycles.get_cycle(stored.accepted.cycle_id)
+        [run] = await world.cycles.list_runs(cycle.cycle_id)
+        ref, _ = await world._stored(
+            cycle, run, f"{criterion_id}.bundle.json", "verifier_bundle", content
+        )
+        pins.append({"criterion_id": criterion_id, "test_path": path, "bundle_ref": ref,
+                     "bundle_address": bundle.address})  # fmt: skip
+    await world.campaigns.transition(
+        CID,
+        move(
+            stored.state, "k-freeze-real", operation=ControlOperation.PROMOTE,
+            accepted=stored.accepted,
+            binding={"cycle_id": stored.accepted.cycle_id, "identity": at.tree_identity,
+                     "commit": at.commit, "verification_ref": at.previous_verification_ref,
+                     "frozen_criteria": pins},
+        ),
+    )  # fmt: skip
+
+
+async def _reconciled_with_pytest(world: _World, onto: str) -> None:
+    await world.reconciled(onto)
+    document = _with_pytest_runner(recorded("derived_profile", "valid"))
+    document["commit"], document["development_configuration_revision"] = onto, 2
+    world.projects.profile = parse_profile(document)
+
+
+async def test_the_frozen_criteria_run_on_the_products_runner_and_only_held_ones_pass(tmp_path):
+    """The third review's P1, the wiring, entered at ``CampaignLaunchService.drain()`` with
+    ``ProductRunnerFrozen`` wired as ``main`` wires it, over the real clone and the sandbox
+    service. Three criteria are frozen on the accepted head: one under pytest that the rebased
+    head keeps (held), one under Tally's unittest that upstream's README change breaks, and one
+    whose bundle was never stored (blocked). Bugs caught:
+    - a rebase passing with its frozen criteria unread;
+    - a blocked reading accepted, when it is a head nothing showed holds;
+    - the bundles run on the old head's tree, where the README still reads as it was;
+    - a criterion run on the wrong runner, so the held one reads whole."""
+    world = _World(tmp_path)
+    await world.started()
+    await world.accepted()
+    await _frozen(
+        world,
+        {
+            "crit_kept": (HELD_PATH, _HELD_TEST),
+            "crit_readme": (BROKEN_PATH, _broken_test(world)),
+            "crit_lost": ("checks/check_criterion_lost.py", None),
+        },
+    )
+    onto = world.upstream({"README.md": b"Tally, as upstream now describes it\n"}, "docs")
+    await _reconciled_with_pytest(world, onto)
+    launch_id = await world.proposing()
+    await _reading_sandbox(world)
+
+    await world.service().drain()
+
+    refusal = (await world.campaigns.control_log(CID))[-1].binding["refusal"]
+    assert refusal.startswith("REBASED_HEAD_REGRESSED: "), refusal
+    assert "crit_readme (broken" in refusal and "crit_lost (blocked_unverified" in refusal
+    assert "crit_kept" not in refusal
+    assert await world.rows(ControlOperation.BRANCH_REBASED) == []
+    assert (await world.campaigns.get_launch_intent(launch_id)).state is LaunchIntentState.PENDING
+
+
+async def test_a_rebase_whose_frozen_criteria_all_hold_names_them_held(tmp_path):
+    """The same wiring with only the criterion the rebased head keeps. Bug caught: a held
+    criterion refused, so every rebase of a campaign with frozen criteria escalates."""
+    world = _World(tmp_path)
+    await world.started()
+    await world.accepted()
+    await _frozen(world, {"crit_kept": (HELD_PATH, _HELD_TEST)})
+    onto = world.upstream({"README.md": b"moved\n"}, "docs")
+    await _reconciled_with_pytest(world, onto)
+    await world.proposing()
+    await _reading_sandbox(world)
+
+    await world.service().drain()
+
+    [rebased] = await world.rows(ControlOperation.BRANCH_REBASED)
+    assert rebased.binding["frozen_criteria_held"] == ["crit_kept"]
+
+
+@pytest.mark.parametrize("case", ["no-runner", "no-profile-at-the-pin", "no-sandbox"])
+async def test_frozen_criteria_with_nothing_to_run_them_fail_closed(tmp_path, case):
+    """The third review's P1: frozen criteria and no way to run their bundles refuse the rebase
+    as unverifiable, naming the criteria left unread, never pass it. Bugs caught: the rebase
+    let through with its frozen criteria named unrun; a missing profile read as no criteria."""
+    world = _World(tmp_path)
+    await world.started()
+    await world.accepted()
+    await _frozen(world, {"crit_kept": (HELD_PATH, _HELD_TEST)})
+    onto = world.upstream({"README.md": b"moved\n"}, "docs")
+    await _reconciled_with_pytest(world, onto)
+    await world.proposing()
+    if case == "no-profile-at-the-pin":
+        world.projects.profile = dataclasses.replace(world.projects.profile, commit="f" * 40)
+    service = world.service(frozen_on_runner=None) if case == "no-runner" else world.service()
+    if case == "no-sandbox":
+        from squadops.campaigns.branch_rebase import ProductRunnerFrozen
+
+        runner = ProductRunnerFrozen(sandbox=None, projects=world.projects, vault=world.vault)
+        service = world.service(frozen_on_runner=runner)
+
+    await service.drain()
+
+    refusal = (await world.campaigns.control_log(CID))[-1].binding["refusal"]
+    assert refusal.startswith("REBASED_HEAD_UNVERIFIABLE: "), refusal
+    assert refusal.endswith("unread: crit_kept")
+    assert await world.rows(ControlOperation.BRANCH_REBASED) == []

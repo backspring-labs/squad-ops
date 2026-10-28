@@ -42,6 +42,7 @@ from hashlib import sha256
 from typing import TYPE_CHECKING, Any
 from uuid import uuid4
 
+from squadops.campaigns.acceptance_run import frozen_criteria_from
 from squadops.campaigns.campaign_branch import (
     BranchBase,
     CampaignBranch,
@@ -50,6 +51,7 @@ from squadops.campaigns.campaign_branch import (
     head,
 )
 from squadops.campaigns.evaluator_trees import FileTree
+from squadops.campaigns.increment_tree import frozen_bundle_contents
 from squadops.campaigns.launcher import LaunchRefused
 from squadops.campaigns.lifecycle import LAUNCHER_ROLE
 from squadops.campaigns.models import (
@@ -64,6 +66,13 @@ from squadops.campaigns.models import (
     LaunchRequest,
 )
 from squadops.campaigns.progress import frozen_criteria
+from squadops.campaigns.runner_acceptance import (
+    ProductTestSurface,
+    RunnerAcceptance,
+    RunnerSetup,
+    SandboxTree,
+    frozen_on_runner,
+)
 
 if TYPE_CHECKING:
     from squadops.cycles.models import Project
@@ -119,6 +128,7 @@ class FrozenAtRebase:
     own key, so a re-run of the same rebase is the same subject."""
 
     subject_id: str
+    campaign_id: str
     project_id: str
     pin: BranchBase
     tree: CheckoutTree
@@ -126,12 +136,73 @@ class FrozenAtRebase:
 
 
 #: §24cd point 5's second half, the frozen criteria's bundles on the product's own runner: each
-#: criterion's reading by its id (``held`` or not). The runtime-side runner is #2774's
-#: ``runner_acceptance.frozen_on_runner``; the supervisor wires it at ``main``'s
-#: ``BranchRebase(frozen_on_runner=...)`` once both have merged, as one call to it.
-FrozenOnRunner = Callable[[FrozenAtRebase], Awaitable[Mapping[str, str]]]
+#: criterion's reading by its id, as ``(held, detail)``. The runtime's is
+#: ``ProductRunnerFrozen``, #2774's ``runner_acceptance.frozen_on_runner`` called as its §24cl
+#: item 10 states.
+FrozenOnRunner = Callable[[FrozenAtRebase], Awaitable[Mapping[str, tuple[str, str]]]]
 #: The reading a frozen criterion's bundle must give for the rebase to stand.
 HELD = "held"
+
+
+class FrozenUnrunnable(RuntimeError):
+    """The frozen criteria can't be run here: no sandbox, or no derived profile at the pin."""
+
+
+class ProductRunnerFrozen:
+    """The frozen criteria's bundles on the rebased head, on the product's runner in the sandbox
+    (§24cd point 5): #2774's ``frozen_on_runner``, called exactly as its §24cl item 10 states."""
+
+    def __init__(self, *, sandbox: Any, projects: Any, vault: Any) -> None:
+        self._sandbox = sandbox
+        self._projects = projects
+        self._vault = vault
+
+    async def __call__(self, at: FrozenAtRebase) -> Mapping[str, tuple[str, str]]:
+        """Each criterion's reading by its id.
+
+        Raises:
+            FrozenUnrunnable: The runtime has no sandbox, or the pin no derived profile.
+        """
+        # deferred (pair): squadops.cycles imports this package at load
+        from squadops.cycles.models import DerivedProfileNotFoundError
+
+        if self._sandbox is None:
+            raise FrozenUnrunnable("the runtime API has no sandbox client to run them in")
+        try:
+            profile = await self._projects.get_derived_profile(
+                at.project_id, at=(at.pin.commit, at.pin.revision)
+            )
+        except DerivedProfileNotFoundError as e:
+            raise FrozenUnrunnable(
+                f"the pin {at.pin.commit[:12]}, revision {at.pin.revision}, has no derived "
+                "profile to name the product's runners"
+            ) from e
+        configuration = await self._projects.get_development_configuration(
+            at.project_id, at.pin.revision
+        )
+        pinned = [dict(p) for p in at.frozen]
+        bundles = await frozen_bundle_contents(
+            self._vault, {"campaign_proposal": {"frozen_criteria": pinned}}
+        )
+        results, _runs = await frozen_on_runner(
+            RunnerAcceptance(
+                sandbox=self._sandbox,
+                profile=profile,
+                setup=RunnerSetup.of(configuration.commands),
+                workspace_prefix=rebase_workspace_prefix(at.campaign_id, at.tree.commit),
+                verified_candidate_revision=None,
+            ),
+            subject_id=at.subject_id,
+            tree=SandboxTree(dict(at.tree.files), frozenset(at.tree.executable)),
+            frozen=frozen_criteria_from(pinned, bundles),
+            surface=ProductTestSurface.of(profile, {str(p.get("test_path") or "") for p in pinned}),
+        )
+        return {r.criterion_id: (str(r.held), r.detail) for r in results}
+
+
+def rebase_workspace_prefix(campaign_id: str, commit: str) -> str:
+    """The start of every workspace a rebase's frozen bundles seed: one per overlay."""
+    return f"rebase-{campaign_id}-{commit[:12]}-frozen-"
 
 
 @dataclass(frozen=True)
@@ -143,8 +214,9 @@ class RebasedHead:
     tree_identity: str
     verification_ref: str | None
     summary: str
-    #: The frozen criteria whose bundles weren't run: every one while no runner is wired.
-    frozen_unrun: tuple[str, ...] = ()
+    #: The frozen criteria whose bundles ran on the rebased head and held: every one, or the
+    #: rebase is refused.
+    frozen_held: tuple[str, ...] = ()
 
 
 def needs_rebase(base: BranchBase | None, project: Project) -> bool:
@@ -195,9 +267,8 @@ def rebase_transition(
         "verification": REBASE_VERIFICATION if made.verification_ref else INHERITED_BASELINE,
         "verification_ref": made.verification_ref,
         "verification_summary": made.summary,
-        # §24cd point 5's bundles, which run on the product's runner (§24cm): each one not run
-        # is named, never passed over in silence.
-        "frozen_criteria_unrun": list(made.frozen_unrun),
+        # §24cd point 5's bundles, run on the product's runner (§24cm): each one held.
+        "frozen_criteria_held": list(made.frozen_held),
     }
     next_state = campaign.state
     if supersedes:
@@ -367,10 +438,10 @@ class BranchRebase:
         rebased = await self._replayed(campaign, base, before, onto)
         tree = await self._repository.tree_at(campaign.project_id, rebased.commit)
         identity = FileTree.of(tree.files).identity
-        unrun = await self._frozen_held(campaign, base, onto, rebased, tree, frozen)
+        held = await self._frozen_held(campaign, base, onto, rebased, tree, frozen)
         if rebased.commit == onto.commit:
             return RebasedHead(
-                rebased, identity, None, "the reconciled commit: its inherited baseline", unrun
+                rebased, identity, None, "the reconciled commit: its inherited baseline", held
             )
         try:
             verification = await self._verified(
@@ -389,7 +460,7 @@ class BranchRebase:
                 f"{verification.summary()} (verification {ref}): a break upstream caused is "
                 "found here, never blamed on the next increment"
             )
-        return RebasedHead(rebased, identity, ref, verification.summary(), unrun)
+        return RebasedHead(rebased, identity, ref, verification.summary(), held)
 
     async def _replayed(
         self, campaign: Campaign, base: BranchBase, before: CampaignHead, onto: BranchBase
@@ -433,16 +504,36 @@ class BranchRebase:
         frozen: tuple[dict, ...],
     ) -> tuple[str, ...]:
         """§24cd point 5: every frozen criterion's bundle on the rebased head, by the product's
-        runner. Returns the criteria left unrun: all of them while no runner is wired, none once
-        one is. A criterion whose reading isn't ``held``, or that the runner didn't read,
-        refuses the rebase as regressed."""
+        runner. Returns the criteria that held, which is all of them. Fails closed (the third
+        review, SIP-0112 H.12): frozen criteria with no runner to run them, or a runner that
+        can't run here, refuse the rebase as unverifiable; a reading that isn't ``held`` (a
+        blocked one included) or a criterion left unread refuses it as regressed."""
         ids = tuple(str(c["criterion_id"]) for c in frozen)
-        if not frozen or self._frozen_on_runner is None:
-            return ids
-        readings = await self._frozen_on_runner(
-            FrozenAtRebase(rebase_key(base, onto), campaign.project_id, onto, tree, frozen)
+        if not frozen:
+            return ()
+        unverifiable = (
+            f"{REBASED_HEAD_UNVERIFIABLE}: the campaign branch rebased onto the reconciled "
+            f"{onto.commit[:12]} at {rebased.commit[:12]}, and its frozen criteria can't be read "
+            f"there"
         )
-        broken = [f"{c} ({readings.get(c, 'unread')})" for c in ids if readings.get(c) != HELD]
+        if self._frozen_on_runner is None:
+            raise LaunchRefused(
+                f"{unverifiable}: no runner runs their bundles; unread: {', '.join(ids)}"
+            )
+        try:
+            readings = await self._frozen_on_runner(
+                FrozenAtRebase(
+                    rebase_key(base, onto), campaign.campaign_id, campaign.project_id, onto,
+                    tree, frozen,
+                )
+            )  # fmt: skip
+        except FrozenUnrunnable as e:
+            raise LaunchRefused(f"{unverifiable}: {e}; unread: {', '.join(ids)}") from e
+        broken = [
+            f"{c} ({readings[c][0]}: {readings[c][1]})" if c in readings else f"{c} (unread)"
+            for c in ids
+            if c not in readings or readings[c][0] != HELD
+        ]
         if broken:
             raise LaunchRefused(
                 f"{REBASED_HEAD_REGRESSED}: the campaign branch rebased onto the reconciled "
@@ -450,7 +541,7 @@ class BranchRebase:
                 f"hold: {', '.join(broken)}. A break upstream caused is found here, never blamed "
                 "on the next increment"
             )
-        return ()
+        return ids
 
     async def _verified(
         self,

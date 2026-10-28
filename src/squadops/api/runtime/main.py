@@ -68,7 +68,7 @@ from squadops.api.runtime.startup_reaps import (
 )
 from squadops.bootstrap.secrets import secret_provider_for
 from squadops.campaigns.box_reading import BoxReader
-from squadops.campaigns.branch_rebase import BranchRebase
+from squadops.campaigns.branch_rebase import BranchRebase, ProductRunnerFrozen
 from squadops.campaigns.campaign_branch import CampaignBranch
 from squadops.campaigns.progress import CampaignProgress
 from squadops.campaigns.projection import ProjectingCampaignRegistry
@@ -776,6 +776,11 @@ async def _init_cycle_subsystem(state, config, pool) -> None:
         reconciled=partial(reconciled_at_pin, creation),
         propose=state.campaign_progress.proposal_after_rebase,
         actor=LAUNCHER_ACTOR,
+        # §24cd point 5: every frozen criterion's bundle on the rebased head, on the product's
+        # runner in the sandbox (#2774's frozen_on_runner, §24cl item 10). Fails closed (§24cm).
+        frozen_on_runner=ProductRunnerFrozen(
+            sandbox=state.sandbox_client, projects=project_registry, vault=artifact_vault
+        ),
     )
     state.campaign_launch = CampaignLaunchService(
         campaigns=projected_campaigns,
