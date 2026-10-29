@@ -29,6 +29,7 @@ import os
 import subprocess
 import sys
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 import yaml
@@ -292,7 +293,15 @@ def test_the_vault_is_walked_at_each_window_cycles_own_directory(monkeypatch):
     walked: dict[str, tuple] = {}
     clean = {"files": 3, "missing_roots": [], "hits": {}}
     monkeypatch.setattr(sweep, "sweep_databases", lambda values, **_: {"squadops": {"tables": {}}})
-    monkeypatch.setattr(sweep, "window_cycles", lambda campaigns: ["cyc_aaaaaaaaaaaa", "cyc_b0"])
+    monkeypatch.setattr(
+        sweep,
+        "window_cycles",
+        lambda campaigns: [
+            ("group_run", "cyc_aaaaaaaaaaaa"),
+            ("prj-orbit", "cyc_b0"),
+            ("prj-orbit", "cyc_c1"),
+        ],
+    )
     monkeypatch.setattr(sweep, "expected_agents", lambda: [])
     monkeypatch.setattr(sweep, "running_containers", lambda: set())
     monkeypatch.setattr(
@@ -301,11 +310,16 @@ def test_the_vault_is_walked_at_each_window_cycles_own_directory(monkeypatch):
 
     report = sweep.sweep(_values(), ["cmp_83d63c2ebb50"])
 
+    # Each cycle under its own project, and each project's unattached artifacts once: a
+    # repository-backed Project's cycles were walked under group_run, at roots that weren't there.
     assert walked["squadops-runtime-api"] == (
         "/app/data/artifacts/group_run/cyc_aaaaaaaaaaaa",
-        "/app/data/artifacts/group_run/cyc_b0",
+        "/app/data/artifacts/prj-orbit/cyc_b0",
+        "/app/data/artifacts/prj-orbit/cyc_c1",
         "/app/data/artifacts/group_run/_unattached",
+        "/app/data/artifacts/prj-orbit/_unattached",
     )
+    assert report["window_cycles"] == ["cyc_aaaaaaaaaaaa", "cyc_b0", "cyc_c1"]
     assert report["unsearched"] == []
 
 
@@ -587,3 +601,21 @@ def test_main_with_goals_reports_each_goal_not_found_where_the_proposal_was_show
     assert report["mode"] == "goals"
     assert report["goals_not_found_in_proposals"] == [sweep.marker_id(GOAL)]
     assert GOAL not in out
+
+
+def test_the_window_cycles_are_read_with_their_projects(monkeypatch):
+    """Entered at ``window_cycles``, with the database's answer as ``psql -tA`` prints it. Bug
+    caught: the project dropped, so the vault is walked under one project for every campaign."""
+    real = _load("heldout_sweep_window_cycles")
+    answer = "group_run|cyc_aaaaaaaaaaaa\nprj-orbit|cyc_b0\n\n"
+
+    def run(argv, **_kwargs):
+        assert "project_id || '|' || cycle_id" in argv[-1]
+        return SimpleNamespace(stdout=answer, returncode=0)
+
+    monkeypatch.setattr(real.subprocess, "run", run)
+
+    assert real.window_cycles(["cmp_83d63c2ebb50"]) == [
+        ("group_run", "cyc_aaaaaaaaaaaa"),
+        ("prj-orbit", "cyc_b0"),
+    ]

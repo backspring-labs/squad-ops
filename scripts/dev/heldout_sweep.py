@@ -317,9 +317,12 @@ def sweep_databases(values: dict[str, str], *, split_by: str | None = None) -> d
     return out
 
 
-def window_cycles(campaigns: Iterable[str]) -> list[str]:
-    """The window's cycles, by its campaigns. A campaign id that isn't one is refused, never
-    dropped, since dropping it would leave its cycles unwalked."""
+def window_cycles(campaigns: Iterable[str]) -> list[tuple[str, str]]:
+    """The window's cycles, by its campaigns, each with its project: ``(project_id, cycle_id)``.
+    The vault keeps a cycle's artifacts under its own project, so a campaign on any Project other
+    than ``group_run`` was walked at roots that weren't there (2.5's demonstrations, 2026-10-29).
+    A campaign id that isn't one is refused, never dropped, since dropping it would leave its
+    cycles unwalked."""
     campaigns = list(campaigns)
     bad = [c for c in campaigns if not re.fullmatch(r"cmp_[0-9a-f]{12}", c)]
     if bad:
@@ -329,10 +332,12 @@ def window_cycles(campaigns: Iterable[str]) -> list[str]:
     ids = ",".join(f"'{c}'" for c in campaigns)
     done = subprocess.run(
         ["docker", "exec", "squadops-postgres", "psql", "-U", "squadops", "-d", "squadops", "-tAc",
-         f"select cycle_id from cycle_registry where campaign_id in ({ids}) order by cycle_id"],
+         f"select project_id || '|' || cycle_id from cycle_registry where campaign_id in ({ids}) "
+         "order by cycle_id"],
         capture_output=True, text=True, check=True,
     )  # fmt: skip
-    return [line.strip() for line in done.stdout.splitlines() if line.strip()]
+    pairs = [line.strip().partition("|") for line in done.stdout.splitlines() if line.strip()]
+    return [(project, cycle) for project, _, cycle in pairs]
 
 
 def expected_agents(compose: Path = ROOT / "docker-compose.yml") -> list[str]:
@@ -397,14 +402,15 @@ def sweep(
     except (ValueError, OSError, subprocess.CalledProcessError) as e:
         cycles = []
         report["unsearched"].append(f"the window's cycles: {type(e).__name__}: {e}")
-    report["window_cycles"] = cycles
+    report["window_cycles"] = [cycle for _, cycle in cycles]
     if cycles:
-        # The cycles' own artifacts, and the project's unattached ones: a campaign's package and
-        # digest have no cycle, and a Release attaches them.
+        # The cycles' own artifacts, each under its own project, and each project's unattached
+        # ones: a campaign's package and digest have no cycle, and a Release attaches them.
+        projects = sorted({project for project, _ in cycles})
         report["containers"]["squadops-runtime-api (vault)"] = walk(
             "squadops-runtime-api",
-            [f"/app/data/artifacts/group_run/{c}" for c in cycles]
-            + ["/app/data/artifacts/group_run/_unattached"],
+            [f"/app/data/artifacts/{project}/{cycle}" for project, cycle in cycles]
+            + [f"/app/data/artifacts/{project}/_unattached" for project in projects],
             values,
         )
     else:
