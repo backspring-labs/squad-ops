@@ -84,7 +84,7 @@ The revision history at the end has the earlier placements.
 
 ---
 
-## Delivery ledger (current as of 2026-10-28)
+## Delivery ledger (current as of 2026-10-29)
 
 Kept by the rule in CLAUDE.md ("SIP System"): one row per part, updated in the PR that ships or re-places it, read at each release cut. Built from the read-only SIP-portfolio audit of 2026-10-04; `sips/PORTFOLIO.md` indexes it.
 
@@ -146,6 +146,7 @@ Kept by the rule in CLAUDE.md ("SIP System"): one row per part, updated in the P
 | a Campaign on a repository-backed Project, read live: a repository-backed Campaign's increments judged at delivery and promoted onto its branch end to end, on a product made from a blueprint (`z_shelfnote`, IR-7) and one with its own layout (`z_continuum`), as the 2.5 plan's Track A demonstrations (§24bv, §24cl, §24co) | **placed** | 2.5.0, #2619 |
 | a vitest test-id reader, so a vitest-only criterion can be read as discriminating (§24ci (a)) | **shipped**: from vitest's default reporter, as the product's own command prints it (SIP-0112 H.10) | 2.5.0, PR #2764, closes #2757 |
 | a Campaign cycle held on its instruction bindings escalates as `binding_hold`, released by re-supply and never parked (§24bw; SIP-0110 §A.3.6) | **shipped** | 2.4.0, PR #2628 (#2178's Campaign half) |
+| an increment's criterion files taught by role: the development proposer is told they are the qa tasks', with SIP-0093 §15b's merge rule behind it (§24cr) | **shipped** | 2.5.0, PR #2802, closes #2795 |
 
 **What closes this SIP:** Its 2.1.0 rows closing, #1710's remainder ruled, and #1708's remainder shipped in 2.2.0 or ruled out of scope. §24at, the consolidated status at the v2.0.0 cut, replaces the 2.0 plan's §5a as the permanent record. Promotion follows at the sweep after the last placed row closes.
 

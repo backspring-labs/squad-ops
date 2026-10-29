@@ -15,7 +15,7 @@ updated_at: '2026-05-07T00:00:00Z'
 
 **Relationship:** This SIP **is** the implementation path for SIP-0092 M2. The M1→M2 gate evaluation (`docs/plans/SIP-0092-gate-M1-evaluation.md`, merged in PR #117 on 2026-05-05) selected the multi-role authoring path; SIP-0093 supplants M2-as-originally-written. The original single-author `_produce_plan` body is retained only as the implementation of `PlanAuthoringService` — the function the merger calls when there are no proposals to merge (either by config or by all-proposals-failed). It is not a separate runtime route. SIP-0092 M1 (typed acceptance) and M3 (plan changes) are orthogonal to plan authorship and stand unchanged.
 
-## Delivery ledger (current as of 2026-10-23)
+## Delivery ledger (current as of 2026-10-29)
 
 Kept by the rule in CLAUDE.md ("SIP System"): one row per part, updated in the PR that ships or re-places it, read at each release cut. Built from the read-only SIP-portfolio audit of 2026-10-04; `sips/PORTFOLIO.md` indexes it.
 
@@ -29,6 +29,7 @@ Kept by the rule in CLAUDE.md ("SIP System"): one row per part, updated in the P
 | §5.8 merge rules 2–5 (compatible-criteria merge, strictest-wins, `rejected_tasks`, conflicts block the gate) | **dropped** (§15a) | re-proposed on evidence |
 | §10 required tests (sole-author handler, gate package) | **placed**: folded into #950 with 93.4 (§15a) | 2.6 or later, #950 (the 2.4 plan's D10; re-read at the 2.4.0 cut, with 93.4) |
 | §5.11 parallel fan-out | **dropped** by §15a: built sequential | `task_plan.py:147-149` |
+| §15b: an increment's criterion file that a development task and a qa task both claim is the qa task's at the merge | **shipped** | 2.5.0, PR #2802, closes #2795 |
 
 **What closes this SIP:** **Ready to promote** with §15a (ruled 2026-10-04): 93.4 and its tests go to #950, rules 2–5 are dropped, and the fan-out is sequential.
 
