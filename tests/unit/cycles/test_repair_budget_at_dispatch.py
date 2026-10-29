@@ -19,8 +19,9 @@ What bugs would these catch?
 - **The composer counting what the repair doesn't show:** a repair whose prompt fits is held, and
   the run waits on an operator who can't release it.
 - **The hold no longer holding:** a repair whose shown files alone are larger than the window is
-  still held, with the instruction and the reason named, or its guard refuses the prompt after the
-  binding was admitted.
+  still held, with the instruction and the reason named. Admitted, its prompt would overflow the
+  model's window: no prompt guard checks a repair's call (SIP-0073's guard is develop's and
+  ``qa.test``'s), so the composer's hold is the only check there is.
 """
 
 from __future__ import annotations
@@ -165,8 +166,8 @@ async def test_a_repair_on_a_product_larger_than_its_window_binds_its_project_in
 async def test_a_repair_whose_shown_files_alone_exceed_the_window_is_still_held():
     """The control: the failed task wrote sixteen product files, each about 4,000 tokens, which
     its repair shows whole. The run is held on the instruction with why, as before. Bug caught:
-    the scoping read as room the prompt doesn't have, so the guard refuses a prompt the composer
-    admitted."""
+    the scoping read as room the prompt doesn't have, so a binding is admitted into a prompt that
+    overflows the window, which nothing after the composer checks for a repair."""
     named = tuple(f"tally/report_{i:02d}.py" for i in range(16))
     (
         _tree,

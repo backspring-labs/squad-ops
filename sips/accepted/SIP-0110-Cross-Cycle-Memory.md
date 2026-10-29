@@ -3680,8 +3680,19 @@ of about 105,000 tokens against a 65,536-token window.
   - a qa repair's failing-case frames (`failing_case_frames`, with `failing_line_excerpts` moved from the handler
     module).
 
-  The repair handlers render each section through it, and their `handle()` is byte-identical to `origin/main`'s.
-  `repair_prompt_contents` returns the three, by the template variable each fills, and the composer counts that.
+  The repair handlers render each section through it, on the agents, and their `handle()` is byte-identical to
+  `origin/main`'s. The composer calls `repair_prompt_contents` alone, which returns the three by the template
+  variable each fills.
+- **The composer parses no file.** Listing a file's entities takes its resolver: `ast` for Python, and tree-sitter in a
+  worker process for JavaScript and TypeScript. Only the agents' images carry tree-sitter. The runtime-api's
+  `requirements/api.lock` doesn't, and a parse there would block its event loop. So the composer counts the current
+  files and the frames as shown, and the edit form by `edit_form_bound`, which parses nothing, reads no file and starts
+  no process. Each file's line in the form is its path's framing, then at most `MAX_LISTED_ENTITIES` selectors, then
+  the count of those left out (`anchored_edits.EDIT_FORM_*`, which `editable_file_lines` renders with). A selector is a
+  kind, at most two names read from the file joined by a dot, and a suffix (`structural_resolution.SELECTOR_*`). A
+  name never spans a logical line, so each is bounded by the file's longest logical line, all as JSON counts it. The
+  first build listed the entities in the composer, so a repair naming a `.js`, `.jsx`, `.ts` or `.tsx` file raised out
+  of the runtime's budget. #2812's second reading found it before merge.
 - **The contract field is general.** §5an's `artifact_contents_rendering` becomes
   `ContextAssemblyContract.scoped_rendering`, the rendering a handler shows a part of some inputs through.
   `prompt_budget._RENDERINGS` names the inputs each rendering covers:
@@ -3696,13 +3707,18 @@ of about 105,000 tokens against a 65,536-token window.
   composer counts what the handler shows of them.
 
 **The audit.** Every task type a `campaign-increment-source` cycle dispatches, with each input above about 2,000
-tokens it carries on a large product. Measured on the guard's invented product of about 93,500 tokens, 65,536-token
-window, 14,336-token reserve:
+tokens it carries on a large product. The setup is the guard's invented product of about 93,500 tokens, a
+65,536-token window and a 14,336-token reserve. Each budget is the one the task's dispatch takes in the guard's
+composition (`test_product_cycle_budgets._World`), with `squadops` imported from this tree's `src`:
+- a run's task as `_supply_the_dispatch` measures its enriched envelope;
+- a repair as its round's `supplied_or_held` measures it, over every failing task and locus that routes to it.
+
+A plan's check before the first dispatch isn't one of them.
 
 | task type | input over ~2k on a product | its handler shows | counted before | counted after | budget |
 |---|---|---|---|---|---|
 | `strategy.propose_increment` | `product_proposal`; `source_repository` | the proposal whole but its profile's `test_files`; the map and instruction files | whole | whole (an upper bound) | 43,752 |
-| plan writers: `development.design_plan`, `governance.prepare_plan_authoring_brief`, the three proposers | `prior_outputs` (the run's documents); `source_repository` | the documents whole and each role's summary; the repository whole | whole | whole (an upper bound) | 33,448 to 47,911 |
+| plan writers: `development.design_plan`, `governance.prepare_plan_authoring_brief`, the three proposers | `prior_outputs` (the run's documents); `source_repository` | the documents whole and each role's summary; the repository whole | whole | whole (an upper bound) | 33,448 to 46,590 |
 | `qa.define_test_strategy`, `governance.merge_plan`, `governance.review_plan`, `governance.define_done` | none counted | no authoring seam | no budget | no budget | none |
 | `development.develop` | `acceptance_workspace_files` (the product) | nothing | not counted | not counted | 42,912 |
 | `development.develop` | `artifact_contents` (the run's own develop output); `source_repository` | each whole, on the focused path | whole | whole | |
@@ -3711,10 +3727,12 @@ window, 14,336-token reserve:
 | `qa.test`, and its re-take | `source_repository`; `retake_current_files` | each whole | whole | whole | |
 | `qa.test`'s retest | the failed task's tree | it runs the repaired suite and generates nothing | not supplied | not supplied | none |
 | `data.analyze_failure`, `governance.correction_decision` | `failure_evidence` | no authoring seam | no budget | no budget | none |
-| `development.correction_repair`, `qa.test_repair` | `acceptance_workspace_files` (the product); `failed_task_artifacts` | the named files of them, their edit form, a qa repair's failing-case frames | **whole: the hold** | **the three sections** | 41,961 to 44,283 |
+| `development.correction_repair`, `qa.test_repair` | `acceptance_workspace_files` (the product); `failed_task_artifacts` | the named files of them, their edit form, a qa repair's failing-case frames | **whole: the hold** | **the files and frames shown, the edit form at its bound** | 40,594 to 44,283 |
 | `development.correction_repair`, `qa.test_repair` | `failure_evidence`; `prior_outputs` | in part (the summary and its blocks; each role's summary) | whole | whole (an upper bound) | |
 
 **What isn't counted exactly, and is said so:**
+- **The edit form is counted at its bound.** About 1,400 tokens for a file whose longest line is about 55 characters,
+  where the form lists forty selectors at most and usually far less.
 - **The frames are a qa repair's alone.** A dev or builder repair's count includes them too, an over-count of a few
   lines around each failing case.
 - **A repair's anchored-edit retry** is a second call inside the repair, after a refused response. It adds the
@@ -3747,7 +3765,7 @@ E.4.3's open question (§5an).
     right or it is named as held, with why.
 - **The wiring test, `tests/unit/cycles/test_repair_budget_at_dispatch.py`.** It is entered at the executor's
   `_enrich_envelope` and `_dispatch_correction_protocol`, whose repair is supplied under its `BindingHolds`.
-  - The repair of a failed develop task that wrote one 2,000-token file takes 42,189, the window less what it shows,
+  - The repair of a failed develop task that wrote one 2,000-token file takes 40,821, the window less what it shows,
     where the whole tree left less than 0. The instruction is handed and disclosed as supplied.
   - The control: a repair shown sixteen files of about 4,000 tokens each is still held, with the instruction and the
     reason named.
@@ -3755,8 +3773,13 @@ E.4.3's open question (§5an).
   repairs' `handle()`, pinned on `origin/main` (`cf1fbe23`). They cover a named file in the workspace, the failed
   task's own file and a new one, none existing, a file whose backticks lengthen its fence, a refused whole-file
   re-emission retried, and a qa repair's frames.
-- **`tests/unit/capabilities/test_repair_prompt_contents.py`:** the three sections exactly, the base's edges, and the
-  count through the rendering.
+- **`tests/unit/capabilities/test_repair_prompt_contents.py`:**
+  - the three sections exactly, the base's edges, and the count through the rendering;
+  - the edit form's bound against the form the agent renders, for each kind of selector either resolver writes:
+    methods, imports continued across lines, names outside ASCII, more than forty entities, a long line, JSX,
+    TypeScript, a route handler's `#try`, an unparseable file and one no resolver reads;
+  - with tree-sitter unimportable and both resolvers raising, a `.jsx`, a `.ts` and a `.py` repair are given a budget
+    that is no smaller than the agent's real rendering of the same repair.
 - **`tests/unit/memory/test_prompt_budget_parity.py`:** a dev and a qa repair on a product of three packages, each
   within the margin of its rendered prompt.
 - **Mutants, each caught:**
@@ -3765,9 +3788,13 @@ E.4.3's open question (§5an).
   - the guard's task types written down rather than read;
   - the handler rendering its current files apart from the shared function;
   - the frames left out of the count;
-  - the composer counting none of the tree.
-- **Loaded checks:** `2810-composer` (runtime-api) and `2810-repair-handler` (neo and eve). `2805-composer` reads the
-  renamed field.
+  - the composer counting none of the tree;
+  - the composer listing the edit form's entities through the resolvers.
+- **Loaded checks:**
+  - `2810-composer` (runtime-api) counts a Python, a JSX and a TypeScript repair, so a runtime that can't count a
+    JavaScript repair fails it;
+  - `2810-repair-handler` runs in neo and in eve;
+  - `2805-composer` reads the renamed field.
 
 **Who ruled it.** No new design ruling: §5ak names exact rendering as the next step once such a hold is seen, and §5an
 did it for one seam.

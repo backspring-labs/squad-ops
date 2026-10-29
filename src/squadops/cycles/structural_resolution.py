@@ -24,6 +24,15 @@ from squadops.cycles.structural_python import (
 
 PYTHON_SUFFIXES = (".py",)
 
+#: Every selector either resolver writes is ``imports``, or ``KIND:NAME`` with an optional
+#: ``#body`` or ``#try``, where NAME is one name read from the file or two joined by a dot
+#: (Python's ``method:CLASS.NAME``). The longest ``KIND:`` (TypeScript's ``interface:``), the
+#: longest suffix and the most names, so a listing of selectors can be bounded without parsing
+#: (#2810): the composer counts a repair's edit form in a runtime that has no JavaScript parser.
+SELECTOR_KIND_MAX = len("interface:")
+SELECTOR_SUFFIX_MAX = len("#body")
+SELECTOR_NAMES_MAX = 2
+
 
 def reads_structure(path: str) -> bool:
     return path.endswith(PYTHON_SUFFIXES) or path.endswith(ECMASCRIPT_SUFFIXES)

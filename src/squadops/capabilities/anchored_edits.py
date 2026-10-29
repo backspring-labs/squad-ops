@@ -274,6 +274,13 @@ def _scan(lines: list[str]) -> list[tuple[int, int, _FenceReader]]:
 #: Entities listed per editable file in an edit form: scaffold files carry a handful; a large
 #: module is truncated with a count rather than flooding the prompt.
 MAX_LISTED_ENTITIES = 40
+#: How the edit form lists one file: ``- `PATH` — entities: `S1`, `S2` (+N more)``, or the path
+#: alone when no resolver lists an entity. The composer bounds the listing by the same pieces
+#: (``repair_prompt_contents.edit_form_bound``, #2810).
+EDIT_FORM_FILE = "- `{path}`"
+EDIT_FORM_ENTITIES = " — entities: "
+EDIT_FORM_SEPARATOR = ", "
+EDIT_FORM_MORE = " (+{count} more)"
 
 
 def verbatim_block(path: str, content: str) -> str:
@@ -300,13 +307,14 @@ def editable_file_lines(
     for path in files:
         selectors = entity_selectors(path, base[path]) or ()
         offered[path] = len(selectors)
-        listed = ", ".join(f"`{sel}`" for sel in selectors[:MAX_LISTED_ENTITIES])
+        listed = EDIT_FORM_SEPARATOR.join(f"`{sel}`" for sel in selectors[:MAX_LISTED_ENTITIES])
         more = (
-            f" (+{len(selectors) - MAX_LISTED_ENTITIES} more)"
+            EDIT_FORM_MORE.format(count=len(selectors) - MAX_LISTED_ENTITIES)
             if len(selectors) > MAX_LISTED_ENTITIES
             else ""
         )
-        lines.append(f"- `{path}` — entities: {listed}{more}" if selectors else f"- `{path}`")
+        head = EDIT_FORM_FILE.format(path=path)
+        lines.append(f"{head}{EDIT_FORM_ENTITIES}{listed}{more}" if selectors else head)
     return lines, offered
 
 

@@ -12,23 +12,43 @@ repair's edits resolve against (:func:`repair_base_files`):
 - **a qa repair's failing-case frames** (1.8.2 item 6): the lines around each failing case's line,
   cut from the base (:func:`failing_case_frames`).
 
-The repair handlers render each through these functions, and the composer counts the three through
-:func:`repair_prompt_contents` (``squadops.capabilities.prompt_budget``, SIP-0110 Appendix A §3.6).
-Counted apart, the composer measured the whole tree: on a repository-backed product larger than
-about half its model's window, the budget left for memory's sections read 0, and every repair was
-held on its binding (the 2.5 main demonstration's round 2).
+The repair handlers render each through these functions, on the agents. The composer
+(``squadops.capabilities.prompt_budget``, SIP-0110 Appendix A §3.6) calls
+:func:`repair_prompt_contents` alone, in the runtime. Counted apart, the composer measured the whole
+tree: on a repository-backed product larger than about half its model's window, the budget left for
+memory's sections read 0, and every repair was held on its binding (the 2.5 main demonstration's
+round 2).
 
-Pure: no I/O and no handler class, so the runtime's composer and the agent's handler both call it.
+**What runs where.** :func:`repair_prompt_contents` parses no file, reads no file and starts no
+process: it is string work on the envelope's inputs, so it runs in the runtime, which carries no
+JavaScript parser, on its event loop. Only :func:`edit_form` parses: listing a file's entities
+takes its resolver (``ast`` for Python; tree-sitter in a worker process for JavaScript and
+TypeScript, which only the agents' images carry). So the composer counts the edit form by
+:func:`edit_form_bound`, an upper bound read without parsing, never by :func:`edit_form`.
 """
 
 from __future__ import annotations
 
+import json
 from collections.abc import Mapping
 from typing import Any
 
-from squadops.capabilities.anchored_edits import editable_file_lines, verbatim_block
+from squadops.capabilities.anchored_edits import (
+    EDIT_FORM_ENTITIES,
+    EDIT_FORM_FILE,
+    EDIT_FORM_MORE,
+    EDIT_FORM_SEPARATOR,
+    MAX_LISTED_ENTITIES,
+    editable_file_lines,
+    verbatim_block,
+)
 from squadops.capabilities.context_assembly import REPAIR_FAILED_ARTIFACTS_KEY, scaffold_shell_paths
 from squadops.cycles.failure_evidence import failing_cases_from_evidence
+from squadops.cycles.structural_resolution import (
+    SELECTOR_KIND_MAX,
+    SELECTOR_NAMES_MAX,
+    SELECTOR_SUFFIX_MAX,
+)
 from squadops.cycles.write_authorization import normalize_ws_path
 
 #: The inputs a repair's prompt shows a part of, through :func:`repair_prompt_contents`: the tree
@@ -41,14 +61,17 @@ FAILING_LINE_CONTEXT = 6
 
 
 def repair_prompt_contents(inputs: Mapping[str, Any]) -> dict[str, str]:
-    """What a repair's prompt shows of its base, by the template variable that shows it: the
-    current files, the edit form's file list and the failing-case frames, each ``""`` when the
-    prompt shows none. The frames are a qa repair's alone, so a dev or builder repair's count is
-    over by them, an upper bound."""
-    lines, _offered = edit_form(inputs)
+    """What the composer counts of a repair's prompt, by the template variable that shows it, each
+    ``""`` when the prompt shows none: the current files and the failing-case frames as the prompt
+    shows them, and, for the edit form's file list, as many characters as :func:`edit_form_bound`
+    says it can take, since listing the entities takes a parser the runtime doesn't carry. Parses
+    nothing, reads no file and starts no process.
+
+    Two parts are upper bounds: the edit form, and the frames, which are a qa repair's alone, so a
+    dev or builder repair's count is over by them."""
     return {
         "current_files": current_files(inputs),
-        "editable_files": "\n".join(lines),
+        "editable_files": " " * edit_form_bound(inputs),
         "case_frames": failing_case_frames(inputs),
     }
 
@@ -90,11 +113,65 @@ def current_files(inputs: Mapping[str, Any]) -> str:
 def edit_form(inputs: Mapping[str, Any]) -> tuple[list[str], dict[str, int]]:
     """The edit form's file list and what it offered (SIP-0107 §9.1, §9.2): each file the repair
     may revise with the entities its resolver can address, read from the same base, and how many
-    were listed for each. Nothing when it may revise none."""
+    were listed for each. Nothing when it may revise none.
+
+    It parses each file, so the handler calls it on the agent, and the composer never does: it
+    counts :func:`edit_form_bound` instead."""
     files = anchorable_files(inputs)
     if not files:
         return [], {}
     return editable_file_lines(files, repair_base_files(inputs))
+
+
+def edit_form_bound(inputs: Mapping[str, Any]) -> int:
+    """At least as many characters as the composer counts :func:`edit_form`'s file list at, its
+    JSON escapes included (``prompt_budget`` counts a structure as its JSON), read without parsing
+    a file.
+
+    Each file's line is its path's framing, at most ``MAX_LISTED_ENTITIES`` selectors between
+    backticks, and the count of those left out (``anchored_edits.EDIT_FORM_*``). A selector is a
+    kind, at most ``SELECTOR_NAMES_MAX`` names read from the file joined by a dot, and a suffix
+    (``structural_resolution.SELECTOR_*``). A name never spans a logical line: an identifier never
+    does, and a module's name or a JavaScript import's source spans physical lines only through a
+    backslash continuation, which :func:`_longest_name` joins. So each name is bounded by the
+    file's longest logical line, escaped. The count left out is under the selectors a file can
+    carry: three a statement (``KIND:NAME``, ``#body``, ``#try``) and ``imports``, with at most
+    one statement starting on each line.
+    """
+    base = repair_base_files(inputs)
+    files = anchorable_files(inputs)
+    total = len(json.dumps("\n" * max(0, len(files) - 1))) - 2
+    for path in files:
+        content = base[path]
+        selector = (
+            SELECTOR_KIND_MAX
+            + SELECTOR_SUFFIX_MAX
+            + SELECTOR_NAMES_MAX * _longest_name(content)
+            + (SELECTOR_NAMES_MAX - 1)
+        )
+        listed = MAX_LISTED_ENTITIES * (selector + len("``")) + (MAX_LISTED_ENTITIES - 1) * len(
+            EDIT_FORM_SEPARATOR
+        )
+        lines = len(content) + 1  # at least as many as the file has
+        more = _escaped(EDIT_FORM_MORE.format(count=3 * lines + 1))
+        total += _escaped(EDIT_FORM_FILE.format(path=path) + EDIT_FORM_ENTITIES) + listed + more
+    return total
+
+
+def _longest_name(content: str) -> int:
+    """The most characters a name read from ``content`` can take, escaped as JSON: its longest
+    logical line, the physical lines a trailing backslash continues joined."""
+    longest = current = 0
+    for line in content.splitlines(keepends=True):
+        current += _escaped(line)
+        if not line.splitlines()[0].endswith("\\"):
+            longest, current = max(longest, current), 0
+    return max(longest, current)
+
+
+def _escaped(text: str) -> int:
+    """``text``'s length as JSON writes it, without its quotes."""
+    return len(json.dumps(text)) - 2
 
 
 def failing_case_frames(inputs: Mapping[str, Any]) -> str:
@@ -113,7 +190,7 @@ def failing_line_excerpts(cases: list[dict[str, Any]], files: Mapping[str, str])
     near the failing one and failed again on it, and two fixed the failing line and failed on
     the next line of the same case.
 
-    #2810 moved it here from ``handlers.impl.repair_handlers``, which still exports it.
+    #2810 moved it here from ``handlers.impl.repair_handlers``.
     """
     blocks = []
     for case in cases:

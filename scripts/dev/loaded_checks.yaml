@@ -2301,15 +2301,17 @@ checks:
       print(q.qa_test_prompt_contents is qa_test_prompt_contents, hasattr(q.QATestHandler, "_prompt_scoped_contents"), "orbit/a.py" in prompt, "tests/test_a.py" in prompt)
     expect: "True False False True"
   - id: "2810-composer"
-    what: the composer counts a repair's tree as its prompt shows it (the named files, their edit form and a qa repair's frames), and a task that shows its inputs whole counts them whole, so a binding fits a repair on a product larger than its window (SIP-0110 §5ao, #2810)
+    what: the composer counts a repair's tree as its prompt shows it (the named files, their edit form at its bound and a qa repair's frames) for a Python, a JSX and a TypeScript file, parsing none, in a runtime with no tree-sitter; and a task that shows its inputs whole counts them whole, so a binding fits a repair on a product larger than its window (SIP-0110 §5ao, #2810)
     container: squadops-runtime-api
     code: |
       from types import SimpleNamespace
       from squadops.capabilities.context_assembly import REPAIR_CONTEXT_CONTRACT
       from squadops.capabilities.prompt_budget import rendered_input_tokens
-      inputs = {"expected_artifacts": ["orbit/a.py"], "acceptance_workspace_files": {"orbit/a.py": "x" * 400, "orbit/b.py": "y" * 40000}}
-      print(REPAIR_CONTEXT_CONTRACT.scoped_rendering, rendered_input_tokens(SimpleNamespace(task_type="development.correction_repair", inputs=inputs)), rendered_input_tokens(SimpleNamespace(task_type="strategy.propose_increment", inputs=inputs)))
-    expect: repair_prompt 130 10113
+      def count(name, task_type="development.correction_repair"):
+          inputs = {"expected_artifacts": [name], "acceptance_workspace_files": {name: "export const a = 1;\n" * 20, "orbit/b.py": "y" * 40000}}
+          return rendered_input_tokens(SimpleNamespace(task_type=task_type, inputs=inputs))
+      print(REPAIR_CONTEXT_CONTRACT.scoped_rendering, count("orbit/a.py"), count("console/src/A.jsx"), count("app/api/a/route.ts"), count("orbit/a.py", "strategy.propose_increment"))
+    expect: repair_prompt 761 767 767 10118
   - id: "2810-repair-handler-neo"
     what: the dev repair shows its tree through the functions the composer counts it with (#2810)
     container: squadops-neo
