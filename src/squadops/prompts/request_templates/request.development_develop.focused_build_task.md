@@ -1,6 +1,6 @@
 ---
 template_id: request.development_develop.focused_build_task
-version: "7"
+version: "8"
 required_variables:
   - focus
   - expected_files
@@ -8,6 +8,7 @@ required_variables:
 optional_variables:
   - description
   - fill_only_section
+  - increment_views_section
   - contract_expectations
   - narrative_criteria
   - prior_artifacts
@@ -23,6 +24,8 @@ optional_variables:
 {{description}}
 
 {{fill_only_section}}
+
+{{increment_views_section}}
 
 {{source_repository_section}}{{prior_cycle_section}}{{task_instructions_section}}{{project_instructions_section}}{{cross_cycle_lessons_section}}
 

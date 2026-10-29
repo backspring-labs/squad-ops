@@ -143,8 +143,10 @@ async def _approved_manifest(projects: Any, project_id: str) -> dict[str, Any]:
 
 def profile_view(profile: DerivedProfile, tree_paths: Any) -> dict[str, Any]:
     """What the proposal reads of the derived profile: its languages, its public surfaces, each
-    runner with its criterion placement, the file classes and the disclosed gaps. A blocking gap
-    refused the Campaign's start (§24bv point 1) or this cycle at create (H.8), so none is shown."""
+    runner with its criterion placement, the file classes, the client routes acceptance judges
+    (SIP-0109 §24cp: a page criterion elsewhere adds a route, and names its view's anchor) and the
+    disclosed gaps. A blocking gap refused the Campaign's start (§24bv point 1) or this cycle at
+    create (H.8), so none is shown."""
     return {
         "languages": [
             {"name": x.name, "package_manager": x.package_manager} for x in profile.languages
@@ -154,6 +156,7 @@ def profile_view(profile: DerivedProfile, tree_paths: Any) -> dict[str, Any]:
             p.as_dict() for p in runner_placements(profile.runners, profile.gaps, tree_paths)
         ],
         "test_files": list(profile.test_files),
+        "client_routes": list(profile.client_routes or ()),
         "gaps": [
             {
                 "id": g.id,

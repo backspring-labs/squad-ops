@@ -44,7 +44,10 @@ from squadops.capabilities.handlers.cycle.fill_mode_brief import (
 )
 from squadops.capabilities.handlers.cycle_tasks import _classify_file, _CycleTaskHandler
 from squadops.capabilities.handlers.fenced_parser import extract_fenced_files
-from squadops.capabilities.handlers.increment_test_scope import increment_test_scope_section
+from squadops.capabilities.handlers.increment_test_scope import (
+    increment_test_scope_section,
+    increment_views_section,
+)
 from squadops.capabilities.handlers.task_instructions import (
     project_instructions_section,
     task_instructions_section,
@@ -348,6 +351,9 @@ class _RepairPromptMixin:
             "frozen_surface_section": str(inputs.get("frozen_surface_section") or ""),
             # #1884: rendered in handle() for a qa repair of an increment's suite; "" otherwise.
             "test_scope_section": str(inputs.get("test_scope_section") or ""),
+            # SIP-0109 §24cp: rendered in handle() for a dev repair on an increment that adds a
+            # page; "" otherwise.
+            "increment_views_section": str(inputs.get("increment_views_section") or ""),
             # #1015 part C: the repair could not see the loop. No attempt counter, no
             # statement that rounds are finite — each round rendered only the fresh
             # failure, so a dev with no reason to think anything was running out
@@ -432,6 +438,8 @@ class _RepairPromptMixin:
         inputs = {
             **inputs,
             "test_scope_section": await self._render_test_scope_section(context, inputs),
+            # SIP-0109 §24cp: "" but for a dev repair on an increment that adds a page.
+            "increment_views_section": await self._render_increment_views_section(context, inputs),
         }
         loop_state = await self._render_loop_state_section(context, inputs)
         if loop_state:
@@ -1085,6 +1093,26 @@ class _RepairPromptMixin:
             return ""
         return await increment_test_scope_section(
             getattr(context.ports, "request_renderer", None), inputs
+        )
+
+    async def _render_increment_views_section(
+        self, context: ExecutionContext, inputs: dict[str, Any]
+    ) -> str:
+        """SIP-0109 §24cp: the pages a repository-backed change adds, each with the anchor its
+        view renders, for a dev repair, or "". They ride ``REPAIR_PRESENCE_KEYS`` from the failed
+        ``development.develop`` (``increment_views``), or from a failed ``qa.test``'s scope, so a
+        repair of a view keeps the anchor acceptance reads the page for. A qa repair is shown them
+        in its test scope already."""
+        # Read as the mixin's other renderers read it; through getattr, since the mixin declares no
+        # ``_role`` and the type ratchet counts each bare read (its baseline holds the others).
+        if getattr(self, "_role", "") != "dev":
+            return ""
+        scope = inputs.get("increment_test_scope")
+        views = inputs.get("increment_views") or (
+            scope.get("views") if isinstance(scope, dict) else None
+        )
+        return await increment_views_section(
+            getattr(context.ports, "request_renderer", None), views
         )
 
     async def _render_qa_frozen_surface_section(

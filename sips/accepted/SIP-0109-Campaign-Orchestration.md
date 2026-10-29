@@ -140,6 +140,9 @@ Kept by the rule in CLAUDE.md ("SIP System"): one row per part, updated in the P
 | a Campaign on a repository-backed Project, point 4: upstream moving. The branch is rebased onto the commit and revision its Project reconciled, its head verified by the product's checks, a pending repair or retry superseded as `upstream_moved` (D10), the conflict and regression escalations, and the ref's follow (§24bv point 4, §24cd points 2–5, §24cm) | **shipped**, with §24cd point 5's frozen bundles at the rebase run by #2774's `frozen_on_runner` (§24cm item 11) | 2.5.0, PR #2770 |
 | a Campaign on a repository-backed Project, the supervisor's review-request push: the campaign branch pushed as `squadops/<campaign>` with the supervisor's own token, leased on the last push and refused over a branch someone else moved (§24ci (b), §24cn) | **shipped** | 2.5.0, PR #2772 |
 | a Campaign on a repository-backed Project, point 3's route rendering on a product: the profile's client routes rendered on the candidate, started in the sandbox from contract 7's start, read by the evaluator image's Chromium and judged by their views' root anchors (§24bv point 3, §24cl item 6, §24co; SIP-0102 §11k) | **shipped** | 2.5.0, PR #2777 |
+| a page criterion on a repository-backed change request names its view's anchor (required on a page the change adds, refused on one the profile judges), and a route the request adds is judged by it, so it can hold; an added page whose path needs a seed is refused, and a dev repair keeps the anchors (§24co item 11's remainder, §24cp items 1–5) | **shipped** | 2.5.0, PR #2780, closes #2779 |
+| a seed for a page a repository-backed change request adds whose path has a parameter, so it can be read instead of refused (§24cp item 5) | **unplaced**, deliberately: for the supervisor to place | #2781 |
+| the anchors of pages earlier increments added, carried into a repository-backed proposal's input, so the rails and the renderer check an added page's anchor against them (§24cp, not built) | **unplaced**, deliberately: for the supervisor to place | #2783 |
 | a Campaign on a repository-backed Project, read live: a repository-backed Campaign's increments judged at delivery and promoted onto its branch end to end, on a product made from a blueprint (`z_shelfnote`, IR-7) and one with its own layout (`z_continuum`), as the 2.5 plan's Track A demonstrations (§24bv, §24cl, §24co) | **placed** | 2.5.0, #2619 |
 | a vitest test-id reader, so a vitest-only criterion can be read as discriminating (§24ci (a)) | **shipped**: from vitest's default reporter, as the product's own command prints it (SIP-0112 H.10) | 2.5.0, PR #2764, closes #2757 |
 | a Campaign cycle held on its instruction bindings escalates as `binding_hold`, released by re-supply and never parked (§24bw; SIP-0110 §A.3.6) | **shipped** | 2.4.0, PR #2628 (#2178's Campaign half) |
@@ -5146,7 +5149,283 @@ start. And one Chromium container for each route.
 **Who ruled.** The supervisor (the Spark lane) built §24bv point 3's rendering under the owner's direction of
 2026-10-21 and the 2.5 grants. Items 1 to 13 are the supervisor's choices, for the owner's review. Items 11 to 13
 answer the outside review's findings on PR #2777 (each a P2, relayed by the owner, 2026-10-28). Item 13's direction was
-the supervisor's, and its unjudged case is named in it (#2782). Its direction was the supervisor's,
+the supervisor's, and its unjudged case is named in it (#2782). Item 12's direction was the supervisor's too,
 and its choice not to read an anchor from prose is named in it. Item 9 adds a key
 to the `increment_evaluation` document, and item 3 adds a reader of contract 7, so it takes the outside review SIP-0112
 H.12 provides before the merge.
+
+### 24cp. A page criterion on a repository-backed change request names its view's anchor, and a route the request adds is judged by it (2026-10-28, §7.2, §8.3, §9.1, §24bv point 5, §24cj, §24co items 5 and 11; #2779; the implementer's design under the supervisor's placement, for the owner)
+
+**Why.** §24co item 11 put the routes a change request's `client_route` criteria name into the routes judged at
+acceptance, and left each one `blocked_unverified`, whatever its page showed: a product's request carries no
+`manifest_delta` (§24bv point 5), so nothing named the view's root anchor that §8.3's judgement reads. That fails
+closed, but it means every product increment that adds a page blocks on that page, and none can be accepted. The
+supervisor placed #2779 in 2.5 (2026-10-28) so `z_shelfnote`'s demonstration can accept an increment that adds a
+page. §24co item 11 had already ruled out reading an anchor from the criterion's free-text `observable`, so the
+anchor is a typed field.
+
+**What changed.**
+1. **The schema (§7.2, on a campaign branch).** A `client_route` criterion may carry `anchor`: the `data-testid` its
+   page's view renders on its root element, read as a manifest's route reads its first test id (#659)
+   (`Criterion.anchor`, `campaigns/change_request.py:164`).
+   - **It's authored content, and hashed.** An anchor changed after the ruling fails the hash on load, as a widened
+     footprint does (§24cj). The ruling's binding (§9.2) is the hash, so it binds the anchor too.
+   - **It's stored only when set,** as a criterion's `paths` is (`_authored_fields`). A request that names none keeps
+     its document and its hash. The test pins the hash `origin/main` computes for such a request.
+   - **The parse refuses it, as `malformed`, naming why** (`_anchor`, `change_request.py:385`):
+     - on a sample application's request: its views are anchored by its manifest delta's `testids`;
+     - on a criterion that isn't a page (`endpoint`, `command`, `package`): there's no view;
+     - when it isn't a `data-testid` value. That's a letter, then letters, digits, `-` or `_`, at most 64 characters
+       (`_ANCHOR`, `:382`). Nothing in it needs quoting in an attribute or a selector, so the page's reading and
+       the criterion's test name one element.
+
+     The load runs the same parse, so a stored request is held to the same checks.
+2. **The rails (`_anchor_refusals`, `change_request.py:1028`, run by `_validate_product_proposal` at `:979`).** A
+   page "the change adds" is one whose route the profile's `client_routes` doesn't name. Those are the routes
+   acceptance pins (§24co item 11), read here as `ProductContext.judged_routes` (`:781`).
+   - **Required on a page the change adds (`anchor_required`).** The choice was required, not optional:
+     - an added page with no anchor can only block at acceptance (§24co item 11), so a request that names none
+       is an increment the campaign can't accept with its own page;
+     - refused at the rails, it goes back to the proposer with the reason, while it can still be revised;
+     - left optional, it would cost a build and a delivery to learn the same thing.
+
+     The reading rejected was optional, blocking at acceptance as before. A request stored before this item, which
+     names none, still loads and still blocks, as `NO_ANCHOR_REQUESTED`.
+   - **Refused on a page the profile already judges (`anchor_on_judged_route`).** That page is judged by its approved
+     manifest's anchor (§24co item 5) whatever the request names, so a second anchor would be one nothing reads.
+     - **The reading rejected:** the request's anchor replacing the pinned one. A change could then rewrite an
+       existing page to show only the id its own proposal named, and the pin would hold nothing.
+   - **One anchor per added page (`anchors_disagree`).** A view has one root element.
+   - **A page on a product with no UI base** is refused by its surface alone (`unknown_surface`), and isn't also
+     asked for an anchor.
+   - **Where the judged routes come from.** The proposal's input carries them now: `profile_view` adds the profile's
+     `client_routes` (`execution/product_proposal.py:159`), and `product_context` reads them
+     (`planning/proposal.py:142`). An input composed before this item names none, so every page criterion there
+     reads as adding its page. That's stricter, never looser.
+3. **The renderer (§24co item 11, superseded for a request that names an anchor).**
+   - `requested_routes` gives each route the criteria assert on with the anchor they name, or `""`
+     (`campaigns/product_routes.py:48`). The first anchor named for a route is taken.
+   - The `RouteRenderer` protocol's `requested_routes` is now that mapping.
+   - `DeclaredStartRoutes.render` judges an added route by its requested anchor (`scenarios/declared_routes.py:153`),
+     exactly as a pinned route is judged (`acceptance.route_rendering`):
+     - *held* when the anchor is among the page's elements' test ids;
+     - *broken* when the page was read without it, which rejects the increment;
+     - *blocked* when the page wasn't read, with the reader's reason.
+   - With no anchor named, it's blocked as `NO_ANCHOR_REQUESTED`, as before.
+   - A pinned route is judged by its manifest's anchor, whatever the request names.
+   - The `renderings` record names the requested anchor on the added route's entry.
+4. **Who is told, each through a managed asset (#448).** Each is rendered only when the request names an anchor, so a
+   sample application's prompts, and every increment's that names none, are unchanged.
+   - **The proposer** (`request.strategy_propose_product_increment`, version 2): the example gains a page criterion
+     with its anchor, and a paragraph says what an anchor is, that the build renders it on the view's root
+     element, that acceptance reads the page for it, and where a criterion names none.
+     - Its profile section (`request.proposal_product_profile`, version 2) lists the pages acceptance already reads
+       (`request.proposal_judged_routes`), when the profile names any.
+   - **The plan authors** (the dev and qa proposers and the sole-author merger): `increment_views_index`
+     (`cycles/task_plan.py:767`), through `request.increment_views_appendix` in `INCREMENT_SURFACES`
+     (`handlers/_plan_authoring.py:95`).
+   - **The suite's author** (`qa.test`): the test scope's `views` (`campaigns/increment_tree.py:611`, from
+     `page_views`, `:651`), rendered by `increment_test_scope_section`. A qa repair inherits it through
+     `REPAIR_PRESENCE_KEYS`' `increment_test_scope`.
+   - **The view's author** (`development.develop`): `increment_views` (`task_plan.py:870`), declared by
+     `ContextAssemblyContract.increment_views` (`context_assembly.py:163`, set at `:307`). It's rendered in the
+     focused prompt (version 8) and the monolithic one (version 3) by `increment_views_section`
+     (`handlers/increment_test_scope.py:66`).
+   - **Narrowed: the framing section isn't changed.** `request.increment_framing_section` is every increment's, a
+     sample application's included. A framing stage sees the anchor in the change request it's shown, and the plan
+     authors are shown the views appendix.
+
+5. **The outside review (SIP-0112 H.12) of PR #2780 at `7c19e900`, relayed by the owner: changes requested, two
+   P2s, both fixed in that PR.**
+   - **P2 1: an added route with a parameter could never be verified.**
+     - **Why:** a route the request adds gets an anchor but no seed. Seeds come from the approved manifest's creates,
+       which only a pinned route has (§24co item 6). So `literal_path` returns nothing, and the route blocks forever,
+       as this item's first text said under "not built".
+     - **The choice, the supervisor's for 2.5: refuse it at the rails, not seed it.** A page criterion on an added
+       route whose path needs a seed is refused as `added_route_unseedable`, naming a fixed path the proposer can
+       use instead (`_unseedable`, called from `_anchor_refusals`). "Needs a seed" means a segment that:
+       - is a parameter as the renderer reads one (`:x` or `{x}`, `increment_tree.route_param`);
+       - is bracketed (`[x]`, a Next.js dynamic segment);
+       - or holds a `*`.
+     - **Why refuse rather than seed:** a seed for an added page would be another typed field of §7.2's request (the
+       create endpoint, its body and the parameter the id fills), with its own design and outside review. Refusing
+       keeps a proposal from passing validation only to block at acceptance, which is the failure #2779 exists to
+       end. The seed mechanism is filed as #2781.
+     - **Read stricter than the renderer:** an added catch-all (`/docs/*`) is refused too, though the renderer reads
+       a catch-all at its unmatched path. The supervisor's rule names `*`, and #2781 can relax it with the seed
+       design.
+     - **What stays fail-closed:** a request stored before the rule may still name an added parameterized route. It
+       blocks, unseeded, whatever anchor it names. A pinned parameterized route is seeded from its manifest as
+       before, and isn't refused.
+     - The proposer is told the rule in its request asset, before its first attempt.
+   - **P2 2: a development correction repair lost the anchor.**
+     - **Why:** `increment_views` reached `development.develop` but wasn't in `REPAIR_PRESENCE_KEYS`, and the repair
+       prompt rendered no views. So a developer correcting a failed view could rewrite it without the anchor
+       acceptance enforces.
+     - **The fix:**
+       - `increment_views` rides `REPAIR_PRESENCE_KEYS` (`capabilities/context_assembly.py`);
+       - `_RepairPromptMixin._render_increment_views_section` renders the same managed asset,
+         `request.increment_views_appendix`, into `request.cycle_repair_task` (version 16, slot
+         `increment_views_section`);
+       - the section renders for a dev repair only, from the failed task's `increment_views`, or from a failed
+         `qa.test` scope's `views`, so a dev repair of a qa failure keeps it too. A qa repair already sees the views in
+         its test scope.
+     - This replaces the item's first text, which listed "a dev repair isn't shown the views" as not built.
+6. **The outside review's final round on PR #2780, relayed by the owner: one P2 and two P3s, all addressed here.** The
+   owner's words: "Consider this the last feedback rounds so we can merge after changes are made and CI green".
+   - **P2: an anchor was unique per route, not across pages.**
+     - **The failure:** `/` is pinned with `home-view`, and a request adds `/export` naming `home-view` too. The
+       candidate never builds `/export`, the single-page app's fallback renders the home view there, and `/export`
+       reads held.
+     - **The fix:** an added page's anchor must be one no other page carries, read by one function,
+       `anchor_conflicts` (`campaigns/change_request.py`). "Another page" means:
+       - every route of the approved manifest, with every test id its view carries, not only its root, since the
+         fallback renders the whole view;
+       - every other page the request adds.
+     - **Where it's checked:**
+       - **The rails** refuse a conflict as `anchor_not_unique`, naming the page that carries the anchor and asking
+         for an anchor of the page's own.
+         - They read the manifest's anchors from the proposal's input, as `ProductContext.route_anchors`, which
+           `product_context` builds from the `approved_manifest` the run already composes (§24cj item 3) through
+           `increment_tree.declared_routes`, the reading acceptance uses.
+         - A manifest acceptance can't read gives none. Acceptance then blocks every pinned route (`NO_MANIFEST`),
+           so there is nothing to hold against.
+       - **The renderer** blocks such a route on a request stored before the rule, with the reason `the change
+         request names an anchor another page carries (<page>)`. It never holds it. Where the anchor it reuses is a
+         pinned view's root, that pinned route is blocked too, by §24co item 13's shared-root rule: neither page can
+         be told from the other's (fail-closed).
+     - The proposer is told the rule in its request asset.
+   - **P3: the rollout is a gate, not a note.**
+     - **What a request with no anchor keeps:** main's document and its exact hash. That's
+       `test_a_request_that_names_no_anchor_keeps_the_document_and_hash_it_had`, which pins `83b4cece…`, the hash
+       `origin/main`'s `change_request.py` computes. It was recomputed on main `5a59fb65`, whose `change_request.py` is
+       main's of `96709264`, and it is unchanged. Every live campaign's stored sample-app request still loads
+       (`test_change_request.py`'s fixtures).
+     - **What an anchored request does on a skewed deploy:** an older runtime-api fails closed. Its parse ignores
+       `anchor` and its hash leaves it out, so the stored hash doesn't match, and the request is refused at load ("the
+       stored change request's content does not match its hash"). The framing then can't read it, so no increment is
+       built or accepted on a request half the deploy can't read. This was read by loading a request the new rails
+       stored with main's own `change_request.py`: it was refused, and an anchor-less one loaded with its hash.
+     - **The gate:** the loaded-check pair `2780-rollout-runtime` (runtime-api) and `2780-rollout-nat` (nat).
+       - Each hashes, stores and loads one fixed anchored request, and expects the same hash.
+       - The nat row also expects `anchor_not_unique` and a conflict found.
+       - `verify_loaded.py` fails on any row that answers otherwise, so a deploy where either side lacks the anchor
+         fails verification. Read on #2777's head `c1cfe48a`, both rows fail.
+   - **P3: live integration.** The 2.5 demonstrations are where it runs live: a complete anchored increment on
+     `z_shelfnote`, and a missing-route negative. Nothing more is built for it here.
+
+**Not built here:**
+- **An added page whose path needs a seed** is refused, not seeded (item 5). The seed is #2781.
+- **The anchors of pages earlier increments added** aren't known to the rails or the renderer. They're in no manifest,
+  and in no current request. So a request may reuse one, and a page it never built could hold where the fallback
+  renders that earlier page. The same holds for a product with no approved manifest, whose existing pages' ids are
+  known nowhere. Closing it needs the accepted increments' anchors carried into the proposal's input, as the frozen
+  criteria are (§24ap). That's #2783.
+- **The anchor is matched anywhere on the page,** as a pinned route's root anchor is (§24co item 5), not only on the
+  view's outermost element. The prompts ask for the root.
+- **A route the request adds that the profile pins later** (its pin moves between the proposal and the acceptance) is
+  judged by its pin, as item 3 says.
+
+**Evidence.**
+- **The wiring, entered at the live callers:**
+  - `test_product_runner_acceptance_wiring.py`: the executor's end of plan (`_execute_sequential`) on the shared
+    fixture's Tally, its request asserting R1 on `/totals` with the anchor `totals-view`. A candidate whose page
+    renders it holds the route. One whose page renders another view reads it broken, and the increment is
+    rejected with `route /totals: missing totals-view`. The pinned routes hold beside it in both.
+  - `test_strategy_propose_product_increment.py`: `handle()` with the real assets. The proposer is shown the judged
+    pages and the anchor paragraph, a page with no anchor is returned for revision as `anchor_required`, and the
+    revision's stored request carries the anchor. A criterion on a judged page is accepted with none, and Tally,
+    which judges no page, is shown no judged-pages section.
+  - `test_product_proposal.py`: `RunProvisioning.prepare` composes the profile's `client_routes` into the proposal's
+    input, and `[]` for Tally.
+  - `test_product_increment_seams.py`: `generate_task_plan` for the framing gives the merger the views index, and the
+    plan authors' real `render_surfaces` renders it. For the implementation, the developer is given
+    `increment_views` and the suite's author the scope's `views`, and both prompts are rendered by their
+    handlers, the qa author's by its whole `handle()`. A request with no anchor gives neither.
+- **The rails:** `test_product_change_request.py`, which covers:
+  - the accepted shape, its anchor stored and hash-bound;
+  - the hash of a request that names none pinned as main's;
+  - each of the three refusals;
+  - two criteria naming one anchor, accepted;
+  - seven malformed values;
+  - an anchor off a page or on a sample application;
+  - a page with no UI base.
+- **The renderer:** `test_product_routes.py`, which covers:
+  - an added route held, broken on another view's page, and broken on a server error;
+  - one unread, blocked with the reader's reason;
+  - a pinned route keeping its manifest's anchor against the request's;
+  - `requested_routes` over a stored request: an endpoint left out, and a second criterion that names no anchor
+    not blanking the first's.
+- **Rendered (the prompt standard's rule 8),** through the real handlers on the tests' inputs, with sizes estimated
+  as characters / 4:
+  - the proposer's prompt is 9,371 characters (about 2,340 tokens). The anchor paragraph is about 160 tokens of it,
+    and the judged-pages section about 75;
+  - the views appendix is about 160 tokens in the developer's focused prompt.
+- **Twenty-three mutants, each caught:**
+  - in the schema: an empty anchor stored; the anchor left out of the hash; any value read as well-formed; an anchor
+    on a sample application, or off a page, admitted;
+  - in the rails: the rails never run; an anchor on a judged page, an added page with none, and two anchors on one
+    page, each let through; the judged routes never composed, or never read;
+  - in the proposer's prompt: no judged-pages section;
+  - in the renderer: delivery handing no anchors; a later criterion blanking one; the renderer ignoring it; the
+    request's anchor overriding a pinned one;
+  - in what the authors are shown: the scope's views, the plan index, the view author's input and its declaration
+    each dropped; the developer's, the suite's and the plan surfaces' renderings dropped.
+- **The loaded checks** `2779-runtime`, `2779-nat`, `2779-neo`, `2779-eve` and `2779-max`
+  (`scripts/dev/loaded_checks.yaml`). Each row answers its `expect` on the source, and each was read on #2777's head
+  (`8c09cd4f`), where every row answers something else.
+- **Item 5's evidence** (the outside review's two P2s):
+  - **P2 1, end to end under the refusal:** `test_strategy_propose_product_increment.py` enters at `handle()`. The
+    proposer is told the rule before its first attempt, and an added `/reports/:report_id` is refused at each
+    attempt as `added_route_unseedable`. The task fails with no change request stored, so nothing is ruled on or
+    built.
+  - **P2 1 at the rails:** `test_product_change_request.py` covers five paths refused (`:x`, `{x}`, `[x]`,
+    `[...x]`, `/docs/*`) and a pinned parameterized page accepted.
+  - **P2 1 at the renderer:** `test_product_routes.py` shows a request stored before the rule still blocks its added
+    parameterized route, unseeded.
+  - **P2 2:** `test_product_increment_seams.py` starts from the anchored `development.develop` that
+    `generate_task_plan` makes. It fails the task into the correction loop (`run_correction_protocol`, a patch
+    decision), and runs the dispatched `development.correction_repair` through
+    `DevelopmentCorrectionRepairHandler.handle()` with the real assets. The repair carries `increment_views`, and its
+    prompt names `/totals` and `totals-view`. On a request that names no anchor, neither appears.
+  - **Nine more mutants, each caught:**
+    - the seed rule never asked;
+    - a bracketed segment, a wildcard, or a `:param` read as fixed;
+    - the proposer never told the rule;
+    - the repair handoff dropping the views;
+    - the dev repair rendering none;
+    - the rendered section never reaching the template;
+    - the template without its slot.
+  - **Loaded checks** `2780-review-runtime`, `2780-review-nat` and `2780-review-neo`, each run on the source.
+- **Item 6's evidence** (the final round):
+  - **At the rails:** `test_product_change_request.py` refuses an added page reusing a pinned view's root, another id a
+    pinned view carries, the fallback view's root, and one anchor shared by two added pages. An anchor no page
+    carries is accepted.
+  - **Through the proposer's `handle()`:** `test_strategy_propose_product_increment.py` gives an input carrying a real
+    approved manifest. The proposer is told the rule, a page reusing the home view's root is returned as
+    `[anchor_not_unique]`, and only the revision's own anchor is stored.
+  - **At the executor's end of plan:** `test_product_runner_acceptance_wiring.py` uses a request stored before the rule,
+    naming `/`'s `counter-list` for `/totals`. The candidate never builds `/totals`, and the fallback serves the
+    counter list there. `/totals` reads blocked, never held. `/` shares its root with it, so it's blocked too
+    (§24co item 13), and `*` still holds.
+  - **At the renderer:** `test_product_routes.py` covers the same three conflicts.
+  - **Eight more mutants, each caught,** for 40 in all:
+    - the rails never checking across pages;
+    - the manifest's pages ignored;
+    - added pages not checked against each other;
+    - only a view's root read;
+    - the input's manifest never read;
+    - the renderer holding a reused anchor;
+    - the renderer reading no pinned anchors;
+    - the proposer never told.
+  - **The rollout pair** `2780-rollout-runtime` and `2780-rollout-nat`, run on the source.
+
+**Who ruled.** The supervisor placed #2779 in 2.5 (2026-10-28) and directed its shape: a typed anchor, validated at
+the rails, hashed, and named in the proposer's prompt. Making the anchor required on an added page, refusing it on a
+judged one, and narrowing the framing section are the implementer's choices (the Spark lane), for the supervisor's
+and the owner's review. This changes §7.2's change request, a shared contract, so it takes the outside review SIP-0112
+H.12 provides before the merge. Item 5 answers that review's first round, relayed by the owner (2026-10-28). Refusing
+an added page that needs a seed, and filing the seed as #2781, are the supervisor's choices for 2.5. The repair's fix
+is as the review asked. Item 6 answers the review's final round, relayed by the owner (2026-10-28), as it asked:
+uniqueness across every page, refused at the rails, and the rollout as a loaded-check pair. Reading every id a pinned
+view carries, not only its root, and blocking at the renderer too, are the implementer's.

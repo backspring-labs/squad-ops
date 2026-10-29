@@ -30,6 +30,7 @@ from squadops.campaigns.product_routes import (
     NO_ANCHOR,
     NO_ANCHOR_REQUESTED,
     NO_MANIFEST,
+    SHARED_ANCHOR,
     ProductRoutes,
 )
 from squadops.campaigns.runner_acceptance import CandidateNotDelivered, SandboxTree
@@ -104,9 +105,9 @@ PAGES = {
 CHANGES = {"shelfkeeper/web.py": b"PAGES = 5\n"}
 
 
-async def render_product_routes(*, runner, requested_routes=(), **kw) -> ProductRoutes:
+async def render_product_routes(*, runner, requested_routes=None, **kw) -> ProductRoutes:
     """The renderer the runtime root builds over the sandbox's runner, rendering once."""
-    return await DeclaredStartRoutes(runner).render(requested_routes=requested_routes, **kw)
+    return await DeclaredStartRoutes(runner).render(requested_routes=requested_routes or {}, **kw)
 
 
 def _configuration(start=START) -> DevelopmentConfiguration:
@@ -149,7 +150,7 @@ async def _render(tmp_path, *, pages=PAGES, configuration=None, runner="sandbox"
         runner=_runner(tmp_path, _Browser(pages)) if runner == "sandbox" else runner,
         candidate=candidate,
         verified_candidate_revision=kw.pop("verified", revision),
-        requested_routes=kw.pop("requested", ()),
+        requested_routes=kw.pop("requested", {}),
     )
 
 
@@ -444,7 +445,7 @@ async def test_a_route_the_change_request_adds_is_judged_and_never_held_without_
     archive = f"http://{APP_IP}:5173/shelves/archive"
     pages = {**PAGES, **({archive: page} if page is not None else {})}
 
-    routes = await _render(tmp_path, pages=pages, requested=["/shelves/archive", "/add"])
+    routes = await _render(tmp_path, pages=pages, requested={"/shelves/archive": "", "/add": ""})
 
     held = _held(routes)
     assert held["/shelves/archive"] == ("blocked_unverified", NO_ANCHOR_REQUESTED)
@@ -463,11 +464,11 @@ async def test_an_added_route_blocks_the_increment_and_a_dropped_pinned_one_reje
     an added route accepted; a pinned route the candidate dropped read as anything but broken."""
     from squadops.campaigns.acceptance import IncrementVerdict, increment_acceptance
 
-    added = await _render(tmp_path / "added", requested=["/shelves/archive"])
+    added = await _render(tmp_path / "added", requested={"/shelves/archive": ""})
     dropped = await _render(
         tmp_path / "dropped",
         pages={**PAGES, f"http://{APP_IP}:5173/add": _dom("not-found-view")},
-        requested=["/shelves/archive"],
+        requested={"/shelves/archive": ""},
     )
 
     blocked = increment_acceptance((), (), added.results)
@@ -482,7 +483,9 @@ async def test_a_product_with_no_blueprint_judges_the_routes_its_request_adds(tm
     """A product whose profile names no route (no blueprint, so no manifest) can still add a page
     under its ui_base. Bug caught: no pinned routes read as nothing to judge, so the added page is
     never read and the increment is accepted on its criteria alone."""
-    routes = await _render(tmp_path, profile=_profile(), initialization=None, requested=["/report"])
+    routes = await _render(
+        tmp_path, profile=_profile(), initialization=None, requested={"/report": ""}
+    )
 
     assert _held(routes) == {"/report": ("blocked_unverified", NO_ANCHOR_REQUESTED)}
 
@@ -508,3 +511,161 @@ async def test_two_routes_whose_views_share_a_root_anchor_can_neither_hold(tmp_p
         "its view's root anchor is also /'s, so its page can't be told from that one's",
     )
     assert held["/shelves/:shelf_id"] == ("held", "")
+
+
+# --- §24cp (#2779): an added route is judged by the anchor its change request names ------------
+
+_ARCHIVE = f"http://{APP_IP}:5173/shelves/archive"
+
+
+@pytest.mark.parametrize(
+    ("page", "held", "missing"),
+    [
+        (_dom("archive-view", "archive-row"), Held.HELD, ()),
+        (_dom("shelf-list"), Held.BROKEN, ("archive-view",)),
+        ("<html><body><h1>500</h1></body></html>", Held.BROKEN, ("archive-view",)),
+    ],
+    ids=["its-view-renders", "another-views-page", "a-server-error"],
+)
+async def test_an_added_route_is_judged_by_the_anchor_its_request_names(
+    tmp_path, page, held, missing
+):
+    """#2779: the change request names the view's anchor, so the added route is judged as a
+    pinned one is, by its root anchor on the page (§8.3). Bugs caught: the requested anchor never
+    reaching the judgement, so an added route still only blocks; any page read held, so a broken
+    new page is accepted; the record naming no anchor for it."""
+    routes = await _render(
+        tmp_path, pages={**PAGES, _ARCHIVE: page}, requested={"/shelves/archive": "archive-view"}
+    )
+
+    [archive] = [r for r in routes.results if r.path == "/shelves/archive"]
+    assert (archive.held, archive.missing) == (held, missing)
+    by_route = {r["route"]: r for r in routes.record["routes"]}
+    assert (by_route["/shelves/archive"]["source"], by_route["/shelves/archive"]["anchor"]) == (
+        "change_request",
+        "archive-view",
+    )
+    # The pinned routes are judged beside it, as before.
+    assert (_held(routes)["/"], _held(routes)["/add"]) == (("held", ""), ("held", ""))
+
+
+async def test_an_added_route_with_its_anchor_that_nothing_read_is_blocked_with_the_reason(
+    tmp_path,
+):
+    """SIP-0096 on an added route: a page the browser didn't read is unread, never broken, and
+    never held because an anchor was named. Bug caught: a named anchor read as evidence on its
+    own."""
+    routes = await _render(tmp_path, requested={"/shelves/archive": "archive-view"})
+
+    assert _held(routes)["/shelves/archive"] == ("blocked_unverified", "the browser read no page")
+
+
+async def test_an_added_parameterized_route_stored_before_the_rule_still_blocks_unseeded(tmp_path):
+    """Fail-closed kept (the outside review of #2780, P2 1): the rails now refuse an added route
+    whose page needs a seed, and a request stored before them may still name one. Nothing seeds
+    it, so it blocks, never holds, whatever anchor it names. Bug caught: the requested anchor
+    taken as enough, so the route is read at its path as written (``:shelf_id`` literally)."""
+    pages = {**PAGES, f"http://{APP_IP}:5173/shelves/:shelf_id/notes": _dom("notes-view")}
+
+    routes = await _render(
+        tmp_path, pages=pages, requested={"/shelves/:shelf_id/notes": "notes-view"}
+    )
+
+    [notes] = [r for r in routes.results if r.path == "/shelves/:shelf_id/notes"]
+    assert (notes.held, notes.unseeded) == (Held.BLOCKED_UNVERIFIED, True)
+
+
+async def test_a_pinned_route_is_judged_by_its_manifests_anchor_whatever_the_request_names(
+    tmp_path,
+):
+    """The pin holds (§24co item 11): a route the profile pins keeps its approved manifest's
+    anchor. Bug caught: a request's anchor replacing the pinned one, so a change that rewrote an
+    existing page to show only the anchor its proposal named reads held."""
+    pages = {**PAGES, f"http://{APP_IP}:5173/add": _dom("add-form-v2")}
+
+    routes = await _render(tmp_path, pages=pages, requested={"/add": "add-form-v2"})
+
+    [add] = [r for r in routes.results if r.path == "/add"]
+    assert (add.held, add.missing) == (Held.BROKEN, ("add-shelf-view",))
+
+
+def test_the_routes_a_stored_request_names_carry_their_anchors_in_order():
+    """``requested_routes``, which delivery hands the renderer. Bugs caught: the anchor dropped on
+    the way from the stored request; a second criterion on a route, naming none, blanking the
+    first one's; an endpoint criterion's path taken for a page."""
+    from squadops.campaigns.change_request import (
+        ChangeKind,
+        ChangeRequest,
+        Criterion,
+        IncrementBasis,
+        PlacedCriterionFile,
+        SurfaceKind,
+        content_hash,
+        stored_change_request,
+    )
+    from squadops.campaigns.product_routes import requested_routes
+
+    def page(cid, route, anchor=""):
+        return Criterion(cid, "s", SurfaceKind.CLIENT_ROUTE, route, "o", anchor=anchor)
+
+    criteria = (
+        page("A1", "/shelves/archive", "archive-view"),
+        Criterion("A2", "s", SurfaceKind.ENDPOINT, "GET /shelves", "o"),
+        page("A3", "/shelves/archive"),
+        page("A4", "/add"),
+    )
+    request = ChangeRequest(
+        "prop_shelf0001", 1, "f" * 64, ChangeKind.FEATURE, (), (), criteria, (),
+        basis=IncrementBasis.CAMPAIGN_BRANCH, footprint=("web/**",),
+        criterion_files=tuple(
+            PlacedCriterionFile(c.id, f"web/criterion_{c.id}.test.jsx") for c in criteria
+        ),
+    )  # fmt: skip
+    request = dataclasses.replace(
+        request,
+        footprint=("web/**", *(f.path for f in request.criterion_files)),
+    )
+    stored = stored_change_request(dataclasses.replace(request, content_hash=content_hash(request)))
+
+    assert requested_routes(stored) == {"/shelves/archive": "archive-view", "/add": ""}
+    assert list(requested_routes(stored)) == ["/shelves/archive", "/add"]
+
+
+@pytest.mark.parametrize(
+    ("requested", "blocked", "home"),
+    [
+        (
+            {"/shelves/archive": "shelf-list"},
+            {"/shelves/archive": "/"},
+            ("blocked_unverified", SHARED_ANCHOR.format(other="/shelves/archive")),
+        ),
+        ({"/shelves/archive": "add-shelf-link"}, {"/shelves/archive": "/"}, ("held", "")),
+        (
+            {"/shelves/archive": "archive-view", "/shelves/recent": "archive-view"},
+            {"/shelves/archive": "/shelves/recent", "/shelves/recent": "/shelves/archive"},
+            ("held", ""),
+        ),
+    ],
+    ids=["a pinned view's root", "another id a pinned view carries", "two added pages"],
+)
+async def test_an_added_route_whose_anchor_another_page_carries_never_holds(
+    tmp_path, requested, blocked, home
+):
+    """The outside review's final round (P2), at the renderer, for a request stored before the
+    rails refused it: the candidate never builds the added pages, and the app's fallback renders
+    the home view (or one shared view) there, so each page shows the anchor its request named.
+    Where the reused anchor is the pinned view's root, the pinned page can't be told from the
+    added one either, so it's blocked too (§24co item 13); otherwise it holds by its own anchor.
+    Bug caught: such a page read held, an increment accepted with a page that doesn't exist."""
+    fallback = _dom("shelf-list", "add-shelf-link", "archive-view")
+    pages = {**PAGES, **{f"http://{APP_IP}:5173{r}": fallback for r in requested}}
+
+    routes = await _render(tmp_path, pages=pages, requested=requested)
+
+    held = _held(routes)
+    for route, other in blocked.items():
+        assert held[route] == (
+            "blocked_unverified",
+            f"the change request names an anchor another page carries ({other})",
+        )
+    assert held["/"] == home

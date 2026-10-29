@@ -331,3 +331,186 @@ async def test_a_branch_increments_proposal_is_shown_no_outcome_evidence_and_not
 
     assert composed == [envelope]
     port.for_proposal.assert_not_called()
+
+
+# --- SIP-0109 §24cp (#2779): the anchor of a page the change adds, shown to its authors --------
+
+
+def _anchored() -> str:
+    """Tally's request with R1 on ``/totals``, a page its profile doesn't judge, naming the
+    anchor its view renders, as the rails accepted and stored it."""
+    from tests.unit.campaigns.test_product_change_request import _WITH_PAGES, _on_a_page
+
+    verdict = validate_proposal(
+        _request(criteria=[_on_a_page("/totals", "totals-view")]), _context(product=_WITH_PAGES)
+    )
+    assert verdict.accepted, verdict.refusals
+    return stored_change_request(verdict.change_request)
+
+
+_VIEW_LINE = "- page `/totals`: anchor `totals-view` (criteria R1)"
+
+
+def _renderer():
+    from adapters.prompts.factory import DEFAULT_TEMPLATES_PATH, create_prompt_asset_source
+    from squadops.prompts.renderer import RequestTemplateRenderer
+
+    return RequestTemplateRenderer(
+        asset_source=create_prompt_asset_source(
+            provider="filesystem", templates_path=DEFAULT_TEMPLATES_PATH
+        )
+    )
+
+
+async def test_a_branch_increments_plan_authors_are_shown_the_anchor_of_each_page_it_adds():
+    """Entered at ``generate_task_plan`` (framing), then the plan authors' real render of the
+    increment surfaces (``render_surfaces``, which the proposers and the sole-author merger call).
+    Bugs caught: the anchor stored and never shown, so the plan never gives the view's task the
+    anchor acceptance reads the page for; or shown on a request that names none."""
+    from squadops.capabilities.handlers._plan_authoring import INCREMENT_SURFACES, render_surfaces
+    from squadops.cycles.task_plan import generate_task_plan
+
+    run = Run("run_f", "cyc_inc", 2, "running", "system", "cfg", workload_type="framing")
+
+    anchored = generate_task_plan(_cycle(), run, _profile(), change_request=_anchored())
+    plain = generate_task_plan(_cycle(), run, _profile(), change_request=STORED)
+
+    [merge] = [e for e in anchored if e.task_type == "governance.merge_plan"]
+    assert merge.inputs["increment_views_index"] == _VIEW_LINE
+    assert all("increment_views_index" not in e.inputs for e in plain)
+    rendered = await render_surfaces(_renderer(), merge.inputs, INCREMENT_SURFACES)
+    assert "## The pages this change adds, and the anchor each one's view renders" in rendered
+    assert '`<section data-testid="export-view">`' in rendered
+    assert rendered.endswith(_VIEW_LINE)
+
+
+async def test_a_branch_increments_view_and_suite_authors_are_shown_the_anchor(monkeypatch):
+    """Entered at ``generate_task_plan`` (implementation), then each author's prompt as its
+    handler builds it: the developer's focused prompt, and the qa author's whole ``handle()``.
+    Bugs caught: the developer, who writes the view, never told the anchor, so the page renders
+    without it and the increment is rejected; the suite's author never told it, so the criterion's
+    test looks for the view by another id; either told it on an increment that adds no page."""
+    from squadops.capabilities.handlers.cycle.develop import DevelopmentDevelopHandler
+    from squadops.cycles.task_plan import generate_task_plan
+    from tests.unit.campaigns.test_increment_test_scope import _qa_prompt
+    from tests.unit.cycles.test_increment_evaluation_wiring import _PLAN
+
+    run = Run("run_i", "cyc_inc", 3, "running", "system", "cfg", workload_type="implementation")
+    anchored = generate_task_plan(_cycle(), run, _profile(), plan=_PLAN, change_request=_anchored())
+    plain = generate_task_plan(_cycle(), run, _profile(), plan=_PLAN, change_request=STORED)
+    [dev] = [e for e in anchored if e.task_type == "development.develop"]
+    [qa] = [e for e in anchored if e.task_type == "qa.test"]
+
+    view = {"route": "/totals", "anchor": "totals-view", "criteria": ["R1"]}
+    assert dev.inputs["increment_views"] == [view]
+    assert qa.inputs["increment_test_scope"]["views"] == [view]
+    assert "increment_views" not in qa.inputs  # the suite's author has it in its scope
+    for e in plain:
+        assert "increment_views" not in e.inputs
+        assert "views" not in (e.inputs.get("increment_test_scope") or {})
+    handler = DevelopmentDevelopHandler()
+    handler._resolved_config = {}  # as handle() sets it before the prompt is built
+    dev_prompt = await handler._build_focused_prompt(
+        {**dev.inputs, "prd": "Tally", "artifact_contents": {}}, _renderer()
+    )
+    qa_prompt = await _qa_prompt(qa, monkeypatch)
+    for prompt in (dev_prompt, qa_prompt):
+        assert "## The pages this change adds, and the anchor each one's view renders" in prompt
+        assert _VIEW_LINE in prompt
+
+
+async def _dev_repair_prompt(change_request: str) -> tuple[dict, str]:
+    """A failed ``development.develop`` of the implementation ``generate_task_plan`` makes for
+    ``change_request``, through the correction loop (``run_correction_protocol``, a patch
+    decision), then the repair it dispatches through ``DevelopmentCorrectionRepairHandler``'s whole
+    ``handle()`` with the real assets: the repair's inputs and its prompt's user turn."""
+    from squadops.capabilities.handlers.impl.repair_handlers import (
+        DevelopmentCorrectionRepairHandler,
+    )
+    from squadops.cycles.task_plan import generate_task_plan
+    from squadops.tasks.models import TaskResult
+    from tests.unit.cycles.test_correction_runner import TestCorrectionRunnerStandalone
+    from tests.unit.cycles.test_increment_evaluation_wiring import _PLAN
+
+    run = Run("run_i", "cyc_inc", 3, "running", "system", "cfg", workload_type="implementation")
+    [dev] = [
+        e
+        for e in generate_task_plan(
+            _cycle(), run, _profile(), plan=_PLAN, change_request=change_request
+        )
+        if e.task_type == "development.develop"
+    ]
+    captured: list = []
+
+    def responder(envelope):
+        if envelope.task_type == "governance.correction_decision":
+            return TaskResult(
+                task_id=envelope.task_id,
+                status="SUCCEEDED",
+                outputs={
+                    "correction_path": "patch",
+                    "decision_rationale": "the view is patchable",
+                    "affected_task_types": ["development.develop"],
+                },
+            )
+        if envelope.task_type == "development.correction_repair":
+            captured.append(envelope)
+        return TaskResult(task_id=envelope.task_id, status="SUCCEEDED", outputs={})
+
+    runner, *_ = TestCorrectionRunnerStandalone()._make_runner(responder)
+    cycle = dataclasses.replace(
+        _cycle(), applied_defaults={"correction_steps": ["analyze", "decide", "repair"]}
+    )
+    await runner.run_correction_protocol(
+        run_id="run_i", cycle=cycle, envelope=dev,
+        result=TaskResult(task_id=dev.task_id, status="FAILED", error="the view failed"),
+        correction_attempts=0, prior_outputs={}, all_artifact_refs=[], stored_artifacts=[],
+        completed_task_ids=[], plan_delta_refs=[], correction_budget=3,
+    )  # fmt: skip
+    [repair] = captured
+    ctx = MagicMock()
+    ctx.role_id = "dev"
+    ctx.task_id = repair.task_id
+    ctx.correlation_context = None
+    ctx.ports.llm.chat_stream_with_usage = AsyncMock(
+        return_value=MagicMock(
+            content="no fences", prompt_tokens=1, completion_tokens=1, reasoning_tokens=None
+        )
+    )
+    ctx.ports.llm.default_model = "m"
+    ctx.ports.llm_observability = None
+    ctx.ports.prompt_service.get_system_prompt.return_value = MagicMock(
+        content="system", assembly_hash="h"
+    )
+    ctx.ports.request_renderer = _renderer()
+    await DevelopmentCorrectionRepairHandler().handle(
+        ctx, {**repair.inputs, "prd": "Tally", "failed_task_type": "development.develop"}
+    )
+    return repair.inputs, ctx.ports.llm.chat_stream_with_usage.await_args_list[0].args[0][
+        -1
+    ].content
+
+
+async def test_a_dev_repair_of_an_added_pages_view_keeps_its_anchor():
+    """The outside review of #2780 (P2 2): a developer correcting a failed view of a page the
+    change adds is shown the anchor acceptance reads the page for, as its first author was.
+    Entered at the correction loop on an anchored ``development.develop``. Bugs caught:
+    ``increment_views`` dropped at the repair handoff (``REPAIR_PRESENCE_KEYS``), so the repair
+    rewrites the view without the anchor and the increment is rejected; or carried and never
+    rendered (#1289's shape)."""
+    inputs, prompt = await _dev_repair_prompt(_anchored())
+
+    assert inputs["increment_views"] == [
+        {"route": "/totals", "anchor": "totals-view", "criteria": ["R1"]}
+    ]
+    assert "## The pages this change adds, and the anchor each one's view renders" in prompt
+    assert _VIEW_LINE in prompt
+    assert "{{increment_views_section}}" not in prompt
+
+
+async def test_a_dev_repair_on_an_increment_that_adds_no_page_is_shown_none():
+    """The edge. Bug caught: the views section rendered empty, or from nothing, on every repair."""
+    inputs, prompt = await _dev_repair_prompt(STORED)
+
+    assert "increment_views" not in inputs
+    assert "The pages this change adds" not in prompt

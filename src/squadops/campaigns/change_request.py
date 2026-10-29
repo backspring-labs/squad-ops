@@ -25,7 +25,7 @@ import hashlib
 import json
 import re
 from collections import Counter
-from collections.abc import Iterable, Sequence
+from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass, field
 from enum import StrEnum
 from fnmatch import fnmatch
@@ -157,6 +157,11 @@ class Criterion:
     #: choose the runner its test is placed under. Empty, the footprint's are. Left out of the
     #: document and its hash when empty, so every request stored before keeps its identity.
     paths: tuple[str, ...] = ()
+    #: §24cp, on a repository-backed Project's ``client_route`` criterion only: the ``data-testid``
+    #: its page's view renders on its root element, as a manifest's route names its first test id
+    #: (#659). A route the request adds is judged rendered at acceptance by it (§8.3, §24co item
+    #: 11). Authored and hashed; left out of the document and its hash when empty, as ``paths``.
+    anchor: str = ""
 
 
 @dataclass(frozen=True)
@@ -228,6 +233,20 @@ class RefusalKind(StrEnum):
     DUPLICATE_CRITERION = "duplicate_criterion"
     #: §24cj: two criteria whose own test files would be one file (``T-1`` and ``T_1``).
     CRITERION_FILE_COLLISION = "criterion_file_collision"
+    #: §24cp: a page criterion on a route the product's profile doesn't judge, so the change adds
+    #: it, names no anchor its view renders: nothing at acceptance could show the page rendered.
+    ANCHOR_REQUIRED = "anchor_required"
+    #: §24cp: an anchor on a route the profile already judges, by its approved manifest's anchor.
+    ANCHOR_ON_JUDGED_ROUTE = "anchor_on_judged_route"
+    #: §24cp: two criteria on one added route naming different anchors: a view has one root.
+    ANCHORS_DISAGREE = "anchors_disagree"
+    #: §24cp (the outside review's P2 1): an added route with a parameter or a wildcard, whose
+    #: page only a seed brings into being, and a route the request adds has none.
+    ADDED_ROUTE_UNSEEDABLE = "added_route_unseedable"
+    #: §24cp (the outside review's final round, P2): an added page's anchor that another page
+    #: already carries, a pinned route's in the approved manifest or another added page's. A page
+    #: the build never made could show it: the app's fallback renders that other view there.
+    ANCHOR_NOT_UNIQUE = "anchor_not_unique"
 
 
 @dataclass(frozen=True)
@@ -345,14 +364,48 @@ def _criterion(raw: Any, basis: IncrementBasis) -> Criterion:
             f"criterion {raw.get('id')!r}: paths are named only on a repository-backed Project; "
             "on this application the stack places a criterion's test"
         )
+    surface_kind = SurfaceKind(raw["surface_kind"])
     return Criterion(
         id=_text(raw, "id"),
         statement=_text(raw, "statement"),
-        surface_kind=SurfaceKind(raw["surface_kind"]),
+        surface_kind=surface_kind,
         surface=_text(raw, "surface"),
         observable=_text(raw, "observable"),
         paths=_paths(raw.get("paths"), f"criterion {raw.get('id')!r} paths"),
+        anchor=_anchor(raw, surface_kind, basis),
     )
+
+
+#: §24cp: an anchor is a ``data-testid`` value, written as a manifest's test ids are
+#: (``shelf-list``): a letter, then letters, digits, ``-`` or ``_``. Nothing that needs quoting in
+#: an attribute or a selector, so the page's reading and the test's query name one element.
+_ANCHOR = re.compile(r"[A-Za-z][A-Za-z0-9_-]{0,63}")
+
+
+def _anchor(raw: Any, surface_kind: SurfaceKind, basis: IncrementBasis) -> str:
+    """A criterion's ``anchor`` (§24cp), or ``""`` when it names none. Named only on a
+    repository-backed Project's page criterion: a sample application's views are anchored by its
+    manifest delta's routes (``testids``), and an endpoint, a command or a package has no view."""
+    if "anchor" not in raw:
+        return ""
+    where = f"criterion {raw.get('id')!r}"
+    if basis.has_manifest:
+        raise ChangeRequestError(
+            f"{where}: anchor is named only on a repository-backed Project; on this application "
+            "a view's anchors are its route's testids in the manifest delta"
+        )
+    if surface_kind is not SurfaceKind.CLIENT_ROUTE:
+        raise ChangeRequestError(
+            f"{where}: anchor names the view a page renders, and this criterion asserts at a "
+            f"{surface_kind}, which has none. Leave anchor out"
+        )
+    value = raw["anchor"]
+    if not isinstance(value, str) or not _ANCHOR.fullmatch(value):
+        raise ChangeRequestError(
+            f"{where}: anchor {value!r} is no data-testid value: write a letter, then letters, "
+            "digits, - or _ (at most 64), such as 'totals-view'"
+        )
+    return value
 
 
 def _paths(raw: Any, field_name: str) -> tuple[str, ...]:
@@ -400,7 +453,8 @@ def _authored_fields(payload: dict) -> dict:
     }
     if "criteria" in out:
         out["criteria"] = [
-            {k: v for k, v in c.items() if k != "paths" or v} for c in out["criteria"]
+            {k: v for k, v in c.items() if k not in ("paths", "anchor") or v}
+            for c in out["criteria"]
         ]
     return out
 
@@ -721,6 +775,14 @@ class ProductContext:
     placements: tuple[RunnerPlacement, ...]
     #: Contract 8's ``files.test``: the globs that class the product's own test files.
     test_files: tuple[str, ...] = ()
+    #: §24cp: the client routes the profile pins (SIP-0112 H.7), each judged at acceptance by its
+    #: approved manifest's anchor (§24co item 5). A page criterion on any other route adds it, and
+    #: names its view's anchor.
+    judged_routes: tuple[str, ...] = ()
+    #: §24cp: each route of the approved manifest the product was initialized from (SIP-0112
+    #: H.1) with every test id its view carries, the first its root (#659). An added page names an
+    #: anchor none of them carries. Empty for a product initialized from no manifest.
+    route_anchors: tuple[tuple[str, tuple[str, ...]], ...] = ()
 
     def serves(self, kind: str) -> tuple[str, ...]:
         return tuple(value for k, value in self.surfaces if k == kind)
@@ -861,7 +923,9 @@ def _validate_product_proposal(
     - each criterion's surface is one the derived profile names, its paths lie inside the
       footprint, and its own test file is placed by the framework under the runner that covers
       them (``criterion_placement``). Those placed files are the framework's, so the scope never
-      reads them, and they are appended to the footprint the build may write.
+      reads them, and they are appended to the footprint the build may write;
+    - a page criterion on a route the profile doesn't judge names the anchor its view renders,
+      and one on a judged route names none (``_anchor_refusals``, §24cp).
     The criteria, goal and retirement rails are the sample application's, unchanged."""
     try:
         request = parse_change_request(
@@ -912,6 +976,7 @@ def _validate_product_proposal(
             )
         )
     refusals.extend(_product_surface_refusals(request, product))
+    refusals.extend(_anchor_refusals(request, product))
     placed: list[PlacedCriterionFile] = []
     for c in request.criteria:
         paths = c.paths or product.product_paths(footprint)
@@ -958,6 +1023,116 @@ def _product_surface_refusals(
                 ProposalRefusal(RefusalKind.UNKNOWN_SURFACE, f"criterion {c.id}: {reason}")
             )
     return refusals
+
+
+def _anchor_refusals(request: ChangeRequest, product: ProductContext) -> list[ProposalRefusal]:
+    """§24cp: a page criterion on a route the profile doesn't judge adds that route, and names the
+    anchor its view renders, which is what acceptance reads the page for (§8.3). One on a judged
+    route names none: that route is judged by its approved manifest's anchor (§24co item 5), and a
+    second anchor would be one nothing reads. The criteria on one added route name one anchor. An
+    added route whose page needs a seed (``_unseedable``) is refused: nothing seeds it, so it could
+    only block. A criterion on a page the product can't serve is refused by its surface alone."""
+    judged = set(product.judged_routes)
+    refusals: list[ProposalRefusal] = []
+    named: dict[str, dict[str, list[str]]] = {}
+    for c in request.criteria:
+        if c.surface_kind is not SurfaceKind.CLIENT_ROUTE or _unserved(c, product):
+            continue
+        if c.surface in judged:
+            if c.anchor:
+                refusals.append(
+                    ProposalRefusal(
+                        RefusalKind.ANCHOR_ON_JUDGED_ROUTE,
+                        f"criterion {c.id} names anchor {c.anchor!r} on {c.surface}, a page "
+                        "acceptance already reads by its own view's anchor. Leave anchor out",
+                    )
+                )
+            continue
+        if _unseedable(c.surface):
+            refusals.append(
+                ProposalRefusal(
+                    RefusalKind.ADDED_ROUTE_UNSEEDABLE,
+                    f"criterion {c.id} asserts at {c.surface}, a page this change adds whose path "
+                    "has a parameter or a wildcard. Acceptance opens an added page at its path as "
+                    "written, and nothing fills in a parameter for a page the change adds, so it "
+                    "could never be shown rendered. Assert at a fixed path instead, such as "
+                    "/reports/latest for /reports/:report_id",
+                )
+            )
+            continue
+        if not c.anchor:
+            refusals.append(
+                ProposalRefusal(
+                    RefusalKind.ANCHOR_REQUIRED,
+                    f"criterion {c.id} asserts at {c.surface}, a page this change adds, and names "
+                    "no anchor: name in anchor the data-testid its view renders on its root "
+                    "element, which acceptance reads the page for",
+                )
+            )
+            continue
+        named.setdefault(c.surface, {}).setdefault(c.anchor, []).append(c.id)
+    for route, anchors in named.items():
+        if len(anchors) > 1:
+            refusals.append(
+                ProposalRefusal(
+                    RefusalKind.ANCHORS_DISAGREE,
+                    f"criteria on {route} name {len(anchors)} anchors ("
+                    + "; ".join(f"{', '.join(ids)}: {a!r}" for a, ids in sorted(anchors.items()))
+                    + "): its view has one root element, so they name one anchor",
+                )
+            )
+    single = {route: next(iter(anchors)) for route, anchors in named.items() if len(anchors) == 1}
+    for route, others in sorted(anchor_conflicts(single, dict(product.route_anchors)).items()):
+        anchor, ids = single[route], named[route][single[route]]
+        refusals.append(
+            ProposalRefusal(
+                RefusalKind.ANCHOR_NOT_UNIQUE,
+                f"criteria {', '.join(ids)} name anchor {anchor!r} for {route}, a page this change "
+                f"adds, and {', '.join(others)} already carries it. A page the build never makes "
+                "would show it anyway, as the app's fallback renders that other view there. Name "
+                "an anchor no other page carries, such as one made from this page's own path",
+            )
+        )
+    return refusals
+
+
+def anchor_conflicts(
+    added: Mapping[str, str], taken: Mapping[str, Iterable[str]]
+) -> dict[str, list[str]]:
+    """Each added route whose anchor another page carries (§24cp), with those pages, sorted: a
+    route in ``taken`` carrying it among its test ids (the approved manifest's views, each with
+    every id it renders), or another added route naming it. One reading for the rails, which
+    refuse the request, and the renderer, which blocks such a route on a request stored before
+    the rule. An anchor no other page carries is the only evidence that page renders its own
+    view: a reused one reads held on a page the build never made, where the app's fallback renders
+    the other view."""
+    carriers: dict[str, set[str]] = {}
+    for route, ids in taken.items():
+        for testid in ids:
+            carriers.setdefault(testid, set()).add(route)
+    for route, anchor in added.items():
+        if anchor:
+            carriers.setdefault(anchor, set()).add(route)
+    return {
+        route: sorted(carriers[anchor] - {route})
+        for route, anchor in added.items()
+        if anchor and carriers[anchor] - {route}
+    }
+
+
+def _unseedable(route: str) -> bool:
+    """Whether an added route's page needs a seed to exist (§24cp, the outside review's P2 1): a
+    segment that is a parameter as the route renderer reads one (``:x`` or ``{x}``,
+    ``increment_tree.route_param``), a bracketed one (``[x]``, a Next.js dynamic segment) or a
+    wildcard (``*``). Seeds come from an approved manifest's creates, which only a pinned route
+    has (§24co item 6), so such a page is never read and its route could only block."""
+    # deferred (cycle): campaigns.increment_tree imports this module at load
+    from squadops.campaigns.increment_tree import route_param
+
+    return any(
+        route_param(s) is not None or (s.startswith("[") and s.endswith("]")) or "*" in s
+        for s in route.split("/")
+    )
 
 
 def _unserved(c: Criterion, product: ProductContext) -> str | None:

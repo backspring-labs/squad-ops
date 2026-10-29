@@ -54,7 +54,7 @@ from squadops.outcomes.proposal_evidence import (
     shown_goal_statements,
 )
 from squadops.projects.derived_profile import SURFACES
-from squadops.stacks.scaffold import frozen_conventions_for
+from squadops.stacks.scaffold import InterfaceManifest, frozen_conventions_for
 from squadops.tasks.task_types import TaskType
 
 if TYPE_CHECKING:
@@ -129,7 +129,9 @@ def proposal_context_from(
 
 def product_context(product: dict) -> ProductContext:
     """The rails' reading of a ``product_proposal`` input: each public surface as ``(kind,
-    value)``, and each runner's placement."""
+    value)``, each runner's placement, and the client routes acceptance already judges (§24cp).
+    An input composed before §24cp names no routes, so every page criterion reads as adding one,
+    and must name its anchor: stricter, never looser."""
     profile = product["profile"]
     return ProductContext(
         surfaces=tuple(
@@ -137,7 +139,27 @@ def product_context(product: dict) -> ProductContext:
         ),
         placements=tuple(RunnerPlacement.from_dict(p) for p in profile.get("placements") or ()),
         test_files=tuple(str(g) for g in profile.get("test_files") or ()),
+        judged_routes=tuple(str(r) for r in profile.get("client_routes") or ()),
+        route_anchors=_route_anchors(product.get("approved_manifest")),
     )
+
+
+def _route_anchors(approved: Any) -> tuple[tuple[str, tuple[str, ...]], ...]:
+    """§24cp: each route of the approved manifest the product was initialized from, with the test
+    ids its view carries, as acceptance reads them (``increment_tree.declared_routes``). A product
+    initialized from none has none. Nor does one whose manifest acceptance can't read: acceptance
+    then blocks every pinned route, naming it (``product_routes.NO_MANIFEST``), and reads no
+    anchor of it, so there's none to hold an added page against beyond the request's own."""
+    if not isinstance(approved, dict):
+        return ()
+    # deferred (cycle): campaigns.increment_tree imports this module at load
+    from squadops.campaigns.increment_tree import declared_routes
+
+    try:
+        manifest = InterfaceManifest.from_yaml(str(approved.get("content") or ""))
+    except (ValueError, TypeError, KeyError, yaml.YAMLError):
+        return ()
+    return tuple(declared_routes(manifest).items())
 
 
 #: SIP-0113 §4.5 (§10t step 4): what the proposal is shown of its accepted tree's outcomes, each
@@ -431,6 +453,14 @@ async def product_sections(
         "placement_lines": "\n".join(_placement_line(p) for p in profile.get("placements") or ())
         or "- none: the product declares no test runner",
     }
+    judged = profile.get("client_routes") or []
+    if judged:
+        # SIP-0109 §24cp: a page criterion on one of these names no anchor; on any other, one.
+        rendered = await renderer.render(
+            "request.proposal_judged_routes",
+            {"route_lines": "\n".join(f"- `{r}`" for r in judged)},
+        )
+        profile_variables["judged_routes_section"] = rendered.content
     gaps = profile.get("gaps") or []
     if gaps:
         lines = "\n".join(

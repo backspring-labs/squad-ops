@@ -24,8 +24,9 @@ NO_RUNNER = "no runner"
 #: §8.3's evidence is the view's root anchor: without one, a page read shows nothing of its view.
 NO_ANCHOR = "its view declares no anchor, so no page can show it rendered"
 NO_MANIFEST = "the approved manifest its routes were read from can't be read"
-#: A route the change request adds: a product's request carries no manifest delta (§24bv point 5),
-#: so nothing names the view's root anchor, and nothing on its page can show it rendered.
+#: A route the change request adds, and names no anchor for: a product's request carries no
+#: manifest delta (§24bv point 5), and a request stored before §24cp names no anchor, so nothing on
+#: its page can show it rendered. The rails refuse such a criterion since §24cp.
 NO_ANCHOR_REQUESTED = (
     "the change request adds it, and names no anchor of its view, so no page can show it rendered"
 )
@@ -35,20 +36,27 @@ NO_ANCHOR_REQUESTED = (
 SHARED_ANCHOR = (
     "its view's root anchor is also {other}'s, so its page can't be told from that one's"
 )
+
+#: §24cp: an added route whose requested anchor another page carries (``anchor_conflicts``). A page
+#: the build never made would read held there, where the app's fallback renders that other view.
+#: The rails refuse such a request; one stored before the rule is blocked by this.
+ANCHOR_NOT_UNIQUE = "the change request names an anchor another page carries"
 #: Where a route in the expected set came from (the record's ``source``).
 FROM_MANIFEST, FROM_CHANGE_REQUEST = "approved_manifest", "change_request"
 
 
-def requested_routes(change_request: str) -> tuple[str, ...]:
+def requested_routes(change_request: str) -> dict[str, str]:
     """The client routes the approved change request's criteria are asserted on (§7.2's
     ``client_route`` surface, §24bv point 5): the routes the increment adds or changes, beside the
-    pinned ones the profile names. In order, once each."""
+    pinned ones the profile names. In order, once each, with the anchor its criteria name for its
+    view (§24cp), or ``""`` where none does. The rails let the criteria on one route name only one
+    anchor; the first named is taken."""
     request = load_stored_change_request(change_request)
-    return tuple(
-        dict.fromkeys(
-            c.surface for c in request.criteria if c.surface_kind is SurfaceKind.CLIENT_ROUTE
-        )
-    )
+    routes: dict[str, str] = {}
+    for c in request.criteria:
+        if c.surface_kind is SurfaceKind.CLIENT_ROUTE:
+            routes[c.surface] = routes.get(c.surface) or c.anchor
+    return routes
 
 
 @dataclass(frozen=True)
@@ -72,7 +80,7 @@ class RouteRenderer(Protocol):
         initialization: Any,
         candidate: Any,
         verified_candidate_revision: str | None,
-        requested_routes: Sequence[str],
+        requested_routes: Mapping[str, str],
     ) -> ProductRoutes: ...
 
 
@@ -125,6 +133,7 @@ def routes_blocked(
 
 
 __all__ = [
+    "ANCHOR_NOT_UNIQUE",
     "NO_ANCHOR",
     "NO_MANIFEST",
     "NO_RUNNER",

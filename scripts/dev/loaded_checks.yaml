@@ -2051,3 +2051,97 @@ checks:
       p = inspect.signature(CampaignCycleEvaluator.__init__).parameters
       print("projects" in p, "repository" in p, "tree" in inspect.signature(evaluate_cycle).parameters, SecretUnavailable.reason.value)
     expect: "True True True secret_not_available"
+  - id: "2779-runtime"
+    what: an added route is judged by the anchor its change request names, and the plan and the view's author are handed the pages a change adds with their anchors (SIP-0109 §24cp)
+    container: squadops-runtime-api
+    code: |
+      import inspect
+      from squadops.campaigns.increment_tree import view_lines
+      from squadops.campaigns.product_routes import requested_routes
+      from squadops.capabilities.context_assembly import get_context_contract
+      print(view_lines([{"route": "/a", "anchor": "a-view", "criteria": ["C1"]}]), get_context_contract("development.develop").increment_views, inspect.signature(requested_routes).return_annotation)
+    expect: "- page `/a`: anchor `a-view` (criteria C1) True dict[str, str]"
+  - id: "2779-nat"
+    what: the proposer's rails require a page the change adds to name its view's anchor, read the pages the profile judges, and its request teaches the field (SIP-0109 §24cp)
+    container: squadops-nat
+    code: |
+      import pathlib, squadops.prompts as p
+      from squadops.campaigns.change_request import RefusalKind
+      from squadops.capabilities.handlers.planning.proposal import product_context
+      text = (pathlib.Path(p.__file__).parent / "request_templates" / "request.strategy_propose_product_increment.md").read_text()
+      print(RefusalKind.ANCHOR_REQUIRED.value, product_context({"profile": {"client_routes": ["/"]}}).judged_routes, 'anchor: "export-view"' in text)
+    expect: "anchor_required ('/',) True"
+  - id: "2779-neo"
+    what: the developer and the dev plan author are shown the pages a change adds, each with its view's anchor (SIP-0109 §24cp)
+    container: squadops-neo
+    code: |
+      import pathlib, squadops.prompts as p
+      from squadops.capabilities.handlers.cycle import develop
+      from squadops.capabilities.handlers._plan_authoring import INCREMENT_SURFACES
+      text = (pathlib.Path(p.__file__).parent / "request_templates" / "request.development_develop.focused_build_task.md").read_text()
+      print(hasattr(develop, "increment_views_section"), "{{increment_views_section}}" in text, INCREMENT_SURFACES[-1][0])
+    expect: "True True request.increment_views_appendix"
+  - id: "2779-eve"
+    what: the suite's author and the qa plan author are shown the pages a change adds, each with its view's anchor (SIP-0109 §24cp)
+    container: squadops-eve
+    code: |
+      import inspect
+      from squadops.capabilities.handlers import increment_test_scope as s
+      from squadops.capabilities.handlers._plan_authoring import INCREMENT_SURFACES
+      print('scope.get("views")' in inspect.getsource(s.increment_test_scope_section), INCREMENT_SURFACES[-1][0])
+    expect: "True request.increment_views_appendix"
+  - id: "2779-max"
+    what: the sole-author plan merger is shown the pages a change adds, each with its view's anchor (SIP-0109 §24cp)
+    container: squadops-max
+    code: |
+      import pathlib, squadops.prompts as p
+      from squadops.capabilities.handlers._plan_authoring import INCREMENT_SURFACES
+      print(INCREMENT_SURFACES[-1], (pathlib.Path(p.__file__).parent / "request_templates" / "request.increment_views_appendix.md").is_file())
+    expect: "('request.increment_views_appendix', 'view_lines', 'increment_views_index') True"
+  - id: "2780-review-runtime"
+    what: a dev repair of a view a repository-backed change adds is handed its anchor through the repair handoff (SIP-0109 §24cp, #2780's review P2 2)
+    container: squadops-runtime-api
+    code: |
+      from squadops.capabilities.context_assembly import REPAIR_PRESENCE_KEYS
+      print("increment_views" in REPAIR_PRESENCE_KEYS)
+    expect: "True"
+  - id: "2780-review-nat"
+    what: the rails refuse an added page whose path needs a seed (SIP-0109 §24cp, #2780's review P2 1)
+    container: squadops-nat
+    code: |
+      from squadops.campaigns.change_request import RefusalKind, _unseedable
+      print(RefusalKind.ADDED_ROUTE_UNSEEDABLE.value, _unseedable("/r/[id]"), _unseedable("/r/latest"))
+    expect: "added_route_unseedable True False"
+  - id: "2780-review-neo"
+    what: the development correction repair renders the pages a change adds with their anchors (SIP-0109 §24cp, #2780's review P2 2)
+    container: squadops-neo
+    code: |
+      import pathlib, squadops.prompts as p
+      from squadops.capabilities.handlers.impl.repair_handlers import DevelopmentCorrectionRepairHandler
+      text = (pathlib.Path(p.__file__).parent / "request_templates" / "request.cycle_repair_task.md").read_text()
+      print(hasattr(DevelopmentCorrectionRepairHandler, "_render_increment_views_section"), "{{increment_views_section}}" in text)
+    expect: "True True"
+  - id: "2780-rollout-runtime"
+    what: the runtime hashes and loads an anchored change request as the rails store it; with its pair below, a deploy where only one side carries the anchor fails verification (SIP-0109 §24cp, #2780's final review P3)
+    container: squadops-runtime-api
+    code: |
+      import dataclasses as d
+      from squadops.campaigns.change_request import ChangeKind, ChangeRequest, Criterion, IncrementBasis, PlacedCriterionFile, SurfaceKind, content_hash, load_stored_change_request, stored_change_request
+      c = Criterion("P1", "s", SurfaceKind.CLIENT_ROUTE, "/p", "o", anchor="p-view")
+      f = PlacedCriterionFile("P1", "a/criterion_P1.test.js")
+      r = ChangeRequest("prop_x", 1, "t", ChangeKind.FEATURE, (), (), (c,), (), basis=IncrementBasis.CAMPAIGN_BRANCH, footprint=("a/**", f.path), criterion_files=(f,))
+      h = content_hash(r)
+      print(h, load_stored_change_request(stored_change_request(d.replace(r, content_hash=h))).criteria[0].anchor)
+    expect: "2e1bb4fc15f593403f6f47a6c8ec532ccfa7336e411cdf4c819082a2502dfc3c p-view"
+  - id: "2780-rollout-nat"
+    what: the rails hash and store an anchored change request exactly as the runtime loads it, and refuse an anchor another page carries; the pair of 2780-rollout-runtime (SIP-0109 §24cp, #2780's final review P2 and P3)
+    container: squadops-nat
+    code: |
+      import dataclasses as d
+      from squadops.campaigns.change_request import ChangeKind, ChangeRequest, Criterion, IncrementBasis, PlacedCriterionFile, RefusalKind, SurfaceKind, anchor_conflicts, content_hash, load_stored_change_request, stored_change_request
+      c = Criterion("P1", "s", SurfaceKind.CLIENT_ROUTE, "/p", "o", anchor="p-view")
+      f = PlacedCriterionFile("P1", "a/criterion_P1.test.js")
+      r = ChangeRequest("prop_x", 1, "t", ChangeKind.FEATURE, (), (), (c,), (), basis=IncrementBasis.CAMPAIGN_BRANCH, footprint=("a/**", f.path), criterion_files=(f,))
+      h = content_hash(r)
+      print(h, load_stored_change_request(stored_change_request(d.replace(r, content_hash=h))).criteria[0].anchor, RefusalKind.ANCHOR_NOT_UNIQUE.value, anchor_conflicts({"/x": "home-view"}, {"/": ("home-view",)}))
+    expect: "2e1bb4fc15f593403f6f47a6c8ec532ccfa7336e411cdf4c819082a2502dfc3c p-view anchor_not_unique {'/x': ['/']}"

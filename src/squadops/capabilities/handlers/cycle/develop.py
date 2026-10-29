@@ -11,6 +11,7 @@ from typing import TYPE_CHECKING, Any
 from squadops.capabilities.disputed_checks import criterion_identities
 from squadops.capabilities.handlers.base import HandlerResult
 from squadops.capabilities.handlers.context_sections import context_sections
+from squadops.capabilities.handlers.increment_test_scope import increment_views_section
 from squadops.capabilities.handlers.prompt_guard import _guard_prompt_size
 from squadops.capabilities.handlers.source_repository import product_conventions_template
 from squadops.llm.exceptions import LLMError
@@ -352,6 +353,11 @@ class DevelopmentDevelopHandler(_CycleTaskHandler):
         fill_only = await self._fill_only_section(renderer, inputs)
         if fill_only:
             variables["fill_only_section"] = fill_only
+        # SIP-0109 §24cp: the pages a repository-backed change adds, and the anchor each view
+        # renders on its root element, which acceptance reads the page for.
+        views = await increment_views_section(renderer, inputs.get("increment_views"))
+        if views:
+            variables["increment_views_section"] = views
         if typed_lines:
             expectations = await renderer.render(
                 "request.cycle_repair_contract_expectations_appendix",
@@ -674,6 +680,10 @@ class DevelopmentDevelopHandler(_CycleTaskHandler):
             fill_only = await self._fill_only_section(renderer, inputs)
             if fill_only:
                 variables["fill_only_section"] = fill_only
+            # SIP-0109 §24cp: the pages the change adds, with each view's anchor.
+            views = await increment_views_section(renderer, (inputs or {}).get("increment_views"))
+            if views:
+                variables["increment_views_section"] = views
             # #2682: the context slots the focused path shows, on this path too: the product a
             # source-backed run changes, the failed cycle a retry continues, this task's
             # instructions and its project's, then the lessons. None handed renders the prompt

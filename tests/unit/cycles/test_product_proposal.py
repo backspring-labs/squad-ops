@@ -189,6 +189,7 @@ async def test_the_proposal_task_is_given_the_head_profile_verification_and_requ
         "content": readme,
     }
     assert "approved_manifest" not in given  # Tally is an existing product, initialized nowhere
+    assert given["profile"]["client_routes"] == []  # and has no blueprint naming its pages
 
 
 async def test_a_greenfield_products_proposal_is_given_its_approved_manifest_beside(tmp_path):
@@ -205,9 +206,15 @@ async def test_a_greenfield_products_proposal_is_given_its_approved_manifest_bes
         initialized_at=NOW,
     )  # fmt: skip
 
-    plan = await _prepared(_cycle(repo), clones, _Projects(initialization=initialized))
+    projects = _Projects(initialization=initialized)
+    # SIP-0109 §24cp: a blueprint's product names the routes acceptance judges (H.7).
+    projects.profile = dataclasses.replace(projects.profile, client_routes=("/", "*"))
+
+    plan = await _prepared(_cycle(repo), clones, projects)
 
     [given] = [e.inputs[PRODUCT_PROPOSAL_INPUT] for e in plan if PRODUCT_PROPOSAL_INPUT in e.inputs]
+    # Bug caught: the judged routes never composed, so the rails read every page as added.
+    assert given["profile"]["client_routes"] == ["/", "*"]
     assert given["approved_manifest"] == {
         "stack": "fullstack_fastapi_react",
         "commit": repo.first_commit,

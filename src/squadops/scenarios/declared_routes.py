@@ -21,21 +21,25 @@ is on the page.
 What blocks every route, never passing one (SIP-0096), each with contract 7's or SIP-0113 §4.1's
 reason: no start declaration, one the runner can't read, a declared evaluation secret (none is
 resolved before #2421's approval record), no runner, or a start that failed. A route whose view
-declares no anchor is blocked too: nothing on its page could show its view rendered.
+declares no anchor is blocked too: nothing on its page could show its view rendered. A route the
+approved change request adds is judged by the anchor its criteria name for its view (SIP-0109
+§24cp), or blocked where they name none.
 
 Nothing here reads a suite or a scenario's steps: the runner is asked to run none.
 """
 
 from __future__ import annotations
 
-from collections.abc import Sequence
+from collections.abc import Mapping
 from typing import Any
 
 import yaml
 
 from squadops.campaigns.acceptance import Held, RouteResult, route_rendering
+from squadops.campaigns.change_request import anchor_conflicts
 from squadops.campaigns.increment_tree import declared_routes, route_seeds, unseeded_routes
 from squadops.campaigns.product_routes import (
+    ANCHOR_NOT_UNIQUE,
     FROM_CHANGE_REQUEST,
     NO_ANCHOR,
     NO_ANCHOR_REQUESTED,
@@ -119,13 +123,15 @@ class DeclaredStartRoutes:
         initialization: Any,
         candidate: SandboxTree,
         verified_candidate_revision: str | None,
-        requested_routes: Sequence[str],
+        requested_routes: Mapping[str, str],
     ) -> ProductRoutes:
         """Each route the increment is expected to serve, rendered on the candidate started from
         its declaration, and judged as a sample application's is (§8.3). The expected set is the
         routes the profile names, pinned from the approved manifest (so a route the candidate drops
         reads broken), and the routes the approved change request's criteria are asserted on
-        (``requested_routes``), which the candidate adds or changes. None at all is not applicable
+        (``requested_routes``, each with the anchor its criteria name, ``""`` for none), which the
+        candidate adds or changes. A pinned route is judged by its manifest's anchor whatever the
+        request names; an added one by the request's (§24cp). None at all is not applicable
         (§24bv point 3).
 
         Raises:
@@ -142,8 +148,14 @@ class DeclaredStartRoutes:
             return routes_blocked(named, NO_MANIFEST, sources=sources)
         anchors = {r: declared_routes(manifest).get(r, ()) for r in pinned} if manifest else {}
         # A product's change request carries no manifest delta (§24bv point 5): an added route's
-        # view names no anchor, so it can block, and never hold (§8.3's evidence is the anchor).
-        anchors.update({r: () for r in added})
+        # view's anchor is the one its criteria name (§24cp). With none it can block, and never
+        # hold (§8.3's evidence is the anchor).
+        anchors.update({r: (requested_routes[r],) if requested_routes[r] else () for r in added})
+        # §24cp: an added route's anchor another page carries shows nothing of its own view (the
+        # app's fallback renders that other view on a page never built), so it's blocked.
+        reused = anchor_conflicts(
+            {r: requested_routes[r] for r in added}, declared_routes(manifest) if manifest else {}
+        )
         seeds = {r: s for r, s in route_seeds(manifest).items() if r in pinned} if manifest else {}
         start, unstartable = product_start(configuration)
         if unstartable is not None or start is None:
@@ -200,8 +212,14 @@ class DeclaredStartRoutes:
         results = []
         shared = _shared_roots(anchors)
         for route in sorted(named):
-            if not anchors[route]:
-                why = NO_ANCHOR_REQUESTED if route in sources else NO_ANCHOR
+            if not anchors[route] or route in reused:
+                why = (
+                    f"{ANCHOR_NOT_UNIQUE} ({', '.join(reused[route])})"
+                    if route in reused
+                    else NO_ANCHOR_REQUESTED
+                    if route in sources
+                    else NO_ANCHOR
+                )
                 results.append(RouteResult(route, Held.BLOCKED_UNVERIFIED, detail=why))
                 continue
             if route in shared:
