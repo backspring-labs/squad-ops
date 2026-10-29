@@ -1172,13 +1172,28 @@
           "profile_roles",
           "role_index",
           "role_total",
-          "increment_change_request"
+          "increment_change_request",
+          "increment_criterion_files"
         ],
         "inputs": {
           "agent_config_overrides": {},
           "agent_model": "m",
           "config_hash": "confhash",
           "increment_change_request": "proposal_id: prop_cap\nversion: 1\nbaseline_tree: sha-accepted\nkind: feature\nprd_delta:\n- id: capacity-limit\n  op: add\n  text: A run may set a capacity. Joining a full run is refused, and the run's page\n    shows how many of its places are taken.\nmanifest_delta:\n- op: modify\n  target: entity\n  key: Run\n  definition:\n    name: Run\n    fields:\n    - name: id\n      type: string\n      required: true\n      generated: true\n    - name: title\n      type: string\n      required: true\n    - name: datetime\n      type: string\n      required: true\n    - name: location\n      type: string\n      required: true\n    - name: distance\n      type: string\n      required: false\n    - name: pace\n      type: string\n      required: false\n    - name: notes\n      type: string\n      required: false\n    - name: capacity\n      type: integer\n      required: false\n    - name: participants\n      type: list[string]\n      required: true\n      default: []\n    - name: participant_count\n      type: integer\n      required: true\n- op: modify\n  target: request_shape\n  key: RunCreate\n  definition:\n    required:\n    - title\n    - datetime\n    - location\n    optional:\n    - distance\n    - pace\n    - notes\n    - capacity\n- op: add\n  target: error_code\n  key: capacity_exceeded\n  definition:\n    http: 409\n- op: modify\n  target: endpoint\n  key: POST /runs/{run_id}/join\n  definition:\n    method: POST\n    path: /runs/{run_id}/join\n    summary: join a run with a participant name, refused when the run is full\n    request: JoinIn\n    response: Run\n    errors:\n    - validation_error\n    - run_not_found\n    - duplicate_participant\n    - capacity_exceeded\n- op: modify\n  target: client_route\n  key: /runs/:run_id\n  definition:\n    path: /runs/:run_id\n    view: RunDetailView\n    purpose: show run details, participant list, places taken of capacity, join form,\n      and leave form\n    testids:\n    - run-detail-view\n    - run-detail-title\n    - run-detail-participants\n    - run-detail-participant\n    - run-detail-participant-count\n    - run-detail-join-form\n    - run-detail-join-name\n    - run-detail-join-submit\n    - run-detail-leave-form\n    - run-detail-leave-name\n    - run-detail-leave-submit\n    - run-detail-error\n    - run-detail-not-found\n    - capacity-status\ncriteria:\n- id: C1\n  statement: A run created with capacity 2 is returned with capacity 2\n  surface_kind: endpoint\n  surface: POST /runs\n  observable: 'the 201 response body carries capacity: 2'\n- id: C2\n  statement: Joining a full run is refused\n  surface_kind: endpoint\n  surface: POST /runs/{run_id}/join\n  observable: 409 with error code capacity_exceeded when the run's participants already\n    fill its capacity\n- id: C3\n  statement: The run's page shows places taken of capacity\n  surface_kind: client_route\n  surface: /runs/:run_id\n  observable: capacity-status renders '2 / 2 joined' for a full run of capacity 2\nmust_not_break: []\nretires: []\nreplaces_verifiers: []\nfootprint:\n- backend/errors.py\n- backend/models.py\n- backend/routes.py\n- frontend/src/views/RunDetailView.jsx\n- backend/tests/**\n- frontend/src/__tests__/**\n- frontend/src/tests/**\ncontent_hash: 737db498820030d38380ef38dad2a40a79c897017813f98767744388f72ba5b1\n",
+          "increment_criterion_files": [
+            {
+              "criterion_id": "C1",
+              "path": "backend/tests/criteria/test_C1.py"
+            },
+            {
+              "criterion_id": "C2",
+              "path": "backend/tests/criteria/test_C2.py"
+            },
+            {
+              "criterion_id": "C3",
+              "path": "frontend/src/__tests__/criteria/C3.test.jsx"
+            }
+          ],
           "prd": "PRD-CONTENT",
           "profile_roles": [
             "builder",
