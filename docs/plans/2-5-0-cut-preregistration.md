@@ -13,9 +13,9 @@ shakeout's budget"):
 
 **The owner's rulings at this stop (2026-10-29):**
 1. **The engine:** the owner chose "Frozen recipe". The shakeout, the repeats and the set run on the frozen counted
-   recipe, switched from #2742's two-lane candidate, and the candidate is restored after the set's last reading. The
-   basis is the plan's D5: 2.5's regression reads against 2.4's baselines "with no engine change beside the
-   evaluator's".
+   recipe, switched from #2742's two-lane candidate, and the candidate is restored after the set's last reading and
+   the runs beside it (IR-1, IR-8's registry half). The basis is the plan's D5: 2.5's regression reads against 2.4's
+   baselines "with no engine change beside the evaluator's".
 2. **The voided demonstration readings:** the owner chose "Repeat the cheap ones": a fresh `z_shelfnote` Campaign, a
    `z_continuum` start, and the missing-route replay, each on the final deploy (§6.3).
 3. **IR-3:** the owner chose to repeat it ("1 yes"), on that `z_continuum` start, across one more outside commit
@@ -28,43 +28,52 @@ shakeout's budget"):
 6. **D12:** the owner chose "No revert rule" (§3).
 
 **What must be true before the shakeout's first launch,** in this order:
-1. **The engine serves the frozen recipe.** `scripts/dev/ops/engine_switch.py to-tensorfold
-   infra/tensorfold/recipes/qwen27b-nvfp4.yaml` runs first. It refuses while a run is running, queued or paused, or a
-   campaign is open (`engine_switch.py:195-204`), recreates every model client, and writes a deploy record. **Not met:**
-   read at 22:30Z on 2026-10-29 (`docker inspect squadops-tensorfold`), the engine runs #2742's candidate,
-   `recipes/candidates/qwen27b-nvfp4-parallel2.yaml` (`--parallel 2`, its status "not the frozen counted-verification
-   recipe"), started 2026-10-24 at 22:50Z, five days. So Track D's Campaign, D12's evidence and the demonstrations
-   all ran on it (§10).
-2. **The line's last code is merged and deployed, after the switch.** The Spark is rebuilt from main
-   (`rebuild_and_deploy.sh all`) once this document and anything else the cut needs are merged. That rebuild is **the
+1. **This document is merged, as a draft,** with the shakeout's definition, so the shakeout's predictions are fixed
+   before it launches. **Not met.**
+2. **The engine serves the frozen recipe.** `scripts/dev/ops/engine_switch.py to-tensorfold
+   infra/tensorfold/recipes/qwen27b-nvfp4.yaml` runs before the rebuild. It refuses while a run is running, queued or
+   paused, or a campaign is open (`engine_switch.py:195-204`), recreates every model client, and writes a deploy
+   record. **Not met:** read at 22:30Z on 2026-10-29 (`docker inspect squadops-tensorfold`), the engine runs #2742's
+   candidate, `recipes/candidates/qwen27b-nvfp4-parallel2.yaml` (`--parallel 2`, its status "not the frozen
+   counted-verification recipe"), started 2026-10-24 at 22:50Z, five days. So Track D's Campaign, D12's evidence and
+   the demonstrations all ran on it (§10).
+3. **The line's last code is deployed, after the switch.** The Spark is rebuilt from main (`rebuild_and_deploy.sh
+   all`) once this document, condition 7's script and anything else the cut needs are merged. That rebuild is **the
    final deploy**, and its deploy record is the last one written before registration (§7). Main's last change to a
    run path today is `d0df8acb` (#2816). **Not met.**
-3. **The engine is read** (§7): its `Args` from `docker inspect` are exactly the line `serve_command` builds from the
-   frozen recipe (`engine_switch.py:302`), which is today's line without `--parallel 2`, and its `State.StartedAt` is
-   recorded. Both are read again after each shakeout round, at registration and after the chain's last roll, and must
-   not change. **The exact line is the pin,** since nothing else tells the recipes apart:
+4. **The engine is read** (§7), and its reading is the pin:
+   - **its `Args`** from `docker inspect` are exactly the line from `serve` onward that `serve_command` builds from the
+     frozen recipe (`engine_switch.py:302-353`), which is today's line without `--parallel 2`;
+   - **its `.Image`** equals the recipe's `image_id`;
+   - **its `State.StartedAt`** is recorded.
+
+   They are read again after each shakeout round, at registration and at each roll's start and end (P1). **The exact
+   line and image are the pin,** since nothing else tells the recipes apart:
    - `verify_tensorfold` checks only that each of the recipe's flags is on the line (`engine_switch.py:458-462`), so
      the candidate's line passes it against the frozen recipe;
    - the deploy record's weights key on the served id (#2732), which both recipes serve.
+
    **Not met.**
-4. **Every tracked loaded check answers its expected value on the final deploy,** `2253` (D12) among them
+5. **Every tracked loaded check answers its expected value on the final deploy,** `2253` (D12) among them
    (`verify_loaded.py`, run from the main checkout), and the deploy record is ok. `scripts/dev/loaded_checks.yaml` has
    247 rows at drafting, 68 more than 2.4's 179. **Not met.**
-5. **This document is merged, as a draft,** with the shakeout's definition, so the shakeout's predictions are fixed
-   before it launches. **Not met.**
 6. **The sweeps' baselines are taken** on the final deploy (§4.2), by `heldout_sweep.py` as main carries it since
    #2819 (`b5b12c12`), with §4.2's `--campaign` list. **Not met.**
+7. **The engine's callers can be read** (the owner chose "2 metrics"). `scripts/dev/engine_callers.py`, which the
+   supervisor builds (§4, "The engine's other callers"), exists, is merged, and has been read once against the live
+   engine, with the counter's key labels confirmed. **Not met:** it doesn't exist yet.
 
 **What must be true before the set is registered:**
-7. **The shakeout loop's exit rule holds on the final deploy** (§3): one shakeout campaign with no new seam finding.
-8. **The always-pass sets are fixed** (§4.1). **Met by Track B's re-read**
+8. **The shakeout loop's exit rule holds on the final deploy** (§3): one shakeout campaign with no new seam finding.
+9. **The always-pass sets are fixed** (§4.1). **Met by Track B's re-read**
    (`docs/plans/verification-sets/2-5-0-reread-preregistration.md` §6), on `…eslint10.12-7`. It stays met while
    nothing it read has moved. Every baseline tree is re-read on the final deploy before registration if the final
    deploy's `EVALUATOR_IMAGE` is not `…-7`, or if anything under `src/squadops/scenarios/`, `src/squadops/sandbox/` or
    `adapters/sandbox/` changes after `10a35adb`, the re-read's commit.
-9. **The repeats the owner chose have run on the final deploy,** after condition 7, and their readings are in §8
-   (§6.3).
-10. **The pins are read** (§7), and nothing in the set has launched.
+10. **The repeats the owner chose have run on the final deploy,** after condition 8, and their readings are in §8
+    (§6.3). If the engine's reading changes between condition 4 and registration, the repeats run since the change
+    are run again.
+11. **The pins are read** (§7), and nothing in the set has launched.
 
 **#2751 is closed** by #2821 (`7e631321`): `worktree_hygiene.py` now judges only the checkout's own worktrees and
 keeps another tool's checkout wherever git lists it, so the release cut's step 8 no longer threatens the nostromo
@@ -179,10 +188,10 @@ don't change the set's verdict.
 - **The shakeout's exit rule:** one shakeout campaign on the final deploy with no new seam finding (2.0's rule).
   - **A seam finding** is a framework defect the shakeout shows. That includes a falsification of P4, Q4, Q5, Q6, Q8,
     Q9 or Q10 whose cause is in the framework.
-  - **A finding is fixed,** the deploy rebuilt, the engine read again (condition 3), the sweeps' baselines re-taken
+  - **A finding is fixed,** the deploy rebuilt, the engine read again (condition 4), the sweeps' baselines re-taken
     (§4.2), and the shakeout re-run. The record reports how many rounds it took.
-  - **A round on a changed engine is void:** its `Args` or `State.StartedAt` after the round differ from before it.
-    It doesn't spend the budget.
+  - **A round on a changed engine is void:** its `Args`, `.Image` or `State.StartedAt` after the round differ from
+    before it. It doesn't spend the budget. A changed `Args` or `.Image` also means condition 2 is redone first.
   - **The budget is three rounds.** A fourth goes to the owner with the findings.
   - **A falsification of Q3 or Q7,** or of P4, Q4, Q5, Q6, Q8, Q9 or Q10 with no framework cause, goes to the owner and
     isn't counted as a seam finding.
@@ -190,13 +199,20 @@ don't change the set's verdict.
     the launch didn't start (`src/squadops/campaigns/box.py:89-110`, read at
     `src/squadops/campaigns/box_reading.py:104-107`). The launcher records it as `launch_blocked` and tries again
     (`launch_blocked_interval_s` 300, `launch_blocked_attempts` 6). It is not a seam finding.
+  - **If the crews' load outlasts the attempts,** the campaign escalates after the sixth, about 30 min, and only the
+    owner resumes it (`src/squadops/campaigns/launch_blocking.py:9`, `:76`;
+    `src/squadops/campaigns/launcher.py:16-19`). The record counts that resume as an intervention in an unattended
+    campaign. It is data, not a seam finding, so a round with such an escalation can still meet the exit rule,
+    **provided the metrics show the crews' load caused it**: another key label's requests counted, or the gauges at
+    the threshold (§4), at each refused attempt.
   - **A fix re-applies the plan's §3 rule** to every reading §6.2 lets stand, by the paths named there.
 - **The chain** runs the four rolls back to back. It stops on a roll that is refused, fails, or isn't accepted, as
   2.4's did. Q1, Q2 and Q6 are read after the chain, so they never stop it.
   - **A create the crews' load refuses is not a refused roll.** The create route refuses a launch while an engine is
     serving a request it didn't start (409 `BOX_REFUSED`, `box_not_quiet`;
     `src/squadops/api/routes/cycles/cycles.py:858-871`). Nothing ran, so the roll is launched again once the engine is
-    idle, and the record names each such refusal with the metrics read at it.
+    idle, by the driver's `chain --resume` (`scripts/dev/verification_set_driver.py:7140`), and the record names each
+    such refusal with the metrics read at it.
 - **Pass:**
   - **every regression roll is accepted, and its boot audit passes;**
   - **no roll regresses against its stack's baselines beyond variance:** every criterion is verified, and correction
@@ -220,8 +236,10 @@ don't change the set's verdict.
 - **Inconclusive:** a roll ended by a cause outside the framework, such as a box halt or TensorFold failing to serve.
   It is re-run under 1.8.2's void rule, and it doesn't spend the budget.
   - **Another caller's load** makes a roll inconclusive **only on the engine's own metrics** (the owner chose "2
-    metrics"): another key label's requests counted across the roll's window, and the gauges showing them in flight at
-    the time of the failure that ended the roll (§4, "The engine's other callers"). Never on assertion.
+    metrics"): another key label's requests counted across the roll's window, and the gauges at the threshold at the
+    time of the failure that ended the roll (§4, "The engine's other callers"). Never on assertion.
+  - **An engine restarted within a roll's window,** its `State.StartedAt` changed with the same `Args` and `.Image`,
+    makes that roll inconclusive, as TensorFold failing to serve (P1).
   - **A held-out reading whose evaluation never started its tree** (`read_scenarios.py` exits 1) is re-read once, on
     the same tree.
   - **A second reading that doesn't start** leaves that roll's Q1 inconclusive, and it goes to the owner.
@@ -233,7 +251,10 @@ don't change the set's verdict.
   - a round #2521's rule spends (`repair_dropped`), a repair #2664's guard refuses (`slot_subject_dropped`), and a
     `contract_assertions_match` refusal that names the router's own answer (#2297), each with its carry entry;
   - a development task #2795's merge rule drops, with its operator note;
-  - a launch the crews' load holds back or refuses, as above.
+  - a launch the crews' load holds back or refuses, as above;
+  - **correction rounds the crews' load may have added without ending a roll** (a call slowed or cut while another
+    caller held the engine). They count toward the range as any round does, and each roll's rounds are reported beside
+    the counter's other-key totals for its window.
 - **A finding in a repeat** (§6.3):
   - **on the narrowed product path,** #2818's class (a product's in-cycle verification, #2799 among it): filed, not
     fixed. The narrowing already names it;
@@ -253,7 +274,7 @@ P1–P5 and Q1–Q5 keep 2.4's numbers, so each reads against its 2.4 reading. Q
 
 | # | prediction | read from | falsified by |
 |---|---|---|---|
-| P1 | every model call in every roll is served by TensorFold, on `qwen3.8-27b-tf-nvfp4` (2.3's P1), **by the frozen recipe's engine, unchanged through the chain** | the agents' per-call metrics over each roll's window: `squadops_llm_call_seconds_count` by `engine` and `model`; the engine's `Args` and `State.StartedAt` at registration and after the chain's last roll (condition 3) | any call counted under another engine or model in a roll's window, or an engine whose line or start time differs from registration's |
+| P1 | every model call in every roll is served by TensorFold, on `qwen3.8-27b-tf-nvfp4` (2.3's P1), **by the frozen recipe's engine through the chain** | the agents' per-call metrics over each roll's window: `squadops_llm_call_seconds_count` by `engine` and `model`; the engine's `Args`, `.Image` and `State.StartedAt` (condition 4), read at registration and at each roll's start and end, beside the counter (§4, "The engine's other callers") | any call counted under another engine or model in a roll's window, or an engine whose `Args` or `.Image` differ from registration's. **A changed `State.StartedAt` alone** (the same line and image, restarted) makes the roll whose window holds it inconclusive, as TensorFold failing to serve (§3), and it re-runs |
 | P2 | every tracked loaded check answers its expected value in every roll, `2253` (D12) among them, reading `True True False True True` | each roll's record, its "Loaded, not built" section | any tracked row unanswered, or answering a value other than its `expect` |
 | P3 | **memory stays disabled** (2.3's P3 and IR-10's R6): every roll's cycle declares memory disabled and pins only a disabled snapshot with no entries; every consuming task records a `memory_disabled` exposure; no instruction is supplied; every captured envelope reconstructs byte for byte. #2184 retired the legacy per-agent store (#2735, row `2184`), so this is SIP-0110's memory alone | each roll's cycle row, `memory_exposures`, and `verify_authoring_envelopes.py` | a pinned snapshot that is enabled or holds an entry; a consuming task with **no exposure** or another status; a supplied instruction; or an envelope that does not reconstruct |
 | P5 | **the cadence and pulse paths stay inert, and every correction round goes through a handler the baselines used** (IR-10's R3 and R4) | each roll's applied defaults, `pulse_verification_records`, the record's "repair responses by revision form" row and its emissions by handler, and the runs' rows | any of the four falsifiers below |
@@ -287,17 +308,22 @@ departures from its done-when ("a calibration on each stack passes its plan gate
 the issue: the reading's limit, and the Next.js half read on rolls if §12's proposal is taken.
 
 **The engine's other callers** (the owner chose "2 metrics"). The crews keep running. Each roll's window, and each
-shakeout round's, is read on TensorFold's own `/metrics`, through a reader inside the deploy that holds the key, so no
-key reaches the record:
-- **`tensorfold:requests_total{key,status}`,** a cumulative counter of HTTP replies by API key label and status
-  (`tensorfold/server/metrics.py:98-105`, `:167-168`, in the image `squadops-tensorfold:0.6.6-cb2ebf05`; read
-  read-only 2026-10-29). It is read at each roll's start and end. Any increase on a label other than the deploy's own
-  (`squadops`, #2742) is another caller's requests in the window;
+shakeout round's and repeat's, is read on TensorFold's own `/metrics` by **`scripts/dev/engine_callers.py`,** a new
+script the supervisor builds (condition 7; this document doesn't build it). It reads `/metrics` inside the deploy,
+with the key the deploy holds, and never prints a key. It records:
+- **`tensorfold:requests_total{key,status}`,** a cumulative counter of HTTP replies by API key label and status, at
+  each roll's start and end, beside the engine's `State.StartedAt` (P1). Any increase on a label other than the
+  deploy's own (`squadops`, #2742) is another caller's requests in the window. Its source,
+  `tensorfold/server/metrics.py:98-105` and `:167-168`, was read inside the image `squadops-tensorfold:0.6.6-cb2ebf05`
+  for this draft (read-only, 2026-10-29). The script's first reading against the live engine confirms the family and
+  its labels (condition 7);
 - **the gauges `tensorfold:requests_running` and `requests_waiting`,** the two the adapter already reads before each
-  request (`adapters/llm/tensorfold.py:391-403`), sampled every 5 s through the window.
+  request (`adapters/llm/tensorfold.py:391-403`), every 5 s through the window. **The threshold:** the frozen recipe
+  serves one lane, so `requests_running + requests_waiting ≥ 2` while the squad has a call out is another caller's
+  load.
 
 They are reported beside P1 and decide nothing, except as the only evidence for "another caller's load" (§3). A
-restart of the engine resets the counters, which `State.StartedAt` shows (P1).
+restart of the engine resets the counter, which `State.StartedAt` shows (P1).
 
 **In the shakeout:**
 
@@ -341,7 +367,7 @@ for id:
 | Next.js | 3 | **4** of 31 | `a-created-run-is-listed`, `a-created-run-reads-back`, `a-run-needs-a-title`, `an-unknown-run-is-not-found` |
 
 **A roll and its baselines are always read by one evaluator and one runner:** if either moves before registration,
-every baseline tree is re-read on the final deploy first (condition 8).
+every baseline tree is re-read on the final deploy first (condition 9).
 
 **What Q1 reads: the whole set, 5 and 4** (proposed; the supervisor's to confirm, §12). 2.4's Q1 read the HTTP
 scenarios only and reported the page scenario beside them (the 2.4 cut's §12), because the browser driver could read a
@@ -422,10 +448,10 @@ read below.
 | #2794 (`ad6e3ecb`) | #2786 | the marker definition; the runner's placeholder regex renamed, with no behaviour change by its PR | Q5's sweeps (§4.2); Q4's goal filter |
 | #2797 (`2f08613c`) | #2793 | a failed start's cause on the evaluation record; the package goes to version 8 | Q3 reads version 8; each record's `start_failure` (§4) |
 | #2785 (`693d219b`) | #2784 | a scenario's HTTP checks read the values its steps saved | nothing moves: 0 of revision 6's 59 HTTP checks names a saved value (#2785's count), and R1 held on the re-read's deploy, which carried it |
-| #2732 (`0ed38538`) | #2561 | the deploy record names the served weights | a pin (§7). It names the same weights for both recipes, so it doesn't pin the recipe (condition 3) |
+| #2732 (`0ed38538`) | #2561 | the deploy record names the served weights | a pin (§7). It names the same weights for both recipes, so it doesn't pin the recipe (condition 4) |
 | #2738, #2740, #2761, #2763, #2770, #2774 | #2619 | repository-backed paths, each with a sample-application control: a sample application's start launches its calibration cycle, its promotion is from the vault, its launch passes no head, it never rebases, and its increments keep `qa.evaluate_increment` | **Q10**; Q8's calibration row |
 | #2716, #2719, #2726, #2734, #2764, #2766, #2769, #2771, #2772, #2773, #2777, #2778, #2780, #2788 | #2619, #2414, #2672, #2757, #2779 | products only. Each names its sample-application control: no profile is asked of a sample application (H.7, H.8), its profiles keep their stack (H.11), its skeleton supplement stays (H.13), its evaluation and package section are unchanged (#2778, #2788). #2780's new prompt sections are optional and empty without an anchor, and the QA and dev prompt golden moved only for D12 | **not exercised on a sample application** |
-| #2742 (`5aaece83`) | the owner's, nostromo#3 | the TensorFold key reader, and the two-lane candidate recipe beside the frozen one | conditions 1 and 3 |
+| #2742 (`5aaece83`) | the owner's, nostromo#3 | the TensorFold key reader, and the two-lane candidate recipe beside the frozen one | conditions 2, 4 and 7 |
 | #2720, #2721, #2722, #2725, #2730, #2731, #2747, #2791, #2801, #2803, #2819 (`b5b12c12`), #2821 (`7e631321`) | — | scripts no run executes, loaded-check rows, monitoring, CI and an integration test. #2819 is the sweep's own reader (§4.2) | none, but §4.2 |
 
 **No loaded-check row** reads #2297's, #2521's or #2553's code. The deploy is rebuilt from one commit, and the deploy
@@ -464,7 +490,8 @@ cut record.
 
 - **IR-1, as at 2.4.0** (`docs/plans/2-4-0-integration-record.md`, "At the cut"): one `selftest` cycle of each seeded
   project through `cycles create`, one at a time, each completed with its artifacts. **It runs after the set's last
-  reading and before the engine is restored,** so it reads the final deploy; 2.4's took 36 min. 2.5 changed the
+  reading and before the engine is restored,** so it reads the final deploy; 2.4's took 36 min. A create the crews'
+  load refuses is made again once the engine is idle (§3). 2.5 changed the
   create path every cycle takes (`prepare_cycle`: H.8's blocking gap, H.9's pin, H.11's recipe, H.13's blueprint
   pin), each with a sample-application control, so IR-1 reads that each seeded project still creates and runs.
 - **IR-2, with one change.** 2.4 compared a standalone cycle with a Campaign's calibration cycle on `prj-z-continuum`
@@ -476,12 +503,13 @@ cut record.
   - `pinned_from` reads `project_baseline` and `campaign_branch`, as H.9 defines them;
   - each pins its own snapshot.
 
-  It is read on §6.3's `z_continuum` Campaign before its first cycle runs on, and the standalone cycle is cancelled
-  once read.
+  It is read on §6.3's `z_continuum` Campaign, with the standalone cycle created and cancelled as §6.3 says.
 - **IR-10 is the set** (P5 carries its R3 and R4), as at 2.4.0.
 - **IR-8's registry half, proposed again** (§12). 2.4 ran it at its cut: a Project imported, read at once, and refused
   a Cycle while `REGISTERING`. 2.5 changed the create path that refusal goes through, so it is worth the minutes. It
-  runs beside IR-1, with a fresh id, since `prj-ir8-cut` stays `REGISTERING` on the Spark.
+  runs beside IR-1, with a fresh id, since `prj-ir8-cut` stays `REGISTERING` on the Spark. Its create is read only
+  when the box gate passed it: a `BOX_REFUSED` is the gate's, not the registry's, and is made again on an idle engine,
+  as at 2.4.
 
 ### 6.2 The demonstrations' readings under the plan's §3 rule
 
@@ -508,20 +536,20 @@ carried `z_shelfnote`; `z_continuum`'s rounds 1 to 3 ran on `dep_0a4f31cd9c10` (
 | **#2780's anchored page** | the added page's route held by its anchor, in the increment and its repair | `dep_6ed09f6b500c` | as IR-7. Route rendering runs through the sandbox's `scenario_runner.py`, which #2797 refactored | yes, a refactor with no change of behaviour by its PR | **repeated** with `z_shelfnote` |
 | **the missing-route negative** (a replay) | `DeclaredStartRoutes.render` on `cyc_7cbdae00b2ed`'s captured candidate, its route removed: broken, the increment rejected | `dep_6ed09f6b500c`, by the script's time | #2797's runner refactor | yes, as above | **replayed on the final deploy** (`replay-2780-missing-route.py`), in minutes |
 | **Track D's uncounted run** (#2578) | R1–R4 on `cmp_9c9df268084a` | `dep_fbeecffcc625`, `dep_31949f050a30` | among others, #2759, #2763, #2770, #2771, #2792 and #2802, on the launch, hearing and framing paths a sample-application campaign runs | **Yes:** #2763 and #2771 change `launch_requests.py`, and #2763 and #2770 `campaign_launch.py`, the files that write the launch binding R1 reads | **re-read by the shakeout** (Q8). The void **reverses the plan's §5 judgement,** which named #2763 among the merges that don't touch how #2578's records are written, and was made before #2770 and #2771 merged |
-| **Track B's re-read** | R1, R1b, R2; §4.1's sets | `dep_0a4f31cd9c10` (`10a35adb`), `-7` | none: no merge since changes the evaluator's image, the sandbox's runner or `scenarios/` | — | **stands** (condition 8) |
+| **Track B's re-read** | R1, R1b, R2; §4.1's sets | `dep_0a4f31cd9c10` (`10a35adb`), `-7` | none: no merge since changes the evaluator's image, the sandbox's runner or `scenarios/` | — | **stands** (condition 9) |
 
 **What the table assumes.** Every reading the table keeps is repeated or re-read on the final deploy, except Track B's
 re-read, whose paths no merge has changed. A merge before registration, a shakeout fix among them, re-applies the rule
 to every row by the paths named here, and the record names each case.
 
 **The engine isn't one of the rule's paths.** The demonstrations and Track D's run were served by #2742's two-lane
-candidate (condition 1). The rule lists the agents' code, the runtime's, the evaluator's image, a request profile, a
+candidate (condition 2). The rule lists the agents' code, the runtime's, the evaluator's image, a request profile, a
 suite and the PRD, so the switch to the frozen recipe voids nothing by itself. The record names it (§10).
 
 ### 6.3 The repeats the owner chose
 
 The owner chose "Repeat the cheap ones" and, for IR-3, "1 yes" (2026-10-29). Each repeat runs on the final deploy
-after the exit rule holds (condition 7) and before registration, so a shakeout fix can't void it, and each campaign's
+after the exit rule holds (condition 8) and before registration, so a shakeout fix can't void it, and each campaign's
 create `--reason` names its definition file. They read the demonstrations' pre-registration §4, unchanged, except
 where named below. **The owner's "Return such a criterion"** (the demonstrations' deviation 2) applies to both, since
 both are product Campaigns (recommended; §12). A finding in a repeat is routed by §3's rule.
@@ -531,8 +559,10 @@ both are product Campaigns (recommended; §12). A finding in a repeat is routed 
   to `repo:file:CLAUDE.md@current` as before:
   1. **Its start** writes a calibration record and its baseline reading: IR-6's calibration half and IR-8's
      `prj-z-continuum` half.
-  2. **Its first launched cycle** is IR-2's Campaign half (§6.1). A standalone cycle is created beside it and
-     cancelled once read.
+  2. **Its first launched cycle** is IR-2's Campaign half (§6.1). IR-2's standalone cycle is created while the
+     Campaign is paused or waiting at a gate, since the create route refuses a launch while the engine serves a
+     request it didn't start (`src/squadops/api/routes/cycles/cycles.py:858-871`). It is cancelled once its snapshot
+     is pinned (`memory_snapshots`), before it dispatches.
   3. **IR-3, repeated:**
      - the first increment's cycle runs, and the Campaign is paused while it does;
      - the supervisor pushes one more one-line commit to `CLAUDE.md` on `z_continuum`'s `main`, from the owner's
@@ -542,7 +572,8 @@ both are product Campaigns (recommended; §12). A finding in a repeat is routed 
        validate`, `configure` (revision 7, the same technical block) and `baseline --capture`. Resuming before the
        reconciliation is the demonstrations' order (their §3), and it is what lets (b) be read;
      - the launcher rebases the campaign branch onto the reconciled commit, and the next cycle launches;
-     - a standalone cycle is created after the reconciliation, and cancelled once its binding is read;
+     - a standalone cycle is created after the reconciliation, in the same way as IR-2's (step 2), and cancelled once
+       its binding is written, before it dispatches;
      - (a)–(e) are read as the demonstrations' §4 states them.
   4. **The Campaign is aborted** once (e) is read, and IR-4's sweep runs over it.
 
@@ -570,13 +601,13 @@ cut. The supervisor's estimates have run high, so it's a ceiling to report again
 
 ## 7. Pins (read at registration)
 
-Blank until registration. Each is read when conditions 1–9 hold.
+Blank until registration. Each is read when conditions 1–10 hold.
 
 | pin | value |
 |---|---|
 | deploy commit | — |
-| deploy record | — the last one written (condition 2); `verify_loaded.py` from the main checkout |
-| engine | — `docker inspect squadops-tensorfold`: its `Args`, exactly `serve_command`'s line for `qwen27b-nvfp4.yaml` with no `--parallel`, and its `State.StartedAt`. Read again after the chain's last roll (P1) |
+| deploy record | — the last one written (condition 3); `verify_loaded.py` from the main checkout |
+| engine | — `docker inspect squadops-tensorfold`: its `Args` from `serve` onward, exactly `serve_command`'s line for `qwen27b-nvfp4.yaml` (`engine_switch.py:302-353`), with no `--parallel`; its `.Image`, equal to the recipe's `image_id`; and its `State.StartedAt`. Read again at each roll's start and end (P1) |
 | image ids | — runtime-api, max, neo, nat, bob, eve, data: read from the running containers, equal to both configs' `frozen_image_ids`. The sandbox service's, which runs the held-out readings, read beside them |
 | `EVALUATOR_IMAGE` | — expected `squadops-evaluator:lighthouse13.5-axe4.14-ruff0.16-eslint10.12-7` (`src/squadops/sandbox/environment.py:43`), §4.1's |
 | model | — expected `qwen3.8-27b-tf-nvfp4` in every agent (`SQUADOPS__LLM__MODEL`), served by `squadops-tensorfold:0.6.6-cb2ebf05`; its weights from the deploy record (#2561) |
@@ -594,14 +625,15 @@ Blank until registration. Each is read when conditions 1–9 hold.
 
 | what | value |
 |---|---|
-| the engine switch, and the engine's readings (at the switch, after each shakeout round, at registration, after the chain's last roll) | — |
+| the engine switch, and the engine's readings (at the switch, after each shakeout round, at registration, at each roll's start and end) | — |
+| `engine_callers.py`'s first reading against the live engine: the counter's family and key labels (condition 7) | — |
 | the final deploy | — |
 | the sweeps' baselines and readings, each with its `--campaign` list | — |
 | shakeout rounds, and the round that met the exit rule | — |
 | the repeats (§6.3): each campaign, the outside commit, the reconciliation, and each reading | — |
 | registration | — |
 | the chain: each roll's cycle, verdict, criteria, boot audit, correction rounds, QA repairs whose retest passed, model calls | — |
-| each roll's window on the engine's metrics: the counter by key label at its start and end, and the gauges' samples | — |
+| each roll's window on the engine's metrics: the counter by key label and `State.StartedAt` at its start and end, the gauges' samples, and the other-key totals beside its correction rounds | — |
 | the held-out readings | — |
 | each prediction's reading | — |
 | D3's reading, recorded on #2557 with its departures from the done-when | — |
@@ -632,6 +664,8 @@ Blank until registration. Each is read when conditions 1–9 hold.
 - **The engine:** the frozen recipe the set ran on; the candidate it was switched from and restored to; and the runs
   served by the candidate. Those are Track D's Campaign, the demonstrations, and D12's own evidence, #2253's replays
   (#2747, merged 2026-10-27, and #2752, merged 2026-10-28), all after the candidate started on 2026-10-24.
+- **The crews' load:** the set and the shakeout ran beside the owner's crews on the engine, while 2.4's baselines
+  ran without them. The counter's totals by key label for each roll's window are recorded (§8).
 - **The record versions:** the set's failure records are attributed under registry version 2, every 2.4 baseline's
   under version 1.
 
@@ -708,11 +742,25 @@ decisions the same day (the rulings above).
 
 **The engine (the second reader's P1, and the owner's "Frozen recipe" and "2 metrics"):**
 - the engine switch is ordered before the final deploy's rebuild, and the final deploy is the last record written;
-- the engine's exact command line and start time are pinned and re-read, since neither the switch's check nor the
+- the engine's exact command line, image and start time are pinned and re-read, since neither the switch's check nor the
   deploy record tells the recipes apart;
 - the crews keep running, and another caller's load is read on TensorFold's own counter and gauges, which decide
   "inconclusive" and nothing else;
 - a crew call that holds back or refuses a launch is data, not a seam finding or a refused roll.
+
+**The second reader's re-read at `193281a3`:**
+- the conditions are reordered so each comes after what it needs: the document merged, the engine switched, the
+  rebuild, the engine read, the loaded checks, the sweeps' baselines, and the engine's caller reader;
+- a campaign escalated by the crews' load after its six attempts is resumed by the owner, counted as an intervention,
+  and is data when the metrics show the load caused it;
+- the metrics reader is named, `scripts/dev/engine_callers.py`, the supervisor's to build, with a condition before the
+  shakeout;
+- the engine pin adds `.Image`; a restart alone makes a roll inconclusive, and a changed line or image fails P1;
+- the gauges' threshold, the crews' load read beside the correction rounds, and §10's declaration of that load;
+- IR-2's and IR-3's standalone cycles are created while the Campaign is paused or at a gate, and cancelled before
+  they dispatch;
+- a refused roll is re-launched by the driver's `chain --resume`; the repeats are re-run if the engine changes
+  before registration; and the restore follows the runs beside the set.
 
 **Stale facts:** #2819 and #2821 merged (`b5b12c12`, `7e631321`), so condition 6 names #2819's reader, #2751's note
 names #2821, and §4.3 counts 75 commits.
@@ -729,7 +777,7 @@ names #2821, and §4.3 counts 75 commits.
 - Q7 says what absence can't show, and how #2557 records it;
 - Q9 reports a count, and zero is *not exercised*;
 - Q10 is new: the sample-application controls the draft read "beside", made a prediction;
-- condition 8 re-reads the baselines on a change to the scenario runner, not only the evaluator's tag.
+- condition 9 re-reads the baselines on a change to the scenario runner, not only the evaluator's tag.
 
 **§4.3:** #2807, #2812 and #2816 are read as exercised moves with their goldens, not as unexercised, and #2811 is read
 by every build, not by Q7 alone.
