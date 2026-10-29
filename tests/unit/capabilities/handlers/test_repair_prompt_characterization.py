@@ -305,7 +305,9 @@ def test_the_cases_exercise_what_the_extraction_moves():
 
     [shown] = rendered("dev_named_file_in_the_workspace", "request.cycle_repair_current_files")
     assert "`orbit/routes.py`:\n```\nfrom orbit.store" in shown["current_files"]
-    [own] = rendered("dev_failed_tasks_own_file_and_a_new_file", "request.cycle_repair_current_files")
+    [own] = rendered(
+        "dev_failed_tasks_own_file_and_a_new_file", "request.cycle_repair_current_files"
+    )
     assert own["current_files"] == "`orbit/ledger.py`:\n```\nLEDGER = {}\n```"
     [form] = rendered(
         "dev_failed_tasks_own_file_and_a_new_file", "request.cycle_repair_output_scoped"
@@ -315,7 +317,11 @@ def test_the_cases_exercise_what_the_extraction_moves():
     [fenced] = rendered("dev_a_file_with_fences_and_unicode", "request.cycle_repair_current_files")
     assert "`orbit/docs.py`:\n`````\n" in fenced["current_files"]
     assert "Encélade" in fenced["current_files"]
-    assert rendered("dev_whole_file_refused_then_retried", "request.cycle_repair_anchored_edit_retry")
-    [frames] = rendered("qa_failing_cases_with_frames", "request.qa_test_repair_failing_cases_appendix")
+    assert rendered(
+        "dev_whole_file_refused_then_retried", "request.cycle_repair_anchored_edit_retry"
+    )
+    [frames] = rendered(
+        "qa_failing_cases_with_frames", "request.qa_test_repair_failing_cases_appendix"
+    )
     assert "`tests/test_orbit.py:10` › test_moon_3" in frames["case_frames"]
     assert "test_missing.py" not in frames["case_frames"]

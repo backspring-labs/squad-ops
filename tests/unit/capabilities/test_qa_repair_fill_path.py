@@ -19,6 +19,7 @@ from squadops.capabilities.handlers.impl.repair_handlers import (
     QATestRepairHandler,
     _merge_repair_fills,
 )
+from squadops.capabilities.repair_prompt_contents import anchorable_files
 from squadops.capabilities.verification_scaffold_fill import merge_fills, parse_fill_emission
 from squadops.stacks.verification_scaffold_emission import emit_verification_scaffold
 from tests.unit.capabilities._stack_fixtures import manifest_for_stack
@@ -294,7 +295,7 @@ async def test_a_free_authored_suite_beside_the_shells_is_offered_the_edit_form_
     handler = QATestRepairHandler()
     inputs = _fill_mode_inputs(scaffold_input)
 
-    assert handler._anchorable_files(inputs) == [_SUITE]  # the shell is filled, never anchored
+    assert anchorable_files(inputs) == [_SUITE]  # the shell is filled, never anchored
     result = await handler.handle(ctx, inputs)
 
     prompt = ctx.ports.llm.chat_stream_with_usage.await_args_list[0].args[0][1].content

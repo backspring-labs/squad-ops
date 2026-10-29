@@ -82,11 +82,17 @@ SURFACE_RESPONSE = "response_surface"
 SUPPLEMENT_DEVELOPMENT_PROFILE = "development_profile"
 SUPPLEMENT_BUILD_PROFILE = "build_profile"
 
-#: #2805: a handler that shows part of its ``artifact_contents``, by the rendering it shows it
-#: through, which the composer counts it with (``squadops.capabilities.prompt_budget``). The
-#: ``qa.test`` prompt's: its focused prompt's packages, or its monolithic prompt's validation plan
-#: and source files (``squadops.capabilities.qa_prompt_contents``).
+#: #2805, #2810: a handler that shows a part of some of its inputs, by the rendering it shows them
+#: through, which the composer counts them with (``squadops.capabilities.prompt_budget``, which
+#: names the inputs each rendering covers).
+#:
+#: The ``qa.test`` prompt's ``artifact_contents``: its focused prompt's packages, or its monolithic
+#: prompt's validation plan and source files (``squadops.capabilities.qa_prompt_contents``).
 CONTENTS_QA_TEST_PROMPT = "qa_test_prompt"
+#: A correction repair's tree, ``acceptance_workspace_files`` with the failed task's own files over
+#: it: the named files it may revise, their edit form and a qa repair's failing-case frames
+#: (``squadops.capabilities.repair_prompt_contents``).
+CONTENTS_REPAIR_PROMPT = "repair_prompt"
 
 
 @dataclass(frozen=True)
@@ -189,10 +195,10 @@ class ContextAssemblyContract:
     #: The inputs the task carries that its handler never renders, so they aren't counted. Anything
     #: not named here is counted, so a new input reads as rendered until it's declared otherwise.
     unrendered_inputs: frozenset[str] = frozenset()
-    #: #2805: how the handler shows ``artifact_contents``, when it shows part of it: the rendering
-    #: it calls (``CONTENTS_*``), which the composer counts it through. Empty: shown whole, and
-    #: counted whole.
-    artifact_contents_rendering: str = ""
+    #: #2805, #2810: how the handler shows the inputs it shows a part of: the rendering it calls
+    #: (``CONTENTS_*``), which the composer counts those inputs through. Empty: every input it
+    #: renders is shown whole, and counted whole.
+    scoped_rendering: str = ""
     #: The supplement the handler adds to the system prompt (``SUPPLEMENT_*``), or none.
     system_supplement: str = ""
     #: Whether the handler renders its development profile's fill-only appendix, which the profile
@@ -402,7 +408,7 @@ CONTEXT_CONTRACTS: dict[str, ContextAssemblyContract] = {
         # #2664: a re-dispatch's open slot failures gate its fill merge and are never rendered.
         unrendered_inputs=_EVALUATION_ONLY_INPUTS | {PRIOR_SLOT_FAILURES_KEY},
         # #2805: the filter above hands it the whole accepted tree, and its prompt shows a part.
-        artifact_contents_rendering=CONTENTS_QA_TEST_PROMPT,
+        scoped_rendering=CONTENTS_QA_TEST_PROMPT,
     ),
     # --- planning chain (#657): upstream documents on an envelope-local
     # prior_outputs copy; all four authoring types receive a re-roll's
@@ -671,9 +677,13 @@ REPAIR_CONTEXT_CONTRACT = ContextAssemblyContract(
         "request.increment_views_appendix",
         *_DEVELOP_APPENDIX_TEMPLATES,
     ),
-    # The repair shows the failed task's named files from the accepted tree (its current-files
-    # section), so that tree is counted whole, an upper bound. It never shows the curated context
-    # or the product's repository, and has no shared context slots.
+    # #2810: it carries the whole accepted tree for its own evaluation (#1229) and the failed
+    # task's own files (#1264), and its prompt shows the named files of them it may revise, their
+    # edit form and a qa repair's failing-case frames. Counted whole, a product larger than about
+    # half the window held every repair on its binding (the 2.5 main demonstration's round 2).
+    scoped_rendering=CONTENTS_REPAIR_PROMPT,
+    # It never shows the curated context or the product's repository, and has no shared context
+    # slots.
     unrendered_inputs=frozenset(
         {
             "workspace_revision_id",

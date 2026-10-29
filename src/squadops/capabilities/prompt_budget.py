@@ -17,9 +17,10 @@ So the composer counts what the handler renders, each part at an upper bound:
   only with its input (``ContextAssemblyContract.prompt_templates``);
 - **the raw text of each input the task carries,** except memory's own sections, which the
   composer measures itself, and the inputs the seam never renders
-  (``ContextAssemblyContract.unrendered_inputs``). A handler that shows part of its
-  ``artifact_contents`` has that part counted, through the function it shows it through
-  (``ContextAssemblyContract.artifact_contents_rendering``, #2805).
+  (``ContextAssemblyContract.unrendered_inputs``). A handler that shows a part of some inputs
+  has that part counted, through the function it shows it through
+  (``ContextAssemblyContract.scoped_rendering``): ``qa.test``'s ``artifact_contents`` (#2805),
+  and a correction repair's tree (#2810).
 
 Being upper bounds, they can only hold a task the guard would have passed, never the reverse. The
 parity test (``tests/unit/memory/test_prompt_budget_parity.py``) renders each seam through its own
@@ -32,11 +33,13 @@ import functools
 import json
 import re
 from collections.abc import Callable, Iterator, Mapping
+from dataclasses import dataclass
 from importlib import resources
 from typing import TYPE_CHECKING, Any, overload
 
 from squadops.capabilities.context_assembly import (
     CONTENTS_QA_TEST_PROMPT,
+    CONTENTS_REPAIR_PROMPT,
     SUPPLEMENT_BUILD_PROFILE,
     SUPPLEMENT_DEVELOPMENT_PROFILE,
     ContextAssemblyContract,
@@ -45,6 +48,7 @@ from squadops.capabilities.context_assembly import (
 from squadops.capabilities.handlers.build_profiles import BUILD_PROFILES
 from squadops.capabilities.qa_prompt_contents import qa_test_prompt_contents
 from squadops.capabilities.reasoning_policy import resolve_reasoning_level
+from squadops.capabilities.repair_prompt_contents import REPAIR_BASE_INPUTS, repair_prompt_contents
 from squadops.llm.model_registry import get_model_spec, thinking_headroom
 from squadops.memory.lessons import _tokens
 from squadops.memory.project_instructions import PROJECT_INSTRUCTIONS_INPUT
@@ -150,8 +154,8 @@ def prompt_without_memory_tokens(envelope: TaskEnvelope) -> int:
 def rendered_input_tokens(envelope: TaskEnvelope) -> int:
     """The task's own inputs as its prompt can carry them: each one's raw text (a structure as its
     JSON, whose quoting and escapes cover the fences and headings a file is shown in), except
-    memory's sections and the inputs the seam never renders. ``artifact_contents`` is the files
-    the handler shows of it, where it shows a part (#2805)."""
+    memory's sections and the inputs the seam never renders. The inputs the handler shows a part
+    of are counted as what it shows of them (#2805, #2810)."""
     return sum(
         _tokens(value if isinstance(value, str) else json.dumps(value, sort_keys=True, default=str))
         for value in _shown_inputs(
@@ -160,23 +164,36 @@ def rendered_input_tokens(envelope: TaskEnvelope) -> int:
     )
 
 
-#: #2805: each ``artifact_contents`` rendering a contract names, as the function its handler shows
-#: the files through. A name with no function here fails, never counting the input as shown whole.
-_CONTENTS_RENDERINGS: dict[str, Callable[[Mapping[str, Any]], dict[str, str]]] = {
-    CONTENTS_QA_TEST_PROMPT: qa_test_prompt_contents,
+@dataclass(frozen=True)
+class _Rendering:
+    """A handler's rendering of a part of some of its inputs (#2805, #2810): ``of``, the inputs it
+    shows a part of, each counted only through it, and ``shows``, what the prompt shows of them,
+    through the function the handler renders it with."""
+
+    of: frozenset[str]
+    shows: Callable[[Mapping[str, Any]], Mapping[str, str]]
+
+
+#: Each rendering a contract names (``ContextAssemblyContract.scoped_rendering``), with the inputs
+#: it covers. A name with no rendering here fails, never counting the inputs as shown whole.
+_RENDERINGS: dict[str, _Rendering] = {
+    CONTENTS_QA_TEST_PROMPT: _Rendering(frozenset({"artifact_contents"}), qa_test_prompt_contents),
+    CONTENTS_REPAIR_PROMPT: _Rendering(REPAIR_BASE_INPUTS, repair_prompt_contents),
 }
 
 
 def _shown_inputs(inputs: Mapping[str, Any], contract: ContextAssemblyContract) -> Iterator[Any]:
     """What the prompt shows of each input it carries: memory's sections and the inputs the seam
-    never renders left out, ``artifact_contents`` through the contract's rendering when it names
-    one, and every other input as it is."""
-    rendering = contract.artifact_contents_rendering
-    show = _CONTENTS_RENDERINGS[rendering] if rendering else None
+    never renders left out, the inputs the contract's rendering covers counted once through it
+    when the task carries any of them, and every other input as it is."""
+    rendering = _RENDERINGS[contract.scoped_rendering] if contract.scoped_rendering else None
+    scoped = rendering.of if rendering is not None else frozenset()
     for key, value in inputs.items():
-        if key in SUPPLIED_INPUTS or key in contract.unrendered_inputs:
+        if key in SUPPLIED_INPUTS or key in contract.unrendered_inputs or key in scoped:
             continue
-        yield show(inputs) if show is not None and key == "artifact_contents" else value
+        yield value
+    if rendering is not None and not scoped.isdisjoint(inputs):
+        yield rendering.shows(inputs)
 
 
 def template_prose_tokens(task_type: str) -> int:

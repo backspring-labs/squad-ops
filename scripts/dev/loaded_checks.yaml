@@ -2289,7 +2289,7 @@ checks:
       from squadops.capabilities.context_assembly import get_context_contract
       from squadops.capabilities.prompt_budget import rendered_input_tokens
       inputs = {"subtask_focus": "f", "expected_artifacts": ["tests/test_b.py"], "artifact_contents": {"orbit/a.py": "x" * 4000, "tests/test_a.py": "y" * 400}}
-      print(get_context_contract("qa.test").artifact_contents_rendering, rendered_input_tokens(SimpleNamespace(task_type="qa.test", inputs=inputs)), rendered_input_tokens(SimpleNamespace(task_type="development.develop", inputs=inputs)))
+      print(get_context_contract("qa.test").scoped_rendering, rendered_input_tokens(SimpleNamespace(task_type="qa.test", inputs=inputs)), rendered_input_tokens(SimpleNamespace(task_type="development.develop", inputs=inputs)))
     expect: qa_test_prompt 112 1117
   - id: "2805-qa-handler"
     what: the qa handler shows its focused prompt's files through the one function the composer counts them with (#2805)
