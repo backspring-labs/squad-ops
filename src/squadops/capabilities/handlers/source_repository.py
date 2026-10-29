@@ -22,6 +22,14 @@ from squadops.stacks.development_profiles import (
 )
 
 
+def source_backed(inputs: Mapping[str, Any]) -> bool:
+    """Whether the task is a source-backed run's: it carries the product's repository (E.4.3).
+    The one marker a task reads for a repository-backed product's run: the conventions it is
+    shown (H.13) and the tree a qa suite runs on (``qa_run_tree``, #2815). A sample application's
+    task carries none."""
+    return isinstance(inputs.get("source_repository"), Mapping)
+
+
 async def source_repository_section(renderer: Any, inputs: dict[str, Any]) -> str:
     """The product's repository as an appendix, or ``""`` for a run that has none."""
     repository = inputs.get("source_repository")
@@ -69,7 +77,7 @@ def product_conventions_template(inputs: Mapping[str, Any]) -> str:
     a product with no blueprint runs under), and for one that doesn't resolve, which the handler
     refuses on its own. Where one is declared, the developer's system prompt leaves out the
     profile's prose for the skeleton, since this asset says what the product keeps of it."""
-    if not isinstance(inputs.get("source_repository"), Mapping):
+    if not source_backed(inputs):
         return ""
     try:
         profile = get_development_profile(

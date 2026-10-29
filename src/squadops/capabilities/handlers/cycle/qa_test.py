@@ -103,6 +103,7 @@ from squadops.capabilities.handlers.test_runner import (
     run_build_validation,
 )
 from squadops.capabilities.qa_prompt_contents import qa_test_prompt_contents, source_files
+from squadops.capabilities.qa_run_tree import suite_run_tree
 from squadops.capabilities.reasoning_policy import reasoning_kwargs, resolve_reasoning_level
 from squadops.capabilities.verification_scaffold_fill import (
     SLOT_SUBJECT_DROPPED_KEY,
@@ -549,11 +550,14 @@ def _settle_outlet(
 @dataclasses.dataclass(frozen=True)
 class _QAPrompt:
     """What step 1a composes (#1994): the user prompt so far, the template it rendered (``None`` on
-    the focused path), the source artifacts, and what a re-take after a refunded repair was shown."""
+    the focused path), the tree the suite runs on, and what a re-take after a refunded repair was
+    shown."""
 
     user_prompt: str
     rendered: Any
-    sources: dict[str, str]
+    #: The files the suite is built and run against (``qa_run_tree``, #2815), never what the
+    #: prompt shows: on a repository-backed product the run holds the product's whole tree.
+    run_tree: dict[str, str]
     retake_offered: dict[str, int]
 
 
@@ -734,8 +738,10 @@ class QATestHandler(_CycleTaskHandler):
 
     def _get_source_artifacts(self, inputs: dict[str, Any]) -> dict[str, str]:
         """The cycle's source and build-support files (D4, D9), by its development profile: the
-        monolithic prompt's source files, and the tree the suite runs against on both paths
-        (``qa_prompt_contents.source_files``, which the composer's budget counts too, #2805)."""
+        monolithic prompt's source files (``qa_prompt_contents.source_files``, which the
+        composer's budget counts too, #2805). The tree the suite runs against is
+        ``qa_run_tree.suite_run_tree``'s, which is these files on a sample application only
+        (#2815)."""
         capability = get_development_profile(
             effective_development_profile(inputs.get("resolved_config"))
         )
@@ -878,8 +884,9 @@ class QATestHandler(_CycleTaskHandler):
         if not probes:
             return
 
-        sources = self._get_source_artifacts(inputs)
-        artifacts = [{"name": path, "content": content} for path, content in sources.items()]
+        # #2815: the tree the suite ran on, whose app the probes boot.
+        run_tree = suite_run_tree(inputs)
+        artifacts = [{"name": path, "content": content} for path, content in run_tree.items()]
         if patched_files:
             # #639: on the retest path the PATCHED tree must be under probe.
             # Sources are the dispatch-time workspace — probing only them
@@ -908,10 +915,11 @@ class QATestHandler(_CycleTaskHandler):
     @staticmethod
     async def _run_test_suite(
         capability: Any,
-        sources: dict[str, str],
+        run_tree: dict[str, str],
         extracted: list[dict],
     ) -> tuple[Any, dict]:
-        """Run the build-validation suite and return (result, report_artifact).
+        """Run the build-validation suite on ``run_tree`` (``qa_run_tree``) and return (result,
+        report_artifact).
 
         Framework dispatch (pytest/vitest/both) and the #276 frontend build check
         live in ``test_runner`` (which owns test-framework knowledge). This handler
@@ -919,7 +927,7 @@ class QATestHandler(_CycleTaskHandler):
         and reads only the generic ``RunTestsResult``.
         """
 
-        source_file_records = [{"path": p, "content": c} for p, c in sources.items()]
+        source_file_records = [{"path": p, "content": c} for p, c in run_tree.items()]
         test_file_records = [
             {"path": rec["filename"], "content": rec["content"]} for rec in extracted
         ]
@@ -1630,7 +1638,8 @@ class QATestHandler(_CycleTaskHandler):
         execution of the repaired suite in this (the QA agent's) environment.
         No LLM is involved — the suite is provided in ``retest_files``, the
         source workspace comes from ``artifact_contents`` exactly as the
-        original run saw it, and success is exactly "the suite passed".
+        original run saw it (``qa_run_tree``: the product's tree on a product's run, whose
+        marker the retest forwards, #2815), and success is exactly "the suite passed".
         """
         del context  # no LLM/prompt ports in execute-only mode
 
@@ -1644,9 +1653,9 @@ class QATestHandler(_CycleTaskHandler):
         if not extracted:
             return self._fail_result(start_time, inputs, "retest_files contained no usable files")
 
-        sources = self._get_source_artifacts(inputs)
+        run_tree = suite_run_tree(inputs)
         test_result, test_report_artifact = await self._run_test_suite(
-            capability, sources, extracted
+            capability, run_tree, extracted
         )
 
         artifacts = [
@@ -1754,7 +1763,7 @@ class QATestHandler(_CycleTaskHandler):
             passed = False
         # #1937: the tree this retest evaluated, the patched files over the sources (#639).
         await self._record_lint(
-            outputs, {**sources, **{f["filename"]: f["content"] for f in extracted}}
+            outputs, {**run_tree, **{f["filename"]: f["content"] for f in extracted}}
         )
 
         duration_ms = (time.perf_counter() - start_time) * 1000
@@ -1804,7 +1813,7 @@ class QATestHandler(_CycleTaskHandler):
         )
         if isinstance(prompt, HandlerResult):
             return prompt
-        rendered, sources = prompt.rendered, prompt.sources
+        rendered, run_tree = prompt.rendered, prompt.run_tree
         shape, user_prompt = await self._shape_and_sections(context, inputs, prompt.user_prompt)
         request = await self._generation_request(
             context, inputs, capability, resolved_config, user_prompt, start_time
@@ -1852,7 +1861,7 @@ class QATestHandler(_CycleTaskHandler):
         # Run generated tests and build report — on what the task will store (#1109).
         extracted = self._suite_files(artifacts)
         test_result, test_report_artifact = await self._run_test_suite(
-            capability, sources, extracted
+            capability, run_tree, extracted
         )
         artifacts.append(test_report_artifact)
         evidence_artifact = self._fill_merge_evidence_artifact(evidence_extra)
@@ -1954,12 +1963,12 @@ class QATestHandler(_CycleTaskHandler):
             if retake_section:
                 user_prompt = f"{user_prompt}\n{retake_section}"
             rendered = None
-            sources = self._get_source_artifacts(inputs)
         else:
             # Legacy monolithic prompt path (unchanged)
 
             # Resolve plan artifacts with vault fallback (D3)
             val_plan = await self._resolve_with_vault_fallback(inputs, "validation_plan")
+            # What the prompt shows, apart from the tree the suite runs on (#2815).
             sources = self._get_source_artifacts(inputs)
 
             # Check required artifacts (fail only when vault was available but empty)
@@ -1981,7 +1990,7 @@ class QATestHandler(_CycleTaskHandler):
         return _QAPrompt(
             user_prompt=user_prompt,
             rendered=rendered,
-            sources=sources,
+            run_tree=suite_run_tree(inputs),
             retake_offered=retake_offered,
         )
 
@@ -2358,7 +2367,7 @@ class QATestHandler(_CycleTaskHandler):
         """Step 1h (#1994): the task's outputs, with the outcome, the frontend build's row, the
         contract probes, the lint and the scaffold evidence; returns them, and the validation after
         a failing probe is folded in."""
-        rendered, sources = prompt.rendered, prompt.sources
+        rendered, run_tree = prompt.rendered, prompt.run_tree
         content, evidence_extra = emission.content, emission.evidence_extra
         assembled, retake_form = request.assembled, emission.retake_form
 
@@ -2415,7 +2424,8 @@ class QATestHandler(_CycleTaskHandler):
                     probe_failure if validation.passed else f"{validation.summary}; {probe_failure}"
                 ),
             )
-        await self._record_lint(outputs, sources)
+        # #1937: the tree the suite ran on (#2815).
+        await self._record_lint(outputs, run_tree)
 
         # SIP-0104 P5: the scaffold evidence, after the probes (register entry 43).
         shape.append_evidence(outputs, test_result, artifacts)

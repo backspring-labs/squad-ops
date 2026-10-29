@@ -11,6 +11,7 @@ from __future__ import annotations
 import pytest
 
 from squadops.capabilities.handlers.cycle_tasks import QATestHandler
+from squadops.capabilities.qa_run_tree import suite_run_tree
 from squadops.stacks.development_profiles import (
     DEVELOPMENT_PROFILES,
     TEST_FRAMEWORK_BOTH,
@@ -81,8 +82,11 @@ class TestRootLevelTestsDirectoryIsNotQaSource:
 
 
 class TestSourceArtifactMaterialization:
+    """Entered at ``qa_run_tree.suite_run_tree``, the tree the suite and the build check are
+    materialized from (#2815); a sample application's, so the stack's source and support files."""
+
     def test_build_support_files_materialized(self):
-        sources = QATestHandler()._get_source_artifacts(_inputs("fullstack_fastapi_react"))
+        sources = suite_run_tree(_inputs("fullstack_fastapi_react"))
         for f in (
             "frontend/package.json",
             "frontend/vite.config.js",
@@ -92,19 +96,19 @@ class TestSourceArtifactMaterialization:
             assert f in sources, f"{f} must be materialized so the build check can run (#296)"
 
     def test_source_files_still_included(self):
-        sources = QATestHandler()._get_source_artifacts(_inputs("fullstack_fastapi_react"))
+        sources = suite_run_tree(_inputs("fullstack_fastapi_react"))
         assert "backend/main.py" in sources
         assert "frontend/src/main.jsx" in sources
 
     def test_test_and_doc_files_excluded(self):
-        sources = QATestHandler()._get_source_artifacts(_inputs("fullstack_fastapi_react"))
+        sources = suite_run_tree(_inputs("fullstack_fastapi_react"))
         assert "backend/tests/test_api.py" not in sources
         assert "frontend/src/__tests__/App.test.jsx" not in sources
         assert "qa_handoff.md" not in sources
 
     def test_backend_only_capability_has_no_frontend_support(self):
         """A python-only capability shouldn't drag in frontend config files."""
-        sources = QATestHandler()._get_source_artifacts(_inputs("python_cli"))
+        sources = suite_run_tree(_inputs("python_cli"))
         assert "backend/main.py" in sources
         assert "frontend/package.json" not in sources
 

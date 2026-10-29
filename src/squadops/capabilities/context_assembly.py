@@ -725,6 +725,10 @@ RETEST_PRESENCE_KEYS: tuple[str, ...] = (
     # SIP-0104 P3: a retest that re-authors from scratch must still be in fill
     # mode — losing the key would flip it back to whole-suite authorship.
     "verification_scaffold",
+    # #2815: a repository-backed product's retest runs its suite on the product's tree, as the
+    # failed task's run did (``qa_run_tree``), and this is what marks the run a product's. The
+    # retest renders no prompt and memory never composes it, so no prompt or budget reads it.
+    "source_repository",
 )
 
 

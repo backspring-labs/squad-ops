@@ -2329,3 +2329,29 @@ checks:
       from squadops.capabilities import repair_prompt_contents as c
       print(r.repair_prompt_contents is c, hasattr(r._RepairPromptMixin, "_anchorable_files"), hasattr(r._RepairPromptMixin, "_repair_base_files"), "failing_line_excerpts" in vars(c))
     expect: "True False False True"
+  - id: "2815-qa-run-tree"
+    what: a repository-backed product's qa suite runs on the product's tree (its data, config and test support, never its own tests), and a sample application's on the stack's source files, through the handler's one selection (#2815)
+    container: squadops-eve
+    code: |
+      import squadops.capabilities.handlers.cycle.qa_test as q
+      contents = {"app/main.py": "A", "plugins/p/manifest.toml": "M", "tests/conftest.py": "C", "tests/test_own.py": "T"}
+      product = q.suite_run_tree({"artifact_contents": contents, "source_repository": {"commit": "c", "map": "", "runners": []}})
+      sample = q.suite_run_tree({"artifact_contents": contents})
+      print(sorted(product), sorted(sample), "run_tree" in q._QAPrompt.__dataclass_fields__)
+    expect: "['app/main.py', 'plugins/p/manifest.toml', 'tests/conftest.py'] ['app/main.py', 'tests/conftest.py'] True"
+  - id: "2815-retest"
+    what: a product's retest carries its repository, so the qa agent runs the repaired suite on the product's tree as the failed task's run did, and a sample application's carries none (#2815)
+    container: squadops-runtime-api
+    code: |
+      from squadops.capabilities.context_assembly import retest_forwarded_inputs
+      repository = {"commit": "c", "map": "", "runners": []}
+      print("source_repository" in retest_forwarded_inputs({"source_repository": repository}), "source_repository" in retest_forwarded_inputs({}))
+    expect: "True False"
+  - id: "2815-dev-marker"
+    what: the dev agent reads a product's run by the one marker the qa run tree reads, and is still shown its blueprint's conventions (SIP-0112 H.13, #2815)
+    container: squadops-neo
+    code: |
+      from squadops.capabilities.handlers import source_repository as s
+      inputs = {"source_repository": {"commit": "c", "map": ""}, "resolved_config": {"development_profile": "fullstack_fastapi_react"}}
+      print(s.source_backed(inputs), s.source_backed({}), s.product_conventions_template(inputs))
+    expect: True False request.source_repository_conventions_fullstack_fastapi_react

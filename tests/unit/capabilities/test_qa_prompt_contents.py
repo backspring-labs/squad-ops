@@ -132,7 +132,7 @@ async def test_the_focused_prompt_shows_what_it_showed_and_the_composer_counts_t
     if expected == ["tests/test_moons.py"]:
         assert section == _TESTS_PACKAGE_SECTION
     assert list(qa_test_prompt_contents(inputs)) == shown
-    assert list(prompt.sources) == _SUITE_TREE
+    assert list(prompt.run_tree) == _SUITE_TREE
 
 
 async def test_an_empty_tree_shows_no_section_and_counts_nothing():
@@ -144,7 +144,7 @@ async def test_an_empty_tree_shows_no_section_and_counts_nothing():
 
     assert _shown_section(prompt.user_prompt) is None
     assert qa_test_prompt_contents(inputs) == {}
-    assert list(prompt.sources) == []
+    assert list(prompt.run_tree) == []
 
 
 async def test_the_monolithic_prompt_shows_what_it_showed_and_the_composer_counts_the_same():
@@ -156,10 +156,38 @@ async def test_the_monolithic_prompt_shows_what_it_showed_and_the_composer_count
     prompt = await _composed(inputs)
 
     assert prompt.user_prompt.startswith(_MONOLITHIC_HEAD)
-    assert list(prompt.sources) == _SUITE_TREE
+    assert list(prompt.run_tree) == _SUITE_TREE
     assert sorted(qa_test_prompt_contents(inputs)) == sorted(
         [*_SUITE_TREE, "plans/validation_plan.md"]
     )
+
+
+#: A repository-backed product's run: the task carries the product's repository (SIP-0112 E.4.3).
+_REPOSITORY = {"source_repository": {"commit": "c" * 40, "map": "orbit/app.py", "runners": []}}
+
+
+@pytest.mark.parametrize(
+    "path",
+    [{**_FOCUSED, "expected_artifacts": ["tests/test_moons.py"]}, {}],
+    ids=["focused", "monolithic"],
+)
+async def test_a_products_prompt_shows_what_it_showed_and_its_suite_runs_on_its_tree(path):
+    """#2815 splits the suite's tree from the prompt's files. Entered at step 1a on a product's
+    inputs. Bug caught: the product's tree shown in the prompt, which the composer doesn't count
+    (``qa_test_prompt_contents``), so a binding it admitted would overflow; or the suite's tree
+    left at the prompt's files, where a product's data and its docs never reach the run."""
+    sample, product = _inputs(**path), _inputs(**path, **_REPOSITORY)
+
+    sample_prompt, product_prompt = await _composed(sample), await _composed(product)
+
+    assert product_prompt.user_prompt == sample_prompt.user_prompt
+    assert qa_test_prompt_contents(product) == qa_test_prompt_contents(sample)
+    assert list(product_prompt.run_tree) == [
+        *_SUITE_TREE[:4],
+        "tests/conftest.py",
+        "docs/guide.md",
+        "plans/validation_plan.md",
+    ]
 
 
 def _without_contents(envelope) -> int:
