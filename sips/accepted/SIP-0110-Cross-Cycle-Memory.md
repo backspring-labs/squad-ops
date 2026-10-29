@@ -3578,6 +3578,87 @@ legacy store after #2174 made it dormant. The embeddings port and its Ollama ada
 OK for the compose change is D4 of the adopted 2.5 plan (`docs/plans/2-5-0-plan.md`): "yes, in 2.5: its prerequisites
 are met (#2180 shipped, #2183 passed). The re-inventory runs first, and the volumes are kept as a backup until the cut."
 
+## 5an. A task's `artifact_contents` counted as its handler shows it, as built (2026-10-29, #2805; the Spark lane)
+
+**What was wrong.** §5ak counts "the raw text of each input the task carries". `qa.test`'s contract hands it the
+whole accepted tree as `artifact_contents` (`ACCEPTANCE_WORKSPACE_FILTER`), and its handler shows a part of it:
+- **the focused prompt** (a plan's subtask) shows the top-level packages the task's expected artifacts live in, or every
+  file when none is expected or none matches (pf-33);
+- **the monolithic prompt** shows the validation plan and the stack's source and support files, never a test or a
+  document.
+
+So the composer counted the whole tree. The 2.5 main demonstration met it (Campaign `cmp_e9485af88196`, run
+`run_1c403ee5c23e`, 2026-10-29 13:45 UTC). On a 65,536-token model, a 12,288-token reserve, a 2,024-token system prompt
+and 5,142 tokens of templates leave about 46,000 for the inputs, and the product's tree was about 104,761. The budget
+read 0, and the 1,330-token binding project instruction held the first increment's `qa.test` (escalated as a binding
+hold, SIP-0109 §24bw). The development task before it bound the same instruction and dispatched. §5ak named this
+outcome: "If such a hold is seen, the next step is rendering each seam exactly."
+
+**What changed.**
+- **One function shows the files and counts them.** `capabilities/qa_prompt_contents.py`'s `qa_test_prompt_contents`
+  returns the files a `qa.test` prompt shows, on the path its inputs select. The focused prompt renders through it. The
+  monolithic prompt and the suite's tree take its `source_files`, and the composer counts through the function.
+- **The contract names how a handler shows the input.** `ContextAssemblyContract.artifact_contents_rendering` names the
+  rendering on `qa.test` (`CONTENTS_QA_TEST_PROMPT`), and is empty, so counted whole, on every other contract.
+  `prompt_budget` maps the name to its function. A name with no function fails, so it is never read as the whole tree or
+  as nothing.
+- **§5ak's third part now reads:** the raw text of each input the task carries, except memory's sections and the inputs
+  the contract declares unrendered. Where the contract names how its handler shows `artifact_contents`, the
+  composer counts the files shown.
+
+**What it doesn't change.**
+- **No prompt.** The handler's rendering is byte-identical, pinned on inputs captured before the change.
+- **No filter and no input.** No contract's filter, `ACCEPTANCE_WORKSPACE_FILTER` and what any task is handed stay as
+  they were.
+- **No other seam's count.** Each seam that carries `artifact_contents` is below. Only `qa.test`'s count changes, and
+  every other count stays as it was, an upper bound of what its handler shows:
+
+  | task type | what its handler shows of `artifact_contents` | counted, before and after |
+  |---|---|---|
+  | `qa.test`, focused | its expected artifacts' top-level packages; every file when none matches | the whole tree; now the files shown |
+  | `qa.test`, monolithic | the validation plan, and the source and support files | the whole tree; now the files shown, with every file whose name names the plan |
+  | `development.develop`, focused | every file | whole, unchanged |
+  | `development.develop`, monolithic | the implementation plan and the strategy analysis | whole, unchanged |
+  | `builder.assemble` | the files of fourteen extensions, nearly every source and config file | whole, unchanged |
+  | the plan writers and proposers | their documents, on `prior_outputs` | `prior_outputs` whole, unchanged |
+  | every repair, `qa.test_repair` among them | none (`REPAIR_CONTEXT_CONTRACT`) | not counted, unchanged |
+
+**What it leaves open: SIP-0112 E.4.3's bounded view** (#2805, its second point). A source-backed `qa.test` whose
+suite sits in `tests/` is still shown the product's whole `tests/` package. On the demonstration's product that is about
+24,000 tokens. E.4.3 says "never the whole tree". Whether a source-backed `qa.test` takes `artifact_contents` from the
+product tree at all, rather than from the squad's changes and the repository view, is a question for E.4.3's owner.
+This amendment doesn't decide it.
+
+**Evidence:**
+- **`tests/unit/cycles/test_qa_test_budget_at_dispatch.py`, the wiring test.** It is entered at the executor's
+  `_enrich_envelope`, which resolves the tree through the contract's filter, and `_supply_the_dispatch`, with the
+  snapshot recall over a pinned instruction.
+  - The product is an invented tree of 110,823 tokens on the 65,536-token model, with the same 12,288-token reserve.
+    The suite's package is 25,044 tokens of it.
+  - The budget taken is the window less what the handler shows, computed through the shared function: 20,677 on that
+    envelope, where the whole tree left 0. The 1,330-token instruction is handed and disclosed as supplied.
+  - The control: a suite in a package that alone is larger than the window is still held, with "the project
+    instructions take 1330 tokens and the prompt has 0".
+- **`tests/unit/memory/test_prompt_budget_parity.py`:** three cases through each handler's `handle`, on a product of
+  three packages. `qa.test`'s count is within the margin of its rendered prompt on both paths, and develop's count is
+  never below its prompt.
+- **`tests/unit/capabilities/test_qa_prompt_contents.py`:**
+  - the handler's rendering on both paths, pinned;
+  - the count for one package, no expected artifact, no match, an empty tree, the monolithic path, develop's whole
+    tree and a repair;
+  - every rendering a contract declares, counted through its function.
+- **Mutants, each caught:**
+  - the composer ignoring the rendering;
+  - the rendering applied to every task type;
+  - the no-match fallback dropped;
+  - the no-expected-artifact fallback dropped;
+  - the monolithic path counted whole;
+  - the composer counting none of the input;
+  - the handler rendering apart from the shared function.
+- **Loaded checks:** `2805-composer` (runtime-api) and `2805-qa-handler` (eve).
+
+**Who ruled it.** No new design ruling: §5ak names exact rendering as the next step once such a hold is seen.
+
 ## 6. Mode neutrality: cycle, duty, and ambient utilization
 
 Phase 1 implements the cycle-mode loop, but the substrate is designed so duty- and
