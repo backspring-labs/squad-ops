@@ -572,8 +572,9 @@ def _unresolved_through_notes(unresolved: list[tuple[int, str, str]]) -> list[st
     task's own dependency named no task a proposer produced."""
     return [
         f"Unresolved cross-proposal dependency: canonical task {i} depended on {via!r}, which the "
-        f"merge dropped (SIP-0093 §15b), and that task's own dependency {missing!r} names no task "
-        "a proposer produced. Operator review required (gap_fill candidate)."
+        f"merge dropped (SIP-0093 §15b). The edge was re-pointed to that task's own dependencies, "
+        f"and {missing!r} among them names no task a proposer produced. Operator review required "
+        "(gap_fill candidate)."
         for i, via, missing in unresolved
     ]
 
