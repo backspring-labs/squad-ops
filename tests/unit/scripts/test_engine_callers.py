@@ -101,14 +101,85 @@ def test_a_reading_is_taken_inside_the_runtime_and_its_last_line_read(monkeypatc
     assert reading["running"] == 0 and "at" in reading
 
 
-def test_a_failed_reading_stops_rather_than_printing_nothing(monkeypatch):
+def test_a_failed_reading_stops_and_never_forwards_the_containers_words(monkeypatch):
+    """Bug caught: the container's last stderr line forwarded, which an error there could fill
+    with a configured value. The reader says only where it failed and the exit code."""
     monkeypatch.setattr(
         callers.subprocess,
         "run",
         lambda argv, **_: SimpleNamespace(
-            returncode=1, stdout="", stderr="boom\n/metrics answered 401"
+            returncode=1, stdout="", stderr="boom\nBearer sk-would-be-a-key-here"
         ),
     )
 
-    with pytest.raises(SystemExit, match="401"):
+    with pytest.raises(SystemExit) as stopped:
         callers.read_once()
+
+    assert str(stopped.value) == "the reading failed inside squadops-runtime-api (exit 1)"
+
+
+def test_series_that_differ_in_another_label_are_summed_never_overwritten():
+    """Bug caught: a key's series split by another label (a model) read as its last line alone,
+    which undercounts another caller's load, the evidence the cut's rule reads."""
+    metrics = (
+        'tensorfold:requests_total{key="orbit-crew",status="200",model="x"} 5\n'
+        'tensorfold:requests_total{key="orbit-crew",status="200",model="y"} 7 1700000000000\n'
+        "tensorfold:requests_running 0\ntensorfold:requests_waiting 0\n"
+    )
+
+    assert callers.parse_metrics(metrics)["requests_total"] == {"orbit-crew": {"200": 12}}
+
+
+@pytest.mark.parametrize(
+    "line",
+    [
+        'tensorfold:requests_total{key="orbit-crew",status="200"} +Inf',
+        'tensorfold:requests_total{key="orbit-crew",status="200"} NaN',
+        "tensorfold:requests_total 5",
+    ],
+    ids=["inf", "nan", "no-labels"],
+)
+def test_a_counter_line_the_reader_cant_parse_is_refused_never_dropped(line):
+    """Bug caught: an unparsed line vanished, so a reading with no counter line read as no
+    caller at all."""
+    metrics = f"{line}\ntensorfold:requests_running 0\ntensorfold:requests_waiting 0\n"
+
+    with pytest.raises(ValueError, match="1 of 1 tensorfold:requests_total lines"):
+        callers.parse_metrics(metrics)
+
+
+def test_a_label_with_a_trailing_newline_is_hashed():
+    """Bug caught: ``match`` with ``$`` accepted a trailing newline, so such a label printed as is."""
+    assert callers.safe_label("abc\n").startswith("sha256:")
+    assert callers.safe_label("squadops") == "squadops"
+
+
+def test_a_watch_records_a_failed_reading_as_a_gap_and_carries_on(monkeypatch, tmp_path):
+    """Entered at ``main(["watch", ...])``. Bug caught: one failed reading ended a one-hour
+    window with no marker, which reads as "no other caller" for the rest of it."""
+    readings = iter(
+        [
+            {"at": "t1", "requests_total": {}, "running": 0, "waiting": 0},
+            SystemExit("the reading failed inside squadops-runtime-api (exit 1)"),
+            {"at": "t3", "requests_total": {}, "running": 0, "waiting": 0},
+        ]
+    )
+
+    def read_once():
+        item = next(readings)
+        if isinstance(item, BaseException):
+            raise item
+        return item
+
+    clock = iter([0.0, 1.0, 2.0, 3.0, 99.0])
+    monkeypatch.setattr(callers, "read_once", read_once)
+    monkeypatch.setattr(callers.time, "monotonic", lambda: next(clock))
+    monkeypatch.setattr(callers.time, "sleep", lambda s: None)
+    out = tmp_path / "callers.jsonl"
+
+    code = callers.main(["watch", "--seconds", "10", "--interval", "0", "--out", str(out)])
+
+    lines = [json.loads(line) for line in out.read_text().splitlines()]
+    assert [line.get("at") for line in lines][0::2] == ["t1", "t3"]
+    assert lines[1]["error"] == "SystemExit"
+    assert code == 1

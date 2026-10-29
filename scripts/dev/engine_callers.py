@@ -36,14 +36,19 @@ from typing import Any
 CONTAINER = "squadops-runtime-api"
 #: A key label as #2742's registry writes one: a short name. Anything else is hashed, never printed.
 SAFE_LABEL = re.compile(r"^[A-Za-z0-9_.-]{1,32}$")
-_COUNTER = re.compile(r"^tensorfold:requests_total\{([^}]*)\}\s+([0-9.eE+]+)\s*$", re.M)
+#: A counter line: its labels (a quoted value may hold ``}``), its value and an optional timestamp.
+_COUNTER = re.compile(
+    r'^tensorfold:requests_total\{((?:[^}"]|"(?:[^"\\]|\\.)*")*)\}\s+'
+    r"([0-9.eE+-]+)(?:\s+-?\d+)?\s*$",
+    re.M,
+)
 _LABEL = re.compile(r'(\w+)="((?:[^"\\]|\\.)*)"')
 _GAUGE = re.compile(r"^tensorfold:(requests_running|requests_waiting)\s+([0-9.eE+]+)\s*$", re.M)
 
 
 def safe_label(value: str) -> str:
     """``value`` if it is a short name, else ``sha256:<12 hex>`` of it."""
-    if SAFE_LABEL.match(value):
+    if SAFE_LABEL.fullmatch(value):
         return value
     return "sha256:" + hashlib.sha256(value.encode()).hexdigest()[:12]
 
@@ -52,12 +57,24 @@ def parse_metrics(text: str) -> dict[str, Any]:
     """The counter by key label and status, and the two gauges, from ``/metrics``'s text. A counter
     line with no ``key`` label counts under ``(none)``. Raises when either gauge is missing, since
     an unread gauge is unknown, never zero."""
+    counter_lines = [
+        line for line in text.splitlines() if line.startswith("tensorfold:requests_total")
+    ]
+    matched = _COUNTER.findall(text)
+    if len(matched) != len(counter_lines):
+        # A line the reader can't parse would vanish, and a caller's load read as none.
+        raise ValueError(
+            f"{len(counter_lines) - len(matched)} of {len(counter_lines)} "
+            "tensorfold:requests_total lines couldn't be read"
+        )
     totals: dict[str, dict[str, int]] = {}
-    for labels, value in _COUNTER.findall(text):
+    for labels, value in matched:
         parsed = dict(_LABEL.findall(labels))
         key = safe_label(parsed["key"]) if "key" in parsed else "(none)"
         status = safe_label(parsed.get("status", "(none)"))
-        totals.setdefault(key, {})[status] = int(float(value))
+        # Series that differ in another label (a model, a route) are summed, never overwritten.
+        by_status = totals.setdefault(key, {})
+        by_status[status] = by_status.get(status, 0) + int(float(value))
     gauges = {name: int(float(value)) for name, value in _GAUGE.findall(text)}
     if set(gauges) != {"requests_running", "requests_waiting"}:
         raise ValueError("TensorFold's /metrics reports no request gauges")
@@ -101,8 +118,12 @@ def read_once() -> dict[str, Any]:
         timeout=60,
     )
     if done.returncode != 0:
-        raise SystemExit(f"the reading failed: {done.stderr.strip().splitlines()[-1:]}")
-    reading = json.loads(done.stdout.strip().splitlines()[-1])
+        # Never the container's own words: an error there could echo a configured value.
+        raise SystemExit(f"the reading failed inside {CONTAINER} (exit {done.returncode})")
+    lines = done.stdout.strip().splitlines()
+    if not lines:
+        raise SystemExit(f"the reading inside {CONTAINER} printed nothing")
+    reading = json.loads(lines[-1])
     return {"at": datetime.now(UTC).isoformat(timespec="seconds"), **reading}
 
 
@@ -124,13 +145,24 @@ def main(argv: list[str] | None = None) -> int:
         print(json.dumps(read_once(), sort_keys=True))
         return 0
     if args.command == "watch":
+        # A failed reading is a gap the record shows, never a silent end: a watch that died would
+        # read as "no other caller" for the rest of its window. Exit 1 if any reading failed.
         end = time.monotonic() + args.seconds
+        gaps = 0
         with args.out.open("a") as out:
             while time.monotonic() < end:
-                out.write(json.dumps(read_once(), sort_keys=True) + "\n")
+                try:
+                    line = read_once()
+                except (SystemExit, subprocess.TimeoutExpired, ValueError) as e:
+                    gaps += 1
+                    line = {
+                        "at": datetime.now(UTC).isoformat(timespec="seconds"),
+                        "error": type(e).__name__,
+                    }
+                out.write(json.dumps(line, sort_keys=True) + "\n")
                 out.flush()
                 time.sleep(args.interval)
-        return 0
+        return 1 if gaps else 0
     ap.print_help()
     return 2
 
