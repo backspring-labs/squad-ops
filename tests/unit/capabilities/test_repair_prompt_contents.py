@@ -138,6 +138,11 @@ _HANDLERS = "".join(
     "  try {\n    return 1;\n  } catch (e) {\n    return 2;\n  }\n}\n\n"
     for i in range(15)
 )
+_NAMED_HANDLERS = "".join(
+    f"export function {'theMoonPeriodHandler' * 30}{i}() {{\n"
+    "  try {\n    return 1;\n  } catch (e) {\n    return 2;\n  }\n}\n"
+    for i in range(4)
+)
 #: Invented files of each kind of selector either resolver writes, and how many entities each
 #: lists: a class and its methods (``method:CLASS.NAME``), an import a backslash continues and
 #: decorators; more entities than the form lists, ``(+N more)``; names outside ASCII, which JSON
@@ -180,6 +185,9 @@ _FORMS = {
         3,
     ),
     "app/api/handlers/route.ts": (_HANDLERS, 45),
+    # Few handlers whose names are most of their text: three selectors a statement is what bounds
+    # them.
+    "app/api/named/route.ts": (_NAMED_HANDLERS, 12),
     "console/src/continued.js": (
         "import data from './moons\\\n-table.js';\n\nexport const n = 1;\n",
         3,
@@ -187,7 +195,7 @@ _FORMS = {
     # A form feed inside an import's source: a line break to ``str.splitlines``, not to either
     # resolver.
     "console/src/formfeed.js": (
-        "import data from 'a" + "\x0ca" * 80 + "';\n\nexport const n = 1;\n",
+        "import data from 'a" + "\x0ca" * 700 + "';\n\nexport const n = 1;\n",
         3,
     ),
     "console/src/broken.jsx": ("export function Panel( {\n", 0),
