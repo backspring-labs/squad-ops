@@ -304,3 +304,24 @@ def test_a_purge_count_is_refused_without_a_record_or_below_zero(cleanup, argv):
     with pytest.raises(SystemExit):
         hygiene.main(argv, cwd=main, pr_lookup=lookup)
     assert not (main / "site").exists()
+
+
+def test_a_worktree_another_tool_keeps_elsewhere_is_kept_and_named(cleanup, tmp_path, capsys):
+    """#2751: git lists every worktree of the repository, wherever it lives. The nostromo crews keep
+    one detached on main under ``~/.config``, and the sweep read it as finished work and marked it
+    for removal, which the cut's ``--apply`` would have done. Bug caught: a worktree outside the
+    checkout's roots (beside it, or ``.claude/worktrees/``) judged at all."""
+    main, _, prs = cleanup
+    elsewhere = tmp_path / "config" / "tool" / "reviewed"
+    elsewhere.parent.mkdir(parents=True)
+    _git("worktree", "add", "-q", "--detach", str(elsewhere), "main", cwd=main)
+    nested = main / ".claude" / "worktrees" / "agent-done"
+    _git("worktree", "add", "-q", "--detach", str(nested), "main", cwd=main)
+
+    trees, _ = hygiene.survey(main, prs)
+    found = {f.worktree.path.name: f for f in trees}
+
+    assert found["reviewed"].remove is False
+    assert found["reviewed"].reason.startswith("outside this checkout's worktree roots")
+    # A checkout's own agent worktree, detached on main, is still judged and removed.
+    assert found["agent-done"].remove is True

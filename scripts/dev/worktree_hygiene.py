@@ -218,6 +218,16 @@ def _real_dir_with_files(path: Path) -> int:
     return sum(1 for p in path.rglob("*") if p.is_file())
 
 
+def within_roots(main: Path, path: Path) -> bool:
+    """Whether the sweep may judge a worktree: one beside the main checkout, or under its
+    ``.claude/worktrees/``. Git lists every worktree of the repository wherever it lives, and a
+    checkout another tool keeps at a pinned commit (the nostromo crews' ``squadops-reviewed``,
+    detached on main) read as finished work and was marked for removal (#2751). Anything else is
+    kept and named, for a person to remove by hand if it is ours."""
+    resolved, root = path.resolve(), main.resolve()
+    return resolved.parent == root.parent or (root / ".claude" / "worktrees") in resolved.parents
+
+
 def survey(main: Path, pr_lookup: PrLookup) -> tuple[list[WorktreeFinding], list[BranchFinding]]:
     base = base_ref(main)
     trees: list[WorktreeFinding] = []
@@ -225,6 +235,16 @@ def survey(main: Path, pr_lookup: PrLookup) -> tuple[list[WorktreeFinding], list
     for wt in list_worktrees(main):
         if wt.branch:
             held.add(wt.branch)
+        if not within_roots(main, wt.path):
+            trees.append(
+                WorktreeFinding(
+                    wt,
+                    False,
+                    "outside this checkout's worktree roots (beside it, or .claude/worktrees/): "
+                    "another tool's, or remove it by hand",
+                )
+            )
+            continue
         if wt.prunable:
             trees.append(WorktreeFinding(wt, True, "its directory is gone (prune)"))
             continue
