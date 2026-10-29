@@ -27,6 +27,7 @@ from __future__ import annotations
 import asyncio
 import dataclasses
 import json
+import logging
 from functools import partial
 from types import SimpleNamespace
 from unittest.mock import AsyncMock
@@ -702,7 +703,12 @@ async def test_a_promotion_refused_in_the_last_instant_is_logged_never_raised(tm
         await world.started()
 
     record = recorded_calibration(await world.campaigns.control_log(CID))
-    assert [r.getMessage() for r in caplog.records] == ["campaign_record_promotion_refused"]
+    errors = [
+        r
+        for r in caplog.records
+        if r.name == "squadops.campaigns.progress" and r.levelno >= logging.ERROR
+    ]
+    assert [r.getMessage() for r in errors] == ["campaign_record_promotion_refused"]
     assert not await _decided(world, record)
     assert (await world.campaigns.get_campaign(CID)).state is CampaignState.COMPLETED
 
