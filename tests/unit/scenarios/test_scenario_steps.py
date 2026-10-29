@@ -289,6 +289,6 @@ async def test_a_check_naming_a_value_no_step_saved_is_the_suites_gap_not_a_fail
 )  # fmt: skip
 def test_a_name_no_step_saves_before_its_read_is_refused_when_drafted(steps, checks, refused):
     """#2784. Bugs caught: a misspelt or misordered name reaching an approved suite, where it
-    reads as the product failing; and a refusal of a name a step does save, or of a ``save``'s own
-    response paths."""
+    reads as the product failing; and a refusal of a name a step does save, or one an HTTP check
+    reads from a later step."""
     assert vocabulary_refusals(steps, checks) == refused

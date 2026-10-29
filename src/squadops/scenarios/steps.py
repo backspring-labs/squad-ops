@@ -472,7 +472,7 @@ def _name_refusals(
     before: dict[int, set[str]] = {}
     for n, step in enumerate(steps, start=1):
         before[n] = set(saved)
-        for name in sorted(_names({k: v for k, v in step.items() if k != "save"}) - saved):
+        for name in sorted(_names(dict(step)) - saved):
             out.append(f"step {n}: names {{{name}}}, which no earlier step saves")
         if step.get("action") == "http" and isinstance(step.get("save"), Mapping):
             saved |= set(step["save"])
