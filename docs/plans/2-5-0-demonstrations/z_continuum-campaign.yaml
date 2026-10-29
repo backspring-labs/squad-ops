@@ -1,0 +1,35 @@
+# The 2.5 main demonstration (2.5 plan §2.1, §2.1a): a Campaign on a repository-backed Project SquadOps
+# didn't build, across two features with an outside change to its CLAUDE.md between them. IR-3, IR-4,
+# IR-5, IR-6, IR-8 and IR-9 are read on it (docs/plans/verification-sets/2-5-0-demonstrations-preregistration.md).
+# Uncounted for the regression rolls; its readings are the release's cross-lane scenarios.
+project_id: prj-z-continuum
+objective:
+  statement: "add the two read-by-id endpoints the requirements describe, one increment each"
+  allowed_scope: ["src/**", "tests/**"]
+  measurement: "two accepted increments, each judged on the product's own runner"
+  target_accepted_increments: 2
+  requirements: art_da4c3bd75d8f
+  work_class:
+    prd_tier: tier-1
+    attendance: unattended
+policy:
+  # 2 increments + one repair or retry each (2) + 2 replacements. A repository-backed calibration is
+  # a record, not a cycle (SIP-0109 §24bv point 1), so it counts none.
+  max_cycles: 6
+  max_elapsed_s: 43200
+  budget_tokens: 4000000
+  max_repair_cycles_per_increment: 1
+  max_retry_cycles_per_increment: 1
+  max_proposal_run_retries: 1
+  max_proposal_revisions: 2
+  max_rejected_proposals_in_row: 2
+  max_unaccepted_increments: 2
+  ruling_bound_s: 1800
+  lease_expiry_s: 3600
+  launch_blocked_interval_s: 300
+  launch_blocked_attempts: 6
+  calibration_profile: campaign-increment-source
+  proposal_profile: campaign-increment-source
+  squad_profile: full-38-tf
+  plan_gate: tier
+scenario_suite: 7ce880421ac14bb84d4132f972e4b97c4c180dd4984cbf5bcd1f8a733fe4fbd7
