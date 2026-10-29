@@ -179,15 +179,41 @@ async def _decided(world, record) -> bool:
     return decision_key(record.record_id) in {e.idempotency_key for e in log}
 
 
+class _Asked:
+    """The registry, recording the revision each configuration is read at and the pin each
+    derived profile is read at."""
+
+    asked: list = []
+
+    def __init__(self, inner) -> None:
+        self._inner = inner
+        _Asked.asked = []
+
+    async def get_development_configuration(self, project_id, revision=None):
+        _Asked.asked.append(("configuration", revision))
+        return await self._inner.get_development_configuration(project_id, revision)
+
+    async def get_derived_profile(self, project_id, *, at=None):
+        _Asked.asked.append(("profile", at))
+        return await self._inner.get_derived_profile(project_id, at=at)
+
+    def __getattr__(self, name):
+        return getattr(self._inner, name)
+
+
 async def test_the_records_commit_is_read_whole_started_from_its_revision_and_names_the_record(
     tmp_path,
 ):
     """§10l end to end. Bugs caught: a tree other than the record's commit read; the start not
-    the declared one at the record's revision; the executable bits dropped; the reading naming a
-    cycle, a previous tree, or no unit; the reading taken after the promotion, so it runs beside
-    the first increment rather than on the idle box."""
-    world, store, runner, record = await _heard(tmp_path)
+    the declared one at the record's revision, or the profile read at another pin; the executable
+    bits dropped; the reading naming a cycle, a previous tree, or no unit; the reading taken after
+    the promotion, so it runs beside the first increment rather than on the idle box."""
+    world, store, runner, record = await _heard(tmp_path, projects=_Asked)
 
+    assert _Asked.asked == [
+        ("configuration", record.development_configuration_revision),
+        ("profile", (record.commit, record.development_configuration_revision)),
+    ]
     [reading] = await store.evaluations_for_calibration_record(record.record_id)
     checkout = await world.clones.tree_at(PROJECT, record.commit)
     [call] = runner.calls
@@ -253,31 +279,51 @@ def _no_start(configuration):
     )
 
 
+def _blueprint_no_start(configuration):
+    """A product made from a scaffold blueprint whose configuration declares no start."""
+    return dataclasses.replace(_no_start(configuration), stack=BLUEPRINT)
+
+
 @pytest.mark.parametrize(
-    ("configure", "reason", "quality"),
+    ("configure", "reason", "quality", "lint"),
     [
-        (None, BlockedReason.SECRET_NOT_AVAILABLE, QualityReading(QualityStatus.NOT_APPLICABLE)),
+        (
+            None,
+            BlockedReason.SECRET_NOT_AVAILABLE,
+            QualityReading(QualityStatus.NOT_APPLICABLE),
+            NotMeasured.NOT_A_SCAFFOLD_STACK,
+        ),
         (
             _with_ui,
             BlockedReason.SECRET_NOT_AVAILABLE,
             QualityReading.not_measured(NotMeasured.SECRET_NOT_AVAILABLE),
+            NotMeasured.NOT_A_SCAFFOLD_STACK,
         ),
         (
             _no_start,
             BlockedReason.NO_START_DECLARATION,
             QualityReading.not_measured(NotMeasured.NO_START_DECLARATION),
+            NotMeasured.NOT_A_SCAFFOLD_STACK,
+        ),
+        (
+            _blueprint_no_start,
+            BlockedReason.NO_START_DECLARATION,
+            QualityReading.not_measured(NotMeasured.NO_START_DECLARATION),
+            NotMeasured.NO_START_DECLARATION,
         ),
     ],
-    ids=["tallys-own-secret", "a-secret-with-pages", "no-start-declaration"],
+    ids=["tallys-own-secret", "a-secret-with-pages", "no-start-declaration", "a-blueprints-too"],
 )
 async def test_a_declaration_that_cant_run_blocks_every_scenario_and_measure(
-    tmp_path, configure, reason, quality
+    tmp_path, configure, reason, quality, lint
 ):
     """§10l, contract 7's reasons: nothing is started, every applicable scenario reads
     ``blocked_unverified`` with the reason, and every measure the start would serve is not
-    measured for it. With no declaration every scenario applies. Bugs caught: a blocked start
-    read as passing or not applicable; and (found building this) a product with pages whose secret
-    nothing releases failing the reading outright, since the page measures had no reason for it."""
+    measured for it: a blueprint's lint too, for the start's reason, since nothing reached the
+    runner that lints. With no declaration every scenario applies. Bugs caught: a blocked start
+    read as passing or not applicable; a blueprint's lint read as the evaluator's failure; and
+    (found building this) a product with pages whose secret nothing releases failing the reading
+    outright, since the page measures had no reason for it."""
     world, store, runner, record = await _heard(tmp_path, configure=configure)
 
     [reading] = await store.evaluations_for_calibration_record(record.record_id)
@@ -288,6 +334,7 @@ async def test_a_declaration_that_cant_run_blocks_every_scenario_and_measure(
         (ScenarioResult.BLOCKED_UNVERIFIED, reason)
     }
     assert reading.quality == quality
+    assert (reading.lint.status, reading.lint.reason) == (QualityStatus.NOT_MEASURED, lint)
     assert await _decided(world, record)
 
 
@@ -583,3 +630,23 @@ async def test_a_sample_applications_start_reads_no_baseline(tmp_path):
     evaluate_baseline.assert_not_awaited()
     [intent] = await campaigns.launch_intents(CID)
     assert intent.cycle_kind is CycleKind.CALIBRATION
+
+
+def test_the_runtime_root_hands_the_progress_the_evaluators_baseline_reading():
+    """Bug caught: the root building the campaign's progress with no baseline hook, so no
+    repository-backed campaign is ever read at its start while each test, built on its own
+    progress, stays green."""
+    import ast
+    from pathlib import Path
+
+    main = Path(__file__).resolve().parents[3] / "src/squadops/api/runtime/main.py"
+    [call] = [
+        node
+        for node in ast.walk(ast.parse(main.read_text()))
+        if isinstance(node, ast.Call) and getattr(node.func, "id", "") == "CampaignProgress"
+    ]
+    passed = {k.arg: ast.unparse(k.value) for k in call.keywords}
+    assert (passed["evaluate_outcome"], passed["evaluate_baseline"]) == (
+        "cycle_evaluator.cycle_ended",
+        "cycle_evaluator.calibration_recorded",
+    )
