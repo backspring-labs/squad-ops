@@ -72,7 +72,7 @@ contracts (its §8.2). §4.8 says what this SIP produces and reads at each.
 >   revision's design (§4.1, §4.8).
 > - **No conflict.**
 
-## Delivery ledger (current as of 2026-10-28)
+## Delivery ledger (current as of 2026-10-29)
 
 One row per part that ships separately. Statuses as CLAUDE.md defines them. The 2.4 plan places phase 1 in 2.4
 (committed) and phase 2 in 2.4 conditionally. **Phase 1's parts are placed** with the issues filed at acceptance
@@ -100,6 +100,7 @@ contribution separates from acceptance.
 | phase 1 amendment: Lighthouse and axe on a seeded instance, parameterised pages included (§10j; reviewed in §10n) | **shipped** (§10n, §10o): a second instance of each evaluated tree, seeded through its own API and measured on every page the seed names, and the window's 20 trees re-measured as their own series. S1 **holds**, S2 **falsified** (§10o) | 2.4.0, PRs #2632, #2633, #2634 and #2635, issue #2562 |
 | phase 1 amendment: a finer quality reading, axe by element, failing audits by id, the HTTPS audits read as the environment's (§10o; designed, reviewed and approved in §10y) | **shipped**: built as the evaluator's `…-eslint10.12-7` (PR #2762) and read on its pre-registered series (§10z): S1 and E hold, S2a falls for both new measures, and the positive control falls as written, so every new measure stays reporting-only | 2.5.0, PR #2762 and the PR recording §10z, issue #2637 |
 | a repository-backed Project's Campaign: its baseline reading, an evaluation of the calibration record's commit, and a greenfield product made from a scaffold blueprint linted by that blueprint's rule set (§10l; SIP-0112 H.4, H.14, SIP-0109 §24bv) | **shipped** (§10ac): the record's commit read when the record is heard, the reading naming the record in place of a cycle (contract 5's `calibration_record_id`), the deltas against it or "no baseline reading", and lint by the blueprint at the baseline and each increment, alone when the product can't start. Its outside review's findings are fixed (§10ac); the cycle path's stale snapshot is #2789, fixed by SIP-0109 §24cq. §4.5 on such a Project (its proposal shown its goals) is named in §10ac as not built, and unplaced | 2.5.0, PR #2788, refs #2619 (stays open for SIP-0112 H.4's other parts) |
+| phase 1 amendment: a failed start's cause kept on the evaluation record, in its campaign's package and in the runtime's log (§10ae; contract 5's record) | **shipped** (§10ae): the record's nullable `start_failure` (migration 1990), scrubbed by the runner's one scrubber and bounded; the start's detail in each quality reading it kept from being taken; package version 8 and a digest line; the runtime's `evaluation_start_failed` line. The readiness's last answer (a 403) is not in the detail yet, a sandbox change named in §10ae | 2.5.0, PR #2797, issue #2793 |
 
 **What closes this SIP:** phase 1 shipped and phase 2 shipped, or phase 2 dropped by a numbered amendment the owner
 rules.
@@ -2785,3 +2786,96 @@ count with the suites' approvals. The implementer never reads a held-out suite.
 No ledger row covers the markers: this corrects the instrument of shipped parts (§10p, §10t, §10w).
 
 **Who ruled.** The supervisor ruled it under the owner's 2.5 grants.
+
+### 10ae. A failed start's cause is kept on the evaluation record, in its campaign's package and in the runtime's log (2026-10-29, §4.1, §4.8, §10b, §10c, §10l; contract 5's record; #2793; the supervisor's fix, for the outside review SIP-0112 H.12 provides)
+
+**What was wrong.** §10c's runner returns why a start failed: the setup step that exited, or the readiness that timed
+out, with the app's own last lines (`TreeEvaluation.start_detail` and `startup_diagnostics`), scrubbed of the
+evaluation's secrets. The evaluation service read only `started` and dropped both. So a record said `start_failed` on
+every scenario and nothing else, and no log named the cause.
+- **Seen on** the 2.5 short demonstration's first Campaign, `cmp_4a80ee867295` (2026-10-29). Its baseline reading,
+  `evl_ade98c297b2d`, read `start_failed` throughout.
+- **The cause was found by reading the code.** Readiness on the app network is polled by the app's container name, and
+  the declaration's readiness went through Vite's preview, which refuses a `Host` it doesn't know.
+
+**What changed.**
+- **The record keeps the cause** in `EvaluationRecord.start_failure`, a `StartFailure` of `detail` and `diagnostics`.
+  - The field is additive and nullable. It is set only when the runner was asked to start the tree and it didn't.
+  - It is `None` on a start that succeeded, on a start never attempted, and on every record written before it. A start
+    is never attempted when there is no runner, or when the declaration can't run; the outcomes already name that
+    reason.
+  - Migration 1990 adds its JSONB column.
+- **It is scrubbed by the runner's own scrubber, then bounded** (`TreeEvaluation.start_failure`).
+  - The scrubber moved from the sandbox adapter to `squadops.scenarios.runner` (`secret_scrubber`). The sandbox's two
+    copies of it use it now, so there is one scrubber, and what the sandbox returns is unchanged.
+  - The runtime scrubs again with the secrets the start was given, so a runner that scrubbed nothing still stores none.
+    It scrubs the lines joined, so it catches a value that spans two lines; the sandbox's line-by-line scrub can't.
+  - Then the record keeps the last 40 lines (`DIAGNOSTIC_LINES`, the runner's own bound, now in one place). Each is cut
+    to 500 characters (`DIAGNOSTIC_LINE_CHARS`), with how much was dropped. Scrubbing comes first, so a cut never
+    leaves part of a secret.
+  - No evaluation secret is released in 2.5 (#2421 is unbuilt), so today the scrub has nothing to replace.
+- **Each reading the failed start kept from being taken says why.** A quality or seeded reading that is *not measured*
+  for `start_failed` carries the start's detail. Lint reads the tree whatever the start did (§4.2), so it is never not
+  measured for this reason.
+- **Why the record needed a field, not only the readings' details:** a product that serves no pages has a quality
+  reading that's *not applicable*. Tally, an HTTP-only service, is one. Its record's `start_failure` is the only place
+  the cause can be read.
+- **The package (version 8) carries `start_failure`** beside a reading's quality and lint, only when it is set. So a
+  package of starts that succeeded is unchanged.
+  - The digest gives the cause on one line: `the start failed: <detail> (the app's last N lines are in the package)`.
+  - An operator reads a record through the API and the CLI this way: `squadops campaigns digest`, and the package
+    beside it.
+- **The runtime's log names the failure:** `evaluation_start_failed: evaluation <id> of Project <project> (cycle <id>
+  or calibration record <id>, campaign <id>): <detail>; the app's last N lines are on the record`.
+  - The fields are in the message itself, because the runtime's handler prints the message alone and drops a log
+    record's extras (`api.runtime.logging_setup`).
+  - The app's lines are not logged, only counted.
+
+**What it changes for contract 5.**
+- The record's shape gains one nullable field.
+- Contract 5's reference (`OutcomeEvaluationRef`, SIP-0112 §8.2.1) is unchanged, byte for byte. §10p ruling 7 added
+  fields to the record the same way without G4.
+- It takes the outside review all the same (SIP-0112 H.12), since the issue named the record contract 5's.
+- Nothing that decides a campaign reads the field. The proposer (§4.5) reads outcomes and quality measures only, never a
+  reading's detail or this field.
+
+**Held out.** A failed start ran no scenario: setup and readiness come before any step is sent. So the start's text
+can't carry a step's values.
+
+**Not in this fix.**
+- **The readiness's last answer.** The sandbox's readiness check reads only whether an answer was a 2xx
+  (`ContainerScenarioRunner._answers`). So a readiness refused with a 403 still reads "not ready at … within Ns", and
+  the app's own lines may not name the 403. Putting the last answer in the detail is a sandbox change, left for its own
+  issue.
+- **The line #2793 suggests for contract 7's guidance:** readiness on the app network is read by the container's name,
+  so declare it on a server that doesn't check `Host`. It belongs in SIP-0112's contract 7, not here.
+
+**Evidence.**
+- **The wiring tests** are in `tests/unit/scenarios/test_start_failure_on_the_record.py`. They enter at
+  `CampaignProgress.calibration_recorded` and `CampaignProgress.cycle_ended`, through the evaluator the runtime builds,
+  on Tally. Each asserts the stored record, the package, the digest and the log line exactly.
+- **The rest enter at `evaluate_cycle`:**
+  - a secret the start was given is never stored or logged: in the detail, across three lines, and at the cut;
+  - a secret that contains another is replaced whole;
+  - what the app printed is kept bounded;
+  - a start that succeeded, no runner, an unreachable runner and a start never attempted keep nothing and log nothing;
+  - a runner that named no cause says so;
+  - the Postgres store writes and reads the column.
+- **The store's round trip** is held against Postgres in its integration test.
+- **Mutants:** 20 applied, 20 caught.
+  - In the runtime: the cause never kept; the secrets not passed; the lines scrubbed one by one; the cut before the
+    scrub; the first lines kept; no cut; a start that succeeded given a failure; the quality or seeded reading without
+    the detail; no log line; the log naming the wrong unit.
+  - In the store and the package: the column not written, or read back raw; the package never carrying it, or carrying
+    it on every record; the digest's baseline without it.
+  - In the sandbox: its text scrubbed of nothing; its evidence scrubbed of nothing; a resolved secret keeping its
+    screenshot; the scrubber taking the shortest value first.
+  - Two survived the first run, and both are fixed. The method's own guard carried no load, since the service asked
+    only a failed start; the service now asks every answer. The scrubber's longest-first rule was untested since
+    #2450; it is held now.
+- **Loaded checks:** `2793-start-failure-on-the-record` (the runtime) and `2793-sandbox-one-scrubber` (the sandbox
+  service), each run on the source. The `10l-baseline-reading` row reads the package version as at least 7, as earlier
+  rows do.
+
+**Who ruled.** The supervisor filed #2793 and assigned the fix. The field's shape, the bounds and the package's key are
+the implementer's choices, for the outside review.

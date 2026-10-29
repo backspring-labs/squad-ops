@@ -14,15 +14,50 @@ This SIP never infers how to start a product from a sample application.
 
 from __future__ import annotations
 
-from collections.abc import Mapping
+from collections.abc import Callable, Collection, Mapping
 from dataclasses import dataclass, field
 from pathlib import PurePosixPath
 from typing import Any
 from urllib.parse import urlsplit
 
-from squadops.scenarios.evaluation import BlockedReason
+from squadops.scenarios.evaluation import BlockedReason, StartFailure
 from squadops.scenarios.quality import LintReading, QualityReading
 from squadops.scenarios.steps import ScenarioRun
+
+#: The last lines the runner returns of a process that failed: a failed start's own output
+#: (``TreeEvaluation.startup_diagnostics``: the setup step's, or the app's when it never became
+#: ready, SIP-0113 §10c), or a failed evaluator's. The record keeps as many of a start's (#2793).
+DIAGNOSTIC_LINES = 40
+#: What the record keeps of each of those lines, and of the start's detail (#2793). A longer line
+#: keeps its head and says how much it dropped: a bundler's one line can run to megabytes, and the
+#: record, its campaign's package and the runtime's log line are each read whole.
+DIAGNOSTIC_LINE_CHARS = 500
+#: What a resolved evaluation secret's value reads as wherever free text carried it (Q40).
+REDACTED = "[redacted]"
+
+
+def secret_scrubber(secrets: Collection[str]) -> Callable[[str], str]:
+    """Text with each of ``secrets`` replaced by ``REDACTED`` (Q40: never in a log, a record or an
+    agent's input), longest first, so a value that contains another is replaced whole. Only free
+    text goes through it: a short secret (``pass``) must never rewrite a result (``passed``), an
+    identity or an id (the MacBook lane's review of #2450). The runner scrubs what it returns with
+    it (SIP-0113 §10c), and the runtime what it keeps of a failed start (#2793)."""
+    values = sorted({v for v in secrets if v}, key=len, reverse=True)
+
+    def scrub(text: str) -> str:
+        for secret in values:
+            text = text.replace(secret, REDACTED)
+        return text
+
+    return scrub
+
+
+def _kept_line(text: str) -> str:
+    """A line as the record keeps it: whole up to ``DIAGNOSTIC_LINE_CHARS``, else its head."""
+    if len(text) <= DIAGNOSTIC_LINE_CHARS:
+        return text
+    dropped = len(text) - DIAGNOSTIC_LINE_CHARS
+    return f"{text[:DIAGNOSTIC_LINE_CHARS]}… ({dropped} more characters)"
 
 
 class RunnerUnavailable(Exception):
@@ -330,6 +365,24 @@ class TreeEvaluation:
     quality_seeded: QualityReading | None = None
     #: Each client route asked for, as the browser read it (SIP-0109 §24co). Empty when none was.
     routes: tuple[RouteReading, ...] = ()
+
+    def start_failure(self, secrets: Collection[str] = ()) -> StartFailure | None:
+        """Why the start failed, as the evaluation record keeps it (#2793): the detail, and the
+        app's last ``DIAGNOSTIC_LINES`` lines. ``None`` for a start that succeeded.
+
+        Each is scrubbed of ``secrets`` by the runner's own scrubber before it is cut to
+        ``DIAGNOSTIC_LINE_CHARS``, so a cut never leaves part of a secret behind. The lines are
+        scrubbed joined, so a value that spans two of them (a key with a newline) is caught here
+        too, which the runner's line-by-line scrub can't do."""
+        if self.started:
+            return None
+        scrub = secret_scrubber(secrets)
+        joined = scrub("\n".join(self.startup_diagnostics)) if self.startup_diagnostics else None
+        lines = joined.split("\n")[-DIAGNOSTIC_LINES:] if joined is not None else []
+        return StartFailure(
+            detail=_kept_line(scrub(self.start_detail)) if self.start_detail is not None else None,
+            diagnostics=tuple(_kept_line(line) for line in lines),
+        )
 
     def as_dict(self) -> dict[str, Any]:
         return {

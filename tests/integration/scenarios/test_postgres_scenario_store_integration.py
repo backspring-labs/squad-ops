@@ -319,3 +319,54 @@ async def test_a_calibration_records_reading_names_it_in_place_of_a_cycle_and_th
                     suite.digest,
                     T0,
                 )
+
+
+async def test_a_failed_starts_cause_reads_back_and_a_start_that_succeeded_has_none(store):
+    """SIP-0113 §10ae, migration 1990 (#2793). Bugs caught: the start's detail or the app's lines
+    lost in the JSONB round trip, so the record reads ``start_failed`` with no cause again; a
+    record with no failure read back with one."""
+    from squadops.scenarios.evaluation import (
+        Applicability,
+        BlockedReason,
+        ScenarioOutcome,
+        ScenarioResult,
+        StartFailure,
+        evaluation_record,
+    )
+
+    scenarios, _pool = store
+    suite = parse_suite(SUITE)
+    await draft_suite(scenarios, suite, actor="supervisor", at=T0)
+    outcomes = tuple(
+        ScenarioOutcome(
+            s.scenario_id,
+            s.version,
+            s.goal,
+            Applicability.APPLICABLE,
+            ScenarioResult.BLOCKED_UNVERIFIED,
+            blocked_reason=BlockedReason.START_FAILED,
+        )
+        for s in suite.scenarios
+    )
+    failure = StartFailure(
+        "not ready at /healthz within 30s",
+        ("tally: serving on 0.0.0.0:18407", "TALLY_ADMIN_TOKEN=[redacted]"),
+    )
+
+    def reading(cycle_id, start_failure):
+        return evaluation_record(
+            suite, outcomes, project_id="prj-tally", campaign_id="cmp_pg0000000020",
+            cycle_id=cycle_id, evaluated_tree_identity="e" * 64,
+            previous_accepted_tree_identity=None, evaluated_at=T0,
+            quality=QualityReading.not_measured(NotMeasured.START_FAILED, failure.detail),
+            lint=LintReading.not_measured(NotMeasured.NOT_A_SCAFFOLD_STACK),
+            start_failure=start_failure,
+        )  # fmt: skip
+
+    failed, succeeded = reading("cyc_pg0000000020", failure), reading("cyc_pg0000000021", None)
+    for record in (failed, succeeded):
+        await scenarios.save_evaluation(record)
+
+    assert await scenarios.get_evaluation(failed.evaluation_id) == failed
+    assert (await scenarios.get_evaluation(failed.evaluation_id)).start_failure == failure
+    assert (await scenarios.get_evaluation(succeeded.evaluation_id)).start_failure is None
