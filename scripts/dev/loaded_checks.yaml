@@ -2145,3 +2145,13 @@ checks:
       h = content_hash(r)
       print(h, load_stored_change_request(stored_change_request(d.replace(r, content_hash=h))).criteria[0].anchor, RefusalKind.ANCHOR_NOT_UNIQUE.value, anchor_conflicts({"/x": "home-view"}, {"/": ("home-view",)}))
     expect: "2e1bb4fc15f593403f6f47a6c8ec532ccfa7336e411cdf4c819082a2502dfc3c p-view anchor_not_unique {'/x': ['/']}"
+  - id: "2784-checks-read-saved-values"
+    what: a scenario's HTTP checks are rendered with the values its steps saved, and a name nothing saves is refused when drafted (SIP-0113 §10ab, #2784)
+    container: squadops-sandbox-service
+    code: |
+      import asyncio
+      from squadops.scenarios.steps import HttpResponse, run_scenario, vocabulary_refusals
+      async def send(r): return HttpResponse(200, [{"id": "k1"}] if r.path == "/l" else {"id": r.path.rsplit("/", 1)[-1]})
+      s = {"scenario_id": "s", "steps": [{"action": "http", "method": "GET", "path": "/l", "save": {"k": "0.id"}}, {"action": "http", "method": "GET", "path": "/l/{k}"}], "checks": [{"check": "json", "step": 2, "path": "id", "equals": "{k}"}]}
+      print(asyncio.run(run_scenario(s, send)).result, vocabulary_refusals(s["steps"], [{"check": "json", "step": 2, "path": "id", "equals": "{q}"}]))
+    expect: "passed ['check 1: names {q}, which no step before it saves']"
