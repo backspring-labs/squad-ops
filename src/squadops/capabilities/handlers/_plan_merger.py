@@ -12,8 +12,9 @@ the proposer's reasoning recorded; blocking conflicts are escalated to
 operator notes verbatim. Unresolved cross-proposal dependencies surface in
 operator notes rather than being auto-stubbed.
 
-One file ownership rule rides on rule 2 (SIP-0093 §15b, #2795): an increment's criterion file
-that a development task and a qa task both claim is the qa task's (``_criterion_files_to_qa``).
+One file ownership rule rides on §5.8 rule 1, domain ownership (SIP-0093 §15b, #2795): an
+increment's criterion file that a development task and a qa task both claim is the qa task's
+(``_criterion_files_to_qa``).
 
 This module is intentionally stateless and side-effect-free. The handler
 shell in ``planning/merge.py`` calls ``merge_proposals(...)`` and wraps
@@ -24,7 +25,7 @@ from __future__ import annotations
 
 import dataclasses
 import logging
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from typing import Any
 
 import yaml
@@ -69,7 +70,12 @@ _QA_TASK_TYPES = frozenset({TaskType.QA_TEST})
 def _resolve_dependency_edges(
     indexed_pairs: list[tuple[PlanTask, CanonicalTaskProvenance, ProposedTask]],
     focus_to_index: dict[str, int],
-) -> tuple[list[tuple[PlanTask, CanonicalTaskProvenance]], list[tuple[int, str]]]:
+    dropped: Mapping[str, Sequence[str]],
+) -> tuple[
+    list[tuple[PlanTask, CanonicalTaskProvenance]],
+    list[tuple[int, str]],
+    list[tuple[int, str, str]],
+]:
     """Resolve each task's ``depends_on_focus`` references to canonical
     ``task_index`` edges (SIP-0093 rule 5).
 
@@ -78,13 +84,24 @@ def _resolve_dependency_edges(
     (``dev:backend models``). A reference that still misses after normalization
     is a genuine gap (a focus no task produced) and is returned in
     ``unresolved_deps`` keyed by its normalized form for the operator note.
+
+    §15b: a reference to a development task the merge dropped (``dropped``, each one's own
+    ``depends_on_focus`` by its key) is re-pointed to that task's own dependencies
+    (:func:`_through_dropped`). A dependency of the dropped task that names no task is returned
+    in the third list, as ``(task_index, dropped key, missing key)``.
     """
     resolved_pairs: list[tuple[PlanTask, CanonicalTaskProvenance]] = []
     unresolved_deps: list[tuple[int, str]] = []  # (task_index, missing_key)
+    unresolved_through: list[tuple[int, str, str]] = []
     for task, prov, orig in indexed_pairs:
         depends_on: list[int] = []
         for dep_key in orig.depends_on_focus:
             norm_key = canonicalize_dep_ref(dep_key)
+            if norm_key in dropped:
+                indices, missing = _through_dropped(norm_key, focus_to_index, dropped)
+                depends_on.extend(i for i in indices if i != task.task_index)
+                unresolved_through.extend((task.task_index, norm_key, m) for m in missing)
+                continue
             if norm_key not in focus_to_index:
                 unresolved_deps.append((task.task_index, norm_key))
                 continue
@@ -96,7 +113,39 @@ def _resolve_dependency_edges(
                 )
             depends_on.append(focus_to_index[norm_key])
         resolved_pairs.append((dataclasses.replace(task, depends_on=sorted(set(depends_on))), prov))
-    return resolved_pairs, unresolved_deps
+    return resolved_pairs, unresolved_deps, unresolved_through
+
+
+def _through_dropped(
+    key: str,
+    focus_to_index: Mapping[str, int],
+    dropped: Mapping[str, Sequence[str]],
+    seen: frozenset[str] = frozenset(),
+) -> tuple[list[int], list[str]]:
+    """§15b: the canonical tasks a dropped development task depended on, which an edge to it is
+    re-pointed to, and the dependencies of its that name no task. A dependency on another dropped
+    task is followed through that one too.
+
+    The proposal's own order is acyclic and authored (#578), so a dependent of the dropped task
+    already came after everything the dropped task needed: the re-pointed edge keeps both. Moving
+    the edge onto the qa task that took the dropped task's files would not: qa tasks follow every
+    development task, so a development dependent would come before its new dependency, which
+    #578's order check refuses.
+    """
+    indices: list[int] = []
+    missing: list[str] = []
+    for dep in dropped[key]:
+        norm = canonicalize_dep_ref(dep)
+        if norm in focus_to_index:
+            indices.append(focus_to_index[norm])
+        elif norm in dropped:
+            if norm not in seen and norm != key:
+                more, unnamed = _through_dropped(norm, focus_to_index, dropped, seen | {key})
+                indices.extend(more)
+                missing.extend(unnamed)
+        else:
+            missing.append(norm)
+    return indices, missing
 
 
 def merge_proposals(
@@ -191,12 +240,13 @@ def merge_proposals(
         for key in prov.source_proposal_task_keys:
             focus_to_index[key] = task.task_index
 
-    resolved_pairs, unresolved_deps = _resolve_dependency_edges(indexed_pairs, focus_to_index)
-    # §15b: an edge to a development task the merge dropped is dropped with it, not moved to the
-    # qa tasks that took its files, which could close a cycle (one of them may depend on the
-    # dependent). Recorded apart from a genuine gap, which a proposer never produced.
-    dropped_edges = [(i, key) for i, key in unresolved_deps if key in dropped_tasks]
-    unresolved_deps = [(i, key) for i, key in unresolved_deps if key not in dropped_tasks]
+    # §15b: an edge to a development task the merge dropped is re-pointed to that task's own
+    # dependencies (_through_dropped), never moved onto the qa task that took its files.
+    resolved_pairs, unresolved_deps, unresolved_through = _resolve_dependency_edges(
+        indexed_pairs,
+        focus_to_index,
+        {key: gone.depends_on_focus for key, gone in dropped_tasks.items()},
+    )
 
     canonical_tasks = [t for t, _ in resolved_pairs]
     provenance_entries = _record_taken_places(
@@ -214,7 +264,10 @@ def merge_proposals(
         strategy_guidance=strategy_guidance,
         brief_conflicts_disposition=brief_conflicts_disposition,
         unresolved_deps=unresolved_deps,
-        dropped_edges=_dropped_edge_notes(dropped_edges, dropped_tasks, focus_to_index),
+        merge_notes=[
+            *_dropped_task_notes(dropped_tasks, focus_to_index),
+            *_unresolved_through_notes(unresolved_through),
+        ],
     )
 
     # Determine proposal_completeness
@@ -368,12 +421,15 @@ def _build_canonical_pair(
 @dataclasses.dataclass(frozen=True)
 class _DroppedTask:
     """A development-side task §15b dropped whole: every file it named is a criterion file that a
-    qa task writes. ``writers`` are those qa tasks' focus keys, in proposal order."""
+    qa task writes. ``writers`` are those qa tasks' focus keys, in proposal order;
+    ``depends_on_focus`` is the dropped task's own, which an edge to it is re-pointed to."""
 
+    focus: str
     proposed_by: tuple[str, ...]
     task_type: str
     files: tuple[str, ...]
     writers: tuple[str, ...]
+    depends_on_focus: tuple[str, ...]
 
 
 def _criterion_files_to_qa(
@@ -388,8 +444,9 @@ def _criterion_files_to_qa(
       on a file the task's own tree lacks fails at its evaluation whatever its code does. The
       task's provenance becomes ``modified``, its reason naming each file and its writer.
     - A development task left with nothing to write is dropped: its whole deliverable is the qa
-      tasks'. Returned by focus key, for the provenance of the qa tasks that take its place and
-      for the edges that pointed at it.
+      tasks'. Returned by focus key, for the provenance of the qa tasks that take its place, for
+      the edges that pointed at it, and for its operator note: its description, prose criteria
+      and ``criteria_refs`` go with it, so product work it described has no writer.
     - A file no qa task claims stays where it is, so no criterion file is left unclaimed.
 
     Any other dual claim, and a criterion file two qa tasks claim, is left for the plan validator
@@ -422,7 +479,12 @@ def _criterion_files_to_qa(
         if not remaining:
             [key] = prov.source_proposal_task_keys
             dropped[key] = _DroppedTask(
-                tuple(prov.proposed_by), str(task.task_type), tuple(given), takers
+                focus=task.focus,
+                proposed_by=tuple(prov.proposed_by),
+                task_type=str(task.task_type),
+                files=tuple(given),
+                writers=takers,
+                depends_on_focus=tuple(orig.depends_on_focus),
             )
             logger.info(
                 "merge_plan: dropping %s; qa task(s) %s write every file it named (§15b)",
@@ -489,18 +551,30 @@ def _record_taken_places(
     return out
 
 
-def _dropped_edge_notes(
-    edges: list[tuple[int, str]],
-    dropped: dict[str, _DroppedTask],
-    focus_to_index: dict[str, int],
+def _dropped_task_notes(
+    dropped: dict[str, _DroppedTask], focus_to_index: dict[str, int]
 ) -> list[str]:
-    """§15b: one operator note per dependency on a development task the merge dropped."""
+    """§15b: one operator note per task the merge dropped, naming its focus and what went with
+    it. The qa tasks that take its place record its key in their provenance; this says what they
+    don't take."""
     return [
-        f"Dependency dropped: canonical task {i} depended on {key!r}, which the merge dropped "
-        f"because every file it named is a criterion file that canonical task(s) "
-        f"{', '.join(str(focus_to_index[w]) for w in dropped[key].writers)} write (SIP-0093 "
-        "§15b). The edge isn't moved to them, since that could close a dependency cycle."
-        for i, key in edges
+        f"Task dropped: {'/'.join(gone.proposed_by)}-proposed {gone.task_type} task "
+        f"{gone.focus!r} ({key}), since every file it named is a criterion file that canonical "
+        f"task(s) {', '.join(str(focus_to_index[w]) for w in gone.writers)} write (SIP-0093 "
+        "§15b). Its description, prose criteria and criteria_refs are not carried: if it "
+        "described product work, no task writes that work."
+        for key, gone in dropped.items()
+    ]
+
+
+def _unresolved_through_notes(unresolved: list[tuple[int, str, str]]) -> list[str]:
+    """§15b: one operator note per dependency a re-pointed edge couldn't resolve: the dropped
+    task's own dependency named no task a proposer produced."""
+    return [
+        f"Unresolved cross-proposal dependency: canonical task {i} depended on {via!r}, which the "
+        f"merge dropped (SIP-0093 §15b), and that task's own dependency {missing!r} names no task "
+        "a proposer produced. Operator review required (gap_fill candidate)."
+        for i, via, missing in unresolved
     ]
 
 
@@ -570,7 +644,7 @@ def _build_operator_notes(
     strategy_guidance: PlanGuidance | None,
     brief_conflicts_disposition: list[BriefConflictDisposition],
     unresolved_deps: list[tuple[int, str]],
-    dropped_edges: list[str],
+    merge_notes: list[str],
 ) -> str:
     """Build the operator_notes prose per §5.9 + §5.8 gap-fill policy."""
     parts: list[str] = []
@@ -605,7 +679,8 @@ def _build_operator_notes(
                 f"{task_index} references {missing_key!r} which no proposer "
                 f"produced. Operator review required (gap_fill candidate)."
             )
-    parts.extend(dropped_edges)
+    # §15b: the tasks the criterion-file rule dropped, and what a re-pointed edge left unresolved.
+    parts.extend(merge_notes)
 
     return "\n".join(parts)
 

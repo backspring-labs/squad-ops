@@ -5573,6 +5573,7 @@ would void their evidence under the plan's invalidation rule. #2792's outside re
 owner's choice) requested items 2 and 5 and the notes on §17. The owner said to fix and merge on green. The build
 choices are the implementer's, for the supervisor's and the owner's review. Item 3 departs from the brief's
 "unchanged", with the evidence above.
+
 ### 24cr. An increment's criterion files are taught by role: the development proposer is told they are the qa tasks' (2026-10-29, §8.1, §24m; SIP-0093 §15b; #2795; the implementer's fix, for the supervisor)
 
 **What was found.** §24m's "taught before enforced" showed every plan author the same appendix,

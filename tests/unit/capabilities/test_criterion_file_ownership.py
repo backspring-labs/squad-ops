@@ -144,7 +144,9 @@ tasks:
 """
 
 
-def _qa_yaml(first_files: tuple[str, ...] = (R1, R2)) -> str:
+def _qa_yaml(
+    first_files: tuple[str, ...] = (R1, R2), r3_depends_on: str = '["dev:Report total line"]'
+) -> str:
     listed = "\n".join(f'      - "{f}"' for f in first_files)
     return f"""\
 version: 1
@@ -177,9 +179,17 @@ tasks:
     expected_artifacts:
       - "{R3}"
     acceptance_criteria: []
-    depends_on_focus:
-      - "dev:Report total line"
+    depends_on_focus: {r3_depends_on}
 """
+
+
+#: The operator note for the issue's shape: the develop task that wrote only R3's file is dropped.
+_R3_DROPPED = (
+    "Task dropped: development-proposed development.develop task 'Criterion test R3' "
+    "(dev:criterion test r3), since every file it named is a criterion file that canonical "
+    "task(s) 2 write (SIP-0093 §15b). Its description, prose criteria and criteria_refs are not "
+    "carried: if it described product work, no task writes that work."
+)
 
 
 _GUIDANCE_YAML = """\
@@ -296,7 +306,7 @@ async def test_the_issues_shape_merges_to_one_owner_per_criterion_file_and_passe
         "'dev:criterion test r3' (SIP-0093 §15b): every file that task named is a criterion "
         f"file a qa task writes ({R3}), so the merge dropped it."
     )
-    assert decisions.operator_notes == ""
+    assert decisions.operator_notes == _R3_DROPPED
     assert plan.validate_unique_expected_artifacts() == []
     assert plan.validate_increment_criterion_files(increment_criterion_files(STORED, "")) == []
 
@@ -400,21 +410,101 @@ def test_an_increment_with_no_dual_claim_merges_byte_for_byte_as_with_no_criteri
     assert _artifacts(with_files[0]) == [["tally/report.py"], [R1, R2], [R3]]
 
 
-def test_an_edge_to_a_dropped_develop_task_is_dropped_not_moved_onto_the_qa_task():
-    """The develop task depends on the criterion-test task (tests first), and the qa task that
-    takes that task's place depends on the develop task. Bugs caught: the edge moved onto the qa
-    task, closing a cycle the plan parser refuses; or dropped silently, so the gate's reader isn't
-    told an ordering the proposal asked for is gone."""
-    dev = _dev_yaml(r3_depends_on="[]", total_depends_on='["dev:Criterion test R3"]')
+#: Two develop tasks that each write only a criterion file, the second depending on the first.
+_DEV_CHAIN = f"""\
+version: 1
+proposal_id: prop-dev-tally
+source_brief_id: brief-tally-001
+proposing_role: development
+scope_statement: |
+  The total line, and the R2 and R3 criterion tests in turn.
+tasks:
+  - task_type: development.develop
+    role: dev
+    focus: "Report total line"
+    description: |
+      Append the total line to render(); write the R1 criterion test.
+    expected_artifacts: ["tally/report.py", "{R1}"]
+    depends_on_focus: []
+  - task_type: development.develop
+    role: dev
+    focus: "Criterion test R2"
+    description: |
+      Write the R2 criterion test.
+    expected_artifacts: ["{R2}"]
+    depends_on_focus: ["dev:Report total line"]
+  - task_type: development.develop
+    role: dev
+    focus: "Criterion test R3"
+    description: |
+      Write the R3 criterion test.
+    expected_artifacts: ["{R3}"]
+    depends_on_focus: ["dev:Criterion test R2"]
+"""
 
-    plan, decisions = _merge(dev, _qa_yaml())
 
-    assert [t.depends_on for t in plan.tasks] == [[], [0], [0]]
-    assert ImplementationPlan.from_yaml(emit_plan_yaml(plan)).tasks[0].depends_on == []
+@pytest.mark.parametrize(
+    ("dev", "qa", "depends_on", "dropped"),
+    [
+        # The qa task that takes R3's place depended on the dropped task, which depended on the
+        # backend task: it ends depending on the backend task.
+        (_dev_yaml(), _qa_yaml(r3_depends_on='["dev:Criterion test R3"]'), [[], [0], [0]], 1),
+        # The backend task depended on the dropped task (tests first), which needed nothing.
+        (
+            _dev_yaml(r3_depends_on="[]", total_depends_on='["dev:Criterion test R3"]'),
+            _qa_yaml(),
+            [[], [0], [0]],
+            1,
+        ),
+        # A dropped task that depended on another dropped task: followed through both.
+        (_DEV_CHAIN, _qa_yaml(r3_depends_on='["dev:Criterion test R3"]'), [[], [0], [0]], 2),
+        # The dropped task depended on the very qa task that takes its place (an order the
+        # proposal broke): the re-pointed edge would make that task depend on itself.
+        (
+            _dev_yaml(r3_depends_on='["qa:Criterion test R3"]'),
+            _qa_yaml(r3_depends_on='["dev:Criterion test R3"]'),
+            [[], [0], []],
+            1,
+        ),
+    ],
+    ids=[
+        "a qa task, through to the backend task",
+        "a develop task, to nothing it needed",
+        "through a chain of dropped tasks",
+        "never onto the task itself",
+    ],
+)
+def test_an_edge_to_a_dropped_develop_task_is_re_pointed_to_that_tasks_own_dependencies(
+    dev, qa, depends_on, dropped
+):
+    """Bugs caught: the edge moved onto the qa task that took the dropped task's files, which puts a
+    develop task before its qa dependency (#578's order check refuses the plan) or a qa task on
+    itself; the edge dropped, so the dropped task's own dependency is lost; a chain of dropped tasks
+    followed one step only; or a note other than the dropped tasks' own (one naming a task as
+    depending on itself)."""
+    plan, decisions = _merge(dev, qa)
+
+    assert [t.depends_on for t in plan.tasks] == depends_on
+    reparsed = ImplementationPlan.from_yaml(emit_plan_yaml(plan))
+    assert [t.depends_on for t in reparsed.tasks] == depends_on
+    notes = decisions.operator_notes.splitlines()
+    assert len(notes) == dropped
+    assert all(n.startswith("Task dropped: ") for n in notes)
+
+
+def test_a_dropped_tasks_unresolved_dependency_is_noted_on_the_task_its_edge_was_re_pointed_from():
+    """The dropped task depended on a focus no proposal produced. Bug caught: the gap lost with the
+    task, so the gate's reader isn't told the qa task's dependency resolved to nothing."""
+    dev = _dev_yaml(r3_depends_on='["dev:Database migration"]')
+
+    plan, decisions = _merge(dev, _qa_yaml(r3_depends_on='["dev:Criterion test R3"]'))
+
+    assert [t.depends_on for t in plan.tasks] == [[], [0], []]
     assert decisions.operator_notes == (
-        "Dependency dropped: canonical task 0 depended on 'dev:criterion test r3', which the merge "
-        "dropped because every file it named is a criterion file that canonical task(s) 2 write "
-        "(SIP-0093 §15b). The edge isn't moved to them, since that could close a dependency cycle."
+        f"{_R3_DROPPED}\nUnresolved cross-proposal dependency: canonical task 2 depended on "
+        "'dev:criterion test r3', which the merge dropped (SIP-0093 §15b), and that task's own "
+        "dependency 'dev:database migration' names no task a proposer produced. Operator review "
+        "required (gap_fill candidate)."
     )
 
 
