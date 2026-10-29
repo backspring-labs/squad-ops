@@ -34,7 +34,9 @@ from squadops.campaigns.scorecard import scorecard_lines
 #:    read by the evaluator's ``-7`` or later (``failing_moved``); its pages, the finer reading.
 #: 7: a repository-backed campaign's outcome section names its baseline, its calibration record's
 #:    reading (SIP-0113 §10l), and each increment's ``vs_baseline`` says when there is none.
-PACKAGE_VERSION = 7
+#: 8: an evaluation whose start failed carries why, its detail and the app's last lines
+#:    (``start_failure``, SIP-0113 §10ae, #2793).
+PACKAGE_VERSION = 8
 
 #: The size bound (#1710: "bounded, so a frontier triage of one night fits a metered model
 #: budget"). A package holds records only, never logs or prompts, so it grows only with the cycles
@@ -334,6 +336,7 @@ def _outcome_lines(outcomes: dict | None) -> list[str]:
         lines.append(
             f"  - quality: {_measure_line(cyc.get('quality'))}; lint: {_lint_line(cyc.get('lint'))}"
         )
+        lines += _start_lines(cyc)
         for label, key in (
             ("against the tree it built on", "vs_previous"),
             ("against the baseline", "vs_baseline"),
@@ -360,10 +363,26 @@ def _baseline_lines(base: dict) -> list[str]:
     lines = [
         f"{head}: baseline reading `{base['evaluation']}`; {_results_line(base['scenarios'])}",
         f"  - quality: {_measure_line(base.get('quality'))}; lint: {_lint_line(base.get('lint'))}",
+        *_start_lines(base),
     ]
     if base.get("unread_because"):
         lines.append(f"  - {base['unread_because']}")
     return lines
+
+
+def _start_lines(section: dict) -> list[str]:
+    """SIP-0113 §10ae (#2793): why a reading's start failed, on one line. The app's last lines are
+    in the package beside it, under ``start_failure``."""
+    failure = section.get("start_failure")
+    if not failure:
+        return []
+    # deferred (pair): squadops.scenarios imports squadops.campaigns at load
+    from squadops.scenarios.evaluation import NO_START_DETAIL
+
+    cause = " ".join((failure.get("detail") or NO_START_DETAIL).split())
+    kept = len(failure.get("diagnostics") or ())
+    where = f" (the app's last {kept} lines are in the package)" if kept else ""
+    return [f"  - the start failed: {cause}{where}"]
 
 
 def _measured() -> str:

@@ -71,11 +71,13 @@ from squadops.scenarios.quality import (
     evaluator_pages,
 )
 from squadops.scenarios.runner import (
+    DIAGNOSTIC_LINES,
     DeclaredStart,
     ReadinessKind,
     RouteReading,
     RouteRequest,
     TreeEvaluation,
+    secret_scrubber,
 )
 from squadops.scenarios.steps import (
     Browse,
@@ -94,8 +96,6 @@ from squadops.tools.exceptions import ToolContainerError
 from squadops.tools.models import ContainerSpec
 
 _MOUNT = "/workspace"
-_TAIL_LINES = 40
-_REDACTED = "[redacted]"
 #: How long a tcp readiness connection must stay open to be the app's, not the port proxy's.
 _TCP_SETTLE_SECONDS = 0.25
 
@@ -306,7 +306,7 @@ class ContainerScenarioRunner(ScenarioRunnerPort):
         except ToolContainerError as e:
             return LintReading.not_measured(NotMeasured.EVALUATOR_FAILED, str(e))
         if run.exit_code != 0:
-            tail = "\n".join((run.stdout + run.stderr).splitlines()[-_TAIL_LINES:])
+            tail = "\n".join((run.stdout + run.stderr).splitlines()[-DIAGNOSTIC_LINES:])
             return LintReading.not_measured(
                 NotMeasured.EVALUATOR_FAILED, f"exited {run.exit_code}: {tail}"
             )
@@ -470,7 +470,7 @@ class ContainerScenarioRunner(ScenarioRunnerPort):
             except ToolContainerError as e:
                 raise _StartFailed(f"setup step {number} could not run: {e}") from e
             if run.exit_code != 0:
-                tail = tuple((run.stdout + run.stderr).splitlines()[-_TAIL_LINES:])
+                tail = tuple((run.stdout + run.stderr).splitlines()[-DIAGNOSTIC_LINES:])
                 raise _StartFailed(f"setup step {number} exited {run.exit_code}", tail)
 
     async def _serve(
@@ -497,7 +497,7 @@ class ContainerScenarioRunner(ScenarioRunnerPort):
             raise _StartFailed(
                 f"not ready at {start.ready_path or f'port {start.port}'} "
                 f"within {start.ready_timeout:g}s",
-                tuple(logs.splitlines()[-_TAIL_LINES:]),
+                tuple(logs.splitlines()[-DIAGNOSTIC_LINES:]),
             )
         # §4.2: measured before any scenario writes to the instance, so every tree is measured
         # in the same state.
@@ -682,7 +682,7 @@ class ContainerScenarioRunner(ScenarioRunnerPort):
         except ToolContainerError as e:
             return QualityReading.not_measured(NotMeasured.EVALUATOR_FAILED, str(e))
         if run.exit_code != 0:
-            tail = "\n".join((run.stdout + run.stderr).splitlines()[-_TAIL_LINES:])
+            tail = "\n".join((run.stdout + run.stderr).splitlines()[-DIAGNOSTIC_LINES:])
             return QualityReading.not_measured(
                 NotMeasured.EVALUATOR_FAILED, f"exited {run.exit_code}: {tail}"
             )
@@ -916,17 +916,10 @@ def _evidence_kept(evaluation: TreeEvaluation, secrets: Collection[str]) -> Tree
     raw = [(i, run, run.evidence) for i, run in enumerate(evaluation.runs) if run.evidence]
     if not raw:
         return evaluation
-    values = sorted({v for v in secrets if v}, key=len, reverse=True)
-
-    def scrub(text: str) -> str:
-        for secret in values:
-            text = text.replace(secret, _REDACTED)
-        return text
-
     items = kept(
         [ScenarioEvidence.from_wire(run.scenario_id, evidence) for _, run, evidence in raw],
-        scrub=scrub,
-        secret_resolved=bool(values),
+        scrub=secret_scrubber(secrets),
+        secret_resolved=any(secrets),
     )
     runs = list(evaluation.runs)
     for (i, run, _), item in zip(raw, items, strict=True):
@@ -939,18 +932,14 @@ def _redacted(evaluation: TreeEvaluation, secrets: Collection[str]) -> TreeEvalu
     log, a record or an agent's input). An app may log its environment, or answer with a token, and
     the start's detail, its last lines and each step's detail are returned as written. Only those
     are scrubbed: a short secret (``pass``) must not rewrite a result (``passed``), an identity or
-    a scenario id (the MacBook lane's review of #2450). Longest first, so a value that contains
-    another is replaced whole."""
-    values = sorted({v for v in secrets if v}, key=len, reverse=True)
-    if not values:
+    a scenario id (the MacBook lane's review of #2450). ``secret_scrubber`` is the one scrubber:
+    the runtime keeps a failed start's detail and last lines by it too (#2793)."""
+    if not any(secrets):
         return evaluation
+    plain = secret_scrubber(secrets)
 
     def scrub(text: str | None) -> str | None:
-        if text is None:
-            return None
-        for secret in values:
-            text = text.replace(secret, _REDACTED)
-        return text
+        return None if text is None else plain(text)
 
     def scrubbed(reading: QualityReading | None) -> QualityReading | None:
         # §10n ruling 8: a reading's detail is an evaluator's or a seed's free text too.

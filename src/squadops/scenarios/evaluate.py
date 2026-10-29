@@ -12,7 +12,10 @@ row, gate or prompt reads what this writes, and no scenario goal or result reach
    the caller couldn't read carries its own reason: ``no_start_declaration`` for none or a malformed
    one, ``secret_not_available`` for a secret nothing releases, ``no_runner`` for a readiness kind
    the runner doesn't check. None of them is ever passed, and each quality measure the start would
-   have served is not measured for the same reason.
+   have served is not measured for the same reason. A start that failed is kept on the record with
+   why (``start_failure``, §10ae): the runner's detail and the app's last lines, scrubbed of the
+   evaluation's secrets and bounded, the detail in each quality reading it kept from being taken
+   too. The runtime's log names it.
 
 A repository-backed Campaign's calibration record is evaluated the same way
 (``evaluate_calibration_record``, SIP-0113 §10l): its commit's tree, its declared start, the same
@@ -40,11 +43,13 @@ from squadops.campaigns import seed_plan
 from squadops.campaigns.evaluator_trees import FileTree
 from squadops.campaigns.increment_tree import accepted_cycle_of, evaluated_tree_refs, route_param
 from squadops.scenarios.evaluation import (
+    NO_START_DETAIL,
     Applicability,
     BlockedReason,
     EvaluationRecord,
     ScenarioOutcome,
     ScenarioResult,
+    StartFailure,
     evaluation_record,
 )
 from squadops.scenarios.evidence import ScenarioEvidence
@@ -193,13 +198,25 @@ _NOT_MEASURED_BY_BLOCK = {
 }
 
 
+def _blocked_reading(blocked: BlockedReason, start: StartFailure | None) -> QualityReading:
+    """A quality reading an evaluation that couldn't run never took, and why: a start that
+    failed says how, its detail as the record keeps it (§10ae, #2793)."""
+    return QualityReading.not_measured(
+        _NOT_MEASURED_BY_BLOCK[blocked], start.detail if start is not None else None
+    )
+
+
 def quality_of(
-    pages: tuple[str, ...], blocked: BlockedReason | None, evaluated: TreeEvaluation | None
+    pages: tuple[str, ...],
+    blocked: BlockedReason | None,
+    evaluated: TreeEvaluation | None,
+    start: StartFailure | None = None,
 ) -> QualityReading:
     """A Project that serves pages: the runner's reading, or why there is none. An evaluation
-    that couldn't run says so first: a Project that couldn't be started has pages nobody read."""
+    that couldn't run says so first: a Project that couldn't be started has pages nobody read.
+    ``start`` is why its start failed, when it did."""
     if blocked is not None:
-        return QualityReading.not_measured(_NOT_MEASURED_BY_BLOCK[blocked])
+        return _blocked_reading(blocked, start)
     if not pages:
         return QualityReading.not_measured(NotMeasured.NO_DECLARED_PAGE)
     if evaluated is not None and evaluated.quality is not None:
@@ -235,14 +252,17 @@ def planned_seed(
 
 
 def seeded_of(
-    planned: QualityReading | None, blocked: BlockedReason | None, evaluated: TreeEvaluation | None
+    planned: QualityReading | None,
+    blocked: BlockedReason | None,
+    evaluated: TreeEvaluation | None,
+    start: StartFailure | None = None,
 ) -> QualityReading:
     """The seeded reading: what planning already decided, else the runner's, or why there is none.
     An evaluation that couldn't run says so first, as ``quality_of`` does."""
     if planned is not None:
         return planned
     if blocked is not None:
-        return QualityReading.not_measured(_NOT_MEASURED_BY_BLOCK[blocked])
+        return _blocked_reading(blocked, start)
     if evaluated is not None and evaluated.quality_seeded is not None:
         return evaluated.quality_seeded
     return QualityReading.not_measured(
@@ -462,6 +482,38 @@ class _Unit:
     calibration_record_id: str | None = None
 
 
+def _log_start_failure(record: EvaluationRecord) -> None:
+    """§10ae (#2793): a failed start named in the runtime's log, as its record keeps it: scrubbed
+    and bounded. Nothing for a record whose start didn't fail. The fields are in the message, since
+    the runtime's handler prints the message alone (``api.runtime.logging_setup``), never a log
+    record's extras."""
+    failure = record.start_failure
+    if failure is None:
+        return
+    unit = (
+        f"cycle {record.cycle_id}"
+        if record.cycle_id is not None
+        else f"calibration record {record.calibration_record_id}"
+    )
+    kept = len(failure.diagnostics)
+    logger.warning(
+        "evaluation_start_failed: evaluation %s of Project %s (%s, campaign %s): %s; %s",
+        record.evaluation_id,
+        record.project_id,
+        unit,
+        record.campaign_id or "none",
+        failure.detail or NO_START_DETAIL,
+        f"the app's last {kept} lines are on the record" if kept else "the app printed nothing",
+        extra={
+            "evaluation_id": record.evaluation_id,
+            "project_id": record.project_id,
+            "campaign_id": record.campaign_id,
+            "cycle_id": record.cycle_id,
+            "calibration_record_id": record.calibration_record_id,
+        },
+    )
+
+
 async def _evaluated(
     *,
     store: ScenarioStorePort,
@@ -530,6 +582,7 @@ async def _evaluated(
     )
     evaluated: TreeEvaluation | None = None
     lint: LintReading | None = None
+    start_failure: StartFailure | None = None
     # A linted tree is linted whether or not anything else runs (§4.2, #2416).
     if (contents or pages or linted) and unstartable is not None:
         blocked = unstartable.reason
@@ -561,6 +614,9 @@ async def _evaluated(
         else:
             if not evaluated.started:
                 blocked = BlockedReason.START_FAILED
+            # §10ae (#2793): why the start failed, for the record (``None`` when it didn't),
+            # scrubbed of the secrets the start was given by the runner's own scrubber, and bounded.
+            start_failure = evaluated.start_failure((environment or {}).values())
             runs = {r.scenario_id: r for r in evaluated.runs}
 
     record = evaluation_record(
@@ -577,14 +633,18 @@ async def _evaluated(
         previous_accepted_tree_identity=previous_accepted_tree_identity,
         evaluated_at=evaluated_at,
         quality=(
-            quality_of(pages, blocked, evaluated)
+            quality_of(pages, blocked, evaluated, start_failure)
             if SurfaceKind.PAGE in kinds
             else QualityReading(QualityStatus.NOT_APPLICABLE)
         ),
+        # Lint reads the tree whatever the start did (§4.2), so it is never not measured for it.
         lint=lint or lint_of(linted, blocked, evaluated, profile_unread),
-        quality_seeded=seeded_of(planned, blocked, evaluated),
+        quality_seeded=seeded_of(planned, blocked, evaluated, start_failure),
+        # A Project that serves no pages has no quality reading to say why: the record does.
+        start_failure=start_failure,
     )
     await store.save_evaluation(record)
+    _log_start_failure(record)
     # §10p ruling 8: a failed or blocked page scenario's evidence, beside its record and held out:
     # never on the outcome, which the package and the digest read.
     evidence = [

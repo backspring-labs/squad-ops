@@ -132,6 +132,29 @@ class ScenarioOutcome:
         )
 
 
+#: What a failed start's cause reads as where the runner named none (#2793).
+NO_START_DETAIL = "the runner named no cause"
+
+
+@dataclass(frozen=True)
+class StartFailure:
+    """Why an evaluation's start failed (SIP-0113 §10c, §10ae; #2793): the runner's ``detail``
+    (the setup step that exited, or the readiness that timed out) and the app's own last lines,
+    each scrubbed of the evaluation's secrets and bounded (``TreeEvaluation.start_failure``). On a
+    record only when the runner was asked to start the tree and it didn't. ``detail`` is ``None``
+    when the runner named no cause."""
+
+    detail: str | None
+    diagnostics: tuple[str, ...] = ()
+
+    def as_dict(self) -> dict[str, Any]:
+        return {"detail": self.detail, "diagnostics": list(self.diagnostics)}
+
+    @classmethod
+    def from_dict(cls, d: Mapping[str, Any]) -> StartFailure:
+        return cls(detail=d.get("detail"), diagnostics=tuple(d.get("diagnostics") or ()))
+
+
 @dataclass(frozen=True)
 class EvaluationRecord:
     """A cycle, or a repository-backed Campaign's calibration record (§10l), evaluated against one
@@ -158,6 +181,10 @@ class EvaluationRecord:
     #: §10l: the repository-backed Campaign's calibration record whose commit this reading
     #: evaluated, its baseline. ``None`` on a cycle's record.
     calibration_record_id: str | None = None
+    #: §10ae (#2793): why the start failed, when the runner was asked to start the tree and it
+    #: didn't. ``None`` on a start that succeeded, one never attempted (no runner, or a declaration
+    #: it couldn't run, whose reason the outcomes name), and a record written before it.
+    start_failure: StartFailure | None = None
 
     def __post_init__(self) -> None:
         if (self.cycle_id is None) == (self.calibration_record_id is None):
@@ -236,6 +263,7 @@ def evaluation_record(
     evaluation_id: str | None = None,
     quality_seeded: QualityReading | None = None,
     calibration_record_id: str | None = None,
+    start_failure: StartFailure | None = None,
 ) -> EvaluationRecord:
     """A record that names its suite's scenarios exactly: one outcome for each, at the version and
     goal the suite holds. Anything else would report against a suite it didn't run. It names a
@@ -260,6 +288,7 @@ def evaluation_record(
         lint=lint,
         quality_seeded=quality_seeded,
         calibration_record_id=calibration_record_id,
+        start_failure=start_failure,
     )
     parse_reference(record.reference().to_dict())  # the reference it yields must be readable
     return record

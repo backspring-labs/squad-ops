@@ -2178,8 +2178,8 @@ checks:
       from squadops.scenarios.quality import NotMeasured
       p = inspect.signature(CampaignProgress).parameters["evaluate_baseline"]
       moved = "campaign_record_not_decided_campaign_moved" in inspect.getsource(CampaignProgress.calibration_recorded)
-      print(p.default is inspect.Parameter.empty, hasattr(CampaignCycleEvaluator, "calibration_recorded"), "calibration_record_id" in _EVALUATION_COLUMNS, "profile_unread" in inspect.signature(evaluate_calibration_record).parameters, moved, callable(credited_nothing) and callable(_lint_only), NotMeasured.SECRET_NOT_AVAILABLE.value, NotMeasured.PROFILE_UNREADABLE.value, PACKAGE_VERSION, NO_BASELINE_READING)
-    expect: "True True True True True True secret_not_available profile_unreadable 7 no baseline reading"
+      print(p.default is inspect.Parameter.empty, hasattr(CampaignCycleEvaluator, "calibration_recorded"), "calibration_record_id" in _EVALUATION_COLUMNS, "profile_unread" in inspect.signature(evaluate_calibration_record).parameters, moved, callable(credited_nothing) and callable(_lint_only), NotMeasured.SECRET_NOT_AVAILABLE.value, NotMeasured.PROFILE_UNREADABLE.value, PACKAGE_VERSION >= 7, NO_BASELINE_READING)
+    expect: "True True True True True True secret_not_available profile_unreadable True no baseline reading"
   - id: "10l-sandbox-lint"
     what: the sandbox's evaluation takes a declared product's scaffold blueprint and lints its tree by that blueprint's rule set, alone when the product can't be started, and checks the name itself (SIP-0113 §10l, §10ac)
     container: squadops-sandbox-service
@@ -2211,3 +2211,31 @@ checks:
       asyncio.run(p._evaluating(building, cyc))
       print(progress._heard_now(paused, cyc), progress._heard_now(building, cyc), moved, asyncio.run(p._promoted_already(building, cyc)), seen[0].value)
     expect: "False True True True building"
+  - id: "2793-start-failure-on-the-record"
+    what: a failed start's detail and the app's last lines are kept on the evaluation record, scrubbed of the start's secrets by the runner's own scrubber and bounded, in the quality reading's detail too, in the package and its digest, and named in the runtime's log (SIP-0113 §10ae, #2793)
+    container: squadops-runtime-api
+    code: |
+      import logging
+      from datetime import UTC, datetime
+      from adapters.scenarios.postgres_scenario_store import _EVALUATION_COLUMNS
+      from squadops.campaigns.evidence import PACKAGE_VERSION, _start_lines
+      from squadops.scenarios import evaluate
+      from squadops.scenarios.evaluation import BlockedReason, EvaluationRecord
+      from squadops.scenarios.runner import TreeEvaluation
+      ev = TreeEvaluation("a" * 64, started=False, start_detail="not ready at /healthz within 30s", startup_diagnostics=("TOKEN=loaded-check-value", "x" * 600))
+      failed = ev.start_failure(["loaded-check-value"])
+      seen = []
+      handler = logging.Handler()
+      handler.emit = lambda r: seen.append(r.getMessage())
+      logging.getLogger("squadops.scenarios.evaluate").addHandler(handler)
+      evaluate._log_start_failure(EvaluationRecord("evl_check", "prj-check", None, "cyc_check", "a" * 64, None, "d", (), datetime(2026, 10, 29, tzinfo=UTC), start_failure=failed))
+      print("start_failure" in _EVALUATION_COLUMNS, PACKAGE_VERSION >= 8, failed.diagnostics[0], len(failed.diagnostics[1]), evaluate.quality_of(("/",), BlockedReason.START_FAILED, ev, failed).detail, "|", seen[0], "|", _start_lines({"start_failure": failed.as_dict()})[0].strip())
+    expect: "True True TOKEN=[redacted] 523 not ready at /healthz within 30s | evaluation_start_failed: evaluation evl_check of Project prj-check (cycle cyc_check, campaign none): not ready at /healthz within 30s; the app's last 2 lines are on the record | - the start failed: not ready at /healthz within 30s (the app's last 2 lines are in the package)"
+  - id: "2793-sandbox-one-scrubber"
+    what: the sandbox's scenario runner scrubs what it returns by the one scrubber the runtime keeps a failed start by, and bounds its tails by the same line count (SIP-0113 §10ae, #2793)
+    container: squadops-sandbox-service
+    code: |
+      from adapters.sandbox import scenario_runner
+      from squadops.scenarios import runner
+      print(scenario_runner.secret_scrubber is runner.secret_scrubber, scenario_runner.DIAGNOSTIC_LINES, hasattr(scenario_runner, "_REDACTED"), runner.secret_scrubber(["sandbox-check-value"])("k=sandbox-check-value"))
+    expect: "True 40 False k=[redacted]"

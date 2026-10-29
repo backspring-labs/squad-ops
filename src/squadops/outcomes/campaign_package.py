@@ -169,8 +169,11 @@ async def campaign_outcomes(
 
 
 def _readings(record: EvaluationRecord) -> dict:
-    """A record's scenario results by id, and its quality and lint, as the package shows them."""
-    return {
+    """A record's scenario results by id, and its quality and lint, as the package shows them.
+    A record whose start failed carries why (§10ae, #2793): the detail and the app's last lines,
+    as the record keeps them. Only then, so a package of starts that succeeded is the package it
+    was."""
+    readings = {
         "scenarios": [
             [
                 o.scenario_id,
@@ -182,6 +185,9 @@ def _readings(record: EvaluationRecord) -> dict:
         "quality": record.quality.as_dict() if record.quality else None,
         "lint": record.lint.as_dict() if record.lint else None,
     }
+    if record.start_failure is not None:
+        readings["start_failure"] = record.start_failure.as_dict()
+    return readings
 
 
 def _baseline_section(
