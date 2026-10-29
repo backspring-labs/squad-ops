@@ -5430,13 +5430,13 @@ is as the review asked. Item 6 answers the review's final round, relayed by the 
 uniqueness across every page, refused at the rails, and the rollout as a loaded-check pair. Reading every id a pinned
 view carries, not only its root, and blocking at the renderer too, are the implementer's.
 
-### 24cq. An owner's pause or abort holds across a cycle's hearing: the campaign is read again before each write, and a paused campaign's ending waits for its resume (2026-10-29, §10, §12a, §17, §24cc; SIP-0113 §4.1, §10ac; #2789; the implementer's fix, for the owner)
+### 24cq. An owner's pause or abort holds across a cycle's hearing: each write carries the state the hearing read, and a paused campaign's ending waits for its resume (2026-10-29, §10, §12a, §17, §24cc; SIP-0113 §4.1, §10ac; #2789; the implementer's fix, for the owner)
 
 **What was found.** #2788's outside review (its P2-A) found a calibration record's hearing promoting and deciding
 from a campaign read before a minutes-long baseline reading. The hearing of a cycle's ending has the same shape,
 `CampaignProgress._hear`:
-- it reads the campaign once, then assesses the ending and evaluates it against the pinned suite (SIP-0113 §4.1), which
-  builds, starts and reads the product;
+- it reads the campaign once, then assesses the ending and evaluates it against the pinned suite (SIP-0113 §4.1),
+  which builds, starts and reads the product;
 - it then promotes and decides from what it read first.
 
 Reproduced on the shared fixture (Tally, a real managed clone, an increment delivered for real), with the owner's
@@ -5461,17 +5461,25 @@ hearing.
   sweep re-hears within its interval (`rehear_ended`), and that hearing would decide over the still-paused campaign.
 
 **What changed** (`src/squadops/campaigns/progress.py`):
-1. **The campaign is read again before each write.**
+1. **The campaign is read again before the promotion and before the decision.**
    - Before the promotion (`:706`), after the assessment and the evaluation.
    - Before the decision (`:742`), after the promotion and the reads that build the decision and its launch.
 
    `_still` (`:812`) compares the state with the one read before the step. A campaign that moved (paused, aborted,
-   anything) is logged (`campaign_cycle_not_decided_campaign_moved`), and the hearing returns nothing. The re-hearing
-   decides it as it then is, and its evaluation isn't taken twice: the evaluator skips a cycle it has read
-   (SIP-0113 §10c).
-2. **A refusal is logged, never raised.** A move in the instant between a read and a write can still refuse the
-   promotion or the move to `evaluating`. `_promoted_and_evaluating` (`:770`) logs it (`campaign_cycle_promotion_refused`),
-   and the hearing returns nothing. The decision's own refusal was already caught.
+   anything) is logged (`campaign_not_decided_campaign_moved`), and the hearing returns nothing; no row is tried
+   against it. The re-hearing decides it as it then is, and its evaluation isn't taken twice: the evaluator skips a
+   cycle it has read (SIP-0113 §10c).
+2. **The promotion's writes carry the state the hearing read** (#2792's review, its P2). The re-read before the
+   promotion doesn't cover the I/O between it and the writes:
+   - the branch's reads (`CampaignBranch.promotion`);
+   - the bundles' freezing, or a sample application's tree stored in the vault;
+   - the branch's follow, after the promotion's row and before the move to `evaluating`.
+
+   Each of the three writes now carries `expected_state`: a sample application's promotion (`:910`), a
+   repository-backed increment's (`:961`), and the move to `evaluating` (`:2131`). An owner's move meanwhile makes the
+   registry refuse the write as stale (`stale_state`), and records the refusal. `_promoted_and_evaluating` (`:770`)
+   logs it (`campaign_cycle_promotion_refused`), never raises it, and the hearing returns nothing. A replay is
+   untouched by it, because item 4 skips an applied promotion. The decision's own refusal was already caught.
 3. **A paused campaign's ending waits for its resume** (`_heard_now`, `:341`). The hearing returns at once, nothing
    promoted, evaluated or decided. Once the owner resumes it, the re-hearing decides it, as any ending is decided.
    - **This is a change of behaviour.** The supervisor's brief for #2789 asked that a pause before the cycle ends
@@ -5490,42 +5498,77 @@ hearing.
      committed and before the decision, the restarted hearing's replayed promotion was refused, and the ending was
      never decided.
    - The branch's ref follows its row by the startup's and the sweep's re-sync (§24cd point 2).
+5. **A calibration record's decision reads the campaign again too** (#2792's review, P2, on SIP-0113 §10ac's path,
+   `:1064`). The branch's follow after the record's promotion, and the reads that build the first proposal's launch,
+   come between the hearing's re-read after its baseline reading and the decision. A pause there had the decision move
+   the campaign out of `paused`.
+   - **The record's promotion carries no `expected_state`.** Its re-hearing replays it rather than skipping it, and an
+     added field would change the content under the key for a row written before. The I/O before it is none: it is
+     written from the record alone.
+
+**How this differs from §17's wording** (#2792's review, its P3 notes). §17 has the resume execute the held action.
+Here the ending is decided after the resume instead, which differs in three ways:
+- **When.** The decision comes up to one sweep later, within `_CAMPAIGN_SWEEP_INTERVAL_S` (60 s), by `rehear_ended`,
+  or at the next startup.
+- **What the resume answers.** Its response names no launch. It returns the campaign to the state it was paused from,
+  and the launch comes with the decision.
+- **What the decision reads.** The counters are read when the deferred decision is made, so a long owner's pause
+  counts against `max_elapsed_s`. A pause that outlasts the campaign's elapsed budget makes the deferred decision pause
+  again on `elapsed_time` (`_pausing_limit`). That is named here and not changed: it is the elapsed budget doing what
+  it says.
+- **A possible follow-up, not built:** the resume route could call `rehear_ended` for the campaign's ended cycles
+  itself, so the decision comes with the resume rather than at the next sweep.
 
 **What it doesn't change:**
 - a campaign left alone, heard at once as before;
 - a completed campaign's ending, never decided;
 - an escalated campaign's ending, decided as before;
-- the rows' shapes and keys.
+- the rows' keys, and every row's shape but the three writes' `expected_state`.
 
-**Not closed here:** the instant between the decision's last read and its write. No row carries an `expected_state`,
-and a decision written with one would refuse itself whenever anything legitimate moved the campaign.
+**Not closed here:** the instant between a decision's last read and its write. No decision row carries an
+`expected_state`. The window is now only the read before the write, with no I/O in it.
 
 **Evidence.**
 - **The wiring:** `tests/unit/campaigns/test_hearing_holds_the_owners_word.py` enters at `CampaignProgress.cycle_ended`
-  and `rehear_ended`, the completion boundary's and the startup's calls. The progress and the evaluator are built as the
-  runtime root builds them. It runs on the shared fixture's Tally, an increment delivered for real, and an evaluation
-  against a pinned suite. It covers:
-  - a pause during the evaluation: nothing written, not decided while paused, and decided once after the resume, its
-    evaluation taken once;
+  and `rehear_ended`, the completion boundary's and the startup's calls. The progress and the evaluator are built as
+  the runtime root builds them. It runs on the shared fixture's Tally, an increment delivered for real, and an
+  evaluation against a pinned suite. It covers:
+  - a pause during the evaluation: nothing written, not even a refused row; not decided while paused; decided once
+    after the resume, its evaluation taken once;
   - an abort during it: nothing written, and no raise;
   - a refusal in the last instant: logged, not raised;
+  - a pause while the bundles are frozen, the review's first probe: the promotion refused as stale, then promoted and
+    decided once after the resume;
+  - a pause during the branch's follow, its second probe: the move to `evaluating` refused as stale, then decided
+    once with one promotion;
   - a pause after the promotion: the decision held, then decided after the resume, with one promotion;
   - a campaign paused before its cycle ended: nothing until it is resumed, then decided once;
   - a restart after the move to `evaluating`: decided once;
   - the control: a campaign left alone, heard at once.
-- **Mutants: 8, 7 caught by a named failing test:**
-  - each re-read dropped;
+- **A sample application** (`tests/unit/campaigns/test_progress.py`, entered at the completion boundary): a pause
+  while its tree is stored refuses the promotion as stale, and the resumed campaign is promoted and decided once.
+- **The record's path** (`tests/unit/scenarios/test_campaign_baseline_reading.py`), from the review's third probe: a
+  pause while the first proposal's launch is built holds, and the resumed campaign is decided once.
+- **Mutants: 12, 11 caught by a named failing test:**
+  - each re-read dropped, the record's included;
   - a moved campaign read as still;
   - a paused campaign's ending decided at once;
   - the promotion's refusal raised;
   - an applied promotion replayed;
-  - another cycle's promotion taken for this one's.
+  - another cycle's promotion taken for this one's;
+  - each of the three writes without its `expected_state`.
 
   The survivor returns the campaign read before the step, not the one read again, when its state is unchanged. That
   is equivalent under today's operations. Only a promotion or a branch's rebase changes a campaign's fields other than
   its state, and neither runs while a cycle is being built. A record-only operation changes only the log.
+- **The loaded check** `2789-hearing-holds-the-owners-word` (the runtime) exercises the hearing on in-memory fakes:
+  - a paused campaign's ending held;
+  - a moved campaign read as moved;
+  - an applied promotion taken as written;
+  - the move to `evaluating` written with the state it read.
 
-**Who ruled.** The supervisor placed #2789's fix in 2.5, stacked on #2788, so that it deploys before the
-demonstrations: a later fix would void their evidence under the plan's invalidation rule. The build choices are the
-implementer's, for the supervisor's and the owner's review. Item 3 departs from the brief's "unchanged", with the
-evidence above.
+**Who ruled.** The supervisor placed #2789's fix in 2.5, so that it deploys before the demonstrations: a later fix
+would void their evidence under the plan's invalidation rule. #2792's outside review (the same fresh agent, by the
+owner's choice) requested items 2 and 5 and the notes on §17. The owner said to fix and merge on green. The build
+choices are the implementer's, for the supervisor's and the owner's review. Item 3 departs from the brief's
+"unchanged", with the evidence above.
