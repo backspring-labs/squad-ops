@@ -357,6 +357,13 @@ def increment_criterion_files(change_request: str, stack: str) -> tuple[Criterio
     )
 
 
+def criterion_file_rows(files: Iterable[CriterionFile]) -> list[dict[str, str]]:
+    """Each criterion's own file as an envelope carries it (``increment_criterion_files``): the
+    shape the evaluation is handed (§8), and the plan merge, which gives the file to the qa task
+    that writes it (#2795)."""
+    return [{"criterion_id": f.criterion_id, "path": f.path} for f in files]
+
+
 #: The artifact an increment's evaluation writes, which the completion hook reads (§8.4).
 INCREMENT_EVALUATION_ARTIFACT_TYPE = "increment_evaluation"
 INCREMENT_EVALUATION_FILENAME = "increment_evaluation.json"
@@ -380,10 +387,9 @@ def increment_evaluation_inputs(
     block = resolved_config.get("campaign_proposal") or {}
     return {
         "increment_id": str(block.get("proposal_id") or ""),
-        "increment_criterion_files": [
-            {"criterion_id": f.criterion_id, "path": f.path}
-            for f in increment_criterion_files(change_request, scaffold_stack_for(resolved_config))
-        ],
+        "increment_criterion_files": criterion_file_rows(
+            increment_criterion_files(change_request, scaffold_stack_for(resolved_config))
+        ),
         "increment_declared_routes": {
             path: list(testids) for path, testids in declared_routes(manifest).items()
         },

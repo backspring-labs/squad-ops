@@ -33,6 +33,23 @@ from squadops.tasks.task_types import TaskType
 if TYPE_CHECKING:
     from squadops.capabilities.handlers.context import ExecutionContext
 
+
+def _increment_criterion_paths(inputs: dict[str, Any]) -> tuple[str, ...] | None:
+    """An increment's new criterion files, which the merge gives to the qa task when a development
+    task claims one too (SIP-0093 §15b, #2795). Every framing task of an increment carries its
+    change request, so ``()`` for a merge with none, a cycle that isn't an increment. ``None`` for
+    an increment's merge handed no readable list, which the handler refuses rather than merging
+    the dual claim the plan gate refuses."""
+    if "increment_change_request" not in inputs:
+        return ()
+    rows = inputs.get("increment_criterion_files")
+    if not isinstance(rows, list) or not all(
+        isinstance(row, dict) and isinstance(row.get("path"), str) for row in rows
+    ):
+        return None
+    return tuple(row["path"] for row in rows)
+
+
 # ---------------------------------------------------------------------------
 # Merger handler (SIP-0093 PR 93.3) — the cutover. Runtime route changes here:
 # governance.review_plan no longer authors implementation_plan.yaml; the
@@ -60,6 +77,10 @@ class GovernanceMergePlanHandler(_CycleTaskHandler):
         ``inputs["resolved_config"]["plan_authoring_contributors"]``.
         Drives the §5.9 missing-role operator warnings and the
         configured-vs-degraded distinction in sole-author mode.
+      - An increment's new criterion files via
+        ``inputs["increment_criterion_files"]`` (#2795): a file a
+        development task and a qa task both claim is the qa task's
+        (SIP-0093 §15b). Required on an increment's multi-role merge.
 
     Produces (always two artifacts):
       - ``implementation_plan.yaml`` — canonical SIP-0092 M1 plan.
@@ -158,6 +179,17 @@ class GovernanceMergePlanHandler(_CycleTaskHandler):
                 emit_merge_decisions_yaml=emit_merge_decisions_yaml,
             )
 
+        criterion_files = _increment_criterion_paths(inputs)
+        if criterion_files is None:
+            return self._failure_result(
+                start_time,
+                inputs,
+                "governance.merge_plan of an increment requires increment_criterion_files "
+                "(#2795): the plan composer hands it beside the change request, and without it "
+                "a criterion file both proposals claim is kept twice and the plan gate refuses "
+                "the plan",
+            )
+
         plan, decisions = merge_proposals(
             brief=brief,
             dev_proposal=dev_proposal,
@@ -168,6 +200,7 @@ class GovernanceMergePlanHandler(_CycleTaskHandler):
             prd_hash=prd_hash,
             configured_contributors=configured_contributors,
             missing_proposals=missing_proposals,
+            criterion_files=criterion_files,
         )
 
         return self._success_result(

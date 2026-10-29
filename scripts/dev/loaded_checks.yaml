@@ -2239,3 +2239,45 @@ checks:
       from squadops.scenarios import runner
       print(scenario_runner.secret_scrubber is runner.secret_scrubber, scenario_runner.DIAGNOSTIC_LINES, hasattr(scenario_runner, "_REDACTED"), runner.secret_scrubber(["sandbox-check-value"])("k=sandbox-check-value"))
     expect: "True 40 False k=[redacted]"
+  - id: "2795-composer"
+    what: an increment's merge is handed its criterion files as data, and no other task is (SIP-0093 §15b, #2795)
+    container: squadops-runtime-api
+    code: |
+      from squadops.campaigns.increment_tree import CriterionFile
+      from squadops.cycles.task_plan import _criterion_file_inputs
+      from squadops.tasks.task_types import TaskType
+      files = (CriterionFile("R1", "package", "app.report", "checks/check_r1.py"),)
+      print(_criterion_file_inputs(TaskType.GOVERNANCE_MERGE_PLAN, "cr", files), _criterion_file_inputs(TaskType.QA_PROPOSE_PLAN_TASKS, "cr", files), _criterion_file_inputs(TaskType.GOVERNANCE_MERGE_PLAN, None, files))
+    expect: "{'increment_criterion_files': [{'criterion_id': 'R1', 'path': 'checks/check_r1.py'}]} {} {}"
+  - id: "2795-merge"
+    what: the merge gives a criterion file a develop task and a qa task both claim to the qa task, and an increment's merge requires the files (SIP-0093 §15b, #2795)
+    container: squadops-max
+    code: |
+      from squadops.capabilities.handlers._plan_merger import merge_proposals
+      from squadops.capabilities.handlers.planning.merge import _increment_criterion_paths
+      from squadops.cycles.plan_authoring_brief import PlanAuthoringBrief
+      from squadops.cycles.proposed_role_tasks import ProposedRoleTasks
+      def proposal(role, task_type, task_role, files):
+          return ProposedRoleTasks.from_yaml(f"{{version: 1, proposal_id: p-{role}, source_brief_id: b, proposing_role: {role}, scope_statement: s, tasks: [{{task_type: {task_type}, role: {task_role}, focus: f, description: d, expected_artifacts: {files}}}]}}")
+      brief = PlanAuthoringBrief.from_yaml("{version: 1, brief_id: b, objective_summary: o, accepted_stack: {}, must_cover_requirements: [r], scope_cuts: [], risk_areas: []}")
+      plan, decisions = merge_proposals(brief=brief, dev_proposal=proposal("development", "development.develop", "dev", "[app/report.py, checks/check_r1.py]"), qa_proposal=proposal("qa", "qa.test", "qa", "[checks/check_r1.py]"), strategy_guidance=None, project_id="p", cycle_id="c", prd_hash="h", configured_contributors=["development", "qa"], missing_proposals=[], criterion_files=("checks/check_r1.py",))
+      print([t.expected_artifacts for t in plan.tasks], [c.merge_action for c in decisions.canonical_tasks], _increment_criterion_paths({"increment_change_request": "cr"}))
+    expect: "[['app/report.py'], ['checks/check_r1.py']] ['modified', 'accepted'] None"
+  - id: "2795-dev-proposer"
+    what: the development proposer is told an increment's criterion files are the qa tasks', in its own appendix (SIP-0109 §24cr, #2795)
+    container: squadops-neo
+    code: |
+      import pathlib, squadops.prompts as p
+      from squadops.capabilities.handlers.planning_tasks import DevelopmentProposePlanTasksHandler
+      surfaces = {key: template for template, _, key in DevelopmentProposePlanTasksHandler._increment_surfaces}
+      asset = pathlib.Path(p.__file__).parent / "request_templates" / "request.plan_increment_criteria_development_appendix.md"
+      print(surfaces["increment_criterion_files_index"], "Leave these files out of your tasks' `expected_artifacts`" in asset.read_text())
+    expect: "request.plan_increment_criteria_development_appendix True"
+  - id: "2795-qa-proposer"
+    what: the qa proposer keeps the criterion appendix that tells it to write the files (SIP-0109 §24cr, #2795)
+    container: squadops-eve
+    code: |
+      from squadops.capabilities.handlers.planning_tasks import QaProposePlanTasksHandler
+      surfaces = {key: template for template, _, key in QaProposePlanTasksHandler._increment_surfaces}
+      print(surfaces["increment_criterion_files_index"])
+    expect: request.plan_increment_criteria_appendix

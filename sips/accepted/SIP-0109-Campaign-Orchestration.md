@@ -5572,3 +5572,40 @@ would void their evidence under the plan's invalidation rule. #2792's outside re
 owner's choice) requested items 2 and 5 and the notes on §17. The owner said to fix and merge on green. The build
 choices are the implementer's, for the supervisor's and the owner's review. Item 3 departs from the brief's
 "unchanged", with the evidence above.
+### 24cr. An increment's criterion files are taught by role: the development proposer is told they are the qa tasks' (2026-10-29, §8.1, §24m; SIP-0093 §15b; #2795; the implementer's fix, for the supervisor)
+
+**What was found.** §24m's "taught before enforced" showed every plan author the same appendix,
+`request.plan_increment_criteria_appendix` (v3): "Plan a qa task whose `expected_artifacts` include each of these
+files". In a multi-role framing it reached the development proposer too, whose proposal can't hold a qa task (SIP-0093
+§5.8 rule 1 drops one). So the development proposer wrote the files into its develop tasks, the qa proposer wrote them
+into its qa tasks, and the plan gate refused the merged dual claim. The re-roll's rejection appendix reached the
+proposers, but the instruction still asked the development proposer for what the merge drops. Campaign
+`cmp_73535ccef891`'s increment cycle `cyc_7cbdae00b2ed` was refused this way on both its re-rolls on 2026-10-29
+(`run_bbd39e53bd5f` at 11:28Z, `run_ab5d242a1264` at 11:44Z); SIP-0093 §15b has the record.
+
+**What changed.**
+- **The development proposer is shown its own appendix,**
+  `request.plan_increment_criteria_development_appendix` (v1), with the same index. It says the qa proposal plans the
+  task that writes each file, so the files are qa's: leave them out of its tasks' `expected_artifacts` and plan no task
+  that writes them, and plan the code that makes each test pass instead. A file both name is claimed twice, and the
+  plan gate refuses that.
+- **The selection is a declaration on the proposer** (`_ProposeBaseHandler._increment_surfaces`): the development
+  proposer's is `DEVELOPMENT_INCREMENT_SURFACES`, the shared table with the criterion files' asset swapped
+  (`_plan_authoring.py`), so the two lists can't drift (#1874).
+- **The qa proposer and the sole-author merger keep v3,** unchanged: each writes the qa tasks.
+- **The prompt budget counts the two as alternatives** (`_PLAN_PROPOSAL_TEMPLATES`), at the larger.
+- **The merge is the backstop** (SIP-0093 §15b): a criterion file both proposals still claim is given to the qa task.
+
+**The rendered section,** as the development proposer's `handle()` renders it on the shipped templates for an invented
+three-criterion increment: the heading "Each new criterion is proven in its own test file, which a qa task writes",
+two paragraphs, then the index: 227 tokens with that index, against the qa proposer's v3 section at 177 (measured with
+the prompt budget's counter, `memory.lessons._tokens`).
+
+**Evidence.** `tests/unit/capabilities/test_criterion_file_ownership.py`,
+`test_each_proposer_is_told_who_writes_the_criterion_files`, enters at `generate_task_plan` (framing, on
+`campaign-increment-source`'s defaults) and runs each proposer's real `handle()` on its envelope's inputs: the
+development proposer's prompt carries the new rule and not v3's sentence, and the qa proposer's carries v3's and not
+the new one, each with the index.
+
+**Who ruled.** The supervisor placed #2795's fix in 2.5 under the owner's 2.5 grants. The issue proposed rendering the
+appendix by role; the asset's wording and the selection seam are the implementer's, for the supervisor's review.

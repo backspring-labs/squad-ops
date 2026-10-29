@@ -170,6 +170,7 @@ class TestWorkedExample:
             prd_hash="abc123",
             configured_contributors=["development", "qa"],
             missing_proposals=[],
+            criterion_files=(),
         )
 
         # Two canonical tasks
@@ -210,6 +211,7 @@ class TestWorkedExample:
             prd_hash="abc123",
             configured_contributors=["development", "qa"],
             missing_proposals=[],
+            criterion_files=(),
         )
 
         assert decisions.authoring_mode == "multi_role"
@@ -239,6 +241,7 @@ class TestWorkedExample:
             prd_hash="abc123",
             configured_contributors=["development", "qa"],
             missing_proposals=[],
+            criterion_files=(),
         )
         plan_yaml = emit_plan_yaml(plan)
         reparsed = ImplementationPlan.from_yaml(plan_yaml)
@@ -262,6 +265,7 @@ class TestWorkedExample:
             prd_hash="abc123",
             configured_contributors=["development", "qa"],
             missing_proposals=[],
+            criterion_files=(),
         )
         decisions_yaml = emit_merge_decisions_yaml(decisions)
         reparsed = MergeDecisions.from_yaml(decisions_yaml)
@@ -294,6 +298,7 @@ class TestAuthoringModeInvariant:
             prd_hash="h",
             configured_contributors=["development", "qa", "strategy"],
             missing_proposals=[],
+            criterion_files=(),
         )
         assert decisions.authoring_mode == "multi_role"
         assert decisions.sole_author_reason is None
@@ -318,6 +323,7 @@ class TestAuthoringModeInvariant:
                 MissingProposal(role="qa", failure_reason="llm_error"),
                 MissingProposal(role="strategy", failure_reason="timeout"),
             ],
+            criterion_files=(),
         )
         assert decisions.authoring_mode == "multi_role"
         assert decisions.sole_author_reason is None
@@ -344,6 +350,7 @@ class TestAuthoringModeInvariant:
             prd_hash="h",
             configured_contributors=["development", "qa"],
             missing_proposals=[],
+            criterion_files=(),
         )
         # Round-trip — raises ValueError if RC-26 violated
         reparsed = MergeDecisions.from_yaml(emit_merge_decisions_yaml(decisions))
@@ -382,6 +389,7 @@ brief_conflicts:
             prd_hash="h",
             configured_contributors=["development"],
             missing_proposals=[],
+            criterion_files=(),
         )
         assert len(decisions.brief_conflicts_disposition) == 1
         d = decisions.brief_conflicts_disposition[0]
@@ -412,6 +420,7 @@ brief_conflicts:
             prd_hash="h",
             configured_contributors=["development"],
             missing_proposals=[],
+            criterion_files=(),
         )
         d = decisions.brief_conflicts_disposition[0]
         assert d.disposition == "escalated_to_operator"
@@ -441,6 +450,7 @@ class TestDependencyResolution:
             prd_hash="h",
             configured_contributors=["development", "qa"],
             missing_proposals=[],
+            criterion_files=(),
         )
         assert plan.tasks[1].depends_on == [0]
 
@@ -464,6 +474,7 @@ class TestDependencyResolution:
             prd_hash="h",
             configured_contributors=["qa"],
             missing_proposals=[],
+            criterion_files=(),
         )
         # qa task has empty depends_on (unresolved key dropped, not silently added)
         assert plan.tasks[0].depends_on == []
@@ -529,6 +540,7 @@ class TestDependencyKeyNormalization:
             prd_hash="h",
             configured_contributors=["development"],
             missing_proposals=[],
+            criterion_files=(),
         )
         assert plan.tasks[0].focus == "Backend models and schemas"
         assert plan.tasks[1].focus == "FastAPI endpoints"
@@ -554,6 +566,7 @@ class TestDependencyKeyNormalization:
             prd_hash="h",
             configured_contributors=["development", "qa"],
             missing_proposals=[],
+            criterion_files=(),
         )
         assert plan.tasks[1].depends_on == [0]
         assert "Unresolved cross-proposal dependency" not in decisions.operator_notes
@@ -578,6 +591,7 @@ class TestDependencyKeyNormalization:
             prd_hash="h",
             configured_contributors=["qa"],
             missing_proposals=[],
+            criterion_files=(),
         )
         assert plan.tasks[0].depends_on == []
         assert "Unresolved cross-proposal dependency" in decisions.operator_notes
@@ -626,6 +640,7 @@ tasks:
             prd_hash="h",
             configured_contributors=["development"],
             missing_proposals=[],
+            criterion_files=(),
         )
         # Only the dev task survived
         assert len(plan.tasks) == 1

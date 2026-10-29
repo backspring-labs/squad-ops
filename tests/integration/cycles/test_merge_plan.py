@@ -171,6 +171,7 @@ def test_eve_proposes_qa_task_neo_omitted_merged_plan_includes_it():
         prd_hash="eve_hash",
         configured_contributors=["development", "qa"],
         missing_proposals=[],
+        criterion_files=(),
     )
 
     # ── Eve's qa task must be in the canonical plan ──────────────────────

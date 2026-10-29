@@ -12,6 +12,9 @@ the proposer's reasoning recorded; blocking conflicts are escalated to
 operator notes verbatim. Unresolved cross-proposal dependencies surface in
 operator notes rather than being auto-stubbed.
 
+One file ownership rule rides on rule 2 (SIP-0093 §15b, #2795): an increment's criterion file
+that a development task and a qa task both claim is the qa task's (``_criterion_files_to_qa``).
+
 This module is intentionally stateless and side-effect-free. The handler
 shell in ``planning/merge.py`` calls ``merge_proposals(...)`` and wraps
 the returned artifacts in a ``HandlerResult``.
@@ -21,10 +24,12 @@ from __future__ import annotations
 
 import dataclasses
 import logging
+from collections.abc import Sequence
 from typing import Any
 
 import yaml
 
+from squadops.cycles.acceptance_check_spec import check_subject_paths
 from squadops.cycles.implementation_plan import (
     ImplementationPlan,
     PlanSummary,
@@ -45,9 +50,13 @@ from squadops.cycles.proposed_role_tasks import (
     canonicalize_dep_ref,
     focus_key,
 )
-from squadops.tasks.task_types import TaskType
+from squadops.tasks.task_types import TaskType, authors_qa_suite
 
 logger = logging.getLogger(__name__)
+
+#: A pair as the merge carries it before indexing: the canonical task, its provenance, and the
+#: proposed task it came from (whose ``depends_on_focus`` rule 5 reads).
+_Pair = tuple[PlanTask, CanonicalTaskProvenance, ProposedTask]
 
 
 # Per SIP-0093 §5.8 rule 2 — only the domain owner's task_type lands in
@@ -101,6 +110,7 @@ def merge_proposals(
     prd_hash: str,
     configured_contributors: list[str],
     missing_proposals: list[MissingProposal],
+    criterion_files: Sequence[str],
 ) -> tuple[ImplementationPlan, MergeDecisions]:
     """Apply the SIP-0093 §5.8 deterministic merge.
 
@@ -117,6 +127,10 @@ def merge_proposals(
             entries (one per configured role that produced no parseable
             artifact). The caller builds this from the proposer-failure
             artifacts in the cycle stream.
+        criterion_files: An increment's new criteria's own test files (SIP-0109 §8.1), empty
+            for every other cycle. One that a development task and a qa task both claim is the
+            qa task's (§15b, :func:`_criterion_files_to_qa`). Required, never defaulted: a
+            caller that forgot it would merge the dual claim the plan gate then refuses (#2795).
 
     Returns:
         ``(ImplementationPlan, MergeDecisions)`` — both with
@@ -153,6 +167,10 @@ def merge_proposals(
                 continue
             canonical_pairs.append(_build_canonical_pair(ptask, "qa"))
 
+    # §15b (#2795): an increment's criterion file a development task and a qa task both claim
+    # is the qa task's. Before indexing, so a development task it empties takes no index.
+    canonical_pairs, dropped_tasks = _criterion_files_to_qa(canonical_pairs, criterion_files)
+
     # Rule 8: assign final task indices. Dev tasks first (proposal order),
     # then qa tasks (proposal order). Strategy guidance (rule 6) may bias
     # ordering — Rev 1 records guidance_ids in merge_decisions but does
@@ -174,9 +192,16 @@ def merge_proposals(
             focus_to_index[key] = task.task_index
 
     resolved_pairs, unresolved_deps = _resolve_dependency_edges(indexed_pairs, focus_to_index)
+    # §15b: an edge to a development task the merge dropped is dropped with it, not moved to the
+    # qa tasks that took its files, which could close a cycle (one of them may depend on the
+    # dependent). Recorded apart from a genuine gap, which a proposer never produced.
+    dropped_edges = [(i, key) for i, key in unresolved_deps if key in dropped_tasks]
+    unresolved_deps = [(i, key) for i, key in unresolved_deps if key not in dropped_tasks]
 
     canonical_tasks = [t for t, _ in resolved_pairs]
-    provenance_entries = [p for _, p in resolved_pairs]
+    provenance_entries = _record_taken_places(
+        [p for _, p in resolved_pairs], dropped_tasks, focus_to_index
+    )
 
     # Rule 1: brief-conflict dispositions
     brief_conflicts_disposition = _resolve_brief_conflicts(dev_proposal, qa_proposal)
@@ -189,6 +214,7 @@ def merge_proposals(
         strategy_guidance=strategy_guidance,
         brief_conflicts_disposition=brief_conflicts_disposition,
         unresolved_deps=unresolved_deps,
+        dropped_edges=_dropped_edge_notes(dropped_edges, dropped_tasks, focus_to_index),
     )
 
     # Determine proposal_completeness
@@ -339,6 +365,146 @@ def _build_canonical_pair(
     return plan_task, provenance, ptask
 
 
+@dataclasses.dataclass(frozen=True)
+class _DroppedTask:
+    """A development-side task §15b dropped whole: every file it named is a criterion file that a
+    qa task writes. ``writers`` are those qa tasks' focus keys, in proposal order."""
+
+    proposed_by: tuple[str, ...]
+    task_type: str
+    files: tuple[str, ...]
+    writers: tuple[str, ...]
+
+
+def _criterion_files_to_qa(
+    pairs: list[_Pair], criterion_files: Sequence[str]
+) -> tuple[list[_Pair], dict[str, _DroppedTask]]:
+    """SIP-0093 §15b (#2795): an increment's criterion file that a development-side task and a
+    qa task both claim is the qa task's. SIP-0109 §24m: the qa role writes the test that proves
+    the criterion, and a file only a development task names doesn't count.
+
+    - The file leaves the development task's ``expected_artifacts``, and so do the task's typed
+      checks that read it (``check_subject_paths``): the task no longer writes it, and a check
+      on a file the task's own tree lacks fails at its evaluation whatever its code does. The
+      task's provenance becomes ``modified``, its reason naming each file and its writer.
+    - A development task left with nothing to write is dropped: its whole deliverable is the qa
+      tasks'. Returned by focus key, for the provenance of the qa tasks that take its place and
+      for the edges that pointed at it.
+    - A file no qa task claims stays where it is, so no criterion file is left unclaimed.
+
+    Any other dual claim, and a criterion file two qa tasks claim, is left for the plan validator
+    to refuse (#673): nothing establishes an owner for those. With no criterion files, or no dual
+    claim on one, the pairs come back as they came.
+    """
+    criteria = set(criterion_files)
+    writers: dict[str, list[str]] = {}
+    for task, prov, _orig in pairs:
+        if authors_qa_suite(task.task_type):
+            for artifact in task.expected_artifacts:
+                if artifact in criteria:
+                    writers.setdefault(artifact, []).extend(prov.source_proposal_task_keys)
+    if not writers:
+        return pairs, {}
+
+    kept: list[_Pair] = []
+    dropped: dict[str, _DroppedTask] = {}
+    for task, prov, orig in pairs:
+        given = (
+            []
+            if authors_qa_suite(task.task_type)
+            else list(dict.fromkeys(a for a in task.expected_artifacts if a in writers))
+        )
+        if not given:
+            kept.append((task, prov, orig))
+            continue
+        takers = tuple(dict.fromkeys(k for a in given for k in writers[a]))
+        remaining = [a for a in task.expected_artifacts if a not in writers]
+        if not remaining:
+            [key] = prov.source_proposal_task_keys
+            dropped[key] = _DroppedTask(
+                tuple(prov.proposed_by), str(task.task_type), tuple(given), takers
+            )
+            logger.info(
+                "merge_plan: dropping %s; qa task(s) %s write every file it named (§15b)",
+                key,
+                list(takers),
+            )
+            continue
+        checks = [c for c in task.acceptance_criteria if not _reads_any(c, given)]
+        dropped_checks = len(task.acceptance_criteria) - len(checks)
+        kept.append(
+            (
+                dataclasses.replace(task, expected_artifacts=remaining, acceptance_criteria=checks),
+                dataclasses.replace(
+                    prov,
+                    merge_action="modified",
+                    reason=(
+                        f"{prov.reason} Modified by SIP-0093 §15b: the criterion files "
+                        f"{', '.join(given)} are written by qa task(s) {', '.join(takers)}, "
+                        "which claim them too, so they left this task's expected_artifacts"
+                        + (
+                            f", with the {dropped_checks} typed check(s) it held on them."
+                            if dropped_checks
+                            else "."
+                        )
+                    ),
+                ),
+                orig,
+            )
+        )
+    return kept, dropped
+
+
+def _reads_any(criterion: Any, paths: Sequence[str]) -> bool:
+    """Whether ``criterion`` is a typed check that reads one of ``paths``."""
+    return isinstance(criterion, TypedCheck) and bool(
+        check_subject_paths(criterion.check, criterion.params) & set(paths)
+    )
+
+
+def _record_taken_places(
+    provenance: list[CanonicalTaskProvenance],
+    dropped: dict[str, _DroppedTask],
+    focus_to_index: dict[str, int],
+) -> list[CanonicalTaskProvenance]:
+    """§15b: each qa task that took a dropped development task's place records it as merged: the
+    dropped task's key among its sources, its role among its proposers, and why."""
+    out = list(provenance)
+    for key, gone in dropped.items():
+        for writer in gone.writers:
+            i = focus_to_index[writer]
+            prov = out[i]
+            out[i] = dataclasses.replace(
+                prov,
+                source_proposal_task_keys=[*prov.source_proposal_task_keys, key],
+                proposed_by=list(dict.fromkeys([*prov.proposed_by, *gone.proposed_by])),
+                merge_action="merged",
+                reason=(
+                    f"{prov.reason} It takes the place of {'/'.join(gone.proposed_by)}-proposed "
+                    f"{gone.task_type} task {key!r} (SIP-0093 §15b): every file that task named is a "
+                    f"criterion file a qa task writes ({', '.join(gone.files)}), so the merge "
+                    "dropped it."
+                ),
+            )
+    return out
+
+
+def _dropped_edge_notes(
+    edges: list[tuple[int, str]],
+    dropped: dict[str, _DroppedTask],
+    focus_to_index: dict[str, int],
+) -> list[str]:
+    """§15b: one operator note per dependency on a development task the merge dropped."""
+    return [
+        f"Dependency dropped: canonical task {i} depended on {key!r}, which the merge dropped "
+        f"because every file it named is a criterion file that canonical task(s) "
+        f"{', '.join(str(focus_to_index[w]) for w in dropped[key].writers)} write (SIP-0093 "
+        "§15b). The "
+        "edge isn't moved to them, since that could close a dependency cycle."
+        for i, key in edges
+    ]
+
+
 def _resolve_brief_conflicts(
     dev_proposal: ProposedRoleTasks | None,
     qa_proposal: ProposedRoleTasks | None,
@@ -405,6 +571,7 @@ def _build_operator_notes(
     strategy_guidance: PlanGuidance | None,
     brief_conflicts_disposition: list[BriefConflictDisposition],
     unresolved_deps: list[tuple[int, str]],
+    dropped_edges: list[str],
 ) -> str:
     """Build the operator_notes prose per §5.9 + §5.8 gap-fill policy."""
     parts: list[str] = []
@@ -439,6 +606,7 @@ def _build_operator_notes(
                 f"{task_index} references {missing_key!r} which no proposer "
                 f"produced. Operator review required (gap_fill candidate)."
             )
+    parts.extend(dropped_edges)
 
     return "\n".join(parts)
 

@@ -25,7 +25,7 @@ PlanTask, etc.).
 
 from __future__ import annotations
 
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field
 
 # Allowed severity values. Anything else → ValueError at parse time.
@@ -346,6 +346,31 @@ _assert_safelist_is_runnable()
 def argv_matches_safelist(argv: list[str]) -> bool:
     """True when argv matches one of the safelisted command forms."""
     return any(pat.matcher(argv) for pat in COMMAND_SAFELIST)
+
+
+def check_subject_paths(check_name: str, params: Mapping[str, object]) -> frozenset[str]:
+    """The workspace paths an authored check reads, as written: the values of its spec's
+    ``path_params``, and a safelisted command's file. Every safelisted form is a fixed prefix
+    and one path (``_exact_then_one_path``), so that path is the argv's last element; an argv
+    the safelist refuses names nothing here, since it never runs. An unknown check names
+    nothing (the parser refuses it elsewhere).
+
+    #2795: the plan merge drops a task's checks on a file it gives to another task, which it
+    finds by this.
+    """
+    spec = CHECK_SPECS.get(check_name)
+    if spec is None:
+        return frozenset()
+    paths = {value for key in spec.path_params if isinstance(value := params.get(key), str)}
+    argv = params.get("argv")
+    if (
+        isinstance(argv, list)
+        and argv
+        and all(isinstance(a, str) for a in argv)
+        and argv_matches_safelist(argv)
+    ):
+        paths.add(argv[-1])
+    return frozenset(paths)
 
 
 # #423: skip reasons that mean "enforcement is deliberately off by config" —

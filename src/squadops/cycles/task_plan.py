@@ -871,6 +871,21 @@ def _increment_inputs(
     return {}
 
 
+def _criterion_file_inputs(
+    task_type: str, change_request: str | None, criterion_files: tuple[Any, ...]
+) -> dict[str, Any]:
+    """#2795 (SIP-0093 §15b): an increment's new criterion files, as data, for the merge, which
+    gives a file a development task and a qa task both claim to the qa task. An increment with no
+    new criterion carries an empty list, so the key's absence means no increment and the merge can
+    require it. WHO is the registry's declaration (``increment_criterion_files``)."""
+    if change_request is None or not get_context_contract(task_type).increment_criterion_files:
+        return {}
+    # deferred (cycle): campaigns.increment_tree loads this module
+    from squadops.campaigns.increment_tree import criterion_file_rows
+
+    return {"increment_criterion_files": criterion_file_rows(criterion_files)}
+
+
 def _prior_cycle_inputs(resolved_config: Mapping[str, Any], task_type: str) -> dict[str, Any]:
     """#1692, SIP-0109 §10a: a retry's or a repair's authors are handed the failed cycle it
     continues — its brief, as its launch carried it. WHO is the registry's declaration
@@ -1571,6 +1586,7 @@ def _step_inputs(
         )
     _inject_rejection_context(inputs, framing_rejection_context, task_type)
     inputs.update(_increment_inputs(run, task_type, change_request, evaluation, test_scope))
+    inputs.update(_criterion_file_inputs(task_type, change_request, criterion_files))
     inputs.update(_prior_cycle_inputs(resolved_config, task_type))
     return inputs
 
