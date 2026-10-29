@@ -181,6 +181,28 @@ def test_retest_forwarding_is_presence_keyed():
     }
 
 
+@pytest.mark.parametrize(
+    "repository",
+    [{"commit": "c" * 40, "map": "harbor/app.py", "runners": []}, None, {}],
+    ids=["a-products-run", "a-sample-applications-run", "an-empty-repository"],
+)
+def test_a_retest_carries_the_products_repository_exactly_when_its_failed_task_did(repository):
+    """#2815: the retest runs the repaired suite on the tree the failed task's ran on, a product's
+    whole tree where the task carried its repository (``qa_run_tree``). Bug caught: the retest
+    forwarded without it, so a suite that passed at emission fails its retest on the source files
+    alone; or a sample application's retest given an empty key that reads as a product's."""
+    failed = {"artifact_contents": {"harbor/app.py": "x"}}
+    if repository is not None:
+        failed["source_repository"] = repository
+
+    forwarded = ca.retest_forwarded_inputs(failed)
+
+    if repository:
+        assert forwarded["source_repository"] == repository
+    else:
+        assert "source_repository" not in forwarded
+
+
 def _source_ref(artifact_id, filename):
     ref = _ref(artifact_id, filename, "development.develop")
     return dataclasses.replace(ref, artifact_type="source", metadata=dict(ref.metadata))

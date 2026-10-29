@@ -132,7 +132,7 @@ async def test_the_focused_prompt_shows_what_it_showed_and_the_composer_counts_t
     if expected == ["tests/test_moons.py"]:
         assert section == _TESTS_PACKAGE_SECTION
     assert list(qa_test_prompt_contents(inputs)) == shown
-    assert list(prompt.sources) == _SUITE_TREE
+    assert list(prompt.run_tree) == _SUITE_TREE
 
 
 async def test_an_empty_tree_shows_no_section_and_counts_nothing():
@@ -144,7 +144,7 @@ async def test_an_empty_tree_shows_no_section_and_counts_nothing():
 
     assert _shown_section(prompt.user_prompt) is None
     assert qa_test_prompt_contents(inputs) == {}
-    assert list(prompt.sources) == []
+    assert list(prompt.run_tree) == []
 
 
 async def test_the_monolithic_prompt_shows_what_it_showed_and_the_composer_counts_the_same():
@@ -156,7 +156,7 @@ async def test_the_monolithic_prompt_shows_what_it_showed_and_the_composer_count
     prompt = await _composed(inputs)
 
     assert prompt.user_prompt.startswith(_MONOLITHIC_HEAD)
-    assert list(prompt.sources) == _SUITE_TREE
+    assert list(prompt.run_tree) == _SUITE_TREE
     assert sorted(qa_test_prompt_contents(inputs)) == sorted(
         [*_SUITE_TREE, "plans/validation_plan.md"]
     )
