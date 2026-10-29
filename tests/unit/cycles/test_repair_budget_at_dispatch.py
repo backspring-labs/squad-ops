@@ -28,6 +28,7 @@ from __future__ import annotations
 
 import dataclasses
 import json
+import sys
 
 import pytest
 
@@ -53,6 +54,7 @@ from tests.unit.campaigns.test_product_increment_seams import STORED
 from tests.unit.cycles._product_increment import (
     INSTRUCTION_ID,
     INSTRUCTION_TOKENS,
+    LONG_LINE_FILES,
     MODEL,
     NAMED,
     Dispatcher,
@@ -80,10 +82,17 @@ def _json_tokens(value) -> int:
     return _tokens(json.dumps(value, sort_keys=True))
 
 
-async def _repair_of_a_failed_develop(named: tuple[str, ...], named_chars: int, modules: int):
-    """The develop task naming ``named`` fails its acceptance having written them, and the
-    executor's correction round composes its repair. Returns what the round produced."""
-    tree = product_tree(named=named, named_chars=named_chars, modules=modules)
+async def _repair_of_a_failed_develop(
+    named: tuple[str, ...], named_chars: int, modules: int, contents: dict[str, str] | None = None
+):
+    """The develop task naming ``named`` fails its acceptance having written them (``contents``,
+    or invented modules ``named_chars`` long), and the executor's correction round composes its
+    repair. Returns what the round produced."""
+    wrote = contents or {path: module("total_line", named_chars) for path in named}
+    tree = {
+        **product_tree(named=() if contents else named, named_chars=named_chars, modules=modules),
+        **{path: text.encode() for path, text in (contents or {}).items()},
+    }
     cycle = increment_cycle()
     recall, store = await pinned_recall(cycle)
     vault, dispatcher = Vault(), Dispatcher()
@@ -100,7 +109,6 @@ async def _repair_of_a_failed_develop(named: tuple[str, ...], named_chars: int, 
         if e.task_type == "development.develop"
     ]
     enriched = await built._enrich_envelope(develop, {}, [], vault.refs())
-    wrote = {path: module("total_line", named_chars) for path in named}
     result = failed(develop, wrote, [{"check": "acceptance:regex_match", "passed": False}])
     return tree, enriched, result, built, registry, dispatcher, store, cycle
 
@@ -194,3 +202,40 @@ async def test_a_repair_whose_shown_files_alone_exceed_the_window_is_still_held(
             "input",
         ),
     )
+
+
+def _no_javascript_parser(*_args, **_kwargs):
+    raise AssertionError("the runtime parsed JavaScript")
+
+
+@pytest.mark.parametrize("path", list(LONG_LINE_FILES))
+async def test_a_repair_of_a_file_with_one_long_line_on_a_small_product_binds(path, monkeypatch):
+    """#2812's third reading, entered as the binding case is, with tree-sitter unimportable and
+    the JavaScript resolver raising, as in the runtime: a repair of a file whose one long line is
+    an SVG path, a paragraph, a JSON fixture, a long string or a minified bundle, on a small
+    product, binds the 1,330-token instruction. Bug caught: the edit form bounded by its longest
+    line forty times over, which held repairs that main bound."""
+    from squadops.cycles import structural_jsx
+
+    monkeypatch.setitem(sys.modules, "tree_sitter", None)
+    monkeypatch.setattr(structural_jsx, "_in_worker", _no_javascript_parser)
+    (
+        _tree,
+        enriched,
+        result,
+        built,
+        registry,
+        dispatcher,
+        _store,
+        cycle,
+    ) = await _repair_of_a_failed_develop(
+        (path,), named_chars=0, modules=10, contents={path: LONG_LINE_FILES[path]}
+    )
+
+    await correction_round(built, enriched, enriched, result, cycle)
+
+    [repair] = [e for e in dispatcher.sent if e.task_type == _REPAIR]
+    assert anchorable_files(repair.inputs) == [path]
+    [handed] = repair.inputs[PROJECT_INSTRUCTIONS_INPUT]["instructions"]
+    assert handed["record_id"] == INSTRUCTION_ID
+    registry.record_binding_hold.assert_not_awaited()

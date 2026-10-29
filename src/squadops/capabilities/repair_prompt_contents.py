@@ -19,17 +19,20 @@ tree: on a repository-backed product larger than about half its model's window, 
 memory's sections read 0, and every repair was held on its binding (the 2.5 main demonstration's
 round 2).
 
-**What runs where.** :func:`repair_prompt_contents` parses no file, reads no file and starts no
-process: it is string work on the envelope's inputs, so it runs in the runtime, which carries no
-JavaScript parser, on its event loop. Only :func:`edit_form` parses: listing a file's entities
-takes its resolver (``ast`` for Python; tree-sitter in a worker process for JavaScript and
-TypeScript, which only the agents' images carry). So the composer counts the edit form by
-:func:`edit_form_bound`, an upper bound read without parsing, never by :func:`edit_form`.
+**What runs where.** Listing a file's entities takes its resolver: the stdlib ``ast`` for Python,
+in process; tree-sitter in a worker process for JavaScript and TypeScript, which only the agents'
+images carry. :func:`edit_form` lists every file's, on the agent. The composer never calls it: it
+calls :func:`repair_prompt_contents`, which reads no file and starts no process, and counts the
+edit form by :func:`edit_form_bound`. That lists a Python file's entities through ``ast`` and
+counts a file no resolver reads by its path, both exactly, and bounds a JavaScript or TypeScript
+file's from its text, with no parser. So it runs in the runtime, which carries no JavaScript
+parser, on its event loop.
 """
 
 from __future__ import annotations
 
 import json
+import re
 from collections.abc import Mapping
 from typing import Any
 
@@ -44,10 +47,13 @@ from squadops.capabilities.anchored_edits import (
 )
 from squadops.capabilities.context_assembly import REPAIR_FAILED_ARTIFACTS_KEY, scaffold_shell_paths
 from squadops.cycles.failure_evidence import failing_cases_from_evidence
+from squadops.cycles.structural_jsx import ECMASCRIPT_SUFFIXES, SELECTORS_PER_STATEMENT_MAX
 from squadops.cycles.structural_resolution import (
+    PYTHON_SUFFIXES,
     SELECTOR_KIND_MAX,
     SELECTOR_NAMES_MAX,
     SELECTOR_SUFFIX_MAX,
+    reads_structure,
 )
 from squadops.cycles.write_authorization import normalize_ws_path
 
@@ -64,11 +70,11 @@ def repair_prompt_contents(inputs: Mapping[str, Any]) -> dict[str, str]:
     """What the composer counts of a repair's prompt, by the template variable that shows it, each
     ``""`` when the prompt shows none: the current files and the failing-case frames as the prompt
     shows them, and, for the edit form's file list, as many characters as :func:`edit_form_bound`
-    says it can take, since listing the entities takes a parser the runtime doesn't carry. Parses
-    nothing, reads no file and starts no process.
+    says it can take, since listing a JavaScript file's entities takes a parser the runtime doesn't
+    carry. Reads no file, starts no process, and parses only Python, with ``ast`` in process.
 
-    Two parts are upper bounds: the edit form, and the frames, which are a qa repair's alone, so a
-    dev or builder repair's count is over by them."""
+    Two parts can be upper bounds: a JavaScript or TypeScript file's line in the edit form, and the
+    frames, which are a qa repair's alone, so a dev or builder repair's count is over by them."""
     return {
         "current_files": current_files(inputs),
         "editable_files": " " * edit_form_bound(inputs),
@@ -115,8 +121,9 @@ def edit_form(inputs: Mapping[str, Any]) -> tuple[list[str], dict[str, int]]:
     may revise with the entities its resolver can address, read from the same base, and how many
     were listed for each. Nothing when it may revise none.
 
-    It parses each file, so the handler calls it on the agent, and the composer never does: it
-    counts :func:`edit_form_bound` instead."""
+    It parses each file, JavaScript and TypeScript through tree-sitter in a worker process, so the
+    handler calls it on the agent, and the composer never does: it counts :func:`edit_form_bound`
+    instead."""
     files = anchorable_files(inputs)
     if not files:
         return [], {}
@@ -125,48 +132,75 @@ def edit_form(inputs: Mapping[str, Any]) -> tuple[list[str], dict[str, int]]:
 
 def edit_form_bound(inputs: Mapping[str, Any]) -> int:
     """At least as many characters as the composer counts :func:`edit_form`'s file list at, its
-    JSON escapes included (``prompt_budget`` counts a structure as its JSON), read without parsing
-    a file.
-
-    Each file's line is its path's framing, at most ``MAX_LISTED_ENTITIES`` selectors between
-    backticks, and the count of those left out (``anchored_edits.EDIT_FORM_*``). A selector is a
-    kind, at most ``SELECTOR_NAMES_MAX`` names read from the file joined by a dot, and a suffix
-    (``structural_resolution.SELECTOR_*``). A name never spans a logical line: an identifier never
-    does, and a module's name or a JavaScript import's source spans physical lines only through a
-    backslash continuation, which :func:`_longest_name` joins. So each name is bounded by the
-    file's longest logical line, escaped. The count left out is under the selectors a file can
-    carry: three a statement (``KIND:NAME``, ``#body``, ``#try``) and ``imports``, with at most
-    one statement starting on each line.
-    """
+    JSON escapes included (``prompt_budget`` counts a structure as its JSON), with no file parsed
+    out of process: each file's line by :func:`_file_line_bound`, and the lines between them."""
     base = repair_base_files(inputs)
     files = anchorable_files(inputs)
-    total = len(json.dumps("\n" * max(0, len(files) - 1))) - 2
-    for path in files:
-        content = base[path]
-        selector = (
-            SELECTOR_KIND_MAX
-            + SELECTOR_SUFFIX_MAX
-            + SELECTOR_NAMES_MAX * _longest_name(content)
-            + (SELECTOR_NAMES_MAX - 1)
+    between = _escaped("\n" * max(0, len(files) - 1))
+    return between + sum(_file_line_bound(path, base[path]) for path in files)
+
+
+def _file_line_bound(path: str, content: str) -> int:
+    """At least the escaped length of the edit form's line for ``path``.
+
+    - **Exactly, for a file no resolver reads and for Python.** The first is listed by its path
+      alone. Python's resolver is the stdlib ``ast``, in process, with no worker and no I/O.
+    - **For JavaScript and TypeScript, by the least of three bounds,** since their resolver is
+      tree-sitter in a worker process, which the runtime doesn't carry. The line is its path's
+      framing, at most ``MAX_LISTED_ENTITIES`` selectors between backticks, and the count of those
+      left out (``anchored_edits.EDIT_FORM_*``). A selector is a kind, its names and a suffix
+      (``structural_resolution.SELECTOR_*``), so only the names vary, and their total is at most:
+      1. each name's logical line (:func:`_longest_name`), as many as a selector carries. A name
+         never spans one: an identifier never does, and an import's source spans physical lines
+         only through a backslash continuation, which it joins;
+      2. ``SELECTORS_PER_STATEMENT_MAX`` times the file's text, since each statement's names lie
+         inside it;
+      3. the longest identifier-like run in the file for each selector
+         (:func:`_longest_identifier`), every name but an import's source being an identifier,
+         and the logical line for each import the file can have.
+    - **For any other resolver,** by the first bound alone.
+    """
+    if path.endswith(PYTHON_SUFFIXES) or not reads_structure(path):
+        [line], _offered = editable_file_lines([path], {path: content})
+        return _escaped(line)
+    longest = _longest_name(content)
+    names = MAX_LISTED_ENTITIES * (SELECTOR_NAMES_MAX * longest + SELECTOR_NAMES_MAX - 1)
+    if path.endswith(ECMASCRIPT_SUFFIXES):
+        imports = min(MAX_LISTED_ENTITIES, content.count("import"))
+        names = min(
+            names,
+            SELECTORS_PER_STATEMENT_MAX * _escaped(content),
+            MAX_LISTED_ENTITIES * _longest_identifier(content) + imports * longest,
         )
-        listed = MAX_LISTED_ENTITIES * (selector + len("``")) + (MAX_LISTED_ENTITIES - 1) * len(
-            EDIT_FORM_SEPARATOR
-        )
-        lines = len(content) + 1  # at least as many as the file has
-        more = _escaped(EDIT_FORM_MORE.format(count=3 * lines + 1))
-        total += _escaped(EDIT_FORM_FILE.format(path=path) + EDIT_FORM_ENTITIES) + listed + more
-    return total
+    framing = MAX_LISTED_ENTITIES * (SELECTOR_KIND_MAX + SELECTOR_SUFFIX_MAX + len("``"))
+    separators = (MAX_LISTED_ENTITIES - 1) * len(EDIT_FORM_SEPARATOR)
+    # The count left out is under the selectors a file can carry: three a statement and
+    # ``imports``, with at most one statement starting on each line.
+    more = _escaped(EDIT_FORM_MORE.format(count=3 * (len(content) + 1) + 1))
+    head = _escaped(EDIT_FORM_FILE.format(path=path) + EDIT_FORM_ENTITIES)
+    return head + framing + names + separators + more
 
 
 def _longest_name(content: str) -> int:
     """The most characters a name read from ``content`` can take, escaped as JSON: its longest
-    logical line, the physical lines a trailing backslash continues joined."""
+    logical line, the lines a trailing backslash continues joined. Split on ``\\n`` alone: every
+    other line break either resolver reads (``\\r``, U+2028, U+2029) only lengthens a line here."""
     longest = current = 0
-    for line in content.splitlines(keepends=True):
-        current += _escaped(line)
-        if not line.splitlines()[0].endswith("\\"):
+    for line in content.split("\n"):
+        current += _escaped(line + "\n")
+        if not line.rstrip("\r").endswith("\\"):
             longest, current = max(longest, current), 0
     return max(longest, current)
+
+
+#: A run of the characters a JavaScript or TypeScript identifier is written with, escapes and the
+#: joiners included, and more: any identifier lies inside one such run.
+_IDENTIFIER_RUN = re.compile(r"[\w$\\{}‌‍]+")
+
+
+def _longest_identifier(content: str) -> int:
+    """The most characters an identifier in ``content`` can take, escaped as JSON."""
+    return max((_escaped(run) for run in _IDENTIFIER_RUN.findall(content)), default=0)
 
 
 def _escaped(text: str) -> int:

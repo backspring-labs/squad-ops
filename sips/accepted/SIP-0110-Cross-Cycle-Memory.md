@@ -3683,16 +3683,27 @@ of about 105,000 tokens against a 65,536-token window.
   The repair handlers render each section through it, on the agents, and their `handle()` is byte-identical to
   `origin/main`'s. The composer calls `repair_prompt_contents` alone, which returns the three by the template
   variable each fills.
-- **The composer parses no file.** Listing a file's entities takes its resolver: `ast` for Python, and tree-sitter in a
-  worker process for JavaScript and TypeScript. Only the agents' images carry tree-sitter. The runtime-api's
-  `requirements/api.lock` doesn't, and a parse there would block its event loop. So the composer counts the current
-  files and the frames as shown, and the edit form by `edit_form_bound`, which parses nothing, reads no file and starts
-  no process. Each file's line in the form is its path's framing, then at most `MAX_LISTED_ENTITIES` selectors, then
-  the count of those left out (`anchored_edits.EDIT_FORM_*`, which `editable_file_lines` renders with). A selector is a
-  kind, at most two names read from the file joined by a dot, and a suffix (`structural_resolution.SELECTOR_*`). A
-  name never spans a logical line, so each is bounded by the file's longest logical line, all as JSON counts it. The
-  first build listed the entities in the composer, so a repair naming a `.js`, `.jsx`, `.ts` or `.tsx` file raised out
-  of the runtime's budget. #2812's second reading found it before merge.
+- **The composer parses no JavaScript.** Listing a file's entities takes its resolver: the stdlib `ast` for Python, in
+  process, and tree-sitter in a worker process for JavaScript and TypeScript. Only the agents' images carry
+  tree-sitter. The runtime-api's `requirements/api.lock` doesn't, and a worker's parse would block the runtime's event
+  loop. So the composer counts the current files and the frames as shown, and the edit form by `edit_form_bound`,
+  which reads no file and starts no process. Each file's line in the form is counted one of three ways:
+  - **exactly, for a file no resolver reads,** which is listed by its path alone, and **for Python,** through `ast`;
+  - **for JavaScript and TypeScript, by the least of three bounds read from the text.** The line is its path's
+    framing, at most `MAX_LISTED_ENTITIES` selectors, and the count of those left out (`anchored_edits.EDIT_FORM_*`,
+    which `editable_file_lines` renders with). A selector is a kind, its names and a suffix
+    (`structural_resolution.SELECTOR_*`), so only the names vary, and they total at most each of these:
+    1. forty times two of the file's longest logical line, since a name never spans one;
+    2. three times the file's text (`structural_jsx.SELECTORS_PER_STATEMENT_MAX`), since a statement's names lie
+       inside it;
+    3. forty of the file's longest identifier-like run, plus its longest logical line for each import it can have,
+       since every name but an import's source is an identifier.
+  - **for any other resolver,** by the first bound alone.
+
+  All are measured as JSON counts them. The first build listed the entities in the composer, so a repair naming a
+  `.js`, `.jsx`, `.ts` or `.tsx` file raised out of the runtime's budget; #2812's second reading found it before
+  merge. The second build bounded every file by its longest line alone, forty times over. That held a repair of a
+  view with one 3,000-character SVG path, which main bound, until the third reading.
 - **The contract field is general.** §5an's `artifact_contents_rendering` becomes
   `ContextAssemblyContract.scoped_rendering`, the rendering a handler shows a part of some inputs through.
   `prompt_budget._RENDERINGS` names the inputs each rendering covers:
@@ -3727,12 +3738,19 @@ A plan's check before the first dispatch isn't one of them.
 | `qa.test`, and its re-take | `source_repository`; `retake_current_files` | each whole | whole | whole | |
 | `qa.test`'s retest | the failed task's tree | it runs the repaired suite and generates nothing | not supplied | not supplied | none |
 | `data.analyze_failure`, `governance.correction_decision` | `failure_evidence` | no authoring seam | no budget | no budget | none |
-| `development.correction_repair`, `qa.test_repair` | `acceptance_workspace_files` (the product); `failed_task_artifacts` | the named files of them, their edit form, a qa repair's failing-case frames | **whole: the hold** | **the files and frames shown, the edit form at its bound** | 40,594 to 44,283 |
+| `development.correction_repair`, `qa.test_repair` | `acceptance_workspace_files` (the product); `failed_task_artifacts` | the named files of them, their edit form, a qa repair's failing-case frames | **whole: the hold** | **the files and frames shown, the edit form exactly for Python and at its bound for JavaScript** | 41,961 to 44,283 |
 | `development.correction_repair`, `qa.test_repair` | `failure_evidence`; `prior_outputs` | in part (the summary and its blocks; each role's summary) | whole | whole (an upper bound) | |
 
 **What isn't counted exactly, and is said so:**
-- **The edit form is counted at its bound.** About 1,400 tokens for a file whose longest line is about 55 characters,
-  where the form lists forty selectors at most and usually far less.
+- **A JavaScript or TypeScript file's line in the edit form is counted at its bound.** About 200 tokens of framing,
+  plus the least of three: about twenty tokens a selector for an identifier of eighty characters, three times the
+  file's text, and forty times twice its longest line.
+  - A TypeScript module of about 1,100 tokens, whose form lists forty of its eighty entities in 281 tokens, is bounded
+    at 323.
+  - One line of 3,000 characters in a view costs about 280 tokens.
+  - A minified bundle of 22,000 tokens costs the same.
+
+  A Python file and a file no resolver reads are counted exactly.
 - **The frames are a qa repair's alone.** A dev or builder repair's count includes them too, an over-count of a few
   lines around each failing case.
 - **A repair's anchored-edit retry** is a second call inside the repair, after a refused response. It adds the
@@ -3765,7 +3783,7 @@ E.4.3's open question (§5an).
     right or it is named as held, with why.
 - **The wiring test, `tests/unit/cycles/test_repair_budget_at_dispatch.py`.** It is entered at the executor's
   `_enrich_envelope` and `_dispatch_correction_protocol`, whose repair is supplied under its `BindingHolds`.
-  - The repair of a failed develop task that wrote one 2,000-token file takes 40,821, the window less what it shows,
+  - The repair of a failed develop task that wrote one 2,000-token file takes 42,189, the window less what it shows,
     where the whole tree left less than 0. The instruction is handed and disclosed as supplied.
   - The control: a repair shown sixteen files of about 4,000 tokens each is still held, with the instruction and the
     reason named.
@@ -3776,10 +3794,19 @@ E.4.3's open question (§5an).
 - **`tests/unit/capabilities/test_repair_prompt_contents.py`:**
   - the three sections exactly, the base's edges, and the count through the rendering;
   - the edit form's bound against the form the agent renders, for each kind of selector either resolver writes:
-    methods, imports continued across lines, names outside ASCII, more than forty entities, a long line, JSX,
-    TypeScript, a route handler's `#try`, an unparseable file and one no resolver reads;
-  - with tree-sitter unimportable and both resolvers raising, a `.jsx`, a `.ts` and a `.py` repair are given a budget
-    that is no smaller than the agent's real rendering of the same repair.
+    - methods, imports continued across lines, and a form feed in an import's source;
+    - names outside ASCII, more than forty entities, and a long line;
+    - JSX, TypeScript, and route handlers' `#try` with long names;
+    - an unparseable file, and one no resolver reads;
+  - a Python file and a file no resolver reads, counted exactly;
+  - every selector the resolvers write on that corpus fits the grammar the bound assumes;
+  - files of one long line (an SVG path, a paragraph, a JSON fixture, a long string, a minified bundle), on a small
+    product with no JavaScript parser in reach. Each is counted at no less than the form, and its repair's budget is
+    no less than main gave;
+  - with tree-sitter unimportable and the JavaScript resolver raising, a `.jsx`, a `.ts` and a `.py` repair are given
+    a budget that is no smaller than the agent's real rendering of the same repair.
+- **`test_repair_budget_at_dispatch.py`, the long-line cases:** with tree-sitter blocked, a repair of each of those
+  five files on a small product, entered as the binding case is, binds the 1,330-token instruction.
 - **`tests/unit/memory/test_prompt_budget_parity.py`:** a dev and a qa repair on a product of three packages, each
   within the margin of its rendered prompt.
 - **Mutants, each caught:**
@@ -3789,7 +3816,11 @@ E.4.3's open question (§5an).
   - the handler rendering its current files apart from the shared function;
   - the frames left out of the count;
   - the composer counting none of the tree;
-  - the composer listing the edit form's entities through the resolvers.
+  - the composer listing the edit form's entities through the resolvers;
+  - each JavaScript file's line bounded by its longest line alone;
+  - a file no resolver reads, and a Python file, counted at the JavaScript bound;
+  - a line split on every break `str.splitlines` reads;
+  - fewer selectors to a statement than the resolver writes.
 - **Loaded checks:**
   - `2810-composer` (runtime-api) counts a Python, a JSX and a TypeScript repair, so a runtime that can't count a
     JavaScript repair fails it;

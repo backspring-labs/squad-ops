@@ -93,6 +93,20 @@ def product_tree(
     return {path: content.encode() for path, content in files.items()}
 
 
+#: Files whose one long line a repair can name (#2812's third reading): an SVG path in a view, a
+#: paragraph, a JSON fixture, a long string and a minified bundle. None makes its repair's prompt
+#: long but by its own text.
+LONG_LINE_FILES = {
+    "web/src/Icon.jsx": 'export function Icon() {\n  return <path d="'
+    + "M0 0L1 1" * 375
+    + '" />;\n}\n',
+    "docs/notes.md": "# Notes\n\n" + "word " * 400 + "\n",
+    "tests/fixture.json": '{"rows": [' + ",".join(['"r"'] * 3000) + "]}",
+    "app/views.py": "BANNER = '" + "b" * 600 + "'\n\n\ndef view():\n    return BANNER\n",
+    "web/dist/bundle.js": ";".join(f"function f{i}(){{return {i}}}" for i in range(3000)),
+}
+
+
 class Vault:
     """The run's artifact store, in memory."""
 
