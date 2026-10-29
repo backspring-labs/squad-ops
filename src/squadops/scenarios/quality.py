@@ -15,7 +15,8 @@ Neither of the last two is evidence. Neither counts in any rate, and neither eve
 baseline held (§4.2).
 
 Lint reads the tree as delivered, whatever the start did, by #1937's rule sets (``LintReading``).
-Only a scaffold stack's tree has them: a declared Project's lint is not measured, and its own
+Only a scaffold stack's tree has them: a declared Project's lint is not measured, unless it is a
+greenfield product made from a scaffold blueprint, which its derived profile names (§10l). Its own
 linter is never read in their place.
 """
 
@@ -62,6 +63,17 @@ class NotMeasured(StrEnum):
     START_FAILED = "start_failed"
     #: The Project couldn't be started: no start declaration, or none the runner reads.
     NO_START_DECLARATION = "no_start_declaration"
+    #: The start declares an evaluation secret no approval releases (SIP-0112 Q40, contract 7), so
+    #: nothing was started (SIP-0113 §10l).
+    SECRET_NOT_AVAILABLE = "secret_not_available"
+    #: #1937's rule sets exist only for the scaffold stacks: a declared Project's lint is never
+    #: read unless the product follows a scaffold blueprint (§10l), and the product's own linter is
+    #: never used in its place (§4.2).
+    NOT_A_SCAFFOLD_STACK = "not_a_scaffold_stack"
+    #: The derived profile at the unit's pin couldn't be read, so whether the product was made from
+    #: a scaffold blueprint isn't known, and its lint isn't read (§10l; the second review of
+    #: #2788, P3-6). Never ``not_a_scaffold_stack``, which would claim to know.
+    PROFILE_UNREADABLE = "profile_unreadable"
     #: The delivery declares no page without a parameter, so none can be loaded as is.
     NO_DECLARED_PAGE = "no_declared_page"
     #: Not on the sandbox's app network (a host run), where the evaluator can't reach the app.
@@ -72,9 +84,6 @@ class NotMeasured(StrEnum):
     EVALUATOR_ABSENT = "evaluator_absent"
     #: The evaluator ran and failed, or answered something it shouldn't.
     EVALUATOR_FAILED = "evaluator_failed"
-    #: #1937's rule sets exist only for the scaffold stacks: a declared Project's lint is never
-    #: read, and the product's own linter is never used in its place (§4.2).
-    NOT_A_SCAFFOLD_STACK = "not_a_scaffold_stack"
     #: §10j, §10n: the seeded reading's. The Project declares no quality seed
     #: (``config/quality_seeds.yaml``).
     NO_SEED = "no_seed"

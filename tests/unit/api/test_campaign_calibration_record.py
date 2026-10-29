@@ -167,6 +167,7 @@ def _progress(world: _World, vault_dir, branch: CampaignBranch | None = None) ->
         assess=_never_assessed,
         launch=world.launch.drain,
         evaluate_outcome=None,
+        evaluate_baseline=None,
         outcome_section=None,
         intervention_section=None,
         campaign_branch=branch,

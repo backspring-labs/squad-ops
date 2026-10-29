@@ -99,7 +99,7 @@ contribution separates from acceptance.
 | quality gates where phase 1's data supports a threshold (§4.2, §6) | **unplaced** | with §4.7, each with its phase-1 evidence (§10s) |
 | phase 1 amendment: Lighthouse and axe on a seeded instance, parameterised pages included (§10j; reviewed in §10n) | **shipped** (§10n, §10o): a second instance of each evaluated tree, seeded through its own API and measured on every page the seed names, and the window's 20 trees re-measured as their own series. S1 **holds**, S2 **falsified** (§10o) | 2.4.0, PRs #2632, #2633, #2634 and #2635, issue #2562 |
 | phase 1 amendment: a finer quality reading, axe by element, failing audits by id, the HTTPS audits read as the environment's (§10o; designed, reviewed and approved in §10y) | **shipped**: built as the evaluator's `…-eslint10.12-7` (PR #2762) and read on its pre-registered series (§10z): S1 and E hold, S2a falls for both new measures, and the positive control falls as written, so every new measure stays reporting-only | 2.5.0, PR #2762 and the PR recording §10z, issue #2637 |
-| a repository-backed Project's Campaign: its baseline reading, an evaluation of the calibration record's commit (§10l; SIP-0112 H.4, SIP-0109 §24bv) | **placed** | 2.5.0, #2619 |
+| a repository-backed Project's Campaign: its baseline reading, an evaluation of the calibration record's commit, and a greenfield product made from a scaffold blueprint linted by that blueprint's rule set (§10l; SIP-0112 H.4, H.14, SIP-0109 §24bv) | **shipped** (§10ac): the record's commit read when the record is heard, the reading naming the record in place of a cycle (contract 5's `calibration_record_id`), the deltas against it or "no baseline reading", and lint by the blueprint at the baseline and each increment, alone when the product can't start. Its outside review's findings are fixed (§10ac); the cycle path's stale snapshot is #2789. §4.5 on such a Project (its proposal shown its goals) is named in §10ac as not built, and unplaced | 2.5.0, PR #2788, refs #2619 (stays open for SIP-0112 H.4's other parts) |
 
 **What closes this SIP:** phase 1 shipped and phase 2 shipped, or phase 2 dropped by a numbered amendment the owner
 rules.
@@ -2489,3 +2489,235 @@ saved id failed.
 
 **Who ruled.** The supervisor fixed it under the owner's 2.5 grants. It makes the vocabulary do what its description
 said, and no approved suite reads differently.
+
+### 10ac. §10l as built: a repository-backed Campaign's baseline reading is its calibration record's commit, evaluated as the record is heard, and a product made from a scaffold blueprint is linted by that blueprint's rule set (2026-10-28, its second review's fixes 2026-10-29; §4.1, §4.2, §4.4, §10l, §10aa; SIP-0112 contracts 4, 5, 7, 8, H.12, H.14; SIP-0109 §24bv point 1, §24cc; #2619, #2789; the supervisor's build, for the owner)
+
+**Why.** §10l designed the baseline reading of a repository-backed Campaign and its lint by a blueprint's rule set,
+and the owner placed both in 2.5 (2026-10-21). §10aa named both as not built. This builds them. The second review
+(SIP-0112 H.12, a fresh agent by the owner's choice) requested changes. Each of its findings is fixed below (its own
+list closes this section), and items 1, 7 and 9 already read as fixed.
+
+**What was built, and each choice the text left.**
+1. **When: as the record is heard, before its promotion.** `CampaignProgress.calibration_recorded`
+   (`campaigns/progress.py:895`) reads the baseline first (`:926`, `_baseline_evaluated` at `:975`), as a cycle's
+   hearing evaluates its ending before it promotes it (§10c). So the reading has the box between the record and the
+   first increment's proposal run, which launches only after the decision. The runtime root wires the hook
+   (`api/runtime/main.py:681`).
+   - **A pause or an abort applied during the reading holds** (the review's P2-A).
+     - The campaign is read again after the reading (`:930`). Unless it is still `calibrating`, nothing is promoted
+       or decided, and the hearing returns nothing.
+     - A paused campaign is decided by the re-hearing once it is resumed into `calibrating`, its reading not taken
+       twice.
+     - A promotion refused by a move in the instant between that read and the write is logged
+       (`campaign_record_promotion_refused`, `:940`), never raised over a start that was applied.
+     - A campaign that isn't `calibrating` when the hearing begins (paused between the start's row and its hearing)
+       isn't read at all (`:914`): the owner's brake holds the box too.
+     - **The cycle path has the same staleness:** `_hear` reads the campaign before the cycle-end evaluation and
+       promotes from that snapshot. That is #2789, filed and not fixed here.
+   - **The start now answers after the reading.** The start route hears the record in its own request (SIP-0109
+     §24cc), and the reading builds and starts the product. So `squadops campaigns start` waits the CLI's long timeout
+     (`[api] long_timeout`, the one a baseline capture waits, #2605; `cli/commands/campaigns.py:394`). The route's
+     docstring says so. A sample application's start writes no record, and is unchanged.
+2. **What is read: the record's commit, by the read a product cycle's capture takes.** #2778's read is now one method,
+   `CampaignCycleEvaluator.product_read` (`scenarios/campaign_cycles.py:298`), which both call:
+   - the tree whole from the managed clone, with its executable bits;
+   - checked against the record's tree identity (contract 4);
+   - the Development Configuration at the record's revision, started by `configured_start`;
+   - the surfaces its entry points serve.
+
+   `calibration_recorded` (`:245`) evaluates it by `evaluate_calibration_record` (`scenarios/evaluate.py:408`). That
+   shares one path with `evaluate_cycle` (`_evaluated`, `:465`), so the suite and the quality measures are an
+   increment's exactly.
+3. **What the record names: the calibration record in place of a cycle.** Contract 5 gains `calibration_record_id`,
+   and `cycle_id` is null on such a record and only there. A record names exactly one of the two, as the accepted
+   tree does (SIP-0109 §24cc):
+   - in the record (`scenarios/evaluation.py`, its `__post_init__`);
+   - in its reference's reader (`scenarios/reference.py:107`, `_unit`);
+   - in the table (migration `1980`'s CHECK).
+   - **Why `cycle_id` is null, not the record's id:** SIP-0112 §8.2.1's rule, that identifiers never substitute for one
+     another. Every reader of `cycle_id` looks a record up by a cycle it already holds (the package, the proposal
+     reader, the reading and re-measure tools), so none meets a baseline reading by accident. The one reader that needs
+     it asks by the record (`evaluations_for_calibration_record`).
+   - **The record names no previous tree:** a calibration builds on nothing. The record refuses one, and so does the
+     reference's reader (the review's P3-3).
+   - **The reference writes the field only when it is set,** so a cycle's reference is still the one the shared
+     fixture froze, and the reader reads an absent key as null. It stays `outcome-evaluation-ref/v1` (SIP-0112 H.14).
+     The fixture records the new form as `calibration_record.yaml` (P3-4).
+   - **Migration `1980_scenario_evaluation_calibration_record.sql`,** in this SIP's range (P3-8). The runner applies
+     each file by name, not by a high-water mark, so a deploy that has applied `2000` and `2001` applies it all the same.
+4. **Once.** The evaluator skips a record that already has this campaign's reading against its suite, as
+   `cycle_ended` skips a cycle. The hearing's own guard (`progress.py:918`) keeps the sweep from reading it beside the
+   start; a test now holds that (P3-1).
+5. **Reporting-only.** A read that fails (the configuration, the clone) raises to `_baseline_evaluated`, which logs
+   `baseline_evaluation_failed` and leaves the reading absent. A commit whose tree isn't the record's writes nothing,
+   and is logged. Neither stops the record's promotion or its decision. No suite pinned, no reading.
+   - **A derived profile that can't be read costs only lint** (P3-6). Only lint needs the profile, so `_blueprint`
+     (`campaign_cycles.py:344`) logs `outcome_evaluation_profile_unreadable`, and the lint reads `profile_unreadable`
+     with why (`scenarios/quality.py:76`). It never reads `not_a_scaffold_stack`, which would claim to know. This holds
+     at the baseline and at each increment, whose evaluation #2778 completed and a registry error would otherwise
+     have failed.
+6. **What can't run reads its reason.** Nothing is started, every applicable scenario is `blocked_unverified`, and
+   each measure the start would serve is not measured for the same reason:
+   - no declaration: `no_start_declaration`, and with none every scenario applies;
+   - a declared secret: `secret_not_available`;
+   - a readiness `command`: `no_runner`;
+   - a start that fails: `start_failed`.
+
+   **Found while building it:** `secret_not_available` had no quality reason. So a product with pages whose start
+   declares a secret failed its whole evaluation (a `KeyError` in `quality_of`), at a cycle's end since #2778 as well
+   as here. `NotMeasured.SECRET_NOT_AVAILABLE` (`scenarios/quality.py:68`) closes it.
+7. **The deltas and contribution (§4.4, §4.2).** `campaign_outcomes` (`outcomes/campaign_package.py:108`) is passed
+   the record's id from the start's row (`CampaignProgress._outcomes`, `progress.py:1400`). On a repository-backed
+   Campaign the baseline is the record's reading, never a cycle's record that names no previous tree.
+   - It is the tree the first increment built on, so that increment's contribution reads against it.
+   - **A baseline that ran no scenario credits nothing** (the review's P2-B; `credited_nothing`, `:93`). When none of
+     its applicable scenarios got past `blocked_unverified`, it checked none of them, so the first increment's
+     contribution is unread, with why, never `contributed` for what nobody checked. A baseline where no scenario
+     applied is read as any other, since nothing applies to the increment either.
+   - Each increment's `vs_baseline` reads against it, measure by measure, as `quality_deltas` reads any. So a
+     blueprint product whose start failed still has its lint compared: that lint was taken.
+   - **No baseline reading:** with none written, or one that ran nothing (`ran_nothing`, `:77`: no applicable
+     scenario past `blocked_unverified`, and no measure taken), the section's `baseline` and each increment's
+     `vs_baseline` say "no baseline reading", with why. Never a delta of zero.
+   - The package is version 7 (`campaigns/evidence.py:37`), and the digest names the baseline (`_baseline_lines`,
+     `:354`).
+   - **A sample application's section is as it was:** no `baseline` key, and its calibration cycle's record is the
+     baseline. Its own blocked calibration still credits the first increment, as before: P2-B's rule is the record's.
+8. **Each increment's previous tree stays the head it was built on.** That is #2778's `_pinned_identity`
+   (`campaign_cycles.py:365`, called at `:234`), unchanged. The first increment is pinned at the record's commit, so
+   it names the baseline reading's tree.
+9. **Lint by a blueprint's rule set (§4.2).** A product is linted by #1937's rule sets only when the derived profile
+   at the unit's pin names the scaffold blueprint it was made from (`_blueprint`):
+   - the record's at its own pin, an increment's at the Project's pin, as `prepare_cycle` reads it (SIP-0109 §24cd
+     point 3);
+   - never from a project's name, and never by the product's own linter;
+   - a stack with no scaffold isn't linted (`is_scaffoldable_stack`).
+
+   The blueprint travels to the sandbox as `lint_stack`, whose runner checks the name again before it lints
+   (`adapters/sandbox/scenario_runner.py:280`). #1937's rule set is the same for every scaffold stack today, so
+   "that blueprint's rule set" is #1937's; the name travels so that a stack's own set needs no new wire.
+   - **A blueprint product that can't be started is linted alone** (the review's P3-5, built rather than named as a
+     gap). Lint reads the tree, never an instance. So `_evaluated` asks the sandbox for that lint by itself
+     (`_lint_only`, `scenarios/evaluate.py:278`, `lint_only` on the wire). The runner copies and starts nothing
+     (`scenario_runner.py:232`), and refuses a stack with no scaffold. Without this, every greenfield product whose
+     start declares a secret would have had no lint in 2.5, until #2421.
+   - That lint is reporting-only like the rest. A sandbox that can't answer it (one deployed before it refuses the
+     request) costs the reading its lint (`evaluator_failed`, with why), never its scenarios.
+   - One whose start fails is linted as delivered, as a sample application's is (§10f).
+
+**What it doesn't change:** a sample application's evaluation and its package section; the held-out boundary (IR-4);
+phase 1's reporting-only rule; and what any squad role is shown.
+
+**Not built here:**
+- **§4.5 on a repository-backed Project.** Its proposal is still shown no goals (`execution/proposal_evidence.py`).
+  Its head is now evaluated (the record's commit here, a capture by §10aa), but showing a product's proposer its goals
+  changes what a squad role sees (§4.1). §10l doesn't design it and no ruling has placed it.
+- **Re-measuring a baseline reading** (§10n's series): the re-measure tool and its table are keyed by cycle
+  (`quality_remeasures.cycle_id` is required), and a baseline reading isn't reached by it.
+- **The approved secrets' resolution** (#2421, 2.6), as in §10aa.
+- **The cycle path's stale snapshot** (#2789): a pause or an abort during a cycle-end evaluation is undone or raised
+  by `_hear`, as P2-A found for the record. It was reproduced on the shared fixture and filed, not fixed here.
+- **A live reading.** Nothing here was run against a live campaign; the reading's first live run is the deploy's.
+
+**The second review, and what each finding became** (SIP-0112 H.12; posted on PR #2788):
+- **P2-A, a pause or abort during the reading undone or raised:** fixed (item 1). Tests cover a pause, then a resume
+  decided once with one reading; an abort with no raise; a refusal in the last instant; and a pause before the
+  hearing, never read. The cycle path is #2789.
+- **P2-B, the first increment credited against a baseline that ran no scenario:** fixed (item 7). Tested both with
+  nothing measured and with its lint measured, where the lint is still compared. A baseline where nothing applied
+  still reads the increment.
+- **P3-1, no test for the hearing's guard:** the sweep's re-hearing, started while the start's own hearing reads,
+  hears nothing, and the record is read and decided once.
+- **P3-2, two surviving mutants:** `ran_nothing` ignoring lint is caught by the "lint measured" case above.
+  `lint_of` without its `evaluated is None` guard is caught by a runner that ran the tree and returned no lint, which
+  is the evaluator's failure, not the start's.
+- **P3-3, the reader accepting a calibration reference with a previous tree:** refused (item 3).
+- **P3-4, the fixture lacking the calibration form:** `calibration_record.yaml`. It is what a record yields, it names
+  the baseline commit's tree through the mapping, and it names no commit or revision.
+- **P3-5, a blueprint product that can't start never linted:** built, not named as a gap (item 9).
+- **P3-6, a profile read failing a whole increment's evaluation:** fixed (item 5).
+- **P3-7, a re-heard record's reading runs inline:** in `_resume_campaigns` (before `reattach()`) and in the sweep's
+  loop. That is the same pattern as `rehear_ended`'s cycle-end evaluation, and it is left as it is: the reading holds
+  the box between units in both places. A restart that finds a record unread delays its resumption by one reading.
+- **P3-8, the migration in SIP-0109's range:** moved to `1980`, in this SIP's.
+- **P3-9, the start route's stale docstring:** corrected (`api/routes/campaigns/campaigns.py:376`).
+
+**Evidence.**
+- **The wiring, entered at the live caller:** `tests/unit/scenarios/test_campaign_baseline_reading.py` enters at
+  `CampaignProgress.calibration_recorded`, with the progress and the evaluator built as the runtime root builds them.
+  It runs on the shared fixture's Tally, in a real managed clone, its baseline really captured and its profile
+  derived, and the campaign started by its record. It covers:
+  - the record's commit read whole and evaluated under the record's tree identity, started by Tally's declared build
+    and start at the record's revision, its profile read at the record's pin, before the promotion;
+  - the reading naming the record, no cycle and no previous tree;
+  - no suite pinned; no declaration; Tally's own secret; a secret with pages; a start that fails;
+  - a blueprint product with no declaration, or with its secret, linted alone and started not at all; a lint alone
+    the sandbox refuses, costing only the lint;
+  - a commit whose tree isn't the record's, and a failing clone or configuration read, each with the decision still
+    recorded; a profile that can't be read, costing the baseline and the increment only their lint;
+  - a pause during the reading, resumed and decided once; an abort during it; a refusal in the last instant; a pause
+    before the hearing; the sweep's re-hearing beside the start's;
+  - a restart between the reading and the decision, heard again with one reading;
+  - lint by a scaffold blueprint at the baseline and at an increment, and none for a stack with no scaffold or none;
+  - the package read end to end through `materialize_package`, with the baseline reading (the first increment
+    contributed against it, and its lint moved +2 against it) and without one ("no baseline reading");
+  - a sample application's start, which reads no baseline;
+  - the root handing the progress the evaluator's hook.
+- **The deltas' reader on its own** (`tests/unit/outcomes/test_campaign_package.py`):
+  - the record's reading as the baseline;
+  - none written, and one that ran nothing;
+  - one that ran no scenario, with and without its lint measured;
+  - one where nothing applied;
+  - a cycle's record that built on nothing, never taken for it.
+- **Contract 5** (`tests/unit/shared_contract/`):
+  - the fixture's `valid` form still what a cycle's record yields, and its `calibration_record` form what a record's
+    reading yields;
+  - each refusal, including a calibration reference with a previous tree.
+
+  The store's integration test ran against a throwaway Postgres 15, migrated from empty through `1980`.
+- **The sandbox's side** (`tests/unit/sandbox/`): the blueprint and the lint-only request carried over the wire; the
+  runner linting only a scaffold blueprint's tree; linting alone and starting nothing; refusing lint alone for a
+  stack with no scaffold.
+- **Mutants: 50, each caught by a named failing test.** The two Postgres mutants ran serially against a throwaway
+  Postgres 15.
+  - **Round one's 31, re-run at their current text:**
+    - the reporting boundary removed; the hook never called; the reading taken after the promotion; the record's id
+      not passed to the package;
+    - the tree identity check dropped; a re-heard record read again; the configuration read at no revision; the
+      profile read at another pin;
+    - the increment's evaluation not given its blueprint; a stack with no scaffold taken as one; the blueprint not
+      sent to the runner; a blueprint product's lint not kept; no runner's lint read as the evaluator's failure; a
+      secret's page measures given no reason;
+    - the runner ignoring the blueprint, or not checking its name; the route dropping it; the client not sending it;
+    - the reference's field written on every reference; a reference or a record naming no unit or both; a
+      calibration reading with a previous tree;
+    - the record's reading not the tree the first increment built on; "no baseline reading" left unsaid; a reading
+      that ran nothing compared as measured; a cycle's record taken for the baseline; the digest not naming it;
+    - the root wiring no hook; the start sent with the short timeout;
+    - in Postgres: the record's id not written, and its readings read by cycle.
+  - **The second review's 19:**
+    - P2-A (four): the campaign not read again; a moved campaign promoted anyway; the promotion's refusal raised; a
+      paused campaign read at its hearing;
+    - P2-B (two): the first increment credited against a baseline that ran no scenario; a baseline where nothing
+      applied left unread;
+    - P3-1 (one): the hearing's guard removed;
+    - P3-2 (two): the two survivors the review found, `ran_nothing` ignoring lint and `lint_of` without its guard;
+    - P3-3 (one) and P3-4 (one): the reader taking a calibration reference with a previous tree, and the recorded
+      form naming another tree;
+    - P3-5 (six): the lint alone never asked for, its failure raised, the runner ignoring the request or linting for
+      a stack with no scaffold, the route dropping it, the client not sending it;
+    - P3-6 (two): a profile that can't be read failing the evaluation, and its lint claimed `not_a_scaffold_stack`.
+- **Loaded checks** `10l-baseline-reading` (the runtime) and `10l-sandbox-lint` (the sandbox service), each run on the
+  source.
+
+**Who ruled.** The owner placed §10l in 2.5 (2026-10-21), and its design is the supervisor's (§10l). The build choices
+above are the implementer's, for the supervisor's and the owner's review:
+- the reading heard before the promotion, and the start's long wait;
+- `cycle_id` null, and the reference's field written only when set;
+- "ran nothing" as what "no baseline reading" means for a reading that was written, and "ran no scenario" as what
+  credits nothing;
+- `lint_stack` and `lint_only` on the wire.
+
+It changes contract 5, so it takes the outside review SIP-0112 H.12 provides before the merge (recorded in SIP-0112
+H.14). The owner chose a fresh agent for it (2026-10-29), which requested changes. The owner then said to fix the
+findings and merge on green.

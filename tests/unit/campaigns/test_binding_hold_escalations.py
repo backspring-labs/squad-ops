@@ -121,6 +121,7 @@ async def _world(unresolved=STORE, *, held=True):
         assess=AsyncMock(return_value=None),
         launch=AsyncMock(),
         evaluate_outcome=None,
+        evaluate_baseline=None,
         outcome_section=None,
         intervention_section=None,
         campaign_branch=None,

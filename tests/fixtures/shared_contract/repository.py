@@ -36,6 +36,8 @@ OUTPUTS = (
     "outcome_evaluation_ref",
 )
 FORMS = ("valid", "missing_field", "unknown_major", "stale_commit")
+#: Contract 5's reference has a fifth form: a calibration record's reading (SIP-0113 §10l, H.14).
+OUTCOME_REF_FORMS = (*FORMS, "calibration_record")
 
 _COMMITS = (
     {

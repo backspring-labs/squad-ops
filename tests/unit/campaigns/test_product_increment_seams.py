@@ -144,7 +144,7 @@ async def test_a_branch_increments_continuation_carries_its_approved_change_requ
         )
     progress = CampaignProgress(
         campaigns=AsyncMock(), cycles=cycles, vault=_Vault(promoted), assess=AsyncMock(),
-        launch=AsyncMock(), evaluate_outcome=None, outcome_section=None,
+        launch=AsyncMock(), evaluate_outcome=None, evaluate_baseline=None, outcome_section=None,
         intervention_section=None, campaign_branch=None,
     )  # fmt: skip
 

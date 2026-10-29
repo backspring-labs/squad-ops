@@ -1,6 +1,7 @@
 """The scenario store in Postgres (SIP-0113 §4.1; #2413), over the runtime's one pool (#577).
 
-Migration 1900 creates its tables. A suite's content is stored as its document, and its digest
+Migration 1900 creates its tables; 1980 lets an evaluation name a calibration record in place of a
+cycle (SIP-0113 §10l). A suite's content is stored as its document, and its digest
 is recomputed on every read: JSONB orders keys its own way, so the digest is the content's
 canonical hash, never the stored text's. A row whose content no longer hashes to its key is
 refused rather than served.
@@ -28,7 +29,7 @@ _SUITE_COLUMNS = "digest, content, state, drafted_by, drafted_at, approved_by, a
 _EVALUATION_COLUMNS = (
     "evaluation_id, project_id, campaign_id, cycle_id, evaluated_tree_identity, "
     "previous_accepted_tree_identity, suite_digest, outcomes, evaluated_at, quality, lint, "
-    "quality_seeded"
+    "quality_seeded, calibration_record_id"
 )
 
 _REMEASURE_COLUMNS = (
@@ -94,7 +95,7 @@ class PostgresScenarioStore(ScenarioStorePort):
         async with self._pool.acquire() as conn:
             await conn.execute(
                 f"INSERT INTO scenario_evaluations ({_EVALUATION_COLUMNS}) "
-                "VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)",
+                "VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)",
                 record.evaluation_id,
                 record.project_id,
                 record.campaign_id,
@@ -107,6 +108,7 @@ class PostgresScenarioStore(ScenarioStorePort):
                 record.quality.as_dict() if record.quality is not None else None,
                 record.lint.as_dict() if record.lint is not None else None,
                 record.quality_seeded.as_dict() if record.quality_seeded is not None else None,
+                record.calibration_record_id,
             )
 
     async def get_evaluation(self, evaluation_id: str) -> EvaluationRecord | None:
@@ -123,6 +125,15 @@ class PostgresScenarioStore(ScenarioStorePort):
                 f"SELECT {_EVALUATION_COLUMNS} FROM scenario_evaluations WHERE cycle_id = $1 "
                 "ORDER BY evaluated_at",
                 cycle_id,
+            )
+        return [_row_to_evaluation(r) for r in rows]
+
+    async def evaluations_for_calibration_record(self, record_id: str) -> list[EvaluationRecord]:
+        async with self._pool.acquire() as conn:
+            rows = await conn.fetch(
+                f"SELECT {_EVALUATION_COLUMNS} FROM scenario_evaluations "
+                "WHERE calibration_record_id = $1 ORDER BY evaluated_at",
+                record_id,
             )
         return [_row_to_evaluation(r) for r in rows]
 

@@ -77,6 +77,7 @@ async def closed():
         assess=AsyncMock(side_effect=_assessment),
         launch=AsyncMock(),
         evaluate_outcome=None,
+        evaluate_baseline=None,
         outcome_section=None,
         intervention_section=None,
         campaign_branch=None,
@@ -205,7 +206,7 @@ async def test_the_package_carries_each_runs_lint_reading_from_its_persisted_sum
     assert after["cycles"][0]["lint_findings"] == [
         {"run_id": "run_impl", "workload_type": "implementation", "findings": found}
     ]
-    assert after["package_version"] == 6
+    assert after["package_version"] == 7
 
 
 async def test_the_digest_says_how_the_campaign_ended_and_what_failed(closed):
@@ -436,6 +437,7 @@ async def test_the_package_and_digest_carry_the_campaigns_outcome_readings(close
         assess=AsyncMock(side_effect=_assessment),
         launch=AsyncMock(),
         evaluate_outcome=None,
+        evaluate_baseline=None,
         outcome_section=partial(campaign_outcomes, store),
         intervention_section=None,
         campaign_branch=None,
@@ -447,7 +449,7 @@ async def test_the_package_and_digest_carry_the_campaigns_outcome_readings(close
     doc = json.loads(vault.stored[package_id][1])
     text = vault.stored[digest_id][1].decode()
     [cal] = doc["outcomes"]["cycles"]
-    assert (doc["package_version"], cal["contribution"]["reading"]) == (6, "contributed")
+    assert (doc["package_version"], cal["contribution"]["reading"]) == (7, "contributed")
     assert "- `cyc_cal`: **contributed**; 1 passed" in text
     assert "  - newly passing: capacity" in text
     assert GOAL not in vault.stored[package_id][1].decode() and GOAL not in text
@@ -471,6 +473,7 @@ async def test_the_package_carries_its_interventions_and_the_digest_aors_four_in
         assess=AsyncMock(side_effect=_assessment),
         launch=AsyncMock(),
         evaluate_outcome=None,
+        evaluate_baseline=None,
         outcome_section=None,
         intervention_section=partial(campaign_interventions, MemoryInterventionLedger()),
         campaign_branch=None,
@@ -534,6 +537,7 @@ async def test_the_package_reads_the_goals_each_cycle_named_and_the_digest_lists
         assess=AsyncMock(side_effect=_assessment),
         launch=AsyncMock(),
         evaluate_outcome=None,
+        evaluate_baseline=None,
         outcome_section=partial(campaign_outcomes, store),
         intervention_section=None,
         campaign_branch=None,

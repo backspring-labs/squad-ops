@@ -676,6 +676,9 @@ async def _init_cycle_subsystem(state, config, pool) -> None:
         ),
         launch=lambda: state.campaign_launch.drain(),
         evaluate_outcome=cycle_evaluator.cycle_ended,
+        # SIP-0113 §10l: a repository-backed campaign's baseline reading, its calibration
+        # record's commit evaluated when the record is heard, by the same evaluator.
+        evaluate_baseline=cycle_evaluator.calibration_recorded,
         # SIP-0113 §4.4 (#2418): the package's outcome section, read from the same store.
         outcome_section=partial(campaign_outcomes, scenario_store),
         # SIP-0113 §4.3, §4.6 (#2418): the ledger's entries, which AOR reads, in the package too.

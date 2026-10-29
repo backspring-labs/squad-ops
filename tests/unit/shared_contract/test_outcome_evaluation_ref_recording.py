@@ -15,7 +15,7 @@ import pytest
 
 from squadops.campaigns.evaluator_trees import FileTree
 from tests.fixtures.shared_contract.repository import (
-    FORMS,
+    OUTCOME_REF_FORMS,
     recorded,
     tracked_files,
 )
@@ -66,7 +66,23 @@ def test_the_stale_reference_resolves_to_the_first_commit_never_the_baseline(rep
     assert baseline not in commits
 
 
-@pytest.mark.parametrize("form", FORMS)
+def test_the_calibration_form_names_the_baseline_commits_tree_and_no_previous_one(repository):
+    """SIP-0113 §10l, SIP-0112 H.14. A calibration record is written at the Project's development
+    baseline, so its reading's tree is that commit's, reached through the mapping, and it builds on
+    nothing. Bug caught: the recorded form naming a tree the fixture doesn't build, or the record's
+    commit by a hash a Project history join can't resolve."""
+    form = recorded("outcome_evaluation_ref", "calibration_record")
+    context = recorded("project_source_context", "valid")
+
+    assert (
+        form["evaluated_tree_identity"]
+        == FileTree.of(tracked_files(repository.path, repository.second_commit)).identity
+    )
+    assert _commits_for(form["evaluated_tree_identity"]) == [context["development_baseline_commit"]]
+    assert (form["cycle_id"], form["previous_accepted_tree_identity"]) == (None, None)
+
+
+@pytest.mark.parametrize("form", OUTCOME_REF_FORMS)
 def test_no_form_names_a_tree_by_commit_or_sandbox_revision(form):
     reference = recorded("outcome_evaluation_ref", form)
     revisions = {

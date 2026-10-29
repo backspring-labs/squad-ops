@@ -590,7 +590,11 @@ class CampaignProgress:
         assess: Assess,
         launch: Callable[[], Awaitable[object]],
         evaluate_outcome: Callable[[Cycle], Awaitable[object]] | None,
-        #: ``(campaign_id, cycle_ids, *, named_goals)``: SIP-0113's section (``campaign_outcomes``).
+        #: SIP-0113 §10l: ``(campaign_id, record)``, a repository-backed campaign's baseline
+        #: reading, its calibration record's commit evaluated when the record is heard.
+        evaluate_baseline: Callable[[str, CalibrationRecord], Awaitable[object]] | None,
+        #: ``(campaign_id, cycle_ids, *, named_goals, calibration_record_id)``: SIP-0113's section
+        #: (``campaign_outcomes``).
         outcome_section: Callable[..., Awaitable[dict | None]] | None,
         intervention_section: Callable[[str, list[ControlLogEntry]], Awaitable[dict]] | None,
         #: §24bv point 2: a repository-backed Campaign's branch in the managed clone. ``None``
@@ -607,6 +611,9 @@ class CampaignProgress:
         # SIP-0113 §4.1 (#2414): each ending that reached its build is evaluated against the
         # campaign's pinned suite, reporting-only. ``None`` where no evaluator is wired.
         self._evaluate_outcome = evaluate_outcome
+        # SIP-0113 §10l: a repository-backed campaign's calibration record is evaluated when it is
+        # heard, before its promotion, reporting-only. ``None`` where no evaluator is wired.
+        self._evaluate_baseline = evaluate_baseline
         # SIP-0113 §4.4 (#2418): what the evidence package carries of the campaign's outcome
         # evaluations. ``None`` where nothing is wired: the package then has no such section.
         self._outcome_section = outcome_section
@@ -891,12 +898,20 @@ class CampaignProgress:
         never hear it. The record goes through its own path, in the cycle's order (§10: promotion
         comes first): its tree is promoted, then row 5 decides, keyed by the record.
 
-        Returns the decision's row, or ``None`` when there is nothing to decide: the campaign has
-        completed, its start recorded no record (it launched a calibration cycle), the record is
-        decided already, or it is being heard already. Both writes are keyed, so hearing a record
-        again after a restart between them replays the promotion and writes the decision once."""
+        SIP-0113 §10l: the record's commit is evaluated first, its baseline reading, which can take
+        minutes. The campaign is read again after it: a pause or an abort applied meanwhile holds,
+        and nothing is promoted or decided over it. A paused campaign is heard again once it is
+        resumed into ``calibrating`` (``rehear_calibration_records``), its reading not taken twice.
+
+        Returns the decision's row, or ``None`` when there is nothing to decide: the campaign isn't
+        calibrating (completed, paused, or moved during the reading), its start recorded no record
+        (it launched a calibration cycle), the record is decided already, or it is being heard
+        already. A promotion refused by a move made in the instant between that read and the write
+        is logged and returns ``None`` too, never raised over a start that was applied. Both writes
+        are keyed, so hearing a record again after a restart between them replays the promotion
+        and writes the decision once."""
         campaign = await self._campaigns.get_campaign(campaign_id)
-        if campaign.state is CampaignState.COMPLETED:
+        if campaign.state is not CampaignState.CALIBRATING:
             return None
         log = await self._campaigns.control_log(campaign_id)
         record = recorded_calibration(log)
@@ -906,7 +921,26 @@ class CampaignProgress:
             return None
         self._hearing.add(record.record_id)
         try:
-            campaign = await self._promote_record(campaign, record)
+            # SIP-0113 §10l: the baseline reading, before the promotion, as a cycle's evaluation
+            # comes before its own (§10: the box is between cycles). Reporting-only.
+            await self._baseline_evaluated(campaign_id, record)
+            # The second review of #2788 (P2-A): the reading took minutes, and the owner may have
+            # paused or aborted meanwhile. Promote and decide from the campaign as it is now.
+            campaign = await self._campaigns.get_campaign(campaign_id)
+            if campaign.state is not CampaignState.CALIBRATING:
+                logger.warning(
+                    "campaign_record_not_decided_campaign_moved",
+                    extra={"record_id": record.record_id, "state": campaign.state.value},
+                )
+                return None
+            try:
+                campaign = await self._promote_record(campaign, record)
+            except ControlOperationRefused as refused:
+                logger.error(
+                    "campaign_record_promotion_refused",
+                    extra={"record_id": record.record_id, "refusal": str(refused.entry.refusal)},
+                )
+                return None
             decision = calibration_record_decision(
                 campaign,
                 record.record_id,
@@ -937,6 +971,22 @@ class CampaignProgress:
             return result
         finally:
             self._hearing.discard(record.record_id)
+
+    async def _baseline_evaluated(self, campaign_id: str, record: CalibrationRecord) -> None:
+        """SIP-0113 §10l: the record's commit evaluated against the campaign's pinned suite, its
+        baseline reading. Reporting-only, as ``_outcome_evaluated`` is: nothing here reads the
+        reading, and a failure (the registry, the configuration, the clone) is logged and leaves
+        it absent, never stopping the record's promotion or its decision. A record heard again
+        after a restart is read once: the evaluator skips a reading already written."""
+        if self._evaluate_baseline is None:
+            return
+        try:
+            await self._evaluate_baseline(campaign_id, record)
+        except Exception:
+            logger.exception(
+                "baseline_evaluation_failed",
+                extra={"campaign_id": campaign_id, "record_id": record.record_id},
+            )
 
     async def _promote_record(self, campaign: Campaign, record: CalibrationRecord) -> Campaign:
         """§12a for a calibration record: the accepted tree is the record's commit, by its tree
@@ -1314,7 +1364,7 @@ class CampaignProgress:
             log,
             launches,
             records,
-            outcomes=await self._outcomes(campaign_id, [r.cycle_id for r in records]),
+            outcomes=await self._outcomes(campaign_id, [r.cycle_id for r in records], log),
             interventions=await self._interventions(campaign_id, log),
         )
         for ref in await self._vault.list_artifacts(
@@ -1347,14 +1397,24 @@ class CampaignProgress:
         )
         return doc["identity"], package_ref.artifact_id, digest_ref.artifact_id
 
-    async def _outcomes(self, campaign_id: str, cycle_ids: list[str]) -> dict | None:
+    async def _outcomes(
+        self, campaign_id: str, cycle_ids: list[str], log: list[ControlLogEntry]
+    ) -> dict | None:
         """SIP-0113 §4.4 (#2418): the package's outcome section. A failure to read it is in the
-        package with the reason, never a package that isn't written."""
+        package with the reason, never a package that isn't written. A repository-backed
+        campaign's baseline is its calibration record's reading (§10l), named by the record its
+        start wrote."""
         if self._outcome_section is None:
             return None
         try:
             named = await self._named_goals(cycle_ids)
-            return await self._outcome_section(campaign_id, cycle_ids, named_goals=named)
+            record = recorded_calibration(log)
+            return await self._outcome_section(
+                campaign_id,
+                cycle_ids,
+                named_goals=named,
+                calibration_record_id=record.record_id if record is not None else None,
+            )
         except Exception as e:  # noqa: BLE001 — the package says what it could not read
             logger.exception("campaign_outcomes_unreadable", extra={"campaign_id": campaign_id})
             return {"unreadable": f"{type(e).__name__}: {e}"}

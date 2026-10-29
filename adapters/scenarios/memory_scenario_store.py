@@ -52,6 +52,10 @@ class MemoryScenarioStore(ScenarioStorePort):
         found = [r for r in self._evaluations.values() if r.cycle_id == cycle_id]
         return sorted(found, key=lambda r: r.evaluated_at)
 
+    async def evaluations_for_calibration_record(self, record_id: str) -> list[EvaluationRecord]:
+        found = [r for r in self._evaluations.values() if r.calibration_record_id == record_id]
+        return sorted(found, key=lambda r: r.evaluated_at)
+
     async def save_remeasure(self, remeasure: QualityRemeasure) -> None:
         if remeasure.evaluation_id not in self._evaluations:
             raise ValueError(f"no evaluation {remeasure.evaluation_id} to re-measure")

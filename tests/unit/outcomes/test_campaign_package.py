@@ -135,6 +135,8 @@ async def test_each_cycle_carries_its_contribution_quality_and_moves_against_bot
 
     cal, inc1, inc2, none = section["cycles"]
     assert section["suite_digest"] == SUITE.digest
+    # A sample application's calibration is a cycle: no record's baseline (§10l) is named.
+    assert "baseline" not in section
     assert cal["contribution"]["reading"] == "neutral" and "vs_baseline" not in cal
     assert inc1["evaluation"] == "evl_cyc_inc1_5"
     assert inc1["contribution"] == {
@@ -207,6 +209,188 @@ async def test_a_reading_written_with_no_campaign_never_stands_in_for_the_campai
 
 async def test_a_campaign_with_no_suite_pinned_has_no_section():
     assert await campaign_outcomes(MemoryScenarioStore(), CID, ["cyc_cal"], named_goals={}) is None
+
+
+RECORD = "calrec_outcomes001"
+
+
+def _baseline_reading(result, **kw) -> EvaluationRecord:
+    """§10l: a repository-backed campaign's calibration record's reading: no cycle, no previous."""
+    return dataclasses.replace(
+        _record("cyc_none", CAL, None, result, **kw), cycle_id=None, calibration_record_id=RECORD
+    )
+
+
+async def test_a_repository_backed_campaigns_baseline_is_its_records_reading(store):
+    """§10l: the record's reading stands where the calibration cycle's did. Bugs caught: the first
+    increment's contribution unread for want of a record of its tree; its deltas against the
+    baseline never taken; a later increment compared with something other than the record's."""
+    for record in (
+        _baseline_reading(ScenarioResult.FAILED),
+        _record("cyc_inc1", INC1, CAL, ScenarioResult.PASSED, lint=_lint(12)),
+        _record("cyc_inc2", INC2, INC1, ScenarioResult.PASSED, lint=_lint(13)),
+    ):
+        await store.save_evaluation(record)
+
+    section = await campaign_outcomes(
+        store, CID, ["cyc_inc1", "cyc_inc2"], named_goals={}, calibration_record_id=RECORD
+    )
+
+    baseline = section["baseline"]
+    assert (baseline["calibration_record_id"], baseline["evaluation"], baseline["tree"]) == (
+        RECORD,
+        "evl_cyc_none_0",
+        CAL,
+    )
+    assert baseline["scenarios"] == [["capacity", "failed", None]]
+    assert "unread_because" not in baseline
+    inc1, inc2 = section["cycles"]
+    assert inc1["contribution"]["newly_passing"] == ["capacity"]
+    assert inc1["vs_baseline"]["moved"] == inc1["vs_previous"]["moved"]
+    assert inc2["vs_baseline"]["against_tree"] == CAL
+    assert inc2["vs_baseline"]["moved"][0] == ["lint:total", None, 10, 13, 3]
+
+
+def _ran_nothing() -> EvaluationRecord:
+    """A baseline reading of a product with no start declaration: every scenario blocked, every
+    measure not taken."""
+    [scenario] = SUITE.scenarios
+    blocked = ScenarioOutcome(
+        scenario.scenario_id,
+        scenario.version,
+        scenario.goal,
+        Applicability.APPLICABLE,
+        ScenarioResult.BLOCKED_UNVERIFIED,
+        blocked_reason=BlockedReason.NO_START_DECLARATION,
+    )
+    return dataclasses.replace(
+        _baseline_reading(ScenarioResult.PASSED),
+        outcomes=(blocked,),
+        quality=QualityReading.not_measured(NotMeasured.NO_START_DECLARATION),
+        lint=LintReading.not_measured(NotMeasured.NOT_A_SCAFFOLD_STACK),
+    )
+
+
+@pytest.mark.parametrize(
+    ("baseline", "unread"),
+    [
+        (None, "no baseline reading"),
+        (_ran_nothing, "no baseline reading: nothing ran on its tree (no_start_declaration)"),
+    ],
+    ids=["no-reading-written", "a-reading-that-ran-nothing"],
+)
+async def test_with_no_baseline_reading_the_deltas_say_so(store, baseline, unread):
+    """§10l: "the Campaign's deltas then say 'no baseline reading', never a delta of zero". Bugs
+    caught: the deltas left out, so an absent baseline reads as nothing having moved; a reading
+    that ran nothing compared as if measured; the record's absence read from a cycle's record."""
+    if baseline is not None:
+        await store.save_evaluation(baseline())
+    await store.save_evaluation(_record("cyc_inc1", INC1, CAL, ScenarioResult.PASSED))
+
+    section = await campaign_outcomes(
+        store, CID, ["cyc_inc1"], named_goals={}, calibration_record_id=RECORD
+    )
+
+    assert section["baseline"]["unread_because"] == unread
+    assert section["baseline"]["evaluation"] == (None if baseline is None else "evl_cyc_none_0")
+    [inc1] = section["cycles"]
+    assert inc1["vs_baseline"] == {"unread_because": unread}
+    # P2-B: never credited against it, whichever way the baseline is missing.
+    assert inc1["contribution"]["reading"] is None
+
+
+@pytest.mark.parametrize(
+    ("lint", "vs_baseline"),
+    [
+        (
+            LintReading.not_measured(NotMeasured.NOT_A_SCAFFOLD_STACK),
+            {
+                "unread_because": "no baseline reading: nothing ran on its tree "
+                "(no_start_declaration)"
+            },
+        ),
+        (_lint(10), "compared"),
+    ],
+    ids=["nothing-measured", "its-lint-measured"],
+)
+async def test_a_baseline_that_ran_no_scenario_credits_nothing_and_its_measures_still_compare(
+    store, lint, vs_baseline
+):
+    """The second review of #2788 (P2-B, P3-2). A baseline none of whose applicable scenarios got
+    past ``blocked_unverified`` checked none, so the first increment's contribution is unread
+    with why, never credited with what nobody checked. Its quality measures are compared each as
+    ``quality_deltas`` reads them: a blueprint product whose start failed still had its lint taken,
+    and that lint is a baseline. Bugs caught: the increment read ``contributed`` against a baseline
+    that ran nothing; or a lint baseline thrown away because the scenarios were blocked."""
+    await store.save_evaluation(dataclasses.replace(_ran_nothing(), lint=lint))
+    await store.save_evaluation(
+        _record("cyc_inc1", INC1, CAL, ScenarioResult.PASSED, lint=_lint(12))
+    )
+
+    section = await campaign_outcomes(
+        store, CID, ["cyc_inc1"], named_goals={}, calibration_record_id=RECORD
+    )
+
+    [inc1] = section["cycles"]
+    assert inc1["contribution"] == {
+        "reading": None,
+        "unread_because": "its baseline reading ran no scenario (no_start_declaration): "
+        "nothing to read it against",
+    }
+    if vs_baseline == "compared":
+        assert "unread_because" not in section["baseline"]
+        assert inc1["vs_baseline"]["moved"] == [
+            ["lint:total", None, 10, 12, 2],
+            ["lint:ruff:E501", None, 10, 12, 2],
+        ]
+    else:
+        assert inc1["vs_baseline"] == vs_baseline
+
+
+async def test_a_baseline_where_no_scenario_applied_still_reads_the_increment(store):
+    """P2-B's edge: a baseline where nothing applied isn't one that was blocked. Both start from
+    one declaration, so nothing applies to the increment either, and its contribution is read
+    (``neutral``), not left unread. Bug caught: every first increment of a product with no surface
+    the suite needs read as unread forever."""
+    [scenario] = SUITE.scenarios
+    not_applicable = ScenarioOutcome(
+        scenario.scenario_id, scenario.version, scenario.goal, Applicability.NOT_APPLICABLE
+    )
+    baseline = dataclasses.replace(_ran_nothing(), outcomes=(not_applicable,))
+    increment = dataclasses.replace(
+        _record("cyc_inc1", INC1, CAL, ScenarioResult.PASSED), outcomes=(not_applicable,)
+    )
+    for record in (baseline, increment):
+        await store.save_evaluation(record)
+
+    section = await campaign_outcomes(
+        store, CID, ["cyc_inc1"], named_goals={}, calibration_record_id=RECORD
+    )
+
+    [inc1] = section["cycles"]
+    assert inc1["contribution"]["reading"] == "neutral"
+
+
+async def test_a_cycle_that_built_on_nothing_is_never_a_repository_backed_campaigns_baseline(
+    store,
+):
+    """§10l: on such a campaign the baseline is the record's reading alone. Bug caught: a cycle's
+    record naming no previous tree (one pinned at nothing) read as the baseline, so every later
+    increment is compared with a tree the campaign never accepted."""
+    for record in (
+        _record("cyc_inc0", INC1, None, ScenarioResult.PASSED),
+        _record("cyc_inc1", INC2, INC1, ScenarioResult.PASSED),
+    ):
+        await store.save_evaluation(record)
+
+    section = await campaign_outcomes(
+        store, CID, ["cyc_inc0", "cyc_inc1"], named_goals={}, calibration_record_id=RECORD
+    )
+
+    assert section["baseline"]["evaluation"] is None
+    assert [c["vs_baseline"] for c in section["cycles"]] == [
+        {"unread_because": "no baseline reading"}
+    ] * 2
 
 
 async def test_a_not_measured_side_is_named_not_moved(store):

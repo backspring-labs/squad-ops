@@ -89,6 +89,7 @@ from squadops.scenarios.steps import (
     ScenarioRun,
     run_scenario,
 )
+from squadops.stacks.scaffold import is_scaffoldable_stack
 from squadops.tools.exceptions import ToolContainerError
 from squadops.tools.models import ContainerSpec
 
@@ -214,6 +215,8 @@ class ContainerScenarioRunner(ScenarioRunnerPort):
         pages: Sequence[str],
         seed: SeedPlan | None = None,
         routes: Sequence[RouteRequest] = (),
+        lint_stack: str | None = None,
+        lint_only: bool = False,
     ) -> TreeEvaluation:
         built = FileTree.of(tree).identity
         if built != tree_identity:
@@ -226,6 +229,18 @@ class ContainerScenarioRunner(ScenarioRunnerPort):
                 tree_path(rel)  # the tree is a squad's files: no key writes outside the copy
             except WorkspaceEscapeError as e:
                 raise ValueError(str(e)) from e
+        if lint_only:
+            # SIP-0113 §10l (the second review of #2788, P3-5): a blueprint product that can't be
+            # started is linted all the same, since lint reads the tree. Nothing is copied or
+            # started, and a stack with no scaffold is refused as any malformed request is.
+            if not (lint_stack and is_scaffoldable_stack(lint_stack)):
+                raise ValueError(f"lint alone is a scaffold blueprint's, not {lint_stack!r}")
+            return TreeEvaluation(
+                tree_identity,
+                started=False,
+                start_detail="not started: its lint alone was asked for",
+                lint=await self._lint(tree, None),
+            )
         start = self._start_for(stack, declared)
         started = time.monotonic()
         copy = self._root / "evaluations" / uuid.uuid4().hex
@@ -246,16 +261,23 @@ class ContainerScenarioRunner(ScenarioRunnerPort):
             shutil.rmtree(copy, ignore_errors=True)
             if snapshot is not None:
                 shutil.rmtree(snapshot, ignore_errors=True)
-        evaluation = dataclasses.replace(evaluation, lint=await self._lint(tree, declared))
+        evaluation = dataclasses.replace(
+            evaluation, lint=await self._lint(tree, declared, lint_stack)
+        )
         return _redacted(_evidence_kept(evaluation, environment.values()), environment.values())
 
     async def _lint(
-        self, tree: Mapping[str, bytes | str], declared: DeclaredStart | None
+        self,
+        tree: Mapping[str, bytes | str],
+        declared: DeclaredStart | None,
+        lint_stack: str | None = None,
     ) -> LintReading:
         """#1937's lint over the tree as delivered (§4.2, #2416). The evaluator's image runs the
         tools with no network; the files, #1937's ruff command and its ESLint runner go on its
-        input, so each has one source. Only a blueprint's tree has #1937's rule sets."""
-        if declared is not None:
+        input, so each has one source. Only a scaffold stack's tree has #1937's rule sets: a
+        blueprint's, or a declared product made from one, which ``lint_stack`` names (SIP-0113
+        §10l). This side checks the name too, so a stack that isn't a scaffold's lints nothing."""
+        if declared is not None and not (lint_stack and is_scaffoldable_stack(lint_stack)):
             return LintReading.not_measured(NotMeasured.NOT_A_SCAFFOLD_STACK)
         if not await self._container.has_image(self._evaluator_image):
             return LintReading.not_measured(NotMeasured.EVALUATOR_ABSENT, self._evaluator_image)

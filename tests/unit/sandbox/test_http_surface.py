@@ -610,3 +610,55 @@ async def test_client_routes_travel_the_client_to_the_runner_and_their_readings_
 
     assert received == [routes]
     assert result.routes == readings
+
+
+@pytest.mark.parametrize(
+    ("lint_stack", "lint_only"),
+    [("fullstack_fastapi_react", False), ("fullstack_fastapi_react", True), (None, False)],
+    ids=["a-blueprint", "its-lint-alone", "none"],
+)
+async def test_a_products_blueprint_travels_the_client_to_the_runner(
+    tmp_path, lint_stack, lint_only
+):
+    """SIP-0113 §10l, entered at the client the runtime API's evaluation uses. Bugs caught: the
+    blueprint, or the request for its lint alone (the second review of #2788, P3-5), dropped on
+    the wire, so a product made from one is never linted by its rule set; or either sent when none
+    was asked, so a runner that predates them is called with an argument it doesn't take."""
+    from adapters.sandbox.http_client import HttpScenarioRunner
+    from squadops.campaigns.evaluator_trees import FileTree
+    from squadops.scenarios.runner import TreeEvaluation
+    from tests.unit.sandbox.test_scenario_runner import DECLARED, TREE
+
+    received = []
+
+    class _Recording:
+        async def evaluate_tree(self, **kw):
+            received.append(kw)
+            return TreeEvaluation(kw["tree_identity"], started=True)
+
+    root = tmp_path / "cycles"
+    app = create_app(
+        SandboxService(
+            store=WorkspaceStore(root),
+            journal=OperationEvidenceJournal(root),
+            scenario_runner=_Recording(),
+        ),
+        service_token=TOKEN,
+    )
+    client = HttpScenarioRunner(
+        base_url="http://exec",
+        service_token=TOKEN,
+        http_client_factory=lambda: httpx.AsyncClient(
+            transport=httpx.ASGITransport(app=app), base_url="http://exec"
+        ),
+    )
+
+    await client.evaluate_tree(
+        tree=TREE, tree_identity=FileTree.of(TREE).identity, executable={"run.sh"}, stack=None,
+        declared=DECLARED, scenarios=[], environment={}, pages=(), lint_stack=lint_stack,
+        lint_only=lint_only,
+    )  # fmt: skip
+
+    [kw] = received
+    assert kw.get("lint_stack", "absent") == (lint_stack or "absent")
+    assert kw.get("lint_only", "absent") == (True if lint_only else "absent")

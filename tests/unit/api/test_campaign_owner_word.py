@@ -110,6 +110,7 @@ class _World:
             assess=AsyncMock(),
             launch=AsyncMock(),
             evaluate_outcome=None,
+            evaluate_baseline=None,
             outcome_section=None,
             intervention_section=None,
             campaign_branch=None,
