@@ -2701,8 +2701,9 @@ async def test_each_built_ending_is_evaluated_before_its_decision_against_the_tr
     def evaluator(world):
         worlds.append(world)
         return CampaignCycleEvaluator(
-            store=store, runner=runner, vault=_Vault(), campaigns=world.campaigns, clock=lambda: NOW
-        )
+            store=store, runner=runner, vault=_Vault(), campaigns=world.campaigns,
+            clock=lambda: NOW, projects=None, repository=None,
+        )  # fmt: skip
 
     stack = {"build_profile": "fullstack_fastapi_react"}
     w, run = await calibrating(RunVerdict.ACCEPTED, evaluator=evaluator, overrides=stack)
