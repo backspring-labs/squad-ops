@@ -2,11 +2,13 @@
 """Prediction 2's sweep (the 2.4 window's pre-registration §4; SIP-0113): no held-out scenario step
 reaches anywhere the squad or the product can see.
 
-The markers are the suite's own step values: each string a step sends (its ``json``, ``headers`` and
-query string) and each a check expects (``equals``, ``in``, ``contains``, ``where``), at least
-``MIN_LEN`` characters with a letter in it. The goal is left out, since goals are visible by design
-(D2(1)). The suite is read from its file outside the repository, and its digest must be the pinned
-one, so the sweep can't search for another revision's values.
+The markers are the suite's own step values (``squadops.scenarios.markers``): each string a step
+sends (its ``json``, ``headers``, its path's segments and query string) and each a check expects
+(``equals``, ``in``, ``contains``, ``where``), at least ``MIN_LEN`` characters with a letter in it.
+A declared route's words and a ``{name}`` reference to a saved value are names, not values, so
+neither is one (SIP-0113 §10ad). The goal is left out, since goals are visible by design (D2(1)).
+The suite is read from its file outside the repository, and its digest must be the pinned one, so
+the sweep can't search for another revision's values.
 
 **No value leaves a matcher.** Each target is searched where it lives, with the markers inside the
 matcher's program on stdin, and answers with counts. The output names a marker by a keyed hash of

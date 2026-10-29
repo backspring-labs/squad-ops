@@ -52,7 +52,9 @@ from typing import Any
 
 from squadops.scenarios.evaluation import ScenarioResult
 
-_VAR = re.compile(r"\{([A-Za-z_][A-Za-z0-9_]*)\}")
+#: A saved value's reference, ``{name}``, in a step's or a check's string (``_render``). The held-out
+#: markers read it too (``squadops.scenarios.markers``): a reference is a name, never a value.
+PLACEHOLDER = re.compile(r"\{([A-Za-z_][A-Za-z0-9_]*)\}")
 #: §10p ruling 10: ``page`` and ``browser`` were reserved for a browser and are no runner's.
 _BROWSER_ACTIONS = frozenset({"visit", "fill", "click"})
 _BROWSER_CHECKS = frozenset({"text", "absent", "count", "order", "control"})
@@ -171,10 +173,10 @@ class _Missing(Exception):
 
 def _render(value: Any, names: Mapping[str, Any]) -> Any:
     if isinstance(value, str):
-        whole = _VAR.fullmatch(value)
+        whole = PLACEHOLDER.fullmatch(value)
         if whole:  # a value that is one name keeps the saved value's own type
             return _lookup(names, whole.group(1))
-        return _VAR.sub(lambda m: str(_lookup(names, m.group(1))), value)
+        return PLACEHOLDER.sub(lambda m: str(_lookup(names, m.group(1))), value)
     if isinstance(value, list):
         return [_render(v, names) for v in value]
     if isinstance(value, dict):
@@ -186,7 +188,7 @@ def _render_pattern(pattern: Any, names: Mapping[str, Any]) -> Any:
     """A pattern with saved values in it, each escaped (§10p ruling 1): a saved title with ``(``
     or ``+`` in it matches as written, rather than breaking or widening the pattern."""
     if isinstance(pattern, str):
-        return _VAR.sub(lambda m: re.escape(str(_lookup(names, m.group(1)))), pattern)
+        return PLACEHOLDER.sub(lambda m: re.escape(str(_lookup(names, m.group(1)))), pattern)
     if isinstance(pattern, list):
         return [_render_pattern(p, names) for p in pattern]
     return pattern
@@ -452,7 +454,7 @@ def vocabulary_refusals(
 def _names(value: Any) -> set[str]:
     """Each ``{name}`` a value renders: in its strings, a mapping's values and a list's items."""
     if isinstance(value, str):
-        return set(_VAR.findall(value))
+        return set(PLACEHOLDER.findall(value))
     if isinstance(value, Mapping):
         return set().union(*(_names(v) for v in value.values()))
     if isinstance(value, list):
@@ -588,7 +590,7 @@ def _pattern_refusals(pattern: Any, what: str) -> list[str]:
     if not isinstance(pattern, str) or not pattern:
         return [f"{what} is non-empty text"]
     try:
-        re.compile(_VAR.sub("x", pattern))
+        re.compile(PLACEHOLDER.sub("x", pattern))
     except re.error:
         return [f"{what} isn't a pattern"]
     if _NOT_JAVASCRIPT.search(pattern):

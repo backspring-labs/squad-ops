@@ -2155,6 +2155,15 @@ checks:
       s = {"scenario_id": "s", "steps": [{"action": "http", "method": "GET", "path": "/l", "save": {"k": "0.id"}}, {"action": "http", "method": "GET", "path": "/l/{k}"}], "checks": [{"check": "json", "step": 2, "path": "id", "equals": "{k}"}]}
       print(asyncio.run(run_scenario(s, send)).result, vocabulary_refusals(s["steps"], [{"check": "json", "step": 2, "path": "id", "equals": "{q}"}]))
     expect: "passed ['check 1: names {q}, which no step before it saves']"
+  - id: "2786-markers-read-paths"
+    what: a held-out suite's markers, which a proposal's goals are held back by, read a step's path segments but never a declared route's words, and never a whole reference to a saved value (SIP-0113 §10ad, #2786)
+    container: squadops-runtime-api
+    code: |
+      from squadops.scenarios.markers import suite_markers
+      from squadops.scenarios.models import parse_suite
+      s = {"scenario_id": "s", "goal": "g", "surfaces": [{"kind": "http_endpoint", "method": "GET", "path": "/t/{t_id}"}], "steps": [{"action": "http", "method": "GET", "path": "/t/qx-unseen-41"}], "checks": [{"check": "json", "step": 1, "path": "id", "equals": "{t_id}"}]}
+      print(sorted(suite_markers(parse_suite({"name": "n", "scenarios": [s]}))))
+    expect: "['qx-unseen-41']"
   - id: "10l-baseline-reading"
     what: a repository-backed campaign's calibration record is evaluated when it is heard, a pause or abort during it holds, its reading names the record in place of a cycle, the package credits nothing against a baseline that ran no scenario and says when there is no baseline reading, and a product made from a scaffold blueprint is linted by its rule set, alone when it can't start (SIP-0113 §10l, §10ac)
     container: squadops-runtime-api

@@ -2719,3 +2719,69 @@ above are the implementer's, for the supervisor's and the owner's review:
 It changes contract 5, so it takes the outside review SIP-0112 H.12 provides before the merge (recorded in SIP-0112
 H.14). The owner chose a fresh agent for it (2026-10-29), which requested changes. The owner then said to fix the
 findings and merge on green.
+
+### 10ad. The held-out markers read a step's path, and a reference to a saved value is no marker (2026-10-29, §4.1, §10p ruling 9, §10t ruling 3, §10w, §10ab; #2786; the supervisor's ruling, under the owner's 2.5 grants)
+
+**What was wrong.** `squadops.scenarios.markers` is the one marker definition. The P2 sweep, the draft-time public
+check (§10w), the pre-push scan and the proposal's held-back goals (§10t ruling 3) all read it. It missed some of a
+suite's values and counted some names:
+- **A step's path was read only for its query string.** A value a scenario puts in its path, such as the id of an item
+  it reads for a 404, was never searched for.
+- **A string that is one `{name}` reference to a saved value (§10ab) was counted as a marker.** The runner renders it
+  as the saved value, so no store ever holds it, and searching for it says nothing. A suite whose checks all compare
+  one response with another reported only references.
+- **A string mixing text and a reference was kept whole,** reference included, so the value it renders was never
+  found where it leaked. A pattern's reference was read as a literal run: its name.
+
+Found by the independent reviewer of the 2.5 demonstration suites (D11) on 2026-10-29: one suite's nine reported
+markers were all references. The supervisor covered the gap by hand for that approval, by count.
+
+**What changed:** the marker definition of §10p ruling 9 and §10w ("every step and check value of six characters or
+more, with a letter in it").
+- **A step's path is read segment by segment,** decoded as a query value is.
+  - A segment at a literal word of a route the scenario declares for that step is public by design, and is no marker.
+    An `http` step is read against its scenario's `http_endpoint` surfaces, and a `visit` against its `page` surfaces.
+  - A route applies when it fits the path: as many segments, each of its words equal to the path's segment at the
+    same position. A parameter (`{id}` or `:id`, `route_param`) fits any segment.
+  - **A path no declared route fits is read whole:** every segment that isn't a reference is a value. That's the safe
+    direction. A route word read as a value shows at worst as public in the draft-time check, where the author can
+    keep it and say why.
+- **A string that is one reference, once stripped, is no marker wherever it is:** a step's body, header, path
+  segment or query value, a typed value or a control's text, and a check's `equals`, `in`, `contains` or `where`.
+- **A string mixing text and references gives each run of its text between them,** stripped, under the same
+  six-character rule. Each run is in the suite's text and in the rendered value, so it is found wherever the whole
+  string was, and where the rendered value leaked too. A pattern's references end a run and are none.
+- **Unchanged:** a string with no reference, the query string, `MIN_LEN`, and the forms a value is searched in. A
+  path's fragment isn't read, as before: it isn't sent, and an anchor names the delivery's own element.
+- The runner's reference syntax is now public (`steps.PLACEHOLDER`), so the reader and the runner read one syntax.
+
+**What it changes for approved suites:** their marker counts move. A literal value reads as before. What goes is only
+what no rendered request holds: a reference, a mixed string read whole, and a pattern's reference name. Each path
+value comes in. The supervisor re-reads revision 6's markers by count after the merge, and records any change in the
+count with the suites' approvals. The implementer never reads a held-out suite.
+
+**Evidence:**
+- `test_markers.py`:
+  - a path against declared routes, 13 cases: a route's word, a page route written `:id`, a trailing slash, no route,
+    a path longer and one shorter than a route, a different word, a page route for an HTTP step, an encoded segment,
+    the query string, an empty path and the root;
+  - a whole reference in eight places;
+  - a mixed string's runs, four cases;
+  - a pattern's reference.
+- **Wiring, at the live callers:**
+  - `heldout_public_check.main` searches exactly the invented suite's three values, and reports only the path's value
+    as public. On main's reader it searched a reference and a mixed string whole, and missed the path's value.
+  - `heldout_text_scan.main`, which the pre-push hook runs, refuses a text naming a path's value and passes one
+    quoting the route and a reference. Main's reader did the opposite of both.
+- **Mutants:** 14 applied, 14 caught. Main's reader; path segments unread; route words not excluded; a route fitting a
+  path of any length; a route fitting whatever its words; a route's parameter read as a word; a surface of any kind;
+  a whole reference counted; a mixed string kept whole; its runs unstripped; a pattern's references read as runs; the
+  query string unread; a segment undecoded; a check's values read raw.
+- **An invented suite, each caller before and after:** the sweep, the text scan and the public check read 8 markers
+  before, five of them names, and none of its four path values. After, they read 9, all values.
+- **The loaded check** `2786-markers-read-paths` (the runtime API, whose proposal reader holds goals back by these
+  markers), run on the source.
+
+No ledger row covers the markers: this corrects the instrument of shipped parts (§10p, §10t, §10w).
+
+**Who ruled.** The supervisor ruled it under the owner's 2.5 grants.
