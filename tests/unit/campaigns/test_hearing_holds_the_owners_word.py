@@ -25,7 +25,13 @@ import logging
 import pytest
 
 from squadops.campaigns.calibration_record import recorded_calibration
-from squadops.campaigns.models import CampaignOutcome, CampaignState, ControlOperation
+from squadops.campaigns.models import (
+    CampaignOutcome,
+    CampaignState,
+    ControlOperation,
+    ControlOutcome,
+    RefusalReason,
+)
 from squadops.cycles.cycle_end import CycleStopReason, RecordedEnd
 from tests.unit.campaigns.test_campaign_branch import CID, _added, _World
 from tests.unit.scenarios.test_campaign_baseline_reading import (
@@ -261,6 +267,88 @@ async def test_a_restart_after_the_move_to_evaluating_decides_the_ending_once(tm
     restarted = _progress(world, _evaluator(world, store, runner), store)
     assert await restarted.rehear_ended([INCREMENT]) == [INCREMENT]
 
+    promotions, decisions = await _increment_rows(world)
+    assert (len(promotions), len(_decided(decisions))) == (1, 1)
+    assert len(await store.evaluations_for_cycle(INCREMENT)) == 1
+
+
+def _stale(log, operation, key_prefix: str) -> list:
+    """The rows of ``operation`` the registry refused as stale, for the increment."""
+    return [
+        e.refusal
+        for e in log
+        if e.operation is operation
+        and e.outcome is ControlOutcome.REFUSED
+        and e.idempotency_key.startswith(key_prefix)
+    ]
+
+
+async def test_a_pause_while_the_bundles_are_frozen_refuses_the_promotion_and_the_resume_decides(
+    tmp_path,
+):
+    """The review of #2792 (P2): the promotion's own I/O comes after the hearing's re-read. Bug
+    caught: a pause applied while the increment's frozen bundles are stored, overwritten by the
+    promotion (``paused → building``), and the decision launching over it. The promotion carries
+    the state the hearing read, so the registry refuses it as stale; the resumed campaign is
+    promoted and decided once."""
+    world, store, _runner, cycle, run, progress = await _delivered(tmp_path)
+    freeze = progress._freeze_bundles
+
+    async def pause_then_freeze(*args, **kwargs):
+        await world.campaigns.transition(CID, PAUSE)
+        return await freeze(*args, **kwargs)
+
+    progress._freeze_bundles = pause_then_freeze
+    assert await progress.cycle_ended(cycle, run, CycleStopReason.SEQUENCE_COMPLETED) is None
+
+    log = await world.campaigns.control_log(CID)
+    assert _stale(log, ControlOperation.PROMOTE, f"promote:{INCREMENT}:") == [
+        RefusalReason.STALE_STATE
+    ]
+    assert await _increment_rows(world) == ([], [])
+    assert (await world.campaigns.get_campaign(CID)).state is CampaignState.PAUSED
+
+    progress._freeze_bundles = freeze
+    await world.campaigns.transition(
+        CID, _owners(ControlOperation.RESUME, CampaignState.BUILDING, "resume-freeze")
+    )
+    assert await progress.rehear_ended([INCREMENT]) == [INCREMENT]
+    promotions, decisions = await _increment_rows(world)
+    assert (len(promotions), len(_decided(decisions))) == (1, 1)
+    assert len(await store.evaluations_for_cycle(INCREMENT)) == 1
+
+
+async def test_a_pause_while_the_branch_follows_refuses_the_move_to_evaluating_and_the_resume_decides(
+    tmp_path,
+):
+    """P2: a pause applied while the campaign branch's ref follows the promotion's row. Bug caught:
+    the move to ``evaluating`` written over it (``paused → evaluating``), and the decision after. The
+    move carries the state the promotion left, so it is refused as stale; the resumed campaign is
+    decided once, its promotion taken as written."""
+    world, store, _runner, cycle, run, progress = await _delivered(tmp_path)
+    branch = progress._campaign_branch
+    follow = branch.follow
+
+    async def pause_then_follow(*args, **kwargs):
+        await world.campaigns.transition(CID, PAUSE)
+        return await follow(*args, **kwargs)
+
+    branch.follow = pause_then_follow
+    assert await progress.cycle_ended(cycle, run, CycleStopReason.SEQUENCE_COMPLETED) is None
+
+    log = await world.campaigns.control_log(CID)
+    assert _stale(log, ControlOperation.DECIDE, f"evaluate:{INCREMENT}") == [
+        RefusalReason.STALE_STATE
+    ]
+    promotions, decisions = await _increment_rows(world)
+    assert (len(promotions), _decided(decisions)) == (1, [])
+    assert (await world.campaigns.get_campaign(CID)).state is CampaignState.PAUSED
+
+    branch.follow = follow
+    await world.campaigns.transition(
+        CID, _owners(ControlOperation.RESUME, CampaignState.BUILDING, "resume-follow")
+    )
+    assert await progress.rehear_ended([INCREMENT]) == [INCREMENT]
     promotions, decisions = await _increment_rows(world)
     assert (len(promotions), len(_decided(decisions))) == (1, 1)
     assert len(await store.evaluations_for_cycle(INCREMENT)) == 1
