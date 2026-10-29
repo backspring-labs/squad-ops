@@ -18,7 +18,9 @@ set -euo pipefail
 
 root="$(git rev-parse --show-toplevel)"
 python="${SQUADOPS_PYTHON:-$root/.venv/bin/python}"
-[ -x "$python" ] || python="$(git -C "$root" worktree list --porcelain | awk '/^worktree /{print $2; exit}')/.venv/bin/python"
+# The main worktree is listed first. awk reads the whole listing: one that stopped at the first
+# line left git writing into a closed pipe, and under pipefail its SIGPIPE ended the hook (#2800).
+[ -x "$python" ] || python="$(git -C "$root" worktree list --porcelain | awk '/^worktree / && !f {print $2; f=1}')/.venv/bin/python"
 
 suites=()
 IFS=':' read -r -a paths <<< "$SQUADOPS_HELDOUT_SUITES"
