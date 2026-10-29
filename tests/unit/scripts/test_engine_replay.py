@@ -8,6 +8,7 @@ import json
 import sys
 from pathlib import Path
 
+import httpx
 import pytest
 
 ROOT = Path(__file__).resolve().parents[3]
@@ -327,6 +328,59 @@ def test_both_generations_of_an_envelope_run_and_a_restart_skips_only_what_is_do
         ("a", 2, "a-g2.jsonl"),
         ("b", 2, "b-g2.jsonl"),
     ]
+
+
+#: An invented header value standing for a key, never a real one: the shape a multi-line key file sent as one header has.
+_SENT = "aaaa-bbbb-cccc-dddd"
+
+
+@pytest.mark.parametrize(
+    "exc, recorded",
+    [
+        # h11 quotes a refused header whole, the bearer key among it (#2744, seen 2026-10-27).
+        (
+            httpx.LocalProtocolError(f"Illegal header value b'Bearer {_SENT}\\nmother {_SENT}'"),
+            "LocalProtocolError",
+        ),
+        (
+            ConnectionRefusedError(111, f"refused, sent {_SENT}"),
+            "ConnectionRefusedError (errno 111)",
+        ),
+        (ValueError(f"bad body: {_SENT}"), "ValueError"),
+    ],
+)
+def test_a_call_that_fails_before_any_answer_records_its_type_never_its_text(
+    exc, recorded, tmp_path, monkeypatch, capsys
+):
+    """Entered at ``run``, as the overnight driver calls it. A transport error's text can carry the
+    request's headers, and the row is a ``var/`` record the line's Release carries (#2744): the key
+    reached a replay row and stdout before this. The arm still counts the failure."""
+
+    def failing_call(url, body, headers, raw_path, engine):
+        raise exc
+
+    monkeypatch.setattr(er, "envelope", lambda eid: envelope("medium"))
+    monkeypatch.setattr(er, "stream_call", failing_call)
+
+    assert (
+        er.run(
+            _two_envelope_plan(tmp_path),
+            "held-out",
+            None,
+            "ollama",
+            None,
+            tmp_path,
+            None,
+            None,
+            None,
+        )
+        == 0
+    )
+
+    summary = (tmp_path / "ollama" / "held-out" / "summary.jsonl").read_text()
+    assert [json.loads(r)["error"] for r in summary.splitlines()] == [recorded, recorded]
+    assert _SENT not in summary
+    assert _SENT not in capsys.readouterr().out
 
 
 @pytest.mark.parametrize(

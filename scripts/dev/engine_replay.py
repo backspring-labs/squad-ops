@@ -346,6 +346,15 @@ def engine_counts(engine: str, final: dict[str, Any], usage: dict[str, Any]) -> 
     }
 
 
+def transport_error(exc: BaseException) -> str:
+    """A call that failed before any answer, as its row records it: the exception's type and an
+    ``OSError``'s number, never its text (#2744). A header the client refuses is quoted whole in its
+    error (h11's ``Illegal header value b'Bearer …'``), the key among it, and the row is a ``var/``
+    record the line's Release carries."""
+    errno = getattr(exc, "errno", None)
+    return type(exc).__name__ + (f" (errno {errno})" if isinstance(errno, int) else "")
+
+
 def stream_call(url: str, body: dict, headers: dict, raw_path: Path, engine: str) -> dict[str, Any]:
     """One streamed call: every event kept, the timings read from the client's own clock."""
     t0 = time.monotonic()
@@ -585,7 +594,7 @@ def run(
         try:
             row = stream_call(url, body, headers, arm / m["raw"], engine)
         except (httpx.HTTPError, OSError, ValueError) as exc:
-            row = {"error": f"{type(exc).__name__}: {str(exc)[:300]}"}
+            row = {"error": transport_error(exc)}
         captured_max, reasoning = settings(env)
         row = {
             "envelope_id": m["envelope_id"],
