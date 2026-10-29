@@ -1,6 +1,6 @@
 # 2.5.0 — pre-registration of Track B's re-read: the 2.4 cut's eleven trees on revisions 5 and 6, on `-7`
 
-**Status: REGISTERED 2026-10-29, before any tree is read.** Uncounted: it measures the yardstick, not a build, and its
+**Status: REGISTERED 2026-10-29 (PR #2806), before any tree was read. READ the same day (§6): R1, R1b and R2 hold, and revision 6's always-pass sets are 2.4's, id for id.** Uncounted: it measures the yardstick, not a build, and its
 output is the cut's baselines (the always-pass sets the cut's no-loss reading reads).
 
 ## 1. Why it runs
@@ -87,7 +87,10 @@ reading and is filed, since it says nothing about the yardstick.
 
 | what | value |
 |---|---|
-| revision-5 reading | |
-| revision-6 reading | |
-| R1, R1b, R2 | |
-| always-pass sets on revision 6 | |
+| revision-5 reading | `reread-rev5.json`, 14:00:14–14:19:51Z, on `dep_0a4f31cd9c10`; all 11 trees started |
+| revision-6 reading | `reread-rev6.json`, 14:19:51–14:39:29Z, same deploy; all 11 trees started. Nothing rebuilt or ran beside them |
+| R1 | **holds:** 0 of 275 HTTP results (25 on each of 11 trees) differ from `-5` |
+| R1b | **holds:** 0 of 66 page results differ from `-5`. Neither #2706 nor `-6`'s browser bump moved a result on these trees |
+| R2 | **holds:** no scenario but #2659's differs between the revisions on any tree. On revision 6 that scenario passes on none of the eleven: 7 fail (6 at step 8, 1 at step 2), 2 are blocked `surface_absent` and 2 `control_absent`. |
+| passed counts | the same on all three readings, tree by tree: FastAPI + React baselines 11, 11, 11, 6, rolls 13 and 11; Next.js baselines 11, 11, 12, rolls 9 and 10 |
+| always-pass sets on revision 6 | FastAPI + React **5**, Next.js **4** (`always-pass-rev6.json`). They are 2.4's sets id for id, so the cut's no-loss reading reads the same scenarios on revision 6 |
