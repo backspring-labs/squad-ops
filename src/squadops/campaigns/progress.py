@@ -703,7 +703,7 @@ class CampaignProgress:
 
         # #2789: the assessment and the evaluation took minutes. Promote and decide from the
         # campaign as it is now, never from the state read before them.
-        campaign, moved = await self._still(campaign, cycle)
+        campaign, moved = await self._still(campaign, cycle.cycle_id)
         if moved:
             return None
         # §12a: a calibration's tree, and an increment's when its own acceptance holds too (§8.4).
@@ -739,7 +739,7 @@ class CampaignProgress:
             )
         # #2789: the promotion and the reads that build the decision and its launch come between
         # that read and this write. A campaign that moved meanwhile isn't decided over.
-        campaign, moved = await self._still(campaign, cycle)
+        campaign, moved = await self._still(campaign, cycle.cycle_id)
         if moved:
             return None
         try:
@@ -809,20 +809,17 @@ class CampaignProgress:
             for e in await self._campaigns.control_log(campaign.campaign_id)
         )
 
-    async def _still(self, campaign: Campaign, cycle: Cycle) -> tuple[Campaign, bool]:
+    async def _still(self, campaign: Campaign, unit: str) -> tuple[Campaign, bool]:
         """#2789: the campaign read again, and whether it has moved from ``campaign``'s state, the
-        one the hearing read before its long step. A moved campaign is logged and left to the
-        re-hearing, which reads it as it then is."""
+        one the hearing read before its long step. A moved campaign is logged, naming the ``unit``
+        heard (a cycle or a calibration record), and left to the re-hearing, which reads it as it
+        then is."""
         current = await self._campaigns.get_campaign(campaign.campaign_id)
         if current.state is campaign.state:
             return current, False
         logger.warning(
-            "campaign_cycle_not_decided_campaign_moved",
-            extra={
-                "cycle_id": cycle.cycle_id,
-                "from": campaign.state.value,
-                "to": current.state.value,
-            },
+            "campaign_not_decided_campaign_moved",
+            extra={"unit": unit, "from": campaign.state.value, "to": current.state.value},
         )
         return current, True
 
@@ -909,6 +906,8 @@ class CampaignProgress:
                 reason=f"cycle {cycle.cycle_id} accepted: its {len(files)} delivered files",
                 idempotency_key=f"promote:{cycle.cycle_id}:{identity}",
                 next_state=campaign.state,
+                # #2789: refused, never written over an owner's move during the I/O before it.
+                expected_state=campaign.state,
                 target=cycle.cycle_id,
                 binding={
                     "cycle_id": cycle.cycle_id,
@@ -957,6 +956,9 @@ class CampaignProgress:
                 "the campaign branch",
                 idempotency_key=f"promote:{cycle.cycle_id}:{accepted.identity}",
                 next_state=campaign.state,
+                # #2789: refused, never written over an owner's move during the branch's reads and
+                # the bundles' freezing before it.
+                expected_state=campaign.state,
                 target=cycle.cycle_id,
                 binding={
                     "cycle_id": cycle.cycle_id,
@@ -1056,6 +1058,12 @@ class CampaignProgress:
                 launch, unbuilt = (
                     (built, None) if isinstance(built, LaunchRequest) else (None, built)
                 )
+            # The review of #2792 (P2): the branch's follow and the reads that build the launch come
+            # between the promotion and this write. A campaign that moved meanwhile isn't decided
+            # over; the re-hearing decides it once it is calibrating again.
+            campaign, moved = await self._still(campaign, record.record_id)
+            if moved:
+                return None
             try:
                 result = await self._campaigns.transition(
                     campaign_id,
@@ -2119,6 +2127,8 @@ class CampaignProgress:
                 reason=f"cycle {cycle.cycle_id} ended: evaluating",
                 idempotency_key=f"evaluate:{cycle.cycle_id}",
                 next_state=CampaignState.EVALUATING,
+                # #2789: refused over an owner's move during the promotion's branch follow.
+                expected_state=campaign.state,
                 target=cycle.cycle_id,
                 binding={"cycle_id": cycle.cycle_id},
             ),
