@@ -195,7 +195,7 @@ def _longest_name(content: str) -> int:
 
 #: A run of the characters a JavaScript or TypeScript identifier is written with, escapes and the
 #: joiners included, and more: any identifier lies inside one such run.
-_IDENTIFIER_RUN = re.compile(r"[\w$\\{}‌‍]+")
+_IDENTIFIER_RUN = re.compile(r"[\w$\\{}\u200c\u200d]+")
 
 
 def _longest_identifier(content: str) -> int:
