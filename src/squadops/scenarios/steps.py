@@ -477,9 +477,9 @@ def _name_refusals(
         if step.get("action") == "http" and isinstance(step.get("save"), Mapping):
             saved |= set(step["save"])
     for i, check in enumerate(checks, start=1):
-        step = check.get("step")
+        at = check.get("step")
         browser = check.get("check") in _BROWSER_CHECKS
-        known = before.get(step, set()) if browser and isinstance(step, int) else saved
+        known = before.get(at, set()) if browser and isinstance(at, int) else saved
         read = _names({k: v for k, v in check.items() if k not in ("check", "step")})
         for name in sorted(read - known):
             out.append(f"check {i}: names {{{name}}}, which no step before it saves")
