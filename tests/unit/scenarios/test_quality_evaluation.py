@@ -333,3 +333,38 @@ async def test_a_seeded_reading_that_couldnt_be_taken_says_why_never_none(
     assert (record.quality_seeded.status, record.quality_seeded.reason) == (status, reason)
     # A reading planning decided sends no seed; one the runner decides was sent one.
     assert all(("seed" in call) == (change is None) for call in runner.calls)
+
+
+@pytest.mark.parametrize(
+    ("linted", "blocked", "evaluated", "profile_unread", "expected"),
+    [
+        (
+            True,
+            evaluate.BlockedReason.START_FAILED,
+            TreeEvaluation("a" * 64, started=False, start_detail="setup step 1 exited 2"),
+            None,
+            (NotMeasured.EVALUATOR_FAILED, "the runner returned no lint for the tree"),
+        ),
+        (True, evaluate.BlockedReason.NO_RUNNER, None, None, (NotMeasured.NO_RUNNER, None)),
+        (False, None, None, None, (NotMeasured.NOT_A_SCAFFOLD_STACK, None)),
+        (
+            False,
+            None,
+            None,
+            "the derived profile at 962858eb0e32, revision 1: the registry is down",
+            (
+                NotMeasured.PROFILE_UNREADABLE,
+                "the derived profile at 962858eb0e32, revision 1: the registry is down",
+            ),
+        ),
+    ],
+    ids=["started-and-returned-no-lint", "no-runner", "not-a-scaffold", "profile-unreadable"],
+)
+def test_a_lint_that_wasnt_taken_says_why(linted, blocked, evaluated, profile_unread, expected):
+    """§10l and the second review of #2788 (P3-2, P3-6). Bugs caught: a runner that ran the tree
+    and returned no lint read as the start's failure (it was asked, and answered nothing: the
+    evaluator's); a profile that couldn't be read claimed as ``not_a_scaffold_stack``, a thing
+    nobody knows."""
+    lint = evaluate.lint_of(linted, blocked, evaluated, profile_unread)
+
+    assert (lint.status, lint.reason, lint.detail) == (QualityStatus.NOT_MEASURED, *expected)

@@ -898,12 +898,20 @@ class CampaignProgress:
         never hear it. The record goes through its own path, in the cycle's order (§10: promotion
         comes first): its tree is promoted, then row 5 decides, keyed by the record.
 
-        Returns the decision's row, or ``None`` when there is nothing to decide: the campaign has
-        completed, its start recorded no record (it launched a calibration cycle), the record is
-        decided already, or it is being heard already. Both writes are keyed, so hearing a record
-        again after a restart between them replays the promotion and writes the decision once."""
+        SIP-0113 §10l: the record's commit is evaluated first, its baseline reading, which can take
+        minutes. The campaign is read again after it: a pause or an abort applied meanwhile holds,
+        and nothing is promoted or decided over it. A paused campaign is heard again once it is
+        resumed into ``calibrating`` (``rehear_calibration_records``), its reading not taken twice.
+
+        Returns the decision's row, or ``None`` when there is nothing to decide: the campaign isn't
+        calibrating (completed, paused, or moved during the reading), its start recorded no record
+        (it launched a calibration cycle), the record is decided already, or it is being heard
+        already. A promotion refused by a move made in the instant between that read and the write
+        is logged and returns ``None`` too, never raised over a start that was applied. Both writes
+        are keyed, so hearing a record again after a restart between them replays the promotion
+        and writes the decision once."""
         campaign = await self._campaigns.get_campaign(campaign_id)
-        if campaign.state is CampaignState.COMPLETED:
+        if campaign.state is not CampaignState.CALIBRATING:
             return None
         log = await self._campaigns.control_log(campaign_id)
         record = recorded_calibration(log)
@@ -916,7 +924,23 @@ class CampaignProgress:
             # SIP-0113 §10l: the baseline reading, before the promotion, as a cycle's evaluation
             # comes before its own (§10: the box is between cycles). Reporting-only.
             await self._baseline_evaluated(campaign_id, record)
-            campaign = await self._promote_record(campaign, record)
+            # The second review of #2788 (P2-A): the reading took minutes, and the owner may have
+            # paused or aborted meanwhile. Promote and decide from the campaign as it is now.
+            campaign = await self._campaigns.get_campaign(campaign_id)
+            if campaign.state is not CampaignState.CALIBRATING:
+                logger.warning(
+                    "campaign_record_not_decided_campaign_moved",
+                    extra={"record_id": record.record_id, "state": campaign.state.value},
+                )
+                return None
+            try:
+                campaign = await self._promote_record(campaign, record)
+            except ControlOperationRefused as refused:
+                logger.error(
+                    "campaign_record_promotion_refused",
+                    extra={"record_id": record.record_id, "refusal": str(refused.entry.refusal)},
+                )
+                return None
             decision = calibration_record_decision(
                 campaign,
                 record.record_id,

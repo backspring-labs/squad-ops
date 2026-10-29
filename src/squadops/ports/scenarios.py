@@ -100,6 +100,7 @@ class ScenarioRunnerPort(ABC):
         seed: SeedPlan | None = None,
         routes: Sequence[RouteRequest] = (),
         lint_stack: str | None = None,
+        lint_only: bool = False,
     ) -> TreeEvaluation:
         """Stand the tree up in a disposable copy and run the scenarios against it.
         ``declared`` is a non-blueprint Project's start (contract 7). Without one, the
@@ -112,4 +113,6 @@ class ScenarioRunnerPort(ABC):
         one's test ids returned (``TreeEvaluation.routes``, SIP-0109 §24co). ``lint_stack``, when
         given with a ``declared`` start, is the scaffold blueprint the product was made from: its
         tree is linted by that blueprint's rule set, #1937's (SIP-0113 §10l). Without it, a declared
-        product's lint is ``not_a_scaffold_stack``."""
+        product's lint is ``not_a_scaffold_stack``. ``lint_only`` asks for that lint alone, of a
+        blueprint product that can't be started: nothing is copied or started, and the answer is
+        ``started`` False with its ``lint``."""

@@ -61,19 +61,48 @@ def _campaigns_own(records: list[EvaluationRecord], campaign_id: str, suite_dige
     return max(held, key=lambda r: r.evaluated_at) if held else None
 
 
+def _applicable(record: EvaluationRecord) -> list:
+    return [o for o in record.outcomes if o.applicability is Applicability.APPLICABLE]
+
+
+def _blocked_throughout(record: EvaluationRecord) -> tuple[str, ...] | None:
+    """The reasons its applicable scenarios were blocked, when none got past
+    ``blocked_unverified``; ``None`` when any ran."""
+    applicable = _applicable(record)
+    if any(o.result is not ScenarioResult.BLOCKED_UNVERIFIED for o in applicable):
+        return None
+    return tuple(sorted({o.blocked_reason.value for o in applicable if o.blocked_reason}))
+
+
 def ran_nothing(record: EvaluationRecord) -> str | None:
     """§10l: why a baseline reading read nothing, or ``None`` when it read something. Nothing ran
     when no applicable scenario got past ``blocked_unverified`` and no quality measure was taken:
     no start declaration, a secret nothing releases, or a start that failed with no lint taken.
-    Its deltas are then "no baseline reading", never a delta against measures nobody took."""
+    Its deltas are then "no baseline reading", never a delta against measures nobody took. A
+    measure that was taken (a blueprint's lint, read whatever the start did) is compared, measure
+    by measure, as ``quality_deltas`` compares any."""
     readings = (record.quality, record.quality_seeded, record.lint)
     if any(r is not None and r.status is QualityStatus.MEASURED for r in readings):
         return None
-    applicable = [o for o in record.outcomes if o.applicability is Applicability.APPLICABLE]
-    if any(o.result is not ScenarioResult.BLOCKED_UNVERIFIED for o in applicable):
+    reasons = _blocked_throughout(record)
+    if reasons is None:
         return None
-    reasons = sorted({o.blocked_reason.value for o in applicable if o.blocked_reason})
     return f"nothing ran on its tree ({', '.join(reasons) or 'no scenario applied'})"
+
+
+def credited_nothing(record: EvaluationRecord) -> str | None:
+    """§10l, the second review of #2788 (P2-B): why a baseline reading can't stand as the tree an
+    increment's contribution is read against, or ``None`` when it can. When none of its applicable
+    scenarios got past ``blocked_unverified`` it checked none of them, so an increment that passes
+    one would be credited with what nobody checked. The contribution is then unread, with why. A
+    baseline where no scenario applied is read as any other: nothing applies to the increment
+    either, since both start from one declaration."""
+    reasons = _blocked_throughout(record)
+    if reasons is None or not _applicable(record):
+        return None
+    return (
+        f"its baseline reading ran no scenario ({', '.join(reasons)}): nothing to read it against"
+    )
 
 
 async def campaign_outcomes(
@@ -100,6 +129,8 @@ async def campaign_outcomes(
         if record is not None:
             latest[cycle_id] = record
     by_tree = {r.evaluated_tree_identity: r for r in latest.values()}
+    #: Trees whose record no contribution is read against, with why (P2-B).
+    uncredited: dict[str, str] = {}
     section: dict = {"suite_digest": pin.suite_digest}
     if calibration_record_id is None:
         baseline = next(
@@ -119,6 +150,8 @@ async def campaign_outcomes(
         unread = NO_BASELINE_READING if baseline is None else None
         if baseline is not None and (why := ran_nothing(baseline)):
             unread = f"{NO_BASELINE_READING}: {why}"
+        if baseline is not None and (why := credited_nothing(baseline)):
+            uncredited[baseline.evaluated_tree_identity] = why
         section["baseline"] = _baseline_section(calibration_record_id, baseline, unread)
     section["cycles"] = [
         _cycle_section(
@@ -128,6 +161,7 @@ async def campaign_outcomes(
             baseline,
             named_goals.get(cycle_id, ()),
             baseline_unread=unread,
+            uncredited=uncredited,
         )
         for cycle_id in cycle_ids
     ]
@@ -220,6 +254,7 @@ def _cycle_section(
     named: Sequence[str],
     *,
     baseline_unread: str | None = None,
+    uncredited: Mapping[str, str] | None = None,
 ) -> dict:
     if record is None:
         section: dict = {"cycle_id": cycle_id, "evaluation": None}
@@ -230,13 +265,18 @@ def _cycle_section(
         return section
     built_on = record.previous_accepted_tree_identity
     previous = by_tree.get(built_on) if built_on else None
+    # P2-B: an increment built on a baseline that ran no scenario has nothing to be credited
+    # against. Its quality measures are still compared, each as ``quality_deltas`` reads it.
+    why = (uncredited or {}).get(built_on) if built_on else None
     section = {
         "cycle_id": cycle_id,
         "evaluation": record.evaluation_id,
         "tree": record.evaluated_tree_identity,
         "built_on": built_on,
         **_readings(record),
-        "contribution": _contribution(record, previous),
+        "contribution": (
+            {"reading": None, "unread_because": why} if why else _contribution(record, previous)
+        ),
         **_page_controls(record),
     }
     if named:

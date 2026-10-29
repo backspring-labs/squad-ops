@@ -370,7 +370,11 @@ async def start_campaign(
     - **A sample application's:** its calibration cycle's launch intent is written in the same
       row (§12b), and the cycle is launched by the cycle-create path.
     - **A repository-backed Project's** (§24bv point 1, §24cc): a calibration record is written
-      in the row instead, and nothing is launched. Its tree is promoted and row 5 decides at once.
+      in the row instead, and nothing is launched. The record is then heard in this request: with
+      a suite pinned, its commit is evaluated first (SIP-0113 §10l, its baseline reading, which
+      builds and starts the product, so the start can take minutes); then its tree is promoted
+      and row 5 decides. A pause or an abort applied during the reading holds: the start answers
+      with nothing decided, and a resumed campaign is decided by the re-hearing.
       A start that can't write one is refused (409 ``CALIBRATION_REFUSED``, naming the cause), and
       nothing is written."""
 

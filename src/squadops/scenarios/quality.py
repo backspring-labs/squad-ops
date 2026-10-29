@@ -70,6 +70,10 @@ class NotMeasured(StrEnum):
     #: read unless the product follows a scaffold blueprint (§10l), and the product's own linter is
     #: never used in its place (§4.2).
     NOT_A_SCAFFOLD_STACK = "not_a_scaffold_stack"
+    #: The derived profile at the unit's pin couldn't be read, so whether the product was made from
+    #: a scaffold blueprint isn't known, and its lint isn't read (§10l; the second review of
+    #: #2788, P3-6). Never ``not_a_scaffold_stack``, which would claim to know.
+    PROFILE_UNREADABLE = "profile_unreadable"
     #: The delivery declares no page without a parameter, so none can be loaded as is.
     NO_DECLARED_PAGE = "no_declared_page"
     #: Not on the sandbox's app network (a host run), where the evaluator can't reach the app.

@@ -24,6 +24,7 @@ What bugs would these catch?
 
 from __future__ import annotations
 
+import asyncio
 import dataclasses
 import json
 from functools import partial
@@ -35,7 +36,14 @@ from adapters.scenarios.memory_scenario_store import MemoryScenarioStore
 from squadops.campaigns.calibration_record import recorded_calibration
 from squadops.campaigns.campaign_branch import CampaignBranch
 from squadops.campaigns.evaluator_trees import FileTree
-from squadops.campaigns.models import ControlOperation, CycleKind
+from squadops.campaigns.models import (
+    CampaignOutcome,
+    CampaignState,
+    CampaignTransition,
+    ControlOperation,
+    ControlOutcome,
+    CycleKind,
+)
 from squadops.campaigns.progress import CampaignProgress, decision_key
 from squadops.cycles.cycle_end import CycleStopReason
 from squadops.outcomes.campaign_package import NO_BASELINE_READING, campaign_outcomes
@@ -92,6 +100,8 @@ class _Runner:
             if kw.get("lint_stack")
             else None
         )
+        if kw.get("lint_only"):
+            return TreeEvaluation(identity, started=False, start_detail="lint only", lint=lint)
         if self.start_fails:
             return TreeEvaluation(identity, started=False, start_detail="setup step 1 exited 2")
         failed = identity in self.failing
@@ -279,51 +289,31 @@ def _no_start(configuration):
     )
 
 
-def _blueprint_no_start(configuration):
-    """A product made from a scaffold blueprint whose configuration declares no start."""
-    return dataclasses.replace(_no_start(configuration), stack=BLUEPRINT)
-
-
 @pytest.mark.parametrize(
-    ("configure", "reason", "quality", "lint"),
+    ("configure", "reason", "quality"),
     [
-        (
-            None,
-            BlockedReason.SECRET_NOT_AVAILABLE,
-            QualityReading(QualityStatus.NOT_APPLICABLE),
-            NotMeasured.NOT_A_SCAFFOLD_STACK,
-        ),
+        (None, BlockedReason.SECRET_NOT_AVAILABLE, QualityReading(QualityStatus.NOT_APPLICABLE)),
         (
             _with_ui,
             BlockedReason.SECRET_NOT_AVAILABLE,
             QualityReading.not_measured(NotMeasured.SECRET_NOT_AVAILABLE),
-            NotMeasured.NOT_A_SCAFFOLD_STACK,
         ),
         (
             _no_start,
             BlockedReason.NO_START_DECLARATION,
             QualityReading.not_measured(NotMeasured.NO_START_DECLARATION),
-            NotMeasured.NOT_A_SCAFFOLD_STACK,
-        ),
-        (
-            _blueprint_no_start,
-            BlockedReason.NO_START_DECLARATION,
-            QualityReading.not_measured(NotMeasured.NO_START_DECLARATION),
-            NotMeasured.NO_START_DECLARATION,
         ),
     ],
-    ids=["tallys-own-secret", "a-secret-with-pages", "no-start-declaration", "a-blueprints-too"],
+    ids=["tallys-own-secret", "a-secret-with-pages", "no-start-declaration"],
 )
 async def test_a_declaration_that_cant_run_blocks_every_scenario_and_measure(
-    tmp_path, configure, reason, quality, lint
+    tmp_path, configure, reason, quality
 ):
     """§10l, contract 7's reasons: nothing is started, every applicable scenario reads
     ``blocked_unverified`` with the reason, and every measure the start would serve is not
-    measured for it: a blueprint's lint too, for the start's reason, since nothing reached the
-    runner that lints. With no declaration every scenario applies. Bugs caught: a blocked start
-    read as passing or not applicable; a blueprint's lint read as the evaluator's failure; and
-    (found building this) a product with pages whose secret nothing releases failing the reading
-    outright, since the page measures had no reason for it."""
+    measured for it. With no declaration every scenario applies. Bugs caught: a blocked start
+    read as passing or not applicable; and (found building this) a product with pages whose secret
+    nothing releases failing the reading outright, since the page measures had no reason for it."""
     world, store, runner, record = await _heard(tmp_path, configure=configure)
 
     [reading] = await store.evaluations_for_calibration_record(record.record_id)
@@ -334,7 +324,83 @@ async def test_a_declaration_that_cant_run_blocks_every_scenario_and_measure(
         (ScenarioResult.BLOCKED_UNVERIFIED, reason)
     }
     assert reading.quality == quality
-    assert (reading.lint.status, reading.lint.reason) == (QualityStatus.NOT_MEASURED, lint)
+    assert (reading.lint.status, reading.lint.reason) == (
+        QualityStatus.NOT_MEASURED,
+        NotMeasured.NOT_A_SCAFFOLD_STACK,
+    )
+    assert await _decided(world, record)
+
+
+def _blueprint_no_start(configuration):
+    """A product made from a scaffold blueprint whose configuration declares no start."""
+    return dataclasses.replace(_no_start(configuration), stack=BLUEPRINT)
+
+
+def _blueprint_with_its_secret(configuration):
+    """A product made from a scaffold blueprint whose start declares a secret nothing releases."""
+    return dataclasses.replace(configuration, stack=BLUEPRINT)
+
+
+class _LintFails(_Runner):
+    """A sandbox that refuses a lint-only request: an older one, which doesn't know the field."""
+
+    async def evaluate_tree(self, **kw):
+        self.calls.append(kw)
+        raise RuntimeError(
+            "400 INVALID_EVALUATION: a tree with no start declaration names its stack"
+        )
+
+
+@pytest.mark.parametrize(
+    ("configure", "reason"),
+    [
+        (_blueprint_no_start, BlockedReason.NO_START_DECLARATION),
+        (_blueprint_with_its_secret, BlockedReason.SECRET_NOT_AVAILABLE),
+    ],
+    ids=["no-start-declaration", "a-secret-nothing-releases"],
+)
+async def test_a_blueprint_product_that_cant_start_is_still_linted_and_nothing_is_started(
+    tmp_path, configure, reason
+):
+    """The second review of #2788 (P3-5): lint reads the tree, never an instance, so a product
+    made from a scaffold blueprint whose start can't run is linted by its rule set all the same, as
+    a sample application's tree that won't install is. Bugs caught: such a product never linted
+    (every greenfield product whose start declares a secret, until #2421); or its scenarios run,
+    or its product started, to take its lint."""
+    world, store, runner, record = await _heard(tmp_path, configure=configure)
+
+    [reading] = await store.evaluations_for_calibration_record(record.record_id)
+    [call] = runner.calls
+    assert (call["lint_only"], call["lint_stack"], call["declared"], call["scenarios"]) == (
+        True,
+        BLUEPRINT,
+        None,
+        [],
+    )
+    assert call["tree_identity"] == record.tree_identity
+    applicable = [o for o in reading.outcomes if o.applicability is Applicability.APPLICABLE]
+    assert {(o.result, o.blocked_reason) for o in applicable} == {
+        (ScenarioResult.BLOCKED_UNVERIFIED, reason)
+    }
+    assert reading.lint == _lint(3)
+    assert await _decided(world, record)
+
+
+async def test_a_lint_alone_that_fails_costs_the_reading_only_its_lint(tmp_path):
+    """Reporting-only, on the new request: a sandbox that can't answer it (one deployed before
+    it, which refuses the request) never loses the reading its scenarios. Bug caught: the lint's
+    failure raised out of the evaluation, so the baseline reading is absent for a lint."""
+    world, store, runner, record = await _heard(
+        tmp_path, configure=_blueprint_no_start, runner=lambda w: _LintFails(w)
+    )
+
+    [reading] = await store.evaluations_for_calibration_record(record.record_id)
+    assert len(runner.calls) == 1
+    assert (reading.lint.status, reading.lint.reason) == (
+        QualityStatus.NOT_MEASURED,
+        NotMeasured.EVALUATOR_FAILED,
+    )
+    assert "400 INVALID_EVALUATION" in reading.lint.detail
     assert await _decided(world, record)
 
 
@@ -395,17 +461,16 @@ async def test_a_commit_whose_tree_isnt_the_records_writes_no_reading(tmp_path, 
             ),
             None,
         ),
-        (lambda p: _Delegate(p, "get_derived_profile", RuntimeError("the registry is down")), None),
     ],
-    ids=["the-clone-fails", "the-configuration-read-fails", "the-profile-read-fails"],
+    ids=["the-clone-fails", "the-configuration-read-fails"],
 )
 async def test_a_failing_read_never_stops_the_records_promotion_or_decision(
     tmp_path, caplog, projects, repository
 ):
     """§10l, phase 1's reporting-only rule. Bug caught: a read the baseline adds (the clone, the
-    configuration, the profile) raising out of the hearing, so the record is never promoted or
-    decided and the campaign stalls on a report nothing reads. It is logged at the hearing's
-    reporting boundary, and the reading is left absent."""
+    configuration) raising out of the hearing, so the record is never promoted or decided and the
+    campaign stalls on a report nothing reads. It is logged at the hearing's reporting boundary,
+    and the reading is left absent."""
     with caplog.at_level("ERROR", logger="squadops.campaigns.progress"):
         world, store, runner, record = await _heard(
             tmp_path, projects=projects, repository=repository
@@ -419,6 +484,41 @@ async def test_a_failing_read_never_stops_the_records_promotion_or_decision(
     log = await world.campaigns.control_log(CID)
     promoted = [e for e in log if e.operation is ControlOperation.PROMOTE]
     assert [e.binding["calibration_record_id"] for e in promoted] == [record.record_id]
+    assert await _decided(world, record)
+
+
+async def test_a_profile_that_cant_be_read_costs_the_baseline_and_each_increment_only_lint(
+    tmp_path, caplog
+):
+    """The second review of #2788 (P3-6): only lint needs the derived profile. Bugs caught: a
+    registry error reading it failing an increment's whole evaluation, which #2778 completed, or
+    the baseline's; or its lint read as ``not_a_scaffold_stack``, which claims to know."""
+    with caplog.at_level("WARNING", logger="squadops.scenarios.campaign_cycles"):
+        world, store, runner, record = await _heard(
+            tmp_path,
+            configure=_blueprint(BLUEPRINT),
+            projects=lambda p: _Delegate(
+                p, "get_derived_profile", RuntimeError("the registry is down")
+            ),
+        )
+        await _first_increment_heard(world)
+
+    [baseline] = await store.evaluations_for_calibration_record(record.record_id)
+    [increment] = await store.evaluations_for_cycle("cyc_inc000000001")
+    for reading in (baseline, increment):
+        assert {o.scenario_id: o.result for o in reading.outcomes}["counter-total"] is (
+            ScenarioResult.PASSED
+        )
+        assert (reading.lint.status, reading.lint.reason) == (
+            QualityStatus.NOT_MEASURED,
+            NotMeasured.PROFILE_UNREADABLE,
+        )
+        assert "the registry is down" in reading.lint.detail
+    assert [c.get("lint_stack") for c in runner.calls] == [None, None]
+    unreadable = [
+        r for r in caplog.records if r.getMessage() == "outcome_evaluation_profile_unreadable"
+    ]
+    assert len(unreadable) == 2
     assert await _decided(world, record)
 
 
@@ -460,6 +560,154 @@ async def test_a_record_heard_again_after_a_restart_is_read_once(tmp_path):
 
     assert await store.evaluations_for_calibration_record(record.record_id) == [first]
     assert len(runner.calls) == 1
+    assert await _decided(world, record)
+
+
+def _owners(operation, next_state, key, outcome=None) -> CampaignTransition:
+    return CampaignTransition(
+        operation=operation,
+        actor="owner",
+        actor_role="admin",
+        reason="the owner's word",
+        idempotency_key=key,
+        next_state=next_state,
+        outcome=outcome,
+    )
+
+
+class _MovedMeanwhile(_Runner):
+    """The owner's operation, applied while the record's commit is read."""
+
+    def __init__(self, world, transition: CampaignTransition) -> None:
+        super().__init__(world)
+        self.transition = transition
+
+    async def evaluate_tree(self, **kw):
+        if not self.calls:
+            await self.world.campaigns.transition(CID, self.transition)
+        return await super().evaluate_tree(**kw)
+
+
+def _rows(log, operation) -> list:
+    return [e for e in log if e.operation is operation and e.outcome is ControlOutcome.APPLIED]
+
+
+async def test_a_pause_during_the_reading_holds_and_the_resumed_campaign_is_decided_once(tmp_path):
+    """The second review of #2788 (P2-A). The reading takes minutes, and the owner paused
+    meanwhile. Bugs caught: the promotion written from the campaign as it was before the reading,
+    which moves it out of ``paused`` again, and the decision launching the first increment over
+    the owner's brake; or the resumed campaign never decided, or its reading taken twice."""
+    pause = _owners(ControlOperation.PAUSE, CampaignState.PAUSED, "pause-1")
+    world, store, runner, record = await _heard(
+        tmp_path, runner=lambda w: _MovedMeanwhile(w, pause)
+    )
+
+    log = await world.campaigns.control_log(CID)
+    assert (await world.campaigns.get_campaign(CID)).state is CampaignState.PAUSED
+    assert (_rows(log, ControlOperation.PROMOTE), await _decided(world, record)) == ([], False)
+    assert len(await store.evaluations_for_calibration_record(record.record_id)) == 1
+
+    resume = _owners(ControlOperation.RESUME, CampaignState.CALIBRATING, "resume-1")
+    await world.campaigns.transition(CID, resume)
+    assert await world.progress.rehear_calibration_records() == [CID]
+
+    log = await world.campaigns.control_log(CID)
+    assert [e.binding["calibration_record_id"] for e in _rows(log, ControlOperation.PROMOTE)] == [
+        record.record_id
+    ]
+    assert await _decided(world, record)
+    assert len(await store.evaluations_for_calibration_record(record.record_id)) == 1
+    assert len(runner.calls) == 1
+
+
+async def test_an_abort_during_the_reading_holds_and_the_start_never_raises(tmp_path):
+    """P2-A: the owner aborted while the record was read. Bugs caught: the promotion's refusal
+    raised out of the hearing, so a start that was applied answers 409 minutes later; or a
+    promotion or decision written for an aborted campaign."""
+    abort = _owners(
+        ControlOperation.ABORT,
+        CampaignState.COMPLETED,
+        "abort-1",
+        outcome=CampaignOutcome.ABORTED,
+    )
+    world, _store_, _runner, record = await _heard(
+        tmp_path, runner=lambda w: _MovedMeanwhile(w, abort)
+    )
+
+    log = await world.campaigns.control_log(CID)
+    assert (await world.campaigns.get_campaign(CID)).state is CampaignState.COMPLETED
+    assert (_rows(log, ControlOperation.PROMOTE), await _decided(world, record)) == ([], False)
+    assert await world.progress.rehear_calibration_records() == []
+
+
+class _AbortsAsItPromotes:
+    """A registry where the owner's abort lands in the instant between the hearing's second read
+    and its promotion: the promotion is then refused, and recorded as refused."""
+
+    def __init__(self, inner) -> None:
+        self._inner, self.done = inner, False
+
+    async def transition(self, campaign_id, transition):
+        if transition.operation is ControlOperation.PROMOTE and not self.done:
+            self.done = True
+            abort = _owners(
+                ControlOperation.ABORT,
+                CampaignState.COMPLETED,
+                "abort-2",
+                outcome=CampaignOutcome.ABORTED,
+            )
+            await self._inner.transition(campaign_id, abort)
+        return await self._inner.transition(campaign_id, transition)
+
+    def __getattr__(self, name):
+        return getattr(self._inner, name)
+
+
+async def test_a_promotion_refused_in_the_last_instant_is_logged_never_raised(tmp_path, caplog):
+    """P2-A's remainder: no read closes the window to the write itself. Bug caught: the refusal
+    raised out of ``calibration_recorded``, so the start route answers an error for a start it
+    applied."""
+    world = _World(tmp_path)
+    world.projects.configuration = _without_secret(world.projects.configuration)
+    store, runner = await _store(), _Runner(world)
+    racing = _AbortsAsItPromotes(world.campaigns)
+    world.progress = _progress(world, _evaluator(world, store, runner), store, campaigns=racing)
+
+    with caplog.at_level("ERROR", logger="squadops.campaigns.progress"):
+        await world.started()
+
+    record = recorded_calibration(await world.campaigns.control_log(CID))
+    assert [r.getMessage() for r in caplog.records] == ["campaign_record_promotion_refused"]
+    assert not await _decided(world, record)
+    assert (await world.campaigns.get_campaign(CID)).state is CampaignState.COMPLETED
+
+
+class _SweptMeanwhile(_Runner):
+    """Starts the sweep's re-hearing while the start's own hearing reads the record's commit, as
+    the 60-second sweep can (the second review of #2788, P3-1)."""
+
+    def __init__(self, world) -> None:
+        super().__init__(world)
+        self.sweep: asyncio.Task | None = None
+
+    async def evaluate_tree(self, **kw):
+        if self.sweep is None:
+            self.sweep = asyncio.create_task(self.world.progress.rehear_calibration_records())
+            await asyncio.sleep(0.05)  # the sweep's hearing runs while this one reads
+        return await super().evaluate_tree(**kw)
+
+
+async def test_the_sweep_never_reads_the_record_beside_the_starts_own_hearing(tmp_path):
+    """P3-1: the hearing's guard. Bugs caught: the sweep's re-hearing reading the same commit
+    beside the start's (a second build of the product on the box), then deciding it a second
+    time."""
+    world, store, runner, record = await _heard(tmp_path, runner=lambda w: _SweptMeanwhile(w))
+
+    assert await runner.sweep == []
+    assert len(await store.evaluations_for_calibration_record(record.record_id)) == 1
+    assert len(runner.calls) == 1
+    log = await world.campaigns.control_log(CID)
+    assert len(_rows(log, ControlOperation.DECIDE)) == 1
     assert await _decided(world, record)
 
 

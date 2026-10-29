@@ -1,4 +1,4 @@
--- 2010_scenario_evaluation_calibration_record.sql
+-- 1980_scenario_evaluation_calibration_record.sql
 -- SIP-0113 §10l (#2619; shared contract 5): on a repository-backed Project a Campaign's calibration
 -- is a record, not a cycle (SIP-0109 §24bv point 1), and its baseline reading evaluates the record's
 -- commit. That evaluation names the calibration record in place of a cycle: exactly one of the two,

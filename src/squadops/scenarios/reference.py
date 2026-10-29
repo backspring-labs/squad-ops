@@ -108,7 +108,8 @@ def _unit(doc: Mapping[str, Any]) -> str | None:
     """SIP-0113 §10l: the unit the reference names, a cycle or a calibration record, exactly one;
     returns the record's id, or ``None`` for a cycle's. An absent ``calibration_record_id`` reads
     as null, which leaves ``cycle_id`` to name the unit, so an absent key never files a
-    calibration's reading as a cycle's."""
+    calibration's reading as a cycle's. A calibration builds on nothing, so its reference names no
+    previous tree."""
     unit = {"cycle_id": doc["cycle_id"], "calibration_record_id": doc.get("calibration_record_id")}
     for key, value in unit.items():
         if value is not None and (not isinstance(value, str) or not value.strip()):
@@ -118,5 +119,11 @@ def _unit(doc: Mapping[str, Any]) -> str | None:
             "a reference names exactly one of cycle_id and calibration_record_id, got "
             f"cycle_id={unit['cycle_id']!r}, "
             f"calibration_record_id={unit['calibration_record_id']!r}"
+        )
+    if unit["calibration_record_id"] is not None and doc["previous_accepted_tree_identity"]:
+        # As ``EvaluationRecord`` refuses one (the second review of #2788, P3-3).
+        raise EvaluationInvalid(
+            f"calibration record {unit['calibration_record_id']}'s reading builds on nothing, "
+            f"and names {doc['previous_accepted_tree_identity']} as its previous tree"
         )
     return unit["calibration_record_id"]

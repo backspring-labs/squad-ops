@@ -80,7 +80,8 @@ class ProductRead:
     ``declared`` is its start, or ``unstartable`` the refusal reading it met. ``served`` is the
     surface kinds its entry points serve, ``None`` with no declaration, so every scenario applies
     and reads its reason (§10l). ``lint_stack`` is the scaffold blueprint the product was made
-    from, by the derived profile at the pin, or ``None``."""
+    from, by the derived profile at the pin, or ``None``; ``profile_unread`` is why that profile
+    couldn't be read, when it couldn't."""
 
     files: Mapping[str, bytes]
     executable: Collection[str]
@@ -88,6 +89,7 @@ class ProductRead:
     served: frozenset[SurfaceKind] | None
     unstartable: StartUndeclared | SecretUnavailable | ReadinessUnsupported | None
     lint_stack: str | None
+    profile_unread: str | None = None
 
 
 def promoted_identity(log: list, cycle_id: str | None) -> str | None:
@@ -237,6 +239,7 @@ class CampaignCycleEvaluator:
             tree=read.files,
             executable=read.executable,
             lint_stack=read.lint_stack,
+            profile_unread=read.profile_unread,
         )
 
     async def calibration_recorded(
@@ -248,9 +251,10 @@ class CampaignCycleEvaluator:
         this record and suite already written (a record heard again after a restart); no registry
         or clone wired; or a commit whose tree isn't the record's.
 
-        Reporting-only. A read that fails (the registry, the configuration, the clone) raises to
-        the hearing's reporting boundary, ``CampaignProgress._baseline_evaluated``, which logs it
-        and leaves the reading absent: the record, its promotion and its decision go on."""
+        Reporting-only. A read that fails (the configuration, the clone) raises to the hearing's
+        reporting boundary, ``CampaignProgress._baseline_evaluated``, which logs it and leaves the
+        reading absent: the record, its promotion and its decision go on. A derived profile that
+        can't be read costs the reading only its lint (``_blueprint``)."""
         pin = await self._store.get_pin(campaign_id)
         if pin is None:
             return None
@@ -288,6 +292,7 @@ class CampaignCycleEvaluator:
             served=read.served,
             unstartable=read.unstartable,
             lint_stack=read.lint_stack,
+            profile_unread=read.profile_unread,
         )
 
     async def product_read(
@@ -325,26 +330,37 @@ class CampaignCycleEvaluator:
             declared = configured_start(configuration)
         except (StartUndeclared, SecretUnavailable, ReadinessUnsupported) as e:
             unstartable = e
+        lint_stack, profile_unread = await self._blueprint(project_id, profile_at, unit)
         return ProductRead(
             files=checkout.files,
             executable=checkout.executable,
             declared=declared,
             served=served,
             unstartable=unstartable,
-            lint_stack=await self._blueprint(project_id, profile_at),
+            lint_stack=lint_stack,
+            profile_unread=profile_unread,
         )
 
-    async def _blueprint(self, project_id: str, at: tuple[str, int]) -> str | None:
+    async def _blueprint(
+        self, project_id: str, at: tuple[str, int], unit: Mapping[str, str]
+    ) -> tuple[str | None, str | None]:
         """The scaffold blueprint the product was made from, by the derived profile at ``at``
-        (contract 8's ``blueprint``), or ``None``: no profile there, no blueprint, or a stack with
-        no scaffold, whose tree has no #1937 rule set (§10l, §4.2). A profile at another pin is
-        never read in its place."""
+        (contract 8's ``blueprint``), and why the profile couldn't be read when it couldn't.
+        ``(None, None)``: no profile there, no blueprint, or a stack with no scaffold, whose tree
+        has no #1937 rule set (§10l, §4.2). A profile at another pin is never read in its place.
+
+        The second review of #2788 (P3-6): only lint needs the profile, so a profile that can't be
+        read never costs the evaluation its scenarios. It is logged, and the lint reads
+        ``profile_unread`` with why."""
         try:
             profile = await self._projects.get_derived_profile(project_id, at=at)
         except DerivedProfileNotFoundError:
-            return None
+            return None, None
+        except Exception as e:  # noqa: BLE001 — lint alone needs it; the evaluation goes on
+            logger.warning("outcome_evaluation_profile_unreadable", extra={**unit, "error": str(e)})
+            return None, f"the derived profile at {at[0][:12]}, revision {at[1]}: {e}"
         stack = profile.blueprint_stack
-        return stack if stack and is_scaffoldable_stack(stack) else None
+        return (stack if stack and is_scaffoldable_stack(stack) else None), None
 
     async def _pinned_identity(self, cycle: Any) -> str | None:
         """The tree the cycle was built on: its pinned commit's (the campaign branch's head, H.9),

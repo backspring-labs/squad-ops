@@ -269,7 +269,7 @@ async def test_an_evaluation_reads_back_whole_and_the_table_refuses_a_commit_for
 async def test_a_calibration_records_reading_names_it_in_place_of_a_cycle_and_the_table_holds_one(
     store,
 ):
-    """SIP-0113 §10l, migration 2010. Bugs caught: the record's id lost in the round trip, so the
+    """SIP-0113 §10l, migration 1980. Bugs caught: the record's id lost in the round trip, so the
     reading reads back as a cycle's with no cycle; the reading found by a cycle query, or a cycle's
     by the record's; or a row naming neither unit, or both, accepted by the table."""
     from squadops.scenarios.evaluation import (

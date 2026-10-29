@@ -2583,7 +2583,7 @@ point 1), and SIP-0113 §10l evaluates the record's commit as the Campaign's bas
   in Project history yet, so no stored reference reads differently.
 
 **Evidence.** `squadops.scenarios.reference` (`_unit`) and `squadops.scenarios.evaluation` (`EvaluationRecord`'s check);
-migration `2010_scenario_evaluation_calibration_record.sql`, whose CHECK holds the same rule in the table. Held by
+migration `1980_scenario_evaluation_calibration_record.sql`, whose CHECK holds the same rule in the table. Held by
 `tests/unit/shared_contract/test_contract5_evaluation_reference.py` (the fixture's `valid` form unchanged, a record's
 reading round-tripped, each refusal) and by the store's integration test against Postgres. The wiring test enters at
 `CampaignProgress.calibration_recorded` (`tests/unit/scenarios/test_campaign_baseline_reading.py`).

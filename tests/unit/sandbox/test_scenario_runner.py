@@ -795,6 +795,45 @@ async def test_a_declared_product_is_linted_only_by_the_scaffold_blueprint_it_wa
     assert result.lint.reading["by_rule"] == {"ruff:E501": 1, "ruff:F401": 2}
 
 
+async def test_a_blueprint_products_lint_alone_starts_nothing(tmp_path):
+    """SIP-0113 §10l (the second review of #2788, P3-5): a blueprint product that can't be started
+    is linted all the same. Bugs caught: a lint-only request that copies or starts the tree, or
+    runs a scenario; or one that never lints."""
+    container = _Linted(ContainerResult("", 0, json.dumps(_LINT_ANSWER) + "\n", ""))
+
+    result = await _evaluate(
+        _runner(tmp_path, container),
+        declared=None,
+        scenarios=[],
+        environment={},
+        lint_stack="fullstack_fastapi_react",
+        lint_only=True,
+    )
+
+    [lint_spec] = container.specs
+    assert (lint_spec.image, lint_spec.network) == (EVALUATOR, "none")
+    assert (container.held, (tmp_path / "sandbox" / "evaluations").exists()) == ([], False)
+    assert (result.started, result.runs, result.lint.status) == (False, (), QualityStatus.MEASURED)
+    assert result.lint.reading["by_rule"] == {"ruff:E501": 1, "ruff:F401": 2}
+
+
+@pytest.mark.parametrize("lint_stack", ["django", None], ids=["no-scaffold-for-it", "none"])
+async def test_a_lint_alone_for_no_scaffold_blueprint_is_refused(tmp_path, lint_stack):
+    """Bug caught: a lint-only request for a stack with no scaffold (or none) linting a tree by
+    rules it never chose, or falling through to a start with nothing to start it by."""
+    container = _Linted(ContainerResult("", 0, json.dumps(_LINT_ANSWER) + "\n", ""))
+
+    with pytest.raises(ValueError, match="lint alone is a scaffold blueprint's"):
+        await _evaluate(
+            _runner(tmp_path, container),
+            declared=None,
+            scenarios=[],
+            lint_stack=lint_stack,
+            lint_only=True,
+        )
+    assert container.specs == []
+
+
 # --------------------------------------------------------------------------------------------
 # SIP-0113 §10j, §10n (#2562): a second, seeded instance, measured on every page the plan names
 # --------------------------------------------------------------------------------------------

@@ -613,13 +613,17 @@ async def test_client_routes_travel_the_client_to_the_runner_and_their_readings_
 
 
 @pytest.mark.parametrize(
-    "lint_stack", ["fullstack_fastapi_react", None], ids=["a-blueprint", "none"]
+    ("lint_stack", "lint_only"),
+    [("fullstack_fastapi_react", False), ("fullstack_fastapi_react", True), (None, False)],
+    ids=["a-blueprint", "its-lint-alone", "none"],
 )
-async def test_a_products_blueprint_travels_the_client_to_the_runner(tmp_path, lint_stack):
+async def test_a_products_blueprint_travels_the_client_to_the_runner(
+    tmp_path, lint_stack, lint_only
+):
     """SIP-0113 §10l, entered at the client the runtime API's evaluation uses. Bugs caught: the
-    blueprint dropped on the wire, so a product made from one is never linted by its rule set; or
-    one sent when none was asked, so a runner that predates it is called with an argument it
-    doesn't take."""
+    blueprint, or the request for its lint alone (the second review of #2788, P3-5), dropped on
+    the wire, so a product made from one is never linted by its rule set; or either sent when none
+    was asked, so a runner that predates them is called with an argument it doesn't take."""
     from adapters.sandbox.http_client import HttpScenarioRunner
     from squadops.campaigns.evaluator_trees import FileTree
     from squadops.scenarios.runner import TreeEvaluation
@@ -652,7 +656,9 @@ async def test_a_products_blueprint_travels_the_client_to_the_runner(tmp_path, l
     await client.evaluate_tree(
         tree=TREE, tree_identity=FileTree.of(TREE).identity, executable={"run.sh"}, stack=None,
         declared=DECLARED, scenarios=[], environment={}, pages=(), lint_stack=lint_stack,
+        lint_only=lint_only,
     )  # fmt: skip
 
     [kw] = received
     assert kw.get("lint_stack", "absent") == (lint_stack or "absent")
+    assert kw.get("lint_only", "absent") == (True if lint_only else "absent")

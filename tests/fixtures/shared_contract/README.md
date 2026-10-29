@@ -58,6 +58,11 @@ header says, and `test_shared_fixture.py` holds them to that.
 | `derived_profile` | MacBook | 8 (H.6, added for 2.5) | `development_configuration_revision` | `derived-profile/v2` | derived at the first commit |
 | `outcome_evaluation_ref` | Spark | 5 | `campaign_id` | `outcome-evaluation-ref/v2` | `evaluated_tree_identity` names the first commit's tree |
 
+**`outcome_evaluation_ref` has a fifth form, `calibration_record.yaml`** (SIP-0113 §10l, SIP-0112 H.14): a
+repository-backed Campaign's baseline reading, which names its calibration record in place of a cycle (`cycle_id`
+null) and no previous tree. Its tree is the second commit's. `test_contract5_evaluation_reference.py` and
+`test_outcome_evaluation_ref_recording.py` hold it.
+
 Only the start declaration is a shared contract in the Development Configuration. The rest of that
 record, and the whole inherited baseline, is the MacBook lane's own, recorded for E.4.2 and IR-9.
 

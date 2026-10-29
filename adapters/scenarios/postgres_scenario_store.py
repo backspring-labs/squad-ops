@@ -1,6 +1,6 @@
 """The scenario store in Postgres (SIP-0113 §4.1; #2413), over the runtime's one pool (#577).
 
-Migration 1900 creates its tables; 2010 lets an evaluation name a calibration record in place of a
+Migration 1900 creates its tables; 1980 lets an evaluation name a calibration record in place of a
 cycle (SIP-0113 §10l). A suite's content is stored as its document, and its digest
 is recomputed on every read: JSONB orders keys its own way, so the digest is the content's
 canonical hash, never the stored text's. A row whose content no longer hashes to its key is

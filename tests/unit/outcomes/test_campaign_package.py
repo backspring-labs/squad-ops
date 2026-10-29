@@ -295,6 +295,80 @@ async def test_with_no_baseline_reading_the_deltas_say_so(store, baseline, unrea
     assert section["baseline"]["evaluation"] == (None if baseline is None else "evl_cyc_none_0")
     [inc1] = section["cycles"]
     assert inc1["vs_baseline"] == {"unread_because": unread}
+    # P2-B: never credited against it, whichever way the baseline is missing.
+    assert inc1["contribution"]["reading"] is None
+
+
+@pytest.mark.parametrize(
+    ("lint", "vs_baseline"),
+    [
+        (
+            LintReading.not_measured(NotMeasured.NOT_A_SCAFFOLD_STACK),
+            {
+                "unread_because": "no baseline reading: nothing ran on its tree "
+                "(no_start_declaration)"
+            },
+        ),
+        (_lint(10), "compared"),
+    ],
+    ids=["nothing-measured", "its-lint-measured"],
+)
+async def test_a_baseline_that_ran_no_scenario_credits_nothing_and_its_measures_still_compare(
+    store, lint, vs_baseline
+):
+    """The second review of #2788 (P2-B, P3-2). A baseline none of whose applicable scenarios got
+    past ``blocked_unverified`` checked none, so the first increment's contribution is unread
+    with why, never credited with what nobody checked. Its quality measures are compared each as
+    ``quality_deltas`` reads them: a blueprint product whose start failed still had its lint taken,
+    and that lint is a baseline. Bugs caught: the increment read ``contributed`` against a baseline
+    that ran nothing; or a lint baseline thrown away because the scenarios were blocked."""
+    await store.save_evaluation(dataclasses.replace(_ran_nothing(), lint=lint))
+    await store.save_evaluation(
+        _record("cyc_inc1", INC1, CAL, ScenarioResult.PASSED, lint=_lint(12))
+    )
+
+    section = await campaign_outcomes(
+        store, CID, ["cyc_inc1"], named_goals={}, calibration_record_id=RECORD
+    )
+
+    [inc1] = section["cycles"]
+    assert inc1["contribution"] == {
+        "reading": None,
+        "unread_because": "its baseline reading ran no scenario (no_start_declaration): "
+        "nothing to read it against",
+    }
+    if vs_baseline == "compared":
+        assert "unread_because" not in section["baseline"]
+        assert inc1["vs_baseline"]["moved"] == [
+            ["lint:total", None, 10, 12, 2],
+            ["lint:ruff:E501", None, 10, 12, 2],
+        ]
+    else:
+        assert inc1["vs_baseline"] == vs_baseline
+
+
+async def test_a_baseline_where_no_scenario_applied_still_reads_the_increment(store):
+    """P2-B's edge: a baseline where nothing applied isn't one that was blocked. Both start from
+    one declaration, so nothing applies to the increment either, and its contribution is read
+    (``neutral``), not left unread. Bug caught: every first increment of a product with no surface
+    the suite needs read as unread forever."""
+    [scenario] = SUITE.scenarios
+    not_applicable = ScenarioOutcome(
+        scenario.scenario_id, scenario.version, scenario.goal, Applicability.NOT_APPLICABLE
+    )
+    baseline = dataclasses.replace(_ran_nothing(), outcomes=(not_applicable,))
+    increment = dataclasses.replace(
+        _record("cyc_inc1", INC1, CAL, ScenarioResult.PASSED), outcomes=(not_applicable,)
+    )
+    for record in (baseline, increment):
+        await store.save_evaluation(record)
+
+    section = await campaign_outcomes(
+        store, CID, ["cyc_inc1"], named_goals={}, calibration_record_id=RECORD
+    )
+
+    [inc1] = section["cycles"]
+    assert inc1["contribution"]["reading"] == "neutral"
 
 
 async def test_a_cycle_that_built_on_nothing_is_never_a_repository_backed_campaigns_baseline(

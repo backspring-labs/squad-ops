@@ -216,6 +216,7 @@ class ContainerScenarioRunner(ScenarioRunnerPort):
         seed: SeedPlan | None = None,
         routes: Sequence[RouteRequest] = (),
         lint_stack: str | None = None,
+        lint_only: bool = False,
     ) -> TreeEvaluation:
         built = FileTree.of(tree).identity
         if built != tree_identity:
@@ -228,6 +229,18 @@ class ContainerScenarioRunner(ScenarioRunnerPort):
                 tree_path(rel)  # the tree is a squad's files: no key writes outside the copy
             except WorkspaceEscapeError as e:
                 raise ValueError(str(e)) from e
+        if lint_only:
+            # SIP-0113 §10l (the second review of #2788, P3-5): a blueprint product that can't be
+            # started is linted all the same, since lint reads the tree. Nothing is copied or
+            # started, and a stack with no scaffold is refused as any malformed request is.
+            if not (lint_stack and is_scaffoldable_stack(lint_stack)):
+                raise ValueError(f"lint alone is a scaffold blueprint's, not {lint_stack!r}")
+            return TreeEvaluation(
+                tree_identity,
+                started=False,
+                start_detail="not started: its lint alone was asked for",
+                lint=await self._lint(tree, None),
+            )
         start = self._start_for(stack, declared)
         started = time.monotonic()
         copy = self._root / "evaluations" / uuid.uuid4().hex

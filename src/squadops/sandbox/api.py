@@ -83,6 +83,9 @@ class EvaluationRequest(BaseModel):
     #: SIP-0113 §10l: the scaffold blueprint a declared product was made from, whose rule set
     #: lints its tree; ``None`` for any other product, whose lint is ``not_a_scaffold_stack``.
     lint_stack: str | None = None
+    #: SIP-0113 §10l (the second review of #2788, P3-5): that blueprint's lint alone, of a product
+    #: that can't be started. Nothing is copied or started.
+    lint_only: bool = False
 
 
 class OperationRequest(BaseModel):
@@ -208,6 +211,8 @@ async def _handle_evaluation(service: SandboxService, body: EvaluationRequest) -
         optional["routes"] = [RouteRequest.from_dict(r) for r in body.routes]
     if body.lint_stack:
         optional["lint_stack"] = body.lint_stack
+    if body.lint_only:
+        optional["lint_only"] = True
     try:
         binary = decode_binary(body.binary_tree, alongside=body.tree)
         result = await runner.evaluate_tree(

@@ -251,14 +251,20 @@ def seeded_of(
 
 
 def lint_of(
-    linted: bool, blocked: BlockedReason | None, evaluated: TreeEvaluation | None
+    linted: bool,
+    blocked: BlockedReason | None,
+    evaluated: TreeEvaluation | None,
+    profile_unread: str | None = None,
 ) -> LintReading:
     """#1937's lint of the evaluated tree: the runner's, or why there is none. Only a scaffold
     stack's tree has #1937's rule sets (``linted``): a sample application's, or a product made from
     a scaffold blueprint (§10l). Any other Project's own linter is never read in their place. A
-    product that couldn't be started was never sent to the runner, so its lint wasn't taken
-    either, for the start's reason (§10l)."""
+    product whose derived profile couldn't be read (``profile_unread``, why) isn't known to be
+    either, and says so. A product whose lint the runner wasn't reached for says why: its start's
+    reason, or ``no_runner``."""
     if not linted:
+        if profile_unread is not None:
+            return LintReading.not_measured(NotMeasured.PROFILE_UNREADABLE, profile_unread)
         return LintReading.not_measured(NotMeasured.NOT_A_SCAFFOLD_STACK)
     if evaluated is not None and evaluated.lint is not None:
         return evaluated.lint
@@ -267,6 +273,45 @@ def lint_of(
     return LintReading.not_measured(
         NotMeasured.EVALUATOR_FAILED, "the runner returned no lint for the tree"
     )
+
+
+async def _lint_only(
+    runner: ScenarioRunnerPort | None,
+    tree: Mapping[str, bytes],
+    identity: str,
+    executable: Collection[str],
+    lint_stack: str,
+) -> LintReading:
+    """§10l, the second review of #2788 (P3-5): a product made from a scaffold blueprint whose
+    start can't run (no declaration, a secret nothing releases) is still linted by its blueprint's
+    rule set, as a sample application's tree that won't install is (§10f). The runner is asked for
+    lint alone, and starts nothing. Reporting-only: a lint that can't be taken is not measured,
+    with why, and never costs the record its scenarios."""
+    if runner is None:
+        return LintReading.not_measured(NotMeasured.NO_RUNNER)
+    try:
+        evaluated = await runner.evaluate_tree(
+            tree=tree,
+            tree_identity=identity,
+            executable=sorted(executable),
+            stack=None,
+            declared=None,
+            scenarios=[],
+            environment={},
+            pages=(),
+            lint_stack=lint_stack,
+            lint_only=True,
+        )
+    except RunnerUnavailable:
+        return LintReading.not_measured(NotMeasured.NO_RUNNER)
+    except Exception as e:  # noqa: BLE001 — reporting-only: the record is written without it
+        logger.warning("lint_only_failed", extra={"tree_identity": identity, "error": str(e)})
+        return LintReading.not_measured(NotMeasured.EVALUATOR_FAILED, f"lint alone: {e}")
+    if evaluated.lint is None:
+        return LintReading.not_measured(
+            NotMeasured.EVALUATOR_FAILED, "the runner returned no lint for the tree"
+        )
+    return evaluated.lint
 
 
 def _outcome(
@@ -318,6 +363,7 @@ async def evaluate_cycle(
     tree: Mapping[str, bytes] | None = None,
     executable: Collection[str] = (),
     lint_stack: str | None = None,
+    profile_unread: str | None = None,
 ) -> EvaluationRecord:
     """Evaluate ``cycle``'s delivered app against an approved suite, and write the record.
 
@@ -325,7 +371,8 @@ async def evaluate_cycle(
     ``declared`` start and the ``served`` surface kinds of its entry points, or the refusal it met
     reading its declaration as ``unstartable``, whose ``reason`` blocks every applicable scenario.
     ``lint_stack`` is the scaffold blueprint such a product was made from, whose rule set lints it
-    (§10l), or ``None``.
+    (§10l), or ``None``; ``profile_unread`` is why the derived profile that would name it couldn't
+    be read.
 
     ``tree`` is the evaluated tree when the caller has it whole, with its ``executable`` bits: a
     repository-backed cycle's, its captured commit (#2414). Otherwise it is read from the vault, by
@@ -354,6 +401,7 @@ async def evaluate_cycle(
         environment=environment,
         unstartable=unstartable,
         lint_stack=lint_stack,
+        profile_unread=profile_unread,
     )
 
 
@@ -372,6 +420,7 @@ async def evaluate_calibration_record(
     served: frozenset[SurfaceKind] | None,
     unstartable: StartUndeclared | ReadinessUnsupported | SecretUnavailable | None,
     lint_stack: str | None,
+    profile_unread: str | None,
 ) -> EvaluationRecord:
     """SIP-0113 §10l: a repository-backed Campaign's baseline reading, its calibration record's
     commit evaluated against the Campaign's pinned suite, and the record written. It is a product,
@@ -400,6 +449,7 @@ async def evaluate_calibration_record(
         environment=None,
         unstartable=unstartable,
         lint_stack=lint_stack,
+        profile_unread=profile_unread,
     )
 
 
@@ -430,6 +480,7 @@ async def _evaluated(
     environment: Mapping[str, str] | None,
     unstartable: StartUndeclared | ReadinessUnsupported | SecretUnavailable | None,
     lint_stack: str | None,
+    profile_unread: str | None,
 ) -> EvaluationRecord:
     """One tree evaluated against an approved ``suite``, and its record written: a cycle's or a
     calibration record's, by the one path."""
@@ -478,9 +529,14 @@ async def _evaluated(
         unit.project_id, manifest, blueprint=blueprint, serves_pages=SurfaceKind.PAGE in kinds
     )
     evaluated: TreeEvaluation | None = None
+    lint: LintReading | None = None
     # A linted tree is linted whether or not anything else runs (§4.2, #2416).
     if (contents or pages or linted) and unstartable is not None:
         blocked = unstartable.reason
+        if lint_stack is not None:
+            # The second review of #2788 (P3-5): lint reads the tree, never an instance, so a
+            # blueprint product that can't be started is still linted, and nothing is started.
+            lint = await _lint_only(runner, tree, identity, executable, lint_stack)
     elif (contents or pages or linted) and runner is None:
         blocked = BlockedReason.NO_RUNNER
     elif (contents or pages or linted) and runner is not None:
@@ -525,7 +581,7 @@ async def _evaluated(
             if SurfaceKind.PAGE in kinds
             else QualityReading(QualityStatus.NOT_APPLICABLE)
         ),
-        lint=lint_of(linted, blocked, evaluated),
+        lint=lint or lint_of(linted, blocked, evaluated, profile_unread),
         quality_seeded=seeded_of(planned, blocked, evaluated),
     )
     await store.save_evaluation(record)
