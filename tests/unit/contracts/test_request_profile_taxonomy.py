@@ -223,7 +223,12 @@ _WINDOW_LAUNCH_HASHES = {
         "6001f3f91be715933c9376bb70fe029cc0080e4608cd953ec6591b1cd38f9189",
     ),
 }
-_WINDOW_DEFINITIONS = sorted(ROOT.glob("examples/03_group_run/campaigns/2-4-0-*.yaml"))
+_WINDOW_DEFINITIONS = sorted(
+    [
+        *ROOT.glob("examples/03_group_run/campaigns/2-4-0-*.yaml"),
+        ROOT / "examples/03_group_run/campaigns/2-5-0-cut-shakeout.yaml",
+    ]
+)
 
 
 @pytest.mark.parametrize("path", _WINDOW_DEFINITIONS, ids=lambda p: p.name)
@@ -256,7 +261,7 @@ def test_the_windows_launches_resolve_to_the_hashes_main_recorded(path):
 
 
 def test_the_window_definitions_are_read():
-    """Bug caught: the frozen-hash test above passing on no definition (a moved directory). Eight:
-    the window's four, its two shakeouts, SIP-0113 §4.5's reading and the 2.4 cut's shakeout, whose
-    launches the window's hashes pin too."""
-    assert len(_WINDOW_DEFINITIONS) == 8
+    """Bug caught: the frozen-hash test above passing on no definition (a moved directory). Nine:
+    the window's four, its two shakeouts, SIP-0113 §4.5's reading, and the 2.4 and 2.5 cuts'
+    shakeouts, whose launches the window's hashes pin too."""
+    assert len(_WINDOW_DEFINITIONS) == 9
