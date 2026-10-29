@@ -625,7 +625,7 @@ def matches_test_file_patterns(path: str, patterns: tuple[str, ...]) -> bool:
     plans named ``tests/*.test.ts`` suites it never ran).
 
     Basename globbing for the conventions — deliberately narrower than
-    ``handlers.cycle.validation._is_test_file``, which additionally treats anything under
+    ``capabilities.qa_prompt_contents.is_test_file``, which additionally treats anything under
     ``__tests__/`` as a test file. That generosity is right for *excluding* files from a
     source set, and wrong for asking "will the runner discover this?": ``__tests__/
     helpers.py`` is not collected by pytest, and counting it would weaken #715's guard for

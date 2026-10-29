@@ -91,6 +91,16 @@ async def _qa_test(inputs, monkeypatch):
     return sent[0]
 
 
+#: #2805: a product of three top-level packages, the suite's own the smallest. Outside the suite's
+#: package it holds more than the margin, so a count of the whole tree where the handler shows a
+#: part of it fails the margin, and a count of a part where the handler shows it whole fails the
+#: floor.
+_PRODUCT = {
+    **{f"orbit/module_{i}.py": _CODE for i in range(8)},
+    **{f"console/src/view_{i}.jsx": _CODE for i in range(12)},
+    **{f"tests/test_area_{i}.py": _CODE for i in range(4)},
+}
+
 _BUILD = {
     "prd": _PRD,
     "agent_model": "qwen2.5:14b",
@@ -299,13 +309,37 @@ async def test_the_composers_count_covers_the_other_authors(task_type, author, i
             },
         ),
         ("qa.test, monolithic", {**_BUILD, "artifact_contents": {"validation_plan.md": _PRD}}),
+        (
+            "develop, focused, one package of a larger product",
+            {
+                **_BUILD,
+                "artifact_contents": _PRODUCT,
+                "subtask_focus": "the area API",
+                "expected_artifacts": ["orbit/area.py"],
+            },
+        ),
+        (
+            "qa.test, focused, one package of a larger product",
+            {
+                **_BUILD,
+                "artifact_contents": _PRODUCT,
+                "subtask_focus": "the area suite",
+                "expected_artifacts": ["tests/test_area_new.py"],
+            },
+        ),
+        (
+            "qa.test, monolithic, a product with its suites and a frontend",
+            {**_BUILD, "artifact_contents": {**_PRODUCT, "validation_plan.md": _PRD}},
+        ),
     ],
 )
 async def test_the_composers_count_is_never_below_the_rendered_prompt(seam, inputs, monkeypatch):
     """#2681, entered at each handler's ``handle``. Bug caught: the composer counting less than the
     handler renders (the envelope's JSON alone, no system prompt or template), so binding sections
     it admits overflow the window and the guard refuses the task instead of the composer holding
-    it."""
+    it. #2805's cases put a product of several packages in ``artifact_contents``: ``qa.test`` shows
+    a part of it, so a count of the whole fails the margin and holds a task that fits; develop
+    shows it whole, so a count of a part fails the floor."""
     task_type = "qa.test" if seam.startswith("qa.test") else "development.develop"
     messages = await (_qa_test(inputs, monkeypatch) if task_type == "qa.test" else _develop(inputs))
     estimate = prompt_without_memory_tokens(SimpleNamespace(task_type=task_type, inputs=inputs))

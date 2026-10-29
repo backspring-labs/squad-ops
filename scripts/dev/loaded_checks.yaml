@@ -2281,3 +2281,22 @@ checks:
       surfaces = {key: template for template, _, key in QaProposePlanTasksHandler._increment_surfaces}
       print(surfaces["increment_criterion_files_index"])
     expect: request.plan_increment_criteria_appendix
+  - id: "2805-composer"
+    what: the composer counts a qa.test's artifact_contents as its prompt shows it (the suite's own package), and a develop task's whole, so a binding fits a qa.test on a product larger than its window (SIP-0110 Appendix A §3.6, #2805)
+    container: squadops-runtime-api
+    code: |
+      from types import SimpleNamespace
+      from squadops.capabilities.context_assembly import get_context_contract
+      from squadops.capabilities.prompt_budget import rendered_input_tokens
+      inputs = {"subtask_focus": "f", "expected_artifacts": ["tests/test_b.py"], "artifact_contents": {"orbit/a.py": "x" * 4000, "tests/test_a.py": "y" * 400}}
+      print(get_context_contract("qa.test").artifact_contents_rendering, rendered_input_tokens(SimpleNamespace(task_type="qa.test", inputs=inputs)), rendered_input_tokens(SimpleNamespace(task_type="development.develop", inputs=inputs)))
+    expect: qa_test_prompt 112 1117
+  - id: "2805-qa-handler"
+    what: the qa handler shows its focused prompt's files through the one function the composer counts them with (#2805)
+    container: squadops-eve
+    code: |
+      import squadops.capabilities.handlers.cycle.qa_test as q
+      from squadops.capabilities.qa_prompt_contents import qa_test_prompt_contents
+      prompt = q.QATestHandler()._build_focused_prompt({"subtask_focus": "f", "expected_artifacts": ["tests/test_b.py"], "artifact_contents": {"orbit/a.py": "A", "tests/test_a.py": "T"}})
+      print(q.qa_test_prompt_contents is qa_test_prompt_contents, hasattr(q.QATestHandler, "_prompt_scoped_contents"), "orbit/a.py" in prompt, "tests/test_a.py" in prompt)
+    expect: "True False False True"
