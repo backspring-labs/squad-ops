@@ -161,6 +161,12 @@ class ContextAssemblyContract:
     #: the build renders what acceptance reads the page for. The suite's author sees them in its
     #: test scope, and the plan authors in their indexes.
     increment_views: bool = False
+    #: #2795 (SIP-0093 §15b): an increment's merge is handed each new criterion's own test file as
+    #: data (``increment_criterion_files``, the rows the evaluation is handed), so a file that a
+    #: development task and a qa task both claim is given to the qa task. The plan authors are
+    #: shown the same files as a rendered index (``bind_criteria_index``), which the merge can't
+    #: read back.
+    increment_criterion_files: bool = False
     #: SIP-0110 §0.9: the authoring seam this task is, where cross-cycle memory is supplied and
     #: where its pre-authoring state is captured for replay (#2105). Plan writing is not declared
     #: here: it is the #2058 call site, read from ``plan_rejection_context``
@@ -268,7 +274,11 @@ _PLAN_PROPOSAL_TEMPLATES = (
     "request.plan_bind_criteria_appendix",
     "request.plan_blocking_gaps_appendix",
     "request.plan_frozen_surface_appendix",
-    "request.plan_increment_criteria_appendix",
+    # #2795: the qa proposer's, and the development proposer's, which tells it the files are qa's.
+    (
+        "request.plan_increment_criteria_appendix",
+        "request.plan_increment_criteria_development_appendix",
+    ),
     "request.plan_increment_footprint_appendix",
     "request.plan_increment_frozen_appendix",
     "request.plan_increment_regenerated_appendix",
@@ -403,7 +413,14 @@ CONTEXT_CONTRACTS: dict[str, ContextAssemblyContract] = {
     # author that actually reaches implementation as the only one never given the
     # contract. Measured on cyc_0edb55919384: 0 criteria_refs, 3 frozen files claimed,
     # 8 invented paths. So it is present now, for the index alone.
-    TaskType.GOVERNANCE_MERGE_PLAN: ContextAssemblyContract(bind_criteria_index=True),
+    #
+    # #2795: and an increment's criterion files as data, which the deterministic merge reads to
+    # give a file both proposals claim to the qa task. No prompt renders them.
+    TaskType.GOVERNANCE_MERGE_PLAN: ContextAssemblyContract(
+        bind_criteria_index=True,
+        increment_criterion_files=True,
+        unrendered_inputs=frozenset({"increment_criterion_files"}),
+    ),
     TaskType.GOVERNANCE_PREPARE_PLAN_AUTHORING_BRIEF: ContextAssemblyContract(
         artifact_filter=ArtifactFilter(
             by_producing_task=(
