@@ -90,6 +90,7 @@ _PRODUCT = {
         "    return app.state.plugins[plugin_id]\n"
     ),
     "plugins/tides/manifest.toml": 'id = "tides"\ntitle = "Tide table"\n',
+    "beacon/static/badge.js": "export const badge = (id) => `<b>${id}</b>`;\n",
     "tests/conftest.py": (
         "import json\n"
         "from pathlib import Path\n\n"
@@ -253,6 +254,9 @@ async def test_a_products_criterion_that_needs_its_manifest_passes_in_cycle(deve
     assert "2 passed" in report["content"]
     # The product's own test, which needs a harness the qa image lacks, was not run beside it.
     assert "beacon_harness" not in report["content"]
+    # The lint reading reads the tree the run evaluated: the product's script, which no Python
+    # stack calls source, is linted beside its Python (#1937).
+    assert result.outputs["lint_findings"]["files_linted"] == {"python": 4, "js": 1}
 
 
 @_PROFILES
