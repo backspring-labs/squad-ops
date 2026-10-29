@@ -2181,3 +2181,11 @@ checks:
       params = inspect.signature(ContainerScenarioRunner.evaluate_tree).parameters
       print("lint_stack" in EvaluationRequest.model_fields, "lint_only" in EvaluationRequest.model_fields, "lint_stack" in params, "lint_only" in params, "lint_stack" in inspect.signature(ContainerScenarioRunner._lint).parameters)
     expect: "True True True True True"
+  - id: "2789-hearing-holds-the-owners-word"
+    what: a cycle's hearing reads the campaign again before its promotion and its decision, holds a paused campaign's ending for its resume, and takes an applied promotion as written (SIP-0109 §24cq, #2789)
+    container: squadops-runtime-api
+    code: |
+      from squadops.campaigns import progress
+      from squadops.campaigns.progress import CampaignProgress
+      print(callable(progress._heard_now), hasattr(CampaignProgress, "_still"), hasattr(CampaignProgress, "_promoted_already"), hasattr(CampaignProgress, "_promoted_and_evaluating"))
+    expect: "True True True True"
