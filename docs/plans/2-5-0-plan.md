@@ -136,6 +136,13 @@ the release to claim Track A (§3).
 
 IR-1, IR-2 and IR-10 run on the final deploy beside the cut's set, as at 2.4.0 (§4).
 
+**Read 2026-10-29** (`docs/plans/verification-sets/2-5-0-demonstrations-preregistration.md` §9):
+- **Holds:** IR-3, (a) to (e); IR-4 as a leak test; IR-7; IR-8.
+- **Holds on the calibration records only:** IR-6.
+- **Not exercised:** IR-5, and IR-9's increment reading. No increment was accepted on either product.
+
+The products' increments were stopped in turn by #2795, #2805, #2810 and #2815 (each fixed), then by #2799 and #2818. **The owner chose to narrow the claim and go to the cut** (2026-10-29). The cut record names the narrowing: 2.5 claims a Campaign on a repository-backed Project through its record, proposal, binding, launch, reconciliation and evaluation, not an accepted increment on a product whose in-cycle tests need its own dependencies (#2818).
+
 ### 2.2 Track B: the yardstick, re-cut once
 
 Everything here moves the evaluator's tag, the suite's revision or a measure's version. Each of those re-reads every
@@ -233,6 +240,10 @@ the cut's rolls and the shakeout's calibrations are read for it too, at no extra
 - **#1965,** the Verification Yield crew's suite audit, and **#1039,** the docs site's design pass: unplaced, as
   before.
 - **#2405,** the Game Development Platform proposal, waiting for 2.6's planning.
+- **A product's in-cycle verification on its own runner (#2818),** placed first in 2.6 or in a 2.5.x patch (the owner,
+  2026-10-29). With it come the product-path findings the demonstrations filed: #2799 (a vitest product's page
+  criteria), #2817 (the run tree's pytest config and runner roots), #2796 (the plan-review tier on a product), #2814
+  (the JS/TS resolver past 257 lines), #2809 and #2813 (budget follow-ups), #2804, #2798, #2783.
 
 ---
 

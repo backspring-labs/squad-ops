@@ -1,7 +1,9 @@
 # 2.5.0 — pre-registration of the two demonstrations: a Campaign on a repository-backed Project, read by IR-3 to IR-9
 
-**Status: REGISTERED 2026-10-29, before either Campaign is created.** The records each reading names are filled in
-§8 as they're read. Uncounted for the regression rolls. The readings are the release's cross-lane scenarios: 2.5's
+**Status: REGISTERED 2026-10-29, before either Campaign was created. RUN and READ the same day (§8, §9). IR-3, IR-4's
+leak test, IR-7 and IR-8 hold. IR-6 holds on the calibration records only. IR-5, and IR-9's increment reading, weren't
+exercised: no increment was accepted on either product. The owner chose to narrow the claim and go to the cut (§9).**
+The records each reading names are filled in §8 as they're read. Uncounted for the regression rolls. The readings are the release's cross-lane scenarios: 2.5's
 first half claims a Campaign on a repository-backed Project works end to end, so IR-3 to IR-9 must pass (the plan's
 §3). A scenario reported *not run*, or failed, needs the owner's ruling narrowing the claim, named in the cut record.
 
@@ -209,12 +211,42 @@ About 3 box-hours for the short one and 4–6 for the main one, as the plan guid
 
 | what | value |
 |---|---|
-| deploy | |
+| deploys | `dep_6ed09f6b500c` (`5e99418e`), `z_shelfnote`. Then, after each stop's fix: `dep_0a4f31cd9c10` (`10a35adb`), `dep_bf4b8db121fc` (`fdd327fc`), `dep_8cd26c67fd90` (`6b9ee472`), `dep_aa6f0a54c53a` (`d0df8acb`), `z_continuum`'s rounds 1 to 3 |
 | `z_shelfnote` suite digest, approval | `a1a6a0b7…`, 9 scenarios, approved 2026-10-29 (`var/verification_sets/2-5-0-demonstrations/suite-approvals.md`) |
 | `z_continuum` suite digest, approval | `7ce88042…`, 10 scenarios, approved 2026-10-29 (the same record) |
 | `z_shelfnote` requirements artifact | `art_c8768ea0ea71` |
 | `z_continuum` requirements artifact | `art_da4c3bd75d8f` |
-| IR-3's project instruction | |
-| `z_shelfnote` Campaign | |
-| `z_continuum` Campaign | |
-| the outside commit | |
+| IR-3's project instruction | `mrec_54f96f55d3a54ad8` (instruction, project, `repo:file:CLAUDE.md@current`) |
+| `z_shelfnote` Campaign | `cmp_73535ccef891`. The first, `cmp_4a80ee867295`, was aborted on the supervisor's own start declaration (#2793). It ended aborted after its readings: its increment's page criteria can't discriminate on a vitest product (#2799) |
+| `z_continuum` Campaign | round 1 `cmp_e9485af88196` (stopped: #2805); round 2 `cmp_1399cc189ef5` (stopped: #2810); round 3 `cmp_ce4c95f2f307` (#2815 found and fixed mid-round; ended `failure`, `unaccepted_increments`, on #2818) |
+| the outside commit | `2070ba4`, one line in `CLAUDE.md` ("An endpoint that reads one item by its id answers 404 when no item has that id."), pushed from the owner's account during round 3's pause |
+| records | `var/verification_sets/2-5-0-demonstrations/`: `z_shelfnote-readings.md`, `z_continuum-rounds.md`, `replay-2780-missing-route.py` |
+
+## 9. The readings (2026-10-29)
+
+| reading | result | the evidence |
+|---|---|---|
+| **IR-3** | **holds**, (a) to (e) | (a) round 3's increment-1 cycle `cyc_60a71c2b2be2` bound `CLAUDE.md@15fc9a77`. (b) After the sync, the next launch was refused `STALE_SOURCE_PRECONDITION` and escalated until the supervisor reconciled (validate, revision 6, baseline). (c) The next cycle `cyc_7e42e45adc6d` bound `CLAUDE.md@2070ba46`, its own rebased commit. (d) A standalone cycle `cyc_2a817b3e6503` pinned `snp_4763420fbe6ab643` with `CLAUDE.md@2070ba46`, then was cancelled. (e) No re-binding row |
+| **IR-4** | **holds as a leak test.** Its goal sub-prediction was wrong by design | Steps: 0 found outside the suite's store and the evaluator's records, on both suites. That covers the vault (588 and 4,032 files), 11 containers, 3 databases, and fresh full clones of both products, with nothing unsearched. Goals: found only in `scenario_evaluations`, and in no proposal. §4.5's evidence is deliberately not shown to a product's proposal (`proposal_evidence.py:31-45`, "§4.5 on a repository-backed Project, which no ruling has placed"), so "at least once there" was this registration's error. The sweep's vault roots were fixed first (#2819) |
+| **IR-5** | **not exercised** | No increment was accepted on either product |
+| **IR-6** | **holds on the calibration records; not exercised on an increment** | `z_continuum`'s three baseline readings: the page scenario not applicable, quality not applicable, lint `not_a_scaffold_stack`, nothing started by a stack. No increment cycle captured a tree to evaluate |
+| **IR-7** | **holds** | `z_shelfnote`: the baseline reading `evl_29bfb2a58ea0` names `calrec_49c68564fe20`, 5 passed and 4 failed as predicted. The increment's `evl_5016d962be49` is on its captured tree `93cfdb3f`, with 9 of 9 passed. Lint was measured by the blueprint's rule set (16 → 20) |
+| **IR-8** | **holds** | The evaluation records name `prj-z-continuum` and `prj-shelfnote`, and `config/projects.yaml` names neither |
+| **IR-9** | **increment reading not exercised** | No increment reached native verification. The Project's own baseline reads lint FAIL `inherited` and tests PASS `inherited`, at both 15fc9a77 and 2070ba46 |
+| **#2780's anchored page** | **holds** | `/search` held by `search-view` in the increment and its repair |
+| **the missing-route negative** | **holds, as a replay** | The same renderer on the captured candidate, with `/search`'s route removed, reads it broken, and the increment is rejected |
+
+**What stopped the products' increments** (each filed, and fixed where marked):
+- #2795, fixed (#2802);
+- #2805, fixed (#2807);
+- #2810, fixed (#2812);
+- #2815, fixed (#2816);
+- #2799, a vitest product's page criteria;
+- #2818, a product's in-cycle tests run without the product's dependencies.
+
+**Deviations from this registration,** each recorded with its reason in `z_continuum-rounds.md`:
+1. **A third `z_continuum` round** past §5's two. It was the supervisor's judgement under the owner's grants: one defect class across both stops.
+2. **The owner chose "Return such a criterion"**: a proposal whose criterion the accepted product's default behaviour already meets is returned for revision.
+3. **The outside commit's timing.** Under SIP-0109 §24cq a paused Campaign's ending waits for its resume. So the commit landed during the pause, before increment 1's decision, not after it.
+
+**The owner's ruling (2026-10-29):** the owner chose "Narrow the claim, go to cut". The readings above stand as reached. IR-5, and IR-9's increment reading, are not exercised. #2818 is placed first in 2.6 or a 2.5.x patch. The cut record names this narrowing.
