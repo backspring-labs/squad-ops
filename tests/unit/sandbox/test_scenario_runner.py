@@ -1205,3 +1205,28 @@ async def test_a_failed_page_scenarios_evidence_is_stored_beside_its_record_neve
         "button",
     )
     assert "evidence" not in record.outcomes[0].as_dict()
+
+
+async def test_a_check_reads_a_value_an_earlier_step_saved_at_the_runners_live_seam(tmp_path):
+    """#2784, entered where the sandbox service evaluates a tree (``evaluate_tree``, the live
+    caller of ``run_scenario``). Bug caught: the runner's checks left unrendered, so a scenario
+    comparing two responses fails on a product that answers correctly."""
+    compared = {
+        "scenario_id": "read-back-by-name",
+        "goal": "g",
+        "surfaces": [{"kind": "http_endpoint", "path": "/tally/{name}", "method": "GET"}],
+        "steps": [
+            {"action": "http", "method": "GET", "path": "/tally/first", "save": {"who": "name"}},
+            {"action": "http", "method": "GET", "path": "/tally/{who}"},
+        ],
+        "checks": [
+            {"check": "json", "step": 2, "path": "name", "equals": "{who}"},
+            {"check": "json", "step": 2, "path": "count", "equals": 2},
+        ],
+    }
+
+    result = await _evaluate(_runner(tmp_path, _Container()), scenarios=[compared])
+
+    assert [(r.scenario_id, r.result, r.detail) for r in result.runs] == [
+        ("read-back-by-name", "passed", None)
+    ]
