@@ -103,3 +103,45 @@ def test_a_deletion_scans_nothing_and_no_suite_means_no_scan(repo, tmp_path):
         capture_output=True, text=True, env={k: v for k, v in os.environ.items() if k != "SQUADOPS_HELDOUT_SUITES"},
     )  # fmt: skip
     assert done.returncode == 0
+
+
+def test_from_a_worktree_with_no_venv_the_hook_finds_the_main_checkouts_and_scans(repo, tmp_path):
+    """#2800: in a worktree with no ``.venv`` the hook reads the main worktree from ``git worktree
+    list``. It stopped reading after the first line, so with a long listing git died of SIGPIPE,
+    ``pipefail`` failed the assignment, and the hook exited 141 before its scan, saying nothing.
+    The push failed with only git's "failed to push some refs" (2026-10-29)."""
+    r, sha = repo
+    linked = tmp_path / "linked"
+    _git(r, "worktree", "add", "-q", "--detach", str(linked), sha["b2"])
+    seen = tmp_path / "ranges"
+    (r / ".venv" / "bin").mkdir(parents=True)
+    fake = r / ".venv" / "bin" / "python"
+    fake.write_text(f'#!/bin/sh\nfor a; do last="$a"; done\necho "$last" >> "{seen}"\n')
+    fake.chmod(fake.stat().st_mode | stat.S_IXUSR)
+    real_git = subprocess.run(["which", "git"], capture_output=True, text=True).stdout.strip()
+    shim = tmp_path / "bin"
+    shim.mkdir()
+    # A listing far past a pipe's buffer, as a checkout with many worktrees gives: the main
+    # worktree first, as git lists it.
+    (shim / "git").write_text(
+        "#!/bin/sh\n"
+        'case "$*" in *"worktree list"*)\n'
+        f'  echo "worktree {r}"\n'
+        '  i=0; while [ $i -lt 20000 ]; do echo "worktree /elsewhere/$i"; echo "HEAD 0"; echo; i=$((i+1)); done\n'
+        "  exit 0;;\n"
+        "esac\n"
+        f'exec {real_git} "$@"\n'
+    )
+    (shim / "git").chmod(0o755)
+    env = {
+        **{k: v for k, v in os.environ.items() if k != "SQUADOPS_PYTHON"},
+        "SQUADOPS_HELDOUT_SUITES": "/nowhere/suite.yaml",
+        "PATH": f"{shim}:{os.environ['PATH']}",
+    }
+    line = f"refs/heads/branch {sha['b2']} refs/heads/branch {ZERO}"
+    done = subprocess.run(
+        ["bash", str(HOOK)], cwd=linked, input=line + "\n", capture_output=True, text=True, env=env
+    )
+
+    assert done.returncode == 0, (done.returncode, done.stderr)
+    assert seen.read_text().split() == [f"origin/main...{sha['b2']}"]
