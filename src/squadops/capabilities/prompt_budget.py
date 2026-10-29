@@ -17,7 +17,9 @@ So the composer counts what the handler renders, each part at an upper bound:
   only with its input (``ContextAssemblyContract.prompt_templates``);
 - **the raw text of each input the task carries,** except memory's own sections, which the
   composer measures itself, and the inputs the seam never renders
-  (``ContextAssemblyContract.unrendered_inputs``).
+  (``ContextAssemblyContract.unrendered_inputs``). A handler that shows part of its
+  ``artifact_contents`` has that part counted, through the function it shows it through
+  (``ContextAssemblyContract.artifact_contents_rendering``, #2805).
 
 Being upper bounds, they can only hold a task the guard would have passed, never the reverse. The
 parity test (``tests/unit/memory/test_prompt_budget_parity.py``) renders each seam through its own
@@ -29,16 +31,19 @@ from __future__ import annotations
 import functools
 import json
 import re
-from collections.abc import Mapping
+from collections.abc import Callable, Iterator, Mapping
 from importlib import resources
 from typing import TYPE_CHECKING, Any, overload
 
 from squadops.capabilities.context_assembly import (
+    CONTENTS_QA_TEST_PROMPT,
     SUPPLEMENT_BUILD_PROFILE,
     SUPPLEMENT_DEVELOPMENT_PROFILE,
+    ContextAssemblyContract,
     prompt_contract_of,
 )
 from squadops.capabilities.handlers.build_profiles import BUILD_PROFILES
+from squadops.capabilities.qa_prompt_contents import qa_test_prompt_contents
 from squadops.capabilities.reasoning_policy import resolve_reasoning_level
 from squadops.llm.model_registry import get_model_spec, thinking_headroom
 from squadops.memory.lessons import _tokens
@@ -145,13 +150,33 @@ def prompt_without_memory_tokens(envelope: TaskEnvelope) -> int:
 def rendered_input_tokens(envelope: TaskEnvelope) -> int:
     """The task's own inputs as its prompt can carry them: each one's raw text (a structure as its
     JSON, whose quoting and escapes cover the fences and headings a file is shown in), except
-    memory's sections and the inputs the seam never renders."""
-    unrendered = prompt_contract_of(str(envelope.task_type)).unrendered_inputs
+    memory's sections and the inputs the seam never renders. ``artifact_contents`` is the files
+    the handler shows of it, where it shows a part (#2805)."""
     return sum(
         _tokens(value if isinstance(value, str) else json.dumps(value, sort_keys=True, default=str))
-        for key, value in (envelope.inputs or {}).items()
-        if key not in SUPPLIED_INPUTS and key not in unrendered
+        for value in _shown_inputs(
+            envelope.inputs or {}, prompt_contract_of(str(envelope.task_type))
+        )
     )
+
+
+#: #2805: each ``artifact_contents`` rendering a contract names, as the function its handler shows
+#: the files through. A name with no function here fails, never counting the input as shown whole.
+_CONTENTS_RENDERINGS: dict[str, Callable[[Mapping[str, Any]], dict[str, str]]] = {
+    CONTENTS_QA_TEST_PROMPT: qa_test_prompt_contents,
+}
+
+
+def _shown_inputs(inputs: Mapping[str, Any], contract: ContextAssemblyContract) -> Iterator[Any]:
+    """What the prompt shows of each input it carries: memory's sections and the inputs the seam
+    never renders left out, ``artifact_contents`` through the contract's rendering when it names
+    one, and every other input as it is."""
+    rendering = contract.artifact_contents_rendering
+    show = _CONTENTS_RENDERINGS[rendering] if rendering else None
+    for key, value in inputs.items():
+        if key in SUPPLIED_INPUTS or key in contract.unrendered_inputs:
+            continue
+        yield show(inputs) if show is not None and key == "artifact_contents" else value
 
 
 def template_prose_tokens(task_type: str) -> int:

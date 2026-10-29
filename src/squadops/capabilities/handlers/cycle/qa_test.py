@@ -88,7 +88,6 @@ from squadops.capabilities.handlers.cycle.validation import (
     ValidationResult,
     _classify_file,
     _detect_stubs,
-    _is_test_file,
 )
 from squadops.capabilities.handlers.fenced_parser import extract_fenced_files
 from squadops.capabilities.handlers.probe_runner import probe_check_rows, run_probes
@@ -103,6 +102,7 @@ from squadops.capabilities.handlers.test_runner import (
     failed_tests_pass_row,
     run_build_validation,
 )
+from squadops.capabilities.qa_prompt_contents import qa_test_prompt_contents, source_files
 from squadops.capabilities.reasoning_policy import reasoning_kwargs, resolve_reasoning_level
 from squadops.capabilities.verification_scaffold_fill import (
     SLOT_SUBJECT_DROPPED_KEY,
@@ -733,28 +733,13 @@ class QATestHandler(_CycleTaskHandler):
         )
 
     def _get_source_artifacts(self, inputs: dict[str, Any]) -> dict[str, str]:
-        """Get source artifacts filtered by capability (D4, D9).
-
-        Includes source files (by ``source_filter`` extension, non-test) AND the
-        capability's ``build_support_files`` (config/entry files matched by
-        basename — package.json, vite.config.js, index.html, …). Without the
-        support files the QA build/test workspace can't build the deliverable and
-        the frontend build check (#290) + vitest skip on "no package.json" (#296).
-        """
+        """The cycle's source and build-support files (D4, D9), by its development profile: the
+        monolithic prompt's source files, and the tree the suite runs against on both paths
+        (``qa_prompt_contents.source_files``, which the composer's budget counts too, #2805)."""
         capability = get_development_profile(
             effective_development_profile(inputs.get("resolved_config"))
         )
-        contents = inputs.get("artifact_contents", {})
-        support = set(getattr(capability, "build_support_files", ()))
-        sources = {}
-        for key, value in contents.items():
-            basename = key.replace("\\", "/").rsplit("/", 1)[-1]
-            is_source = any(
-                key.endswith(ext) for ext in capability.source_filter
-            ) and not _is_test_file(key, capability.test_file_patterns)
-            if is_source or basename in support:
-                sources[key] = value
-        return sources
+        return source_files(inputs.get("artifact_contents", {}), capability)
 
     @staticmethod
     def _fence_lang(path: str) -> str:
@@ -1008,31 +993,6 @@ class QATestHandler(_CycleTaskHandler):
         """
 
         return app_invocation_for(scaffold_stack_for(inputs.get("resolved_config")))
-
-    @staticmethod
-    def _prompt_scoped_contents(
-        artifact_contents: dict[str, str],
-        expected_artifacts: list[Any],
-    ) -> dict[str, str]:
-        """pf-33: scope the focused prompt's source dump to the top-level
-        package(s) the task's own artifacts live in (the RC2 package rule at
-        the prompt seam). m007's prompt carried all 16 files (~18k tokens,
-        every frontend .jsx included) into a backend suite task — prefill cost
-        plus rambling pressure against the 8192 completion clamp, and the
-        truncation crashed collection. No expected artifacts or no package
-        match → contents unchanged (never starve the prompt).
-        """
-        packages = {
-            str(e).strip().lstrip("./").partition("/")[0] for e in (expected_artifacts or []) if e
-        }
-        if not packages:
-            return artifact_contents
-        scoped = {
-            name: content
-            for name, content in artifact_contents.items()
-            if str(name).strip().lstrip("./").partition("/")[0] in packages
-        }
-        return scoped or artifact_contents
 
     async def _behavior_contract_section(
         self, context: ExecutionContext, inputs: dict[str, Any]
@@ -1582,9 +1542,8 @@ class QATestHandler(_CycleTaskHandler):
         description = inputs.get("subtask_description", "")
         expected_files = inputs.get("expected_artifacts", [])
         acceptance_criteria = inputs.get("acceptance_criteria", [])
-        artifact_contents = self._prompt_scoped_contents(
-            inputs.get("artifact_contents", {}), expected_files
-        )
+        # pf-33's package scoping, through the one function the composer counts it with (#2805).
+        artifact_contents = qa_test_prompt_contents(inputs)
 
         # SIP-0104 (#933): in fill mode the deliverable is fills, and the appendix —
         # a managed asset — is the sole owner of the emission contract. Rendering an

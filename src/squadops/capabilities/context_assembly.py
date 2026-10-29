@@ -82,6 +82,12 @@ SURFACE_RESPONSE = "response_surface"
 SUPPLEMENT_DEVELOPMENT_PROFILE = "development_profile"
 SUPPLEMENT_BUILD_PROFILE = "build_profile"
 
+#: #2805: a handler that shows part of its ``artifact_contents``, by the rendering it shows it
+#: through, which the composer counts it with (``squadops.capabilities.prompt_budget``). The
+#: ``qa.test`` prompt's: its focused prompt's packages, or its monolithic prompt's validation plan
+#: and source files (``squadops.capabilities.qa_prompt_contents``).
+CONTENTS_QA_TEST_PROMPT = "qa_test_prompt"
+
 
 @dataclass(frozen=True)
 class ArtifactFilter:
@@ -183,6 +189,10 @@ class ContextAssemblyContract:
     #: The inputs the task carries that its handler never renders, so they aren't counted. Anything
     #: not named here is counted, so a new input reads as rendered until it's declared otherwise.
     unrendered_inputs: frozenset[str] = frozenset()
+    #: #2805: how the handler shows ``artifact_contents``, when it shows part of it: the rendering
+    #: it calls (``CONTENTS_*``), which the composer counts it through. Empty: shown whole, and
+    #: counted whole.
+    artifact_contents_rendering: str = ""
     #: The supplement the handler adds to the system prompt (``SUPPLEMENT_*``), or none.
     system_supplement: str = ""
     #: Whether the handler renders its development profile's fill-only appendix, which the profile
@@ -391,6 +401,8 @@ CONTEXT_CONTRACTS: dict[str, ContextAssemblyContract] = {
         ),
         # #2664: a re-dispatch's open slot failures gate its fill merge and are never rendered.
         unrendered_inputs=_EVALUATION_ONLY_INPUTS | {PRIOR_SLOT_FAILURES_KEY},
+        # #2805: the filter above hands it the whole accepted tree, and its prompt shows a part.
+        artifact_contents_rendering=CONTENTS_QA_TEST_PROMPT,
     ),
     # --- planning chain (#657): upstream documents on an envelope-local
     # prior_outputs copy; all four authoring types receive a re-roll's

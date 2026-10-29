@@ -36,8 +36,8 @@ from __future__ import annotations
 import pytest
 
 from squadops.capabilities.handlers.build_profiles import get_profile
-from squadops.capabilities.handlers.cycle.qa_test import _is_test_file
 from squadops.capabilities.handlers.cycle_tasks import QATestHandler
+from squadops.capabilities.qa_prompt_contents import is_test_file
 from squadops.stacks.development_profiles import get_development_profile
 from squadops.stacks.scaffold import _STACKS, expand, fill_slot_paths
 from tests.unit.capabilities._stack_fixtures import manifest_for_stack
@@ -102,7 +102,7 @@ def test_every_frozen_file_is_admitted_or_named(stack):
     fills = set(fill_slot_paths(manifest))
     frozen = {f["name"]: f["content"] for f in expand(manifest) if f["name"] not in fills}
     # Test-pattern files are excluded from the workspace by a separate, deliberate rule
-    # (`_is_test_file`): a suite is the qa author's OUTPUT, not the source under test, and the
+    # (`is_test_file`): a suite is the qa author's OUTPUT, not the source under test, and the
     # frozen harness proof has been excluded this way since before any stylesheet existed —
     # 1.7.4 passed with it excluded. It is not this defect and is not this guard's subject.
     packaging = set(get_profile(stack).scaffold_provided_files())
@@ -110,7 +110,7 @@ def test_every_frozen_file_is_admitted_or_named(stack):
     expected = {
         p
         for p in frozen
-        if not _is_test_file(p, profile.test_file_patterns) and p not in packaging | named
+        if not is_test_file(p, profile.test_file_patterns) and p not in packaging | named
     }
 
     kept = _admitted(stack, frozen)
