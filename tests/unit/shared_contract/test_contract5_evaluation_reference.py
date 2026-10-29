@@ -100,6 +100,78 @@ def test_a_reference_outside_a_campaign_with_no_previous_tree_reads_its_nulls_as
     assert ref.to_dict() == doc
 
 
+def _calibration_reading(**change):
+    """SIP-0113 §10l: a repository-backed Campaign's baseline reading, its calibration record's
+    commit evaluated. It names the record in place of a cycle, and builds on nothing."""
+    valid = recorded("outcome_evaluation_ref", "valid")
+    fields = dict(
+        evaluation_id="evl_10l000000001",
+        project_id=valid["project_id"],
+        campaign_id=valid["campaign_id"],
+        cycle_id=None,
+        evaluated_tree_identity=valid["previous_accepted_tree_identity"],
+        previous_accepted_tree_identity=None,
+        suite_digest=valid["suite_digest"],
+        outcomes=(),
+        evaluated_at=datetime(2026, 10, 28, tzinfo=UTC),
+        calibration_record_id="calrec_10l0000001",
+    )
+    return EvaluationRecord(**{**fields, **change})
+
+
+def test_a_calibration_records_reading_names_the_record_in_place_of_a_cycle_and_reads_back():
+    """§10l, contract 5's additive field. Bugs caught: the record's id dropped on the way to the
+    reference, so Project history stores a reading that names no unit; a reader that refuses the
+    null cycle_id such a reading carries; or the key written on every cycle's reference, so the
+    shape both lanes froze changes under every reader (the fixture's own test above holds that)."""
+    ref = _calibration_reading().reference()
+    doc = ref.to_dict()
+
+    assert (doc["cycle_id"], doc["calibration_record_id"]) == (None, "calrec_10l0000001")
+    assert parse_reference(doc) == ref
+    valid = recorded("outcome_evaluation_ref", "valid")
+    assert "calibration_record_id" not in valid
+    assert parse_reference(valid).calibration_record_id is None
+
+
+@pytest.mark.parametrize(
+    ("change", "message"),
+    [
+        ({"cycle_id": None}, "exactly one of cycle_id and calibration_record_id"),
+        ({"calibration_record_id": "calrec_10l0000001"}, "exactly one of cycle_id and"),
+        ({"calibration_record_id": ""}, "calibration_record_id must be non-empty text or null"),
+        ({"calibration_record_id": 7}, "calibration_record_id must be non-empty text or null"),
+        ({"cycle_id": ""}, "cycle_id must be non-empty text or null"),
+    ],
+    ids=["names-neither", "names-both", "an-empty-record", "a-number-as-a-record", "empty-cycle"],
+)
+def test_a_reference_names_exactly_one_unit_or_is_refused(change, message):
+    """§10l: a reading names a cycle or a calibration record, as the accepted tree does (SIP-0109
+    §24cc). Bugs caught: a reference naming no unit read as a cycle's; one naming both read as
+    either; a record id coerced from a number (``7`` read as ``"7"``)."""
+    with pytest.raises(EvaluationInvalid, match=message):
+        parse_reference({**recorded("outcome_evaluation_ref", "valid"), **change})
+
+
+@pytest.mark.parametrize(
+    ("change", "message"),
+    [
+        ({"calibration_record_id": None}, "exactly one of cycle_id and calibration_record_id"),
+        ({"cycle_id": "cyc_10l000000001"}, "exactly one of cycle_id and calibration_record_id"),
+        ({"previous_accepted_tree_identity": "b" * 64}, "builds on nothing"),
+    ],
+    ids=["names-neither", "names-both", "a-calibration-with-a-previous-tree"],
+)
+def test_an_evaluation_record_names_exactly_one_unit_and_a_calibration_builds_on_nothing(
+    change, message
+):
+    """§10l. Bugs caught: a record written for no unit, which no reader can join to a cycle or a
+    campaign; or a calibration reading naming a tree before it, which the package would then read
+    as an increment, with a contribution against something that was never accepted."""
+    with pytest.raises(EvaluationInvalid, match=message):
+        _calibration_reading(**change)
+
+
 def test_the_reference_module_imports_nothing_an_evaluation_found():
     """Contract 5's phase-1 rule: no result reaches the handoff. Project history imports this
     module alone. Bug caught: the reference importing an outcome or a result type, so the module

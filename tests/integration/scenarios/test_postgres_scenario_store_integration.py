@@ -264,3 +264,58 @@ async def test_an_evaluation_reads_back_whole_and_the_table_refuses_a_commit_for
                 "UPDATE scenario_evaluations SET evaluated_tree_identity = $1",
                 "15c7a12b8ed45f63ae47e90e3e854f6b3a2775f1",
             )
+
+
+async def test_a_calibration_records_reading_names_it_in_place_of_a_cycle_and_the_table_holds_one(
+    store,
+):
+    """SIP-0113 §10l, migration 2010. Bugs caught: the record's id lost in the round trip, so the
+    reading reads back as a cycle's with no cycle; the reading found by a cycle query, or a cycle's
+    by the record's; or a row naming neither unit, or both, accepted by the table."""
+    from squadops.scenarios.evaluation import (
+        Applicability,
+        ScenarioOutcome,
+        ScenarioResult,
+        evaluation_record,
+    )
+
+    scenarios, pool = store
+    suite = parse_suite(SUITE)
+    await draft_suite(scenarios, suite, actor="supervisor", at=T0)
+    outcomes = tuple(
+        ScenarioOutcome(
+            s.scenario_id, s.version, s.goal, Applicability.APPLICABLE, ScenarioResult.PASSED
+        )
+        for s in suite.scenarios
+    )
+
+    def reading(**unit):
+        return evaluation_record(
+            suite, outcomes, project_id="prj-tally", campaign_id="cmp_pg0000000010",
+            evaluated_tree_identity="d" * 64, previous_accepted_tree_identity=None,
+            evaluated_at=T0, quality=QualityReading(QualityStatus.NOT_APPLICABLE),
+            lint=LintReading.not_measured(NotMeasured.NOT_A_SCAFFOLD_STACK), **unit,
+        )  # fmt: skip
+
+    baseline = reading(cycle_id=None, calibration_record_id="calrec_pg00000001")
+    cycle = reading(cycle_id="cyc_pg0000000010")
+    for record in (baseline, cycle):
+        await scenarios.save_evaluation(record)
+
+    assert await scenarios.evaluations_for_calibration_record("calrec_pg00000001") == [baseline]
+    assert await scenarios.get_evaluation(baseline.evaluation_id) == baseline
+    assert await scenarios.evaluations_for_cycle("cyc_pg0000000010") == [cycle]
+    async with pool.acquire() as conn:
+        for cycle_id, record_id in ((None, None), ("cyc_pg0000000011", "calrec_pg00000002")):
+            with pytest.raises(asyncpg.CheckViolationError):
+                await conn.execute(
+                    "INSERT INTO scenario_evaluations (evaluation_id, project_id, cycle_id, "
+                    "calibration_record_id, evaluated_tree_identity, suite_digest, outcomes, "
+                    "evaluated_at) VALUES ($1, 'prj-tally', $2, $3, $4, $5, '[]', $6)",
+                    f"evl_pg_{record_id}_{cycle_id}",
+                    cycle_id,
+                    record_id,
+                    "d" * 64,
+                    suite.digest,
+                    T0,
+                )

@@ -98,9 +98,17 @@ def parse_reference(doc: Mapping[str, Any]) -> OutcomeEvaluationRef:
         raise EvaluationInvalid(
             f"campaign_id is text in a campaign and null outside one, got {campaign_id!r}"
         )
-    # SIP-0113 §10l: the unit, a cycle or a calibration record. An absent calibration_record_id
-    # reads as null, which leaves cycle_id to name the unit, so an absent key never files a
-    # calibration's reading as a cycle's.
+    return OutcomeEvaluationRef(
+        **{k: doc[k] for k in (*_REQUIRED_TEXT, *_IDENTITIES, *_NULLABLE)},
+        calibration_record_id=_unit(doc),
+    )
+
+
+def _unit(doc: Mapping[str, Any]) -> str | None:
+    """SIP-0113 §10l: the unit the reference names, a cycle or a calibration record, exactly one;
+    returns the record's id, or ``None`` for a cycle's. An absent ``calibration_record_id`` reads
+    as null, which leaves ``cycle_id`` to name the unit, so an absent key never files a
+    calibration's reading as a cycle's."""
     unit = {"cycle_id": doc["cycle_id"], "calibration_record_id": doc.get("calibration_record_id")}
     for key, value in unit.items():
         if value is not None and (not isinstance(value, str) or not value.strip()):
@@ -111,7 +119,4 @@ def parse_reference(doc: Mapping[str, Any]) -> OutcomeEvaluationRef:
             f"cycle_id={unit['cycle_id']!r}, "
             f"calibration_record_id={unit['calibration_record_id']!r}"
         )
-    return OutcomeEvaluationRef(
-        **{k: doc[k] for k in (*_REQUIRED_TEXT, *_IDENTITIES, *_NULLABLE)},
-        calibration_record_id=unit["calibration_record_id"],
-    )
+    return unit["calibration_record_id"]

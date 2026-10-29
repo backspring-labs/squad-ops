@@ -62,7 +62,6 @@ from squadops.ports.tools.container import ContainerPort
 from squadops.sandbox.environment import EVALUATOR_BROWSER, get_environment_contract
 from squadops.sandbox.models import OperationName, content_bytes, declared_argv
 from squadops.sandbox.workspace import WorkspaceEscapeError, tree_path, working_directory
-from squadops.stacks.scaffold import is_scaffoldable_stack
 from squadops.scenarios.evidence import ScenarioEvidence, kept
 from squadops.scenarios.quality import (
     LintReading,
@@ -90,6 +89,7 @@ from squadops.scenarios.steps import (
     ScenarioRun,
     run_scenario,
 )
+from squadops.stacks.scaffold import is_scaffoldable_stack
 from squadops.tools.exceptions import ToolContainerError
 from squadops.tools.models import ContainerSpec
 
