@@ -2578,15 +2578,24 @@ point 1), and SIP-0113 §10l evaluates the record's commit as the Campaign's bas
   identifiers never substitute for one another (§8.2.1).
 - **A cycle's reference is unchanged, byte for byte.** `calibration_record_id` is written only when it is set, so the
   shared fixture's recorded `valid` form is still the reference a cycle's record yields. The reader reads an absent key
-  as null, which leaves `cycle_id` to name the unit, and refuses a reference that names neither unit or both.
+  as null, which leaves `cycle_id` to name the unit. It refuses a reference that names neither unit or both, and a
+  calibration reference that names a previous tree, as the record does (the outside review of PR #2788, P3-3).
 - **The schema stays `outcome-evaluation-ref/v1`:** the field is added, none is repurposed, and no reference is stored
   in Project history yet, so no stored reference reads differently.
+- **The shared fixture records the new form** as `outcome_evaluation_ref/calibration_record.yaml`, a fifth form for
+  this output only (P3-4). Its tree is the second commit's, reached through the recorded mapping.
 
-**Evidence.** `squadops.scenarios.reference` (`_unit`) and `squadops.scenarios.evaluation` (`EvaluationRecord`'s check);
-migration `1980_scenario_evaluation_calibration_record.sql`, whose CHECK holds the same rule in the table. Held by
-`tests/unit/shared_contract/test_contract5_evaluation_reference.py` (the fixture's `valid` form unchanged, a record's
-reading round-tripped, each refusal) and by the store's integration test against Postgres. The wiring test enters at
-`CampaignProgress.calibration_recorded` (`tests/unit/scenarios/test_campaign_baseline_reading.py`).
+**Evidence.**
+- `squadops.scenarios.reference` (`_unit`) and `squadops.scenarios.evaluation` (`EvaluationRecord`'s check).
+- Migration `1980_scenario_evaluation_calibration_record.sql`, whose CHECK holds the same rule in the table.
+- Held by `tests/unit/shared_contract/test_contract5_evaluation_reference.py`:
+  - the fixture's `valid` form unchanged;
+  - its `calibration_record` form exactly what a record's reading yields;
+  - each refusal.
+- Held by `test_outcome_evaluation_ref_recording.py` (the form's tree, through the mapping) and by the store's
+  integration test against Postgres.
+- The wiring test enters at `CampaignProgress.calibration_recorded`
+  (`tests/unit/scenarios/test_campaign_baseline_reading.py`).
 
 **Who ruled.** The owner placed SIP-0113 §10l in 2.5 (2026-10-21); its design is the supervisor's. The field's shape is
 the Spark lane's build choice (SIP-0113 §10ac), for the outside reviewer's G4 (H.12), recorded on the PR.
