@@ -3,8 +3,8 @@ reports. Every suite here is made up for the test; the held-out suite is never r
 ``no_box`` fixture refuses every way the sweep reaches the deploy.
 
 What bugs would these catch?
-- a marker taken from a goal (visible by design), a key, a path, a number or a word too short to
-  mean anything, so the sweep "finds" what isn't a leak;
+- a marker taken from a goal (visible by design), a key, a declared route's words, a number or a
+  word too short to mean anything, so the sweep "finds" what isn't a leak;
 - a step or check value left out (a header, a query string, ``in``, ``contains``), so its leak goes
   unseen;
 - a value missed in the form a store writes it in: JSON-escaped, COPY-escaped, or inside LangFuse's

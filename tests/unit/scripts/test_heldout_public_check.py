@@ -130,6 +130,76 @@ def test_a_vault_that_isnt_there_fails_unless_it_is_declared_absent(places, caps
     assert check.main([*args, "--no-vault"]) == 1  # the history still holds two values
 
 
+PATH_VALUE = "qx-unseen-thing-41"
+MIXED_RUN = "for Halvard Nettlefield"
+
+
+def _referencing_suite() -> dict:
+    """A scenario that reads an unknown item by a value in its path, and compares one response
+    with another through a saved value (SIP-0113 §10ab), as the 2.5 suites do."""
+    return {
+        "name": "made-up",
+        "scenarios": [
+            {
+                "scenario_id": "s-refs",
+                "goal": "A filed thing reads back, and one never filed isn't found",
+                "surfaces": [
+                    {"kind": "http_endpoint", "path": "/things", "method": "POST"},
+                    {"kind": "http_endpoint", "path": "/things/{thing_id}", "method": "GET"},
+                ],
+                "steps": [
+                    {"action": "http", "method": "POST", "path": "/things",
+                     "json": {"title": NOWHERE}, "save": {"thing_id": "id"}},
+                    {"action": "http", "method": "GET", "path": f"/things/{PATH_VALUE}",
+                     "expect_status": 404},
+                    {"action": "http", "method": "GET", "path": "/things/{thing_id}"},
+                ],
+                "checks": [
+                    {"check": "json", "step": 3, "path": "id", "equals": "{thing_id}"},
+                    {"check": "json", "step": 3, "path": "note",
+                     "equals": f"{{thing_id}} {MIXED_RUN}"},
+                ],
+            }
+        ],
+    }  # fmt: skip
+
+
+def test_the_check_searches_a_paths_values_and_never_a_route_word_or_a_reference(
+    tmp_path, monkeypatch, capsys
+):
+    """#2786, entered at ``main`` as the author runs it. Bugs caught: the value a step reads an
+    unknown item by never searched, so a public one passes; a reference (``{thing_id}``) searched
+    as a value, found in any file that quotes the route, and reported as public; a route word
+    (``things``) reported as public in every repository."""
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    _git(repo, "init", "-q")
+    _git(repo, "config", "user.email", "t@example.com")
+    _git(repo, "config", "user.name", "t")
+    (repo / "routes.md").write_text(f"GET /things/{{thing_id}}, and {PATH_VALUE} is never filed\n")
+    _git(repo, "add", ".")
+    _git(repo, "commit", "-q", "-m", "routes")
+    suite = tmp_path / "suite.yaml"
+    suite.write_text(yaml.safe_dump(_referencing_suite()))
+    searched: list[set[str]] = []
+
+    class Recorded(check.Matcher):
+        def __init__(self, values, forms):
+            searched.append(set(values.values()))
+            super().__init__(values, forms)
+
+    monkeypatch.setattr(check, "Matcher", Recorded)
+
+    code = check.main(["--suite", str(suite), "--repo", str(repo), "--no-vault"])
+
+    report = json.loads(capsys.readouterr().out)
+    assert searched == [{NOWHERE, PATH_VALUE, MIXED_RUN}]
+    assert (code, report["markers"]) == (1, 3)
+    assert [(m["scenario"], m["where"], m["tracked"]) for m in report["found"].values()] == [
+        ("s-refs", "step 2", ["routes.md"])
+    ]
+
+
 def test_a_suite_that_doesnt_parse_is_refused_without_quoting_it(tmp_path, capsys):
     bad = tmp_path / "suite.yaml"
     bad.write_text(f"name: x\nscenarios: [{{scenario_id: s, goal: {IN_TRACKED}}}]\n")

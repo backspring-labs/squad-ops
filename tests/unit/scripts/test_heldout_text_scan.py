@@ -130,6 +130,51 @@ def test_a_post_is_scanned_before_it_goes_out(tmp_path, capsys):
     assert (code, report["found"], list(report["sources"])) == (1, 1, [str(body)])
 
 
+@pytest.mark.parametrize(
+    ("text", "found"),
+    [
+        ("The example reads qx-unseen-thing-41 and gets a 404.\n", 1),
+        ("The example reads GET /varnholts/{varnholt_id} and compares {varnholt_id}.\n", 0),
+    ],
+    ids=["a-path-value", "route-words-and-references"],
+)
+def test_a_post_naming_a_steps_path_value_is_refused_and_one_quoting_its_route_is_not(
+    tmp_path, capsys, text, found
+):
+    """#2786, entered at ``main`` as the hook runs it. Bugs caught: a push that adds the value a
+    step reads an unknown item by passing unseen; one that quotes a route or a saved value's
+    reference refused, so the supervisor learns to override the scan."""
+    doc = {
+        "name": "made-up",
+        "scenarios": [
+            {
+                "scenario_id": "s-unknown",
+                "goal": "A varnholt never filed isn't found",
+                "surfaces": [
+                    {"kind": "http_endpoint", "method": "POST", "path": "/varnholts"},
+                    {"kind": "http_endpoint", "method": "GET", "path": "/varnholts/{varnholt_id}"},
+                ],
+                "steps": [
+                    {"action": "http", "method": "POST", "path": "/varnholts",
+                     "json": {"title": _TITLE}, "save": {"varnholt_id": "id"}},
+                    {"action": "http", "method": "GET", "path": "/varnholts/qx-unseen-thing-41"},
+                ],
+                "checks": [{"check": "json", "step": 1, "path": "id", "equals": "{varnholt_id}"}],
+            }
+        ],
+    }  # fmt: skip
+    suite = tmp_path / "suite.yaml"
+    suite.write_text(yaml.safe_dump(doc), encoding="utf-8")
+    body = tmp_path / "body.md"
+    body.write_text(text, encoding="utf-8")
+
+    code = _load().main(["--suite", str(suite), "--no-range", "--text", str(body)])
+
+    report = json.loads(capsys.readouterr().out)
+    assert (code, report["markers"], report["found"]) == (found, 2, found)
+    assert [h["where"] for h in report["sources"][str(body)]] == ["step 2"] * found
+
+
 def test_an_unreadable_suite_is_an_error_that_quotes_nothing(tmp_path, capsys):
     """Edge: a suite that doesn't parse exits 2, naming the file and never its content."""
     broken = tmp_path / "broken.yaml"
