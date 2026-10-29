@@ -218,6 +218,45 @@ def test_the_edit_forms_bound_is_never_below_the_form_the_agent_renders(path):
 
 
 @pytest.mark.parametrize(
+    "name",
+    ["\u0928\u092e\u0938\u094d\u0924\u0947", "e\u0301x", "l\u00b7l", "a\u203fb"],
+    ids=["devanagari", "decomposed-accent", "middle-dot", "connector-punctuation"],
+)
+def test_a_javascript_name_python_s_word_class_misses_is_still_bounded(name):
+    """Entered at ``edit_form_bound`` beside ``edit_form``, on 45 functions whose long names carry
+    characters JavaScript's identifiers allow and Python's ``\\w`` doesn't: combining marks,
+    connector punctuation and the extra identifier characters (#2812's third reading measured
+    the bound up to about 7,000 tokens under). Bug caught: an identifier run that stops at such a
+    character, so the least of the three bounds is the short one."""
+    path = "src/names.ts"
+    content = "".join(
+        f"export function {name * 8}{i}(a: number): number {{\n  return a;\n}}\n" for i in range(45)
+    )
+    inputs = {"expected_artifacts": [path], "acceptance_workspace_files": {path: content}}
+
+    lines, offered = edit_form(inputs)
+
+    assert offered[path] == 90
+    assert _escaped("\n".join(lines)) <= edit_form_bound(inputs)
+
+
+@pytest.mark.parametrize(
+    "content",
+    ["x = " + " + ".join(["1"] * 100_000) + "\n", "f = " + "lambda: " * 3_000 + "0\n"],
+    ids=["a-100000-term-expression", "3000-nested-lambdas"],
+)
+def test_a_python_module_ast_cannot_build_is_bounded_never_raised(content):
+    """Entered at ``edit_form_bound``: a module ``ast`` can't build raises ``RecursionError`` or
+    ``MemoryError``, not ``SyntaxError``, and the composer runs in the runtime's correction round
+    (#2812's third reading). Bug caught: the error raised out of ``prompt_budget``, so the round
+    crashed in the runtime instead of the task failing on its agent."""
+    path = "app/huge.py"
+    inputs = {"expected_artifacts": [path], "acceptance_workspace_files": {path: content}}
+
+    assert edit_form_bound(inputs) > _escaped(path)
+
+
+@pytest.mark.parametrize(
     "path", [p for p in _FORMS if p.endswith(".py")] + ["docs/notes.md", "tests/fixture.json"]
 )
 def test_a_python_file_and_one_no_resolver_reads_are_counted_exactly(path):

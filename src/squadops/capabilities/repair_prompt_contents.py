@@ -161,8 +161,15 @@ def _file_line_bound(path: str, content: str) -> int:
     - **For any other resolver,** by the first bound alone.
     """
     if path.endswith(PYTHON_SUFFIXES) or not reads_structure(path):
-        [line], _offered = editable_file_lines([path], {path: content})
-        return _escaped(line)
+        try:
+            [line], _offered = editable_file_lines([path], {path: content})
+        except (RecursionError, MemoryError, ValueError):
+            # A module ``ast`` can't build (a 100,000-term expression, thousands of nested
+            # lambdas) is bounded as any resolver's below, never raised into the runtime's
+            # composer (#2812's third reading).
+            pass
+        else:
+            return _escaped(line)
     longest = _longest_name(content)
     names = MAX_LISTED_ENTITIES * (SELECTOR_NAMES_MAX * longest + SELECTOR_NAMES_MAX - 1)
     if path.endswith(ECMASCRIPT_SUFFIXES):
@@ -193,9 +200,12 @@ def _longest_name(content: str) -> int:
     return max(longest, current)
 
 
-#: A run of the characters a JavaScript or TypeScript identifier is written with, escapes and the
-#: joiners included, and more: any identifier lies inside one such run.
-_IDENTIFIER_RUN = re.compile(r"[\w$\\{}\u200c\u200d]+")
+#: A run of the characters a JavaScript or TypeScript identifier is written with, and more: ASCII
+#: letters, digits, ``_``, ``$``, an escape's ``\\``, ``{`` and ``}``, and every non-ASCII
+#: character. Python's ``\\w`` misses combining marks, connector punctuation and the extra
+#: identifier characters JavaScript allows (U+00B7, U+2118), so a name written with them was cut
+#: short and the bound undercounted (#2812's third reading). A run too long only over-counts.
+_IDENTIFIER_RUN = re.compile(r"[A-Za-z0-9_$\\{}\u0080-\U0010ffff]+")
 
 
 def _longest_identifier(content: str) -> int:

@@ -3697,8 +3697,12 @@ of about 105,000 tokens against a 65,536-token window.
     2. three times the file's text (`structural_jsx.SELECTORS_PER_STATEMENT_MAX`), since a statement's names lie
        inside it;
     3. forty of the file's longest identifier-like run, plus its longest logical line for each import it can have,
-       since every name but an import's source is an identifier.
+       since every name but an import's source is an identifier. The run takes ASCII letters, digits, `_`, `$`, an
+       escape's `\\`, `{` and `}`, and every non-ASCII character, since JavaScript's identifiers allow combining
+       marks, connector punctuation and other characters Python's `\\w` doesn't match (#2812's third reading).
   - **for any other resolver,** by the first bound alone.
+  - **A Python module `ast` can't build** (`RecursionError`, `MemoryError`) is bounded as any other resolver's file,
+    never raised into the runtime's budget. The agent's own handler fails such a file as it did before.
 
   All are measured as JSON counts them. The first build listed the entities in the composer, so a repair naming a
   `.js`, `.jsx`, `.ts` or `.tsx` file raised out of the runtime's budget; #2812's second reading found it before
