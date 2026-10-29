@@ -1991,3 +1991,52 @@ checks:
       print(ControlOperation.REVIEW_PUSHED.records_only, "push_campaign_branch" in SourceRepositoryPort.__abstractmethods__,
             campaign_review_branch("cmp_x"), callable(push_review))
     expect: True True squadops/cmp_x True
+  - id: "2619-product-routes"
+    what: a repository-backed increment's client routes are rendered on its candidate started from the product's declared start, each blocked one naming why, and the executor takes the root's route renderer (SIP-0109 §24co)
+    container: squadops-runtime-api
+    code: |
+      import inspect
+      from squadops.campaigns.acceptance import Held, RouteResult, increment_acceptance
+      from squadops.capabilities.handlers.route_rendering import view_anchors
+      from squadops.execution.dispatched_flow_executor import DispatchedFlowExecutor
+      from squadops.campaigns.product_routes import NO_START_DECLARATION
+      from squadops.scenarios.declared_routes import DeclaredStartRoutes
+      blocked = increment_acceptance((), (), (RouteResult("/a", Held.BLOCKED_UNVERIFIED, detail="start failed: x"),)).blocked[0]
+      print(blocked, sorted(view_anchors('<p data-testid="a"></p><script>"data-testid=\\"b\\""</script>')), NO_START_DECLARATION, "route_renderer" in inspect.signature(DispatchedFlowExecutor.__init__).parameters)
+    expect: "route /a: not rendered: start failed: x ['a'] no start declaration True"
+  - id: "2619-product-routes-sandbox"
+    what: the sandbox service reads a started tree's client routes with the evaluator image's own Chromium, and answers each reading (SIP-0109 §24co)
+    container: squadops-sandbox-service
+    code: |
+      from adapters.tools.docker import DockerAdapter
+      from squadops.sandbox.api import EvaluationRequest
+      from squadops.sandbox.environment import EVALUATOR_BROWSER
+      from squadops.scenarios.runner import TreeEvaluation
+      from squadops.tools.models import ContainerSpec
+      a = DockerAdapter._render_run_args(ContainerSpec(image="i", entrypoint=EVALUATOR_BROWSER, command=["x"]))
+      r = TreeEvaluation.from_dict({"tree_identity": "t", "started": True, "routes": [{"route": "/", "path": "/", "testids": ["a"], "detail": None}]}).routes[0]
+      print(a[a.index("--entrypoint") + 1], r.testids, "routes" in EvaluationRequest.model_fields)
+    expect: "/usr/bin/chromium ('a',) True"
+  - id: "2777-review"
+    what: a route the approved change request adds is in the expected set, and blocks with no anchor its view must render (SIP-0109 §24co item 11, #2777's review P2)
+    container: squadops-runtime-api
+    code: |
+      import inspect
+      from squadops.campaigns.product_routes import FROM_CHANGE_REQUEST, NO_ANCHOR_REQUESTED, requested_routes
+      from squadops.scenarios.declared_routes import DeclaredStartRoutes
+      print(FROM_CHANGE_REQUEST, "requested_routes" in inspect.signature(DeclaredStartRoutes.render).parameters, NO_ANCHOR_REQUESTED.startswith("the change request adds it"))
+    expect: "change_request True True"
+  - id: "2777-review-inert"
+    what: a product's page counts no anchor inside a template or a noscript, which Chromium's dump keeps but never rendered (SIP-0109 §24co item 12, #2777's review P2)
+    container: squadops-sandbox-service
+    code: |
+      from squadops.capabilities.handlers.route_rendering import view_anchors
+      print(sorted(view_anchors('<p data-testid="not-found"></p><template><main data-testid="v"></main></template><noscript><i data-testid="n"></i></noscript>')))
+    expect: "['not-found']"
+  - id: "2777-review-hidden"
+    what: a product's page counts no anchor its own or an ancestor's markup hides (the hidden attribute, aria-hidden, an inline display/visibility/content-visibility) (SIP-0109 §24co item 13, #2777's final review)
+    container: squadops-sandbox-service
+    code: |
+      from squadops.capabilities.handlers.route_rendering import view_anchors
+      print(sorted(view_anchors('<p data-testid="shown"></p><form data-testid="a" hidden=""></form><div style="display: none"><b data-testid="b"></b></div><div aria-hidden="true"><i data-testid="c"></i></div>')))
+    expect: "['shown']"

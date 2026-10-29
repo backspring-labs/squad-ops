@@ -36,7 +36,12 @@ from squadops.sandbox.models import (
     decode_binary,
     wire_files,
 )
-from squadops.scenarios.runner import DeclaredStart, RunnerUnavailable, TreeEvaluation
+from squadops.scenarios.runner import (
+    DeclaredStart,
+    RouteRequest,
+    RunnerUnavailable,
+    TreeEvaluation,
+)
 
 _RESULT_TYPES: dict[str, type[OperationResult]] = {
     cls.__name__: cls
@@ -301,12 +306,13 @@ class HttpScenarioRunner(ScenarioRunnerPort):
         environment: Mapping[str, str],
         pages: Sequence[str],
         seed: Any = None,
+        routes: Sequence[RouteRequest] = (),
     ) -> TreeEvaluation:
         wire = wire_files(tree)
         try:
             payload = await self._post_evaluation(
                 wire, tree_identity, executable, stack, declared, scenarios, environment, pages,
-                seed,
+                seed, routes,
             )  # fmt: skip
         except SandboxServiceError as e:
             if e.status_code == 503:
@@ -317,8 +323,9 @@ class HttpScenarioRunner(ScenarioRunnerPort):
         return TreeEvaluation.from_dict(payload)
 
     async def _post_evaluation(
-        self, wire, tree_identity, executable, stack, declared, scenarios, environment, pages, seed
-    ) -> dict:
+        self, wire, tree_identity, executable, stack, declared, scenarios, environment, pages, seed,
+        routes,
+    ) -> dict:  # fmt: skip
         return await self._sandbox._post(
             "/api/v1/evaluations",
             {
@@ -332,5 +339,6 @@ class HttpScenarioRunner(ScenarioRunnerPort):
                 "environment": dict(environment),
                 "pages": list(pages),
                 "seed": seed.as_dict() if seed is not None else None,
+                "routes": [r.as_dict() for r in routes],
             },
         )

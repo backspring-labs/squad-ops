@@ -559,3 +559,54 @@ async def test_a_seed_plan_travels_the_client_to_the_runner_and_its_reading_back
 
     assert received == [plan]
     assert result.quality_seeded == seeded
+
+
+async def test_client_routes_travel_the_client_to_the_runner_and_their_readings_back(tmp_path):
+    """SIP-0109 §24co, entered at the client the runtime API's acceptance uses. Bugs caught: the
+    routes dropped on the wire, so nothing is read and every route blocks with no reason anyone
+    can act on; a seed lost in its round trip; or an unread page's ``None`` arriving as an empty
+    reading, which the judgement reads as broken."""
+    from adapters.sandbox.http_client import HttpScenarioRunner
+    from squadops.campaigns.evaluator_trees import FileTree
+    from squadops.scenarios.runner import RouteReading, RouteRequest, TreeEvaluation
+    from tests.unit.sandbox.test_scenario_runner import DECLARED, TREE
+
+    readings = (
+        RouteReading("/", "/", ("shelf-list",)),
+        RouteReading("/shelves/:id", None, None, "its seed's create was refused or named no id"),
+    )
+    received = []
+
+    class _Recording:
+        async def evaluate_tree(self, **kw):
+            received.append(kw.get("routes"))
+            return TreeEvaluation(kw["tree_identity"], started=True, routes=readings)
+
+    root = tmp_path / "cycles"
+    app = create_app(
+        SandboxService(
+            store=WorkspaceStore(root),
+            journal=OperationEvidenceJournal(root),
+            scenario_runner=_Recording(),
+        ),
+        service_token=TOKEN,
+    )
+    client = HttpScenarioRunner(
+        base_url="http://exec",
+        service_token=TOKEN,
+        http_client_factory=lambda: httpx.AsyncClient(
+            transport=httpx.ASGITransport(app=app), base_url="http://exec"
+        ),
+    )
+    routes = [
+        RouteRequest("/"),
+        RouteRequest("/shelves/:id", {"method": "POST", "path": "/shelves", "json": {}}),
+    ]
+
+    result = await client.evaluate_tree(
+        tree=TREE, tree_identity=FileTree.of(TREE).identity, executable={"run.sh"}, stack=None,
+        declared=DECLARED, scenarios=[], environment={}, pages=(), routes=routes,
+    )  # fmt: skip
+
+    assert received == [routes]
+    assert result.routes == readings

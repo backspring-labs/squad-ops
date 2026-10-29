@@ -108,3 +108,14 @@ def test_each_stacks_pages_are_served_by_the_app_or_by_its_ui_serve(stack):
     contract = get_environment_contract(stack)
 
     assert (contract.ui_port == contract.app_port) != bool(contract.ui_serve)
+
+
+def test_the_browser_a_products_pages_are_read_with_is_the_one_the_image_installs():
+    """SIP-0109 §24co: the runner runs the image's Chromium by its path. Bug caught: the path
+    drifting from the image's, so every product's route reads unread with "the browser exited
+    127", and the increment blocks with a reason that names the image, not the product."""
+    from squadops.sandbox.environment import EVALUATOR_BROWSER
+
+    dockerfile = (_EVALUATOR / "Dockerfile").read_text()
+    assert f"CHROME_PATH={EVALUATOR_BROWSER}" in dockerfile
+    assert f"PUPPETEER_EXECUTABLE_PATH={EVALUATOR_BROWSER}" in dockerfile

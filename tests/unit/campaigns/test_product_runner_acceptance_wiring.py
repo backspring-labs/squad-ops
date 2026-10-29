@@ -128,7 +128,7 @@ def _f1_bundle(repo) -> dict:
     }
 
 
-def _increment(world_, *, frozen: bool):
+def _increment(world_, *, frozen: bool, request: str = STORED):
     """The world's cycle as a repository-backed increment's implementation sees it: its block names
     the campaign branch, its launch pinned F1 (when ``frozen``), and its approved change request
     (R1, a summary line in the report module) is forwarded in its plan refs."""
@@ -153,7 +153,7 @@ def _increment(world_, *, frozen: bool):
         "run_prop",
         CHANGE_REQUEST_ARTIFACT_TYPE,
         "change_request.yaml",
-        STORED.encode(),
+        request.encode(),
     )
     block = {**_cycle().execution_overrides["campaign_proposal"], "frozen_criteria": pins}
     increment = dataclasses.replace(
@@ -165,8 +165,8 @@ def _increment(world_, *, frozen: bool):
     return repo, vault, executor, increment, run
 
 
-async def _judged(world_, changes: dict, *, frozen: bool = True) -> dict:
-    repo, vault, executor, cycle, run = _increment(world_, frozen=frozen)
+async def _judged(world_, changes: dict, *, frozen: bool = True, request: str = STORED) -> dict:
+    repo, vault, executor, cycle, run = _increment(world_, frozen=frozen, request=request)
     await _end_of_plan(executor, cycle, run, vault, changes)
     [(ref, raw)] = _of_type(vault, INCREMENT_EVALUATION_ARTIFACT_TYPE)
     assert (ref.cycle_id, ref.run_id) == (cycle.cycle_id, run.run_id)
@@ -363,3 +363,257 @@ async def test_a_product_evaluations_bundle_is_frozen_at_promotion_and_pinned_wh
     [frozen] = frozen_criteria_from([pin], {"R1": json.loads(stored)})
     assert frozen.bundle == bundle
     assert frozen.bundle.invocation[-2:] == ("-p", "check_criterion_R1.py")
+
+
+# --- SIP-0109 §24co: the profile's client routes, rendered on the candidate at its delivery ---
+
+#: Tally given a blueprint's routes, as a product made from one names them (H.7), and a start that
+#: serves its pages at a ui_base. Tally serves none, so the browser's answers are the fake's.
+_ROUTED = "/"
+_TALLY_PAGES = {
+    "http://10.89.0.7:8080/": '<html><body><main data-testid="counter-list"></main></body></html>',
+    "http://10.89.0.7:8080/__squadops_unmatched__": (
+        '<html><body><p data-testid="not-found-view"></p></body></html>'
+    ),
+}
+_TALLY_MANIFEST = """
+version: 1
+kind: interface_manifest
+project_id: tally
+stack: fullstack_fastapi_react
+entities: []
+api: {base_path: "", endpoints: []}
+frontend:
+  routes:
+    - {path: "/", view: CounterListView, testids: [counter-list]}
+    - {path: "*", view: NotFoundView, testids: [not-found-view]}
+"""
+
+
+def _routed(world_, *, pages, start_argv=None):
+    """The world's executor with the product's routes to render: its profile names them, its
+    initialization's manifest anchors them, its start serves a ui_base, and the sandbox's
+    scenario runner stands it up."""
+    from adapters.sandbox.scenario_runner import ContainerScenarioRunner
+    from squadops.projects.development_configuration import EntryPoint
+    from squadops.projects.initialization import ProjectInitialization
+    from squadops.scenarios.declared_routes import DeclaredStartRoutes
+    from tests.unit.sandbox.test_scenario_runner import EVALUATOR
+    from tests.unit.sandbox.test_scenario_runner_routes import _app, _Browser, _ip
+
+    repo, vault, executor, cycle, run = world_
+    registry = executor._project_registry
+    profile = registry.get_derived_profile.return_value
+    registry.get_derived_profile.return_value = dataclasses.replace(
+        profile, blueprint_stack="fullstack_fastapi_react", client_routes=(_ROUTED, "*")
+    )
+    configuration = registry.get_development_configuration.return_value
+    start = dataclasses.replace(
+        configuration.commands.start,
+        start=tuple(start_argv or configuration.commands.start.start),
+        entry_points=(
+            *configuration.commands.start.entry_points,
+            EntryPoint("ui_base", "http://127.0.0.1:8080/"),
+        ),
+        # No secret is resolved before #2421's approval record: Tally's would block every route.
+        evaluation_environment=(),
+    )
+    registry.get_development_configuration.return_value = dataclasses.replace(
+        configuration, commands=dataclasses.replace(configuration.commands, start=start)
+    )
+    registry.get_initialization.return_value = ProjectInitialization(
+        "prj-tally", repo.second_commit, "main", "fullstack_fastapi_react", "sha256:t",
+        _TALLY_MANIFEST, (), "owner", NOW,
+    )  # fmt: skip
+    container = _Browser(pages)
+    executor._route_renderer = DeclaredStartRoutes(
+        ContainerScenarioRunner(
+            container=container,
+            root=repo.path.parent / "scenario-sandbox",
+            image="sandbox:pinned",
+            http_client_factory=_app([]),
+            poll_interval_seconds=0.01,
+            app_network="squadops-sandbox-apps",
+            evaluator_image=EVALUATOR,
+            resolve_host=_ip,
+        )
+    )
+    return container
+
+
+async def test_a_branch_increments_routes_are_rendered_on_its_candidate_at_delivery(world):  # noqa: F811
+    """The live path, entered at the executor's end of plan: delivery verifies and captures the
+    candidate, and its acceptance starts it from the configuration's declared start in the
+    sandbox and reads each of the profile's routes. Bugs caught: the routes never rendered at the
+    live caller (the runner not wired into the executor), rendered on a tree other than the
+    candidate delivery verified, started by anything but the declared start, or their evidence
+    left off the document the campaign reads."""
+    repo = world[0]
+    container = _routed(world, pages=_TALLY_PAGES)
+    report = tracked_files(repo.path, repo.second_commit)[REPORT]
+
+    document = await _judged(world, {REPORT: report + _LINE, R1: _R1_TEST})
+
+    assert document["routes"] == [
+        {"path": "*", "held": "held", "missing": [], "not_shown": []},
+        {"path": "/", "held": "held", "missing": [], "not_shown": []},
+    ]
+    assert not [b for b in document["blocked"] if b.startswith("route")]
+    [(_v, raw)] = _of_type(world[1], SOURCE_VERIFICATION_TYPE)
+    verification = json.loads(raw)
+    rendered = document["renderings"]
+    assert rendered["start"] == {
+        "tree_identity": verification["candidate_tree_identity"],
+        "configuration_revision": 1,
+        "started": True,
+        "detail": None,
+    }
+    assert [(r["route"], r["anchor"], r["read_at"], r["seen"]) for r in rendered["routes"]] == [
+        ("*", "not-found-view", "/__squadops_unmatched__", ["not-found-view"]),
+        ("/", "counter-list", "/", ["counter-list"]),
+    ]
+    # Started by the declared start: its build step, then its start argv, in a copy of the
+    # candidate, which carries the squad's change.
+    build, app = [s for s in container.specs if s.image == "sandbox:pinned"]
+    assert (build.command, app.command[:3]) == (
+        ["python3", "tools/build.py"],
+        ["python3", "-m", "tally"],
+    )
+    assert container.held[0][REPORT] == report + _LINE
+
+
+async def test_a_route_the_candidate_no_longer_serves_rejects_the_increment(world):  # noqa: F811
+    """§8.3, as a sample application's increment reads it: a page without its view's root anchor
+    is broken, and the increment is rejected whatever its criteria read. Bug caught: a product's
+    broken page read only as blocked, so a change that drops a page is retried, never refused."""
+    repo = world[0]
+    _routed(
+        world,
+        pages={**_TALLY_PAGES, "http://10.89.0.7:8080/": "<html><body><h1>404</h1></body></html>"},
+    )
+    report = tracked_files(repo.path, repo.second_commit)[REPORT]
+
+    document = await _judged(world, {REPORT: report + _LINE})
+
+    assert document["verdict"] == "rejected"
+    assert "route /: missing counter-list" in document["unmet"]
+
+
+async def test_a_branch_increment_whose_start_fails_has_every_route_blocked(world):  # noqa: F811
+    """Contract 7's "start failed", at the live caller. Bug caught: a start that failed read as
+    every page broken, so the squad is told its pages are wrong when nothing stood up."""
+
+    repo = world[0]
+    container = _routed(world, pages=_TALLY_PAGES)
+
+    async def refused(spec):
+        from squadops.tools.exceptions import ToolContainerError
+
+        raise ToolContainerError("docker: the start image is gone")
+
+    container.run_detached = refused
+    report = tracked_files(repo.path, repo.second_commit)[REPORT]
+
+    document = await _judged(world, {REPORT: report + _LINE})
+
+    routes = [b for b in document["blocked"] if b.startswith("route")]
+    assert routes == [
+        "route *: not rendered: start failed: the start could not run: docker: the start image "
+        "is gone",
+        "route /: not rendered: start failed: the start could not run: docker: the start image "
+        "is gone",
+    ]
+    assert document["renderings"]["start"]["started"] is False
+
+
+async def test_a_route_the_change_request_adds_keeps_the_increment_from_acceptance(world):  # noqa: F811
+    """The outside review of #2777 (P2), at the live caller: the approved change request asserts
+    its criterion on a client route the profile doesn't pin, the page the candidate serves there
+    is broken, and the pinned routes still render. Bugs caught: the added route never rendered,
+    so a broken new page is accepted; or the pinned routes dropped when one is added."""
+    from squadops.campaigns.change_request import (
+        SurfaceKind,
+        content_hash,
+        load_stored_change_request,
+        stored_change_request,
+    )
+    from squadops.campaigns.product_routes import NO_ANCHOR_REQUESTED
+
+    request = load_stored_change_request(STORED)
+    [r1, *rest] = request.criteria
+    on_a_page = dataclasses.replace(r1, surface_kind=SurfaceKind.CLIENT_ROUTE, surface="/totals")
+    changed = dataclasses.replace(request, criteria=(on_a_page, *rest))
+    adds_a_page = stored_change_request(
+        dataclasses.replace(changed, content_hash=content_hash(changed))
+    )
+    repo = world[0]
+    _routed(
+        world,
+        pages={
+            **_TALLY_PAGES,
+            "http://10.89.0.7:8080/totals": "<html><body><h1>500</h1></body></html>",
+        },
+    )
+    report = tracked_files(repo.path, repo.second_commit)[REPORT]
+
+    document = await _judged(world, {REPORT: report + _LINE, R1: _R1_TEST}, request=adds_a_page)
+
+    assert document["verdict"] != "accepted"
+    assert f"route /totals: not rendered: {NO_ANCHOR_REQUESTED}" in document["blocked"]
+    held = {r["path"]: r["held"] for r in document["routes"]}
+    assert held == {"*": "held", "/": "held", "/totals": "blocked_unverified"}
+    sources = {r["route"]: r["source"] for r in document["renderings"]["routes"]}
+    assert sources == {
+        "*": "approved_manifest",
+        "/": "approved_manifest",
+        "/totals": "change_request",
+    }
+
+
+async def test_a_fallback_page_with_the_anchor_only_in_a_template_rejects_the_increment(world):  # noqa: F811
+    """The outside review of #2777 at 8c09cd4f (P2), at the live caller: the candidate no longer
+    serves ``/``, and its fallback page carries ``/``'s root anchor only inside an unused
+    ``<template>``. Bug caught: inert markup Chromium's dump keeps read as the rendered view, so a
+    dropped page holds and the increment is accepted."""
+    repo = world[0]
+    _routed(
+        world,
+        pages={
+            **_TALLY_PAGES,
+            "http://10.89.0.7:8080/": (
+                '<html><body><p data-testid="not-found-view"></p><template><main '
+                'data-testid="counter-list"></main></template></body></html>'
+            ),
+        },
+    )
+    report = tracked_files(repo.path, repo.second_commit)[REPORT]
+
+    document = await _judged(world, {REPORT: report + _LINE})
+
+    assert document["verdict"] == "rejected"
+    assert "route /: missing counter-list" in document["unmet"]
+    [root] = [r for r in document["renderings"]["routes"] if r["route"] == "/"]
+    assert (root["held"], root["seen"]) == ("broken", ["not-found-view"])
+
+
+async def test_a_page_whose_anchor_its_markup_hides_rejects_the_increment(world):  # noqa: F811
+    """§24co item 13 at the live caller: the candidate's ``/`` carries its root anchor only on an
+    element an ancestor's inline style hides, beside a visible fallback. Bug caught: a successful
+    browser exit plus an anchor's incidental presence read as the view rendered."""
+    repo = world[0]
+    _routed(
+        world,
+        pages={
+            **_TALLY_PAGES,
+            "http://10.89.0.7:8080/": (
+                '<html><body><p data-testid="not-found-view"></p><div style="display:none">'
+                '<main data-testid="counter-list"></main></div></body></html>'
+            ),
+        },
+    )
+    report = tracked_files(repo.path, repo.second_commit)[REPORT]
+
+    document = await _judged(world, {REPORT: report + _LINE})
+
+    assert document["verdict"] == "rejected"
+    assert "route /: missing counter-list" in document["unmet"]

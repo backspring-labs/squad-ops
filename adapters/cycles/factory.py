@@ -16,6 +16,7 @@ from squadops.ports.cycles.squad_profile import SquadProfilePort
 
 if TYPE_CHECKING:
     from squadops.campaigns.launcher import BoxVerdict
+    from squadops.campaigns.product_routes import RouteRenderer
     from squadops.campaigns.progress import CampaignProgress
     from squadops.execution.binding_holds import BindingFill
     from squadops.execution.reply_router import ReplyRouter
@@ -158,6 +159,9 @@ def create_flow_executor(
     focus_lease_port: FocusLeasePort | None = None,
     source_repository: SourceRepositoryPort | None = None,
     sandbox: ExecutionSandboxPort | None = None,
+    # SIP-0109 §24co: required, as ``binding_fill`` is, so the root says what renders a product's
+    # routes. ``None``: nothing, and each route a profile names reads blocked.
+    route_renderer: RouteRenderer | None,
 ) -> FlowExecutionPort:
     """Create a FlowExecutionPort adapter.
 
@@ -211,4 +215,5 @@ def create_flow_executor(
         focus_lease_port=focus_lease_port,
         source_repository=source_repository,
         sandbox=sandbox,
+        route_renderer=route_renderer,
     )

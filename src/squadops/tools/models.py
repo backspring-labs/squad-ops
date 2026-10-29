@@ -44,6 +44,11 @@ class ContainerSpec:
     # What a run-to-completion container reads on its standard input (SIP-0113 A3, #2416): the
     # evaluator's request, never on a mounted path. None = no input (`docker run` without `-i`).
     stdin: bytes | None = None
+    # The program the container runs in place of its image's entrypoint (`docker run
+    # --entrypoint`), ``command`` its arguments. None = the image's own. SIP-0109 §24co: a product's
+    # pages are read by the evaluator image's own Chromium, as the qa role reads a sample
+    # application's, and not by its driver, so the image and its measures' tag stay as they are.
+    entrypoint: str | None = None
 
 
 # NOTE: Container volume host paths are NOT validated against PathSecurityPolicy in 0.8.7.

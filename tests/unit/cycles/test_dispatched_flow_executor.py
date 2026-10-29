@@ -1372,6 +1372,7 @@ class TestRunCompletionActivityWiring:
             failure_recall=NoOpFailurePatternRecall(),
             proposal_evidence=NoOpProposalEvidence(),
             binding_fill=None,
+            route_renderer=None,
             focus_lease_port=focus_lease_port,
         )
 

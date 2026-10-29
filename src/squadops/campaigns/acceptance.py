@@ -345,6 +345,9 @@ class RouteResult:
     #: A parameterized route no seed brings into being (#2398): blocked because nothing could
     #: reach its page, not because a page was read and failed.
     unseeded: bool = False
+    #: Why a blocked route wasn't read, when its reader says (SIP-0109 §24co: a product's routes,
+    #: read in the sandbox). Empty for a sample application's, whose reasons are logged.
+    detail: str = ""
 
 
 def route_rendering(
@@ -422,7 +425,8 @@ def increment_acceptance(
         elif route.unseeded:
             blocked.append(f"route {route.path}: not read, no seed brings its page into being")
         elif route.held is Held.BLOCKED_UNVERIFIED:
-            blocked.append(f"route {route.path}: not rendered")
+            why = f": {route.detail}" if route.detail else ""
+            blocked.append(f"route {route.path}: not rendered{why}")
     if unmet:
         return IncrementAcceptance(IncrementVerdict.REJECTED, tuple(unmet), tuple(blocked))
     if blocked:

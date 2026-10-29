@@ -136,10 +136,11 @@ Kept by the rule in CLAUDE.md ("SIP System"): one row per part, updated in the P
 | a Campaign on a repository-backed Project, point 2's launcher handoff: the head read at drain and handed to cycle creation, and a repository-backed increment's intent binding no tree (§24cd point 1; SIP-0112 H.9) | **shipped** | 2.5.0, PR #2763 |
 | a Campaign on a repository-backed Project, point 3's regression baseline: an increment on a head compared with the verification that made it, the record's commit with its inherited baseline; with §24ci (a)'s pytest exception-class reader and the product-runner discrimination rule (§24bv point 3, §24ci (a); SIP-0112 H.10) | **shipped** | 2.5.0, PR #2764 |
 | a Campaign on a repository-backed Project, point 5: the proposal's input read at the head, the change request on a product with each criterion's test placed under the product's runners, the scope's reading there, the continuation's change request, and the creation rules (§24bv point 5, §24cj; SIP-0112 H.4, H.11) | **shipped** | 2.5.0, PR #2771 |
-| a Campaign on a repository-backed Project, point 6: acceptance on the product's runner, runtime-side in the sandbox at the increment's delivery, each overlay a revision of its tree, in place of `qa.evaluate_increment`, which a branch increment's plan no longer carries (§24cd point 6, §24cl; its criterion files are §24cj's placed ones; SIP-0112 H.11's drop) | **shipped**, except route rendering on a product (§24cl item 6, next row) | 2.5.0, PR #2774 |
+| a Campaign on a repository-backed Project, point 6: acceptance on the product's runner, runtime-side in the sandbox at the increment's delivery, each overlay a revision of its tree, in place of `qa.evaluate_increment`, which a branch increment's plan no longer carries (§24cd point 6, §24cl; its criterion files are §24cj's placed ones; SIP-0112 H.11's drop) | **shipped**, except route rendering on a product (§24cl item 6, §24co's row) | 2.5.0, PR #2774 |
 | a Campaign on a repository-backed Project, point 4: upstream moving. The branch is rebased onto the commit and revision its Project reconciled, its head verified by the product's checks, a pending repair or retry superseded as `upstream_moved` (D10), the conflict and regression escalations, and the ref's follow (§24bv point 4, §24cd points 2–5, §24cm) | **shipped**, with §24cd point 5's frozen bundles at the rebase run by #2774's `frozen_on_runner` (§24cm item 11) | 2.5.0, PR #2770 |
 | a Campaign on a repository-backed Project, the supervisor's review-request push: the campaign branch pushed as `squadops/<campaign>` with the supervisor's own token, leased on the last push and refused over a branch someone else moved (§24ci (b), §24cn) | **shipped** | 2.5.0, PR #2772 |
-| a Campaign on a repository-backed Project, the rest: route rendering on a product, in the sandbox from contract 7's start, a release-level gap the supervisor schedules with #2414's remainder (§24bv point 3, §24cl item 6; SIP-0112 H.4) | **placed** | 2.5.0, #2619 |
+| a Campaign on a repository-backed Project, point 3's route rendering on a product: the profile's client routes rendered on the candidate, started in the sandbox from contract 7's start, read by the evaluator image's Chromium and judged by their views' root anchors (§24bv point 3, §24cl item 6, §24co; SIP-0102 §11k) | **shipped** | 2.5.0, PR #2777 |
+| a Campaign on a repository-backed Project, read live: a repository-backed Campaign's increments judged at delivery and promoted onto its branch end to end, on a product made from a blueprint (`z_shelfnote`, IR-7) and one with its own layout (`z_continuum`), as the 2.5 plan's Track A demonstrations (§24bv, §24cl, §24co) | **placed** | 2.5.0, #2619 |
 | a vitest test-id reader, so a vitest-only criterion can be read as discriminating (§24ci (a)) | **shipped**: from vitest's default reporter, as the product's own command prints it (SIP-0112 H.10) | 2.5.0, PR #2764, closes #2757 |
 | a Campaign cycle held on its instruction bindings escalates as `binding_hold`, released by re-supply and never parked (§24bw; SIP-0110 §A.3.6) | **shipped** | 2.4.0, PR #2628 (#2178's Campaign half) |
 
@@ -4889,3 +4890,263 @@ named as the release-level gap it called it. Item 13 also changes #2764's `held_
 - **The second review's fault injection:** the registry fails on the push's row after the forge opened the request, and the retry, by the same key or a new one, recovers the request and records it, with one request opened. Two retries at once, by one key or two, make one push and one forge call (`tests/unit/api/test_campaign_review_push.py`).
 
 **Who ruled.** The owner ruled the push (§24ci (b), 2026-10-28). The supervisor (the Spark lane) built it. Items 1 to 6 are the supervisor's calls, for the owner's review. Item 6's recovery answers the outside second review's P1 (SIP-0112 H.12). Item 7's port change is for the MacBook lane's G4.
+### 24co. Route rendering on a product, as built: the profile's client routes are rendered on the candidate, started in the sandbox from the product's declared start (2026-10-28, §8.3, §8.4, §24bv point 3, §24cl items 6 and 8; SIP-0112 contract 7, H.7; SIP-0102 §11e, §11k; SIP-0113 §4.1; #2619; the supervisor's build, for the owner)
+
+**Why.** §24cl item 6 left each route a blueprint product's profile names `blocked_unverified`, and the outside
+review called that a release-level gap: every increment on `z_shelfnote` blocks. §24cl item 6 scheduled the renderer
+with #2414's remainder, since both stand the product up from contract 7's start. This builds the renderer. Each item
+says what the build settled where the text leaves a choice, and the rule each reading comes from.
+
+**What was built, and each choice the text left.**
+1. **When, and on which tree: at delivery, beside the criteria** (`execution.product_acceptance`, §24cl item 1). The
+   tree is the candidate delivery verified: the head's checkout with the squad's changes. Its revision is checked
+   against the one delivery cut, or nothing is read (`CandidateNotDelivered`, §24cl item 4's rule).
+2. **Who renders: a renderer the runtime root builds over the sandbox's scenario runner**
+   (`scenarios.declared_routes.DeclaredStartRoutes`, handed to the executor as `route_renderer`). The choice: the
+   executor never names the runner. It builds squad task envelopes, and two guards keep every squad-side package from
+   importing the held-out scenarios' package (`test_held_out_scenarios_stay_out_of_the_squads_reach`,
+   `test_proposal_evidence_stays_on_its_task`; SIP-0113 §4.1, IR-4). So the executor reads a
+   `campaigns.product_routes.RouteRenderer`, and only the root names the scenarios' class. The factory requires
+   `route_renderer` (#1987's rule). `None` reads every route `blocked_unverified`, naming why.
+3. **How the product starts: by the scenario runner's one start path** (X-3b, SIP-0102 §11e; #2414's "one start path,
+   never a flag-gated second one"). The start is read by `scenarios.runner.configured_start`, from the Development
+   Configuration at the revision the cycle pinned. That function is also what the cycle-end hook reads (#2414's
+   remainder), so the two can never start a product differently. The copy is disposable and discarded (contract 3).
+   No scenario runs, and no suite is read.
+4. **How a page is read: by the evaluator image's own Chromium, with the qa role's flags.** It runs as the container's
+   entrypoint (`ContainerSpec.entrypoint`, `sandbox.environment.EVALUATOR_BROWSER`), with
+   `route_rendering.DUMP_DOM_FLAGS`, the flags a sample application's pages are read with. It runs on the app network,
+   with caps dropped and no new privileges, and with nothing of the app's environment.
+   - **Where:** at the app's IP, since a UI server may refuse a name it doesn't know (the driver's precedent), and
+     under the declared `ui_base`. SIP-0113 §4.1: "browser pages: a path from its declared UI base".
+   - **The choice: not the image's driver.** A request kind in `driver.mjs` would change the image's sources, so its
+     tag would move (`test_evaluator_image.py`) and every quality series on `-7` would end. The image, its tag,
+     `browser.mjs` and the Chromium pin are unchanged.
+5. **What counts as rendered: the sample application's rule** (§8.3, #659, `acceptance.route_rendering`). A route
+   renders when its view's root anchor is among the test ids the page's elements carry. The root anchor is the first
+   test id the approved manifest gives the route, the manifest the profile's routes were read from (H.7). A page read
+   without it is broken, and the increment is rejected. That includes a route the app no longer serves, whose page is
+   its 404 or another view's.
+   - **The choice: the ids are read from the elements' attributes** (`route_rendering.view_anchors`), not with the qa
+     role's pattern, which also counts a `data-testid="…"` in a script's text or a text node. Read live on the
+     evaluator image (below), the pattern found 4 distinct ids on a page whose elements carried 2. The qa reading is
+     unchanged here. It's filed as #2776, since changing it changes what a sample application's increment is judged
+     on.
+6. **Seeds and catch-alls, as a sample application's.** A parameterized route's page is brought into being by its seed
+   (`increment_tree.route_seeds`, §8.3, #2398). The seed is sent to the app's own address with the path as the manifest
+   writes it (SIP-0113 §10n ruling 8). A catch-all is read at `/__squadops_unmatched__` (#2754, #2755).
+7. **What blocks every route, naming why.** Never passed (SIP-0096). Each reason is contract 7's (SIP-0112 §8.2.1) or
+   SIP-0113 §4.1's:
+   - **no start declaration:** "no declaration: every scenario is `blocked_unverified`, reason 'no start declaration'".
+     The profile's `no_start_declaration` gap stays as H.7 derives it, disclosed. It isn't relaxed;
+   - **a declaration contract 7 refuses** (`declared_start`'s schema check): "no start declaration", with why;
+   - **a declared evaluation secret: "secret not available"** (contract 7; Q40). Nothing is resolved before the
+     owner's approval record (#2421, placed in 2.6), so a start that declares a secret isn't started without it;
+   - **readiness `command`: "no runner"** (§4.1). The runner checks `http` and `tcp`;
+   - **no runner, or one unreachable: "no runner"** (§4.1);
+   - **a start or readiness failure: "start failed"**, with the runner's detail (contract 7);
+   - **no readable approved manifest:** no route's anchor is known.
+8. **What blocks one route, naming why:**
+   - **a view that declares no anchor.** Nothing on its page could show its view rendered. This is stricter than a
+     sample application's rule, which holds such a route on any page read. It's named here and not changed for them,
+     with #2776;
+   - **a page the browser didn't read:** no `ui_base`, no app network, the image absent, the browser's container not
+     run, a non-zero exit, or nothing dumped;
+   - **a parameterized route nothing brings into being:** no seed, or a seed the app refused (#2398's reading).
+9. **The record.** The `increment_evaluation` document's `routes` entries are a sample application's, with one
+   addition: `detail`, on a blocked route whose reader says why. It's written only when set, so a sample application's
+   document is unchanged. The `blocked` lines carry the reason ("route /add: not rendered: start failed: …"), and so
+   do the campaign's and a successor's brief (§24br). One key is added for this evaluator alone, beside §24cl item 8's
+   two:
+   - `renderings`: what was started (the tree's identity, the configuration revision, whether it started, and why
+     not);
+   - and for each route its anchor, the path it was read at, the ids the page showed and why a blocked one wasn't
+     read. No reader reads it.
+10. **The wire** (SIP-0102 §11k). `POST /api/v1/evaluations` takes `routes`, and answers each one's reading. A service
+    that predates it ignores the field and answers none, so each route reads unread and blocks, never passes. Both
+    sides deploy together (SIP-0113 §10p ruling 7).
+11. **The expected set: the pinned routes and the routes the change request adds** (the outside review of PR #2777,
+    P2, 2026-10-28). Before this item, only the profile's routes were judged. A route the increment added fell
+    outside the checks, so a broken new page couldn't affect acceptance.
+    - **The pinned routes** are the profile's, with their anchors and seeds from the approved manifest (H.7), as
+      items 5 and 6 read them. They stay in the set whatever the request names, so a route the candidate drops still
+      reads broken.
+    - **The added routes** are the surfaces of the approved change request's `client_route` criteria (§7.2's
+      surface kinds; §24bv point 5: "an endpoint the start declaration serves", whose page counterpart point 5's
+      rails check against the declared `ui_base`). Each is one the profile doesn't pin, taken once. A route the
+      request names and the profile pins is judged once, by its pinned anchor.
+    - **Where they come from, read against the code first.** A product's change request carries no `manifest_delta`
+      (§24bv point 5: "**`manifest_delta`** is absent, and refused if present"), and its schema has no anchor field. A
+      `client_route` criterion names a path, a statement and a free-text `observable`. Its footprint names files,
+      not routes. So the criteria's surfaces are the only record of the routes an increment adds.
+    - **What an added route reads: blocked, whatever its page shows.** Nothing names its view's root anchor, and §8.3's
+      evidence that a route rendered is that anchor on its page (item 5). So it is `blocked_unverified`, "the change
+      request adds it, and names no anchor of its view". It's still rendered, so its record shows what the page
+      carried. An increment that adds a route can't be accepted with it, which is fail-closed (SIP-0096).
+    - **The choice: an anchor isn't read from the criterion's free-text `observable`.** A `data-testid` a proposer
+      wrote in prose is an unstructured claim, and parsing it would make the observable's wording a contract nobody
+      declared. A typed anchor on a `client_route` criterion would change the change request's schema and the
+      proposer's prompt (§7.2), which belongs in a design of its own. It's filed as #2779. Until then, every product
+      increment that adds a page blocks on that page.
+    - **The record:** each route in `renderings` names its `source`, `approved_manifest` or `change_request`.
+    - **A product with no blueprint** pins no route, and still has the routes its request adds judged. Before this
+      item it had none.
+12. **Inert markup is no evidence a view rendered** (the outside review of PR #2777 at `8c09cd4f`, P2, 2026-10-28).
+    - **What was found:** `view_anchors` counted the `data-testid` of every element in Chromium's dump, including
+      elements inside a `<template>`, whose content is an inert fragment never connected to the document.
+      - A fallback page for a missing route could carry an unused template stamped with the route's anchor, and the
+        route would read held.
+      - Read live on the evaluator image (`-7`), the dump keeps both a template's content and a `<noscript>`'s
+        (Chromium runs with scripting on, so the latter is never rendered).
+      - On a fallback page whose rendered element was `not-found`, `view_anchors` now finds `not-found` alone. The qa
+        role's pattern finds all four ids in the dump, including one in a template and one in a noscript.
+    - **What changed:** nothing inside a `<template>` or a `<noscript>` counts, however deep
+      (`route_rendering.INERT_ELEMENTS`).
+      - An inert element that never closes leaves everything after it inert. So does `<template/>`, which HTML parses
+        as an open element. Either way the page can only lose anchors and read broken, never gain one (fail-closed).
+      - A page that renders the view reads as before, since its view is connected.
+    - **The choice: the dumped DOM, filtered, not a query of the live one.** A live query (an element connected to the
+      document, at the route's URL) runs through the image's driver. That would change `driver.mjs`, so the image's
+      tag would move and every quality series on `-7` would end (item 4).
+      - In a dump, the only content not connected to the document is a template's, and a `<noscript>` is the one
+        element a scripted page carries without rendering.
+      - **What stays unread:** a connected element that's hidden, whether by `hidden`, `display: none` or being off
+        screen, still counts. Visibility isn't part of §8.3's rule as written, and judging it needs the live page.
+    - **Where the anchor must be: the root anchor, by its id, not a position the reading checks.**
+      - SIP-0105 §17 makes "the first `testids` entry of a route … `data-testid` on the stub's container". §24p rules
+        that "a route renders when its view's root anchor does … The root anchor is the first declared id, stamped on
+        the view's container (#659)".
+      - So the contract requires the root anchor, the first declared id, and not any of the view's other anchors.
+        `acceptance.route_rendering` enforces that for a sample application's route and a product's alike: it marks
+        only that id missing.
+      - It defines the root anchor as an id stamped on the container. It doesn't make the container's position in
+        the DOM something a reading must verify. So the reading takes a rendered element carrying the id as the
+        container, and nothing here changes the sample-application reading on that point.
+    - **The sample applications:** the qa role still reads with its pattern, which counts a template's and a
+      `<noscript>`'s content as well as a script's text. Changing that changes counted evidence, so it's added to #2776
+      and not changed here.
+13. **The evidence that the intended view rendered** (the outside review of PR #2777 at `c1cfe48a`, P2, 2026-10-28).
+    - **The rule:** a route renders when *the requested route's own root anchor is carried by a connected, not inert,
+      not-hidden-in-markup element, in the page the browser rendered at that route*. A successful browser exit adds
+      nothing: exit 0 with an empty dump is unread, and exit 0 with no qualifying anchor is broken.
+    - **Hidden in markup, fail-closed** (`route_rendering.hidden_in_markup`). An anchor doesn't count when its element,
+      or any ancestor, has:
+      - the `hidden` attribute, whatever its value (`until-found` included);
+      - `aria-hidden="true"`;
+      - an inline `style` declaring `display: none`, `visibility: hidden` or `collapse`, or `content-visibility:
+        hidden`, `!important` or not.
+      These are treated like item 12's inert markup. A descendant that re-shows itself (`visibility: visible` under a
+      hidden ancestor) still doesn't count: fail-closed.
+    - **How:** the open elements are now read as a stack. Chromium's serializer writes every non-void element's end
+      tag, so the stack is the document's tree. An end tag that opened nothing is ignored, so a stray one can't end a
+      hidden region early. An unclosed hidden or inert element leaves the rest of the page uncounted.
+    - **Fallbacks and redirects.** A client route on a single-page app answers 200 with `index.html` for any path. So
+      an HTTP status says nothing about a client route, and `--dump-dom` shows neither the status nor whether the
+      navigation stayed on the route. Read live on the `-7` image: a script that sends `/settings` to `/` leaves
+      home's DOM in the dump.
+      - What the dump does show is which view rendered. A fallback or a redirect renders another view, whose root
+        anchor isn't the requested one, so the root-anchor rule reads it broken.
+      - That holds only while no two routes share a root anchor. PR #2780 makes them unique at the rails (SIP-0109
+        §24cp). The renderer refuses it here too: two routes in the expected set whose views share a root anchor are
+        both `blocked_unverified`, "its view's root anchor is also <the other>'s", since neither page can be told
+        from the other's (fail-closed).
+    - **Not judged here, named:** hiding by a stylesheet rule (a class, a media query, a parent's rule) can't be seen
+      in a dump. Judging it, with the final URL and the status, needs the live DOM through the evaluator's driver.
+      That moves the image's tag and ends the `-7` series (item 4). It's filed for the next evaluator tag as #2782.
+    - **The sample applications:** the qa role's pattern counts a hidden element's anchor too. That's #2776's change to
+      counted evidence, and it isn't changed here.
+
+**The cost.** One more start of the product for each increment whose expected set isn't empty: its install, build and
+start. And one Chromium container for each route.
+
+**Not built here:**
+- the qa role's reading of a sample application's pages from their elements (#2776);
+- an approved secret resolved for the start (#2421, 2.6);
+- an anchor a change request names for a route it adds, so an added route can hold (item 11; #2779).
+- a visibility reading from the live DOM, with the final URL and the status, for hiding by a stylesheet rule (item 13;
+  #2782, the next evaluator tag).
+
+**Evidence.**
+- **The wiring, entered at the live caller:** `test_product_runner_acceptance_wiring.py` enters at the executor's end
+  of plan (`_execute_sequential`, which delivers), on the shared fixture's Tally. Tally is given a blueprint's routes, a
+  `ui_base` and no secret, and its routes are rendered by the root's renderer over the real `ContainerScenarioRunner`.
+  The browser's container is the fake's. It covers:
+  - the candidate delivery verified, started by its declared start, with both routes held and the evidence on the
+    stored document;
+  - a route the candidate no longer serves, which rejects the increment;
+  - a start that fails, which blocks both routes, naming why.
+- **The renderer:** `test_product_routes.py`, over the real runner. It covers each item 7 and 8 reason, the catch-all,
+  the seed, the unseeded route, a route with no anchor, a page whose root anchor is missing, and the unverified
+  candidate.
+- **The runner:** `test_scenario_runner_routes.py`. It covers:
+  - the browser's argv, posture and address;
+  - the seed's address;
+  - the `ui_base` path;
+  - a script's text not counted;
+  - each unread reason;
+  - the routes read after the quality reading and the scenarios;
+  - the wire round trip, including an older service's answer.
+- **The rest:** `test_http_surface.py` carries the routes through the client and the service. The adapter tests cover
+  `--entrypoint`, the image tests `EVALUATOR_BROWSER`, and the route-rendering tests `view_anchors` and the one set of
+  flags.
+- **Read live on the Spark (2026-10-28).** The worktree's runner and renderer ran over the real `DockerAdapter`, the
+  `-7` evaluator image's Chromium (`--entrypoint /usr/bin/chromium`, caps dropped, no new privileges) and an invented
+  one-page product, served by `python:3.12-slim` on a throwaway network:
+  - of 4 routes, 3 held with their anchors seen, `*` read at the unmatched path;
+  - the one the app doesn't serve read broken: `settings-view` missing, `not-found` seen;
+  - the page whose script names two other views showed only its own two ids;
+  - the copy was removed, and nothing was left running.
+- **Item 11's evidence** (the outside review's P2):
+  - `test_product_routes.py`: an added route blocked whether its page renders, is broken or reads nothing; the pinned
+    routes still judged beside it; an increment with an added route blocked; one that drops a pinned route rejected;
+    a product with no blueprint judging its added route;
+  - the wiring test at the executor's end of plan: a change request whose criterion is on `/totals`, a page the
+    candidate serves broken, and the increment not accepted, with the pinned routes still held.
+- **Item 12's evidence** (the outside review's P2 at `8c09cd4f`):
+  - `test_route_rendering.py`: no anchor counted inside a template (nested ones too) or a noscript, the elements after
+    one still counted, and an unclosed or self-closed template inert to the end;
+  - `test_product_routes.py`: a fallback page carrying the route's anchor only in a template, or only in a noscript,
+    reads broken;
+  - the wiring test at the executor's end of plan: a fallback page with `/`'s anchor only in a template rejects the
+    increment, and its record shows only `not-found-view` seen;
+  - read live on the `-7` image's Chromium, the dump of such a page: as item 12 says.
+- **Item 13's evidence** (the outside review's P2 at `c1cfe48a`):
+  - `test_route_rendering.py`: no anchor counted under each hiding attribute or inline declaration, on an element or
+    its ancestor; `aria-hidden="false"` and a style that hides nothing still counted; a hidden void element, a stray end
+    tag inside a hidden region, and an unclosed hidden element;
+  - `test_product_routes.py`: a redirect that renders home, a fallback that renders another view, and an anchor hidden
+    by its attribute, an ancestor's inline style or an `aria-hidden` ancestor, each read broken, never held; and two
+    routes sharing a root anchor, both blocked;
+  - the wiring test at the executor's end of plan: `/`'s anchor only under an inline `display:none`, beside a
+    visible fallback, rejects the increment;
+  - read live on the `-7` image's Chromium (2026-10-28): the dump of a page whose anchors are hidden by `hidden=""`
+    and by an inline `display: none` reads `not-found` alone, and a redirect's dump reads home's anchor alone.
+- **Mutants:** forty-seven, all caught: items 1 to 10's twenty-seven, five on item 11, five on item 12 and ten on item
+  13:
+  - the hidden attribute, `aria-hidden`, an inline style, `display: none`, `visibility: hidden` and
+    `content-visibility: hidden` each ignored;
+  - `!important` read as part of the value;
+  - an ancestor's hiding not inherited;
+  - a stray end tag ending a hidden region;
+  - a hidden void element counted;
+  - a shared root anchor not refused.
+
+  Item 12's
+  are a template's content read, a noscript's content read, an inert element never closed, a nested template
+  closing the outer one, and a self-closed template read as opening nothing. Item 11's are:
+  - the requested routes ignored;
+  - an added route held on any page read;
+  - the pinned routes dropped when one is added;
+  - delivery handing the renderer no requested routes;
+  - the record's source lost.
+- **The loaded checks** `2619-product-routes` and `2777-review` (the runtime) and `2619-product-routes-sandbox` and
+  `2777-review-inert` and `2777-review-hidden` (the sandbox service, which reads the pages)
+  (`scripts/dev/loaded_checks.yaml`), each run on the source.
+
+**Who ruled.** The supervisor (the Spark lane) built §24bv point 3's rendering under the owner's direction of
+2026-10-21 and the 2.5 grants. Items 1 to 13 are the supervisor's choices, for the owner's review. Items 11 to 13
+answer the outside review's findings on PR #2777 (each a P2, relayed by the owner, 2026-10-28). Item 13's direction was
+the supervisor's, and its unjudged case is named in it (#2782). Its direction was the supervisor's,
+and its choice not to read an anchor from prose is named in it. Item 9 adds a key
+to the `increment_evaluation` document, and item 3 adds a reader of contract 7, so it takes the outside review SIP-0112
+H.12 provides before the merge.

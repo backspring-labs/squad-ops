@@ -198,6 +198,7 @@ from squadops.telemetry.models import CorrelationContext, StructuredEvent
 
 if TYPE_CHECKING:
     from squadops.campaigns.launcher import BoxVerdict
+    from squadops.campaigns.product_routes import RouteRenderer
     from squadops.campaigns.progress import CampaignProgress
     from squadops.cycles.models import SquadProfile
     from squadops.execution.reply_router import ReplyRouter
@@ -775,6 +776,7 @@ class DispatchedFlowExecutor(FlowExecutionPort):
         focus_lease_port: FocusLeasePort | None = None,
         source_repository: SourceRepositoryPort | None = None,
         sandbox: ExecutionSandboxPort | None = None,
+        route_renderer: RouteRenderer | None = None,
         run_completion: RunCompletion | None = None,
         correction_runner: CorrectionRunner | None = None,
         pulse_boundary_runner: PulseBoundaryRunner | None = None,
@@ -831,6 +833,11 @@ class DispatchedFlowExecutor(FlowExecutionPort):
         # and the sandbox its candidate is verified in.
         self._source_repository = source_repository
         self._sandbox = sandbox
+        # SIP-0109 §24co: what renders a repository-backed increment's client routes, on the product
+        # started from its declaration by the sandbox's scenario runner. The root builds it: this
+        # module never imports the held-out scenarios' package (SIP-0113 §4.1). ``None``: none, so
+        # each route a profile names is read ``blocked_unverified``.
+        self._route_renderer = route_renderer
         self._cancelled: set[str] = set()
         # SIP-0097 §6.4: run-completion collaborator (terminal path). Plain
         # injected collaborator with a default composed from this executor's
@@ -2573,6 +2580,7 @@ class DispatchedFlowExecutor(FlowExecutionPort):
                     vault=self._artifact_vault,
                     projects=self._project_registry,
                     sandbox=self._sandbox,
+                    route_renderer=self._route_renderer,
                     read_profile=self._derived_profile_for,
                 )
             except (

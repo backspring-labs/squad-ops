@@ -357,6 +357,7 @@ async def evaluate_cycle(
     elif (contents or pages or blueprint) and runner is None:
         blocked = BlockedReason.NO_RUNNER
     elif (contents or pages or blueprint) and runner is not None:
+        seeded: dict[str, Any] = {"seed": plan} if plan is not None else {}
         try:
             evaluated = await runner.evaluate_tree(
                 tree=tree,
@@ -367,7 +368,7 @@ async def evaluate_cycle(
                 scenarios=contents,
                 environment=environment or {},
                 pages=pages,
-                **({"seed": plan} if plan is not None else {}),
+                **seeded,
             )
         except RunnerUnavailable:
             blocked = BlockedReason.NO_RUNNER

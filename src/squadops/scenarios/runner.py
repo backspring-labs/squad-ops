@@ -39,6 +39,15 @@ class StartUndeclared(ValueError):
     reason = BlockedReason.NO_START_DECLARATION
 
 
+class SecretUnavailable(ValueError):
+    """A start that declares an evaluation secret no approval record releases (SIP-0112 Q40,
+    contract 7): it isn't resolved, and every scenario is ``blocked_unverified``, reason
+    ``secret_not_available``. The owner's per-Project approval is #2421's, unbuilt in 2.5, so no
+    declared secret is resolved yet."""
+
+    reason = BlockedReason.SECRET_NOT_AVAILABLE
+
+
 class ReadinessUnsupported(ValueError):
     """A valid readiness kind this runner doesn't check: ``command``, whose target the contract
     names as a string and not an argv. Every scenario is ``blocked_unverified``, ``no_runner``."""
@@ -227,6 +236,79 @@ def declared_start(
     )
 
 
+def configured_start(configuration: Any) -> DeclaredStart:
+    """A Project's own start (contract 7), from its Development Configuration at the revision
+    the unit pinned, as the runner runs it: what the cycle-end hook evaluates with (#2414), and
+    what an increment's client routes are rendered on (SIP-0109 §24co). One reading, so the two
+    can never start a product differently.
+
+    Raises:
+        StartUndeclared: The configuration declares no start, or one contract 7 refuses.
+        SecretUnavailable: The start declares an evaluation secret, which nothing resolves yet.
+        ReadinessUnsupported: Its readiness is a kind no runner checks.
+    """
+    # deferred (pair): the projects package reads the sandbox's findings, which load this one
+    from squadops.projects.development_configuration import start_document
+
+    declaration = configuration.commands.start
+    if declaration is None:
+        raise StartUndeclared("the Project declares no start")
+    if declaration.evaluation_environment:
+        names = ", ".join(name for name, _ in declaration.evaluation_environment)
+        raise SecretUnavailable(f"the start declares {names}, and no approval releases it")
+    return declared_start(
+        start_document(declaration), configuration_revision=configuration.revision
+    )
+
+
+@dataclass(frozen=True)
+class RouteRequest:
+    """A client route to read on the started tree (SIP-0109 §24co, §8.3): the route as the
+    manifest writes it, and, for a parameterized one, its seed (``increment_tree.route_seeds``):
+    the create that brings its page into being and the segment the created id fills."""
+
+    route: str
+    seed: Mapping[str, Any] | None = None
+
+    def as_dict(self) -> dict[str, Any]:
+        return {"route": self.route, "seed": dict(self.seed) if self.seed is not None else None}
+
+    @classmethod
+    def from_dict(cls, d: Mapping[str, Any]) -> RouteRequest:
+        seed = d.get("seed")
+        return cls(route=str(d["route"]), seed=dict(seed) if seed is not None else None)
+
+
+@dataclass(frozen=True)
+class RouteReading:
+    """One route's page as the browser read it (SIP-0109 §24co): the path it was read at, and
+    the test ids its elements carried. ``testids`` is ``None`` for a page that was never read, with
+    why in ``detail``: no path reached it, or nothing read it."""
+
+    route: str
+    path: str | None
+    testids: tuple[str, ...] | None
+    detail: str | None = None
+
+    def as_dict(self) -> dict[str, Any]:
+        return {
+            "route": self.route,
+            "path": self.path,
+            "testids": list(self.testids) if self.testids is not None else None,
+            "detail": self.detail,
+        }
+
+    @classmethod
+    def from_dict(cls, d: Mapping[str, Any]) -> RouteReading:
+        testids = d.get("testids")
+        return cls(
+            route=str(d["route"]),
+            path=d.get("path"),
+            testids=tuple(str(t) for t in testids) if testids is not None else None,
+            detail=d.get("detail"),
+        )
+
+
 @dataclass(frozen=True)
 class TreeEvaluation:
     """One tree's evaluation in the runner. ``started`` False carries why (``start_detail`` and
@@ -246,6 +328,8 @@ class TreeEvaluation:
     lint: LintReading | None = None
     #: Lighthouse and axe on a second, seeded instance (§10j, §10n). ``None`` when none was asked.
     quality_seeded: QualityReading | None = None
+    #: Each client route asked for, as the browser read it (SIP-0109 §24co). Empty when none was.
+    routes: tuple[RouteReading, ...] = ()
 
     def as_dict(self) -> dict[str, Any]:
         return {
@@ -261,6 +345,7 @@ class TreeEvaluation:
             "quality_seeded": (
                 self.quality_seeded.as_dict() if self.quality_seeded is not None else None
             ),
+            "routes": [r.as_dict() for r in self.routes],
         }
 
     @classmethod
@@ -283,4 +368,6 @@ class TreeEvaluation:
             quality_seeded=(
                 QualityReading.from_dict(d["quality_seeded"]) if d.get("quality_seeded") else None
             ),
+            # A service that predates §24co answers none: each route asked for is then unread.
+            routes=tuple(RouteReading.from_dict(r) for r in d.get("routes") or ()),
         )

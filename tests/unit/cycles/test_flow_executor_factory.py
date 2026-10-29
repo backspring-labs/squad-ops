@@ -32,6 +32,8 @@ _UNWIRED = {
     "proposal_evidence": NoOpProposalEvidence(),
     # #2178: the launcher's fill a held campaign cycle calls; ``None``, no launcher runs.
     "binding_fill": None,
+    # SIP-0109 §24co: what renders a product's routes; ``None``, each one blocks.
+    "route_renderer": None,
 }
 _REQUIRED = (*_UNWIRED, "task_timeout")
 

@@ -13,11 +13,15 @@ here, runtime-side, once its delivery has verified and captured the candidate:
   candidate judged is the revision delivery verified;
 - **its runner** is the derived profile's, read at the Project's pin (§24cd point 3), and its
   argvs run as the configuration's checks run (H.6);
+- **its routes** are the profile's client routes, rendered on the candidate started in the sandbox
+  from the product's declared start, by the renderer the root hands in
+  (``scenarios.declared_routes``, §24co);
 - **its record** is the ``increment_evaluation`` document a sample application's evaluation writes
   (``acceptance_run.evaluation_document``), stored on the implementation run, so the campaign's
   completion reads it unchanged: the verdict, the bundles a promotion freezes, the brief a
-  successor is given (§24br) and the reference report. Two keys are added for this evaluator
-  alone: ``evaluated_on`` and ``runs``, each run's overlay, revision and reading (§8.4's keys).
+  successor is given (§24br) and the reference report. Three keys are added for this evaluator
+  alone: ``evaluated_on``; ``runs``, each run's overlay, revision and reading (§8.4's keys); and
+  ``renderings``, what was started and what each route's page showed (§24co).
 
 A read that fails, a profile that's absent, or a sandbox that can't run raises
 (``ProductAcceptanceRefused``), so the run fails with it, as a ``qa.evaluate_increment`` that
@@ -45,6 +49,7 @@ from squadops.campaigns.increment_tree import (
     increment_basis,
     increment_evaluation_inputs,
 )
+from squadops.campaigns.product_routes import requested_routes, routes_blocked
 from squadops.campaigns.runner_acceptance import (
     RunnerAcceptance,
     RunnerSetup,
@@ -82,6 +87,7 @@ async def evaluate_product_increment(
     vault: Any,
     projects: Any,
     sandbox: Any,
+    route_renderer: Any,
     read_profile: Any,
 ) -> str:
     """Judge the delivered increment on its product's runner and store its ``increment_evaluation``
@@ -138,6 +144,25 @@ async def evaluate_product_increment(
         workspace_prefix=acceptance_workspace_prefix(run_id),
         verified_candidate_revision=delivery.verification.candidate_revision_id,
     )
+    # §24co: the profile's routes and the change request's, rendered on the candidate started
+    # from its declaration.
+    requested = requested_routes(change_request)
+    if route_renderer is None:
+        routes = routes_blocked(
+            tuple(dict.fromkeys((*(profile.client_routes or ()), *requested))),
+            "no route renderer: this runtime wires none",
+        )
+    else:
+        routes = await route_renderer.render(
+            profile=profile,
+            configuration=configuration,
+            initialization=await projects.get_initialization(cycle.project_id)
+            if profile.client_routes
+            else None,
+            candidate=candidate,
+            verified_candidate_revision=delivery.verification.candidate_revision_id,
+            requested_routes=requested,
+        )
     evaluation, done = await evaluate_on_runner(
         runs,
         increment_id=increment_id,
@@ -146,6 +171,7 @@ async def evaluate_product_increment(
         new=new,
         frozen=frozen,
         retired=retired,
+        routes=routes.results,
         replaced=replaced,
     )
     document = {
@@ -160,6 +186,7 @@ async def evaluate_product_increment(
         ),
         "evaluated_on": PRODUCT_RUNNER,
         "runs": [r.as_dict() for r in done],
+        "renderings": routes.record,
     }
     return await _store(cycle, run_id, document, vault)
 
