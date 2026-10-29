@@ -108,12 +108,16 @@ async def test_a_pause_during_the_evaluation_holds_and_the_resumed_campaign_is_d
     """#2789, as found. Bugs caught: the promotion written from the campaign as it was before the
     evaluation (``paused → building``) and the decision launching over the owner's brake; the
     re-hearing deciding it while it is still paused; or, once resumed, never deciding it, or
-    evaluating the increment a second time."""
+    evaluating the increment a second time. And: a pause the hearing could see is never tried
+    against. Nothing is written, not even a refused promotion, which the registry would record
+    in the campaign's log as an operation that happened."""
     world, store, runner, cycle, run, progress = await _delivered(tmp_path, runner_acts=PAUSE)
 
     assert await progress.cycle_ended(cycle, run, CycleStopReason.SEQUENCE_COMPLETED) is None
     promotions, decisions = await _increment_rows(world)
     assert (promotions, decisions) == ([], [])
+    log = await world.campaigns.control_log(CID)
+    assert _stale(log, ControlOperation.PROMOTE, f"promote:{INCREMENT}:") == []
     assert (await world.campaigns.get_campaign(CID)).state is CampaignState.PAUSED
     assert await progress.rehear_ended([INCREMENT]) == []
 
