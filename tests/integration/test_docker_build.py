@@ -14,6 +14,13 @@ from pathlib import Path
 import pytest
 
 
+def _why(result: subprocess.CompletedProcess) -> str:
+    """A failed build's stderr, by its tail (#2790): BuildKit writes its progress first and its
+    error last, so the head shows a build starting and never why it failed."""
+    err = result.stderr or ""
+    return f"({len(err)} characters of stderr, the last 3,000 shown)\n{err[-3000:]}"
+
+
 @pytest.fixture(scope="module")
 def project_root():
     """Get the project root directory."""
@@ -41,7 +48,7 @@ def build_qa_image(project_root):
         timeout=300,
     )
     if result.returncode != 0:
-        pytest.skip(f"Docker build failed: {result.stderr[:200]}")
+        pytest.skip(f"Docker build failed: {_why(result)}")
     return "squadops/eve:test"
 
 
@@ -66,7 +73,7 @@ def build_dev_image(project_root):
         timeout=300,
     )
     if result.returncode != 0:
-        pytest.skip(f"Docker build failed: {result.stderr[:200]}")
+        pytest.skip(f"Docker build failed: {_why(result)}")
     return "squadops/neo:test"
 
 
@@ -91,7 +98,7 @@ def test_qa_docker_build_succeeds(project_root):
         timeout=300,
     )
 
-    assert result.returncode == 0, f"Docker build failed: {result.stderr[:500]}"
+    assert result.returncode == 0, f"Docker build failed: {_why(result)}"
 
 
 @pytest.mark.integration
@@ -115,7 +122,7 @@ def test_dev_docker_build_succeeds(project_root):
         timeout=300,
     )
 
-    assert result.returncode == 0, f"Docker build failed: {result.stderr[:500]}"
+    assert result.returncode == 0, f"Docker build failed: {_why(result)}"
 
 
 @pytest.mark.integration
@@ -229,7 +236,7 @@ def test_build_hash_propagation(project_root):
         timeout=300,
     )
 
-    assert result.returncode == 0, f"Docker build failed: {result.stderr[:500]}"
+    assert result.returncode == 0, f"Docker build failed: {_why(result)}"
 
     # Check label was applied
     inspect_result = subprocess.run(
