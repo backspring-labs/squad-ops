@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import pytest
 
-from squadops.scenarios.steps import HttpRequest, HttpResponse, run_scenario
+from squadops.scenarios.steps import HttpRequest, HttpResponse, run_scenario, vocabulary_refusals
 
 #: The reference scenario's job (#1804, the PRD's Expansion Tier 1 item 1): a run with a capacity
 #: of one refuses a second participant.
@@ -192,3 +192,103 @@ async def test_a_where_check_that_names_no_field_is_one_the_runner_cannot_read()
     )
 
     assert (run.result, run.blocked_reason) == ("blocked_unverified", "no_runner")
+
+
+#: A ledger with two accounts, each read alone at ``/accounts/<id>`` (#2784's shape).
+_ACCOUNTS = [{"id": "acct-a", "balance": 3}, {"id": "acct-b", "balance": 5}]
+
+
+def _ledger(*, reads_by_id: bool):
+    async def send(request: HttpRequest) -> HttpResponse:
+        if request.path == "/accounts":
+            return HttpResponse(200, _ACCOUNTS)
+        wanted = request.path.rsplit("/", 1)[-1]
+        found = [a for a in _ACCOUNTS if a["id"] == wanted] if reads_by_id else _ACCOUNTS[:1]
+        return HttpResponse(200, found[0]) if found else HttpResponse(404, {"detail": "none"})
+
+    return send
+
+
+_COMPARED = {
+    "scenario_id": "an-account-read-alone-matches-the-list",
+    "steps": [
+        {"action": "http", "method": "GET", "path": "/accounts",
+         "save": {"account": "1.id", "balance": "1.balance"}},
+        {"action": "http", "method": "GET", "path": "/accounts/{account}"},
+    ],
+    "checks": [
+        {"check": "json", "step": 2, "path": "id", "equals": "{account}"},
+        {"check": "json", "step": 2, "path": "balance", "equals": "{balance}"},
+        {"check": "json", "step": 1, "path": "", "where": {"id": "{account}"}},
+    ],
+}  # fmt: skip
+
+
+@pytest.mark.parametrize(
+    ("reads_by_id", "result", "detail"),
+    [(True, "passed", None), (False, "failed", "'id' is 'acct-a'")],
+    ids=["the item asked for", "always the first item"],
+)
+async def test_a_check_compares_a_response_with_a_value_an_earlier_step_saved(
+    reads_by_id, result, detail
+):
+    """#2784. Bugs caught: an HTTP check left unrendered, so ``"{account}"`` is compared as text
+    and a correct product fails; a saved number rendered as text, so ``3 == "3"`` fails; and a
+    check that holds whichever item the product answers."""
+    run = await run_scenario(_COMPARED, _ledger(reads_by_id=reads_by_id))
+
+    assert (run.result, run.detail) == (result, detail)
+
+
+async def test_a_check_naming_a_value_no_step_saved_is_the_suites_gap_not_a_failure():
+    """#2784. Bug caught: a suite's typo read as the product failing. Drafting refuses it
+    (``vocabulary_refusals``); a suite stored before the rule still reads blocked_unverified."""
+    scenario = {**_COMPARED, "checks": [{"check": "json", "step": 2, "path": "id", "equals": "{acount}"}]}  # fmt: skip
+
+    run = await run_scenario(scenario, _ledger(reads_by_id=True))
+
+    assert (run.result, run.blocked_reason) == ("blocked_unverified", "no_runner")
+    assert "acount" in run.detail
+
+
+@pytest.mark.parametrize(
+    ("steps", "checks", "refused"),
+    [
+        (_COMPARED["steps"], _COMPARED["checks"], []),
+        (
+            [_COMPARED["steps"][1], _COMPARED["steps"][0]],
+            [],
+            ["step 1: names {account}, which no earlier step saves"],
+        ),
+        (
+            _COMPARED["steps"],
+            [{"check": "json", "step": 2, "path": "owner", "equals": "{owner}"}],
+            ["check 1: names {owner}, which no step before it saves"],
+        ),
+        (
+            # An HTTP check is read after every step, so a later step's save is known to it.
+            [*_COMPARED["steps"], {"action": "http", "method": "GET", "path": "/x", "save": {"late": "id"}}],
+            [{"check": "json", "step": 1, "path": "0.id", "equals": "{late}"}],
+            [],
+        ),
+        (
+            # A browser check's segment is sent before a later step saves anything.
+            [{"action": "visit", "path": "/accounts"},
+             {"action": "http", "method": "GET", "path": "/accounts", "save": {"late": "0.id"}}],
+            [{"check": "text", "step": 1, "pattern": "{late}"}],
+            ["check 1: names {late}, which no step before it saves"],
+        ),
+    ],
+    ids=[
+        "every name saved first",
+        "a step reads a name before it's saved",
+        "a check names a value nothing saves",
+        "an http check reads a later save",
+        "a browser check reads a later save",
+    ],
+)  # fmt: skip
+def test_a_name_no_step_saves_before_its_read_is_refused_when_drafted(steps, checks, refused):
+    """#2784. Bugs caught: a misspelt or misordered name reaching an approved suite, where it
+    reads as the product failing; and a refusal of a name a step does save, or one an HTTP check
+    reads from a later step."""
+    assert vocabulary_refusals(steps, checks) == refused

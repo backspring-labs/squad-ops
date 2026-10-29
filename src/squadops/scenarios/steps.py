@@ -14,7 +14,9 @@ that step.
 **A check:** ``{"check": "status", "step": 3, "equals": 409}`` (or ``"in": [400, 422]``), or ``{"check": "json", "step": 4,
 "path": "participants.0.name", "equals": "Ada"}`` (or ``"length": 1``, or ``"contains": ...``, or
 ``"where": {"title": "Riverside 10K"}``: some element of the list has every field named equal).
-Steps are numbered from 1.
+Steps are numbered from 1. A check's values are rendered with the saved values as a step's are
+(#2784), so one response is compared with another: ``{"check": "json", "step": 4, "path":
+"participants.0.id", "equals": "{participant}"}``. A value that is one name keeps its own type.
 
 **A browser step** (§10k, §10p): ``{"action": "visit", "path": "/runs/{run_id}"}``,
 ``{"action": "fill", "target": {...}, "value": "Ada"}`` or ``{"action": "click", "target": {...}}``.
@@ -413,7 +415,11 @@ class _Run:
                 seen = self.read[index]
             else:
                 try:
-                    seen = _check(check, self.responses)
+                    seen = _check(_render_check(check, self.names), self.responses)
+                except _Missing as e:
+                    # A name no step saved is the suite's, refused when it's drafted
+                    # (``vocabulary_refusals``): nothing about the product was read.
+                    return self.blocked("no_runner", f"check {index + 1}: {e}")
                 except LookupError as e:
                     return self.blocked("no_runner", str(e))
             if seen is not None:
@@ -431,11 +437,53 @@ def vocabulary_refusals(
     steps: Sequence[Mapping[str, Any]], checks: Sequence[Mapping[str, Any]]
 ) -> list[str]:
     """Every way a scenario's browser steps and its checks are malformed (§10p rulings 2, 3 and 9),
+    or name a value no step saves before it's read (#2784),
     each by its step or check and never by a value, since a value is held out. Read when a suite is
     drafted or approved, never when one runs or is read, so a rule added later can't make an
     approved suite unreadable."""
     actions = {n: step.get("action") for n, step in enumerate(steps, start=1)}
-    return _step_refusals(steps, actions) + _check_refusals(checks, actions)
+    return (
+        _step_refusals(steps, actions)
+        + _check_refusals(checks, actions)
+        + _name_refusals(steps, checks)
+    )
+
+
+def _names(value: Any) -> set[str]:
+    """Each ``{name}`` a value renders: in its strings, a mapping's values and a list's items."""
+    if isinstance(value, str):
+        return set(_VAR.findall(value))
+    if isinstance(value, Mapping):
+        return set().union(*(_names(v) for v in value.values()))
+    if isinstance(value, list):
+        return set().union(*(_names(v) for v in value))
+    return set()
+
+
+def _name_refusals(
+    steps: Sequence[Mapping[str, Any]], checks: Sequence[Mapping[str, Any]]
+) -> list[str]:
+    """#2784: every ``{name}`` is one an ``http`` step saves before it's read. A step reads the
+    values saved before it; a browser check, those saved before its step's segment is sent; an HTTP
+    check is read after every step, so any step's. A name nothing saves would read as the
+    product's failure when it's the suite's."""
+    out: list[str] = []
+    saved: set[str] = set()
+    before: dict[int, set[str]] = {}
+    for n, step in enumerate(steps, start=1):
+        before[n] = set(saved)
+        for name in sorted(_names(dict(step)) - saved):
+            out.append(f"step {n}: names {{{name}}}, which no earlier step saves")
+        if step.get("action") == "http" and isinstance(step.get("save"), Mapping):
+            saved |= set(step["save"])
+    for i, check in enumerate(checks, start=1):
+        at = check.get("step")
+        browser = check.get("check") in _BROWSER_CHECKS
+        known = before.get(at, set()) if browser and isinstance(at, int) else saved
+        read = _names({k: v for k, v in check.items() if k not in ("check", "step")})
+        for name in sorted(read - known):
+            out.append(f"check {i}: names {{{name}}}, which no step before it saves")
+    return out
 
 
 def _step_refusals(steps: Sequence[Mapping[str, Any]], actions: Mapping[int, Any]) -> list[str]:

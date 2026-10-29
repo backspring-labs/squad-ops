@@ -2441,3 +2441,51 @@ started from its declaration. #2414 kept the declared start at the hook (its com
 **Who ruled.** The supervisor (the Spark lane) built #2414's remainder under the owner's direction of 2026-10-21 and
 the 2.5 grants, for the owner's review. It reads contract 7 and writes contract 5's record, unchanged in shape, so it
 takes the outside review SIP-0112 H.12 provides before the merge, with SIP-0109 §24co's.
+
+### 10ab. A scenario's HTTP checks read the values its steps saved, and a name nothing saves is refused when drafted (2026-10-29, §4.1, §10c, §10p; #2784; the supervisor's fix)
+
+**What was wrong.** §10c's vocabulary threads a step's saved values into later steps' paths and bodies, and §10p's
+browser checks are rendered with them too. An HTTP check (`status`, `json`) was read as written, so a check whose value
+names a saved value (`"equals": "{owner}"`) compared the response with that text and could never hold. The module's
+own description said checks use the saved values. Found by the supervisor on 2026-10-29, running the 2.5
+demonstration suites' HTTP scenarios (D11) against today's products before their review: a check on a list holding the
+saved id failed.
+
+**Why it matters:** a product's own ids and names are public in its repository, so a held-out check can't quote them
+(#2617). It has to compare one response with another, which needs the saved value.
+
+**What changed** (`squadops.scenarios.steps`):
+- **An HTTP check is rendered with the saved values,** as a browser check is (`_render_check`). A value that is one
+  name keeps its own type, so a saved number compares as a number.
+- **A name no step saved** reads `blocked_unverified` (`no_runner`) when it runs, never `failed`. It's the suite's
+  gap, and nothing about the product was read.
+- **A name nothing saves before it's read is refused when a suite is drafted or approved** (`vocabulary_refusals`):
+  - a step reads the values saved before it;
+  - a browser check reads those saved before its step's segment is sent;
+  - an HTTP check is read after every step, so it reads any step's.
+
+**What it changes for approved suites: nothing.**
+- Revision 6 (`89bffc19…`): 0 of its 59 HTTP checks names a saved value.
+- Revisions 5 and 6: 0 refusals under the new rule, read by count on 2026-10-29.
+
+**Evidence:**
+- `test_scenario_steps.py`:
+  - a check comparing a response with a value an earlier step saved, read on a product that answers the item asked
+    for (passed) and one that always answers the first (failed at that check);
+  - a name no step saved (blocked);
+  - five cases of the drafting rule.
+- `test_scenario_runner.py`: the same comparison entered at `ContainerScenarioRunner.evaluate_tree`, the live caller.
+- **Mutants:** six applied, five caught:
+  - checks left unrendered;
+  - a whole name rendered as text;
+  - a missing name read as a failure;
+  - the drafting rule off;
+  - a browser check seeing later saves.
+
+  The sixth, `save` paths read as names, has no observable effect, since a `save` maps names to JSON paths, which
+  carry no `{name}`. Its exclusion was removed instead.
+- **The loaded check** `2784-checks-read-saved-values` (the sandbox service, which runs the scenarios), run on the
+  source.
+
+**Who ruled.** The supervisor fixed it under the owner's 2.5 grants. It makes the vocabulary do what its description
+said, and no approved suite reads differently.
