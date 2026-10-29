@@ -204,7 +204,7 @@ async def test_the_edit_resolves_against_the_failed_attempts_file_over_the_works
     workspace copy when the failed attempt had already changed the file — the anchor the model
     copied from the failing file would be reported missing, or apply to text the verifier
     never sees."""
-    from squadops.capabilities.handlers.impl.repair_handlers import REPAIR_FAILED_ARTIFACTS_KEY
+    from squadops.capabilities.context_assembly import REPAIR_FAILED_ARTIFACTS_KEY
 
     failed_routes = _ROUTES.replace("def list_runs():\n", "def list_all_runs():\n")
     edit = (

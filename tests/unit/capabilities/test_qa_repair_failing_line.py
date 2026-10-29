@@ -16,16 +16,14 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 
 from adapters.prompts.filesystem_asset_adapter import FilesystemPromptAssetAdapter
-from squadops.capabilities.handlers.impl.repair_handlers import (
-    QATestRepairHandler,
-    failing_line_excerpts,
-)
+from squadops.capabilities.handlers.impl.repair_handlers import QATestRepairHandler
 from squadops.capabilities.handlers.test_runner import (
     RunTestsResult,
     failed_tests_pass_row,
     failing_cases,
     parse_vitest_failure_rows,
 )
+from squadops.capabilities.repair_prompt_contents import failing_line_excerpts
 from squadops.prompts.renderer import RequestTemplateRenderer
 
 pytestmark = [pytest.mark.domain_capabilities]

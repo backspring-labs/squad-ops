@@ -217,7 +217,8 @@ def test_the_composer_counts_artifact_contents_as_the_handler_shows_it(task_type
 
 def test_a_repair_never_counts_artifact_contents():
     """A ``qa.test`` repair never shows its curated context (``REPAIR_CONTEXT_CONTRACT``): unchanged
-    by #2805. Bug caught: the qa rendering reaching the repair through its task type's name."""
+    by #2805, and by #2810, whose repair rendering covers its tree, never ``artifact_contents``.
+    Bug caught: the qa rendering reaching the repair through its task type's name."""
     envelope = SimpleNamespace(
         task_type="qa.test_repair", inputs=_inputs(**_FOCUSED, expected_artifacts=["tests/a.py"])
     )
@@ -228,15 +229,20 @@ def test_a_repair_never_counts_artifact_contents():
 def test_every_declared_rendering_is_counted_through_its_function(monkeypatch):
     """Bug caught: a contract naming a rendering the composer has no function for, read silently as
     the whole tree (the over-count #2805 removed) or as nothing (an under-count the guard refuses).
-    It fails instead, and every rendering declared today has its function."""
+    It fails instead, and every rendering declared today has its function. A rendering covering an
+    input its contract declares unrendered is a contradiction, and none does (#2810)."""
     contracts = [*CONTEXT_CONTRACTS.values(), REPAIR_CONTEXT_CONTRACT]
-    declared = {c.artifact_contents_rendering for c in contracts} - {""}
+    declared = {c.scoped_rendering for c in contracts} - {""}
 
-    assert declared == set(prompt_budget._CONTENTS_RENDERINGS)
+    assert declared == set(prompt_budget._RENDERINGS)
+    for contract in contracts:
+        if contract.scoped_rendering:
+            covered = prompt_budget._RENDERINGS[contract.scoped_rendering].of
+            assert covered.isdisjoint(contract.unrendered_inputs), contract.scoped_rendering
     monkeypatch.setitem(
         CONTEXT_CONTRACTS,
         "qa.test",
-        dataclasses.replace(CONTEXT_CONTRACTS["qa.test"], artifact_contents_rendering="unknown"),
+        dataclasses.replace(CONTEXT_CONTRACTS["qa.test"], scoped_rendering="unknown"),
     )
     with pytest.raises(KeyError, match="unknown"):
         rendered_input_tokens(SimpleNamespace(task_type="qa.test", inputs=_inputs()))

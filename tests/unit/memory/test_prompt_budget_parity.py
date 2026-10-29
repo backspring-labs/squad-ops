@@ -244,6 +244,64 @@ async def test_the_composers_count_covers_a_correction_repair():
     assert rendered <= estimate <= rendered + _MARGIN, (estimate, rendered)
 
 
+#: #2810: a qa suite's failing case, on the line of the product's suite its repair is shown.
+_FAILING_CASES = {
+    "validation_result": {
+        "summary": "1 failed",
+        "checks": [
+            {
+                "check": "tests_pass",
+                "passed": False,
+                "failing_cases": [
+                    {"file": "tests/test_area_1.py", "title": "test_area", "failing_line": 5}
+                ],
+            }
+        ],
+    }
+}
+
+
+@pytest.mark.parametrize(
+    ("task_type", "role", "named", "evidence"),
+    [
+        ("development.correction_repair", "dev", "orbit/module_1.py", {"error": "a 500"}),
+        ("qa.test_repair", "qa", "tests/test_area_1.py", _FAILING_CASES),
+    ],
+    ids=["dev", "qa"],
+)
+async def test_the_composers_count_covers_a_repair_on_a_product_it_shows_one_file_of(
+    task_type, role, named, evidence
+):
+    """#2810, entered at each repair's ``handle``: the repair carries a product of three packages
+    as its tree and the failed task's own file over it, and its prompt shows the one file it may
+    revise, its edit form and, for the qa repair, the failing case's frame. Outside that file the
+    product holds more than the margin, so a count of the whole tree fails the margin and holds a
+    repair that fits, and a count short of what the three sections show fails the floor."""
+    from squadops.capabilities.handlers.impl.repair_handlers import (
+        DevelopmentCorrectionRepairHandler,
+        QATestRepairHandler,
+    )
+    from tests.unit.capabilities.test_repair_decision_section import _EDIT, _context
+
+    handler = {"dev": DevelopmentCorrectionRepairHandler, "qa": QATestRepairHandler}[role]()
+    ctx = _real_prompts(_context(_EDIT, _EDIT), role)
+    inputs = {
+        "prd": _PRD,
+        "agent_model": "qwen2.5:14b",
+        "failed_task_type": "qa.test" if role == "qa" else "development.develop",
+        "failure_evidence": evidence,
+        "correction_decision": {"correction_path": "patch", "decision_rationale": "patch it"},
+        "expected_artifacts": [named],
+        "acceptance_workspace_files": _PRODUCT,
+        "failed_task_artifacts": [{"name": named, "content": _CODE.replace("10", "11")}],
+    }
+    await handler.handle(ctx, inputs)
+    rendered = _rendered(ctx.ports.llm.chat_stream_with_usage.await_args_list[0].args[0])
+    estimate = prompt_without_memory_tokens(SimpleNamespace(task_type=task_type, inputs=inputs))
+
+    assert rendered <= estimate <= rendered + _MARGIN, (estimate, rendered)
+
+
 async def test_the_composers_count_covers_the_manifest_author():
     """#2681, entered at the manifest author's ``handle``, which renders the longest rules."""
     from squadops.capabilities.handlers.planning.manifest import DevelopmentAuthorManifestHandler
