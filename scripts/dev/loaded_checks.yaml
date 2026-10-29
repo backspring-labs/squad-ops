@@ -2316,13 +2316,13 @@ checks:
     code: |
       import squadops.capabilities.handlers.impl.repair_handlers as r
       from squadops.capabilities import repair_prompt_contents as c
-      print(r.current_files is c.current_files, r.edit_form is c.edit_form, r.failing_case_frames is c.failing_case_frames, hasattr(r._RepairPromptMixin, "_anchorable_files"), hasattr(r._RepairPromptMixin, "_repair_base_files"))
-    expect: "True True True False False"
+      print(r.repair_prompt_contents is c, hasattr(r._RepairPromptMixin, "_anchorable_files"), hasattr(r._RepairPromptMixin, "_repair_base_files"), "failing_line_excerpts" in vars(c))
+    expect: "True False False True"
   - id: "2810-repair-handler-eve"
     what: the qa repair shows its tree and its failing frames through the functions the composer counts them with (#2810)
     container: squadops-eve
     code: |
       import squadops.capabilities.handlers.impl.repair_handlers as r
       from squadops.capabilities import repair_prompt_contents as c
-      print(r.current_files is c.current_files, r.edit_form is c.edit_form, r.failing_case_frames is c.failing_case_frames, hasattr(r._RepairPromptMixin, "_anchorable_files"), hasattr(r._RepairPromptMixin, "_repair_base_files"))
-    expect: "True True True False False"
+      print(r.repair_prompt_contents is c, hasattr(r._RepairPromptMixin, "_anchorable_files"), hasattr(r._RepairPromptMixin, "_repair_base_files"), "failing_line_excerpts" in vars(c))
+    expect: "True False False True"

@@ -19,6 +19,10 @@ from collections.abc import Mapping, Sequence
 from typing import TYPE_CHECKING, Any
 
 from squadops.campaigns.proposed_behaviours import is_outlet_file
+
+# #2810: what a repair shows of its tree, read through the module so the composer, the handler and
+# a replay's override (``scripts/dev/convergence_replay``) all reach the same function.
+from squadops.capabilities import repair_prompt_contents
 from squadops.capabilities.anchored_edits import (
     EMISSION_FAILURE_ANCHORED_EDIT_REFUSED,
     EMISSION_FAILURE_WHOLE_FILE_REFUSED,
@@ -46,13 +50,6 @@ from squadops.capabilities.handlers.increment_test_scope import (
 from squadops.capabilities.handlers.task_instructions import (
     project_instructions_section,
     task_instructions_section,
-)
-from squadops.capabilities.repair_prompt_contents import (
-    anchorable_files,
-    current_files,
-    edit_form,
-    failing_case_frames,
-    repair_base_files,
 )
 from squadops.capabilities.verification_scaffold_fill import (
     SLOT_SUBJECT_DROPPED_KEY,
@@ -446,7 +443,7 @@ class _RepairPromptMixin:
         }
         result = await super().handle(context, inputs)
         result = await self._retry_refused_anchored_edits(context, inputs, result)
-        base = repair_base_files(inputs)
+        base = repair_prompt_contents.repair_base_files(inputs)
         # Every base file's size, not only the offered ones: a base file re-emitted whole that
         # the form never offered is still a whole-file response (§46p, #1583).
         self._record_revision_form(
@@ -540,7 +537,7 @@ class _RepairPromptMixin:
         if renderer is None:
             return {}
 
-        editable = anchorable_files(inputs)
+        editable = repair_prompt_contents.anchorable_files(inputs)
         if editable:
             named = [normalize_ws_path(str(e)) for e in (inputs.get("expected_artifacts") or [])]
             shells = self._scaffold_shell_paths(inputs)
@@ -584,14 +581,17 @@ class _RepairPromptMixin:
 
         #2810: shown through ``repair_prompt_contents.current_files``, which the composer counts.
         """
-        shown = current_files(inputs)
+        shown = repair_prompt_contents.current_files(inputs)
         renderer = getattr(context.ports, "request_renderer", None)
         if not shown or renderer is None:
             return ""
         rendered = await renderer.render(
             "request.cycle_repair_current_files", {"current_files": shown}
         )
-        files, base = anchorable_files(inputs), repair_base_files(inputs)
+        files, base = (
+            repair_prompt_contents.anchorable_files(inputs),
+            repair_prompt_contents.repair_base_files(inputs),
+        )
         logger.info(
             "repair_current_files handler=%s files=%d chars=%d",
             self._handler_name,
@@ -613,7 +613,7 @@ class _RepairPromptMixin:
 
         #2810: listed through ``repair_prompt_contents.edit_form``, which the composer counts.
         """
-        lines, offered = edit_form(inputs)
+        lines, offered = repair_prompt_contents.edit_form(inputs)
         renderer = getattr(context.ports, "request_renderer", None)
         if not lines or renderer is None:
             return "", {}
@@ -642,7 +642,7 @@ class _RepairPromptMixin:
         # editing is never replaced whole without fallback authority, and nothing grants it. The
         # whole response is refused, edits included, as one invalid revision refuses its
         # transaction (§14).
-        refused = whole_file_refusals(emitted, anchorable_files(inputs))
+        refused = whole_file_refusals(emitted, repair_prompt_contents.anchorable_files(inputs))
         if refused:
             return [], {
                 "whole_file_refused": refused,
@@ -657,8 +657,8 @@ class _RepairPromptMixin:
         whole = [a for a in emitted if not a.get("emission_fallback")]
         application = apply_anchored_edits(
             parse,
-            repair_base_files(inputs),
-            writable=anchorable_files(inputs),
+            repair_prompt_contents.repair_base_files(inputs),
+            writable=repair_prompt_contents.anchorable_files(inputs),
             producer=str(self._task_type),
             task_id=str(inputs.get("task_id") or ""),
             whole_file_paths=[str(a.get("name") or "") for a in whole],
@@ -771,7 +771,7 @@ class _RepairPromptMixin:
         # does this evaluation, or a dev repair of a qa failure judges the qa suite's
         # criteria on a tree without the suite (cyc_4ec4ad5e2ca1: six `file_not_found`
         # failures about a file the patch never touched, and a correct fix refused twice).
-        workspace = repair_base_files(inputs)
+        workspace = repair_prompt_contents.repair_base_files(inputs)
         evaluation_inputs = (
             {**inputs, "acceptance_workspace_files": workspace} if workspace else inputs
         )
@@ -1130,7 +1130,7 @@ class _RepairPromptMixin:
             "case_lines": "\n".join(f"- {line}" for line in lines),
             "case_count": str(len(lines)),
         }
-        frames = failing_case_frames(inputs)
+        frames = repair_prompt_contents.failing_case_frames(inputs)
         if frames:
             variables["case_frames"] = frames
         rendered = await renderer.render("request.qa_test_repair_failing_cases_appendix", variables)

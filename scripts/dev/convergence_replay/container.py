@@ -362,9 +362,11 @@ def use_arm(arm: str) -> None:
     no file offered the edit form, the repair is asked "exactly as before" 1.8 — the output
     section, the closing line and the absent edit-form appendix all follow the one decision."""
     if arm == WHOLE_FILE:
-        from squadops.capabilities.handlers.impl import repair_handlers
+        # #2810: the decision is ``repair_prompt_contents.anchorable_files``, which the handler,
+        # its current files and its edit form all read through the module.
+        from squadops.capabilities import repair_prompt_contents
 
-        repair_handlers._RepairPromptMixin._anchorable_files = lambda self, inputs: []
+        repair_prompt_contents.anchorable_files = lambda inputs: []
 
 
 def failed_result(bundle: dict[str, Any], retest: Any) -> Any:
@@ -572,13 +574,12 @@ async def replay_sample(
     async def dispatch_step(
         step_envelope: Any, run_id: str, cycle: Any, flow_run_id: Any, **_: Any
     ) -> Any:
-        from squadops.capabilities.handlers.impl import repair_handlers
+        from squadops.capabilities import repair_prompt_contents
 
         role = (step_envelope.metadata or {}).get("role") or "qa"
         # What the arm offered this repair: the files it may revise by anchored edit. Read
         # through the handler's own decision (after the arm's override), not inferred.
-        probe = type("_Probe", (repair_handlers._RepairPromptMixin,), {})()
-        offered = probe._anchorable_files(step_envelope.inputs or {})
+        offered = repair_prompt_contents.anchorable_files(step_envelope.inputs or {})
         recorder = systems[role].ports.llm
         recorder.drain()  # only this step's generations are its responses
         step = await systems[role].orchestrator.submit_task(step_envelope, timeout_seconds=1800)
