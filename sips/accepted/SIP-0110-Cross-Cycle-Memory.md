@@ -3659,6 +3659,119 @@ This amendment doesn't decide it.
 
 **Who ruled it.** No new design ruling: §5ak names exact rendering as the next step once such a hold is seen.
 
+## 5ao. A repair's tree counted as its prompt shows it, and every task of a product's increment audited, as built (2026-10-29, #2810; the Spark lane)
+
+**What was wrong.** §5an fixed `qa.test` and left every repair counted as §5ak counts it. A correction repair carries
+the whole accepted tree its failed task was evaluated on (`acceptance_workspace_files`, forwarded for its own
+evaluation, #1229) and the failed task's own files (`failed_task_artifacts`, #1264). `REPAIR_CONTEXT_CONTRACT` counted
+that tree whole, "an upper bound", because the repair shows the failed task's named files from it. The 2.5 main
+demonstration's round 2 met it (Campaign `cmp_1399cc189ef5`, run `run_4e63aa5b8208`, 2026-10-29 15:17 UTC). Its
+develop task bound the 1,330-token project instruction and dispatched. Its acceptance failed, and the correction loop's
+`development.correction_repair` was held, "the project instructions take 1330 tokens and the prompt has 0", on a tree
+of about 105,000 tokens against a 65,536-token window.
+
+**What changed.**
+- **One module shows a repair's tree and counts it.** `capabilities/repair_prompt_contents.py` holds the base the
+  repair's edits resolve against (`repair_base_files`: the workspace with the failed task's own files over it) and the
+  files it may revise (`anchorable_files`), both moved from `_RepairPromptMixin`. It also holds the three sections the
+  prompt shows of that base:
+  - the current files, verbatim (`current_files`);
+  - the edit form's file list, each file with its entities (`edit_form`);
+  - a qa repair's failing-case frames (`failing_case_frames`, with `failing_line_excerpts` moved from the handler
+    module).
+
+  The repair handlers render each section through it, and their `handle()` is byte-identical to `origin/main`'s.
+  `repair_prompt_contents` returns the three, by the template variable each fills, and the composer counts that.
+- **The contract field is general.** §5an's `artifact_contents_rendering` becomes
+  `ContextAssemblyContract.scoped_rendering`, the rendering a handler shows a part of some inputs through.
+  `prompt_budget._RENDERINGS` names the inputs each rendering covers:
+  - `qa.test`'s (`CONTENTS_QA_TEST_PROMPT`) covers `artifact_contents`;
+  - a repair's (`CONTENTS_REPAIR_PROMPT`, on `REPAIR_CONTEXT_CONTRACT`) covers `acceptance_workspace_files` and
+    `failed_task_artifacts`.
+
+  Each covered input is counted once, through its rendering, when the task carries any of them. A name with no
+  rendering still fails.
+- **§5ak's third part now reads:** the raw text of each input the task carries, except memory's sections and the
+  inputs the contract declares unrendered. Where the contract names how its handler shows a part of some inputs, the
+  composer counts what the handler shows of them.
+
+**The audit.** Every task type a `campaign-increment-source` cycle dispatches, with each input above about 2,000
+tokens it carries on a large product. Measured on the guard's invented product of about 93,500 tokens, 65,536-token
+window, 14,336-token reserve:
+
+| task type | input over ~2k on a product | its handler shows | counted before | counted after | budget |
+|---|---|---|---|---|---|
+| `strategy.propose_increment` | `product_proposal`; `source_repository` | the proposal whole but its profile's `test_files`; the map and instruction files | whole | whole (an upper bound) | 43,752 |
+| plan writers: `development.design_plan`, `governance.prepare_plan_authoring_brief`, the three proposers | `prior_outputs` (the run's documents); `source_repository` | the documents whole and each role's summary; the repository whole | whole | whole (an upper bound) | 33,448 to 47,911 |
+| `qa.define_test_strategy`, `governance.merge_plan`, `governance.review_plan`, `governance.define_done` | none counted | no authoring seam | no budget | no budget | none |
+| `development.develop` | `acceptance_workspace_files` (the product) | nothing | not counted | not counted | 42,912 |
+| `development.develop` | `artifact_contents` (the run's own develop output); `source_repository` | each whole, on the focused path | whole | whole | |
+| `qa.test`, and its re-take | `artifact_contents` (the product) | its suite's top-level packages, or the validation plan and sources (§5an) | the files shown | the files shown, unchanged | 40,241 |
+| `qa.test`, and its re-take | `acceptance_workspace_files` | nothing | not counted | not counted | |
+| `qa.test`, and its re-take | `source_repository`; `retake_current_files` | each whole | whole | whole | |
+| `qa.test`'s retest | the failed task's tree | it runs the repaired suite and generates nothing | not supplied | not supplied | none |
+| `data.analyze_failure`, `governance.correction_decision` | `failure_evidence` | no authoring seam | no budget | no budget | none |
+| `development.correction_repair`, `qa.test_repair` | `acceptance_workspace_files` (the product); `failed_task_artifacts` | the named files of them, their edit form, a qa repair's failing-case frames | **whole: the hold** | **the three sections** | 41,961 to 44,283 |
+| `development.correction_repair`, `qa.test_repair` | `failure_evidence`; `prior_outputs` | in part (the summary and its blocks; each role's summary) | whole | whole (an upper bound) | |
+
+**What isn't counted exactly, and is said so:**
+- **The frames are a qa repair's alone.** A dev or builder repair's count includes them too, an over-count of a few
+  lines around each failing case.
+- **A repair's anchored-edit retry** is a second call inside the repair, after a refused response. It adds the
+  refusal lines, which name the first response's edits and can't be computed from the envelope. Its template is
+  counted and its lines aren't, before or after this amendment. Before it, the whole tree's count covered them only
+  where the tree was larger than the files shown. No prompt guard checks a repair's call agent-side (SIP-0073's guard
+  is develop's and `qa.test`'s), so this is named for a follow-up.
+- **Not dispatched on this profile:**
+  - `builder.assemble` and its repair: a product builds itself (SIP-0112 E.4.3);
+  - `qa.evaluate_increment`: a repository-backed increment is evaluated at its delivery (SIP-0109 §24cd point 6);
+  - the pulse-check chain: the profile declares no pulse checks.
+
+  The guard reads each of them from the profile and the tables, and checks it the day the profile dispatches it.
+
+**What it doesn't change.** No prompt, no input any task is handed, no contract's filter, `qa.test`'s count, and SIP-0112
+E.4.3's open question (§5an).
+
+**Evidence:**
+- **The guard, `tests/unit/cycles/test_product_cycle_budgets.py`.**
+  - It reads every task type the cycle can dispatch from the profile and the executor's tables: each workload's steps
+    and plan task types, the correction steps, every repair route, and the pulse chain where pulse checks are
+    declared.
+  - It composes each as the live path does, on an invented product larger than the window whose named files are
+    small. Each run is seeded by `seed_checkout_artifacts`, planned by `generate_task_plan` and the provisioning
+    composers, enriched by `_enrich_envelope` and supplied by `_supply_the_dispatch`. Each correction round is the
+    executor's own `_dispatch_correction_protocol`, for every failing task at every locus.
+  - Every task at an authoring seam binds the 1,330-token instruction, and every other takes no budget.
+  - The qa task's re-take binds, and its retest is never supplied.
+  - A type the profile adds later, as a workload or as pulse checks, is enumerated, so it fails until its estimate is
+    right or it is named as held, with why.
+- **The wiring test, `tests/unit/cycles/test_repair_budget_at_dispatch.py`.** It is entered at the executor's
+  `_enrich_envelope` and `_dispatch_correction_protocol`, whose repair is supplied under its `BindingHolds`.
+  - The repair of a failed develop task that wrote one 2,000-token file takes 42,189, the window less what it shows,
+    where the whole tree left less than 0. The instruction is handed and disclosed as supplied.
+  - The control: a repair shown sixteen files of about 4,000 tokens each is still held, with the instruction and the
+    reason named.
+- **`tests/unit/capabilities/handlers/test_repair_prompt_characterization.py`:** six cases through the dev and qa
+  repairs' `handle()`, pinned on `origin/main` (`cf1fbe23`). They cover a named file in the workspace, the failed
+  task's own file and a new one, none existing, a file whose backticks lengthen its fence, a refused whole-file
+  re-emission retried, and a qa repair's frames.
+- **`tests/unit/capabilities/test_repair_prompt_contents.py`:** the three sections exactly, the base's edges, and the
+  count through the rendering.
+- **`tests/unit/memory/test_prompt_budget_parity.py`:** a dev and a qa repair on a product of three packages, each
+  within the margin of its rendered prompt.
+- **Mutants, each caught:**
+  - the composer ignoring the repair's scoping;
+  - the repair's scoping applied to every task type, those that show their inputs whole among them;
+  - the guard's task types written down rather than read;
+  - the handler rendering its current files apart from the shared function;
+  - the frames left out of the count;
+  - the composer counting none of the tree.
+- **Loaded checks:** `2810-composer` (runtime-api) and `2810-repair-handler` (neo and eve). `2805-composer` reads the
+  renamed field.
+
+**Who ruled it.** No new design ruling: §5ak names exact rendering as the next step once such a hold is seen, and §5an
+did it for one seam.
+
 ## 6. Mode neutrality: cycle, duty, and ambient utilization
 
 Phase 1 implements the cycle-mode loop, but the substrate is designed so duty- and
