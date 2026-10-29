@@ -5148,7 +5148,7 @@ start. And one Chromium container for each route.
 **Who ruled.** The supervisor (the Spark lane) built §24bv point 3's rendering under the owner's direction of
 2026-10-21 and the 2.5 grants. Items 1 to 13 are the supervisor's choices, for the owner's review. Items 11 to 13
 answer the outside review's findings on PR #2777 (each a P2, relayed by the owner, 2026-10-28). Item 13's direction was
-the supervisor's, and its unjudged case is named in it (#2782). Its direction was the supervisor's,
+the supervisor's, and its unjudged case is named in it (#2782). Item 12's direction was the supervisor's too,
 and its choice not to read an anchor from prose is named in it. Item 9 adds a key
 to the `increment_evaluation` document, and item 3 adds a reader of contract 7, so it takes the outside review SIP-0112
 H.12 provides before the merge.
@@ -5203,9 +5203,9 @@ anchor is a typed field.
      reads as adding its page. That's stricter, never looser.
 3. **The renderer (§24co item 11, superseded for a request that names an anchor).**
    - `requested_routes` gives each route the criteria assert on with the anchor they name, or `""`
-     (`campaigns/product_routes.py:41`). The first anchor named for a route is taken.
+     (`campaigns/product_routes.py:48`). The first anchor named for a route is taken.
    - The `RouteRenderer` protocol's `requested_routes` is now that mapping.
-   - `DeclaredStartRoutes.render` judges an added route by its requested anchor (`scenarios/declared_routes.py:135`),
+   - `DeclaredStartRoutes.render` judges an added route by its requested anchor (`scenarios/declared_routes.py:153`),
      exactly as a pinned route is judged (`acceptance.route_rendering`):
      - *held* when the anchor is among the page's elements' test ids;
      - *broken* when the page was read without it, which rejects the increment;
@@ -5290,7 +5290,9 @@ anchor is a typed field.
          - A manifest acceptance can't read gives none. Acceptance then blocks every pinned route (`NO_MANIFEST`),
            so there is nothing to hold against.
        - **The renderer** blocks such a route on a request stored before the rule, with the reason `the change
-         request names an anchor another page carries (<page>)`. It never holds it.
+         request names an anchor another page carries (<page>)`. It never holds it. Where the anchor it reuses is a
+         pinned view's root, that pinned route is blocked too, by §24co item 13's shared-root rule: neither page can
+         be told from the other's (fail-closed).
      - The proposer is told the rule in its request asset.
    - **P3: the rollout is a gate, not a note.**
      - **What a request with no anchor keeps:** main's document and its exact hash. That's
@@ -5403,7 +5405,8 @@ anchor is a typed field.
     `[anchor_not_unique]`, and only the revision's own anchor is stored.
   - **At the executor's end of plan:** `test_product_runner_acceptance_wiring.py` uses a request stored before the rule,
     naming `/`'s `counter-list` for `/totals`. The candidate never builds `/totals`, and the fallback serves the
-    counter list there. `/totals` reads blocked, never held, beside `/` and `*` still held.
+    counter list there. `/totals` reads blocked, never held. `/` shares its root with it, so it's blocked too
+    (§24co item 13), and `*` still holds.
   - **At the renderer:** `test_product_routes.py` covers the same three conflicts.
   - **Eight more mutants, each caught,** for 40 in all:
     - the rails never checking across pages;

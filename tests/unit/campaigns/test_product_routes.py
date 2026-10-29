@@ -30,6 +30,7 @@ from squadops.campaigns.product_routes import (
     NO_ANCHOR,
     NO_ANCHOR_REQUESTED,
     NO_MANIFEST,
+    SHARED_ANCHOR,
     ProductRoutes,
 )
 from squadops.campaigns.runner_acceptance import CandidateNotDelivered, SandboxTree
@@ -631,23 +632,30 @@ def test_the_routes_a_stored_request_names_carry_their_anchors_in_order():
 
 
 @pytest.mark.parametrize(
-    ("requested", "blocked"),
+    ("requested", "blocked", "home"),
     [
-        ({"/shelves/archive": "shelf-list"}, {"/shelves/archive": "/"}),
-        ({"/shelves/archive": "add-shelf-link"}, {"/shelves/archive": "/"}),
+        (
+            {"/shelves/archive": "shelf-list"},
+            {"/shelves/archive": "/"},
+            ("blocked_unverified", SHARED_ANCHOR.format(other="/shelves/archive")),
+        ),
+        ({"/shelves/archive": "add-shelf-link"}, {"/shelves/archive": "/"}, ("held", "")),
         (
             {"/shelves/archive": "archive-view", "/shelves/recent": "archive-view"},
             {"/shelves/archive": "/shelves/recent", "/shelves/recent": "/shelves/archive"},
+            ("held", ""),
         ),
     ],
     ids=["a pinned view's root", "another id a pinned view carries", "two added pages"],
 )
 async def test_an_added_route_whose_anchor_another_page_carries_never_holds(
-    tmp_path, requested, blocked
+    tmp_path, requested, blocked, home
 ):
     """The outside review's final round (P2), at the renderer, for a request stored before the
     rails refused it: the candidate never builds the added pages, and the app's fallback renders
     the home view (or one shared view) there, so each page shows the anchor its request named.
+    Where the reused anchor is the pinned view's root, the pinned page can't be told from the
+    added one either, so it's blocked too (§24co item 13); otherwise it holds by its own anchor.
     Bug caught: such a page read held, an increment accepted with a page that doesn't exist."""
     fallback = _dom("shelf-list", "add-shelf-link", "archive-view")
     pages = {**PAGES, **{f"http://{APP_IP}:5173{r}": fallback for r in requested}}
@@ -660,4 +668,4 @@ async def test_an_added_route_whose_anchor_another_page_carries_never_holds(
             "blocked_unverified",
             f"the change request names an anchor another page carries ({other})",
         )
-    assert held["/"] == ("held", "")  # the pinned page still holds by its own anchor
+    assert held["/"] == home

@@ -689,8 +689,9 @@ async def test_a_missing_added_route_reusing_a_pinned_views_anchor_is_never_held
     """The outside review's final round (P2), at the executor's end of plan: the request (stored
     before the rails refused it) names ``/``'s own root, ``counter-list``, for ``/totals``. The
     candidate never builds ``/totals``, and the app's fallback renders the counter list there.
-    Bugs caught: that page read held, so the increment is accepted with a page that doesn't
-    exist; the pinned ``/`` losing its own judgement."""
+    ``/`` shares its root with ``/totals``, so it can't be told apart and is blocked too
+    (§24co item 13). Bug caught: that page read held, so the increment is accepted with a page
+    that doesn't exist."""
     repo = world[0]
     home = _TALLY_PAGES["http://10.89.0.7:8080/"]
     _routed(world, pages={**_TALLY_PAGES, "http://10.89.0.7:8080/totals": home})
@@ -701,9 +702,13 @@ async def test_a_missing_added_route_reusing_a_pinned_views_anchor_is_never_held
     )
 
     held = {r["path"]: r["held"] for r in document["routes"]}
-    assert held == {"*": "held", "/": "held", "/totals": "blocked_unverified"}
+    assert held == {"*": "held", "/": "blocked_unverified", "/totals": "blocked_unverified"}
     assert (
         "route /totals: not rendered: the change request names an anchor another page carries (/)"
         in document["blocked"]
+    )
+    assert (
+        "route /: not rendered: its view's root anchor is also /totals's, so its page can't be"
+        " told from that one's" in document["blocked"]
     )
     assert document["verdict"] != "accepted"
