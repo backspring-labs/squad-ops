@@ -185,6 +185,8 @@ def _control(
     idempotency_key: str | None,
     expected_state: str | None,
     action: str | None = None,
+    *,
+    long_wait: bool = False,
 ) -> None:
     key = _key(idempotency_key)
     body = {"reason": reason, "idempotency_key": key}
@@ -193,9 +195,7 @@ def _control(
     if action:
         body["action"] = action
     path = f"/api/v1/campaigns/{campaign_id}/{operation}"
-    # SIP-0113 §10l: a repository-backed campaign's start evaluates its calibration record's
-    # commit (the product built, started and read) before it promotes and decides it.
-    _show_result(ctx, _call(ctx, "post", path, json=body, long_wait=operation == "start"), key)
+    _show_result(ctx, _call(ctx, "post", path, json=body, long_wait=long_wait), key)
 
 
 _REASON = typer.Option(..., "--reason", help="Why: recorded on the control log")
@@ -389,7 +389,9 @@ def start(
     idempotency_key: str | None = _KEY,
 ):
     """Start a draft campaign: its calibration cycle launches (the owner or the supervisor)."""
-    _control(ctx, "start", campaign_id, reason, idempotency_key, None)
+    # SIP-0113 §10l: a repository-backed campaign's start evaluates its calibration record's
+    # commit (the product built, started and read) before it promotes and decides it.
+    _control(ctx, "start", campaign_id, reason, idempotency_key, None, long_wait=True)
 
 
 @app.command("pause")

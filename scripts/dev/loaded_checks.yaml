@@ -2155,3 +2155,27 @@ checks:
       s = {"scenario_id": "s", "steps": [{"action": "http", "method": "GET", "path": "/l", "save": {"k": "0.id"}}, {"action": "http", "method": "GET", "path": "/l/{k}"}], "checks": [{"check": "json", "step": 2, "path": "id", "equals": "{k}"}]}
       print(asyncio.run(run_scenario(s, send)).result, vocabulary_refusals(s["steps"], [{"check": "json", "step": 2, "path": "id", "equals": "{q}"}]))
     expect: "passed ['check 1: names {q}, which no step before it saves']"
+  - id: "10l-baseline-reading"
+    what: a repository-backed campaign's calibration record is evaluated when it is heard, its reading names the record in place of a cycle, the package says when there is no baseline reading, and a product made from a scaffold blueprint is linted by its rule set (SIP-0113 §10l)
+    container: squadops-runtime-api
+    code: |
+      import inspect
+      from adapters.scenarios.postgres_scenario_store import _EVALUATION_COLUMNS
+      from squadops.campaigns.evidence import PACKAGE_VERSION
+      from squadops.campaigns.progress import CampaignProgress
+      from squadops.outcomes.campaign_package import NO_BASELINE_READING
+      from squadops.scenarios.campaign_cycles import CampaignCycleEvaluator
+      from squadops.scenarios.evaluate import evaluate_calibration_record
+      from squadops.scenarios.quality import NotMeasured
+      p = inspect.signature(CampaignProgress).parameters["evaluate_baseline"]
+      print(p.default is inspect.Parameter.empty, hasattr(CampaignCycleEvaluator, "calibration_recorded"), "calibration_record_id" in _EVALUATION_COLUMNS, "lint_stack" in inspect.signature(evaluate_calibration_record).parameters, NotMeasured.SECRET_NOT_AVAILABLE.value, PACKAGE_VERSION, NO_BASELINE_READING)
+    expect: "True True True True secret_not_available 7 no baseline reading"
+  - id: "10l-sandbox-lint"
+    what: the sandbox's evaluation takes a declared product's scaffold blueprint and lints its tree by that blueprint's rule set, and checks the name itself (SIP-0113 §10l)
+    container: squadops-sandbox-service
+    code: |
+      import inspect
+      from adapters.sandbox.scenario_runner import ContainerScenarioRunner
+      from squadops.sandbox.api import EvaluationRequest
+      print("lint_stack" in EvaluationRequest.model_fields, "lint_stack" in inspect.signature(ContainerScenarioRunner.evaluate_tree).parameters, "lint_stack" in inspect.signature(ContainerScenarioRunner._lint).parameters)
+    expect: "True True True"
