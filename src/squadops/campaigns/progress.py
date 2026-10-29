@@ -338,6 +338,21 @@ OWNER_ACTIONS = frozenset(
 )
 
 
+def _heard_now(campaign: Campaign, cycle: Cycle) -> bool:
+    """Whether ``campaign``'s cycle's ending is decided now. A completed campaign has nothing to
+    decide. A paused one holds what its ending would decide until it is resumed (§17, #2789): the
+    re-hearing decides it then."""
+    if campaign.state is CampaignState.COMPLETED:
+        return False
+    if campaign.state is CampaignState.PAUSED:
+        logger.info(
+            "campaign_cycle_ending_held_by_pause",
+            extra={"cycle_id": cycle.cycle_id, "campaign_id": campaign.campaign_id},
+        )
+        return False
+    return True
+
+
 def _pausing_row(log: list) -> ControlLogEntry | None:
     """The latest applied row that moved the campaign into ``paused``."""
     for entry in reversed(log):
@@ -643,8 +658,22 @@ class CampaignProgress:
     async def _hear(
         self, cycle: Cycle, last_run: Run, stopped_because: CycleStopReason
     ) -> ContinuationDecision | None:
+        """The hearing (§10). #2789: an owner's pause or abort holds across it.
+
+        - **A paused campaign's ending isn't decided while it is paused.** §17: a paused campaign
+          holds its pending action until its resume. The decision has no way to be recorded as
+          held under a pause it didn't make (``held_action`` reads only a limit's), so the
+          ending waits. The re-hearing (``rehear_ended``, at startup and on the sweep's
+          interval) decides it once the campaign is resumed.
+        - **The campaign is read again before each write.** The assessment and the outcome
+          evaluation can take minutes (SIP-0113 §4.1). A campaign that moved meanwhile (paused,
+          aborted, anything) isn't promoted from the state read before them, nor decided from
+          the state its promotion left. The re-hearing decides it as it then is, and its
+          evaluation isn't taken twice.
+        - **A refusal is logged, never raised,** for a move in the instant between a read and a
+          write."""
         campaign = await self._campaigns.get_campaign(cycle.campaign_id)
-        if campaign.state is CampaignState.COMPLETED:
+        if not _heard_now(campaign, cycle):
             return None
         log = await self._campaigns.control_log(campaign.campaign_id)
         if any(e.idempotency_key == decision_key(cycle.cycle_id) for e in log):
@@ -672,12 +701,22 @@ class CampaignProgress:
         )
         verdict = cycle_verdict(latest, ended)
 
+        # #2789: the assessment and the evaluation took minutes. Promote and decide from the
+        # campaign as it is now, never from the state read before them.
+        campaign, moved = await self._still(campaign, cycle.cycle_id)
+        if moved:
+            return None
         # §12a: a calibration's tree, and an increment's when its own acceptance holds too (§8.4).
-        not_promoted = None
-        if kind in _PROMOTED_KINDS and verdict is RunVerdict.ACCEPTED:
-            campaign, not_promoted = await self._promoted(campaign, cycle, last_run, evaluation)
-        if campaign.state in _RUNNING_STATES:
-            campaign = await self._evaluating(campaign, cycle)
+        promoted = await self._promoted_and_evaluating(
+            campaign,
+            cycle,
+            last_run,
+            evaluation,
+            promote=kind in _PROMOTED_KINDS and verdict is RunVerdict.ACCEPTED,
+        )
+        if promoted is None:
+            return None
+        campaign, not_promoted = promoted
 
         launched = await self._launched_cycles(campaign)
         decision = campaign_continuation_decision(
@@ -698,6 +737,11 @@ class CampaignProgress:
             launch, unbuilt = await self._decided_launch(
                 campaign, decision.action, cycle, latest, not_promoted
             )
+        # #2789: the promotion and the reads that build the decision and its launch come between
+        # that read and this write. A campaign that moved meanwhile isn't decided over.
+        campaign, moved = await self._still(campaign, cycle.cycle_id)
+        if moved:
+            return None
         try:
             result = await self._campaigns.transition(
                 campaign.campaign_id,
@@ -722,6 +766,62 @@ class CampaignProgress:
         if decision.terminal:
             await self.materialize_package(campaign.campaign_id)
         return decision
+
+    async def _promoted_and_evaluating(
+        self,
+        campaign: Campaign,
+        cycle: Cycle,
+        last_run: Run,
+        evaluation: dict | None,
+        *,
+        promote: bool,
+    ) -> tuple[Campaign, str | None] | None:
+        """The accepted cycle promoted (§12a) and a running campaign moved to evaluating (§17):
+        the campaign after both, and why an increment wasn't promoted (§24ce). ``None`` when a
+        move made in the instant since the hearing's last read refused either write (#2789): the
+        refusal is logged, never raised, and the re-hearing decides the campaign as it then is.
+
+        A promotion already applied for the cycle is taken as written, not replayed. Its row was
+        written with the state the campaign had then, and a re-hearing after the campaign moved
+        (to ``evaluating``, or out of a pause and back) would send another state under the same
+        key: a conflict the registry refuses (§12a). The branch's ref follows its row by the
+        startup's and the sweep's re-sync (§24cd point 2)."""
+        not_promoted = None
+        try:
+            if promote and not await self._promoted_already(campaign, cycle):
+                campaign, not_promoted = await self._promoted(campaign, cycle, last_run, evaluation)
+            if campaign.state in _RUNNING_STATES:
+                campaign = await self._evaluating(campaign, cycle)
+        except ControlOperationRefused as refused:
+            logger.error(
+                "campaign_cycle_promotion_refused",
+                extra={"cycle_id": cycle.cycle_id, "refusal": str(refused.entry.refusal)},
+            )
+            return None
+        return campaign, not_promoted
+
+    async def _promoted_already(self, campaign: Campaign, cycle: Cycle) -> bool:
+        """Whether the campaign's control log holds an applied promotion of ``cycle``'s tree."""
+        return any(
+            e.operation is ControlOperation.PROMOTE
+            and e.outcome is ControlOutcome.APPLIED
+            and e.target == cycle.cycle_id
+            for e in await self._campaigns.control_log(campaign.campaign_id)
+        )
+
+    async def _still(self, campaign: Campaign, unit: str) -> tuple[Campaign, bool]:
+        """#2789: the campaign read again, and whether it has moved from ``campaign``'s state, the
+        one the hearing read before its long step. A moved campaign is logged, naming the ``unit``
+        heard (a cycle or a calibration record), and left to the re-hearing, which reads it as it
+        then is."""
+        current = await self._campaigns.get_campaign(campaign.campaign_id)
+        if current.state is campaign.state:
+            return current, False
+        logger.warning(
+            "campaign_not_decided_campaign_moved",
+            extra={"unit": unit, "from": campaign.state.value, "to": current.state.value},
+        )
+        return current, True
 
     async def _promoted(
         self, campaign: Campaign, cycle: Cycle, last_run: Run, evaluation: dict | None
@@ -806,6 +906,8 @@ class CampaignProgress:
                 reason=f"cycle {cycle.cycle_id} accepted: its {len(files)} delivered files",
                 idempotency_key=f"promote:{cycle.cycle_id}:{identity}",
                 next_state=campaign.state,
+                # #2789: refused, never written over an owner's move during the I/O before it.
+                expected_state=campaign.state,
                 target=cycle.cycle_id,
                 binding={
                     "cycle_id": cycle.cycle_id,
@@ -854,6 +956,9 @@ class CampaignProgress:
                 "the campaign branch",
                 idempotency_key=f"promote:{cycle.cycle_id}:{accepted.identity}",
                 next_state=campaign.state,
+                # #2789: refused, never written over an owner's move during the branch's reads and
+                # the bundles' freezing before it.
+                expected_state=campaign.state,
                 target=cycle.cycle_id,
                 binding={
                     "cycle_id": cycle.cycle_id,
@@ -953,6 +1058,12 @@ class CampaignProgress:
                 launch, unbuilt = (
                     (built, None) if isinstance(built, LaunchRequest) else (None, built)
                 )
+            # The review of #2792 (P2): the branch's follow and the reads that build the launch come
+            # between the promotion and this write. A campaign that moved meanwhile isn't decided
+            # over; the re-hearing decides it once it is calibrating again.
+            campaign, moved = await self._still(campaign, record.record_id)
+            if moved:
+                return None
             try:
                 result = await self._campaigns.transition(
                     campaign_id,
@@ -2016,6 +2127,8 @@ class CampaignProgress:
                 reason=f"cycle {cycle.cycle_id} ended: evaluating",
                 idempotency_key=f"evaluate:{cycle.cycle_id}",
                 next_state=CampaignState.EVALUATING,
+                # #2789: refused over an owner's move during the promotion's branch follow.
+                expected_state=campaign.state,
                 target=cycle.cycle_id,
                 binding={"cycle_id": cycle.cycle_id},
             ),

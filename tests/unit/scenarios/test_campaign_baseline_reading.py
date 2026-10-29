@@ -27,6 +27,7 @@ from __future__ import annotations
 import asyncio
 import dataclasses
 import json
+import logging
 from functools import partial
 from types import SimpleNamespace
 from unittest.mock import AsyncMock
@@ -702,7 +703,12 @@ async def test_a_promotion_refused_in_the_last_instant_is_logged_never_raised(tm
         await world.started()
 
     record = recorded_calibration(await world.campaigns.control_log(CID))
-    assert [r.getMessage() for r in caplog.records] == ["campaign_record_promotion_refused"]
+    errors = [
+        r
+        for r in caplog.records
+        if r.name == "squadops.campaigns.progress" and r.levelno >= logging.ERROR
+    ]
+    assert [r.getMessage() for r in errors] == ["campaign_record_promotion_refused"]
     assert not await _decided(world, record)
     assert (await world.campaigns.get_campaign(CID)).state is CampaignState.COMPLETED
 
@@ -923,3 +929,38 @@ def test_the_runtime_root_hands_the_progress_the_evaluators_baseline_reading():
         "cycle_evaluator.cycle_ended",
         "cycle_evaluator.calibration_recorded",
     )
+
+
+async def test_a_pause_while_the_records_launch_is_built_holds_and_the_resume_decides_it(
+    tmp_path, monkeypatch
+):
+    """The review of #2792 (P2), on the record's path: the branch's follow and the reads that build
+    the first proposal's launch come after the hearing's re-read and before the decision. Bug
+    caught: the decision written over a pause applied meanwhile (``paused → escalated`` here, and
+    to ``at_proposal`` with a launch where the proposal can be built); or the resumed campaign
+    never decided, or its record promoted twice."""
+    building = CampaignProgress._launch_for
+    paused: list[bool] = []
+
+    async def pause_then_build(self, campaign, *args, **kwargs):
+        if not paused:
+            paused.append(True)
+            await self._campaigns.transition(
+                CID, _owners(ControlOperation.PAUSE, CampaignState.PAUSED, "pause-launch")
+            )
+        return await building(self, campaign, *args, **kwargs)
+
+    monkeypatch.setattr(CampaignProgress, "_launch_for", pause_then_build)
+    world, store, runner, record = await _heard(tmp_path)
+
+    log = await world.campaigns.control_log(CID)
+    assert (await world.campaigns.get_campaign(CID)).state is CampaignState.PAUSED
+    assert (len(_rows(log, ControlOperation.PROMOTE)), await _decided(world, record)) == (1, False)
+
+    await world.campaigns.transition(
+        CID, _owners(ControlOperation.RESUME, CampaignState.CALIBRATING, "resume-launch")
+    )
+    assert await world.progress.rehear_calibration_records() == [CID]
+    log = await world.campaigns.control_log(CID)
+    assert (len(_rows(log, ControlOperation.PROMOTE)), await _decided(world, record)) == (1, True)
+    assert (len(runner.calls), len(paused)) == (1, 1)

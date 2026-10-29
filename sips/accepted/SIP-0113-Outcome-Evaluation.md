@@ -99,7 +99,7 @@ contribution separates from acceptance.
 | quality gates where phase 1's data supports a threshold (§4.2, §6) | **unplaced** | with §4.7, each with its phase-1 evidence (§10s) |
 | phase 1 amendment: Lighthouse and axe on a seeded instance, parameterised pages included (§10j; reviewed in §10n) | **shipped** (§10n, §10o): a second instance of each evaluated tree, seeded through its own API and measured on every page the seed names, and the window's 20 trees re-measured as their own series. S1 **holds**, S2 **falsified** (§10o) | 2.4.0, PRs #2632, #2633, #2634 and #2635, issue #2562 |
 | phase 1 amendment: a finer quality reading, axe by element, failing audits by id, the HTTPS audits read as the environment's (§10o; designed, reviewed and approved in §10y) | **shipped**: built as the evaluator's `…-eslint10.12-7` (PR #2762) and read on its pre-registered series (§10z): S1 and E hold, S2a falls for both new measures, and the positive control falls as written, so every new measure stays reporting-only | 2.5.0, PR #2762 and the PR recording §10z, issue #2637 |
-| a repository-backed Project's Campaign: its baseline reading, an evaluation of the calibration record's commit, and a greenfield product made from a scaffold blueprint linted by that blueprint's rule set (§10l; SIP-0112 H.4, H.14, SIP-0109 §24bv) | **shipped** (§10ac): the record's commit read when the record is heard, the reading naming the record in place of a cycle (contract 5's `calibration_record_id`), the deltas against it or "no baseline reading", and lint by the blueprint at the baseline and each increment, alone when the product can't start. Its outside review's findings are fixed (§10ac); the cycle path's stale snapshot is #2789. §4.5 on such a Project (its proposal shown its goals) is named in §10ac as not built, and unplaced | 2.5.0, PR #2788, refs #2619 (stays open for SIP-0112 H.4's other parts) |
+| a repository-backed Project's Campaign: its baseline reading, an evaluation of the calibration record's commit, and a greenfield product made from a scaffold blueprint linted by that blueprint's rule set (§10l; SIP-0112 H.4, H.14, SIP-0109 §24bv) | **shipped** (§10ac): the record's commit read when the record is heard, the reading naming the record in place of a cycle (contract 5's `calibration_record_id`), the deltas against it or "no baseline reading", and lint by the blueprint at the baseline and each increment, alone when the product can't start. Its outside review's findings are fixed (§10ac); the cycle path's stale snapshot is #2789, fixed by SIP-0109 §24cq. §4.5 on such a Project (its proposal shown its goals) is named in §10ac as not built, and unplaced | 2.5.0, PR #2788, refs #2619 (stays open for SIP-0112 H.4's other parts) |
 
 **What closes this SIP:** phase 1 shipped and phase 2 shipped, or phase 2 dropped by a numbered amendment the owner
 rules.
@@ -2513,7 +2513,7 @@ list closes this section), and items 1, 7 and 9 already read as fixed.
      - A campaign that isn't `calibrating` when the hearing begins (paused between the start's row and its hearing)
        isn't read at all (`:914`): the owner's brake holds the box too.
      - **The cycle path has the same staleness:** `_hear` reads the campaign before the cycle-end evaluation and
-       promotes from that snapshot. That is #2789, filed and not fixed here.
+       promotes from that snapshot. That is #2789, fixed in its own PR and recorded as SIP-0109 §24cq.
    - **The start now answers after the reading.** The start route hears the record in its own request (SIP-0109
      §24cc), and the reading builds and starts the product. So `squadops campaigns start` waits the CLI's long timeout
      (`[api] long_timeout`, the one a baseline capture waits, #2605; `cli/commands/campaigns.py:394`). The route's
@@ -2615,14 +2615,12 @@ phase 1's reporting-only rule; and what any squad role is shown.
 - **Re-measuring a baseline reading** (§10n's series): the re-measure tool and its table are keyed by cycle
   (`quality_remeasures.cycle_id` is required), and a baseline reading isn't reached by it.
 - **The approved secrets' resolution** (#2421, 2.6), as in §10aa.
-- **The cycle path's stale snapshot** (#2789): a pause or an abort during a cycle-end evaluation is undone or raised
-  by `_hear`, as P2-A found for the record. It was reproduced on the shared fixture and filed, not fixed here.
 - **A live reading.** Nothing here was run against a live campaign; the reading's first live run is the deploy's.
 
 **The second review, and what each finding became** (SIP-0112 H.12; posted on PR #2788):
 - **P2-A, a pause or abort during the reading undone or raised:** fixed (item 1). Tests cover a pause, then a resume
   decided once with one reading; an abort with no raise; a refusal in the last instant; and a pause before the
-  hearing, never read. The cycle path is #2789.
+  hearing, never read. The cycle path is #2789 (SIP-0109 §24cq).
 - **P2-B, the first increment credited against a baseline that ran no scenario:** fixed (item 7). Tested both with
   nothing measured and with its lint measured, where the lint is still compared. A baseline where nothing applied
   still reads the increment.

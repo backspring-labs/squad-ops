@@ -446,6 +446,63 @@ async def test_the_decision_is_made_once_per_cycle(calibrating):
     w.launches.assert_awaited_once()
 
 
+async def test_a_pause_while_a_sample_applications_tree_is_stored_holds_and_the_resume_decides(
+    calibrating,
+):
+    """#2789 and the review of #2792 (P2), on a sample application's promotion, entered at the
+    completion boundary. Its tree is composed and stored in the vault before the promotion's row
+    is written. Bug caught: a pause applied meanwhile overwritten by the promotion
+    (``paused → calibrating``) and the proposal launched over it. The row carries the state the
+    hearing read, so it is refused as stale; the resumed campaign is promoted and decided once."""
+    from squadops.campaigns.models import CampaignTransition, RefusalReason
+
+    w, run = await calibrating(RunVerdict.ACCEPTED)
+    storing = w.progress._store_accepted_tree
+    pause = CampaignTransition(
+        operation=ControlOperation.PAUSE,
+        actor="owner",
+        actor_role="admin",
+        reason="hold on",
+        idempotency_key="pause-store",
+        next_state=CampaignState.PAUSED,
+    )
+
+    async def pause_then_store(*args, **kwargs):
+        await w.campaigns.transition(CID, pause)
+        return await storing(*args, **kwargs)
+
+    w.progress._store_accepted_tree = pause_then_store
+    await w.end("cyc_cal", run, CycleStopReason.SEQUENCE_COMPLETED)
+
+    log = await w.campaigns.control_log(CID)
+    refused = [
+        e.refusal
+        for e in log
+        if e.operation is ControlOperation.PROMOTE and e.outcome is ControlOutcome.REFUSED
+    ]
+    applied = [e.operation for e in log[-2:] if e.outcome is ControlOutcome.APPLIED]
+    assert (refused, applied) == ([RefusalReason.STALE_STATE], [ControlOperation.PAUSE])
+    assert (await w.campaigns.get_campaign(CID)).state is CampaignState.PAUSED
+    w.launches.assert_not_awaited()
+
+    w.progress._store_accepted_tree = storing
+    await w.campaigns.transition(
+        CID,
+        CampaignTransition(
+            operation=ControlOperation.RESUME,
+            actor="owner",
+            actor_role="admin",
+            reason="go on",
+            idempotency_key="resume-store",
+            next_state=CampaignState.CALIBRATING,
+        ),
+    )
+    assert await w.progress.rehear_ended(["cyc_cal"]) == ["cyc_cal"]
+    log = await w.campaigns.control_log(CID)
+    assert [e.operation for e in log[-2:]] == [ControlOperation.PROMOTE, ControlOperation.DECIDE]
+    assert (await w.campaigns.get_campaign(CID)).state is CampaignState.AT_PROPOSAL
+
+
 async def test_a_rejected_calibration_stops_the_campaign_and_promotes_nothing(calibrating):
     """§10 row 2, §19 criterion 2. Bug caught: a rejected calibration's tree becoming the
     baseline every increment is proposed against."""
