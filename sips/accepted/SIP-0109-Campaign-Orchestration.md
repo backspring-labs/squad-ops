@@ -142,6 +142,7 @@ Kept by the rule in CLAUDE.md ("SIP System"): one row per part, updated in the P
 | a Campaign on a repository-backed Project, point 3's route rendering on a product: the profile's client routes rendered on the candidate, started in the sandbox from contract 7's start, read by the evaluator image's Chromium and judged by their views' root anchors (§24bv point 3, §24cl item 6, §24co; SIP-0102 §11k) | **shipped** | 2.5.0, PR #2777 |
 | a page criterion on a repository-backed change request names its view's anchor (required on a page the change adds, refused on one the profile judges), and a route the request adds is judged by it, so it can hold; an added page whose path needs a seed is refused, and a dev repair keeps the anchors (§24co item 11's remainder, §24cp items 1–5) | **shipped** | 2.5.0, PR #2780, closes #2779 |
 | a seed for a page a repository-backed change request adds whose path has a parameter, so it can be read instead of refused (§24cp item 5) | **unplaced**, deliberately: for the supervisor to place | #2781 |
+| the anchors of pages earlier increments added, carried into a repository-backed proposal's input, so the rails and the renderer check an added page's anchor against them (§24cp, not built) | **unplaced**, deliberately: for the supervisor to place | #2783 |
 | a Campaign on a repository-backed Project, read live: a repository-backed Campaign's increments judged at delivery and promoted onto its branch end to end, on a product made from a blueprint (`z_shelfnote`, IR-7) and one with its own layout (`z_continuum`), as the 2.5 plan's Track A demonstrations (§24bv, §24cl, §24co) | **placed** | 2.5.0, #2619 |
 | a vitest test-id reader, so a vitest-only criterion can be read as discriminating (§24ci (a)) | **shipped**: from vitest's default reporter, as the product's own command prints it (SIP-0112 H.10) | 2.5.0, PR #2764, closes #2757 |
 | a Campaign cycle held on its instruction bindings escalates as `binding_hold`, released by re-supply and never parked (§24bw; SIP-0110 §A.3.6) | **shipped** | 2.4.0, PR #2628 (#2178's Campaign half) |
@@ -5319,7 +5320,7 @@ anchor is a typed field.
   and in no current request. So a request may reuse one, and a page it never built could hold where the fallback
   renders that earlier page. The same holds for a product with no approved manifest, whose existing pages' ids are
   known nowhere. Closing it needs the accepted increments' anchors carried into the proposal's input, as the frozen
-  criteria are (§24ap).
+  criteria are (§24ap). That's #2783.
 - **The anchor is matched anywhere on the page,** as a pinned route's root anchor is (§24co item 5), not only on the
   view's outermost element. The prompts ask for the root.
 - **A route the request adds that the profile pins later** (its pin moves between the proposal and the acceptance) is
