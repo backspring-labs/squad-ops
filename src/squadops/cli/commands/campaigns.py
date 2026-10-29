@@ -30,9 +30,13 @@ def _fmt(ctx: typer.Context) -> tuple[str, bool]:
     return obj.get("format", "table"), obj.get("quiet", False)
 
 
-def _call(ctx: typer.Context, method: str, path: str, **kwargs):
+def _call(ctx: typer.Context, method: str, path: str, *, long_wait: bool = False, **kwargs):
+    """``long_wait``: the route does the product's own work before it answers, so the CLI waits
+    the configured long timeout (``[api] long_timeout``, #2605), not the short one."""
     try:
         client = _get_client(ctx)
+        if long_wait:
+            kwargs["timeout"] = client.long_timeout
         data = getattr(client, method)(path, **kwargs)
         client.close()
     except CLIError as e:
@@ -188,9 +192,10 @@ def _control(
         body["expected_state"] = expected_state
     if action:
         body["action"] = action
-    _show_result(
-        ctx, _call(ctx, "post", f"/api/v1/campaigns/{campaign_id}/{operation}", json=body), key
-    )
+    path = f"/api/v1/campaigns/{campaign_id}/{operation}"
+    # SIP-0113 §10l: a repository-backed campaign's start evaluates its calibration record's
+    # commit (the product built, started and read) before it promotes and decides it.
+    _show_result(ctx, _call(ctx, "post", path, json=body, long_wait=operation == "start"), key)
 
 
 _REASON = typer.Option(..., "--reason", help="Why: recorded on the control log")

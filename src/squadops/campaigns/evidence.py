@@ -32,7 +32,9 @@ from squadops.campaigns.scorecard import scorecard_lines
 #: 5: an increment's outcome section reads the goals its change request named (SIP-0113 §4.5).
 #: 6: its quality deltas carry §10y's failing ids, introduced and resolved, where both trees were
 #:    read by the evaluator's ``-7`` or later (``failing_moved``); its pages, the finer reading.
-PACKAGE_VERSION = 6
+#: 7: a repository-backed campaign's outcome section names its baseline, its calibration record's
+#:    reading (SIP-0113 §10l), and each increment's ``vs_baseline`` says when there is none.
+PACKAGE_VERSION = 7
 
 #: The size bound (#1710: "bounded, so a frontier triage of one night fits a metered model
 #: budget"). A package holds records only, never logs or prompts, so it grows only with the cycles
@@ -309,6 +311,8 @@ def _outcome_lines(outcomes: dict | None) -> list[str]:
         f"Held-out suite `{outcomes['suite_digest'][:16]}`; reporting-only, no decision reads it.",
         "",
     ]
+    if (base := outcomes.get("baseline")) is not None:
+        lines += _baseline_lines(base)
     for cyc in outcomes["cycles"]:
         if not cyc.get("evaluation"):
             lines.append(f"- `{cyc['cycle_id']}`: not evaluated")
@@ -316,14 +320,7 @@ def _outcome_lines(outcomes: dict | None) -> list[str]:
             continue
         read = cyc.get("contribution") or {}
         reading = read.get("reading") or f"not read ({read.get('unread_because', 'no reading')})"
-        results: dict[str, int] = {}
-        for _id, result, reason in cyc["scenarios"]:
-            key = f"{result} ({reason})" if reason else result
-            results[key] = results.get(key, 0) + 1
-        lines.append(
-            f"- `{cyc['cycle_id']}`: **{reading}**; "
-            + ", ".join(f"{n} {key}" for key, n in sorted(results.items()))
-        )
+        lines.append(f"- `{cyc['cycle_id']}`: **{reading}**; " + _results_line(cyc["scenarios"]))
         for moved in ("newly_passing", "regressed", "unverified"):
             if read.get(moved):
                 lines.append(f"  - {moved.replace('_', ' ')}: {', '.join(read[moved])}")
@@ -343,6 +340,29 @@ def _outcome_lines(outcomes: dict | None) -> list[str]:
         ):
             if cyc.get(key):
                 lines.append(f"  - {label}: {_moves_line(cyc[key])}")
+    return lines
+
+
+def _results_line(scenarios: list) -> str:
+    results: dict[str, int] = {}
+    for _id, result, reason in scenarios:
+        key = f"{result} ({reason})" if reason else result
+        results[key] = results.get(key, 0) + 1
+    return ", ".join(f"{n} {key}" for key, n in sorted(results.items()))
+
+
+def _baseline_lines(base: dict) -> list[str]:
+    """SIP-0113 §10l: a repository-backed campaign's baseline, its calibration record's reading,
+    or why there is none. Ids and results only."""
+    head = f"- calibration record `{base['calibration_record_id']}`"
+    if not base.get("evaluation"):
+        return [f"{head}: **{base.get('unread_because') or 'no baseline reading'}**"]
+    lines = [
+        f"{head}: baseline reading `{base['evaluation']}`; {_results_line(base['scenarios'])}",
+        f"  - quality: {_measure_line(base.get('quality'))}; lint: {_lint_line(base.get('lint'))}",
+    ]
+    if base.get("unread_because"):
+        lines.append(f"  - {base['unread_because']}")
     return lines
 
 

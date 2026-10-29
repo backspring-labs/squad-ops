@@ -9,6 +9,14 @@ cycle's latest record against the campaign's pinned suite, with
 - for an increment whose change request named goals in ``moves_goals``, what became of each, by id
   (§4.5, ``named_goals``).
 
+**A repository-backed campaign's baseline** (§10l): its calibration is a record, not a cycle, so
+the baseline is the record's reading, its commit evaluated when the record was heard. The section
+names it under ``baseline``, and it stands where a calibration cycle's record stands: the tree the
+first increment built on, for its contribution, and the baseline each increment's quality is
+compared with. Where there is none (a read that failed, or one that ran nothing, as with no start
+declaration), the section and each increment's ``vs_baseline`` say "no baseline reading", never a
+delta of zero. A sample application's section is as it was.
+
 Never a scenario's goal, steps or checks: the store keeps those, held out. The package is a
 project-level artifact that no squad task's inputs list (``test_held_out_packages.py``).
 Reporting-only: nothing that decides the campaign reads this section.
@@ -28,11 +36,44 @@ from squadops.outcomes.contribution import NotComparable, contribution
 from squadops.outcomes.ledger import LedgerEntry, ledger
 from squadops.outcomes.named_goals import named_goal_moves
 from squadops.outcomes.quality_deltas import Against, QualityDeltas, quality_deltas
-from squadops.scenarios.evaluation import BlockedReason, EvaluationRecord
+from squadops.scenarios.evaluation import (
+    Applicability,
+    BlockedReason,
+    EvaluationRecord,
+    ScenarioResult,
+)
+from squadops.scenarios.quality import QualityStatus
 
 if TYPE_CHECKING:
     from squadops.ports.outcomes import InterventionLedgerPort
     from squadops.ports.scenarios import ScenarioStorePort
+
+
+#: §10l: what a repository-backed campaign's deltas against its baseline say where there is none.
+NO_BASELINE_READING = "no baseline reading"
+
+
+def _campaigns_own(records: list[EvaluationRecord], campaign_id: str, suite_digest: str):
+    """The latest of ``records`` by this campaign against its pinned suite, or ``None``. A reading
+    of the same suite written with no campaign (§10p ruling 13's tool) never stands in for the
+    campaign's record."""
+    held = [r for r in records if r.campaign_id == campaign_id and r.suite_digest == suite_digest]
+    return max(held, key=lambda r: r.evaluated_at) if held else None
+
+
+def ran_nothing(record: EvaluationRecord) -> str | None:
+    """§10l: why a baseline reading read nothing, or ``None`` when it read something. Nothing ran
+    when no applicable scenario got past ``blocked_unverified`` and no quality measure was taken:
+    no start declaration, a secret nothing releases, or a start that failed with no lint taken.
+    Its deltas are then "no baseline reading", never a delta against measures nobody took."""
+    readings = (record.quality, record.quality_seeded, record.lint)
+    if any(r is not None and r.status is QualityStatus.MEASURED for r in readings):
+        return None
+    applicable = [o for o in record.outcomes if o.applicability is Applicability.APPLICABLE]
+    if any(o.result is not ScenarioResult.BLOCKED_UNVERIFIED for o in applicable):
+        return None
+    reasons = sorted({o.blocked_reason.value for o in applicable if o.blocked_reason})
+    return f"nothing ran on its tree ({', '.join(reasons) or 'no scenario applied'})"
 
 
 async def campaign_outcomes(
@@ -41,34 +82,86 @@ async def campaign_outcomes(
     cycle_ids: list[str],
     *,
     named_goals: Mapping[str, Sequence[str]],
+    calibration_record_id: str | None = None,
 ) -> dict | None:
     """The campaign's outcome readings for its package, ``None`` when no suite is pinned.
     ``named_goals`` is each increment's ``moves_goals``, by cycle, as its approved request names
-    them."""
+    them. ``calibration_record_id`` is a repository-backed campaign's calibration record (§10l),
+    whose reading is its baseline; ``None`` for a sample application's, whose calibration is a
+    cycle."""
     pin = await store.get_pin(campaign_id)
     if pin is None:
         return None
     latest: dict[str, EvaluationRecord] = {}
     for cycle_id in cycle_ids:
-        held = [
-            r
-            for r in await store.evaluations_for_cycle(cycle_id)
-            # Its own campaign's: a reading of the same suite written with no campaign (§10p
-            # ruling 13's tool) never stands in for the campaign's record.
-            if r.campaign_id == campaign_id and r.suite_digest == pin.suite_digest
-        ]
-        if held:
-            latest[cycle_id] = max(held, key=lambda r: r.evaluated_at)
+        record = _campaigns_own(
+            await store.evaluations_for_cycle(cycle_id), campaign_id, pin.suite_digest
+        )
+        if record is not None:
+            latest[cycle_id] = record
     by_tree = {r.evaluated_tree_identity: r for r in latest.values()}
-    baseline = next((r for r in latest.values() if r.previous_accepted_tree_identity is None), None)
+    section: dict = {"suite_digest": pin.suite_digest}
+    if calibration_record_id is None:
+        baseline = next(
+            (r for r in latest.values() if r.previous_accepted_tree_identity is None), None
+        )
+        unread = None
+    else:
+        # §10l: the record's reading stands where the calibration cycle's would. Never a cycle's
+        # record that names no previous tree: on such a campaign, that is a cycle pinned at nothing.
+        baseline = _campaigns_own(
+            await store.evaluations_for_calibration_record(calibration_record_id),
+            campaign_id,
+            pin.suite_digest,
+        )
+        if baseline is not None:
+            by_tree = {baseline.evaluated_tree_identity: baseline, **by_tree}
+        unread = NO_BASELINE_READING if baseline is None else None
+        if baseline is not None and (why := ran_nothing(baseline)):
+            unread = f"{NO_BASELINE_READING}: {why}"
+        section["baseline"] = _baseline_section(calibration_record_id, baseline, unread)
+    section["cycles"] = [
+        _cycle_section(
+            cycle_id,
+            latest.get(cycle_id),
+            by_tree,
+            baseline,
+            named_goals.get(cycle_id, ()),
+            baseline_unread=unread,
+        )
+        for cycle_id in cycle_ids
+    ]
+    return section
+
+
+def _readings(record: EvaluationRecord) -> dict:
+    """A record's scenario results by id, and its quality and lint, as the package shows them."""
     return {
-        "suite_digest": pin.suite_digest,
-        "cycles": [
-            _cycle_section(
-                cycle_id, latest.get(cycle_id), by_tree, baseline, named_goals.get(cycle_id, ())
-            )
-            for cycle_id in cycle_ids
+        "scenarios": [
+            [
+                o.scenario_id,
+                o.result.value if o.result else o.applicability.value,
+                o.blocked_reason.value if o.blocked_reason else None,
+            ]
+            for o in record.outcomes
         ],
+        "quality": record.quality.as_dict() if record.quality else None,
+        "lint": record.lint.as_dict() if record.lint else None,
+    }
+
+
+def _baseline_section(
+    record_id: str, baseline: EvaluationRecord | None, unread: str | None
+) -> dict:
+    """§10l: the calibration record's reading, the campaign's baseline, or why there is none."""
+    if baseline is None:
+        return {"calibration_record_id": record_id, "evaluation": None, "unread_because": unread}
+    return {
+        "calibration_record_id": record_id,
+        "evaluation": baseline.evaluation_id,
+        "tree": baseline.evaluated_tree_identity,
+        **_readings(baseline),
+        **({"unread_because": unread} if unread else {}),
     }
 
 
@@ -125,6 +218,8 @@ def _cycle_section(
     by_tree: dict[str, EvaluationRecord],
     baseline: EvaluationRecord | None,
     named: Sequence[str],
+    *,
+    baseline_unread: str | None = None,
 ) -> dict:
     if record is None:
         section: dict = {"cycle_id": cycle_id, "evaluation": None}
@@ -140,16 +235,7 @@ def _cycle_section(
         "evaluation": record.evaluation_id,
         "tree": record.evaluated_tree_identity,
         "built_on": built_on,
-        "scenarios": [
-            [
-                o.scenario_id,
-                o.result.value if o.result else o.applicability.value,
-                o.blocked_reason.value if o.blocked_reason else None,
-            ]
-            for o in record.outcomes
-        ],
-        "quality": record.quality.as_dict() if record.quality else None,
-        "lint": record.lint.as_dict() if record.lint else None,
+        **_readings(record),
         "contribution": _contribution(record, previous),
         **_page_controls(record),
     }
@@ -159,7 +245,10 @@ def _cycle_section(
         section["named_goals"] = {goal: str(move) for goal, move in moves.items()}
     if previous is not None:
         section["vs_previous"] = _deltas(quality_deltas(record, previous, against=Against.PREVIOUS))
-    if baseline is not None and baseline is not record:
+    if baseline_unread is not None:
+        # §10l: a repository-backed campaign with no baseline reading says so, never a delta.
+        section["vs_baseline"] = {"unread_because": baseline_unread}
+    elif baseline is not None and baseline is not record:
         try:
             section["vs_baseline"] = _deltas(
                 quality_deltas(record, baseline, against=Against.BASELINE)

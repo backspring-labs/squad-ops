@@ -52,6 +52,12 @@ class ScenarioStorePort(ABC):
         """A cycle's evaluation runs, the earliest first: a cycle can be evaluated more than once."""
 
     @abstractmethod
+    async def evaluations_for_calibration_record(self, record_id: str) -> list[EvaluationRecord]:
+        """A repository-backed Campaign's baseline readings of its calibration record's commit
+        (SIP-0113 §10l), the earliest first. A record is read once, but a second suite reads it
+        again, as it would a cycle."""
+
+    @abstractmethod
     async def save_remeasure(self, remeasure: QualityRemeasure) -> None:
         """Write one re-measure (§10j, §10n ruling 1), apart from every evaluation record. The
         same evaluation, series and round again is refused: a series is written once."""
@@ -93,6 +99,7 @@ class ScenarioRunnerPort(ABC):
         pages: Sequence[str],
         seed: SeedPlan | None = None,
         routes: Sequence[RouteRequest] = (),
+        lint_stack: str | None = None,
     ) -> TreeEvaluation:
         """Stand the tree up in a disposable copy and run the scenarios against it.
         ``declared`` is a non-blueprint Project's start (contract 7). Without one, the
@@ -102,4 +109,7 @@ class ScenarioRunnerPort(ABC):
         ``seed``, when given, is §10j's: a second instance of the tree, seeded through its own API
         and measured on every page the plan names (``quality_seeded``). ``routes``, when given,
         are client routes read by the browser after the scenarios, at the declared UI base, each
-        one's test ids returned (``TreeEvaluation.routes``, SIP-0109 §24co)."""
+        one's test ids returned (``TreeEvaluation.routes``, SIP-0109 §24co). ``lint_stack``, when
+        given with a ``declared`` start, is the scaffold blueprint the product was made from: its
+        tree is linted by that blueprint's rule set, #1937's (SIP-0113 §10l). Without it, a declared
+        product's lint is ``not_a_scaffold_stack``."""

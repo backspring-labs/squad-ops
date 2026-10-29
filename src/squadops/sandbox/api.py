@@ -80,6 +80,9 @@ class EvaluationRequest(BaseModel):
     #: SIP-0109 §24co: client routes the browser reads on the started tree, each a
     #: ``RouteRequest``. A client asking for none sends ``[]`` or leaves it out.
     routes: list[dict] = Field(default_factory=list)
+    #: SIP-0113 §10l: the scaffold blueprint a declared product was made from, whose rule set
+    #: lints its tree; ``None`` for any other product, whose lint is ``not_a_scaffold_stack``.
+    lint_stack: str | None = None
 
 
 class OperationRequest(BaseModel):
@@ -197,12 +200,14 @@ async def _handle_evaluation(service: SandboxService, body: EvaluationRequest) -
     runner = service.scenario_runner
     if runner is None:
         raise _error(503, "RUNNER_UNAVAILABLE", "this sandbox runs no scenario runner")
-    # Each is passed only when asked for, so a runner that takes neither is called as before.
+    # Each is passed only when asked for, so a runner that takes none of them is called as before.
     optional: dict[str, Any] = {}
     if body.seed:
         optional["seed"] = SeedPlan.from_dict(body.seed)
     if body.routes:
         optional["routes"] = [RouteRequest.from_dict(r) for r in body.routes]
+    if body.lint_stack:
+        optional["lint_stack"] = body.lint_stack
     try:
         binary = decode_binary(body.binary_tree, alongside=body.tree)
         result = await runner.evaluate_tree(

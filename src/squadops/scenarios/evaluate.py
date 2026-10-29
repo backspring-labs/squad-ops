@@ -10,7 +10,19 @@ row, gate or prompt reads what this writes, and no scenario goal or result reach
 5. The record is written whatever happened. No runner means every applicable scenario is
    ``blocked_unverified`` with ``no_runner``, a failed start means ``start_failed``, and a start
    the caller couldn't read carries its own reason: ``no_start_declaration`` for none or a malformed
-   one, ``no_runner`` for a readiness kind the runner doesn't check. None of them is ever passed.
+   one, ``secret_not_available`` for a secret nothing releases, ``no_runner`` for a readiness kind
+   the runner doesn't check. None of them is ever passed, and each quality measure the start would
+   have served is not measured for the same reason.
+
+A repository-backed Campaign's calibration record is evaluated the same way
+(``evaluate_calibration_record``, SIP-0113 §10l): its commit's tree, its declared start, the same
+scenarios and measures, in a record that names the calibration record in place of a cycle.
+
+**Lint by a blueprint's rule set (§10l, §4.2).** #1937's rule sets exist only for the scaffold
+stacks. A sample application's tree is linted by its stack's. A product is linted only when it is
+a greenfield product made from a scaffold blueprint, which the caller reads from the derived
+profile at the unit's pin and passes as ``lint_stack``. Any other product's lint is
+``not_a_scaffold_stack``, and its own linter is never read in its place.
 """
 
 from __future__ import annotations
@@ -18,6 +30,7 @@ from __future__ import annotations
 import logging
 import re
 from collections.abc import Collection, Mapping
+from dataclasses import dataclass
 from datetime import datetime
 from typing import TYPE_CHECKING, Any
 
@@ -36,7 +49,7 @@ from squadops.scenarios.evaluation import (
 )
 from squadops.scenarios.evidence import ScenarioEvidence
 from squadops.scenarios.fields import resolve
-from squadops.scenarios.models import Scenario, SurfaceKind
+from squadops.scenarios.models import Scenario, ScenarioSuite, SurfaceKind
 from squadops.scenarios.quality import (
     LintReading,
     NotMeasured,
@@ -175,6 +188,8 @@ _NOT_MEASURED_BY_BLOCK = {
     BlockedReason.NO_RUNNER: NotMeasured.NO_RUNNER,
     BlockedReason.START_FAILED: NotMeasured.START_FAILED,
     BlockedReason.NO_START_DECLARATION: NotMeasured.NO_START_DECLARATION,
+    # §10l: a product whose start declares a secret nothing releases serves no page either.
+    BlockedReason.SECRET_NOT_AVAILABLE: NotMeasured.SECRET_NOT_AVAILABLE,
 }
 
 
@@ -236,16 +251,19 @@ def seeded_of(
 
 
 def lint_of(
-    blueprint: bool, blocked: BlockedReason | None, evaluated: TreeEvaluation | None
+    linted: bool, blocked: BlockedReason | None, evaluated: TreeEvaluation | None
 ) -> LintReading:
-    """#1937's lint of the evaluated tree: the runner's, or why there is none. Only a blueprint
-    tree has #1937's rule sets; a declared Project's own linter is never read in their place."""
-    if not blueprint:
+    """#1937's lint of the evaluated tree: the runner's, or why there is none. Only a scaffold
+    stack's tree has #1937's rule sets (``linted``): a sample application's, or a product made from
+    a scaffold blueprint (§10l). Any other Project's own linter is never read in their place. A
+    product that couldn't be started was never sent to the runner, so its lint wasn't taken
+    either, for the start's reason (§10l)."""
+    if not linted:
         return LintReading.not_measured(NotMeasured.NOT_A_SCAFFOLD_STACK)
     if evaluated is not None and evaluated.lint is not None:
         return evaluated.lint
-    if blocked is BlockedReason.NO_RUNNER:
-        return LintReading.not_measured(NotMeasured.NO_RUNNER)
+    if evaluated is None and blocked in _NOT_MEASURED_BY_BLOCK:
+        return LintReading.not_measured(_NOT_MEASURED_BY_BLOCK[blocked])
     return LintReading.not_measured(
         NotMeasured.EVALUATOR_FAILED, "the runner returned no lint for the tree"
     )
@@ -299,12 +317,15 @@ async def evaluate_cycle(
     unstartable: StartUndeclared | ReadinessUnsupported | SecretUnavailable | None = None,
     tree: Mapping[str, bytes] | None = None,
     executable: Collection[str] = (),
+    lint_stack: str | None = None,
 ) -> EvaluationRecord:
     """Evaluate ``cycle``'s delivered app against an approved suite, and write the record.
 
     A blueprint cycle starts by its stack (``build_profile``). Any other Project passes its
     ``declared`` start and the ``served`` surface kinds of its entry points, or the refusal it met
     reading its declaration as ``unstartable``, whose ``reason`` blocks every applicable scenario.
+    ``lint_stack`` is the scaffold blueprint such a product was made from, whose rule set lints it
+    (§10l), or ``None``.
 
     ``tree`` is the evaluated tree when the caller has it whole, with its ``executable`` bits: a
     repository-backed cycle's, its captured commit (#2414). Otherwise it is read from the vault, by
@@ -313,6 +334,105 @@ async def evaluate_cycle(
     if tree is None:
         refs = await evaluated_tree_refs(vault, cycle)
         tree = {path: (await vault.retrieve(art))[1] for path, art in refs.items()}
+    # Only a blueprint delivery has a manifest of its own. A declared Project, or one whose
+    # declaration couldn't be read, never reads one (SIP-0112 §8.3).
+    blueprint = declared is None and unstartable is None
+    return await _evaluated(
+        store=store,
+        runner=runner,
+        suite=suite,
+        unit=_Unit(cycle.project_id, cycle_id=cycle.cycle_id),
+        campaign_id=campaign_id,
+        previous_accepted_tree_identity=previous_accepted_tree_identity,
+        evaluated_at=evaluated_at,
+        tree=tree,
+        executable=executable,
+        stack=cycle.resolved_config().get("build_profile"),
+        manifest=await delivered_manifest(vault, cycle) if blueprint else None,
+        declared=declared,
+        served=served,
+        environment=environment,
+        unstartable=unstartable,
+        lint_stack=lint_stack,
+    )
+
+
+async def evaluate_calibration_record(
+    *,
+    store: ScenarioStorePort,
+    runner: ScenarioRunnerPort | None,
+    project_id: str,
+    calibration_record_id: str,
+    campaign_id: str,
+    suite_digest: str,
+    evaluated_at: datetime,
+    tree: Mapping[str, bytes],
+    executable: Collection[str],
+    declared: DeclaredStart | None,
+    served: frozenset[SurfaceKind] | None,
+    unstartable: StartUndeclared | ReadinessUnsupported | SecretUnavailable | None,
+    lint_stack: str | None,
+) -> EvaluationRecord:
+    """SIP-0113 §10l: a repository-backed Campaign's baseline reading, its calibration record's
+    commit evaluated against the Campaign's pinned suite, and the record written. It is a product,
+    so it starts only by its ``declared`` start (or is blocked by ``unstartable``), with no stack and
+    no manifest of its own. A calibration builds on nothing, so the record names no previous tree.
+    The record names the calibration record in place of a cycle."""
+    if declared is None and unstartable is None:
+        raise ValueError(
+            f"calibration record {calibration_record_id} is a product's: it starts by its own "
+            "declaration, or the reason it can't, never by a stack"
+        )
+    return await _evaluated(
+        store=store,
+        runner=runner,
+        suite=(await require_pinnable(store, suite_digest)).suite,
+        unit=_Unit(project_id, calibration_record_id=calibration_record_id),
+        campaign_id=campaign_id,
+        previous_accepted_tree_identity=None,
+        evaluated_at=evaluated_at,
+        tree=tree,
+        executable=executable,
+        stack=None,
+        manifest=None,
+        declared=declared,
+        served=served,
+        environment=None,
+        unstartable=unstartable,
+        lint_stack=lint_stack,
+    )
+
+
+@dataclass(frozen=True)
+class _Unit:
+    """What an evaluation names: a cycle, or a calibration record (§10l), exactly one."""
+
+    project_id: str
+    cycle_id: str | None = None
+    calibration_record_id: str | None = None
+
+
+async def _evaluated(
+    *,
+    store: ScenarioStorePort,
+    runner: ScenarioRunnerPort | None,
+    suite: ScenarioSuite,
+    unit: _Unit,
+    campaign_id: str | None,
+    previous_accepted_tree_identity: str | None,
+    evaluated_at: datetime,
+    tree: Mapping[str, bytes],
+    executable: Collection[str],
+    stack: str | None,
+    manifest: InterfaceManifest | None,
+    declared: DeclaredStart | None,
+    served: frozenset[SurfaceKind] | None,
+    environment: Mapping[str, str] | None,
+    unstartable: StartUndeclared | ReadinessUnsupported | SecretUnavailable | None,
+    lint_stack: str | None,
+) -> EvaluationRecord:
+    """One tree evaluated against an approved ``suite``, and its record written: a cycle's or a
+    calibration record's, by the one path."""
     identity = FileTree.of(tree).identity
     kinds = served if served is not None else BLUEPRINT_SURFACES
     applicable = [s for s in suite.scenarios if {k.kind for k in s.surfaces} <= kinds]
@@ -323,12 +443,11 @@ async def evaluate_cycle(
     # serve is surface_absent, never failed), and its concept fields resolved against it.
     absent: dict[str, BlockedReason] = {}
     contents: list[dict[str, Any]] = []
-    # Only a blueprint delivery has a manifest of its own. A declared Project, or one whose
-    # declaration couldn't be read, never reads one (SIP-0112 §8.3).
     blueprint = declared is None and unstartable is None
-    manifest = await delivered_manifest(vault, cycle) if blueprint else None
+    # §4.2, §10l: a tree with a scaffold stack's rule set: a sample application's, or a product
+    # made from a scaffold blueprint. Never the product's own linter.
+    linted = blueprint or lint_stack is not None
     fields = delivered_fields(manifest)
-    stack = cycle.resolved_config().get("build_profile")
     prefix = _api_prefix(stack) if manifest is not None and stack else ""
     endpoints = delivered_endpoints(manifest, prefix)
     routes = delivered_routes(manifest)
@@ -356,16 +475,19 @@ async def evaluate_cycle(
     pages = declared_pages(manifest, declared) if SurfaceKind.PAGE in kinds else ()
     # §10j, §10n (#2562): a second, seeded instance, measured on every declared page.
     planned, plan = planned_seed(
-        cycle.project_id, manifest, blueprint=blueprint, serves_pages=SurfaceKind.PAGE in kinds
+        unit.project_id, manifest, blueprint=blueprint, serves_pages=SurfaceKind.PAGE in kinds
     )
     evaluated: TreeEvaluation | None = None
-    # A blueprint's tree is linted whether or not anything else runs (§4.2, #2416).
-    if (contents or pages or blueprint) and unstartable is not None:
+    # A linted tree is linted whether or not anything else runs (§4.2, #2416).
+    if (contents or pages or linted) and unstartable is not None:
         blocked = unstartable.reason
-    elif (contents or pages or blueprint) and runner is None:
+    elif (contents or pages or linted) and runner is None:
         blocked = BlockedReason.NO_RUNNER
-    elif (contents or pages or blueprint) and runner is not None:
-        seeded: dict[str, Any] = {"seed": plan} if plan is not None else {}
+    elif (contents or pages or linted) and runner is not None:
+        # Each is passed only when asked for, so a runner that takes neither is called as before.
+        optional: dict[str, Any] = {"seed": plan} if plan is not None else {}
+        if lint_stack is not None:
+            optional["lint_stack"] = lint_stack
         try:
             evaluated = await runner.evaluate_tree(
                 tree=tree,
@@ -376,7 +498,7 @@ async def evaluate_cycle(
                 scenarios=contents,
                 environment=environment or {},
                 pages=pages,
-                **seeded,
+                **optional,
             )
         except RunnerUnavailable:
             blocked = BlockedReason.NO_RUNNER
@@ -391,9 +513,10 @@ async def evaluate_cycle(
             _outcome(s, kinds, runs.get(s.scenario_id), absent.get(s.scenario_id) or blocked)
             for s in suite.scenarios
         ),
-        project_id=cycle.project_id,
+        project_id=unit.project_id,
         campaign_id=campaign_id,
-        cycle_id=cycle.cycle_id,
+        cycle_id=unit.cycle_id,
+        calibration_record_id=unit.calibration_record_id,
         evaluated_tree_identity=identity,
         previous_accepted_tree_identity=previous_accepted_tree_identity,
         evaluated_at=evaluated_at,
@@ -402,7 +525,7 @@ async def evaluate_cycle(
             if SurfaceKind.PAGE in kinds
             else QualityReading(QualityStatus.NOT_APPLICABLE)
         ),
-        lint=lint_of(blueprint, blocked, evaluated),
+        lint=lint_of(linted, blocked, evaluated),
         quality_seeded=seeded_of(planned, blocked, evaluated),
     )
     await store.save_evaluation(record)

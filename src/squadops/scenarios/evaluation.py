@@ -5,6 +5,12 @@ can be evaluated more than once (a re-run after ``blocked_unverified``, a #1959 
 suite). It names trees only by SIP-0109's ``FileTree.identity``, never by sandbox revision or Git
 commit; a commit is reached through SIP-0112's mapping (contract 4).
 
+On a repository-backed Project, a Campaign's calibration is a record, not a cycle (SIP-0109 §24bv
+point 1), and its baseline reading evaluates the record's commit (SIP-0113 §10l). That record names
+the calibration record in place of a cycle: exactly one of ``cycle_id`` and
+``calibration_record_id``, as the campaign's accepted tree names one (§24cc). A calibration builds
+on nothing, so its reading names no previous tree.
+
 Each record yields an ``OutcomeEvaluationRef``, the reference SIP-0112's Project history stores.
 The reference and its reader live in ``squadops.scenarios.reference``, apart from the outcomes here.
 """
@@ -128,12 +134,14 @@ class ScenarioOutcome:
 
 @dataclass(frozen=True)
 class EvaluationRecord:
-    """A cycle evaluated against one suite (§4.1)."""
+    """A cycle, or a repository-backed Campaign's calibration record (§10l), evaluated against one
+    suite (§4.1)."""
 
     evaluation_id: str
     project_id: str
     campaign_id: str | None
-    cycle_id: str
+    #: ``None`` only on a calibration record's reading, which names ``calibration_record_id``.
+    cycle_id: str | None
     evaluated_tree_identity: str
     previous_accepted_tree_identity: str | None
     suite_digest: str
@@ -147,6 +155,21 @@ class EvaluationRecord:
     #: Lighthouse and axe on a second, seeded instance of the tree (§10j, §10n). ``None`` on a
     #: record written before it: never read as measured, nor as not measured.
     quality_seeded: QualityReading | None = None
+    #: §10l: the repository-backed Campaign's calibration record whose commit this reading
+    #: evaluated, its baseline. ``None`` on a cycle's record.
+    calibration_record_id: str | None = None
+
+    def __post_init__(self) -> None:
+        if (self.cycle_id is None) == (self.calibration_record_id is None):
+            raise EvaluationInvalid(
+                "an evaluation names exactly one of cycle_id and calibration_record_id, got "
+                f"cycle_id={self.cycle_id!r}, calibration_record_id={self.calibration_record_id!r}"
+            )
+        if self.calibration_record_id is not None and self.previous_accepted_tree_identity:
+            raise EvaluationInvalid(
+                f"calibration record {self.calibration_record_id}'s reading builds on nothing, "
+                f"and names {self.previous_accepted_tree_identity} as its previous tree"
+            )
 
     def reference(self) -> OutcomeEvaluationRef:
         return OutcomeEvaluationRef(
@@ -157,6 +180,7 @@ class EvaluationRecord:
             cycle_id=self.cycle_id,
             evaluated_tree_identity=self.evaluated_tree_identity,
             previous_accepted_tree_identity=self.previous_accepted_tree_identity,
+            calibration_record_id=self.calibration_record_id,
         )
 
 
@@ -203,7 +227,7 @@ def evaluation_record(
     *,
     project_id: str,
     campaign_id: str | None,
-    cycle_id: str,
+    cycle_id: str | None,
     evaluated_tree_identity: str,
     previous_accepted_tree_identity: str | None,
     evaluated_at: datetime,
@@ -211,9 +235,11 @@ def evaluation_record(
     lint: LintReading,
     evaluation_id: str | None = None,
     quality_seeded: QualityReading | None = None,
+    calibration_record_id: str | None = None,
 ) -> EvaluationRecord:
     """A record that names its suite's scenarios exactly: one outcome for each, at the version and
-    goal the suite holds. Anything else would report against a suite it didn't run."""
+    goal the suite holds. Anything else would report against a suite it didn't run. It names a
+    cycle, or a calibration record (§10l), exactly one."""
     expected = {s.scenario_id: (s.version, s.goal) for s in suite.scenarios}
     given = {o.scenario_id: (o.version, o.goal) for o in outcomes}
     if len(given) != len(outcomes) or given != expected:
@@ -233,6 +259,7 @@ def evaluation_record(
         quality=quality,
         lint=lint,
         quality_seeded=quality_seeded,
+        calibration_record_id=calibration_record_id,
     )
     parse_reference(record.reference().to_dict())  # the reference it yields must be readable
     return record

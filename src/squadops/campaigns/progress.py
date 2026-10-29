@@ -590,7 +590,11 @@ class CampaignProgress:
         assess: Assess,
         launch: Callable[[], Awaitable[object]],
         evaluate_outcome: Callable[[Cycle], Awaitable[object]] | None,
-        #: ``(campaign_id, cycle_ids, *, named_goals)``: SIP-0113's section (``campaign_outcomes``).
+        #: SIP-0113 §10l: ``(campaign_id, record)``, a repository-backed campaign's baseline
+        #: reading, its calibration record's commit evaluated when the record is heard.
+        evaluate_baseline: Callable[[str, CalibrationRecord], Awaitable[object]] | None,
+        #: ``(campaign_id, cycle_ids, *, named_goals, calibration_record_id)``: SIP-0113's section
+        #: (``campaign_outcomes``).
         outcome_section: Callable[..., Awaitable[dict | None]] | None,
         intervention_section: Callable[[str, list[ControlLogEntry]], Awaitable[dict]] | None,
         #: §24bv point 2: a repository-backed Campaign's branch in the managed clone. ``None``
@@ -607,6 +611,9 @@ class CampaignProgress:
         # SIP-0113 §4.1 (#2414): each ending that reached its build is evaluated against the
         # campaign's pinned suite, reporting-only. ``None`` where no evaluator is wired.
         self._evaluate_outcome = evaluate_outcome
+        # SIP-0113 §10l: a repository-backed campaign's calibration record is evaluated when it is
+        # heard, before its promotion, reporting-only. ``None`` where no evaluator is wired.
+        self._evaluate_baseline = evaluate_baseline
         # SIP-0113 §4.4 (#2418): what the evidence package carries of the campaign's outcome
         # evaluations. ``None`` where nothing is wired: the package then has no such section.
         self._outcome_section = outcome_section
@@ -906,6 +913,9 @@ class CampaignProgress:
             return None
         self._hearing.add(record.record_id)
         try:
+            # SIP-0113 §10l: the baseline reading, before the promotion, as a cycle's evaluation
+            # comes before its own (§10: the box is between cycles). Reporting-only.
+            await self._baseline_evaluated(campaign_id, record)
             campaign = await self._promote_record(campaign, record)
             decision = calibration_record_decision(
                 campaign,
@@ -937,6 +947,22 @@ class CampaignProgress:
             return result
         finally:
             self._hearing.discard(record.record_id)
+
+    async def _baseline_evaluated(self, campaign_id: str, record: CalibrationRecord) -> None:
+        """SIP-0113 §10l: the record's commit evaluated against the campaign's pinned suite, its
+        baseline reading. Reporting-only, as ``_outcome_evaluated`` is: nothing here reads the
+        reading, and a failure (the registry, the configuration, the clone) is logged and leaves
+        it absent, never stopping the record's promotion or its decision. A record heard again
+        after a restart is read once: the evaluator skips a reading already written."""
+        if self._evaluate_baseline is None:
+            return
+        try:
+            await self._evaluate_baseline(campaign_id, record)
+        except Exception:
+            logger.exception(
+                "baseline_evaluation_failed",
+                extra={"campaign_id": campaign_id, "record_id": record.record_id},
+            )
 
     async def _promote_record(self, campaign: Campaign, record: CalibrationRecord) -> Campaign:
         """§12a for a calibration record: the accepted tree is the record's commit, by its tree
@@ -1314,7 +1340,7 @@ class CampaignProgress:
             log,
             launches,
             records,
-            outcomes=await self._outcomes(campaign_id, [r.cycle_id for r in records]),
+            outcomes=await self._outcomes(campaign_id, [r.cycle_id for r in records], log),
             interventions=await self._interventions(campaign_id, log),
         )
         for ref in await self._vault.list_artifacts(
@@ -1347,14 +1373,24 @@ class CampaignProgress:
         )
         return doc["identity"], package_ref.artifact_id, digest_ref.artifact_id
 
-    async def _outcomes(self, campaign_id: str, cycle_ids: list[str]) -> dict | None:
+    async def _outcomes(
+        self, campaign_id: str, cycle_ids: list[str], log: list[ControlLogEntry]
+    ) -> dict | None:
         """SIP-0113 §4.4 (#2418): the package's outcome section. A failure to read it is in the
-        package with the reason, never a package that isn't written."""
+        package with the reason, never a package that isn't written. A repository-backed
+        campaign's baseline is its calibration record's reading (§10l), named by the record its
+        start wrote."""
         if self._outcome_section is None:
             return None
         try:
             named = await self._named_goals(cycle_ids)
-            return await self._outcome_section(campaign_id, cycle_ids, named_goals=named)
+            record = recorded_calibration(log)
+            return await self._outcome_section(
+                campaign_id,
+                cycle_ids,
+                named_goals=named,
+                calibration_record_id=record.record_id if record is not None else None,
+            )
         except Exception as e:  # noqa: BLE001 — the package says what it could not read
             logger.exception("campaign_outcomes_unreadable", extra={"campaign_id": campaign_id})
             return {"unreadable": f"{type(e).__name__}: {e}"}

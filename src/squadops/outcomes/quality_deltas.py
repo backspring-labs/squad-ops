@@ -46,7 +46,8 @@ class Against:
 
     #: The accepted tree it was built on.
     PREVIOUS = "previous"
-    #: The campaign's baseline: the calibration's reading (§4.2).
+    #: The campaign's baseline: the calibration's reading (§4.2), a cycle's, or on a
+    #: repository-backed Project its calibration record's (§10l). Either built on nothing.
     BASELINE = "baseline"
     #: A diagnostic's: the tree its edits were made to (§10y's positive control, #1251's rule).
     MADE_FROM = "made_from"

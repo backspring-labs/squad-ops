@@ -62,7 +62,10 @@ def test_a_control_command_sends_its_reason_key_and_expected_state(get_client):
 @patch("squadops.cli.commands.campaigns._get_client")
 def test_start_names_the_cycle_it_launched(get_client):
     """Bug caught: a start that reports the campaign moved but not which cycle it launched —
-    the one thing the owner next watches."""
+    the one thing the owner next watches. And (SIP-0113 §10l) a start sent with the short
+    timeout: a repository-backed start evaluates its record's commit before it answers, so the CLI
+    would report a timeout for a start that is still running. Only the start waits long: the pause
+    above is sent without one."""
     client = _client(
         post={
             **_RESULT,
@@ -71,6 +74,7 @@ def test_start_names_the_cycle_it_launched(get_client):
             "launched_cycles": ["cyc_cal000000001"],
         }
     )
+    client.long_timeout = 1800
     get_client.return_value = client
 
     result = runner.invoke(
@@ -79,7 +83,9 @@ def test_start_names_the_cycle_it_launched(get_client):
 
     assert result.exit_code == 0, result.output
     client.post.assert_called_once_with(
-        "/api/v1/campaigns/cmp_1/start", json={"reason": "go", "idempotency_key": "k-1"}
+        "/api/v1/campaigns/cmp_1/start",
+        json={"reason": "go", "idempotency_key": "k-1"},
+        timeout=1800,
     )
     assert "launched cycles: cyc_cal000000001" in result.output
 

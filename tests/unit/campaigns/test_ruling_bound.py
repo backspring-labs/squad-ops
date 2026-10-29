@@ -106,6 +106,7 @@ async def test_the_sweep_records_each_bound_once_and_a_ruling_still_resolves_the
         assess=AsyncMock(),
         launch=AsyncMock(),
         evaluate_outcome=None,
+        evaluate_baseline=None,
         outcome_section=None,
         intervention_section=None,
         campaign_branch=None,

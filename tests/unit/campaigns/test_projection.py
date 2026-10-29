@@ -113,6 +113,7 @@ async def test_every_row_a_non_route_writer_commits_is_projected_once(world):
         assess=AsyncMock(side_effect=_rejected),
         launch=AsyncMock(),
         evaluate_outcome=None,
+        evaluate_baseline=None,
         outcome_section=None,
         intervention_section=None,
         campaign_branch=None,

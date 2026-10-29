@@ -38,8 +38,10 @@ async def with_proposal_evidence(
     basis = increment_basis(cycle.resolved_config())
     if basis is not None and not basis.has_manifest:
         # SIP-0109 §24bv point 5: a repository-backed increment's accepted tree is the campaign
-        # branch's head, which no evaluation reads yet (SIP-0113 §10l, placed in 2.5). It is
-        # shown its head's verification instead (``product_proposal``), and no goal.
+        # branch's head. Its head is evaluated (the record's commit by SIP-0113 §10l, an
+        # increment's capture by §10aa), but showing a product's proposal those goals is §4.5 on
+        # a repository-backed Project, which no ruling has placed. It is shown its head's
+        # verification instead (``product_proposal``), and no goal.
         return envelopes
     accepted = accepted_cycle_of(cycle)
     if accepted is None:

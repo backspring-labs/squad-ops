@@ -307,12 +307,13 @@ class HttpScenarioRunner(ScenarioRunnerPort):
         pages: Sequence[str],
         seed: Any = None,
         routes: Sequence[RouteRequest] = (),
+        lint_stack: str | None = None,
     ) -> TreeEvaluation:
         wire = wire_files(tree)
         try:
             payload = await self._post_evaluation(
                 wire, tree_identity, executable, stack, declared, scenarios, environment, pages,
-                seed, routes,
+                seed, routes, lint_stack,
             )  # fmt: skip
         except SandboxServiceError as e:
             if e.status_code == 503:
@@ -324,7 +325,7 @@ class HttpScenarioRunner(ScenarioRunnerPort):
 
     async def _post_evaluation(
         self, wire, tree_identity, executable, stack, declared, scenarios, environment, pages, seed,
-        routes,
+        routes, lint_stack,
     ) -> dict:  # fmt: skip
         return await self._sandbox._post(
             "/api/v1/evaluations",
@@ -340,5 +341,7 @@ class HttpScenarioRunner(ScenarioRunnerPort):
                 "pages": list(pages),
                 "seed": seed.as_dict() if seed is not None else None,
                 "routes": [r.as_dict() for r in routes],
+                # SIP-0113 §10l: the scaffold blueprint a declared product was made from.
+                "lint_stack": lint_stack,
             },
         )

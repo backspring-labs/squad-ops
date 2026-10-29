@@ -114,6 +114,7 @@ class _World:
             assess=self._assess,
             launch=AsyncMock(),
             evaluate_outcome=None,
+            evaluate_baseline=None,
             outcome_section=None,
             intervention_section=None,
             campaign_branch=CampaignBranch(projects=self.projects, repository=repository),

@@ -138,6 +138,7 @@ class _World:
             assess=self._assess,
             launch=self.launches,
             evaluate_outcome=self.evaluations,
+            evaluate_baseline=None,
             outcome_section=None,
             intervention_section=None,
             campaign_branch=branch,

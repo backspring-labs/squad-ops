@@ -62,6 +62,7 @@ from squadops.ports.tools.container import ContainerPort
 from squadops.sandbox.environment import EVALUATOR_BROWSER, get_environment_contract
 from squadops.sandbox.models import OperationName, content_bytes, declared_argv
 from squadops.sandbox.workspace import WorkspaceEscapeError, tree_path, working_directory
+from squadops.stacks.scaffold import is_scaffoldable_stack
 from squadops.scenarios.evidence import ScenarioEvidence, kept
 from squadops.scenarios.quality import (
     LintReading,
@@ -214,6 +215,7 @@ class ContainerScenarioRunner(ScenarioRunnerPort):
         pages: Sequence[str],
         seed: SeedPlan | None = None,
         routes: Sequence[RouteRequest] = (),
+        lint_stack: str | None = None,
     ) -> TreeEvaluation:
         built = FileTree.of(tree).identity
         if built != tree_identity:
@@ -246,16 +248,23 @@ class ContainerScenarioRunner(ScenarioRunnerPort):
             shutil.rmtree(copy, ignore_errors=True)
             if snapshot is not None:
                 shutil.rmtree(snapshot, ignore_errors=True)
-        evaluation = dataclasses.replace(evaluation, lint=await self._lint(tree, declared))
+        evaluation = dataclasses.replace(
+            evaluation, lint=await self._lint(tree, declared, lint_stack)
+        )
         return _redacted(_evidence_kept(evaluation, environment.values()), environment.values())
 
     async def _lint(
-        self, tree: Mapping[str, bytes | str], declared: DeclaredStart | None
+        self,
+        tree: Mapping[str, bytes | str],
+        declared: DeclaredStart | None,
+        lint_stack: str | None = None,
     ) -> LintReading:
         """#1937's lint over the tree as delivered (§4.2, #2416). The evaluator's image runs the
         tools with no network; the files, #1937's ruff command and its ESLint runner go on its
-        input, so each has one source. Only a blueprint's tree has #1937's rule sets."""
-        if declared is not None:
+        input, so each has one source. Only a scaffold stack's tree has #1937's rule sets: a
+        blueprint's, or a declared product made from one, which ``lint_stack`` names (SIP-0113
+        §10l). This side checks the name too, so a stack that isn't a scaffold's lints nothing."""
+        if declared is not None and not (lint_stack and is_scaffoldable_stack(lint_stack)):
             return LintReading.not_measured(NotMeasured.NOT_A_SCAFFOLD_STACK)
         if not await self._container.has_image(self._evaluator_image):
             return LintReading.not_measured(NotMeasured.EVALUATOR_ABSENT, self._evaluator_image)
