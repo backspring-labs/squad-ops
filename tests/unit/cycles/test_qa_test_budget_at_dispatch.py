@@ -127,7 +127,9 @@ def _qa_task(expected: str) -> TaskEnvelope:
 
 async def _executor_over(tree: dict[str, str]):
     """An executor whose vault holds ``tree``, its recall a snapshot pinning one 1,330-token
-    project instruction for ``qa.test``, and its run registry a run with no hold."""
+    project instruction for ``qa.test``, and its run registry a run with no hold. Its binding holds
+    are the executor's own class, polling at once and cancelled at the first poll, so a held task
+    ends its test rather than waiting on a re-supply."""
     from squadops.execution.dispatched_flow_executor import DispatchedFlowExecutor
 
     text = "Name each moon by its orbit. "
@@ -155,6 +157,15 @@ async def _executor_over(tree: dict[str, str]):
         proposal_evidence=NoOpProposalEvidence(),
         task_timeout=5.0,
         event_bus=MagicMock(),
+    )
+    executor.__dict__["_binding_holds"] = BindingHolds(
+        cycle_registry=registry,
+        campaign_registry=None,
+        event_bus=MagicMock(),
+        is_cancelled=AsyncMock(return_value=True),
+        await_box=AsyncMock(),
+        fill=None,
+        poll_s=0,
     )
     return executor, stored, store, registry, cycle
 
@@ -212,16 +223,6 @@ async def test_a_qa_test_whose_shown_package_alone_exceeds_the_window_is_still_h
     read as room the prompt doesn't have, so the guard refuses a prompt the composer admitted."""
     tree = _tree(app_files=34)
     executor, stored, store, registry, cycle = await _executor_over(tree)
-    # The executor's own hold, polling at once and cancelled at its first poll, so the test ends.
-    executor.__dict__["_binding_holds"] = BindingHolds(
-        cycle_registry=registry,
-        campaign_registry=None,
-        event_bus=MagicMock(),
-        is_cancelled=AsyncMock(return_value=True),
-        await_box=AsyncMock(),
-        fill=None,
-        poll_s=0,
-    )
     envelope = _qa_task("orbit/tests/test_moon_period.py")
 
     enriched = await executor._enrich_envelope(envelope, {}, [], stored)
