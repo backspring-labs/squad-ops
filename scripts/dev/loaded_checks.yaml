@@ -2182,10 +2182,23 @@ checks:
       print("lint_stack" in EvaluationRequest.model_fields, "lint_only" in EvaluationRequest.model_fields, "lint_stack" in params, "lint_only" in params, "lint_stack" in inspect.signature(ContainerScenarioRunner._lint).parameters)
     expect: "True True True True True"
   - id: "2789-hearing-holds-the-owners-word"
-    what: a cycle's hearing reads the campaign again before its promotion and its decision, holds a paused campaign's ending for its resume, and takes an applied promotion as written (SIP-0109 §24cq, #2789)
+    what: a cycle's hearing holds a paused campaign's ending for its resume, reads a moved campaign as moved, takes an applied promotion as written, and writes the move to evaluating with the state it read, exercised on in-memory fakes (SIP-0109 §24cq, #2789, the review of #2792)
     container: squadops-runtime-api
     code: |
+      import asyncio, types
       from squadops.campaigns import progress
-      from squadops.campaigns.progress import CampaignProgress
-      print(callable(progress._heard_now), hasattr(CampaignProgress, "_still"), hasattr(CampaignProgress, "_promoted_already"), hasattr(CampaignProgress, "_promoted_and_evaluating"))
-    expect: "True True True True"
+      from squadops.campaigns.models import CampaignState, ControlOperation, ControlOutcome
+      p = progress.CampaignProgress.__new__(progress.CampaignProgress)
+      paused = types.SimpleNamespace(campaign_id="c", state=CampaignState.PAUSED)
+      building = types.SimpleNamespace(campaign_id="c", state=CampaignState.BUILDING)
+      cyc = types.SimpleNamespace(cycle_id="cyc_x", campaign_id="c")
+      promoted = types.SimpleNamespace(operation=ControlOperation.PROMOTE, outcome=ControlOutcome.APPLIED, target="cyc_x")
+      seen = []
+      async def get_campaign(cid): return paused
+      async def control_log(cid): return [promoted]
+      async def transition(cid, t): seen.append(t.expected_state); return types.SimpleNamespace(campaign=building)
+      p._campaigns = types.SimpleNamespace(get_campaign=get_campaign, control_log=control_log, transition=transition)
+      moved = asyncio.run(p._still(building, "cyc_x"))[1]
+      asyncio.run(p._evaluating(building, cyc))
+      print(progress._heard_now(paused, cyc), progress._heard_now(building, cyc), moved, asyncio.run(p._promoted_already(building, cyc)), seen[0].value)
+    expect: "False True True True building"
