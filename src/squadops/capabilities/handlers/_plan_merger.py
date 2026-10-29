@@ -499,8 +499,7 @@ def _dropped_edge_notes(
         f"Dependency dropped: canonical task {i} depended on {key!r}, which the merge dropped "
         f"because every file it named is a criterion file that canonical task(s) "
         f"{', '.join(str(focus_to_index[w]) for w in dropped[key].writers)} write (SIP-0093 "
-        "§15b). The "
-        "edge isn't moved to them, since that could close a dependency cycle."
+        "§15b). The edge isn't moved to them, since that could close a dependency cycle."
         for i, key in edges
     ]
 

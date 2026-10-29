@@ -234,7 +234,7 @@ def _outcome(role: str, content: str) -> dict:
 # --- the wiring: plan composition, the merge handler, the framing gate ---------------------------
 
 
-async def test_the_live_pair_merges_to_one_owner_per_criterion_file_and_passes_the_framing_gate():
+async def test_the_issues_shape_merges_to_one_owner_per_criterion_file_and_passes_the_gate():
     """Entered where the live cycle enters: ``generate_task_plan`` (framing), which composes the
     merge's envelope; ``GovernanceMergePlanHandler.handle``, the lead's merge on those inputs and
     the two proposals; and ``_reject_invalid_plan_before_workload_gate``, the framing gate that
