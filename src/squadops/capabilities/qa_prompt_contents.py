@@ -13,8 +13,10 @@ The two prompt paths show different files, chosen as the handler chooses its pat
   task's expected artifacts live in, or every file when none is expected or none matches
   (:func:`package_scoped`);
 - **the monolithic prompt** shows the validation plan and the stack's source and support files,
-  never its tests (:func:`source_files`). The suite runs against those source and support files
-  on both paths.
+  never its tests (:func:`source_files`).
+
+What the suite runs against is ``qa_run_tree``'s (#2815): these source and support files on a
+sample application, and the product's tree on a repository-backed product.
 
 Pure: no I/O and no handler imports, so the runtime's composer and the agent's handler both call
 it.
@@ -75,7 +77,8 @@ def source_files(
     artifact_contents: Mapping[str, str], profile: DevelopmentProfile
 ) -> dict[str, str]:
     """The stack's source files and its build-support files (D4, D9): what the monolithic prompt
-    shows, and the tree the suite is built and run against on both paths.
+    shows, and, on a sample application, the tree the suite is built and run against
+    (``qa_run_tree``, #2815).
 
     Source files by the profile's ``source_filter`` extension, never a test file, AND the profile's
     ``build_support_files`` (config and entry files matched by basename: package.json,

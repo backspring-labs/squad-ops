@@ -104,7 +104,7 @@ sandbox, which the Spark lane owns, are named as cross-lane tasks (§8.2.2).
   review, was approved by the owner as written, 2026-10-17 (§8.2 contract 7). This PR stays proposal-only until the
   owner approves it, and no integration branch is created yet.
 
-## Delivery ledger (current as of 2026-10-28)
+## Delivery ledger (current as of 2026-10-29)
 
 One row per part that ships separately, from Appendix E.4. Statuses: *shipped* (the release, the PR,
 and the issue it closed), *placed* (the release and the open issue tracking it, labelled `sip:NNNN` once
@@ -125,7 +125,7 @@ update history and archive/restore are features. Dependencies are in E.4. Game-s
 | E.4.2 repository-native discovery and the inherited baseline, with the start declaration (§8.2 contract 7) | **shipped**: the managed clone and validation; the versioned Development Configuration with contract 7's start declaration and the repository's instruction sources; seeding with the commit-to-revision mapping (contract 3's seeding half); the inherited baseline through X-3a. Capture back to Git is E.4.3's (#2410) | 2.4.0, PR #2468, issue #2409 |
 | E.4.3 the first scoped feature through the shared cycle path | **shipped**: the source-backed run, from the product's tree to a verified change contributed through its own process (#2484); the sync's attribution of SquadOps's own contributions and its hold on Cycles until drift is reconciled (#2610, H.2); the brownfield demonstration read against its pre-registration, with IR-2 passing live (#2611). The deletion form and a regression's repair round are deferred follow-ups, each with its own issue | 2.4.0, PRs #2484, #2610 and #2611, issue #2410 |
 | E.4.4 the second feature after an outside contribution | **shipped**: a product's upstream read against its approved baseline, its contributions' standing, and the repository reference resolver (#2565); the sync's attribution and its hold on Cycles until drift is reconciled (#2610, H.2); the brownfield demonstration's second feature after an outside change, read (#2611); IR-3 as H.3 restates it (#2616) | 2.4.0, PRs #2565, #2610 and #2611, issue #2411 |
-| H.4 a repository-backed Project's development profile derived from its tree, its capability gaps named, and Campaigns run on it (found as #2619; the owner, 2026-10-21) | **placed**. On main so far: contract 8 (H.6), the derivation (H.7), blocking gaps (H.8), contract 1's pin for an increment (H.9), the recipe (H.11), and a blueprint's conventions without its test placement (H.13; the Spark lane, since the MacBook lane's handoff of 2026-10-28). It remains open for SIP-0109 §24bv point 5's proposal input, the `qa.evaluate_increment` drop, and what H.13 names as not built | 2.5.0, #2619 |
+| H.4 a repository-backed Project's development profile derived from its tree, its capability gaps named, and Campaigns run on it (found as #2619; the owner, 2026-10-21) | **placed**. On main so far: contract 8 (H.6), the derivation (H.7), blocking gaps (H.8), contract 1's pin for an increment (H.9), the recipe (H.11), a blueprint's conventions without its test placement (H.13; the Spark lane, since the MacBook lane's handoff of 2026-10-28), and a product's qa suite run on the product's tree (H.15, #2815). It remains open for SIP-0109 §24bv point 5's proposal input, the `qa.evaluate_increment` drop, and what H.13 names as not built | 2.5.0, #2619 |
 | E.4.5 lifecycle completeness: update history, archive/restore, concurrency and conflict recovery (before close; not required in 2.4) | **placed** (the owner, 2026-10-23) | 2.6.0, #2709 |
 | E.4.6 greenfield Project creation at an owner-approved external destination (required, Q34; shipped by the 2.4 cut, G6) | **shipped** | 2.4.0, PR #2584, closes #2412: the greenfield proof ran on the Spark's deploy (`cyc_7bf35ffb4cc5`; `backspring-labs/z_shelfnote#1`, merged as `9bcdc7c0`) and is read in `docs/plans/2-4-0-demonstrations-readout.md`. IR-7, a greenfield Project's first Campaign, waits on H.4 (#2619, 2.5.0), as the integration record says |
 | E.4.7 direct attachment: writing in place in an existing checkout (optional, FR-02) | **unplaced**, deliberately: optional. The 2.6 plan ships it or drops it by a numbered amendment, since the SIP closes in 2.6 (the owner, 2026-10-23) | — |
@@ -2599,3 +2599,101 @@ point 1), and SIP-0113 §10l evaluates the record's commit as the Campaign's bas
 
 **Who ruled.** The owner placed SIP-0113 §10l in 2.5 (2026-10-21); its design is the supervisor's. The field's shape is
 the Spark lane's build choice (SIP-0113 §10ac), for the outside reviewer's G4 (H.12), recorded on the PR.
+
+## H.15 A product's qa suite runs on the product's tree, and the qa prompt shows what it showed (2026-10-29; E.4.3, H.4 point 3, H.11 point 4, H.13; SIP-0109 §24bv point 3, §24cl; #2815, #2619; the supervisor's ruling under the owner's 2.5 grants)
+
+**What was found** (#2815). The 2.5 main demonstration's round 3 (`cmp_ce4c95f2f307` on `prj-z-continuum`) stopped
+twice on a criterion the product meets. `z_continuum` has no blueprint, so its cycles run under `python_cli` (H.13).
+- **`cyc_60a71c2b2be2`, run `run_9520f92ee9f2`** (the first increment): the criterion's test got a 404 for the plugin
+  the increment added, and the product's diagnostics listed no entry for it. The correction protocol aborted.
+- **`cyc_7e42e45adc6d`, run `run_89b95f35891f`** (the increment after the reconciliation): "Expected exactly one entry
+  … got 0". The decision task read it as a runtime with no plugins registered.
+- **The qa task's workspace held 96 files,** every plugin manifest among them (its recorded authoring envelope). Its
+  test report counted 34 source files.
+- **The product registers its plugins from a manifest per plugin** (`plugins/<id>/plugin.toml`) when it starts. The
+  run held none, so it registered none. The product's own tests pass on its own runner, on the full checkout (its
+  inherited baseline).
+
+**The cause.** The qa task's suite ran on `qa_prompt_contents.source_files`: the stack's source files by extension (`.py`
+alone under `python_cli`) and its build-support files by basename. That function was written for a sample
+application, whose tree is all source and support files. It's also what the monolithic qa prompt shows and what the
+composer counts (#2805), so the run's tree and the prompt's files were one value. A product reads files its stack's
+filter doesn't call source: config, manifests, templates, its test fixtures. Any criterion that exercises one of them
+failed in-cycle however correct the build, and the correction loop couldn't fix it.
+
+**Two statements this corrects.**
+- **H.13** says a blueprint product's test author runs on "only the squad's own files, never the checkout". The
+  acceptance workspace's filter selects by type (`source`, `config`) whatever produced a file
+  (`DispatchedFlowExecutor._resolve_artifact_contents`), so the checkout's files are in the test author's workspace:
+  96 on `run_89b95f35891f`. It was the source filter that cut them. H.13's "the `.py` filter" for a product with no
+  blueprint now holds for its prompt only.
+- **SIP-0109 §24bv point 3** says the emission and correction seams "see the candidate on the branch head". They saw
+  it, and the qa suite ran on part of it. Now it runs on all of it but its tests, so the sentence holds as written.
+
+**What changed:**
+1. **The run tree is split from the prompt's files** (`squadops.capabilities.qa_run_tree.suite_run_tree`).
+   - **A source-backed run's** (the task carries `source_repository`, E.4.3; read through one predicate,
+     `source_repository.source_backed`, which H.13's conventions now read too): every file of the task's accepted
+     workspace (`artifact_contents`) except a test. That is the product's source, the data and config its runtime
+     reads, and its own test support (`conftest.py`, fixture files, helpers under `__tests__/`).
+   - **A test** is a file any stack's conventions name one or any stack's runner collects (`test_file_patterns`,
+     `collected_test_patterns`), or one the product's runners declare (their `file_pattern`, H.11 point 4). Every
+     stack's, because a product runs under its blueprint's profile or the default (H.13), which needn't be the stack
+     its tests are written for. So the product's own tests never run beside the suite under test: its runner judges
+     them at delivery (SIP-0109 §24cl).
+   - **A sample application's** is `source_files`, unchanged byte for byte.
+2. **Every path of the qa handler that runs a suite takes it:** the emission, the execute-only retest, the contract
+   probes (never on a product, since E.4.3 refuses a `contract_ref`) and the lint reading (#1937: "the tree the run
+   evaluated").
+3. **The prompt and the estimate don't change.** The monolithic prompt still shows `source_files` and the focused
+   prompt `qa_test_prompt_contents`, and the composer counts them as before (#2805, #2810).
+4. **A product's retest carries the marker:** `RETEST_PRESENCE_KEYS` gains `source_repository`, so a repaired suite is
+   retested on the tree its emission ran on. The retest renders no prompt, and memory never composes it.
+
+**The seams that evaluate a product's qa criteria, and the tree each one sees:**
+
+| seam | runs in | tree before | tree after |
+|---|---|---|---|
+| qa emission: `tests_pass`, the frontend build and backend import checks (`QATestHandler.handle`) | eve | the stack's source and support files of `artifact_contents` | the product's tree (point 1) plus the suite |
+| qa retest after a qa or a dev repair (`reexecute_repaired_suite` → `_handle_retest`) | runtime-api composes, eve runs | the same source files, since the retest wasn't told it was a product's | the product's tree plus the patched files |
+| the qa task's own typed checks (`_evaluate_typed_acceptance`) | eve | `acceptance_workspace_files` whole, with the task's files | unchanged |
+| a repair's typed checks (`_attach_typed_checks`, on `repair_base_files`) | eve or neo | the accepted workspace whole, with the failed task's files and the patch | unchanged |
+| the runtime's verifier and file-owned gate (`patch_verification.verify_patched_artifacts`) | runtime-api | the same, typed criteria only: it runs no suite | unchanged |
+| the dev task's own typed checks (`command_exit_zero` reaches no test runner) | neo | `acceptance_workspace_files` whole | unchanged |
+| `qa.evaluate_increment` | eve | not planned for a repository-backed increment (SIP-0109 §24cl item 2) | unchanged |
+| the increment's acceptance (SIP-0109 §24cl) | the sandbox | the product's full tree, on its own runner | unchanged |
+
+**On a tree that lacks a file.** The run tree is the workspace the task was handed, so a file the workspace doesn't
+hold is absent from the run, as it is from the product the squad delivers, and the suite fails as the product would.
+`artifact_contents`' 512 KB resolution limit (D3) bounds both. The test report counts the files the run had.
+
+**What stays, and what isn't built:**
+- **A product's pytest configuration is now in the run,** as it is under the product's own runner. One whose
+  `addopts` names a plugin the qa image lacks (it installs pytest alone, `agents/instances/qa/requirements.txt`)
+  would fail the run as a usage error. Not seen; named here, not built around.
+- **A product test whose name matches no convention and no declared runner pattern** is materialized beside the
+  suite, and runs if the product's own runner configuration collects it.
+- **The qa repairs' and dev repairs' prompts** are unchanged: they show what #2810 counts.
+
+**The evidence:**
+- **The wiring test** (`tests/unit/cycles/test_product_suite_run_tree.py`), entered where the cycle enters: an
+  invented product whose app registers its plugins from `plugins/<id>/manifest.toml` at startup, seeded by
+  `seed_checkout_artifacts`, its qa task enriched by `_enrich_envelope`, its suite run by `QATestHandler.handle` with
+  real pytest, and its retest composed by `reexecute_repaired_suite` and run by the handler. On `python_cli` and on a
+  blueprint's `fullstack_fastapi_react`. Before the change both fail as the live runs did (a 404 and a missing
+  fixture, on 4 source files; the retest without the marker). After it, both pass, the product's own test, which
+  needs a harness the qa image lacks, is never run, and the lint reading reads the run's tree.
+- **The control** (`tests/unit/capabilities/handlers/test_sample_run_tree_characterization.py`): a sample
+  application's suite tree and lint tree on all five development profiles and three paths (focused, monolithic,
+  retest), pinned to a golden captured from `origin/main` at `6b9ee472`.
+- **The prompt:** a product's focused and monolithic prompts are byte-identical to a sample application's on the same
+  workspace, and its suite runs on its tree (`test_qa_prompt_contents.py`).
+- **Thirteen mutants, each caught:** the product's run on the source files; the marker never or always read; the
+  product's own tests kept; its runners' patterns dropped; one stack's conventions only; `is_test_file`'s directory
+  clause; the retest forwarding no marker, or running on the shown files; the emission on the shown files; the
+  monolithic or the focused prompt showing the run tree; the lint on the shown files.
+- **Loaded checks:** `2815-qa-run-tree` (eve), `2815-retest` (the runtime-api) and `2815-dev-marker` (neo), each run
+  on the source.
+
+**Who ruled.** The supervisor (the Spark lane), under the owner's 2.5 grants, on #2815's proposed fix: the run tree
+split from the prompt's files, and the prompt unchanged.
