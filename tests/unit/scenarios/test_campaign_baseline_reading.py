@@ -28,6 +28,7 @@ import asyncio
 import dataclasses
 import json
 from functools import partial
+from types import SimpleNamespace
 from unittest.mock import AsyncMock
 
 import pytest
@@ -638,6 +639,30 @@ async def test_an_abort_during_the_reading_holds_and_the_start_never_raises(tmp_
     assert (await world.campaigns.get_campaign(CID)).state is CampaignState.COMPLETED
     assert (_rows(log, ControlOperation.PROMOTE), await _decided(world, record)) == ([], False)
     assert await world.progress.rehear_calibration_records() == []
+
+
+async def test_a_campaign_paused_before_its_record_is_heard_is_not_read_until_resumed(tmp_path):
+    """P2-A at its entry: a pause applied between the start's row and its hearing. Bugs caught: the
+    box used for a build and a start the owner's brake said not to make; or the record promoted
+    and decided while the campaign is paused."""
+    world = _World(tmp_path)
+    world.projects.configuration = _without_secret(world.projects.configuration)
+    store, runner = await _store(), _Runner(world)
+    progress = _progress(world, _evaluator(world, store, runner), store)
+    world.progress = SimpleNamespace(calibration_recorded=AsyncMock(return_value=None))
+    await world.started()  # the start is applied, and its own hearing is held back
+    await world.campaigns.transition(
+        CID, _owners(ControlOperation.PAUSE, CampaignState.PAUSED, "p")
+    )
+
+    assert await progress.calibration_recorded(CID) is None
+    assert runner.calls == []
+    await world.campaigns.transition(
+        CID, _owners(ControlOperation.RESUME, CampaignState.CALIBRATING, "r")
+    )
+    assert await progress.rehear_calibration_records() == [CID]
+    record = recorded_calibration(await world.campaigns.control_log(CID))
+    assert (len(runner.calls), await _decided(world, record)) == (1, True)
 
 
 class _AbortsAsItPromotes:
