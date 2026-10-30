@@ -17,28 +17,45 @@ placed until the owner adopts that plan and accepts this SIP.
 objective and its requirements source), SIP-0113 (Outcome Evaluation: the held-out suite), SIP-0069 (the console's
 Continuum plugins)
 
-> **Intake check (2026-10-30, against `sips/PORTFOLIO.md`).** No conflict found. Overlaps, each with its boundary:
-> - **SIP-0112's Project Record and Development Configuration** (cluster 14). SIP-0112 owns the Project's identity,
->   lifecycle, and how it is built and run. This SIP owns what the Project is meant to achieve, as a record beside
->   them, keyed by the Project's id. It adds nothing to the Project Record itself.
-> - **SIP-0109's objective** (cluster 1). SIP-0109 owns the decision table, the objective's envelope and every limit.
->   This SIP is a source the objective can name, beside `objective.requirements` (§24bv point 5, the 2.5 plan's D10).
->   The rails and rows it touches change by a numbered SIP-0109 amendment in the PR that builds them (its Delivery ledger).
-> - **SIP-0110's project instructions** (Q31: no second instruction store). An instruction says how the squad
->   works on a Project. A goal says what the Project should come to do. Neither is stored in the other.
-> - **SIP-0113's held-out suite** (clusters 3 and 5). The suite stays the independent judge and stays unread by the
->   squad. A goal set never holds a scenario's steps or values (§7).
-> - **The word *outcome*** (cluster 2). SIP-0113 uses *outcome* for its independent scenarios. So the owner's
->   "expected outcomes" are named **expected results** here, and the word *outcome* is not used for them.
-> - **The ROADMAP's 2.6 row, "the squad-authored backlog".** This SIP is the owner-ordered half. The squad records
->   what it finds as candidates (§5.4); the strategy role ordering its own features is not in it.
-> - **The Game Development Platform draft** (PR #2405, its Q37 on that branch). Its `GAME_DESIGN.md` requirement in
->   every game repository would become a goal set here, held as SquadOps metadata, as Q37's recommendation already
->   reads.
-> - **The Design Decision Register** (proposed, cluster 13). It records design decisions inside a cycle. This SIP
->   records goals and their order across a Campaign. They don't share a record.
-> - **The Continuum Runtime Console** (proposed, partly absorbed). The goals panel here is a SIP-0069 plugin. The
->   duty view that SIP keeps is unrelated.
+## Intake check
+
+Checked 2026-10-30 against `sips/PORTFOLIO.md`. **Conflicts:** none found. **Overlaps,** each with its boundary (cluster 16; Q41–Q44 in the portfolio's queue):
+- **SIP-0112's Project Record and Development Configuration** (cluster 14). SIP-0112 owns the Project's identity,
+  lifecycle, and how it is built and run. This SIP owns what the Project is meant to achieve, as a record beside
+  them, keyed by the Project's id. It adds nothing to the Project Record itself.
+- **SIP-0109's objective** (cluster 1). SIP-0109 owns the decision table, the objective's envelope and every limit.
+  This SIP is a source the objective can name, beside `objective.requirements` (§24bv point 5, the 2.5 plan's D10).
+  The rails and rows it touches change by a numbered SIP-0109 amendment in the PR that builds them (its Delivery ledger).
+- **SIP-0110's project instructions** (Q31: no second instruction store). An instruction says how the squad
+  works on a Project. A goal says what the Project should come to do. Neither is stored in the other.
+- **SIP-0113's held-out suite** (clusters 3 and 5). The suite stays the independent judge and stays unread by the
+  squad. A goal set never holds a scenario's steps or values (§7).
+- **The word *outcome*** (cluster 2). SIP-0113 uses *outcome* for its independent scenarios. So the owner's
+  "expected outcomes" are named **expected results** here, and the word *outcome* is not used for them.
+- **The ROADMAP's 2.6 row, "the squad-authored backlog".** This SIP is the owner-ordered half. The squad records
+  what it finds as candidates (§5.4); the strategy role ordering its own features is not in it.
+- **The Game Development Platform draft** (PR #2405, its Q37 on that branch). Its `GAME_DESIGN.md` requirement in
+  every game repository would become a goal set here, held as SquadOps metadata, as Q37's recommendation already
+  reads.
+- **The Design Decision Register** (proposed, cluster 13). It records design decisions inside a cycle. This SIP
+  records goals and their order across a Campaign. They don't share a record.
+- **The Continuum Runtime Console** (proposed, partly absorbed). The goals panel here is a SIP-0069 plugin. The
+  duty view that SIP keeps is unrelated.
+
+## Delivery ledger (current as of 2026-10-30)
+
+| part | status | where |
+|---|---|---|
+| slice 1: the goal-set record, its revisions, the API and the CLI | **unplaced**, deliberately: proposed for 2.6.0 by the plan's draft, PR #2832 | — |
+| slice 2: a Campaign on a goal set: `objective.goals`, the proposer's view, the one-item rail, derived status, `stop_when: backlog_done` (with a SIP-0109 amendment) | **unplaced**, deliberately: proposed for 2.6.0 | — |
+| slice 3: candidates, their promotion and drop | **unplaced**, deliberately: proposed for 2.6.0 | — |
+| slice 4: the console's goals panel | **unplaced**, deliberately: proposed for 2.6.0 | — |
+| slice 5: Buzz notices and decisions as actions with a `source_ref` | **unplaced**, deliberately: proposed for 2.6.0 as deferrable, after Q43 | — |
+| slice 6: the repository export | **unplaced**, deliberately: not proposed for 2.6 | — |
+
+**What closes this SIP:** slices 1–4 shipped and read live on a Campaign whose backlog reached three accepted items;
+slices 5 and 6 shipped or dropped by a numbered amendment.
+
 
 ---
 
@@ -216,20 +233,6 @@ Buzz carries the conversation. A decision taken there reaches SquadOps as an **a
 is waiting, or an item is accepted, each with its console link. **The bridge's mechanics** (the `buzz-acp` shim
 discussed in `docs/ideas/IDEA-Reselling-Squad-Back-Office.md`, and how Nostromo's `buzz-approved` flow calls the API)
 **are not designed here** (Q43).
-
-## Delivery ledger (current as of 2026-10-30)
-
-| part | status | where |
-|---|---|---|
-| slice 1: the goal-set record, its revisions, the API and the CLI | **unplaced**, deliberately: proposed for 2.6.0 by the plan's draft, PR #2832 | — |
-| slice 2: a Campaign on a goal set: `objective.goals`, the proposer's view, the one-item rail, derived status, `stop_when: backlog_done` (with a SIP-0109 amendment) | **unplaced**, deliberately: proposed for 2.6.0 | — |
-| slice 3: candidates, their promotion and drop | **unplaced**, deliberately: proposed for 2.6.0 | — |
-| slice 4: the console's goals panel | **unplaced**, deliberately: proposed for 2.6.0 | — |
-| slice 5: Buzz notices and decisions as actions with a `source_ref` | **unplaced**, deliberately: proposed for 2.6.0 as deferrable, after Q43 | — |
-| slice 6: the repository export | **unplaced**, deliberately: not proposed for 2.6 | — |
-
-**What closes this SIP:** slices 1–4 shipped and read live on a Campaign whose backlog reached three accepted items;
-slices 5 and 6 shipped or dropped by a numbered amendment.
 
 ## 9. Open questions for the owner
 
