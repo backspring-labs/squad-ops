@@ -37,7 +37,7 @@ Checked 2026-10-30 against `sips/PORTFOLIO.md`. **Conflicts:** none found. **Ove
 - **The Game Development Platform draft** (PR #2405, its Q37 on that branch). Its `GAME_DESIGN.md` requirement in
   every game repository would become a goal set here, held as SquadOps metadata, as Q37's recommendation already
   reads.
-- **The Nostromo crew's campaign harness** (external, `backspring-labs/nostromo`: `docs/campaign-execution-harness.md`;
+- **The Nostromo crew's campaign harness** (external, `backspring-labs/nostromo`, its campaign execution harness document;
   SIP-0109's outer loop, cluster 6). The crew already runs Campaigns from Buzz: the owner approves a definition there,
   signed; a broker holds SquadOps's scoped service principals (`campaign-supervisor`, `campaign-triage`, never
   `admin`); one crew role rules the gates and another reviews that ruling; a watcher posts the factual record.
@@ -114,7 +114,7 @@ best tool for the job and get away from a claude terminal to build apps and game
 - **The crew already runs Campaigns from Buzz,** and its assessment has nowhere to live in SquadOps.
   - Nostromo's broker launches owner-approved definitions, one crew role rules each gate, and a second reviews that
     ruling. The watcher posts the factual closing record, and the ruling role adds a signed closing interpretation
-    (Nostromo's `docs/campaign-execution-harness.md`). SquadOps records the definitions only by digest, as
+    (Nostromo's campaign execution harness document). SquadOps records the definitions only by digest, as
     `buzz-approved:<name>` (`examples/03_group_run/campaigns/provenance.yaml`, 2026-10-24 and 2026-10-25).
   - **The crew already tells the app's work from the framework's.** On 2026-10-26 (`cmp_29048a00fdb3460c0675529a`)
     the calibration plan was for the project's general PRD, not the approved increment, and the framing still read
