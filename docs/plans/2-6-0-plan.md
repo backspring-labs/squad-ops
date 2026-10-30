@@ -3,6 +3,9 @@
 **Status: DRAFT (2026-10-30), for outside review.** Nothing here is ruled. §7's decisions are the owner's, and each
 has a recommendation. §8 lists what the outside reviewer is asked to challenge.
 
+**Revised 2026-10-30, the same day:** the owner asked to incorporate the 2.5.1 fix line's assumptions. §1a names the
+ten defects 2.6 assumes 2.5.1 fixes, with a fallback rule if one slips; they leave §2's tracks, and D11 rules the split.
+
 **The owner's goal for 2.6** (2026-10-30, spelling corrected): "aggressively focus on the ability to drive a multi hour
 campaign that will enhance and improve a real application", with "features that will provide the best chance of a
 multi-hour iteration of a campaign for an external application (not our sample apps)". The owner named two domains:
@@ -59,10 +62,43 @@ checked without a model first (§2.5), so a long run's failure can be attributed
 
 ---
 
+## 1a. What 2.6 assumes 2.5.1 fixes first
+
+**2.6 is planned on top of a 2.5.1 patch** (D11). The 2.5 cut left small defects that need no design, several of them
+on the product path §1 traces. They ship as a patch, not as 2.6 features, so 2.6 starts from a product path whose
+known defects are fixed and its tracks hold only the work that needs design or is new. No 2.5.1 list existed before
+this draft; this is the proposed one.
+
+| issue | what 2.5.1 fixes | why 2.6 depends on it |
+|---|---|---|
+| **#2824** | a repair or retry binds the cycle's approved proposal version, not the launch block's first | ended the cut's `z_continuum` repeat. Any Campaign whose returned proposal's revision fails needs it to carry on (Track B) |
+| **#2817** | the product's own pytest configuration can't stop or redirect the squad's suite, and runner patterns match only under their roots | a real product's pytest config will be richer than `z_continuum`'s two keys |
+| **#2814** | the JS/TS structural resolver reads files past about 257 lines | a real product's files are longer; past that length an anchored edit can't resolve |
+| **#2804** | a criterion file the merge gave to qa is matched by a cwd-relative argv or a glob, not only its named path | a product's typed checks name paths every way |
+| **#2809** | qa.test's monolithic prompt path is measured through the shared rendering | the binding-budget class (#2805, #2810) that stopped two 2.5 rounds |
+| **#2813** | the anchored-edit retry's refusal lines are counted in the repair's binding budget, and the repair's call has a prompt guard | the same class, in the repair |
+| **#2798** | a declared start that never became ready says what its readiness URL last answered | an unattended run's start failure has to be readable from the record |
+| **#2765** | a scenario diagnostic's evaluation isn't stored as the real cycle's | the proving Project's suite validation would otherwise overwrite its cycles' latest evaluation |
+| **#2830** | the release attach scans for held-out content, not only credentials | 2.5.1's own cut uploads records; each cut has needed this by hand |
+| **#2402** | `run_prose_lane.sh` runs under macOS's bash 3.2 | no run depends on it; it's small and it's a defect |
+
+**What these assumptions mean for 2.6:**
+- **The 2.5.1 claim is narrow.** Each fix is read by replaying the stored envelope or record that found it, plus the
+  regression suite. No product Campaign is run for the patch: the live reading of #2824, #2817 and #2814 is 2.6's
+  phase 4 shakeout (§3), on the deploy that carries them.
+- **A fallback rule.** An item not in a released 2.5.1 when 2.6's Track A starts moves into Track A, sized as above,
+  and the cut record names it. Nothing in 2.6 is deferred because 2.5.1 slipped.
+- **Not in 2.5.1, because each needs design:** #2818 (D4's shape), #2799 (a loader a product's bundle carries), #2796
+  (what a product's plan gate reads), #2613 and #2612. They are 2.6's.
+- **2.5.1 is not a feature release,** so nothing in §2 lands in it, and 2.6's box time isn't spent on the patch beyond
+  its replays.
+
+---
+
 ## 2. The work
 
 Sizes are S (a day or less), M (a few days) and L (a week or more), as guides. "New" means no issue exists yet; one
-is filed when the plan is adopted.
+is filed when the plan is adopted. Every item below assumes §1a's fixes have shipped.
 
 ### 2.1 Track A: an increment accepted on a real product (the floor)
 
@@ -72,10 +108,7 @@ is filed when the plan is adopted.
 |---|---|---|
 | **#2818** | a product's in-cycle suite run and its retest run **on the product's own runner in the sandbox**, with its configured setup, as acceptance and the baseline already do (shape 1 in the issue; D4). This is also what makes a non-Python product possible without stack code in shared code: the product declares its commands, the sandbox runs them | M–L |
 | **#2421, the declared-commands half** | the sandbox runs a product's declared install, build, test and start commands at the pinned revision, in a disposable copy. #2818's shape 1 needs it, so they are built together. The secrets half stays unbuilt (D10) | M |
-| **#2817** | the product's own pytest configuration can't stop or redirect the squad's suite, and runner patterns match only under their roots | S–M |
 | **#2799** | a vitest page criterion for a page the change adds can fail as an assertion on a tree without it (a loader the bundle carries, as #2749 did for the Next.js sample stack) | M |
-| **#2814** | the JS/TS structural resolver reads files past about 257 lines. Real products have them; 2.5's didn't reach one | S–M |
-| **#2804, #2809, #2813** | the binding-budget and typed-check follow-ups the demonstrations filed: a cwd-relative or globbed criterion path, the monolithic qa prompt's measurement, the anchored-edit retry's refusal lines | S each |
 | **#2827 item 2** | H.13's two unbuilt items: a product's repaired suite read by the product's runners, not the scaffold's `__tests__/` rule; a plan-less product cycle's test author shown the product | M |
 | **a size preflight** (new) | before a Campaign starts on a product, every task type the profile dispatches is rendered against the product's real tree at the pinned commit, and a binding that can't fit is a blocking gap, named before the first cycle. #2805 and #2810 were found one at a time, live, an hour in. The proving product will be larger than `z_continuum` | S–M |
 
@@ -86,7 +119,6 @@ is filed when the plan is adopted.
 
 | item | what | size |
 |---|---|---|
-| **#2824** | a repair or retry binds the cycle's approved proposal version, not the launch block's first. A pure defect: recommended for 2.5.1 (D11) | S |
 | **a criterion checked against the head before launch** (new; D9) | at the ruling, each proposed criterion's test runs on the campaign branch's head in the sandbox. One that already passes is returned for revision automatically, with its reason, before a cycle is spent. This replaces the owner's manual rule from 2.5 and saves the abandonment that counts toward `max_unaccepted_increments` | M |
 | **#2613** | a regression the product's own checks find at the end of the plan gets one repair round inside the cycle's correction budget, instead of failing the run. Its own text says to build it when a live run needs it; a multi-hour run on a real product will | M |
 | **#2612** | a change can delete a file. A real product's refactors remove what they replace | M |
@@ -130,8 +162,8 @@ requirements file, and the squad repeated itself.
 
 ### 2.7 Riding along (hardening, any lane order)
 
-#2830 (the release attach scans for held-out content), #2826 (the list-shape convention placed by the 2.5 cut),
-#2765, #2736, #2737, #2402. Each is small and touches no Campaign path the proving run reads, or lands before phase 3.
+#2826 (the list-shape convention placed by the 2.5 cut), #2736, #2737. Each is small and touches no Campaign path the
+proving run reads, or lands before phase 3. (#2830, #2765 and #2402 are 2.5.1's, §1a.)
 
 ### 2.8 Not in 2.6
 
@@ -150,14 +182,18 @@ requirements file, and the squad repeated itself.
 
 The Spark is one GPU and one deploy.
 
+0. **2.5.1** (§1a): its ten fixes, each replayed against the envelope or record that found it, the regression suite,
+   and the patch cut. About 1 box-hour for the replays and the deploy, as a guide. 2.6's builds start beside it.
 1. **No box time.** The owner rules §7. The proving Project's requirements and backlog are written, its Development
-   Configuration recorded, its suite drafted. The Roblox spike runs on the CPU. #2824 ships as 2.5.1 if D11 says so.
-2. **Track A, then Track B,** each fix replayed against 2.5's stored envelopes. Track C's design pieces (D6, D7, #2796)
+   Configuration recorded, its suite drafted. The Roblox spike runs on the CPU.
+2. **Track A, then Track B,** on top of 2.5.1, each fix replayed against 2.5's stored envelopes. Any §1a item not in a
+   released 2.5.1 by now joins Track A (§1a's fallback rule). Track C's design pieces (D6, D7, #2796)
    are reviewed in parallel; D7 waits for the owner.
 3. **The scripted soak** (Track E). Machinery only, so a failure here is the framework's, never the model's.
 4. **A short model Campaign on `z_continuum` and `z_shelfnote`** as the product path's shakeout. Not the goal, but
    cheap and already configured, and it reads 2.5's narrowed half (IR-5, IR-6's increment half, IR-9's increment
-   reading) before the proving product's time is spent. Its exit rule: one Campaign with an accepted increment and no
+   reading) before the proving product's time is spent. It is also **the live reading of 2.5.1's product-path fixes**
+   (#2824, #2817, #2814), which the patch read only by replay. Its exit rule: one Campaign with an accepted increment and no
    new seam finding.
 5. **The proving Campaign** on the owner's product, first attended, then unattended overnight under D6's policy.
 6. **The cut.**
@@ -196,7 +232,7 @@ lesson approvals, the Release and the tag.
 
 ## 6. Box-time budget
 
-About **25–35 box-hours**, as a ceiling to report against: the size preflight and the replays about 2; the scripted
+About **25–35 box-hours**, as a ceiling to report against, 2.5.1's replays (about 1) not counted: the size preflight and the replays about 2; the scripted
 soak 4–8 (model-free, so the GPU is idle); the shakeout on the two existing products about 3–4; the proving Campaign
 twice, 4–8 each; the cut about 6. **Checkpoints:** after Track A (rung 1 on a product), after the soak, and after
 the first attended proving run.
@@ -217,7 +253,7 @@ the first attended proving run.
 | D8 | **the release claim** | §4: rungs 1 and 2 required, rung 3 the headline |
 | D9 | **a criterion already met** | **checked at the ruling, returned automatically,** as §2.2 says. **The alternative:** keep row 16's abandonment after a spent cycle |
 | D10 | **the financial application's data** | **synthetic only in 2.6:** fixtures the squad and the owner write, no live data source, no real credentials. #2421's secrets half stays unbuilt |
-| D11 | **2.5.1** | **#2824 ships in 2.5.1** with the other small defects; #2818 and the rest of Track A are 2.6, since #2818 is a design choice |
+| D11 | **2.5.1's contents, and 2.6 planned on top of them** | **§1a's ten:** #2824, #2817, #2814, #2804, #2809, #2813, #2798, #2765, #2830 and #2402, each a defect with no design, read by replay. 2.6's tracks assume them, with §1a's fallback rule if one slips. #2818, #2799, #2796, #2613 and #2612 stay in 2.6, since each needs a design. **The alternative:** no 2.5.1, and the ten join 2.6's Track A, which lengthens phase 2 by a few days and puts the patch's fixes behind 2.6's designs |
 | D12 | **who runs the line** | 2.5's terms (§5) |
 
 ---
@@ -235,5 +271,7 @@ The questions this draft is least sure of:
    in 2.5, and the backlog wait?
 5. **Is the financial application (D2) the right proving target,** given its data rule, or does a target with a public
    data source read the Campaign better?
-6. **What is missing** that a multi-hour run needs: cost or token limits per hour, checkpointing the campaign branch
+6. **Is §1a's split right?** Ten defects go to 2.5.1, read by replay only, and their live reading waits for 2.6's
+   shakeout. Should any of them (#2817 and #2814 most likely) be read on a live product before the patch is cut?
+7. **What is missing** that a multi-hour run needs: cost or token limits per hour, checkpointing the campaign branch
    for the owner to review mid-run, or a way for the owner to steer the backlog while it runs?
