@@ -906,6 +906,9 @@ class DispatchedFlowExecutor(FlowExecutionPort):
             store_artifact=lambda *args, **kw: self._store_artifact(*args, **kw),
             failure_recall=failure_recall,
             correction_repair=self._correction_repair,
+            judge_suite=lambda result, envelope, cycle, run_id: self._judged_on_product_runner(
+                result, envelope, envelope, cycle, run_id
+            ),
         )
         # 1.7.5 recovery extraction map §4 step 2: the accepted-patch collaborator, built
         # where CorrectionRunner is and with the same injectable override. It holds no

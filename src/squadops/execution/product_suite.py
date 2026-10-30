@@ -25,7 +25,7 @@ import logging
 from collections.abc import Callable, Mapping
 from typing import Any
 
-from squadops.campaigns.runner_acceptance import RunnerSetup
+from squadops.campaigns.runner_acceptance import RunnerSetup, single_file_argv
 from squadops.capabilities.handlers.source_repository import source_backed
 from squadops.capabilities.qa_run_tree import suite_run_tree
 from squadops.tasks.models import TaskResult, TaskResultStatus
@@ -59,8 +59,12 @@ def rejudgeable(task_type: str, inputs: Mapping[str, Any], result: TaskResult) -
     return len(failing) == 1 and failing[0].get("check") == _TESTS_PASS
 
 
-def emitted_tests(outputs: Mapping[str, Any]) -> dict[str, str]:
-    """The task's test files, by path, as it stored them."""
+def emitted_tests(inputs: Mapping[str, Any], outputs: Mapping[str, Any]) -> dict[str, str]:
+    """The suite under judgement, by path: a repaired suite's retest runs its ``retest_files``
+    (``CorrectionRunner.reexecute_repaired_suite``); an emission, the test files it stored."""
+    retest = inputs.get("retest_files")
+    if retest:
+        return {str(f["filename"]): str(f.get("content") or "") for f in retest}
     return {
         str(a["name"]): str(a.get("content") or "")
         for a in outputs.get("artifacts") or []
@@ -70,16 +74,30 @@ def emitted_tests(outputs: Mapping[str, Any]) -> dict[str, str]:
 
 @dataclasses.dataclass(frozen=True)
 class SuiteRun:
+    """One emitted test file's run on its runner's single-file command."""
+
     runner: str
+    path: str
     argv: tuple[str, ...]
     revision_id: str | None
     exit_code: int | None
+    #: How many of the file's tests the runner's test-id reader read as passed, and collected.
+    tests_passed: int | None = None
+    collected: int | None = None
     #: Why nothing exited, when nothing did: the sandbox's own words.
     unexecuted: str | None = None
 
     @property
     def passed(self) -> bool:
-        return self.unexecuted is None and self.exit_code == 0
+        """Exit zero is not enough: a runner can exit zero having run nothing (``unittest
+        discover`` over a directory with no package marker). So the file's own tests must be
+        read as run, at least one passed and none failed."""
+        return (
+            self.unexecuted is None
+            and self.exit_code == 0
+            and (self.tests_passed or 0) > 0
+            and (self.collected is None or self.collected == self.tests_passed)
+        )
 
     def as_dict(self) -> dict[str, Any]:
         return dataclasses.asdict(self) | {"argv": list(self.argv), "passed": self.passed}
@@ -94,18 +112,21 @@ async def run_on_product_runner(
     tests: Mapping[str, str],
     workspace_id: str,
 ) -> list[SuiteRun] | None:
-    """Run each product runner that holds one of ``tests`` once, with its whole-suite command, on
-    ``tree`` with ``tests`` beside it. ``None`` when a test file is held by no runner: the product
-    names no way to run it, so nothing here can judge it."""
+    """Run each of ``tests`` on its own runner's single-file command, read by that runner's
+    test-id reader, on ``tree`` with ``tests`` beside it. ``None`` when a test file is held by no
+    runner, or by one that can't be scoped to a file or has no test-id reader: the product names
+    no way to show that file's tests ran, so nothing here can judge it."""
     # deferred (pair): squadops.sandbox imports the campaigns package at load (its API's seed plan)
+    # deferred (pair): as above
+    from squadops.sandbox.findings import FindingsReading
     from squadops.sandbox.models import CommandOutcome, RevisionOrigin
 
-    runners: dict[str, Any] = {}
+    planned: list[tuple[str, Any]] = []
     for path in tests:
         runner = profile.runner_for(path)
-        if runner is None:
+        if runner is None or runner.single_file_argv is None or not runner.test_ids:
             return None
-        runners.setdefault(runner.runner, runner)
+        planned.append((path, runner))
     files = {**tree, **tests}
     runs: list[SuiteRun] = []
     await sandbox.release_workspace(workspace_id)
@@ -113,21 +134,28 @@ async def run_on_product_runner(
         revision = await sandbox.seed_workspace(
             workspace_id, files, origin=RevisionOrigin.ACCEPTANCE_ASSEMBLY
         )
-        for name, runner in runners.items():
-            argv = tuple(runner.suite_argv)
+        for path, runner in planned:
+            argv = single_file_argv(runner, path)
             result = await sandbox.run_declared_command(
                 revision=revision,
                 command=argv,
                 working_dir=setup.working_directory,
                 setup=setup.setup,
+                findings_reader=runner.test_ids,
             )
             exited = result.ran and result.outcome == CommandOutcome.EXITED
+            findings = getattr(result, "findings", None)
+            reading = FindingsReading.from_dict(findings) if findings else None
+            readable = reading is not None and reading.readable
             runs.append(
                 SuiteRun(
-                    runner=name,
+                    runner=runner.runner,
+                    path=path,
                     argv=argv,
                     revision_id=revision.revision_id,
                     exit_code=result.exit_code if exited else None,
+                    tests_passed=reading.passed if readable else None,
+                    collected=reading.collected if readable else None,
                     unexecuted=None
                     if exited
                     else (
@@ -169,6 +197,20 @@ def judged_passed(result: TaskResult, runs: list[SuiteRun]) -> TaskResult:
         summary=f"suite passed on the product's runner ({', '.join(r.runner for r in runs)})",
     )
     outputs.update(validation_result=vr, outcome_class=_SUCCESS)
+    # The verification normalizer reads ``test_result``, not the row, so it is the product run's
+    # now, and the agent's is kept beside it.
+    agent = outputs.get("test_result")
+    outputs["test_result"] = {
+        "executed": True,
+        "exit_code": 0,
+        "tests_passed": True,
+        "test_file_count": len(runs),
+        "source_file_count": (agent or {}).get("source_file_count"),
+        "summary": f"{sum(r.tests_passed or 0 for r in runs)} passed on the product's runner",
+        "judged_on": PRODUCT_RUNNER,
+    }
+    if agent is not None:
+        outputs["agent_test_result"] = agent
     outputs[PRODUCT_SUITE_KEY] = [r.as_dict() for r in runs]
     outputs.pop("failure_classification", None)
     return dataclasses.replace(
@@ -204,7 +246,7 @@ async def judge_on_product_runner(
     configuration = await projects.get_development_configuration(
         cycle.project_id, context.development_configuration_revision
     )
-    tests = emitted_tests(result.outputs or {})
+    tests = emitted_tests(inputs, result.outputs or {})
     if configuration is None or not tests:
         return None
     runs = await run_on_product_runner(
