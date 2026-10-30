@@ -1,7 +1,8 @@
 # 2.6.0 plan — a multi-hour Campaign on the owner's own product
 
-**Status: DRAFT (2026-10-30), for outside review.** Nothing here is ruled. §7's decisions are the owner's, and each
-has a recommendation. §8 lists what the outside reviewer is asked to challenge.
+**Status: §0 ADOPTED for the weekend spike (2026-10-30); everything else a DRAFT.** The owner: "merge both once
+appropriate", after two outside review passes, each applied in full. D1–D15 stay open, and §0's readings revise the
+plan after the spike. §8 lists what the outside reviewer was asked to challenge.
 
 **Revised 2026-10-30, the same day:** the owner asked to incorporate the 2.5.1 fix line's assumptions. §1a names the
 ten defects 2.6 assumes 2.5.1 fixes, with a fallback rule if one slips; they leave §2's tracks, and D11 rules the split.
