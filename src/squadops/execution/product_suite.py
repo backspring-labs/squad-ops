@@ -117,8 +117,9 @@ async def run_on_product_runner(
     runner, or by one that can't be scoped to a file or has no test-id reader: the product names
     no way to show that file's tests ran, so nothing here can judge it."""
     # deferred (pair): squadops.sandbox imports the campaigns package at load (its API's seed plan)
-    # deferred (pair): as above
     from squadops.sandbox.findings import FindingsReading
+
+    # deferred (pair): as above
     from squadops.sandbox.models import CommandOutcome, RevisionOrigin
 
     planned: list[tuple[str, Any]] = []
