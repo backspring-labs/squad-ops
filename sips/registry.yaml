@@ -1173,6 +1173,15 @@ sips:
   approver: null
   created_at: '2026-07-11T00:00:00Z'
   updated_at: '2026-10-05T00:09:40.210288Z'
+- sip_uid: '17933742279101532'
+  sip_number: null
+  title: Project Goals and Backlog
+  path: sips/proposed/SIP-Project-Goals-Backlog.md
+  status: proposed
+  author: Jason Ladd
+  approver: null
+  created_at: '2026-10-30T00:00:00Z'
+  updated_at: null
 - sip_uid: '17883224960416254'
   sip_number: null
   title: Test-First Verification
