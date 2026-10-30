@@ -479,16 +479,21 @@ def frozen_criteria(log: list) -> tuple[dict, ...]:
     return tuple(frozen.values())
 
 
-def _approved(log: list, block: Mapping) -> bool:
-    """Whether an applied ruling approved this proposal version (§9.2)."""
-    return any(
-        entry.operation is ControlOperation.RULE
+def _approved_version(log: list, block: Mapping) -> Any:
+    """The proposal version the latest applied approving ruling of ``block``'s proposal names
+    (§9.2), or ``None`` when no version of it was approved. #2824: the launch block is written once,
+    at the launch, so a proposal returned at version 1 and approved at version 2 inside the same
+    cycle still reads 1 there. A proposal id is one increment's (#2578 part 2), and a re-proposal
+    takes a new one, so the latest approval of this id is the version the cycle was built under."""
+    approved = [
+        entry.binding.get("version")
+        for entry in log
+        if entry.operation is ControlOperation.RULE
         and entry.outcome is ControlOutcome.APPLIED
         and entry.binding.get("decision") == GateDecisionValue.APPROVED.value
         and entry.binding.get("proposal_id") == block.get("proposal_id")
-        and entry.binding.get("version") == block.get("version")
-        for entry in log
-    )
+    ]
+    return approved[-1] if approved else None
 
 
 def decision_key(cycle_id: str) -> str:
@@ -1785,11 +1790,11 @@ class CampaignProgress:
                 f"{str(block.get('baseline_tree'))[:12]} is not the accepted tree"
             )
         log = await self._campaigns.control_log(campaign.campaign_id)
-        if not _approved(log, block):
-            return (
-                f"no approving ruling is on record for {block['proposal_id']} "
-                f"version {block.get('version')}"
-            )
+        version = _approved_version(log, block)
+        if version is None:
+            return f"no approving ruling is on record for {block['proposal_id']}"
+        # #2824: the repair or retry reuses the version that was approved, not the launch's first.
+        block = {**block, "version": version}
         seeds = await self._bound_seeds(cycle)
         if seeds is None:
             return f"cycle {cycle.cycle_id}'s approved seed cannot be found"
