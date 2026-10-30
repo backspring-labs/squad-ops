@@ -67,11 +67,36 @@ set, no console work and no unattended running.
 | 4. **the goals by hand** | a structured requirements file in the product's repository: the goal, expected results, an ordered backlog, out of scope (the shape of Project Goals and Backlog §4, PR #2833). The Campaign names it as `objective.requirements: repo:file:<path>@current`, with `target_accepted_increments: 3`. **The first three backlog items are backend features with API-level criteria,** since a page criterion for an added page still meets #2799 | slice 1 later loads its goal set from this file |
 | 5. **an attended Campaign** | driven by the owner from the CLI, or by the Nostromo crew through its existing harness (which needs no D14 change for a requirements-based definition). Every product plan gate escalates (#2796), so whoever drives answers each from the requirements | no held-out suite: the owner, or the crew's closing interpretation, judges the outcome |
 
+**The product-runner path, and why it needs no #2421 work** (the outside review's blocker, 2026-10-30). #2421's
+declared-commands half **shipped in 2.4**: a product's declared command run against a pinned revision in a disposable
+copy (SIP-0102 X-3a, PR #2447), and a product started from its declaration (X-3b, PRs #2450 and #2474). Acceptance on
+the product's runner already uses it: `RunnerSetup` (`src/squadops/campaigns/runner_acceptance.py:209`) runs the
+runner's argv in the configuration's working directory after its install and build steps. **#2818 routes the
+in-cycle suite run and its retest through that same path.** Only #2421's secrets remainder is open, and the spike
+needs no secret (synthetic data, D10). This draft's §2.1 listed the declared-commands half as unbuilt; that row was
+wrong and is removed.
+
+**The spike's prerequisites,** checked before the Campaign is created:
+- the financial application's Development Configuration records its install and build steps, its test runner and
+  its start declaration, and `projects configure` reports no blocking gap;
+- `projects baseline --capture` succeeds, so the product's own checks run in the sandbox with that setup;
+- the deploy carries step 1's fixes, read by `verify_loaded.py`.
+
+**What each round records,** so a failed round still teaches something:
+- **the product setup:** the configuration revision, each install and build command and how it ended;
+- **the in-cycle test:** the runner, its argv, and the pass, fail and setup-failure counts, on the product's runner;
+- **the acceptance result:** each criterion's discrimination reading and the verdict, with the row it took;
+- **the promotion:** the campaign branch's commit after an accepted increment;
+- **the stop:** what ended the round, by control-log row, with the issue filed for any defect.
+
 **Stop rule:** at most two Campaign rounds. A live run usually finds the next seam (2.5's did four times). If round
 2 finds a new defect, it is filed and the spike stops, with what it learned recorded.
 
-**What it reads:** rung 1 of §4 (one increment accepted on a product, promoted onto its campaign branch), and whether
-rung 2 (three in one Campaign) is in reach on today's machinery. **What it doesn't:** anything unattended, the goal
+**What it reads:** rung 1 of §4, **an accepted increment** on a product, promoted onto its campaign branch, and
+whether rung 2 (three in one Campaign) is in reach on today's machinery. **An accepted increment is the squad's
+criteria passing on the product's runner. It is not evidence that the app's expected results improved:** the spike
+has no held-out suite, and §4 reserves that reading for later. **Its result is scoped** to the
+`fullstack_fastapi_react` stack, a greenfield product and synthetic data. **What it doesn't:** anything unattended, the goal
 set, the console, or the held-out yardstick.
 
 **What it changes in the rest of the plan:** §1a's 2.5.1 list is replaced by step 1's (D11), and #2818 leaves Track A.
@@ -157,7 +182,6 @@ is filed when the plan is adopted. Every item below assumes §1a's fixes have sh
 | item | what | size |
 |---|---|---|
 | **#2818** | a product's in-cycle suite run and its retest run **on the product's own runner in the sandbox**, with its configured setup, as acceptance and the baseline already do (shape 1 in the issue; D4). This is also what makes a non-Python product possible without stack code in shared code: the product declares its commands, the sandbox runs them | M–L |
-| **#2421, the declared-commands half** | the sandbox runs a product's declared install, build, test and start commands at the pinned revision, in a disposable copy. #2818's shape 1 needs it, so they are built together. The secrets half stays unbuilt (D10) | M |
 | **#2799** | a vitest page criterion for a page the change adds can fail as an assertion on a tree without it (a loader the bundle carries, as #2749 did for the Next.js sample stack) | M |
 | **#2827 item 2** | H.13's two unbuilt items: a product's repaired suite read by the product's runners, not the scaffold's `__tests__/` rule; a plan-less product cycle's test author shown the product | M |
 | **a size preflight** (new) | before a Campaign starts on a product, every task type the profile dispatches is rendered against the product's real tree at the pinned commit, and a binding that can't fit is a blocking gap, named before the first cycle. #2805 and #2810 were found one at a time, live, an hour in. The proving product will be larger than `z_continuum` | S–M |
@@ -314,8 +338,9 @@ that run for the release claim.
 ## 4. The release claim (D8)
 
 A ladder, each rung pre-registered before its run:
-1. **One increment accepted** on a product and promoted onto its campaign branch, with its review request pushed
-   (#2827's done-when).
+1. **An accepted increment** on a product, promoted onto its campaign branch, with its review request pushed
+   (#2827's done-when). It reads that the squad's criteria passed on the product's runner, not that an expected
+   result improved; that is the held-out suite's reading, from rung 2 on.
 2. **Three accepted increments in one Campaign** on the proving product, each from a different backlog item.
 3. **Four hours or more of one Campaign on the proving product,** of which at least part is unattended overnight, with
    no intervention outside D6's declared touchpoints, and every stop attributed to a named rule. Its goals are a goal
@@ -359,7 +384,7 @@ the first attended proving run. Track D is build time, not box time: the proving
 | D3 | **Roblox in 2.6** | **the spike only,** in phase 1. If its tests run headless on Linux, a Roblox Project is a second, uncounted Campaign late in the line. #2405's placement is decided after the spike |
 | D4 | **#2818's shape** | **shape 1, the sandbox's product runner,** as §24bv point 3 judges a product: on its own runner. It costs a sandbox round trip per suite run, and it's the only shape that covers a non-Python product |
 | D5 | **who authors the backlog** | **you order it; the squad proposes from it** and records what it finds as candidates, which you, or the crew if Q41 delegates it, promote or drop. The strategy role ordering its own features waits for a later line, once a Campaign has lasted hours on yours |
-| D6 | **what the crew's supervisor principal may resume unattended** | **these classes:** a plan gate answered from the requirements; a repair or retry after a named in-cycle failure, within the limits; `launch_blocked` after the box is quiet. **Never on its own:** an upstream conflict, a limit's pause, a security finding, or the owner's pause. It is a grant to the crew's broker principal, which holds no admin role today |
+| D6 | **what the crew's supervisor principal may resume unattended, enforced and audited** | **these classes:** a plan gate answered from the requirements; a repair or retry after a named in-cycle failure, within the limits; `launch_blocked` after the box is quiet. **Never:** an upstream conflict, a limit's pause, a security finding, or the owner's pause. **Enforced** at the resume route: the escalation's class is checked against the Campaign's declared `unattended_resume` list, fixed at creation and part of its definition hash, and against the caller's principal; anything else is refused with its reason. **Audited:** every resume and every refusal is a control-log row naming the principal, the class, the escalation and the definition hash, and the digest lists them. **Revoked** by the owner's pause, which the principal can't resume. It is a grant to the crew's broker principal, which holds no admin role today |
 | D7 | **the overnight identity** | **the crew's existing broker principals, unchanged,** plus D6's resume grant. No new identity is built. Security, so yours. **The alternative:** a separate SquadOps service account for unattended supervision, which duplicates what the crew's broker already holds |
 | D8 | **the release claim** | §4: rungs 1 and 2 required, rung 3 the headline |
 | D9 | **a criterion already met** | **checked at the ruling, returned automatically,** as §2.2 says. **The alternative:** keep row 16's abandonment after a spent cycle |
@@ -367,7 +392,8 @@ the first attended proving run. Track D is build time, not box time: the proving
 | D11 | **2.5.1's contents** (revised for §0's spike) | **§0's seven:** #2818 (moved from 2.6), #2824, #2817, #2814, #2804, #2809 and #2813, the fixes on a Campaign's path. §1a's other four (#2798, #2765, #2830, #2402) go to a later patch. #2799, #2796, #2613 and #2612 stay in 2.6. **The alternative:** §1a's original ten without #2818, which leaves 2.5's main stop unfixed until 2.6 |
 | D12 | **who runs the line** | 2.5's terms (§5) |
 | D13 | **the console's scope** (Track G, #2834) | **the goals panel and a read-only Campaigns plugin required** (state, ledger, escalations, the crew's assessments); controls stay with the crew and the CLI; Project setup views deferrable; held-out drafting and the lease tools kept out of the console by a SIP-0069 amendment. No Continuum change unless the fit check finds one, and then it comes back to you. **The alternative:** console controls too (an L), duplicating the crew's broker path |
-| D14 | **the crew's side of slice 5** (Nostromo's repository) | **you place it with the crew,** beside 2.6's slice 5: the broker's commands, the gate-evidence contract, assessments from the closing interpretation, and definitions naming `objective.goals`. 2.6's rung 3 depends on it, so it is named here and in the cut's pre-registration, not assumed |
+| D14 | **the crew's side of slice 5** (Nostromo's repository): **a release dependency with a readiness check** | **you place it with the crew,** beside 2.6's slice 5: the broker's commands, the gate-evidence contract, assessments from the closing interpretation, and definitions naming `objective.goals`. **The readiness check,** before the proving run is pre-registered: on an uncounted Campaign, the crew's broker reads the goal set, a gate's packet carries the backlog item and its expected results, and the crew writes one assessment that reads back. It is recorded in the cut's pre-registration. **If it doesn't pass,** rung 3 can't be claimed, and the claim narrows only on your ruling |
+| D15 | **SIP Q41, before slice 1 is built** (the outside review) | **rule it first:** the crew may promote a candidate and split an item within a Campaign you started, each recorded with its reason; never reorder. Slices 1 and 3 build to that rule |
 
 ---
 
