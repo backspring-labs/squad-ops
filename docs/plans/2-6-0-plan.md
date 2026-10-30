@@ -6,16 +6,25 @@ has a recommendation. §8 lists what the outside reviewer is asked to challenge.
 **Revised 2026-10-30, the same day:** the owner asked to incorporate the 2.5.1 fix line's assumptions. §1a names the
 ten defects 2.6 assumes 2.5.1 fixes, with a fallback rule if one slips; they leave §2's tracks, and D11 rules the split.
 
+**Revised again the same day: the headline is a new SIP,** Project Goals and Backlog (PR #2833), on the owner's
+direction that a Project's goals and expected outcomes be "persisted in db records of the project definition", with
+Buzz as "the collab and convo on achieving those goals", MECE across the tools, and "get away from a claude terminal to
+build apps and games". Track D becomes that SIP's slices (§2.4), and D1, D5 and §8 follow. The owner told the
+supervisor to "do what you think is best" with it.
+
 **The owner's goal for 2.6** (2026-10-30, spelling corrected): "aggressively focus on the ability to drive a multi hour
 campaign that will enhance and improve a real application", with "features that will provide the best chance of a
 multi-hour iteration of a campaign for an external application (not our sample apps)". The owner named two domains:
 a Roblox game and a financial application. Game-development skills are a separate proposal (PR #2405).
 
 **What 2.6 is.** An even minor, a feature release, gated by at least one headline feature SIP (CLAUDE.md, #281). This
-draft proposes one headline and no second: **a sustained Campaign on a repository-backed product**, built as the
-completion of SIP-0109 (Campaign Orchestration) and SIP-0112 (Project Lifecycle Management) on a product, with numbered
-amendments for the parts that are new (D1). Everything in §2 is chosen by one test: does it remove a reason a product
-Campaign stops before it has run for hours?
+draft proposes one headline and no second: **Project Goals and Backlog** (PR #2833, proposed). A Project's goals,
+expected results and ordered backlog become versioned records in SquadOps, edited in the console, discussed in Buzz,
+and worked through by a Campaign one item per increment (§2.4, D1). **It stands on a floor:** a Campaign on a
+repository-backed product that can accept an increment, carry itself past a failure and run unattended, built as the
+completion of SIP-0109 (Campaign Orchestration) and SIP-0112 (Project Lifecycle Management) with numbered amendments
+(Tracks A to C). Everything in §2 is chosen by one test: does it remove a reason a product Campaign stops before it
+has run for hours, or a reason the owner has to drive it from a terminal?
 
 **The question it answers:**
 
@@ -24,7 +33,8 @@ Campaign stops before it has run for hours?
 > only at the points this plan declares?**
 
 **This replaces the ROADMAP's 2.6 row** ("the squad-authored backlog (no SIP yet)"), if adopted. The backlog part is
-kept, narrowed to what a multi-hour Campaign needs (§2.4, D5). The ROADMAP and `sips/PORTFOLIO.md` change in the PR
+kept, narrowed to the owner-ordered half: the squad records candidates, and the strategy role ordering its own
+features waits (§2.4, D5). The ROADMAP and `sips/PORTFOLIO.md` change in the PR
 that adopts this plan, not in this draft.
 
 ---
@@ -135,15 +145,26 @@ is filed when the plan is adopted. Every item below assumes §1a's fixes have sh
 | **#2287** | the box lease outside Campaigns, so nothing else takes the GPU during an overnight window, built as SIP-0109 §9.3 is written | M |
 | **a hard-stop notice** (new) | when a Campaign stops, pauses at a limit or escalates to the owner, one push notice names why. Nothing on progress | S |
 
-### 2.4 Track D: enough right-sized work
+### 2.4 Track D, the headline: Project Goals and Backlog (PR #2833)
 
-A multi-hour Campaign is several increments, each sized for one cycle. 2.5's proposals came from a two-feature
-requirements file, and the squad repeated itself.
+A multi-hour Campaign is several increments, each sized for one cycle, toward a goal the owner can see and steer
+without a terminal. 2.5's proposals came from a flat two-feature requirements file, nothing recorded which part was
+done, and the squad repeated itself. The SIP's design is under review in its own PR. This track places its slices.
+
+**The MECE split the SIP sets** (its §3): intent (the goal, expected results, the backlog's order) in the goal set;
+progress derived from the control log; proof in the evaluation records; deliberation in Buzz; decisions as recorded
+actions; code in the product's repository. **Discussed in Buzz, decided in SquadOps.**
 
 | item | what | size |
 |---|---|---|
-| **the Campaign's backlog** (new, a SIP-0109 amendment; D5) | the requirements source carries an ordered backlog. Each proposal takes the next item that isn't accepted or abandoned, sized to one increment, and the proposal names the item. What the squad finds along the way (a follow-up, a gap) is recorded as a candidate item for the supervisor to classify, never added to the order by itself. The strategy role inventing its own features waits for 2.8 | M–L |
-| **the proposer shown what's done** | each proposal is shown the backlog's state (accepted, abandoned with reason, pending), beside §24bu's unapproved proposals, so it neither repeats nor skips | S–M |
+| **slice 1: the goal set** | the versioned record beside the Project Record (goal, expected results, constraints, out of scope, backlog, candidates), its API under `/api/v1/projects/{id}/goal-set` and `squadops goals …` | M |
+| **slice 2: a Campaign on a goal set** | `objective.goals`; the proposer shown the backlog with each item's derived status; one pending item per proposal, a rail returning one that names none; `stop_when: backlog_done`. A SIP-0109 amendment in the same PR | M–L |
+| **slice 3: candidates** | the squad, the crew or the system adds what it finds; the owner, or the crew if delegated (Q41), promotes or drops it | S–M |
+| **slice 4: the console's goals panel** | a Continuum plugin (SIP-0069): goal, expected results, backlog with status and increments, candidates waiting, history. Editing writes a revision | M |
+| **slice 5: Buzz** (deferrable) | notices first (a Campaign stopped, a candidate waiting, an item accepted, each with its console link); decisions as API actions carrying the thread's link, once D7's identity exists (Q43). The bridge's mechanics aren't designed yet | M |
+
+**The proving Project's goals are written into a goal set** (slice 1) before its Campaign starts, not into a file in
+this repository. Until slice 1 lands, phase 1 drafts them as text to load.
 
 ### 2.5 Track E: the machinery over hours, without a model
 
@@ -210,7 +231,8 @@ A ladder, each rung pre-registered before its run:
    (#2827's done-when).
 2. **Three accepted increments in one Campaign** on the proving product, each from a different backlog item.
 3. **Four hours or more of one Campaign on the proving product,** of which at least part is unattended overnight, with
-   no intervention outside D6's declared touchpoints, and every stop attributed to a named rule.
+   no intervention outside D6's declared touchpoints, and every stop attributed to a named rule. Its goals are a goal
+   set written in the console (slice 4), and each item's status reads back from the control log.
 
 **Recommended:** rungs 1 and 2 are required for the cut; rung 3 is the headline claim. If rung 3 doesn't hold, the
 claim narrows only on the owner's ruling, named in the cut record, as at 2.5. **Each run records** its wall-clock
@@ -243,11 +265,11 @@ the first attended proving run.
 
 | # | decision | recommendation |
 |---|---|---|
-| D1 | **the headline and its SIP** | **SIP-0109 and SIP-0112 on a product, completed,** with numbered amendments for the backlog (§2.4), the escalation policy (§2.3) and the criterion check (§2.2). No new SIP. **The alternative:** draft a "Sustained Campaign" SIP and take it through the intake check against `sips/PORTFOLIO.md` |
+| D1 | **the headline and its SIP** | **Project Goals and Backlog (PR #2833), accepted and its slices 1–4 built, with slice 5 deferrable;** Tracks A to C as its floor, built as the completion of SIP-0109 and SIP-0112 with numbered amendments for the escalation policy (§2.3) and the criterion check (§2.2). Its design review is in its own PR, and its Q41–Q44 are yours. **The alternative:** no new SIP, the backlog as a SIP-0109 amendment over a requirements file in the product's repository. It is smaller, but keeps the goals in a file edited from a terminal, which your direction rules out |
 | D2 | **the proving Project** | **the financial application,** greenfield from the `fullstack_fastapi_react` blueprint if it doesn't exist. It sits on the stacks the framework reads best, so a stop there is the Campaign's, not the stack's. **The alternatives:** a Roblox game first (blocked on D3), or another existing repository of yours |
 | D3 | **Roblox in 2.6** | **the spike only,** in phase 1. If its tests run headless on Linux, a Roblox Project is a second, uncounted Campaign late in the line. #2405's placement is decided after the spike |
 | D4 | **#2818's shape** | **shape 1, the sandbox's product runner,** as §24bv point 3 judges a product: on its own runner. It costs a sandbox round trip per suite run, and it's the only shape that covers a non-Python product |
-| D5 | **who authors the backlog** | **you order it; the squad proposes from it** and records what it finds as candidates the supervisor classifies. The strategy role's own features go to 2.8, once a Campaign has lasted hours on yours |
+| D5 | **who authors the backlog** | **you order it; the squad proposes from it** and records what it finds as candidates, which you, or the crew if Q41 delegates it, promote or drop. The strategy role ordering its own features waits for a later line, once a Campaign has lasted hours on yours |
 | D6 | **what an unattended supervisor may resume** | **these classes:** a plan gate answered from the requirements; a repair or retry after a named in-cycle failure, within the limits; `launch_blocked` after the box is quiet. **Never on its own:** an upstream conflict, a limit's pause, a security finding, or the owner's pause |
 | D7 | **the overnight identity** | **a service account with client credentials,** scoped to `campaign-supervisor` and D6's resumes, its secret held as the deploy's other secrets are. Security, so yours. **The alternative:** keep the password re-login before each ruling, which works but ties an overnight run to one supervisor session |
 | D8 | **the release claim** | §4: rungs 1 and 2 required, rung 3 the headline |
@@ -267,8 +289,10 @@ The questions this draft is least sure of:
 2. **Is D4's cost acceptable?** A sandbox round trip per in-cycle suite run lengthens every cycle. Is a cached product
    environment per Campaign needed in 2.6 to keep a multi-hour run productive?
 3. **Is D6 too wide or too narrow?** Which escalation class would you refuse to let an unattended supervisor resume?
-4. **Is the backlog (D5) the right size for 2.6?** Or should the Campaign keep proposing from a requirements file, as
-   in 2.5, and the backlog wait?
+4. **Is the headline the right size for 2.6?** Project Goals and Backlog (D1, PR #2833) adds a record, an API, a
+   Campaign binding and a console panel beside Tracks A to C. Is that too much for one line, and if something has to
+   give, is it the console panel (slice 4) or the floor's unattended track (C)? Is §3 of the SIP the right MECE split
+   between the database, Buzz and the repository?
 5. **Is the financial application (D2) the right proving target,** given its data rule, or does a target with a public
    data source read the Campaign better?
 6. **Is §1a's split right?** Ten defects go to 2.5.1, read by replay only, and their live reading waits for 2.6's
