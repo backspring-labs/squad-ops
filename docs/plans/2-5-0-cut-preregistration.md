@@ -1,9 +1,11 @@
 # 2.5.0 — pre-registration of the cut's set (the plan's §4, "The cut")
 
-**Status: DRAFT, 2026-10-29, revised the same day on a second reader's findings and the owner's rulings (§13). Not
-registered.** No condition below holds yet. The pins (§7) and the records (§8) are blank, and nothing in the set, the
-shakeout or the repeats has launched. Written by the Spark lane, which runs the line alone since 2026-10-28 (the plan's
-§5), after the demonstrations were read and the owner narrowed the claim (2026-10-29: "Narrow the claim, go to cut").
+**Status: REGISTERED** on 2026-10-30 at 02:30Z (22:30 ET on 2026-10-29), when all eleven conditions below held (§14).
+Drafted 2026-10-29 and revised the same day on a second reader's findings and the owner's rulings (§13), then merged as
+a draft (#2822) before anything ran. The exit rule held in shakeout round 1, and the repeats ran on the final deploy
+after it. Nothing in the set launched before registration. Written by the Spark lane, which runs the line alone since
+2026-10-28 (the plan's §5), after the demonstrations were read and the owner narrowed the claim (2026-10-29: "Narrow
+the claim, go to cut").
 The plan leaves the cut's numbers to this document (its §8: "the set's size, the predictions' thresholds and the
 shakeout's budget"):
 - **the set's size is 2.4's,** carried as 2.4 carried 2.3's (the plan's §4 and D8);
@@ -27,20 +29,28 @@ shakeout's budget"):
    increment reading under the narrowing, and #1469 and #2286's remainder move to 2.6 (§11).
 6. **D12:** the owner chose "No revert rule" (§3).
 
+**And during the repeats (2026-10-30):**
+7. **The `z_continuum` repeat's escalation:** increment 1's repair couldn't be built (#2824). The owner chose "Abandon
+   and propose" to resume it, which continued IR-3 (§14).
+8. **#2824:** the owner chose "Name it, fix after". It is placed in 2.5.x or 2.6 beside #2818 and named in §11. The exit
+   rule and the final deploy stand, since neither the rolls nor the shakeout reach it.
+
 **What must be true before the shakeout's first launch,** in this order:
 1. **This document is merged, as a draft,** with the shakeout's definition, so the shakeout's predictions are fixed
-   before it launches. **Not met.**
+   before it launches. **Met:** #2822, merged as `ffc32804`.
 2. **The engine serves the frozen recipe.** `scripts/dev/ops/engine_switch.py to-tensorfold
    infra/tensorfold/recipes/qwen27b-nvfp4.yaml` runs before the rebuild. It refuses while a run is running, queued or
    paused, or a campaign is open (`engine_switch.py:195-204`), recreates every model client, and writes a deploy
    record. **Not met:** read at 22:30Z on 2026-10-29 (`docker inspect squadops-tensorfold`), the engine runs #2742's
    candidate, `recipes/candidates/qwen27b-nvfp4-parallel2.yaml` (`--parallel 2`, its status "not the frozen
    counted-verification recipe"), started 2026-10-24 at 22:50Z, five days. So Track D's Campaign, D12's evidence and
-   the demonstrations all ran on it (§10).
+   the demonstrations all ran on it (§10). **Met:** the switch ran 23:09:09–23:09:39Z on 2026-10-29, exit 0, on a
+   free box (record `var/engine_switch/20261029T230909Z-to-tensorfold.jsonl`).
 3. **The line's last code is deployed, after the switch.** The Spark is rebuilt from main (`rebuild_and_deploy.sh
    all`) once this document, condition 7's script and anything else the cut needs are merged. That rebuild is **the
    final deploy**, and its deploy record is the last one written before registration (§7). Main's last change to a
-   run path today is `d0df8acb` (#2816). **Not met.**
+   run path today is `d0df8acb` (#2816). **Met:** rebuilt from `f69ce0e2` (#2823 merged) at 23:23Z:
+   **`dep_eb111413d45d`**.
 4. **The engine is read** (§7), and its reading is the pin:
    - **its `Args`** from `docker inspect` are exactly the line from `serve` onward that `serve_command` builds from the
      frozen recipe (`engine_switch.py:302-353`), which is today's line without `--parallel 2`;
@@ -53,27 +63,35 @@ shakeout's budget"):
      the candidate's line passes it against the frozen recipe;
    - the deploy record's weights key on the served id (#2732), which both recipes serve.
 
-   **Not met.**
+   **Met** at 23:23:51Z: `Args` from `serve` equal `serve_command`'s line for the frozen recipe (compared in code),
+   `.Image` `sha256:b62567b8…` equals the recipe's `image_id`, and `State.StartedAt` is `2026-10-29T23:09:10.78Z`.
+   The rebuild didn't restart it. Unchanged after shakeout round 1 and at registration.
 5. **Every tracked loaded check answers its expected value on the final deploy,** `2253` (D12) among them
    (`verify_loaded.py`, run from the main checkout), and the deploy record is ok. `scripts/dev/loaded_checks.yaml` has
-   247 rows at drafting, 68 more than 2.4's 179. **Not met.**
+   247 rows at drafting, 68 more than 2.4's 179. **Met:** 247 loaded, 0 not; "dep_eb111413d45d describes what runs:
+   24 services".
 6. **The sweeps' baselines are taken** on the final deploy (§4.2), by `heldout_sweep.py` as main carries it since
-   #2819 (`b5b12c12`), with §4.2's `--campaign` list. **Not met.**
+   #2819 (`b5b12c12`), with §4.2's `--campaign` list. **Met** before round 1's launch, `--campaign cmp_9c9df268084a`:
+   61 step markers and 17 goal markers; none found outside; nothing unsearched.
 7. **The engine's callers can be read** (the owner chose "2 metrics"). `scripts/dev/engine_callers.py`, which the
    supervisor builds (§4, "The engine's other callers"), exists, is merged, and has been read once against the live
-   engine, with the counter's key labels confirmed. **Not met:** it doesn't exist yet.
+   engine, with the counter's key labels confirmed. **Met:** #2823, merged as `f69ce0e2`; its first reading from main,
+   at 23:24:54Z, read the counter by `key` and `status` (`squadops`: 10 replies, all `200`) and both gauges at 0.
 
 **What must be true before the set is registered:**
 8. **The shakeout loop's exit rule holds on the final deploy** (§3): one shakeout campaign with no new seam finding.
+   **Met in round 1** (§14): `cmp_cea660c0a6a6`, 23:26–00:50Z. The loop took one round of three.
 9. **The always-pass sets are fixed** (§4.1). **Met by Track B's re-read**
    (`docs/plans/verification-sets/2-5-0-reread-preregistration.md` §6), on `…eslint10.12-7`. It stays met while
    nothing it read has moved. Every baseline tree is re-read on the final deploy before registration if the final
    deploy's `EVALUATOR_IMAGE` is not `…-7`, or if anything under `src/squadops/scenarios/`, `src/squadops/sandbox/` or
-   `adapters/sandbox/` changes after `10a35adb`, the re-read's commit.
+   `adapters/sandbox/` changes after `10a35adb`, the re-read's commit. **Still met at registration:** the evaluator is
+   `-7`, and no file under those paths differs between `10a35adb` and `f69ce0e2`.
 10. **The repeats the owner chose have run on the final deploy,** after condition 8, and their readings are in §8
     (§6.3). If the engine's reading changes between condition 4 and registration, the repeats run since the change
-    are run again.
-11. **The pins are read** (§7), and nothing in the set has launched.
+    are run again. **Met:** `z_shelfnote` (`cmp_725a9e2ee446`) and `z_continuum` (`cmp_d30d964599df`), 00:58–02:22Z,
+    and the missing-route replay (§14). The engine didn't change.
+11. **The pins are read** (§7), and nothing in the set has launched. **Met** at 02:30Z on 2026-10-30.
 
 **#2751 is closed** by #2821 (`7e631321`): `worktree_hygiene.py` now judges only the checkout's own worktrees and
 keeps another tool's checkout wherever git lists it, so the release cut's step 8 no longer threatens the nostromo
@@ -601,23 +619,23 @@ cut. The supervisor's estimates have run high, so it's a ceiling to report again
 
 ## 7. Pins (read at registration)
 
-Blank until registration. Each is read when conditions 1–10 hold.
+Read at 02:30Z on 2026-10-30, when conditions 1–10 held:
 
 | pin | value |
 |---|---|
-| deploy commit | — |
-| deploy record | — the last one written (condition 3); `verify_loaded.py` from the main checkout |
-| engine | — `docker inspect squadops-tensorfold`: its `Args` from `serve` onward, exactly `serve_command`'s line for `qwen27b-nvfp4.yaml` (`engine_switch.py:302-353`), with no `--parallel`; its `.Image`, equal to the recipe's `image_id`; and its `State.StartedAt`. Read again at each roll's start and end (P1) |
-| image ids | — runtime-api, max, neo, nat, bob, eve, data: read from the running containers, equal to both configs' `frozen_image_ids`. The sandbox service's, which runs the held-out readings, read beside them |
-| `EVALUATOR_IMAGE` | — expected `squadops-evaluator:lighthouse13.5-axe4.14-ruff0.16-eslint10.12-7` (`src/squadops/sandbox/environment.py:43`), §4.1's |
-| model | — expected `qwen3.8-27b-tf-nvfp4` in every agent (`SQUADOPS__LLM__MODEL`), served by `squadops-tensorfold:0.6.6-cb2ebf05`; its weights from the deploy record (#2561) |
+| deploy commit | **`f69ce0e2`**: #2823 on #2822's tree, rebuilt at 23:23Z on 2026-10-29 |
+| deploy record | **`dep_eb111413d45d`**, the last one written; "describes what runs: 24 services" (`verify_loaded.py` from the main checkout) |
+| engine | `squadops-tensorfold`: **`Args`** from `serve` equal `serve_command`'s line for `qwen27b-nvfp4.yaml`, with no `--parallel` (compared in code); **`.Image`** `sha256:b62567b8d89fca5ca126e614162d65b4a6eecaacd63d75699fdf70ff268f45f8`, the recipe's `image_id`; **`State.StartedAt`** `2026-10-29T23:09:10.782597083Z` |
+| image ids | **runtime-api `bb84894026a2`, max `3cf4e7e34a36`, neo `8802daa948d8`, nat `b4aa7e8cf1f2`, bob `885fbccf90d7`, eve `cc079a0e97d1`, data `024c789f54eb`**: read from the running containers, equal to both configs' `frozen_image_ids`. The sandbox service: `45acbcd492c0` |
+| `EVALUATOR_IMAGE` | `squadops-evaluator:lighthouse13.5-axe4.14-ruff0.16-eslint10.12-7` (`src/squadops/sandbox/environment.py:43`; image `40cb987918c0`), §4.1's |
+| model | `qwen3.8-27b-tf-nvfp4` in every agent (`SQUADOPS__LLM__MODEL`, read in max, neo, nat, bob, eve and data), served by `squadops-tensorfold:0.6.6-cb2ebf05`; weights `hf:nvidia/Qwen3.8-27B-NVFP4@482ca0f3…` (the deploy record, #2561) |
 | held-out suite | revision 6, `89bffc198c99b6fd347ef51d6263f6e2360a680a42bb4f01138750e44809854a` |
-| squad snapshot | — (`full-38-tf`), read from the deploy's API by the driver's `live_squad_snapshot` |
-| loaded checks | — tracked rows in each config, every row of `loaded_checks.yaml`; on the deploy, loaded and not |
-| set configs | — `2-5-0-cut-regression-fastapi-react.yaml` and `2-5-0-cut-regression-nextjs.yaml`, carried from the 2.4 cut's by its rules (§2); their sha256 |
-| shakeout definition | `examples/03_group_run/campaigns/2-5-0-cut-shakeout.yaml`; its sha256 at registration — |
-| record versions | attribution registry 2, campaign package 8 (§4.3) |
-| HEAD at preflight | — |
+| squad snapshot | **`a1280ff8ed4398b3`** (`full-38-tf`), read from the deploy's API by the driver's `live_squad_snapshot`; 2.4's |
+| loaded checks | 247 tracked rows in each config, every row of `loaded_checks.yaml`. On the deploy, 247 loaded, 0 not |
+| set configs | `2-5-0-cut-regression-fastapi-react.yaml` and `2-5-0-cut-regression-nextjs.yaml`, carried from the 2.4 cut's: name, records home, this pre-registration, notes, every row tracked, and these pins. sha256: fastapi-react **`5d3fe39a41a8d8b1…`**, nextjs **`7edb27b1f829c041…`** |
+| shakeout definition | `examples/03_group_run/campaigns/2-5-0-cut-shakeout.yaml`, sha256 `241759cb94f63133…` |
+| record versions | attribution registry 2 (`failure_attribution.py:57`), campaign package 8 (`evidence.py:39`) |
+| HEAD at preflight | **`42d4e395`**, this registration's branch, at both counting preflights (02:28Z and 02:29Z), both clean. The preflight only reads it; roll 1 pins the HEAD it launches from, this registration's merge. Its difference from the deploy commit is the set's configs and this document. Nothing under `src/` or `adapters/` differs |
 
 ---
 
@@ -625,21 +643,21 @@ Blank until registration. Each is read when conditions 1–10 hold.
 
 | what | value |
 |---|---|
-| the engine switch, and the engine's readings (at the switch, after each shakeout round, at registration, at each roll's start and end) | — |
-| `engine_callers.py`'s first reading against the live engine: the counter's family and key labels (condition 7) | — |
-| the final deploy | — |
-| the sweeps' baselines and readings, each with its `--campaign` list | — |
-| shakeout rounds, and the round that met the exit rule | — |
-| the repeats (§6.3): each campaign, the outside commit, the reconciliation, and each reading | — |
-| registration | — |
+| the engine switch, and the engine's readings (at the switch, after each shakeout round, at registration, at each roll's start and end) | the switch: 23:09:09–23:09:39Z, exit 0 (`var/engine_switch/20261029T230909Z-to-tensorfold.jsonl`). The same `Args`, `.Image` and `State.StartedAt` (§7) at condition 4 (23:23:51Z), after round 1 (00:50Z) and at registration (`var/verification_sets/2-5-0-cut/engine-reading-condition4.txt`). The rolls' readings: — |
+| `engine_callers.py`'s first reading against the live engine: the counter's family and key labels (condition 7) | 23:24:54Z from main at `f69ce0e2`: `tensorfold:requests_total` by `key` and `status`, one label (`squadops`, 10 replies, all `200`); `requests_running` 0, `requests_waiting` 0 |
+| the final deploy | `dep_eb111413d45d` from `f69ce0e2` (`var/plans-2-5/cut/rebuild-final.log`) |
+| the sweeps' baselines and readings, each with its `--campaign` list | round 1's baseline, `--campaign cmp_9c9df268084a`, and reading, `--campaign cmp_9c9df268084a cmp_cea660c0a6a6` (`var/verification_sets/2-5-0-cut/sweeps/`). The repeats' IR-4 baselines and readings in `repeats/ir4/`, each list in its `.campaigns.txt` |
+| shakeout rounds, and the round that met the exit rule | **round 1, `cmp_cea660c0a6a6`, met it** (§14; `var/verification_sets/2-5-0-cut/shakeout-round1.md`) |
+| the repeats (§6.3): each campaign, the outside commit, the reconciliation, and each reading | `z_shelfnote` `cmp_725a9e2ee446`; `z_continuum` `cmp_d30d964599df`; the outside commit `fad7fba` on `backspring-labs/z_continuum`; the reconciliation at `fad7fba`, revision 7; the missing-route replay on `2d3f3948` (§14; `var/verification_sets/2-5-0-cut/repeats.md`) |
+| registration | 02:30Z on 2026-10-30, at `42d4e395` (§7) |
 | the chain: each roll's cycle, verdict, criteria, boot audit, correction rounds, QA repairs whose retest passed, model calls | — |
 | each roll's window on the engine's metrics: the counter by key label and `State.StartedAt` at its start and end, the gauges' samples, and the other-key totals beside its correction rounds | — |
 | the held-out readings | — |
 | each prediction's reading | — |
 | D3's reading, recorded on #2557 with its departures from the done-when | — |
-| IR-1, IR-2 and IR-8's registry half | — |
+| IR-1, IR-2 and IR-8's registry half | IR-2 **passes** on the `z_continuum` repeat (§14). IR-1 and IR-8's registry half: — |
 | the engine's restoration | — |
-| each void and re-run, and each owner action | — |
+| each void and re-run, and each owner action | before registration: no void and no re-run. The owner's actions: "Abandon and propose" (resuming the `z_continuum` repeat) and "Name it, fix after" (#2824). The set's: — |
 
 ---
 
@@ -698,7 +716,12 @@ Blank until registration. Each is read when conditions 1–10 hold.
 - **Next.js on a campaign.** The shakeout runs FastAPI + React, as 2.4's did. On Next.js, D12, #2664, #2297 and
   #2602's page example are read on greenfield rolls only, and #2602's increment half (a page criterion that
   discriminates) isn't exercised.
-- **#2578's repair and retry records,** if the shakeout launches none (Q8; §12).
+- **#2578's repair and retry records.** The shakeout launched none, so they are *not exercised* on the final deploy
+  (Q8; §12).
+- **#2824** (the owner chose "Name it, fix after"): a Campaign can't repair or retry an increment whose approved
+  proposal is a revision, since the repair's binding reads the launch block's first version. Found in the
+  `z_continuum` repeat (§14). Placed in 2.5.x or 2.6 beside #2818. Neither the rolls nor the shakeout reach it: the
+  rolls aren't Campaigns, and the shakeout approves each proposal as it stands.
 - **The prompt budget's binding on a sample application** (#2805, #2810). Nothing in the set binds an instruction;
   the rendering moves are read (§4.3).
 - **Memory supply on a sample application.** Every roll declares memory disabled, and the shakeout supplies nothing.
@@ -710,15 +733,19 @@ Blank until registration. Each is read when conditions 1–10 hold.
 - **#2814, unchanged since 2.4:** a JS or TS file past about 257 lines has no anchored edit form, so a repair of one
   edits without it, as on 2.4's rolls.
 
-## 12. Decisions still open at this stop
+## 12. Decisions at this stop
 
 **The owner's:**
 1. **#2578's repair and retry records** (Q8). The shakeout launches a repair or retry only if an increment fails, and
    Track D's readings of them were voided (§6.2). **Recommended:** if the shakeout launches none, they are named *not
-   exercised* on the final deploy in the cut record, rather than forced by a fault.
+   exercised* on the final deploy in the cut record, rather than forced by a fault. **At registration:** the shakeout
+   launched none, so they are named *not exercised* (§11), as recommended. The owner hadn't ruled it, and can still
+   ask for a fault-forced reading before the cut's record is written.
 2. **The scope of "Return such a criterion"** (the demonstrations' deviation 2). **Recommended:** it applies to the
    `z_continuum` and `z_shelfnote` repeats, which are product Campaigns, and not to the `group_run` shakeout, which
-   keeps "approved as it stands" and §24bq's row 16 (§2).
+   keeps "approved as it stands" and §24bq's row 16 (§2). **At registration:** applied as recommended, and the owner
+   hadn't ruled it. It returned one `z_continuum` proposal (§14). No shakeout proposal had a criterion the accepted
+   application already met, so the scope didn't change the shakeout either way.
 3. **The tag and the Release stay the owner's.** As at 2.4.0 (D9), the supervisor pushes the tag once the owner says
    go, after a set passes.
 4. **D4's eight `*_memory_data` volumes** are kept as a backup until the cut (#2735). Removing them after the tag is
@@ -727,13 +754,14 @@ Blank until registration. Each is read when conditions 1–10 hold.
 
 **The supervisor's:**
 1. **Q1 reads the page scenario** (§4.1). **Recommended:** yes, since `-6` reads a label that ends with a colon. The
-   alternative is 2.4's rule.
+   alternative is 2.4's rule. **Decided:** yes.
 2. **#2557's Next.js half** (Q7). **Recommended:** the two Next.js rolls' plans stand for a Next.js calibration. A
    roll's framing runs `validated-fullstack`, the profile a campaign's calibration runs, on the same PRD, so its design
    asks the same questions. Only the gate's decider differs. The departure is recorded on #2557. **The alternative:** a
-   Next.js calibration under the tier beside the shakeout, about 1 box-hour.
+   Next.js calibration under the tier beside the shakeout, about 1 box-hour. **Decided:** the rolls' plans stand, and
+   the departure goes on #2557 with the reading.
 3. **IR-8's registry half, again** (§6.1). 2.4 ran it at its cut, and 2.5 changed the create path it reads.
-   **Recommended:** yes, in minutes, beside IR-1.
+   **Recommended:** yes, in minutes, beside IR-1. **Decided:** yes.
 
 ## 13. What the second reader and the owner changed
 
@@ -797,3 +825,70 @@ by every build, not by Q7 alone.
 - §10 names D12's evidence on the candidate engine;
 - §11 adds §24bv's three open questions and the demonstrations' limits;
 - the citations are corrected: full paths, and "five days".
+
+## 14. Before registration: the shakeout and the repeats
+
+The records are in `var/verification_sets/2-5-0-cut/`: `shakeout-round1.md` and `repeats.md`, with the sweeps, the
+caller readings and the repeats' artifacts beside them. Counts and identities only.
+
+### 14a. Shakeout round 1: the exit rule holds
+
+**On the final deploy:** `cmp_cea660c0a6a6` on `dep_eb111413d45d`, 23:26–00:50Z on 2026-10-29/30, completed
+`success` (§10 row 3, objective met).
+- **The calibration and both increments were accepted on their first cycle:** `cyc_d8ff5104cac8`,
+  `cyc_d16225d07876` (a run capacity, 4 criteria) and `cyc_88f5a7cffc9e` (runs listed soonest first, 1 criterion,
+  `must_not_break` T1–T4).
+- **Each proposal was approved as it stood,** within two minutes of its submit. No repair, retry, re-proposal,
+  escalation or intervention.
+- **The engine** was unchanged across the round. Its counter showed one key label, `squadops`; `running + waiting` never
+  reached 2 (917 readings, no gap).
+- **Every shakeout prediction holds:**
+  - **P4:** the tier approved all three plan gates, each with its three readings;
+  - **Q3:** no outcome record has a `regressed` scenario;
+  - **Q4:** both proposals carried 31 goals, none held back, and rendered the goals section;
+  - **Q5:** no step marker or goal outside the excused places, no `no_task_span` row, nothing unsearched; the positive
+    control held;
+  - **Q6:** all 15 `qa.test` and `qa.test_repair` envelopes end with D12's note, and none of the 27 others carries it;
+  - **Q7:** the calibration's design asks nothing, and its gate wasn't escalated;
+  - **Q8:** each cycle names its own increment; its repair, retry and re-proposal halves are *not exercised*;
+  - **Q9:** no framing refused, and both merges complete. The criterion-file move wasn't exercised (0 files moved, no
+    development task dropped);
+  - **Q10:** no calibration record or commit, no `branch_rebased` row, no source context; both increments ran
+    `qa.evaluate_increment`; no stale refusal.
+- **Read beside:** correction rounds 1, 3 and 0 (one `qa.test_repair` retest passed on the calibration and one on
+  increment 1); no `slot_subject_dropped`, `repair_dropped` or `contract_assertions_match` refusal in any log; no
+  `start_failure`; no catch-all route declared.
+
+**The loop took one round of three.**
+
+### 14b. The repeats
+
+**`z_shelfnote`** (`cmp_725a9e2ee446`, 00:58–01:32Z):
+- **IR-7 holds:** the baseline reading names the calibration record and `prj-shelfnote` (5 passed, 4 failed), and the
+  increment's evaluation is on its captured tree (9 of 9 passed).
+- **#2780's anchored page holds:** `/search` held in the increment and its repair.
+- **The missing-route negative holds, as a replay:** held as built, broken with the route removed.
+- **IR-8's `prj-shelfnote` half holds.**
+- **IR-4 holds as a leak test,** a fresh clone of the product included.
+- **The increment and its repair were rejected on #2799 alone,** as expected. T1 (pytest) and T2 (vitest, rendering
+  the App) discriminate; T3 imports the view the change adds. Aborted after the readings.
+
+**`z_continuum`** (`cmp_d30d964599df`, 01:34–02:22Z):
+- **IR-2 passes:** the standalone cycle and the Campaign's first cycle carry the same baseline, revision and pinned
+  commit, each with its own snapshot.
+- **IR-6's calibration half and IR-8's `prj-z-continuum` half hold.**
+- **The owner's "Return such a criterion"** returned v1 for a T2 the framework's own 404 meets, classified
+  `criteria_not_checkable`. v2 was approved.
+- **Increment 1 failed in its cycle on #2818's class,** as expected. Its repair couldn't be built: **#2824**, filed.
+  The owner chose "Abandon and propose".
+- **IR-3 (a)–(e) hold on the final deploy:**
+  - (a) the first cycle bound `CLAUDE.md@2070ba46`;
+  - (b) after the outside commit `fad7fba` was synced, the next launch was refused `STALE_SOURCE_PRECONDITION` until the
+    reconciliation (revision 7 at `fad7fba`);
+  - (c) the launcher rebased the branch and the next cycle bound `CLAUDE.md@fad7fba`;
+  - (d) a standalone cycle created after the reconciliation bound the new content;
+  - (e) no re-binding.
+- **IR-4 holds as a leak test,** the product's fresh clone and mirror included. Aborted after (e).
+
+**The registration's own merge** changes only this document and the set's two configs, all under `docs/`. No path in
+the plan's §3 rule moves, so it voids neither the round nor the repeats.
