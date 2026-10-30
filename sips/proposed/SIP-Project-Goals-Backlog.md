@@ -37,6 +37,11 @@ Checked 2026-10-30 against `sips/PORTFOLIO.md`. **Conflicts:** none found. **Ove
 - **The Game Development Platform draft** (PR #2405, its Q37 on that branch). Its `GAME_DESIGN.md` requirement in
   every game repository would become a goal set here, held as SquadOps metadata, as Q37's recommendation already
   reads.
+- **SIP-0090 (Agent Embodiment Substrate) and the owner's direction of 2026-08-19** (cluster 8). An agent's presence
+  in Buzz is an embodiment surface, and SIP-0090's phases 2–4 are deferred to 3.x. The direction is no chat bridge that
+  executes before the ACP-binding SIP. **Boundary:** this SIP gives SquadOps no Buzz presence. Its notices are read
+  through the API and carried by the crew (slice 5a), and a decision taken in Buzz reaches SquadOps only as a person's
+  action (slice 5b waits for 3.x, Q43). *Missed in this draft's first intake and added the same day.*
 - **The Design Decision Register** (proposed, cluster 13). It records design decisions inside a cycle. This SIP
   records goals and their order across a Campaign. They don't share a record.
 - **The Continuum Runtime Console** (proposed, partly absorbed). The goals panel here is a SIP-0069 plugin. The
@@ -50,11 +55,12 @@ Checked 2026-10-30 against `sips/PORTFOLIO.md`. **Conflicts:** none found. **Ove
 | slice 2: a Campaign on a goal set: `objective.goals`, the proposer's view, the one-item rail, derived status, `stop_when: backlog_done` (with a SIP-0109 amendment) | **unplaced**, deliberately: proposed for 2.6.0 | — |
 | slice 3: candidates, their promotion and drop | **unplaced**, deliberately: proposed for 2.6.0 | — |
 | slice 4: the console's goals panel | **unplaced**, deliberately: proposed for 2.6.0 | — |
-| slice 5: Buzz notices and decisions as actions with a `source_ref` | **unplaced**, deliberately: proposed for 2.6.0 as deferrable, after Q43 | — |
+| slice 5a: notices: SquadOps emits each notice (a Campaign stopped, a candidate waiting, an item accepted) with its console link, for the crew to carry into Buzz | **unplaced**, deliberately: proposed for 2.6.0, as the 2.6 plan's hard-stop notice | — |
+| slice 5b: decisions taken in Buzz reaching SquadOps as actions with a `source_ref` | **unplaced**, deliberately: waits for SIP-0090's presence surface and the ACP binding, deferred to 3.x, unless the owner rules otherwise (Q43) | — |
 | slice 6: the repository export | **unplaced**, deliberately: not proposed for 2.6 | — |
 
-**What closes this SIP:** slices 1–4 shipped and read live on a Campaign whose backlog reached three accepted items;
-slices 5 and 6 shipped or dropped by a numbered amendment.
+**What closes this SIP:** slices 1–4 and 5a shipped and read live on a Campaign whose backlog reached three accepted
+items; slices 5b and 6 shipped or dropped by a numbered amendment.
 
 
 ---
@@ -228,11 +234,14 @@ marked as generated. Nothing reads it back.
 
 ### 8.5 Buzz
 
-Buzz carries the conversation. A decision taken there reaches SquadOps as an **action**: an API call by an identity
-§6 authorizes, with the thread's link as its `source_ref`. A notice goes to Buzz when a Campaign stops, a candidate
-is waiting, or an item is accepted, each with its console link. **The bridge's mechanics** (the `buzz-acp` shim
-discussed in `docs/ideas/IDEA-Reselling-Squad-Back-Office.md`, and how Nostromo's `buzz-approved` flow calls the API)
-**are not designed here** (Q43).
+Buzz carries the conversation. **SquadOps itself has no presence in Buzz under this SIP.**
+- **Notices (slice 5a)** are SquadOps's: an event with its console link when a Campaign stops, a candidate is waiting,
+  or an item is accepted, readable through the API. The crew, which is already in Buzz (Nostromo's `buzz-approved`
+  definitions), carries them into the channel. The 2.6 plan's hard-stop notice is the same mechanism, built once.
+- **Decisions (slice 5b)** are taken in Buzz by a person, and reach SquadOps as an API action by an identity §6
+  authorizes, with the thread's link as its `source_ref`. **A bridge in which SquadOps executes what a chat message
+  says is not built here.** The owner's direction of 2026-08-19 is no chat bridge that executes before the ACP-binding
+  SIP, and SIP-0090's presence surfaces (phases 2–4) are deferred to 3.x. So slice 5b waits for them (Q43).
 
 ## 9. Open questions for the owner
 
@@ -240,5 +249,5 @@ discussed in `docs/ideas/IDEA-Reselling-Squad-Back-Office.md`, and how Nostromo'
 |---|---|---|
 | Q41 | **the crew's authority over the order:** may the supervisor identity reorder the backlog, split an item, or promote a candidate without the owner? | **promote and split, yes, within a Campaign the owner started, each recorded with its reason; reorder, no.** The order is where the owner steers |
 | Q42 | **`requirements` beside `goals`:** keep both sources for a Campaign? | **keep both.** The sample applications' Campaigns read PRDs, and their yardstick is built on them. A product Campaign names one or the other |
-| Q43 | **Buzz:** which decisions may be taken in Buzz, by which identity, and through what bridge? | **notices first** (slice 5's half that writes nothing), then decisions once the overnight identity (the 2.6 plan's D7) exists, so a Buzz action carries an identity SquadOps already knows |
+| Q43 | **Buzz:** may any decision reach SquadOps from Buzz before SIP-0090's presence surface and the ACP binding? | **no.** Notices only (slice 5a), carried by the crew. A person who decides in Buzz still acts in the console or the CLI, with the thread's link as `source_ref`. Slice 5b waits for 3.x, as the 2026-08-19 direction and SIP-0090's deferral read |
 | Q44 | **one goal set per Project, or several** (one per Campaign theme)? | **one active,** with revisions. Two goal sets on one Project would compete for the same tree |
