@@ -6,6 +6,13 @@ has a recommendation. §8 lists what the outside reviewer is asked to challenge.
 **Revised 2026-10-30, the same day:** the owner asked to incorporate the 2.5.1 fix line's assumptions. §1a names the
 ten defects 2.6 assumes 2.5.1 fixes, with a fallback rule if one slips; they leave §2's tracks, and D11 rules the split.
 
+**Revised a third time the same day: the crew drives.** The owner: "By buzz convo, what I meant was interacting
+with the Nostromo crew driving the campaign execution and outcome assessment. They can determine if outcomes are
+being met or if squad ops framework bugs or functional gaps need to be covered to advance the app building work. Not an
+embodiment of squad ops agents in buzz." So the crew is an API client: the headline's slice 5 is its surface and its
+assessment record; the overnight identity is the crew's existing broker principals (D7); notices are the crew's
+watcher's; the Campaigns plugin is read-only (D13); and the crew's own changes are named as a dependency (D14).
+
 **Revised again the same day: the headline is a new SIP,** Project Goals and Backlog (PR #2833), on the owner's
 direction that a Project's goals and expected outcomes be "persisted in db records of the project definition", with
 Buzz as "the collab and convo on achieving those goals", MECE across the tools, and "get away from a claude terminal to
@@ -140,10 +147,13 @@ is filed when the plan is adopted. Every item below assumes §1a's fixes have sh
 | item | what | size |
 |---|---|---|
 | **#2796** | the plan-review tier decides a product's plan gate from the approved change request and the plan's own open-question fields, instead of escalating every one. The rule is written into SIP-0109 §24bj, not left as a fallthrough | M |
-| **an escalation policy for unattended runs** (new; D6) | a Campaign declares which escalation classes the supervisor identity may resume on its own, within the Campaign's limits. Everything else waits for the owner, as today | M |
-| **a supervisor identity that lasts the night** (new; D7) | an identity for an unattended supervisor that isn't bound by the 8-hour session: a service account with client credentials, scoped to `campaign-supervisor` plus D6's resumes. With #2760's answers from the Nostromo crew. **Security, so the owner's** | S–M |
-| **#2287** | the box lease outside Campaigns, so nothing else takes the GPU during an overnight window, built as SIP-0109 §9.3 is written | M |
-| **a hard-stop notice** (new; the headline's slice 5a) | when a Campaign stops, pauses at a limit or escalates to the owner, one notice names why, with its console link. SquadOps emits it through the API, and the crew carries it into Buzz: SquadOps gets no Buzz presence (SIP-0090's, 3.x). Nothing on progress | S |
+| **an escalation policy for unattended runs** (new; D6) | a Campaign declares which escalation classes the crew's `campaign-supervisor` principal may resume on its own, within the Campaign's limits. Today only `campaigns:control` (admin) resumes, and the crew's broker deliberately holds no admin role, so every overnight escalation waits for the owner. Everything outside D6's classes still does | M |
+| **the overnight identity: confirm, don't build** (D7) | the crew's broker already holds scoped service principals (`campaign-operations`, `campaign-review`, `campaign-evidence`, private-key JWT clients in the `squadops-local` realm, none with `admin`; Nostromo's `docs/campaign-execution-harness.md`). That answers most of #2760: no CLI session, no 8-hour limit. What remains is D6's resume grant to that principal. **Security, so the owner's** | S |
+| **#2287** | the box lease outside Campaigns, so nothing else takes the GPU during an overnight window, built as SIP-0109 §9.3 is written. The crew's `crewctl mode counted` is its own local-role guard, not this lease | M |
+
+**Notices are the crew's.** Its watcher already posts each Campaign's transitions and closing record to Buzz, and
+the owner talks to the crew there, so SquadOps builds no notice. The hard-stop notice this draft listed earlier is
+dropped from SquadOps's work.
 
 ### 2.4 Track D, the headline: Project Goals and Backlog (PR #2833)
 
@@ -152,8 +162,14 @@ without a terminal. 2.5's proposals came from a flat two-feature requirements fi
 done, and the squad repeated itself. The SIP's design is under review in its own PR. This track places its slices.
 
 **The MECE split the SIP sets** (its §3): intent (the goal, expected results, the backlog's order) in the goal set;
-progress derived from the control log; proof in the evaluation records; deliberation in Buzz; decisions as recorded
-actions; code in the product's repository. **Discussed in Buzz, decided in SquadOps.**
+progress derived from the control log; proof in the evaluation records; **the crew's assessment** of each expected
+result, and whose work a shortfall is (the squad's, or a framework defect or gap), on the goal set; framework work as
+squad-ops issues; the owner's conversation with the crew in Buzz; decisions written through the API; code in the
+product's repository.
+
+**Who drives:** the Nostromo crew runs the Campaign and assesses its outcomes, and the owner directs it in Buzz (the
+owner, 2026-10-30: "interacting with the Nostromo crew driving the campaign execution and outcome assessment").
+SquadOps holds the records the crew and the owner read and write. No SquadOps agent is in Buzz.
 
 | item | what | size |
 |---|---|---|
@@ -161,8 +177,19 @@ actions; code in the product's repository. **Discussed in Buzz, decided in Squad
 | **slice 2: a Campaign on a goal set** | `objective.goals`; the proposer shown the backlog with each item's derived status; one pending item per proposal, a rail returning one that names none; `stop_when: backlog_done`. A SIP-0109 amendment in the same PR | M–L |
 | **slice 3: candidates** | the squad, the crew or the system adds what it finds; the owner, or the crew if delegated (Q41), promotes or drops it | S–M |
 | **slice 4: the console's goals panel** | a Continuum plugin (SIP-0069): goal, expected results, backlog with status and increments, candidates waiting, history. Editing writes a revision | M |
-| **slice 5a: notices** | built once, as Track C's hard-stop notice, with a candidate waiting and an item accepted added: emitted through the API, carried into Buzz by the crew | S (counted in §2.3) |
-| **slice 5b: decisions from Buzz** | **not in 2.6.** An executing chat bridge waits for the ACP-binding SIP (the owner's direction, 2026-08-19), and SIP-0090's presence surfaces are deferred to 3.x. A decision made in Buzz is acted on in the console, with the thread's link as `source_ref` (Q43) | — |
+| **slice 5: the crew's surface** | the goal set and derived backlog readable by the supervisor and triage principals; each gate's evidence names its backlog item and carries the expected results, so the crew's reviewer judges an increment against the goal; candidates and **assessments** written by the crew (the SIP's §5.7: `met`/`not_met`/`unclear`, and a shortfall's cause: `app_work`, `framework_defect`, `framework_gap` or `needs_owner`, with the squad-ops issue it filed) | M |
+
+**The crew's side, in Nostromo's repository, not this plan's to build.** For rung 3 the crew's harness has to use
+slice 5:
+- its broker's fixed command list gains the goal-set reads, candidates and assessments;
+- its gate-evidence contract carries the backlog item and expected results;
+- its ruling role's closing interpretation is written as assessments;
+- its Campaign definitions name `objective.goals`.
+
+Those are the crew's changes. The plan names them as a dependency with the owner (D14), so neither repository
+assumes the other did them. **Unverified:** whether the crew's harness, which parks a Campaign on any missing
+evidence, worker error or blocking review, with no automatic retry, can run unattended for hours. That is the crew's
+policy, read on the first attended proving run.
 
 **The proving Project's goals are written into a goal set** (slice 1) before its Campaign starts, not into a file in
 this repository. Until slice 1 lands, phase 1 drafts them as text to load.
@@ -186,8 +213,9 @@ this repository. Until slice 1 lands, phase 1 drafts them as text to load.
 
 The headline's goals panel (slice 4) is one screen. Today **a Campaign has no console surface at all:** `squadops
 campaigns` has 17 commands and no plugin, and `squadops.projects` shows a list and squad profiles, none of SIP-0112's
-lifecycle (#2834: SIP-0069's normative CLI parity, broken since 2.0). Without this track, the owner edits goals in the
-console and still creates, watches, rules and resumes the Campaign in a terminal.
+lifecycle (#2834: SIP-0069's normative CLI parity, broken since 2.0). The owner directs the Campaign through the crew in Buzz.
+This track is where the owner **reads** it without a terminal: the goals, the backlog, the Campaign's state and the
+crew's assessments.
 
 **Where the work is:** the plugins live in this repository (`console/continuum-plugins/`, SIP-0069 D2), so the track is
 SquadOps work. Continuum itself is pinned at `v1.0.2` (`console/continuum.lock`), and SIP-0069's principle 5 is "zero
@@ -196,14 +224,14 @@ shell modification". **No Continuum change is planned,** pending the fit check b
 | item | what | size |
 |---|---|---|
 | **a Continuum fit check** (first, no box time) | can the pinned shell do what the views below need: a list that refreshes while a Campaign runs, an ordered list edited in place, a view per Project and per Campaign, and a write that goes through the command bus with its danger level? **Unverified.** If it can't, the gap is named, and the choice (a plugin-local workaround, or a Continuum release) comes back to the owner before any view is built | S |
-| **a Campaigns plugin** (new, `squadops.campaigns`) | **the run:** create from a goal set, start, pause, resume, abort. **What's happening:** state, the current increment, the ledger and the digest. **What needs a person:** proposals waiting for a ruling, open escalations, and answering each one. Writes go through Continuum commands (`confirm` for start, resume and abort) | L |
+| **a Campaigns plugin** (new, `squadops.campaigns`), **read-only in 2.6** | **what's happening:** state, the current increment, the ledger, the digest, open escalations and proposals waiting, and the crew's latest assessment of each expected result. **The controls stay with the crew** (it launches, rules and pauses through its broker) and the CLI. Console controls are #2834's parity debt, for a later line | M |
 | **the goals panel** | the SIP's slice 4 (§2.4), as a panel of the Projects plugin, linked to each Campaign that reads it | M (counted in §2.4) |
 | **Project setup views** (deferrable) | validate, configure, capture a baseline, sync, and see the gaps. These run once per Project, or when upstream moves, so the CLI is tolerable for 2.6 and they defer first | M–L |
 | **not in the console** | `scenarios draft` and `review` (held-out content stays with the supervisor and the owner, SIP-0113's independence), and `acquire`/`release` (operator tools). #2834 asks for a SIP-0069 amendment naming these exceptions, not a silent gap | — |
 
-**What "off the terminal" means for the release claim:** on the proving Campaign, the owner writes the goals,
-starts the Campaign, rules the proposals that need the owner and resumes what D6 leaves to the owner, all in the
-console (§4, rung 3). Setting up the Project once may still use the CLI if Project setup defers.
+**What "off the terminal" means for the release claim:** on the proving Campaign, the owner writes the goals in the
+console, directs the crew in Buzz, and reads the Campaign's state and the crew's assessments in the console (§4,
+rung 3). Setting up the Project once may still use the CLI if Project setup defers.
 
 ### 2.8 Riding along (hardening, any lane order)
 
@@ -258,8 +286,9 @@ A ladder, each rung pre-registered before its run:
 2. **Three accepted increments in one Campaign** on the proving product, each from a different backlog item.
 3. **Four hours or more of one Campaign on the proving product,** of which at least part is unattended overnight, with
    no intervention outside D6's declared touchpoints, and every stop attributed to a named rule. Its goals are a goal
-   set written in the console (slice 4), each item's status reads back from the control log, and the owner starts,
-   rules and resumes the Campaign in the console (Track G), not a terminal.
+   set written in the console (slice 4), each item's status reads back from the control log, the crew runs it and
+   records at least one assessment per expected result it reached, and the owner works through the crew in Buzz and
+   the console (Track G), not a terminal.
 
 **Recommended:** rungs 1 and 2 are required for the cut; rung 3 is the headline claim. If rung 3 doesn't hold, the
 claim narrows only on the owner's ruling, named in the cut record, as at 2.5. **Each run records** its wall-clock
@@ -297,14 +326,15 @@ the first attended proving run. Track D is build time, not box time: the proving
 | D3 | **Roblox in 2.6** | **the spike only,** in phase 1. If its tests run headless on Linux, a Roblox Project is a second, uncounted Campaign late in the line. #2405's placement is decided after the spike |
 | D4 | **#2818's shape** | **shape 1, the sandbox's product runner,** as §24bv point 3 judges a product: on its own runner. It costs a sandbox round trip per suite run, and it's the only shape that covers a non-Python product |
 | D5 | **who authors the backlog** | **you order it; the squad proposes from it** and records what it finds as candidates, which you, or the crew if Q41 delegates it, promote or drop. The strategy role ordering its own features waits for a later line, once a Campaign has lasted hours on yours |
-| D6 | **what an unattended supervisor may resume** | **these classes:** a plan gate answered from the requirements; a repair or retry after a named in-cycle failure, within the limits; `launch_blocked` after the box is quiet. **Never on its own:** an upstream conflict, a limit's pause, a security finding, or the owner's pause |
-| D7 | **the overnight identity** | **a service account with client credentials,** scoped to `campaign-supervisor` and D6's resumes, its secret held as the deploy's other secrets are. Security, so yours. **The alternative:** keep the password re-login before each ruling, which works but ties an overnight run to one supervisor session |
+| D6 | **what the crew's supervisor principal may resume unattended** | **these classes:** a plan gate answered from the requirements; a repair or retry after a named in-cycle failure, within the limits; `launch_blocked` after the box is quiet. **Never on its own:** an upstream conflict, a limit's pause, a security finding, or the owner's pause. It is a grant to the crew's broker principal, which holds no admin role today |
+| D7 | **the overnight identity** | **the crew's existing broker principals, unchanged,** plus D6's resume grant. No new identity is built. Security, so yours. **The alternative:** a separate SquadOps service account for unattended supervision, which duplicates what the crew's broker already holds |
 | D8 | **the release claim** | §4: rungs 1 and 2 required, rung 3 the headline |
 | D9 | **a criterion already met** | **checked at the ruling, returned automatically,** as §2.2 says. **The alternative:** keep row 16's abandonment after a spent cycle |
 | D10 | **the financial application's data** | **synthetic only in 2.6:** fixtures the squad and the owner write, no live data source, no real credentials. #2421's secrets half stays unbuilt |
 | D11 | **2.5.1's contents, and 2.6 planned on top of them** | **§1a's ten:** #2824, #2817, #2814, #2804, #2809, #2813, #2798, #2765, #2830 and #2402, each a defect with no design, read by replay. 2.6's tracks assume them, with §1a's fallback rule if one slips. #2818, #2799, #2796, #2613 and #2612 stay in 2.6, since each needs a design. **The alternative:** no 2.5.1, and the ten join 2.6's Track A, which lengthens phase 2 by a few days and puts the patch's fixes behind 2.6's designs |
 | D12 | **who runs the line** | 2.5's terms (§5) |
-| D13 | **the console's scope** (Track G, #2834) | **the Campaigns plugin and the goals panel required; Project setup views deferrable;** held-out drafting and the lease tools kept out of the console by a SIP-0069 amendment. No Continuum change unless the fit check finds one, and then it comes back to you. **The alternative:** the goals panel only, and the Campaign stays a CLI tool for 2.6 |
+| D13 | **the console's scope** (Track G, #2834) | **the goals panel and a read-only Campaigns plugin required** (state, ledger, escalations, the crew's assessments); controls stay with the crew and the CLI; Project setup views deferrable; held-out drafting and the lease tools kept out of the console by a SIP-0069 amendment. No Continuum change unless the fit check finds one, and then it comes back to you. **The alternative:** console controls too (an L), duplicating the crew's broker path |
+| D14 | **the crew's side of slice 5** (Nostromo's repository) | **you place it with the crew,** beside 2.6's slice 5: the broker's commands, the gate-evidence contract, assessments from the closing interpretation, and definitions naming `objective.goals`. 2.6's rung 3 depends on it, so it is named here and in the cut's pre-registration, not assumed |
 
 ---
 
@@ -326,5 +356,8 @@ The questions this draft is least sure of:
    data source read the Campaign better?
 6. **Is §1a's split right?** Ten defects go to 2.5.1, read by replay only, and their live reading waits for 2.6's
    shakeout. Should any of them (#2817 and #2814 most likely) be read on a live product before the patch is cut?
-7. **What is missing** that a multi-hour run needs: cost or token limits per hour, checkpointing the campaign branch
+7. **Is the crew boundary right?** The crew drives and assesses as an API client, and SquadOps records its
+   assessments (`met`/`not_met`/`unclear` and a shortfall's cause) without letting them decide anything. Should an
+   assessment of `framework_defect` pause the Campaign by itself, or stay the crew's to act on?
+8. **What is missing** that a multi-hour run needs: cost or token limits per hour, checkpointing the campaign branch
    for the owner to review mid-run, or a way for the owner to steer the backlog while it runs?
