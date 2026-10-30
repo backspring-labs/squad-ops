@@ -181,12 +181,35 @@ this repository. Until slice 1 lands, phase 1 drafts them as text to load.
 | **its held-out suite** | drafted, reviewed and approved as 2.5's demonstration suites were (2.5 plan D11), so the yardstick reads whether the product improved, not only whether the squad's tests passed | M |
 | **a Roblox spike** (D3, no box time) | can a Rojo project's Luau tests run headless on Linux inside the sandbox from declared commands? **Unverified:** which runner (a standalone Luau runtime, or a test framework that needs Roblox's own APIs) and what it can't exercise. If yes, a Roblox game is an ordinary repository-backed Project once Track A lands, and its game-specific skills come from PR #2405. If it needs Roblox Studio, it is #2405's remote worker, not 2.6 | S |
 
-### 2.7 Riding along (hardening, any lane order)
+### 2.7 Track G: the console, so the owner drives a Campaign off the terminal (#2834)
+
+The headline's goals panel (slice 4) is one screen. Today **a Campaign has no console surface at all:** `squadops
+campaigns` has 17 commands and no plugin, and `squadops.projects` shows a list and squad profiles, none of SIP-0112's
+lifecycle (#2834: SIP-0069's normative CLI parity, broken since 2.0). Without this track, the owner edits goals in the
+console and still creates, watches, rules and resumes the Campaign in a terminal.
+
+**Where the work is:** the plugins live in this repository (`console/continuum-plugins/`, SIP-0069 D2), so the track is
+SquadOps work. Continuum itself is pinned at `v1.0.2` (`console/continuum.lock`), and SIP-0069's principle 5 is "zero
+shell modification". **No Continuum change is planned,** pending the fit check below.
+
+| item | what | size |
+|---|---|---|
+| **a Continuum fit check** (first, no box time) | can the pinned shell do what the views below need: a list that refreshes while a Campaign runs, an ordered list edited in place, a view per Project and per Campaign, and a write that goes through the command bus with its danger level? **Unverified.** If it can't, the gap is named, and the choice (a plugin-local workaround, or a Continuum release) comes back to the owner before any view is built | S |
+| **a Campaigns plugin** (new, `squadops.campaigns`) | **the run:** create from a goal set, start, pause, resume, abort. **What's happening:** state, the current increment, the ledger and the digest. **What needs a person:** proposals waiting for a ruling, open escalations, and answering each one. Writes go through Continuum commands (`confirm` for start, resume and abort) | L |
+| **the goals panel** | the SIP's slice 4 (§2.4), as a panel of the Projects plugin, linked to each Campaign that reads it | M (counted in §2.4) |
+| **Project setup views** (deferrable) | validate, configure, capture a baseline, sync, and see the gaps. These run once per Project, or when upstream moves, so the CLI is tolerable for 2.6 and they defer first | M–L |
+| **not in the console** | `scenarios draft` and `review` (held-out content stays with the supervisor and the owner, SIP-0113's independence), and `acquire`/`release` (operator tools). #2834 asks for a SIP-0069 amendment naming these exceptions, not a silent gap | — |
+
+**What "off the terminal" means for the release claim:** on the proving Campaign, the owner writes the goals,
+starts the Campaign, rules the proposals that need the owner and resumes what D6 leaves to the owner, all in the
+console (§4, rung 3). Setting up the Project once may still use the CLI if Project setup defers.
+
+### 2.8 Riding along (hardening, any lane order)
 
 #2826 (the list-shape convention placed by the 2.5 cut), #2736, #2737. Each is small and touches no Campaign path the
 proving run reads, or lands before phase 3. (#2830, #2765 and #2402 are 2.5.1's, §1a.)
 
-### 2.8 Not in 2.6
+### 2.9 Not in 2.6
 
 - **The TensorFold 1.x upgrade** (#2230): deferred to 3.x by the owner, 2026-10-30.
 - **The judgement steps** (#557, #949, #950) and **Test-First's greenfield gate** (#1978): none removes a stop §1 found.
@@ -206,10 +229,12 @@ The Spark is one GPU and one deploy.
 0. **2.5.1** (§1a): its ten fixes, each replayed against the envelope or record that found it, the regression suite,
    and the patch cut. About 1 box-hour for the replays and the deploy, as a guide. 2.6's builds start beside it.
 1. **No box time.** The owner rules §7. The proving Project's requirements and backlog are written, its Development
-   Configuration recorded, its suite drafted. The Roblox spike runs on the CPU.
+   Configuration recorded, its suite drafted. The Roblox spike runs on the CPU, and Track G's Continuum fit check runs
+   beside it.
 2. **Track A, then Track B,** on top of 2.5.1, each fix replayed against 2.5's stored envelopes. Any §1a item not in a
    released 2.5.1 by now joins Track A (§1a's fallback rule). Track C's design pieces (D6, D7, #2796)
-   are reviewed in parallel; D7 waits for the owner.
+   are reviewed in parallel; D7 waits for the owner. The headline's slices and Track G's views are built beside them: no box time,
+   and each view is read against a running Campaign before the proving run.
 3. **The scripted soak** (Track E). Machinery only, so a failure here is the framework's, never the model's.
 4. **A short model Campaign on `z_continuum` and `z_shelfnote`** as the product path's shakeout. Not the goal, but
    cheap and already configured, and it reads 2.5's narrowed half (IR-5, IR-6's increment half, IR-9's increment
@@ -232,7 +257,8 @@ A ladder, each rung pre-registered before its run:
 2. **Three accepted increments in one Campaign** on the proving product, each from a different backlog item.
 3. **Four hours or more of one Campaign on the proving product,** of which at least part is unattended overnight, with
    no intervention outside D6's declared touchpoints, and every stop attributed to a named rule. Its goals are a goal
-   set written in the console (slice 4), and each item's status reads back from the control log.
+   set written in the console (slice 4), each item's status reads back from the control log, and the owner starts,
+   rules and resumes the Campaign in the console (Track G), not a terminal.
 
 **Recommended:** rungs 1 and 2 are required for the cut; rung 3 is the headline claim. If rung 3 doesn't hold, the
 claim narrows only on the owner's ruling, named in the cut record, as at 2.5. **Each run records** its wall-clock
@@ -277,6 +303,7 @@ the first attended proving run. Track D is build time, not box time: the proving
 | D10 | **the financial application's data** | **synthetic only in 2.6:** fixtures the squad and the owner write, no live data source, no real credentials. #2421's secrets half stays unbuilt |
 | D11 | **2.5.1's contents, and 2.6 planned on top of them** | **§1a's ten:** #2824, #2817, #2814, #2804, #2809, #2813, #2798, #2765, #2830 and #2402, each a defect with no design, read by replay. 2.6's tracks assume them, with §1a's fallback rule if one slips. #2818, #2799, #2796, #2613 and #2612 stay in 2.6, since each needs a design. **The alternative:** no 2.5.1, and the ten join 2.6's Track A, which lengthens phase 2 by a few days and puts the patch's fixes behind 2.6's designs |
 | D12 | **who runs the line** | 2.5's terms (§5) |
+| D13 | **the console's scope** (Track G, #2834) | **the Campaigns plugin and the goals panel required; Project setup views deferrable;** held-out drafting and the lease tools kept out of the console by a SIP-0069 amendment. No Continuum change unless the fit check finds one, and then it comes back to you. **The alternative:** the goals panel only, and the Campaign stays a CLI tool for 2.6 |
 
 ---
 
@@ -291,7 +318,8 @@ The questions this draft is least sure of:
 3. **Is D6 too wide or too narrow?** Which escalation class would you refuse to let an unattended supervisor resume?
 4. **Is the headline the right size for 2.6?** Project Goals and Backlog (D1, PR #2833) adds a record, an API, a
    Campaign binding and a console panel beside Tracks A to C. Is that too much for one line, and if something has to
-   give, is it the console panel (slice 4) or the floor's unattended track (C)? Is §3 of the SIP the right MECE split
+   give, is it the console (slice 4 and Track G's Campaigns plugin, an M and an L) or the
+   floor's unattended track (C)? Is §3 of the SIP the right MECE split
    between the database, Buzz and the repository?
 5. **Is the financial application (D2) the right proving target,** given its data rule, or does a target with a public
    data source read the Campaign better?
