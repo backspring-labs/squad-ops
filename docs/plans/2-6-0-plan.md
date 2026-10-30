@@ -6,6 +6,9 @@ has a recommendation. §8 lists what the outside reviewer is asked to challenge.
 **Revised 2026-10-30, the same day:** the owner asked to incorporate the 2.5.1 fix line's assumptions. §1a names the
 ten defects 2.6 assumes 2.5.1 fixes, with a fallback rule if one slips; they leave §2's tracks, and D11 rules the split.
 
+**Revised a fourth time the same day: a CLI spike first** (§0). A narrowed 2.5.1 with #2818 moved into it, then one
+attended Campaign on the owner's product from the CLI, before any 2.6 feature.
+
 **Revised a third time the same day: the crew drives.** The owner: "By buzz convo, what I meant was interacting
 with the Nostromo crew driving the campaign execution and outcome assessment. They can determine if outcomes are
 being met or if squad ops framework bugs or functional gaps need to be covered to advance the app building work. Not an
@@ -43,6 +46,36 @@ has run for hours, or a reason the owner has to drive it from a terminal?
 kept, narrowed to the owner-ordered half: the squad records candidates, and the strategy role ordering its own
 features waits (§2.4, D5). The ROADMAP and `sips/PORTFOLIO.md` change in the PR
 that adopts this plan, not in this draft.
+
+---
+
+## 0. The first step: a CLI spike on 2.5.1, before any 2.6 feature
+
+**Added 2026-10-30 at the owner's request,** with a quarter of the owner's weekly usage left: "Could I complete a 2.5.1
+fix line and a very minimal slice of 2.6 to attempt a campaign for real via cli and not require the full front-end
+capability?" The rest of this plan stands as the line's design. This section is what runs first.
+
+**The idea.** 2.5's product Campaigns were stopped by a short list of defects, not by missing features (§1). Fix
+those, and an attended Campaign on the owner's own product can run on today's machinery from the CLI, with no goal
+set, no console work and no unattended running.
+
+| step | what | notes |
+|---|---|---|
+| 1. **2.5.1, narrowed to the Campaign's path** | **#2818** first (a product's in-cycle tests on its own runner in the sandbox, D4's shape, moved from 2.6 into the patch), then **#2824**, **#2817**, **#2814**, **#2804**, **#2809**, **#2813** | #2818 is labelled a bug, and its shape reuses the setup acceptance already runs. §1a's other four (#2798, #2765, #2830, #2402) move to a later patch: none is on a Campaign's path |
+| 2. **deploy main, then the loaded checks** | `rebuild_and_deploy.sh`, then `verify_loaded.py` | no release cut is needed to run; 2.5.1 is cut when it's cheap to |
+| 3. **the proving Project** | the financial application, created greenfield from the `fullstack_fastapi_react` blueprint (the path `z_shelfnote` proved); configure, baseline. **Synthetic data only** (D10) | |
+| 4. **the goals by hand** | a structured requirements file in the product's repository: the goal, expected results, an ordered backlog, out of scope (the shape of Project Goals and Backlog §4, PR #2833). The Campaign names it as `objective.requirements: repo:file:<path>@current`, with `target_accepted_increments: 3`. **The first three backlog items are backend features with API-level criteria,** since a page criterion for an added page still meets #2799 | slice 1 later loads its goal set from this file |
+| 5. **an attended Campaign** | driven by the owner from the CLI, or by the Nostromo crew through its existing harness (which needs no D14 change for a requirements-based definition). Every product plan gate escalates (#2796), so whoever drives answers each from the requirements | no held-out suite: the owner, or the crew's closing interpretation, judges the outcome |
+
+**Stop rule:** at most two Campaign rounds. A live run usually finds the next seam (2.5's did four times). If round
+2 finds a new defect, it is filed and the spike stops, with what it learned recorded.
+
+**What it reads:** rung 1 of §4 (one increment accepted on a product, promoted onto its campaign branch), and whether
+rung 2 (three in one Campaign) is in reach on today's machinery. **What it doesn't:** anything unattended, the goal
+set, the console, or the held-out yardstick.
+
+**What it changes in the rest of the plan:** §1a's 2.5.1 list is replaced by step 1's (D11), and #2818 leaves Track A.
+Everything else in §2 waits for the spike's reading, which may reorder it.
 
 ---
 
@@ -331,7 +364,7 @@ the first attended proving run. Track D is build time, not box time: the proving
 | D8 | **the release claim** | §4: rungs 1 and 2 required, rung 3 the headline |
 | D9 | **a criterion already met** | **checked at the ruling, returned automatically,** as §2.2 says. **The alternative:** keep row 16's abandonment after a spent cycle |
 | D10 | **the financial application's data** | **synthetic only in 2.6:** fixtures the squad and the owner write, no live data source, no real credentials. #2421's secrets half stays unbuilt |
-| D11 | **2.5.1's contents, and 2.6 planned on top of them** | **§1a's ten:** #2824, #2817, #2814, #2804, #2809, #2813, #2798, #2765, #2830 and #2402, each a defect with no design, read by replay. 2.6's tracks assume them, with §1a's fallback rule if one slips. #2818, #2799, #2796, #2613 and #2612 stay in 2.6, since each needs a design. **The alternative:** no 2.5.1, and the ten join 2.6's Track A, which lengthens phase 2 by a few days and puts the patch's fixes behind 2.6's designs |
+| D11 | **2.5.1's contents** (revised for §0's spike) | **§0's seven:** #2818 (moved from 2.6), #2824, #2817, #2814, #2804, #2809 and #2813, the fixes on a Campaign's path. §1a's other four (#2798, #2765, #2830, #2402) go to a later patch. #2799, #2796, #2613 and #2612 stay in 2.6. **The alternative:** §1a's original ten without #2818, which leaves 2.5's main stop unfixed until 2.6 |
 | D12 | **who runs the line** | 2.5's terms (§5) |
 | D13 | **the console's scope** (Track G, #2834) | **the goals panel and a read-only Campaigns plugin required** (state, ledger, escalations, the crew's assessments); controls stay with the crew and the CLI; Project setup views deferrable; held-out drafting and the lease tools kept out of the console by a SIP-0069 amendment. No Continuum change unless the fit check finds one, and then it comes back to you. **The alternative:** console controls too (an L), duplicating the crew's broker path |
 | D14 | **the crew's side of slice 5** (Nostromo's repository) | **you place it with the crew,** beside 2.6's slice 5: the broker's commands, the gate-evidence contract, assessments from the closing interpretation, and definitions naming `objective.goals`. 2.6's rung 3 depends on it, so it is named here and in the cut's pre-registration, not assumed |
