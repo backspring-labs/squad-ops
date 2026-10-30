@@ -206,6 +206,22 @@ binding reads `@current` (SIP-0110). A revision that removes the item an increme
 increment. Its acceptance is recorded against the item as it stood, and the next proposal reads the new revision.
 `revision: <N>` pins one revision for the Campaign's life.
 
+### 5.5a Splits and revisions while a Campaign runs (the outside review, 2026-10-30)
+
+- **An increment is bound to the revision its launch read.** The control log records that revision with the
+  proposal. A later revision never changes what a running increment is building or how it is judged.
+- **Splitting an item** writes a revision where the item is `removed` with `split_into: [ids]`, and the new items
+  take its position, inherit its `serves` and start `pending`. **An item that is `proposed` or `in_increment` can't
+  be split;** the split waits until that increment ends.
+- **An item accepted under an earlier revision stays accepted.** The view shows the revision it was accepted under.
+  If a later revision drops it, it reads `accepted (removed in rN)`. If a later revision changes the expected results
+  it serves, it reads `accepted (results changed in rN)`, and only a new item or an assessment (§5.7) reopens that
+  question.
+- **A reorder** changes only which pending item the next proposal takes.
+- **An abandoned item whose revision dropped it** reads `removed`, with its last abandonment kept in its history.
+- **`stop_when: backlog_done`** reads the revision the last launch read, so an edit can't end a Campaign
+  mid-increment.
+
 ### 5.6 When the goal is met
 
 SIP-0109's row 3 reads `objective_met`. With a goal set, the Campaign may declare `stop_when: backlog_done`: every
@@ -223,6 +239,16 @@ An **assessment** is the crew's judgement of one expected result at a point in a
 - `evidence`: the cycles, evaluations and gate rulings it read, by id. Held-out results are cited by evaluation id and
   counts, never by a step or value (§7);
 - its author, the goal-set revision it read, and its `source_ref` (the signed statement or thread it came from).
+
+**Stale and conflicting assessments** (the outside review, 2026-10-30):
+- **Each assessment is pinned** to the goal-set revision it read and to the control-log position it was made at.
+- **The latest assessment** of an expected result is the one at the highest position.
+- **An assessment reads `stale`** when, after it, an increment serving that expected result was accepted, or a
+  revision changed that expected result. The console shows it as stale, never as current.
+- **Two assessments at the same position that disagree** both read `conflicting`, with their authors. Nothing
+  resolves them automatically. The owner's own assessment, or the crew's next one, supersedes both by position.
+- **An assessment of an expected result a later revision removed** is kept in history and drops out of the
+  current view.
 
 An assessment is append-only and **decides nothing.** It doesn't change an item's status, a Campaign's decision table
 or a gate. The crew acts on it through the controls it already holds (pause, a ruling, a candidate, an issue), and
@@ -290,7 +316,7 @@ What the crew does with them, in Buzz and in its harness, is the crew's.
 
 | # | question | recommendation |
 |---|---|---|
-| Q41 | **the crew's authority over the order:** may the supervisor identity reorder the backlog, split an item, or promote a candidate without the owner? | **promote and split, yes, within a Campaign the owner started, each recorded with its reason; reorder, no.** The order is where the owner steers |
+| Q41 | **the crew's authority over the order** (to be ruled before slice 1 is built, the 2.6 plan's D15): may the supervisor identity reorder the backlog, split an item, or promote a candidate without the owner? | **promote and split, yes, within a Campaign the owner started, each recorded with its reason; reorder, no.** The order is where the owner steers |
 | Q42 | **`requirements` beside `goals`:** keep both sources for a Campaign? | **keep both.** The sample applications' Campaigns read PRDs, and their yardstick is built on them. A product Campaign names one or the other |
 | Q43 | **where the crew's assessment lives:** a SquadOps record (§5.7), or only the crew's signed closing interpretation in Buzz, as today? | **a SquadOps record,** with the signed statement as its `source_ref`. The owner then reads the goal, the backlog and whether each expected result is met in one place, and a framework finding is linked to the result it blocked |
 | Q44 | **one goal set per Project, or several** (one per Campaign theme)? | **one active,** with revisions. Two goal sets on one Project would compete for the same tree |
