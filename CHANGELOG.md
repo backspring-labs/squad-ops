@@ -5,6 +5,183 @@ All notable changes to SquadOps are recorded here. Format loosely follows
 
 ## [Unreleased]
 
+## [2.5.0] — 2026-10-30
+
+**The 2.5 line: an odd minor, a stabilization release, feature-free by rule. It finishes what 2.4 shipped apart: a
+Campaign on a repository-backed Project, which 2.4 could calibrate but not launch (#2619). It re-cuts the yardstick
+once, and fixes the checks, the correction loop and the operations the 2.4 line found weak** (plan
+`docs/plans/2-5-0-plan.md`, adopted 2026-10-24, D1–D12 ruled). Each Track A item completes a shipped feature and adds
+none. The MacBook lane built Project Lifecycle Management's half of Track A until 2026-10-28, when the owner moved its
+remaining work to the Spark lane. A second review on a shared contract has since gone through the owner (SIP-0112
+H.12, #2768).
+
+**The claim is narrowed** (the owner, 2026-10-29: "Narrow the claim, go to cut"). 2.5 claims a Campaign on a
+repository-backed Project through its calibration record, proposal, binding, launch, reconciliation and evaluation. It
+doesn't claim an accepted increment on a product whose in-cycle tests need the product's own dependencies (#2818). IR-5,
+IR-6's increment half and IR-9's increment reading were not exercised, since no increment was accepted on either
+demonstration product. Nothing was accepted onto a campaign branch, so the review-request push (#2772) wasn't
+exercised either.
+
+**The cut's evidence** (`docs/plans/2-5-0-cut-preregistration.md`, registered in #2822 and #2825, read in its §15), on the final deploy `dep_eb111413d45d` (`f69ce0e2`) on the frozen TensorFold recipe:
+- **the counted set:** 4 of 4 regression rolls accepted, two per stack, with memory disabled. Every criterion was verified (21, 21, 21, 18), every boot audit passed, and the rolls took 2, 2, 0 and 0 correction rounds;
+- **P1, P2, P3, P5, Q2, Q6 and Q7 held:** every model call was the frozen recipe's, with no other caller's load in any window; all 247 tracked loaded checks answered in every roll; memory stayed inert (45 exposures, 45 envelopes byte-exact); D12's note reached every QA first call and nothing else; no plan asked the list's order (#2557);
+- **Q1, the no-loss reading on suite revision 6, was falsified on one tree:** FastAPI + React roll 1 lost two always-pass scenarios. Its own manifest declared `GET /runs` as a wrapper object, and its join form is labelled differently. That is build variance the PRD leaves open, not a 2.5 change. The owner chose "Cut with it recorded", and a stack convention for a collection endpoint's shape is placed in 2.6 (#2826);
+- **the shakeout** met its exit rule in round 1 of 3, and **the repeats** on the final deploy held IR-2, IR-3 (a)–(e), IR-4 as a leak test, IR-6's calibration half, IR-7, IR-8 and #2780's anchored page. The `z_continuum` repeat found #2824, placed beside #2818 in 2.5.x or 2.6;
+- **beside the set:** IR-1 and IR-8's registry half passed.
+
+**A Campaign on a repository-backed Project (#2619).** Its design is SIP-0112 H.4, SIP-0109 §24bv and SIP-0113 §10l
+(all 2026-10-21), and each build is recorded where it diverged.
+- **The derived development profile** (contract 8; SIP-0112 H.6, H.7): what the squad's roles depend on in a product,
+  read from the pinned tree at every baseline capture. That covers its languages, test runners and their test-id
+  readers, lint tools, toolchains and start declaration. Each gap is named `blocking` or `disclosed`, and `projects
+  configure` and `projects show` report them (#2716, #2726). A blocking gap refuses the Cycle work it meets, at the
+  create path the launcher shares. Plan authors are shown a confined gap's paths first (H.8; #2734). vitest's test-id
+  reader is given only where the runner's output is what it reads, and the gap says why where it isn't (H.10; #2769).
+- **The recipe:** a product's cycle seeds no skeleton and is shown its own test runners. Its increments take the
+  stack-less `campaign-increment-source` profile, and the sample applications' profiles keep their stack (H.11, which
+  narrows the plan's row; #2766). A product made from a blueprint runs under that blueprint's development profile,
+  shown its conventions without the blueprint's test placement (H.13; #2773).
+- **The start is a calibration record, not a cycle:** `campaigns start` on a repository-backed Project records its
+  baseline commit, configuration revision, tree identity, inherited checks and disclosed gaps. It is refused with 409
+  `CALIBRATION_REFUSED`, writing nothing, when no record can be written (§24bv point 1, §24cc; #2738). A sample
+  application's start still launches its calibration cycle.
+- **The accepted tree is one campaign branch** in the managed clone. An accepted increment is promoted from its own
+  captured commit, and the branch's ref moves only by compare-and-swap (§24bv point 2; #2740).
+- **An increment is pinned at the campaign branch's head:** contract 1 gains `pinned_commit`, `pinned_from` and
+  `previous_verification_ref` (H.9; #2761). The launcher reads the head at drain, and an intent binds no tree before
+  then (§24cd point 1; #2763). The candidate's checks are compared with the verification that made the head
+  (§24bv point 3; #2764).
+- **The proposal reads the product at its head,** with the objective's requirements source in place of a manifest, and
+  each criterion's test is placed under the product's own runners (§24bv point 5, §24cj; #2771). Its scope governs
+  the product's files, and the stack's QA test namespace is the framework's (the owner's option 1; #2743; #2748).
+- **Acceptance runs on the product's own runner in the sandbox,** in place of `qa.evaluate_increment` (§24cd point 6,
+  §24cl; #2774). A vitest test-id reader joins pytest's, and pytest's reader carries each failure's exception class
+  (§24ci (a); #2757; #2764).
+- **The client routes are rendered on the candidate,** started in the sandbox from the product's declared start
+  (§24co; #2777). A `client_route` criterion may name its view's anchor, so a route the request adds can hold (§24cp;
+  #2779; #2780). A declared catch-all route is read where no declared route is served (#2754; #2755).
+- **The branch follows upstream:** before each launch it is rebased onto the commit the Project reconciled, after the
+  create path's own gates pass there. The rebased head is verified by the product's checks. A conflict escalates as
+  `CAMPAIGN_BRANCH_CONFLICT`, and a regressed head as `REBASED_HEAD_REGRESSED` (§24bv point 4; #2770).
+- **The review request is the supervisor's push** (`squadops campaigns push-review`, `POST
+  /api/v1/campaigns/{id}/review-pushes`), with the supervisor's own token. Every push after the first carries a lease
+  on the commit last pushed, and a branch someone else moved is refused with 409 `REVIEW_BRANCH_MOVED` (§24ci (b);
+  #2772).
+- **Outcome Evaluation reads the product:** a campaign cycle is evaluated at its end on the commit its delivery
+  captured, started from the Project's own declaration (§10aa; #2414, #2592; #2778). The Campaign's baseline reading is
+  the calibration record's commit, evaluated as the record is heard, and a product made from a blueprint is linted by
+  its rule set (§10l, §10ac, H.14; #2788).
+- **An owner's pause or abort holds across a cycle's hearing.** The campaign is read again before each write, and a
+  paused campaign's ending waits for its resume (§24cq; #2789; #2792).
+- **What the demonstrations found, each fixed before the cut:** a criterion file both a development task and a QA task
+  claim is the QA task's at the merge (SIP-0093 §15b, SIP-0109 §24cr; #2795; #2802); a `qa.test`'s and a correction
+  repair's prompt budget counts only what its prompt shows, through the function its handler renders it with (SIP-0110
+  §5an, §5ao; #2805, #2810; #2807, #2812); and a product's QA suite runs on the product's tree (H.15; #2815; #2816).
+- **The demonstrations, pre-registered and read** (`docs/plans/verification-sets/2-5-0-demonstrations-preregistration.md`;
+  #2787, #2820). On private copies of two products, `z_continuum` and `z_shelfnote`: IR-3 held, (a) to (e); IR-4 held
+  as a leak test; IR-7 and IR-8 held; IR-6 held on the calibration records only. The products' increments were
+  stopped in turn by #2795, #2805, #2810 and #2815, each fixed, then by #2799 and #2818.
+
+**The yardstick, re-cut once** (SIP-0113 §10x, §10y).
+- **The evaluator's `-6`:** a control's name is read past a trailing colon (#2706). A click may say `if_enabled`, so a
+  build that disables its control reads as one that refuses the click (#2659). The image's npm lock has no advisory
+  left: the five accepted for 2.4.0 and the three older ones are retired, and the accepted-advisory list is empty
+  (#2712, #2469; #2717).
+- **The evaluator's `-7`, the finer quality reading:** axe by node, the failing audits by id, and the sandbox's
+  plain-HTTP audits apart (#2637; #2762). The owner approved its design on 2026-10-28 (§10y; #2724). Read on the
+  window's 20 trees, S1 and E hold and S2a falls for both new measures, so they stay reporting-only (§10z; #2767).
+- **Held-out suite revision 6,** approved on the owner's delegation: #2659's two-form scenario, and the eight step
+  values already public replaced. **Its re-read:** the 2.4 cut's eleven trees on revisions 5 and 6, on `-7`. No HTTP
+  result of 275 and no page result of 66 moved, and revision 6's always-pass sets are 2.4's, id for id (#2806,
+  #2808).
+- **A scenario's HTTP checks read the values its steps saved,** and a name nothing saves is refused when drafted
+  (§10ab; #2784; #2785). The held-out markers read a step's path segments, never a declared route's words or a
+  reference to a saved value (§10ad; #2786; #2794).
+- **A failed start's cause is kept:** its detail and the app's last lines are on the evaluation record, its package
+  (version 8) and the runtime's log (§10ae; #2793; #2797).
+- **The workhorse PRD's core list shows runs in the order they were created,** with date sorting left in Expansion
+  Tier 1 (D3; #2557; #2811).
+
+**The checks and the correction loop.**
+- **`contract_assertions_match` refuses a status assertion on a request that reaches a declared route only with a
+  required path segment empty,** unless the assertion is the router's own answer (#2297; #2728).
+- **A slot revision that drops its failing assertion's subject is refused** as `slot_subject_dropped` (SIP-0104
+  §13f; #2664; #2746).
+- **A repair whose every file write was dropped is spent, not refunded,** and the next round is told which paths and
+  whose grant (#2521; #2727).
+- **A handler's input refusal ends the run as `input_refused`,** read as `input_contract_failure`. The attribution
+  registry is version 2, so failure records before and after it read differently (#2553; #2729).
+- **A QA first call is sent the cut-off re-ask's clause,** "keep any reasoning short so that the output fits.", on
+  `qa.test` and `qa.test_repair` only (D12; #2253; #2759). Its evidence: on the 46 QA calls the cap had cut, the
+  clause finished 39 against 14, and on 80 calls that weren't cut it cost no pass the sample could see (#2747, #2752,
+  #2753).
+- **A Next.js page criterion's test loads its page through a frozen page loader,** so a page the change adds can
+  discriminate (#2602; #2749).
+
+**An increment's own identity (#2578).** A campaign cycle names its increment in an indexed `increment_id`, set by
+the launcher from its own binding, and its flow runs carry `increment:` and `kind:` tags for operators (parts 2 and 3;
+#2739). The ledger lists each proposal version's cycles, a repair or retry attached by its own launch's binding (part
+4, SIP-0109 §24cg; #2741). An uncounted Campaign read the records on every cycle kind, and it ended `success` (#2750,
+#2756).
+
+**Operations and hardening.**
+- **The legacy per-agent LanceDB store is retired** after a re-inventory found all eight stores empty. `MemoryPort`,
+  its adapters and `lancedb` are gone, and the eight `*_memory_data` volumes leave compose on the owner's OK (D4;
+  #2184; #2735).
+- **Monitoring:** the Spark's thermal alert reads no data as OK. A host exporter that stops is its own alert,
+  `host-exporter-down`, and the deploy starts `node-exporter` on Linux and `dcgm-exporter` where the GPU's CDI spec is
+  written (#2433; #2730).
+- **A service token that expired while the host slept is refreshed,** read on both clocks (#2493; #2718).
+- **TensorFold:** a deploy records its served model's weights, the checkpoint its frozen recipe pins, and says which
+  named models it doesn't serve (#2561; #2732). The key file keeps other callers' labelled keys, and only the
+  `squadops` line is ours. A two-lane candidate recipe sits beside the frozen one, opt-in (the owner's #2742, part of
+  #2286). `engine_callers.py` reads the engine's request counter by key label, and its gauges, from inside the deploy
+  (#2823).
+- **Smaller fixes:** a managed clone's missing directory is named, not read as git missing (#2672; #2719);
+  `update_sip_status.py` stamps UTC (#2710; #2720); the release captures name the browser's own load error (#2713;
+  #2721); `run_prose_lane.sh` runs under macOS's bash 3.2, with a guard (#2402; #2722); a replay call that fails before
+  any answer records its exception's type, never its text, which can quote the bearer key (#2744; #2801); the
+  held-out pre-push hook no longer ends silently on git's SIGPIPE (#2800; #2803); the held-out sweep walks each
+  cycle's vault under its own project (#2819); and the worktree hygiene sweep judges only the checkout's own
+  worktrees (#2751; #2821).
+- **Loaded checks** for each batch: 247 tracked rows, 68 more than 2.4's 179 (#2725 and each change's own rows).
+
+**Dependencies and CI.** `lancedb` leaves the agent extra, and the locks are recompiled; the tests' SIP-042 block goes,
+and with it 46 pins in CI's constraints (#2735). The evaluator image's npm lock is clear of advisories (#2717). CI's
+integration job pulls its services from the mirror with retries and falls back to Docker Hub (#2560; #2731), and a
+failed image build in the integration tests reports its stderr's tail (#2790; #2791).
+
+**Plans and SIPs.** The 2.5 plan, adopted (#2715), revised on resuming (#2745), and run as one lane from 2026-10-28
+(#2768). SIP-0109 §24cd, §24bv points 2–4 as built (#2733), and the owner's rulings on §24cd point 7: #2757 placed in
+2.5 and #2421's remainder moved to 2.6 (#2758). SIP-0113 §10y and §10z (#2724, #2767). The pre-registrations and
+readings of Track B's re-read (#2806, #2808), Track D's uncounted Campaign (#2750, #2756) and the demonstrations
+(#2787, #2820). The cut's pre-registration and registration (#2822, #2825), and the v2.4.0 package (#2714).
+
+**Not in this release:**
+- **An accepted increment on a product whose in-cycle tests need its own dependencies** (#2818), placed first in 2.6 or
+  a 2.5.x patch (the owner, 2026-10-29), with the product-path findings the demonstrations filed: #2799 (a vitest
+  product's page criteria), #2817, #2796, #2814, #2809, #2813, #2804, #2798 and #2783.
+- **A Campaign's repair or retry of an increment whose approved proposal is a revision** (#2824), found in the cut's
+  `z_continuum` repeat. The owner chose "Name it, fix after", and it is placed in 2.5.x or 2.6 beside #2818.
+- **The cut's Q1 loss on one tree** (#2826), recorded by the owner's ruling.
+- **Deferred to 2.6:** held-out suite revision 7 (#2723), by the plan's deferral rule; the box lease (#2287) and the
+  scripted squad (#2495), deferrable and unbuilt; #1469 and #2286's remainder (the owner's "Yes to both",
+  2026-10-29); an owner-approved evaluation secret resolved at start (#2421's remainder, 2026-10-28); and the TensorFold
+  1.x upgrade (#2230, D5).
+- **Features, by parity,** each waiting for 2.6's plan: the judgement steps (#557, #949, #950), Test-First's greenfield
+  gate (#1978), SIP-0112's lifecycle completeness (E.4.5, #2709), a source-backed change's file deletion (#2612) and
+  end-of-plan regression repair (#2613), and Outcome Evaluation's outcome target and quality gates (SIP-0113 §4.7).
+
+**Upgrade from 2.4.0:** no new `.env` setting. The runtime API applies migrations 1697, 1698, 1699, 1808, 1980,
+1990, 2000 and 2001 at startup. The runner applies each file by name, so 1697–1699 and 1808 apply on a deploy that already has 1970. Rebuild
+everything, together (`rebuild_and_deploy.sh all`), and not while a Campaign's increment framing is in flight (#2802).
+An older agent beside the new runtime would read QA's bound suite row as unparseable (#2728), and an older sandbox
+gives acceptance no pass count (#2774). A deploy builds the evaluator's `…-eslint10.12-7` image when the tag is absent.
+`verify_loaded.py` then reads all 247 tracked rows. Compose no longer declares the eight `*_memory_data` volumes; they
+stay on the box, unmounted, until someone removes them. Grafana reads the new alert at its restart. The frozen
+TensorFold recipe is `infra/tensorfold/recipes/qwen27b-nvfp4.yaml`, and the cut's set ran on it. The two-lane candidate
+is opt-in, through `engine_switch.py`.
+
 ## [2.4.0] — 2026-10-23
 
 **The 2.4 line: an even minor, a feature release with one headline per lane. Project Lifecycle Management (SIP-0112,

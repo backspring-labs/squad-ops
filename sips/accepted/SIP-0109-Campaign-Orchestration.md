@@ -84,7 +84,7 @@ The revision history at the end has the earlier placements.
 
 ---
 
-## Delivery ledger (current as of 2026-10-29)
+## Delivery ledger (current as of 2026-10-30)
 
 Kept by the rule in CLAUDE.md ("SIP System"): one row per part, updated in the PR that ships or re-places it, read at each release cut. Built from the read-only SIP-portfolio audit of 2026-10-04; `sips/PORTFOLIO.md` indexes it.
 
@@ -143,7 +143,8 @@ Kept by the rule in CLAUDE.md ("SIP System"): one row per part, updated in the P
 | a page criterion on a repository-backed change request names its view's anchor (required on a page the change adds, refused on one the profile judges), and a route the request adds is judged by it, so it can hold; an added page whose path needs a seed is refused, and a dev repair keeps the anchors (§24co item 11's remainder, §24cp items 1–5) | **shipped** | 2.5.0, PR #2780, closes #2779 |
 | a seed for a page a repository-backed change request adds whose path has a parameter, so it can be read instead of refused (§24cp item 5) | **unplaced**, deliberately: for the supervisor to place | #2781 |
 | the anchors of pages earlier increments added, carried into a repository-backed proposal's input, so the rails and the renderer check an added page's anchor against them (§24cp, not built) | **unplaced**, deliberately: for the supervisor to place | #2783 |
-| a Campaign on a repository-backed Project, read live: a repository-backed Campaign's increments judged at delivery and promoted onto its branch end to end, on a product made from a blueprint (`z_shelfnote`, IR-7) and one with its own layout (`z_continuum`), as the 2.5 plan's Track A demonstrations (§24bv, §24cl, §24co) | **placed** | 2.5.0, #2619 |
+| a Campaign on a repository-backed Project, read live, on a product made from a blueprint (`z_shelfnote`, IR-7) and one with its own layout (`z_continuum`), as the 2.5 plan's Track A demonstrations (§24bv, §24cl, §24co): the calibration record and its baseline reading, the proposal from the product's tree, the instruction binding at each cycle's own commit, the launch, the refusal at a moved upstream and the rebase onto the reconciled commit, increments judged at delivery on the product's runners, and the anchored page | **shipped**, read on the 2.5 cut's final deploy (the cut's pre-registration §14b): IR-2, IR-3 (a)–(e), IR-4, IR-6's calibration half, IR-7 and IR-8 hold. Narrowed by the owner (2026-10-29: "Narrow the claim, go to cut"): no product increment was accepted, so the row below carries the rest | 2.5.0, PRs #2820 and #2825 with the release PR, closes #2619 |
+| a Campaign on a repository-backed Project, an accepted product increment end to end: promoted onto its campaign branch and its review request pushed, read live (IR-5, IR-6's increment half, IR-9's increment reading); waits on #2818 and #2799 | **placed** (the cut's sweep, under the owner's narrowing) | 2.6.0, #2827 |
 | a vitest test-id reader, so a vitest-only criterion can be read as discriminating (§24ci (a)) | **shipped**: from vitest's default reporter, as the product's own command prints it (SIP-0112 H.10) | 2.5.0, PR #2764, closes #2757 |
 | a Campaign cycle held on its instruction bindings escalates as `binding_hold`, released by re-supply and never parked (§24bw; SIP-0110 §A.3.6) | **shipped** | 2.4.0, PR #2628 (#2178's Campaign half) |
 | an increment's criterion files taught by role: the development proposer is told they are the qa tasks', with SIP-0093 §15b's merge rule behind it (§24cr) | **shipped** | 2.5.0, PR #2802, closes #2795 |

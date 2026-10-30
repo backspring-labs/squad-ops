@@ -23,7 +23,54 @@ Each even-minor consumer sits strictly behind the release that earns its trust: 
 
 ## Release Timeline
 
-### v2.4.0 (2026-10-23) — Current — the yardstick, and products SquadOps doesn't own
+### v2.5.0 (2026-10-30) — Current — a Campaign on a product SquadOps doesn't own, and the yardstick re-cut once
+
+**v2.5.0, a stabilization release, feature-free by rule** (plan `docs/plans/2-5-0-plan.md`). It finishes what 2.4
+shipped apart, and fixes what the 2.4 line found weak:
+- **a Campaign on a repository-backed Project** (#2619; SIP-0112 H.4, SIP-0109 §24bv, SIP-0113 §10l): its start writes a
+  calibration record; its accepted tree is a campaign branch in the managed clone; each increment is pinned at the
+  branch's head, proposed from the product's own tree, accepted on the product's own runner in the sandbox, and
+  rebased when upstream is reconciled; the supervisor pushes its review request; and Outcome Evaluation reads the
+  product's captured commit, started from its own declaration;
+- **the yardstick, re-cut once** (SIP-0113 §10x, §10y): the evaluator's `-6` fixes the browser driver's two misreads
+  and clears its lock of advisories; its `-7` adds the finer quality reading, reporting only; held-out suite revision
+  6 replaces the step values already public, and its re-read kept 2.4's always-pass sets, id for id;
+- **the checks and the correction loop:** #2297's declared routes, #2664's `slot_subject_dropped`, #2521's spent
+  rounds, #2553's `input_contract_failure`, and D12's note on every QA first call (#2253);
+- **an increment's own identity** (#2578): `increment_id`, flow-run tags, and the ledger's cycles;
+- **operations:** the legacy per-agent LanceDB store retired (#2184), the host exporters started and alerted on
+  (#2433), a token refreshed after a host sleep (#2493), and TensorFold's served weights recorded (#2561).
+
+**The claim is narrowed** (the owner, 2026-10-29: "Narrow the claim, go to cut"): a Campaign on a repository-backed
+Project works through its record, proposal, binding, launch, reconciliation and evaluation. An accepted increment on a
+product whose in-cycle tests need its own dependencies is not claimed (#2818). IR-5, IR-6's increment half and IR-9's
+increment reading were not exercised.
+
+**The cut's evidence** (`docs/plans/2-5-0-cut-preregistration.md`, registered in #2822 and #2825, read in its §15), on the final deploy `dep_eb111413d45d` (`f69ce0e2`) on the frozen TensorFold recipe:
+- **the counted set:** 4 of 4 regression rolls accepted, two per stack, with memory disabled. Every criterion was verified (21, 21, 21, 18), every boot audit passed, and the rolls took 2, 2, 0 and 0 correction rounds;
+- **P1, P2, P3, P5, Q2, Q6 and Q7 held:** every model call was the frozen recipe's, with no other caller's load in any window; all 247 tracked loaded checks answered in every roll; memory stayed inert (45 exposures, 45 envelopes byte-exact); D12's note reached every QA first call and nothing else; no plan asked the list's order (#2557);
+- **Q1, the no-loss reading on suite revision 6, was falsified on one tree:** FastAPI + React roll 1 lost two always-pass scenarios. Its own manifest declared `GET /runs` as a wrapper object, and its join form is labelled differently. That is build variance the PRD leaves open, not a 2.5 change. The owner chose "Cut with it recorded", and a stack convention for a collection endpoint's shape is placed in 2.6 (#2826);
+- **the shakeout** met its exit rule in round 1 of 3, and **the repeats** on the final deploy held IR-2, IR-3 (a)–(e), IR-4 as a leak test, IR-6's calibration half, IR-7, IR-8 and #2780's anchored page. The `z_continuum` repeat found #2824, placed beside #2818 in 2.5.x or 2.6;
+- **beside the set:** IR-1 and IR-8's registry half passed.
+
+**Not in this release:** #2818 and the product-path findings the demonstrations filed (#2799 among them), placed first
+in 2.6 or a 2.5.x patch; #2824, beside it; #2826. Deferred to 2.6: suite revision 7 (#2723), the box lease (#2287),
+the scripted squad (#2495), #1469, #2286's remainder, #2421's remainder, and the TensorFold 1.x upgrade (#2230, D5).
+The judgement steps (#557, #949, #950), Test-First's greenfield gate (#1978) and SIP-0112's lifecycle completeness
+(E.4.5) are features, so each waits for 2.6's plan.
+
+**Upgrade from 2.4.0:**
+- **no new `.env` setting;**
+- **the runtime API applies migrations 1697–1699, 1808, 1980, 1990, 2000 and 2001 at startup,** each by name;
+- **rebuild everything, together** (`rebuild_and_deploy.sh all`), not while a Campaign's increment framing is in
+  flight (#2802). A deploy builds the evaluator's `…-eslint10.12-7` image when the tag is absent, and
+  `verify_loaded.py` reads 247 tracked rows;
+- **the eight `*_memory_data` volumes** are no longer declared, and stay on the box unmounted until someone removes
+  them (#2735);
+- **the frozen TensorFold recipe** (`infra/tensorfold/recipes/qwen27b-nvfp4.yaml`) is the one the cut ran on. The
+  two-lane candidate is opt-in (#2742).
+
+### v2.4.0 (2026-10-23) — the yardstick, and products SquadOps doesn't own
 
 **v2.4.0, a feature release with one headline per lane** (plan `docs/plans/2-4-0-plan.md`):
 - **Project Lifecycle Management** (SIP-0112, the MacBook lane, the headline): an existing product is registered,
@@ -987,7 +1034,7 @@ The following areas are identified for future work but do not block 1.0 readines
 | 2.3 | stabilization; **the plan is `docs/plans/2-3-0-plan.md` (adopted 2026-10-11): TensorFold first, carried to the owner's G4 decision (#2229), with Qwen3.8-Flash-Next as a second candidate (#2230), then stabilization on the engine that ships** | the comms (#1977) and API contract (#1976) hardening; the structure audit's batch: orchestration out of `adapters/cycles` (#1992), a `stacks` package (#1993), the largest units split (#1994); **placed, dark (the owner's waiver):** SIP-0111's TensorFold v0.6.6 trial (S, G0 and G1, #2199) and, only if those gates pass, its adapter (#2200); **placed (SIP-0110 §5g, Q25):** the legacy agent store made dormant with its failures visible (#2174), chat's history reaching the agent, with session ownership checked (#2175), and the context-assembly port, inert (#2176) |
 | 2.3.1 | patch: what the 2.3 cut found, fixed small, **shipped 2026-10-17** (`docs/plans/2-3-1-plan.md`) | **placed by the owner after the 2.3.0 cut:** the runtime's unused AMQP connection removed (#2322); a late answer updates the stored digest and can be an agent's (#2305, SIP-0109); the signature check accepts a declared query parameter, the smaller fix (#2378); two reads first, each fixed in 2.3.1 only where the read points: QA's view of the leave endpoint (#2297, moved to 2.4) and a patch-verification skip replacing a pass (#2381, fixed). **Ruled in:** a failed cycle no longer rolls up `accepted` (#2384, D2); the Next.js vitest config compiles a page's JSX (#2394, D4); a detail page spelled apart from its API is seeded by its parameter (#2398, D5) |
 | 2.4 | two features, one per lane, **shipped 2026-10-23** (`docs/plans/2-4-0-cut-preregistration.md` §13): **Outcome Evaluation** (SIP-0113, accepted 2026-10-17) on the Spark lane and **Project Lifecycle Management** (SIP-0112, accepted 2026-10-17) on the MacBook lane (the owner's direction of 2026-10-17, PR #2401, §8). The plan, adopted 2026-10-17 (D1–D14 ruled), is `docs/plans/2-4-0-plan.md`: Outcome Evaluation's instruments first, its phase 2 conditional on their data, and if it moves, Project Lifecycle Management is the headline (D14); Project Lifecycle's brownfield and greenfield demonstrations, greenfield shipped at the cut (its G6) | **moved from 2.3 (2026-10-15, the owner):** Outcome Evaluation's reporting-only instruments and the request-profile taxonomy (#316), each after its SIP's design review; Verification Yield's risk-first instructions (#1966); the judgement steps it measures (#557, #949, #950) are not in 2.4, re-read at its cut (D10); **placed (SIP-0110 §5g, Q25):** memory entry points for chat and task assignment beside it (SIP-0110 Appendix A, epic #2173, #2177–#2183); **Project Lifecycle Management (proposed, PR #2401):** existing-product registration, discovery and the inherited baseline, two features across an outside contribution, and greenfield creation (its E.4.1–E.4.4 and E.4.6), meeting Outcome Evaluation at seven shared contracts; **placed by the owner on the 2.3 line:** #2395 (a Next.js plan's page-state tests the stack's vitest can't run, before the window) and #2297 (QA's empty-name case against a name in the path) |
-| 2.5 | stabilization; **the plan, adopted 2026-10-24** (D1–D11 ruled, the MacBook lane kept narrowed), is `docs/plans/2-5-0-plan.md`: a Campaign on a repository-backed Project (#2619), the yardstick re-cut once, and the hardening the 2.4 line found | **placed (SIP-0110 §5g):** the legacy per-agent LanceDB store retired, after a re-inventory, once its replacement ships and passes acceptance (#2184; its volumes are a compose change, made on the owner's OK) |
+| 2.5 | stabilization, **shipped 2026-10-30** (`docs/plans/2-5-0-cut-preregistration.md`); **the plan, adopted 2026-10-24** (D1–D11 ruled, D12 on 2026-10-28; one lane from 2026-10-28), is `docs/plans/2-5-0-plan.md`: a Campaign on a repository-backed Project (#2619), the yardstick re-cut once, and the hardening the 2.4 line found. **The claim narrowed by the owner on 2026-10-29:** not an accepted increment on a product whose in-cycle tests need its own dependencies (#2818) | **placed (SIP-0110 §5g):** the legacy per-agent LanceDB store retired, after a re-inventory, once its replacement ships and passes acceptance (#2184; its volumes are a compose change, made on the owner's OK), **shipped** (#2735) |
 | 2.6 | the squad-authored backlog (no SIP yet) | features from the strategy role, debt refactors from the lead; Test-First's greenfield gate (#1978); **the TensorFold 1.x upgrade (#2230), deferred from 2.5 and recommended as 2.6's first track** (the 2.5 plan's D5, ruled 2026-10-24), placed by 2.6's plan |
 
 **3.x: agents running continuously in the world (duty mode).** Deferred here by ruling, and placed by 3.0's plan:
@@ -1036,10 +1083,10 @@ The following areas are identified for future work but do not block 1.0 readines
 
 ## Stats
 
-*As of 2026-10-23 (v2.4.0):*
+*As of 2026-10-30 (v2.5.0):*
 
-- **Framework version**: 2.4.0
-- **SIPs** (2026-10-23, after the 2.4 sweep, which promoted SIP-0114): 70 implemented, 13 accepted (SIP-0088, 0090–0093, 0101, 0102, 0105, 0109–0113), 34 deprecated, plus the unnumbered proposals indexed in `sips/PORTFOLIO.md`
+- **Framework version**: 2.5.0
+- **SIPs** (2026-10-30, after the 2.5 sweep, which promoted none): 70 implemented, 13 accepted (SIP-0088, 0090–0093, 0101, 0102, 0105, 0109–0113), 34 deprecated, plus the unnumbered proposals indexed in `sips/PORTFOLIO.md`
 - **Tests**: 10,000+ passing in the regression suite (all of `tests/unit`, #1316)
 - **Python source**: ~109,000 lines measured 2026-09-17 (`src/` ~84,000 + `adapters/` ~25,000; ~168,000 test lines; ~144,000 lines of Markdown under `docs/` and `sips/`)
 - **~6 months** from initial repo (2025-09-20) to 1.0.0 release (2026-03-10)

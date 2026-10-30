@@ -31,7 +31,7 @@ extraction, before the feature's first PR (§3.2, §38). The 1.7.3 plan's earlie
 beside #1213 and #1176 is superseded: #1213 closes with §38 step 4, and #1176 is an
 experiment in that line's idle box, not this SIP's.
 
-## Delivery ledger (current as of 2026-10-16)
+## Delivery ledger (current as of 2026-10-30)
 
 Kept by the rule in CLAUDE.md ("SIP System"): one row per part, updated in the PR that ships or re-places it, read at each release cut. Built from the read-only SIP-portfolio audit of 2026-10-04; `sips/PORTFOLIO.md` indexes it.
 
