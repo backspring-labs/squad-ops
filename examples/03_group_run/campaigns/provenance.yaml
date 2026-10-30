@@ -1020,6 +1020,10 @@ campaigns:
     sha256: a25d6f7b6497a86095114945a05c09207cfdf29bd14b9a08fcaa4ba96d2cd4ac
   - path: examples/03_group_run/campaigns/2-4-0-fastapi-shakeout-1.yaml
     sha256: b84a9b79e27f0277fc52d1c6f952e3c783d0edefaa8fbb540fe802361cd0ed7a
+  - path: examples/03_group_run/campaigns/2-5-0-cut-shakeout.yaml
+    sha256: 241759cb94f63133e5fe243d35506f5af99134f41d7de2c54c6b30d6160e1093
+  - path: examples/03_group_run/campaigns/2-5-0-track-d-uncounted.yaml
+    sha256: a402744df20ed7039d98190b1e172befafb7b8feb4e4abaab81ee8c7127141fd
   package_identity: 4072d0a99e5b091bdcbe8f5e3234d07db9a4cdc4b5e4419c771539ab4c2479cd
   package_artifact: art_60fbaaf828f0
 - campaign_id: cmp_7197fdc82778
@@ -1167,6 +1171,10 @@ campaigns:
     sha256: a25d6f7b6497a86095114945a05c09207cfdf29bd14b9a08fcaa4ba96d2cd4ac
   - path: examples/03_group_run/campaigns/2-4-0-fastapi-shakeout-1.yaml
     sha256: b84a9b79e27f0277fc52d1c6f952e3c783d0edefaa8fbb540fe802361cd0ed7a
+  - path: examples/03_group_run/campaigns/2-5-0-cut-shakeout.yaml
+    sha256: 241759cb94f63133e5fe243d35506f5af99134f41d7de2c54c6b30d6160e1093
+  - path: examples/03_group_run/campaigns/2-5-0-track-d-uncounted.yaml
+    sha256: a402744df20ed7039d98190b1e172befafb7b8feb4e4abaab81ee8c7127141fd
   package_identity: bbd734b6618274f6eb05ccfccf40e645998f6e105cee8d63e9d5ffe50bf59d2f
   package_artifact: art_dbf56b0989b8
 - campaign_id: cmp_78442938b5ec
@@ -1184,6 +1192,10 @@ campaigns:
     sha256: a25d6f7b6497a86095114945a05c09207cfdf29bd14b9a08fcaa4ba96d2cd4ac
   - path: examples/03_group_run/campaigns/2-4-0-fastapi-shakeout-1.yaml
     sha256: b84a9b79e27f0277fc52d1c6f952e3c783d0edefaa8fbb540fe802361cd0ed7a
+  - path: examples/03_group_run/campaigns/2-5-0-cut-shakeout.yaml
+    sha256: 241759cb94f63133e5fe243d35506f5af99134f41d7de2c54c6b30d6160e1093
+  - path: examples/03_group_run/campaigns/2-5-0-track-d-uncounted.yaml
+    sha256: a402744df20ed7039d98190b1e172befafb7b8feb4e4abaab81ee8c7127141fd
   package_identity: 5d7af8bfa3fdb19915adb580af3c5bf5f83fb9062b55197bff69a71c92213b3a
   package_artifact: art_0301714fe513
 - campaign_id: cmp_82fed8669ea0
@@ -1224,4 +1236,279 @@ campaigns:
   definitions: []
   package_identity: 6934baad4df61e71a732539156dfd262bfe355fb23d9ab8dfd46105b82363ff0
   package_artifact: art_6b369b551639
+- campaign_id: cmp_2111433dc4bb78613f37cc54
+  created: '2026-10-24T21:29:22.724292+00:00'
+  state: completed
+  outcome: exhausted
+  create_reason: Owner-authorized one-calibration commissioning probe; local TensorFold only, no increments,
+    retries or paid dispatch.
+  recorded_definition:
+    path: buzz-approved:nostromo-calibration-20261024-1
+    sha256: a50fd58da1e1f2de0a491162a0b2adb3db2a64069c103ed3dcec63c6782f4981
+  recorded_reconciles: false
+  definitions: []
+  package_identity: da8ced50138fc739ff6cc8cb3f95dccec6b9402e46b832b967d8e05d480ccfd8
+  package_artifact: art_4c175a27807f
+- campaign_id: cmp_bedebb154fefbcb0bf3336ab
+  created: '2026-10-25T01:14:33.662198+00:00'
+  state: completed
+  outcome: aborted
+  create_reason: Owner-approved attended commissioning of the datetime-sorting feature; verify one complete
+    independent review and accepted implementation.
+  recorded_definition:
+    path: buzz-approved:group-run-attended-20261025-1
+    sha256: af6b3c4eceb51522015ad51e9516f80852c97744534b524f56ed75c512c2e02b
+  recorded_reconciles: false
+  definitions: []
+  package_identity: 81d452e22eedf38bbc8a5690ff24f2235e48923f14b1f90b66018f1d0c6952d1
+  package_artifact: art_755ae93d31d5
+- campaign_id: cmp_0e3526de58dfb73b016192b7
+  created: '2026-10-25T01:59:40.808156+00:00'
+  state: completed
+  outcome: aborted
+  create_reason: Fresh attended commissioning of group_run datetime sorting; do not reuse or retry the
+    uncertain Ripley job in cmp_bedebb154fefbcb0bf3336ab.
+  recorded_definition:
+    path: buzz-approved:group-run-attended-20261025-2
+    sha256: 9e1d51d2609ac6aba1d8067f8af4c661e8ef70f9b4473c4208ad73930eb37c82
+  recorded_reconciles: false
+  definitions: []
+  package_identity: 3a064e84f1ab470efde0b9af513c9d8055a0698f82f478942b637e47d368e833
+  package_artifact: art_3e6dc3c029b4
+- campaign_id: cmp_7a4fa7deaed54aa35b5e8d11
+  created: '2026-10-25T13:09:57.740498+00:00'
+  state: completed
+  outcome: failure
+  create_reason: Reproduce the increment-gate Ripley validator failure using the newly installed safe
+    diagnostic path; this definition authorizes at most one actual paid provider call under the existing
+    shared budget.
+  recorded_definition:
+    path: buzz-approved:group-run-review-diagnostic-20261025-1
+    sha256: 5252781a463a206161c76e072a8a4e169090d9e6ee8206fae018b950faeb18e6
+  recorded_reconciles: false
+  definitions: []
+  package_identity: 328617cbcac176e9358ddd56d15ad943dbaec0ca4c8bd9a6e33e9e5672303709
+  package_artifact: art_2464cc36ea6a
+- campaign_id: cmp_dc58094e29b03d7a165149c6
+  created: '2026-10-25T13:52:01.465028+00:00'
+  state: completed
+  outcome: aborted
+  create_reason: Fix only the GET runs handler in the backend main module to sort by datetime ascending
+    with stable ties; use the existing shared budget, maximum 3 paid dispatches (up to $1.6896 reserved
+    for this campaign), require Ripley and Dallas review, and stop after one accepted increment for owner
+    inspection. Do not retry or modify any prior campaign or job. No overnight run.
+  recorded_definition:
+    path: buzz-approved:group-run-sorting-fix-20261025-1
+    sha256: af48111e56fa051a4a914ebebe51f1b0b27ebc6e4b6d179b5c1d98c235f62ad6
+  recorded_reconciles: false
+  definitions: []
+  package_identity: c238840a6267190d46e4caa7a8c38dfcdbd6c89db8052bfca784499ff75cf2ba
+  package_artifact: art_66229bfb983e
+- campaign_id: cmp_b79783b249672d1aed3bacf2
+  created: '2026-10-26T01:57:29.727778+00:00'
+  state: completed
+  outcome: exhausted
+  create_reason: 'Owner-approved attended backend sorting pilot: exact GET /runs handler plus endpoint
+    test scope; maximum three paid dispatches under the existing shared $5 allowance; stop after one accepted
+    increment or any blocker. Reporting root: 7fcb39a92a83d44a6db7419a6e16fcc1b617bc50b7c5aa9e76981f79e965d5a5
+    in channel 60cf6624-62d1-4c37-9522-f6dbf884fd25.'
+  recorded_definition:
+    path: buzz-approved:group-run-sorting-bounded-20261025-2
+    sha256: 149e54c0ed4471d0ec5cbe01f17630e4b0e64fff7658e7de068081764aef1a68
+  recorded_reconciles: false
+  definitions: []
+  package_identity: ab54d916ced6c7cfc26e1665419d7977b5bc01476ebd1a67628d656bb546d259
+  package_artifact: art_c487df8d56bc
+- campaign_id: cmp_11c6cc9f8aae05ac8162b623
+  created: '2026-10-26T03:04:44.538638+00:00'
+  state: completed
+  outcome: aborted
+  create_reason: 'Owner-requested normal campaign mechanics commissioning: standard backend/frontend scope,
+    stable datetime sorting feature, one accepted increment, three-hour ceiling, maximum three paid dispatches
+    under existing shared $5 allowance. Shared inference. No definition or budget expansion.'
+  recorded_definition:
+    path: buzz-approved:group-run-mechanics-20261026-1
+    sha256: 01e7135f0d0f0f19f075fcd49e87535c5ab24190528260c91231c4216898d977
+  recorded_reconciles: false
+  definitions: []
+  package_identity: f5a7c4c9e80c501a96b80b64b3c4825f005075db051d3ff1c6c87fd7eaa1ef45
+  package_artifact: art_bf0b2bbe7464
+- campaign_id: cmp_b4fb24922d09787de68e478e
+  created: '2026-10-26T17:09:30.647681+00:00'
+  state: completed
+  outcome: aborted
+  create_reason: Owner-authorized attended group_run policy-fix pilot; one accepted datetime-ordering
+    increment, one revision maximum, 3-hour cutoff, 1,000,000-token SquadOps bound, shared inference,
+    Dallas review required, and the approved $4.00 / seven-dispatch review allowance.
+  recorded_definition:
+    path: buzz-approved:group-run-policy-pilot-20261027-1
+    sha256: 2bf88860140159e01ecebc8bb3f5a708423b888ec008e3d056126f8b7ea4ee1e
+  recorded_reconciles: false
+  definitions: []
+  package_identity: 605002886eed7decf7e10a1277e3553866cadceb5af383a4fc1923f443d7d094
+  package_artifact: art_2529097e3d53
+- campaign_id: cmp_756fed2c16e035ab8c8e4e11
+  created: '2026-10-26T17:16:12.640583+00:00'
+  state: completed
+  outcome: aborted
+  create_reason: Owner-authorized bounded group_run policy-fix pilot; one accepted increment; one revision
+    maximum; three-hour ceiling; 1,000,000-token SquadOps bound; shared inference; Dallas review required;
+    existing approved $4/seven-dispatch review budget.
+  recorded_definition:
+    path: buzz-approved:group-run-policy-pilot-20261026-2
+    sha256: 2bf88860140159e01ecebc8bb3f5a708423b888ec008e3d056126f8b7ea4ee1e
+  recorded_reconciles: false
+  definitions: []
+  package_identity: 4a46f08b5a723983dcd3cbe070ca480ad6792e9c8206c26bdacb4ebfb971408e
+  package_artifact: art_4b6e05d1be67
+- campaign_id: cmp_29048a00fdb3460c0675529a
+  created: '2026-10-26T19:18:59.615611+00:00'
+  state: completed
+  outcome: aborted
+  create_reason: Owner-authorized attended group_run pilot; one increment; zero proposal revisions/retries/repairs;
+    1,000,000 campaign tokens; 3-hour ceiling; shared inference; Dallas required; maximum four paid dispatches
+    from the existing shared budget only.
+  recorded_definition:
+    path: buzz-approved:group-run-sort-policy-pilot-20261026-3
+    sha256: 07ac91748130f4c29cb669adbc006e205f9349653c0c0ac6651782e4d840696a
+  recorded_reconciles: false
+  definitions: []
+  package_identity: dec4495df7b47446328fff0b0c005d761ffa27c40563b9e369d982c97d7a23dc
+  package_artifact: art_f51ddbd43e20
+- campaign_id: cmp_9c9df268084a
+  created: '2026-10-28T06:46:18.412075+00:00'
+  state: completed
+  outcome: success
+  create_reason: '2.5 phase 3: uncounted campaign reading #2578''s increment records on dep_fbeecffcc625
+    (pre-registered, #2750)'
+  recorded_definition:
+    path: examples/03_group_run/campaigns/2-5-0-track-d-uncounted.yaml
+    sha256: a402744df20ed7039d98190b1e172befafb7b8feb4e4abaab81ee8c7127141fd
+  recorded_reconciles: true
+  definitions:
+  - path: examples/03_group_run/campaigns/2-4-0-cut-shakeout.yaml
+    sha256: a25d6f7b6497a86095114945a05c09207cfdf29bd14b9a08fcaa4ba96d2cd4ac
+  - path: examples/03_group_run/campaigns/2-4-0-fastapi-shakeout-1.yaml
+    sha256: b84a9b79e27f0277fc52d1c6f952e3c783d0edefaa8fbb540fe802361cd0ed7a
+  - path: examples/03_group_run/campaigns/2-5-0-cut-shakeout.yaml
+    sha256: 241759cb94f63133e5fe243d35506f5af99134f41d7de2c54c6b30d6160e1093
+  - path: examples/03_group_run/campaigns/2-5-0-track-d-uncounted.yaml
+    sha256: a402744df20ed7039d98190b1e172befafb7b8feb4e4abaab81ee8c7127141fd
+  package_identity: 6b45a70b280afc7409b31832ff3cc938b08b0f9bf9fa34a23901b8c5290703f6
+  package_artifact: art_59c4574bd21f
+- campaign_id: cmp_4a80ee867295
+  created: '2026-10-29T06:04:58.230893+00:00'
+  state: completed
+  outcome: aborted
+  create_reason: '2.5 short demonstration (IR-4, IR-5, IR-7; #2780''s anchored page), pre-registered in
+    docs/plans/verification-sets/2-5-0-demonstrations-preregistration.md'
+  recorded_definition:
+    path: docs/plans/2-5-0-demonstrations/z_shelfnote-campaign.yaml
+    sha256: 1b1fb38c63ce162e0e52f40ddb4edcee1dbaec9a4faa29b1d4c81c9f886a6c2d
+  recorded_reconciles: false
+  definitions: []
+  package_identity: bbeabd124d75af5ab01a25d54150356a6ff12fe518654870d1bdd220bbbe8c29
+  package_artifact: art_fad569acc6e2
+- campaign_id: cmp_73535ccef891
+  created: '2026-10-29T06:11:54.514061+00:00'
+  state: completed
+  outcome: aborted
+  create_reason: "2.5 short demonstration, repeated after cmp_4a80ee867295's start declaration failed\
+    \ in the sandbox (pre-registration \xA75); prj-shelfnote revision 3"
+  recorded_definition:
+    path: docs/plans/2-5-0-demonstrations/z_shelfnote-campaign.yaml
+    sha256: 1b1fb38c63ce162e0e52f40ddb4edcee1dbaec9a4faa29b1d4c81c9f886a6c2d
+  recorded_reconciles: false
+  definitions: []
+  package_identity: cf983a2a6a8f8eefa6b44572bd43d8066d8d31c67f03ac90e174b50461b2e424
+  package_artifact: art_91dce6c3c90c
+- campaign_id: cmp_e9485af88196
+  created: '2026-10-29T13:31:46.397844+00:00'
+  state: completed
+  outcome: aborted
+  create_reason: 2.5 main demonstration (IR-3, IR-4, IR-5, IR-6, IR-8, IR-9), as pre-registered in docs/plans/verification-sets/2-5-0-demonstrations-preregistration.md,
+    on dep_0a4f31cd9c10
+  recorded_definition:
+    path: docs/plans/2-5-0-demonstrations/z_continuum-campaign.yaml
+    sha256: a7aaece12f715f5cb4d4a90e1c086b198d2efa44d6ea0e3535aee1fcae189576
+  recorded_reconciles: false
+  definitions: []
+  package_identity: b3ff06f468c5d2b163bb04a0a866cd459620b5008a4dd740fcb4ee7a9a6f3230
+  package_artifact: art_a689fba4e9ba
+- campaign_id: cmp_1399cc189ef5
+  created: '2026-10-29T15:02:43.102816+00:00'
+  state: completed
+  outcome: aborted
+  create_reason: "2.5 main demonstration, round 2 (stop rule, pre-registration \xA75): round 1 cmp_e9485af88196\
+    \ stopped on #2805, fixed by #2807 and deployed as dep_bf4b8db121fc"
+  recorded_definition:
+    path: docs/plans/2-5-0-demonstrations/z_continuum-campaign.yaml
+    sha256: a7aaece12f715f5cb4d4a90e1c086b198d2efa44d6ea0e3535aee1fcae189576
+  recorded_reconciles: false
+  definitions: []
+  package_identity: 7b7a3c73468224fba9ece45b4a2d8ebf5b95afb655c48934cfaf0f5c50fd7778
+  package_artifact: art_2bf95adf8c69
+- campaign_id: cmp_ce4c95f2f307
+  created: '2026-10-29T17:57:34.267276+00:00'
+  state: completed
+  outcome: failure
+  create_reason: "2.5 main demonstration, round 3 (a recorded deviation past pre-registration \xA75's\
+    \ two rounds, the supervisor's judgement under the owner's 2.5 grants): rounds 1 and 2 stopped on\
+    \ #2805 and #2810, one defect class, fixed by #2807 and #2812, deployed as dep_8cd26c67fd90"
+  recorded_definition:
+    path: docs/plans/2-5-0-demonstrations/z_continuum-campaign.yaml
+    sha256: a7aaece12f715f5cb4d4a90e1c086b198d2efa44d6ea0e3535aee1fcae189576
+  recorded_reconciles: false
+  definitions: []
+  package_identity: 8dcc1ef2471ff625244919be66b7c2f83f32a3abac24506f66d008ccc6d9682f
+  package_artifact: art_4375c3acac05
+- campaign_id: cmp_cea660c0a6a6
+  created: '2026-10-29T23:26:21.502935+00:00'
+  state: completed
+  outcome: success
+  create_reason: "The 2.5 cut's shakeout, round 1 (exit rule, uncounted): examples/03_group_run/campaigns/2-5-0-cut-shakeout.yaml,\
+    \ read under docs/plans/2-5-0-cut-preregistration.md \xA72-\xA75, on the final deploy dep_eb111413d45d"
+  recorded_definition:
+    path: examples/03_group_run/campaigns/2-5-0-cut-shakeout.yaml
+    sha256: 241759cb94f63133e5fe243d35506f5af99134f41d7de2c54c6b30d6160e1093
+  recorded_reconciles: true
+  definitions:
+  - path: examples/03_group_run/campaigns/2-4-0-cut-shakeout.yaml
+    sha256: a25d6f7b6497a86095114945a05c09207cfdf29bd14b9a08fcaa4ba96d2cd4ac
+  - path: examples/03_group_run/campaigns/2-4-0-fastapi-shakeout-1.yaml
+    sha256: b84a9b79e27f0277fc52d1c6f952e3c783d0edefaa8fbb540fe802361cd0ed7a
+  - path: examples/03_group_run/campaigns/2-5-0-cut-shakeout.yaml
+    sha256: 241759cb94f63133e5fe243d35506f5af99134f41d7de2c54c6b30d6160e1093
+  - path: examples/03_group_run/campaigns/2-5-0-track-d-uncounted.yaml
+    sha256: a402744df20ed7039d98190b1e172befafb7b8feb4e4abaab81ee8c7127141fd
+  package_identity: 0a9fef13088f4f777dcd077186ebc5b5ac6b54f484d3d51c459d81fded0fed5c
+  package_artifact: art_71df7d11004b
+- campaign_id: cmp_725a9e2ee446
+  created: '2026-10-30T00:58:16.076962+00:00'
+  state: completed
+  outcome: aborted
+  create_reason: "The 2.5 cut's z_shelfnote repeat (docs/plans/2-5-0-cut-preregistration.md \xA76.3):\
+    \ docs/plans/2-5-0-demonstrations/z_shelfnote-campaign.yaml on the final deploy dep_eb111413d45d,\
+    \ after the exit rule"
+  recorded_definition:
+    path: docs/plans/2-5-0-demonstrations/z_shelfnote-campaign.yaml
+    sha256: 1b1fb38c63ce162e0e52f40ddb4edcee1dbaec9a4faa29b1d4c81c9f886a6c2d
+  recorded_reconciles: false
+  definitions: []
+  package_identity: 5564141d88bf8c60cb539f6126d7fce05b5e50f54fd788954bc2421109bbf71b
+  package_artifact: art_7267e004eeaf
+- campaign_id: cmp_d30d964599df
+  created: '2026-10-30T01:34:52.126995+00:00'
+  state: completed
+  outcome: aborted
+  create_reason: "The 2.5 cut's z_continuum repeat (docs/plans/2-5-0-cut-preregistration.md \xA76.3):\
+    \ docs/plans/2-5-0-demonstrations/z_continuum-campaign.yaml on the final deploy dep_eb111413d45d,\
+    \ carrying IR-2, IR-6, IR-8 and IR-3"
+  recorded_definition:
+    path: docs/plans/2-5-0-demonstrations/z_continuum-campaign.yaml
+    sha256: a7aaece12f715f5cb4d4a90e1c086b198d2efa44d6ea0e3535aee1fcae189576
+  recorded_reconciles: false
+  definitions: []
+  package_identity: bb2602751c67e84e43bf2b7e6300c6c9dc3e0eaa227bf6dfee508a45d4e73f3a
+  package_artifact: art_2cdf4b690b6b
 examples_only: []

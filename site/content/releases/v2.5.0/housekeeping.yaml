@@ -1,0 +1,26 @@
+tag: v2.5.0
+applied_at: '2026-10-30T13:46:21+00:00'
+worktrees_removed:
+- /home/jladd/Code/squad-ops/.claude/worktrees/agent-a0097010edcb56852
+- /home/jladd/Code/squad-ops/.claude/worktrees/agent-a0cb3fadc0eb2b14d
+- /home/jladd/Code/squad-ops/.claude/worktrees/agent-a2c89ff79d01efc4e
+- /home/jladd/Code/squad-ops/.claude/worktrees/agent-a41a6eda68310a2b8
+- /home/jladd/Code/squad-ops/.claude/worktrees/agent-a4a07967dea8e0bab
+- /home/jladd/Code/squad-ops/.claude/worktrees/agent-a657ce1f4d7ed142a
+- /home/jladd/Code/squad-ops/.claude/worktrees/agent-a6fefc3740c76f7e2
+- /home/jladd/Code/squad-ops/.claude/worktrees/agent-aaec335d8c5766b2e
+- /home/jladd/Code/squad-ops/.claude/worktrees/agent-af05654ea3c31211b
+- /home/jladd/Code/squad-ops/.claude/worktrees/finer
+- /home/jladd/Code/squad-ops/.claude/worktrees/h10
+- /home/jladd/Code/squad-ops/.claude/worktrees/onelane
+branches_deleted:
+- docs/2-5-plan-revision-10-27
+- feat/10l-baseline-reading
+- feat/24bv-launcher-head
+- feat/24bv-point4-rebase
+- fix/2493-token-expiry-wall-clock
+- fix/2710-sip-status-utc
+- fix/2713-capture-names-browser-error
+- test/2253-qa-budget-measurement
+problems: []
+scenario_evidence_purged: 124
