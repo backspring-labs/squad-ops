@@ -104,7 +104,7 @@ sandbox, which the Spark lane owns, are named as cross-lane tasks (§8.2.2).
   review, was approved by the owner as written, 2026-10-17 (§8.2 contract 7). This PR stays proposal-only until the
   owner approves it, and no integration branch is created yet.
 
-## Delivery ledger (current as of 2026-10-29)
+## Delivery ledger (current as of 2026-10-30)
 
 One row per part that ships separately, from Appendix E.4. Statuses: *shipped* (the release, the PR,
 and the issue it closed), *placed* (the release and the open issue tracking it, labelled `sip:NNNN` once

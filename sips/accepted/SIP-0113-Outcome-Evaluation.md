@@ -72,7 +72,7 @@ contracts (its §8.2). §4.8 says what this SIP produces and reads at each.
 >   revision's design (§4.1, §4.8).
 > - **No conflict.**
 
-## Delivery ledger (current as of 2026-10-29)
+## Delivery ledger (current as of 2026-10-30)
 
 One row per part that ships separately. Statuses as CLAUDE.md defines them. The 2.4 plan places phase 1 in 2.4
 (committed) and phase 2 in 2.4 conditionally. **Phase 1's parts are placed** with the issues filed at acceptance
