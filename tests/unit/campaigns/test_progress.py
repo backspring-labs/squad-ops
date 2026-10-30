@@ -1315,6 +1315,7 @@ async def _increment_failed_by_the_environment(
     evaluation=None,
     repair_of=None,
     extra_block=None,
+    revised=False,
     **policy,
 ):
     """An accepted calibration, an increment proposed against its tree and ruled on, built, and
@@ -1414,6 +1415,27 @@ async def _increment_failed_by_the_environment(
             ),
         ),
     )
+    if revised:
+        # #2824: returned at version 1, then version 2 submitted and approved in the same cycle,
+        # while the cycle's launch block still says version 1.
+        revision = ProposalBinding("prop_cap", 2, "hash-2", accepted)
+        state = (await w.campaigns.get_campaign(CID)).state
+        await w.campaigns.transition(
+            CID, submission(state, SubmittedProposal(revision, "cyc_inc", "run_prop_v2"))
+        )
+        await w.campaigns.transition(
+            CID,
+            ruling_transition(
+                GateDecisionValue.APPROVED,
+                revision,
+                run_id="run_prop_v2",
+                actor="supervisor",
+                actor_role="campaign_supervisor",
+                reason="r",
+                idempotency_key="rule-2",
+                classification=None,
+            ),
+        )
     w._assess = lambda cycle_id: _async(
         _environment_failure(cycle_id) if environment else _assessment(cycle_id, assessed)
     )
@@ -1762,6 +1784,34 @@ async def test_a_retry_whose_binding_no_longer_holds_escalates_instead(
     decision = (await w.campaigns.control_log(CID))[-1]
     assert stored.state is CampaignState.ESCALATED
     assert reason in decision.binding["unbuilt"]
+
+
+async def test_an_increment_whose_approved_proposal_is_a_revision_is_repaired_under_that_version(
+    calibrating, stored
+):
+    """#2824, entered at the decision that chooses row 12, as the 2.5 cut's ``z_continuum`` repeat
+    reached it. Bug caught: the repair reads the launch block's first version, finds no approval
+    for it, and escalates "unbuilt", so an increment whose proposal was returned once can never be
+    repaired or retried."""
+    import dataclasses as _dc
+
+    stored["art_plan"] = (
+        _dc.replace(
+            _ref("art_plan", "implementation_plan.yaml", "control_implementation_plan", 5),
+            promotion_status="promoted",
+        ),
+        b"version: 1",
+    )
+    w = await _increment_failed_by_the_environment(
+        calibrating, stored, ruled="returned_for_revision", environment=False, revised=True
+    )
+
+    decision = (await w.campaigns.control_log(CID))[-1]
+    *_, repair = await w.campaigns.launch_intents(CID)
+    block = repair.cycle_request["body"]["execution_overrides"]["campaign_proposal"]
+    assert (decision.binding["row"], decision.binding["action"]) == (12, "repair")
+    assert "unbuilt" not in decision.binding
+    assert (block["proposal_id"], block["version"]) == ("prop_cap", 2)
 
 
 async def test_a_rejected_increment_is_repaired_from_its_own_candidate_under_its_plan(
