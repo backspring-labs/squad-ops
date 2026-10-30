@@ -146,8 +146,8 @@ async def run_on_product_runner(
             )
             exited = result.ran and result.outcome == CommandOutcome.EXITED
             findings = getattr(result, "findings", None)
-            reading = FindingsReading.from_dict(findings) if findings else None
-            readable = reading is not None and reading.readable
+            parsed = FindingsReading.from_dict(findings) if findings else None
+            reading = parsed if parsed is not None and parsed.readable else None
             runs.append(
                 SuiteRun(
                     runner=runner.runner,
@@ -155,8 +155,8 @@ async def run_on_product_runner(
                     argv=argv,
                     revision_id=revision.revision_id,
                     exit_code=result.exit_code if exited else None,
-                    tests_passed=reading.passed if readable else None,
-                    collected=reading.collected if readable else None,
+                    tests_passed=reading.passed if reading is not None else None,
+                    collected=reading.collected if reading is not None else None,
                     unexecuted=None
                     if exited
                     else (
