@@ -152,6 +152,7 @@ from squadops.execution.product_acceptance import (
     evaluate_product_increment,
     evaluated_at_delivery,
 )
+from squadops.execution.product_suite import judge_on_product_runner
 from squadops.execution.pulse_boundary_runner import PulseBoundaryRunner
 from squadops.execution.run_admission import RunAdmission
 from squadops.execution.run_completion import RunCompletion, resolve_terminal_outcome
@@ -628,6 +629,16 @@ class _TaskOutcomeRouter:
         _holder["result"] = result
         if ledger is not None:
             record_absent_emission(ledger, result, _envelope)
+        # #2818: a product's suite failing only ``tests_pass`` in the qa image is run again on
+        # the product's own runner, after its configured setup; a pass there judges the task.
+        judged = await executor._judged_on_product_runner(
+            result, _envelope, _enriched, cycle, run_id
+        )
+        if judged is not None:
+            _record_task_evidence(result)
+            _holder["patched_result"] = judged
+            state.correction.accepted_repair_task_ids.add(_envelope.task_id)
+            return "accept_patch"
         action = await _next_action(result, _envelope, _enriched, _holder)
         while action == KEEP_PROGRESS:
             # #1522: the repair made progress and broke nothing (``retest_reduction``). It
@@ -4573,6 +4584,29 @@ class DispatchedFlowExecutor(FlowExecutionPort):
             ),
             load_contract_for_run=lambda *args, **kw: self._load_contract_for_run(*args, **kw),
             derived_profile=lambda cycle: self._derived_profile_for(cycle),
+        )
+
+    async def _judged_on_product_runner(
+        self,
+        result: TaskResult,
+        envelope: TaskEnvelope,
+        enriched: TaskEnvelope,
+        cycle: Any,
+        run_id: str,
+    ) -> TaskResult | None:
+        """#2818: ``result`` judged passed on the product's runner, or ``None`` when it stands
+        (``product_suite.judge_on_product_runner``). The dispatched inputs are the enriched
+        envelope's, the tree the agent ran."""
+        return await judge_on_product_runner(
+            result,
+            task_type=envelope.task_type,
+            task_id=envelope.task_id,
+            inputs=(enriched or envelope).inputs,
+            cycle=cycle,
+            run_id=run_id,
+            sandbox=self._sandbox,
+            projects=self._project_registry,
+            read_profile=self._derived_profile_for,
         )
 
     async def _derived_profile_for(self, cycle: Any) -> Any:
