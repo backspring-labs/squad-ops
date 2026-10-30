@@ -1,6 +1,8 @@
 # 2.5.0 — pre-registration of the cut's set (the plan's §4, "The cut")
 
-**Status: REGISTERED** on 2026-10-30 at 02:30Z (22:30 ET on 2026-10-29), when all eleven conditions below held (§14).
+**Status: READ** on 2026-10-30 (§15): four of four rolls accepted; **Q1 falsified on one tree**, and the owner chose "Cut
+with it recorded"; every other prediction held. **REGISTERED** on 2026-10-30 at 02:30Z (22:30 ET on 2026-10-29), when
+all eleven conditions below held (§14).
 Drafted 2026-10-29 and revised the same day on a second reader's findings and the owner's rulings (§13), then merged as
 a draft (#2822) before anything ran. The exit rule held in shakeout round 1, and the repeats ran on the final deploy
 after it. Nothing in the set launched before registration. Written by the Spark lane, which runs the line alone since
@@ -649,15 +651,15 @@ Read at 02:30Z on 2026-10-30, when conditions 1–10 held:
 | the sweeps' baselines and readings, each with its `--campaign` list | round 1's baseline, `--campaign cmp_9c9df268084a`, and reading, `--campaign cmp_9c9df268084a cmp_cea660c0a6a6` (`var/verification_sets/2-5-0-cut/sweeps/`). The repeats' IR-4 baselines and readings in `repeats/ir4/`, each list in its `.campaigns.txt` |
 | shakeout rounds, and the round that met the exit rule | **round 1, `cmp_cea660c0a6a6`, met it** (§14; `var/verification_sets/2-5-0-cut/shakeout-round1.md`) |
 | the repeats (§6.3): each campaign, the outside commit, the reconciliation, and each reading | `z_shelfnote` `cmp_725a9e2ee446`; `z_continuum` `cmp_d30d964599df`; the outside commit `fad7fba` on `backspring-labs/z_continuum`; the reconciliation at `fad7fba`, revision 7; the missing-route replay on `2d3f3948` (§14; `var/verification_sets/2-5-0-cut/repeats.md`) |
-| registration | 02:30Z on 2026-10-30, at `42d4e395` (§7) |
-| the chain: each roll's cycle, verdict, criteria, boot audit, correction rounds, QA repairs whose retest passed, model calls | — |
-| each roll's window on the engine's metrics: the counter by key label and `State.StartedAt` at its start and end, the gauges' samples, and the other-key totals beside its correction rounds | — |
-| the held-out readings | — |
-| each prediction's reading | — |
-| D3's reading, recorded on #2557 with its departures from the done-when | — |
-| IR-1, IR-2 and IR-8's registry half | IR-2 **passes** on the `z_continuum` repeat (§14). IR-1 and IR-8's registry half: — |
-| the engine's restoration | — |
-| each void and re-run, and each owner action | before registration: no void and no re-run. The owner's actions: "Abandon and propose" (resuming the `z_continuum` repeat) and "Name it, fix after" (#2824). The set's: — |
+| registration | 02:30Z on 2026-10-30, at `42d4e395` (§7); merged as `4352ab89` (#2825) |
+| the chain: each roll's cycle, verdict, criteria, boot audit, correction rounds, QA repairs whose retest passed, model calls | 02:41:52–04:56:19Z from the main checkout at `4352ab89` (`var/verification_sets/2-5-0-cut/chain/`). §15's table |
+| each roll's window on the engine's metrics: the counter by key label and `State.StartedAt` at its start and end, the gauges' samples, and the other-key totals beside its correction rounds | eight engine readings, each equal to §7's pin (`chain/engine-readings.txt`); one key label, `squadops`, in every window, no other key's request, `running + waiting` at most 1 (`chain/roll-*-callers.jsonl`, 1,459 readings, no gap). §15 |
+| the held-out readings | `readings/q1-heldout.json`, 04:58–05:05Z, every tree started; `readings/q1-reading.txt`. §15 |
+| each prediction's reading | §15 |
+| D3's reading, recorded on #2557 with its departures from the done-when | §15 (Q7); posted on #2557 |
+| IR-1, IR-2 and IR-8's registry half | all three **pass** (§14b, §15) |
+| the engine's restoration | to #2742's candidate (`--parallel 2`) at 11:54:51Z, after IR-1 and IR-8's registry half, exit 0; deploy record `dep_f77e1157234a` |
+| each void and re-run, and each owner action | no void and no re-run. The owner's actions: "Abandon and propose" and "Name it, fix after" (§14b), and "Cut with it recorded" on Q1 (§15) |
 
 ---
 
@@ -892,3 +894,73 @@ caller readings and the repeats' artifacts beside them. Counts and identities on
 
 **The registration's own merge** changes only this document and the set's two configs, all under `docs/`. No path in
 the plan's §3 rule moves, so it voids neither the round nor the repeats.
+
+## 15. The reading
+
+**The verdict: the set fails Q1 on one tree, and the owner chose "Cut with it recorded" (2026-10-30).** Every other
+prediction holds, all four rolls were accepted, and IR-1, IR-2 and IR-8's registry half pass beside the set. Read on
+the final deploy `dep_eb111413d45d` from the chain's records (`var/verification_sets/2-5-0-cut/`). Counts and
+identities only.
+
+### 15a. The chain
+
+| roll | cycle | verdict | criteria | boot audit | correction rounds | QA repairs whose retest passed | model calls | wall | held-out passed (§2's range) |
+|---|---|---|---|---|---|---|---|---|---|
+| FastAPI + React 1 | `cyc_99058239d6f9` | accepted | 21/21 | PASS (5 probes, 3 routes) | 2 (`development.correction_repair`) | 0 | 22 | 29 min | **9 of 31** (6–13) |
+| Next.js 1 | `cyc_db9bde2b5e4e` | accepted | 21/21 | PASS (6 probes, 3 routes) | 2 (`development.correction_repair`) | 0 | 25 | 45 min | 10 of 31 (9–12) |
+| FastAPI + React 2 | `cyc_59a296c22625` | accepted | 21/21 | PASS (5 probes, 3 routes) | 0 | 0 | 16 | 25 min | 11 of 31 (6–13) |
+| Next.js 2 | `cyc_9af63daff982` | accepted | 18/18 | PASS (6 probes, 3 routes) | 0 | 0 | 18 | 27 min | 9 of 31 (9–12) |
+
+Each plan gate was decided by `system:no_open_questions`. Each roll ran two runs, both completed, with no framing
+re-roll.
+
+### 15b. The predictions
+
+| # | reading | verdict |
+|---|---|---|
+| P1 | one series in each roll's window, `engine=tensorfold`, `model=qwen3.8-27b-tf-nvfp4`; all 81 completion lines name both. `Args`, `.Image` and `State.StartedAt` equal §7's pin at all eight readings, each roll's start and end. Another caller's load: none; the counter showed one key label in every window | **holds** |
+| P2 | 247 of 247 tracked rows answer their `expect` in every roll; `2253` reads `True True False True True` in each | **holds** |
+| P3 | each cycle declares memory disabled; each pinned snapshot is `disabled` with no entries; 45 exposures, all `memory_disabled`; no binding; no instruction supplied; 45 of 45 envelopes reconstruct byte for byte, each with its own exposure (`readings/envelopes-*.txt`) | **holds** |
+| P5 | no `cadence_policy` or `pulse_checks` in any roll's applied defaults or overrides; no `pulse_verification_records` row; every correction round through `development.correction_repair`, a baseline handler; no hold, halt or restart | **holds** |
+| **Q1** | three trees hold: FastAPI + React 2 (5 of 5), Next.js 1 and 2 (4 of 4 each). **On FastAPI + React 1, 2 of its 5 always-pass scenarios were lost:** the list scenario failed at its step 2, and the join-from-the-page scenario read `blocked_unverified` (`control_absent`). The reading started its tree | **falsified on one tree** |
+| Q2 | no roll had a `qa.test_repair` whose retest passed (the limit is one) | **holds** |
+| Q6 | every `qa.test` envelope in every roll (2, 3, 2 and 1) ends with D12's note, and no envelope of another type carries it. No roll ran a `qa.test_repair`. **Reported:** 0 of 8 QA emissions were cut or exhausted by the output cap | **holds** |
+| Q7 | no roll's plan asks the list's order: every plan had no open question, so every gate was decided by `system:no_open_questions`. With the shakeout's calibration (§14a), five plans of five. The limit §4 names applies: absence over five plans. Recorded on #2557 | **holds** |
+
+**Q1's cause, read from the tree** (§3: "the record reads its cause"):
+- **The list:** the framing's own interface manifest declared `GET /runs → RunList`, a wrapper object, and the scaffold
+  froze it as the route's response model. So the app answers `{"runs": [...]}` where every baseline tree answers a bare
+  list. The in-cycle criteria, read against the roll's own manifest, verified 21 of 21.
+- **The page:** the developer's first fill labelled the join input "Join the run", with no placeholder. Neither
+  correction round changed it, and the tree that passed the scenario (FastAPI + React 2) labels it differently.
+- **Neither is a 2.5 change, a QA change or a repair:**
+  - the wrapper appears in 2 of 325 FastAPI + React manifests since 2026-09-15, the first on 2026-09-28, before any
+    2.5 merge;
+  - the PRD pins neither the list's shape nor the join form's labels (`examples/03_group_run/prd.md:189`, `:208`);
+  - both correction rounds were the developer's.
+- **The owner chose "Cut with it recorded":** the set's Q1 is falsified on one tree, the cause is build variance the
+  PRD leaves open, and the cut proceeds. A stack convention that pins a collection endpoint's response is placed in 2.6
+  (#2826). No re-run was made: a clean re-run chosen after a failed reading would be picking the evidence.
+
+**Reported beside the predictions:** against 2.4's rolls (13, 11; 9, 10), the held-out passed counts read 9, 11; 10, 9.
+FastAPI + React 1's 9 is the two lost scenarios. The correction rounds (2, 2, 0, 0) sit inside 2.3's range of 0–3.
+
+### 15c. Beside the set
+
+- **IR-1 passes:** one `selftest` cycle per seeded project through `cycles create`, one at a time, 05:08–05:40Z.
+  Each completed with 6 artifacts (`ir/ir1.log`, `ir/ir1-artifacts.txt`).
+- **IR-2 passes** on the `z_continuum` repeat (§14b).
+- **IR-8's registry half passes:** `prj-ir8-cut-25` was registered `REGISTERING`; the same key replayed; `show` and
+  `list` read it at once; and `cycles create` was refused on a quiet box by the registry ("REGISTERING: a Cycle needs
+  it READY"), not by the box gate (`ir/ir8.txt`).
+- **The engine was restored** to #2742's candidate at 11:54:51Z (§8).
+
+### 15d. What the record says it doesn't cover
+
+§11, unchanged, and:
+- **Q1's loss on one tree** (§15b), with its cause and the owner's ruling;
+- **#2824** (§14b) and **#2826** (above), both placed in 2.6 or a 2.5.x patch;
+- **the tagged tree against the validated deploy:** nothing under `src/`, `adapters/`, `agents/`, `config/`, `scripts/`
+  or `infra/` differs between the deploy commit `f69ce0e2` and the tag. The differences are this document and the
+  set's two configs (#2825), and the release's own files: the version, the markers, the CHANGELOG, the ROADMAP and the
+  SIP sweep. The deploy reports 2.4.0 until its next rebuild.
