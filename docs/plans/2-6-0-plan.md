@@ -55,6 +55,26 @@ that adopts this plan, not in this draft.
 fix line and a very minimal slice of 2.6 to attempt a campaign for real via cli and not require the full front-end
 capability?" The rest of this plan stands as the line's design. This section is what runs first.
 
+**The weekend shape, recorded 2026-10-30** (the owner: "add the dependency and stop at three", with 22% of the
+weekly usage left). This narrows the table below for the weekend:
+- **2.5.1 this weekend is #2818 and #2824 only,** merged and deployed, with no release cut. #2817, #2814, #2804, #2809
+  and #2813 follow next week with the cut. Shelfnote's plain pytest config and backend-only items don't reach them; if
+  the spike does, that is its finding.
+- **No 2.6 feature this weekend.** This plan and the SIP stay as written; the spike's readings revise §0.
+- **The product is `z_shelfnote`**, not the financial application: already a configured product on the same
+  `fullstack_fastapi_react` template, as a dress rehearsal. **One commit before the Campaign** makes its existing code
+  use a library the QA image lacks (checked first), so the in-cycle run needs the product's own install, which is
+  #2818's case. It must be in the baseline: an increment that adds a dependency is a separate, unplaced gap (SIP-0109's
+  "an increment that needs packaging changed"). The push needs the owner's OK.
+- **Three backlog items,** backend-only: search (`GET /books?q=`), reading status (with a 422 for an invalid one) and
+  tags. `target_accepted_increments: 3`.
+- **The Nostromo crew drives the Campaign** through its existing harness, on its own provider budgets, once the owner
+  approves the definition in Buzz; Ripley answers the plan gates #2796 escalates. The supervisor builds, deploys,
+  prepares the product and reads the result.
+- **#2818 gets one outside review** through the owner's reviewer, from a packet on its PR.
+- **Stop points:** after #2818, if little usage is left (the crew can run the Campaign later); after the product's
+  runner check, if it fails; and two Campaign rounds at most.
+
 **The idea.** 2.5's product Campaigns were stopped by a short list of defects, not by missing features (§1). Fix
 those, and an attended Campaign on the owner's own product can run on today's machinery from the CLI, with no goal
 set, no console work and no unattended running.
