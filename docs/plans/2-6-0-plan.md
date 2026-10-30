@@ -257,7 +257,7 @@ lesson approvals, the Release and the tag.
 About **25–35 box-hours**, as a ceiling to report against, 2.5.1's replays (about 1) not counted: the size preflight and the replays about 2; the scripted
 soak 4–8 (model-free, so the GPU is idle); the shakeout on the two existing products about 3–4; the proving Campaign
 twice, 4–8 each; the cut about 6. **Checkpoints:** after Track A (rung 1 on a product), after the soak, and after
-the first attended proving run.
+the first attended proving run. Track D is build time, not box time: the proving Campaign reads it.
 
 ---
 
