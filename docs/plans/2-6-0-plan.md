@@ -143,7 +143,7 @@ is filed when the plan is adopted. Every item below assumes §1a's fixes have sh
 | **an escalation policy for unattended runs** (new; D6) | a Campaign declares which escalation classes the supervisor identity may resume on its own, within the Campaign's limits. Everything else waits for the owner, as today | M |
 | **a supervisor identity that lasts the night** (new; D7) | an identity for an unattended supervisor that isn't bound by the 8-hour session: a service account with client credentials, scoped to `campaign-supervisor` plus D6's resumes. With #2760's answers from the Nostromo crew. **Security, so the owner's** | S–M |
 | **#2287** | the box lease outside Campaigns, so nothing else takes the GPU during an overnight window, built as SIP-0109 §9.3 is written | M |
-| **a hard-stop notice** (new) | when a Campaign stops, pauses at a limit or escalates to the owner, one push notice names why. Nothing on progress | S |
+| **a hard-stop notice** (new; the headline's slice 5a) | when a Campaign stops, pauses at a limit or escalates to the owner, one notice names why, with its console link. SquadOps emits it through the API, and the crew carries it into Buzz: SquadOps gets no Buzz presence (SIP-0090's, 3.x). Nothing on progress | S |
 
 ### 2.4 Track D, the headline: Project Goals and Backlog (PR #2833)
 
@@ -161,7 +161,8 @@ actions; code in the product's repository. **Discussed in Buzz, decided in Squad
 | **slice 2: a Campaign on a goal set** | `objective.goals`; the proposer shown the backlog with each item's derived status; one pending item per proposal, a rail returning one that names none; `stop_when: backlog_done`. A SIP-0109 amendment in the same PR | M–L |
 | **slice 3: candidates** | the squad, the crew or the system adds what it finds; the owner, or the crew if delegated (Q41), promotes or drops it | S–M |
 | **slice 4: the console's goals panel** | a Continuum plugin (SIP-0069): goal, expected results, backlog with status and increments, candidates waiting, history. Editing writes a revision | M |
-| **slice 5: Buzz** (deferrable) | notices first (a Campaign stopped, a candidate waiting, an item accepted, each with its console link); decisions as API actions carrying the thread's link, once D7's identity exists (Q43). The bridge's mechanics aren't designed yet | M |
+| **slice 5a: notices** | built once, as Track C's hard-stop notice, with a candidate waiting and an item accepted added: emitted through the API, carried into Buzz by the crew | S (counted in §2.3) |
+| **slice 5b: decisions from Buzz** | **not in 2.6.** An executing chat bridge waits for the ACP-binding SIP (the owner's direction, 2026-08-19), and SIP-0090's presence surfaces are deferred to 3.x. A decision made in Buzz is acted on in the console, with the thread's link as `source_ref` (Q43) | — |
 
 **The proving Project's goals are written into a goal set** (slice 1) before its Campaign starts, not into a file in
 this repository. Until slice 1 lands, phase 1 drafts them as text to load.
