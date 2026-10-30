@@ -37,11 +37,21 @@ Checked 2026-10-30 against `sips/PORTFOLIO.md`. **Conflicts:** none found. **Ove
 - **The Game Development Platform draft** (PR #2405, its Q37 on that branch). Its `GAME_DESIGN.md` requirement in
   every game repository would become a goal set here, held as SquadOps metadata, as Q37's recommendation already
   reads.
-- **SIP-0090 (Agent Embodiment Substrate) and the owner's direction of 2026-08-19** (cluster 8). An agent's presence
-  in Buzz is an embodiment surface, and SIP-0090's phases 2–4 are deferred to 3.x. The direction is no chat bridge that
-  executes before the ACP-binding SIP. **Boundary:** this SIP gives SquadOps no Buzz presence. Its notices are read
-  through the API and carried by the crew (slice 5a), and a decision taken in Buzz reaches SquadOps only as a person's
-  action (slice 5b waits for 3.x, Q43). *Missed in this draft's first intake and added the same day.*
+- **The Nostromo crew's campaign harness** (external, `backspring-labs/nostromo`: `docs/campaign-execution-harness.md`;
+  SIP-0109's outer loop, cluster 6). The crew already runs Campaigns from Buzz: the owner approves a definition there,
+  signed; a broker holds SquadOps's scoped service principals (`campaign-supervisor`, `campaign-triage`, never
+  `admin`); one crew role rules the gates and another reviews that ruling; a watcher posts the factual record.
+  **Boundary:** the crew is an API client of this SIP, like the console. SquadOps holds the goal set, the derived
+  status and the crew's recorded assessments (§5.7); Buzz holds the owner's conversation with the crew and its signed
+  statements; the crew's own harness (which commands its broker allows, what a gate's review packet carries) is
+  Nostromo's to change, in its repository. This SIP names no Nostromo internals: "the crew" is any external
+  supervisor holding those principals.
+- **Not an embodiment** (SIP-0090, cluster 8). No SquadOps agent appears in Buzz; the squad never talks to the crew
+  there. *This draft's same-day revision read slice 5 as an embodiment surface and deferred it to 3.x. That was wrong:
+  the owner's Buzz conversation is with the crew, which is an API client (the owner, 2026-10-30, §2).*
+- **The crew's own backlog of framework work** (Nostromo's work items, which its README places in squad-ops issues).
+  That is the framework's backlog. A goal set is a product's. A shortfall the crew traces to the framework becomes a
+  squad-ops issue, linked from the assessment (§5.7), never a goal-set item.
 - **The Design Decision Register** (proposed, cluster 13). It records design decisions inside a cycle. This SIP
   records goals and their order across a Campaign. They don't share a record.
 - **The Continuum Runtime Console** (proposed, partly absorbed). The goals panel here is a SIP-0069 plugin. The
@@ -55,12 +65,11 @@ Checked 2026-10-30 against `sips/PORTFOLIO.md`. **Conflicts:** none found. **Ove
 | slice 2: a Campaign on a goal set: `objective.goals`, the proposer's view, the one-item rail, derived status, `stop_when: backlog_done` (with a SIP-0109 amendment) | **unplaced**, deliberately: proposed for 2.6.0 | — |
 | slice 3: candidates, their promotion and drop | **unplaced**, deliberately: proposed for 2.6.0 | — |
 | slice 4: the console's goals panel | **unplaced**, deliberately: proposed for 2.6.0 | — |
-| slice 5a: notices: SquadOps emits each notice (a Campaign stopped, a candidate waiting, an item accepted) with its console link, for the crew to carry into Buzz | **unplaced**, deliberately: proposed for 2.6.0, as the 2.6 plan's hard-stop notice | — |
-| slice 5b: decisions taken in Buzz reaching SquadOps as actions with a `source_ref` | **unplaced**, deliberately: waits for SIP-0090's presence surface and the ACP binding, deferred to 3.x, unless the owner rules otherwise (Q43) | — |
+| slice 5: the crew's surface: the goal set and its derived backlog readable by the supervisor and triage principals, the backlog item and its expected results in each gate's evidence, and the assessment record (§5.7) | **unplaced**, deliberately: proposed for 2.6.0 | — |
 | slice 6: the repository export | **unplaced**, deliberately: not proposed for 2.6 | — |
 
-**What closes this SIP:** slices 1–4 and 5a shipped and read live on a Campaign whose backlog reached three accepted
-items; slices 5b and 6 shipped or dropped by a numbered amendment.
+**What closes this SIP:** slices 1–5 shipped and read live on a Campaign whose backlog reached three accepted items,
+with at least one assessment recorded by the crew; slice 6 shipped or dropped by a numbered amendment.
 
 
 ---
@@ -73,14 +82,19 @@ its Project Record. A goal set holds:
 - **expected results:** what the owner will accept as the goal met, each one observable;
 - **constraints** and **out of scope;**
 - **the backlog:** ordered items, each sized for one increment and naming the expected results it serves;
-- **candidates:** what the squad or the crew found along the way, which nobody has ordered yet.
+- **candidates:** what the squad or the crew found along the way, which nobody has ordered yet;
+- **assessments:** the crew's judgement of each expected result, and whose work a shortfall is.
 
 A Campaign names a goal set. Each proposal takes the next pending backlog item and names it. Each item's status is
 **derived** from the Campaign's control log, never typed in. The owner edits the goal set in the console or through
 the CLI, and each edit is a new revision.
 
-**The rule that keeps the tools apart:** a goal is discussed wherever people talk (Buzz), and decided in SquadOps.
-A conversation is never the record.
+**The crew assesses.** An external supervisor (today the Nostromo crew) drives the Campaign, judges whether the
+expected results are being met, and says why when they aren't: the squad's next increment, a framework defect, a
+framework gap, or a goal that needs the owner. Its assessment is a record on the goal set (§5.7).
+
+**The rule that keeps the tools apart:** the owner and the crew talk in Buzz; what they decide is written to SquadOps
+through the API. A conversation is never the record.
 
 ## 2. Motivation
 
@@ -97,10 +111,20 @@ best tool for the job and get away from a claude terminal to build apps and game
   `measurement` line is free text with no reader.
 - **The goals are edited in a terminal.** Every 2.5 requirements file was written into this repository and ingested
   by the CLI.
-- **The crew already decides in Buzz.** Nostromo's Campaigns record their definitions as `buzz-approved:<name>`
-  with a hash (`examples/03_group_run/campaigns/provenance.yaml`, 2026-10-24 and 2026-10-25). The approval
-  happened, but the approved definition lives only in the conversation, and SquadOps holds its digest. That is the
-  pattern this SIP replaces for goals.
+- **The crew already runs Campaigns from Buzz,** and its assessment has nowhere to live in SquadOps.
+  - Nostromo's broker launches owner-approved definitions, one crew role rules each gate, and a second reviews that
+    ruling. The watcher posts the factual closing record, and the ruling role adds a signed closing interpretation
+    (Nostromo's `docs/campaign-execution-harness.md`). SquadOps records the definitions only by digest, as
+    `buzz-approved:<name>` (`examples/03_group_run/campaigns/provenance.yaml`, 2026-10-24 and 2026-10-25).
+  - **The crew already tells the app's work from the framework's.** On 2026-10-26 (`cmp_29048a00fdb3460c0675529a`)
+    the calibration plan was for the project's general PRD, not the approved increment, and the framing still read
+    `GO`. The ruling role returned `needs_owner`, and the finding reached squad-ops as a comment on #2619.
+  - That judgement lives only in Buzz and a comment. Nothing in SquadOps records which expected result it was about,
+    or what it concluded.
+- **The owner's model** (2026-10-30): "By buzz convo, what I meant was interacting with the Nostromo crew driving the
+  campaign execution and outcome assessment. They can determine if outcomes are being met or if squad ops framework
+  bugs or functional gaps need to be covered to advance the app building work. Not an embodiment of squad ops agents
+  in buzz." (Spelling corrected.)
 
 ## 3. Where each concern lives
 
@@ -109,8 +133,10 @@ best tool for the job and get away from a claude terminal to build apps and game
 | **intent:** the goal, expected results, constraints, the backlog's order | **the goal set** (this SIP), in SquadOps's database | the owner; the crew where §6 allows | the squad, the crew, the console |
 | **progress:** each item's status and why | **derived** from the Campaign's control log | nobody, by hand | everyone |
 | **proof:** test results, evaluations, held-out verdicts | the vault and the evaluation records (SIP-0113) | the system | the crew and the owner; the squad never reads held-out content |
-| **deliberation:** questions, options, discussion | Buzz | anyone | anyone |
-| **decisions:** rulings, approvals, goal-set revisions | SquadOps's database, written by an action | whoever §6 authorizes | everyone |
+| **assessment:** is each expected result being met, and if not, whose work is the shortfall | **assessment records on the goal set** (§5.7) | the crew | the owner, the crew, the console |
+| **framework work:** a defect or gap the crew traces to SquadOps | squad-ops issues (GitHub) | the crew | the crew, the owner |
+| **deliberation:** questions, options, the owner's direction | Buzz, between the owner and the crew | the owner, the crew | the owner, the crew |
+| **decisions:** rulings, approvals, goal-set revisions | SquadOps's database, written through the API | whoever §6 authorizes | everyone |
 | **code:** the product and its review requests | the product's Git repository | the squad, through the Campaign | the owner |
 
 **One authority each.** A goal kept both in a repository file and in a record would drift. So the record is the
@@ -187,14 +213,30 @@ item, in the revision the launch read, is `accepted` or `removed`. `target_accep
 is read as today. **Whether the expected results actually hold** is SIP-0113's reading, not this SIP's: an accepted
 item is the squad's tests passing, and the held-out suite is the independent judge.
 
+### 5.7 The crew's assessment
+
+An **assessment** is the crew's judgement of one expected result at a point in a Campaign:
+- `reading`: `met`, `not_met` or `unclear`;
+- for a shortfall, `cause`: `app_work` (the squad's next increment can reach it), `framework_defect` or
+  `framework_gap` (SquadOps itself stands in the way, with the squad-ops issue it filed), or `needs_owner` (the goal,
+  an expected result or the order needs the owner);
+- `evidence`: the cycles, evaluations and gate rulings it read, by id. Held-out results are cited by evaluation id and
+  counts, never by a step or value (§7);
+- its author, the goal-set revision it read, and its `source_ref` (the signed statement or thread it came from).
+
+An assessment is append-only and **decides nothing.** It doesn't change an item's status, a Campaign's decision table
+or a gate. The crew acts on it through the controls it already holds (pause, a ruling, a candidate, an issue), and
+the owner reads the latest per expected result in the console beside the backlog.
+
 ## 6. Who may do what
 
-| action | the owner | the crew (the supervisor identity) | the squad (the strategy role) | the system |
+| action | the owner | the crew (the `campaign-supervisor` principals) | the squad (the strategy role) | the system |
 |---|---|---|---|---|
 | write the goal, expected results, constraints, out of scope | yes | no | no | no |
 | reorder the backlog, add or split an item | yes | **only if the owner delegates it** (Q41) | no | no |
 | add a candidate | yes | yes | yes, from a cycle or proposal | yes, from a finding it records |
 | promote or drop a candidate | yes | **only if delegated** (Q41) | no | no |
+| record an assessment (§5.7) | yes | yes | no | no |
 | write an item's status | no | no | no | derived only |
 
 Each action records its author, its reason and, where it came from a conversation, the conversation's link
@@ -224,7 +266,8 @@ revision, so a terminal is never required, and still works.
 ### 8.3 The console
 
 A goals panel, a Continuum plugin (SIP-0069): the goal and expected results, the backlog with each item's derived
-status and its increments, the candidates waiting, and the revision history. Editing writes a revision through the
+status and its increments, the latest assessment of each expected result (§5.7) with its cause and the issue it
+links, the candidates waiting, and the revision history. Editing writes a revision through the
 API, as every console action does.
 
 ### 8.4 A repository export (optional)
@@ -232,16 +275,16 @@ API, as every console action does.
 A generated, read-only rendering of a revision, written to the product's repository only when the owner asks, and
 marked as generated. Nothing reads it back.
 
-### 8.5 Buzz
+### 8.5 The crew (slice 5)
 
-Buzz carries the conversation. **SquadOps itself has no presence in Buzz under this SIP.**
-- **Notices (slice 5a)** are SquadOps's: an event with its console link when a Campaign stops, a candidate is waiting,
-  or an item is accepted, readable through the API. The crew, which is already in Buzz (Nostromo's `buzz-approved`
-  definitions), carries them into the channel. The 2.6 plan's hard-stop notice is the same mechanism, built once.
-- **Decisions (slice 5b)** are taken in Buzz by a person, and reach SquadOps as an API action by an identity §6
-  authorizes, with the thread's link as its `source_ref`. **A bridge in which SquadOps executes what a chat message
-  says is not built here.** The owner's direction of 2026-08-19 is no chat bridge that executes before the ACP-binding
-  SIP, and SIP-0090's presence surfaces (phases 2–4) are deferred to 3.x. So slice 5b waits for them (Q43).
+SquadOps builds nothing for Buzz. The crew is an API client, and slice 5 is what it needs from SquadOps:
+- **read:** the goal set and the derived backlog, for the supervisor and triage principals;
+- **gate evidence:** each plan and increment gate's evidence names the backlog item and carries its expected
+  results, so a reviewer outside SquadOps judges the increment against the goal, not only against its own criteria.
+  The 2026-10-26 finding above is the case it serves;
+- **write:** candidates and assessments (§5.7), each with a `source_ref`.
+
+What the crew does with them, in Buzz and in its harness, is the crew's.
 
 ## 9. Open questions for the owner
 
@@ -249,5 +292,5 @@ Buzz carries the conversation. **SquadOps itself has no presence in Buzz under t
 |---|---|---|
 | Q41 | **the crew's authority over the order:** may the supervisor identity reorder the backlog, split an item, or promote a candidate without the owner? | **promote and split, yes, within a Campaign the owner started, each recorded with its reason; reorder, no.** The order is where the owner steers |
 | Q42 | **`requirements` beside `goals`:** keep both sources for a Campaign? | **keep both.** The sample applications' Campaigns read PRDs, and their yardstick is built on them. A product Campaign names one or the other |
-| Q43 | **Buzz:** may any decision reach SquadOps from Buzz before SIP-0090's presence surface and the ACP binding? | **no.** Notices only (slice 5a), carried by the crew. A person who decides in Buzz still acts in the console or the CLI, with the thread's link as `source_ref`. Slice 5b waits for 3.x, as the 2026-08-19 direction and SIP-0090's deferral read |
+| Q43 | **where the crew's assessment lives:** a SquadOps record (§5.7), or only the crew's signed closing interpretation in Buzz, as today? | **a SquadOps record,** with the signed statement as its `source_ref`. The owner then reads the goal, the backlog and whether each expected result is met in one place, and a framework finding is linked to the result it blocked |
 | Q44 | **one goal set per Project, or several** (one per Campaign theme)? | **one active,** with revisions. Two goal sets on one Project would compete for the same tree |
