@@ -158,7 +158,17 @@ A goal set belongs to one Project. A Project has at most one active goal set. It
 reason, as a Development Configuration revision does (SIP-0112). Ids are stable across revisions, so an item keeps
 its history when it moves.
 
-**Status is derived, never stored on the item.** Read from the control log of every Campaign that named the goal set:
+**Status is derived per Campaign, never stored on the item** (revised on the outside review, 2026-10-30). Each
+Campaign has its own campaign branch, so an item accepted in Campaign A says nothing about Campaign B's tree. An
+item's status in a Campaign is read from that Campaign's control log alone. The goal-set view shows each Campaign's
+column.
+
+**Carried forward, only when verified.** When a Campaign starts on a tree that holds earlier accepted work (an earlier
+campaign branch merged upstream and reconciled into the Project's baseline), an item accepted elsewhere reads
+`accepted (carried)` only if the criterion bundle frozen at its acceptance passes on this Campaign's calibration tree,
+run with the calibration record. Otherwise it is `pending` here.
+
+The statuses, per Campaign:
 
 | status | when |
 |---|---|
@@ -187,10 +197,12 @@ stays as it is.
 
 ### 5.3 What a proposal must do
 
-- **Name one backlog item,** pending or abandoned. Its criteria serve that item's expected results.
+- **Name the next eligible item:** the first item in the backlog's order whose status in this Campaign is `pending`.
+  An `abandoned` item is skipped until the owner, or the crew if delegated, re-queues it by a revision, so one stuck
+  item can't hold the Campaign. Its criteria serve that item's expected results.
 - **One item per increment.** An item too large for one increment is returned for a split. The split is a new
   revision, made by whoever §6 allows.
-- A proposal that names no item, or one that is `accepted` or `removed`, is returned with that reason before a cycle
+- A proposal that names no item, or any item but the next eligible one, is returned with that reason before a cycle
   is spent (a new rail, by SIP-0109 amendment).
 
 ### 5.4 What the squad and the crew find
@@ -208,7 +220,11 @@ increment. Its acceptance is recorded against the item as it stood, and the next
 
 ### 5.5a Splits and revisions while a Campaign runs (the outside review, 2026-10-30)
 
-- **An increment is bound to the revision its launch read.** The control log records that revision with the
+- **A proposal is bound to the revision it was created under,** recorded with it. **At its ruling,** if a later
+  revision exists and the named item is no longer the next eligible one, or its expected results changed, the
+  proposal is returned as `goals_revised`. That is a return with its reason, not a rejection, and it doesn't count
+  toward `max_rejected_proposals_in_row`. An approved proposal keeps its revision.
+- **An increment is bound to the revision its approved proposal carries.** The control log records that revision with the
   proposal. A later revision never changes what a running increment is building or how it is judged.
 - **Splitting an item** writes a revision where the item is `removed` with `split_into: [ids]`, and the new items
   take its position, inherit its `serves` and start `pending`. **An item that is `proposed` or `in_increment` can't
@@ -219,8 +235,10 @@ increment. Its acceptance is recorded against the item as it stood, and the next
   question.
 - **A reorder** changes only which pending item the next proposal takes.
 - **An abandoned item whose revision dropped it** reads `removed`, with its last abandonment kept in its history.
-- **`stop_when: backlog_done`** reads the revision the last launch read, so an edit can't end a Campaign
-  mid-increment.
+- **`stop_when: backlog_done`** is decided at each continuation decision, never mid-increment. The decision reads the
+  goal set's current revision in the same transaction as the decision, records which revision it read, and stops
+  only if every item in that revision is `accepted` or `accepted (carried)` in this Campaign, or `removed`. So work
+  the owner added during an increment is seen at the next decision.
 
 ### 5.6 When the goal is met
 
@@ -241,12 +259,15 @@ An **assessment** is the crew's judgement of one expected result at a point in a
 - its author, the goal-set revision it read, and its `source_ref` (the signed statement or thread it came from).
 
 **Stale and conflicting assessments** (the outside review, 2026-10-30):
-- **Each assessment is pinned** to the goal-set revision it read and to the control-log position it was made at.
-- **The latest assessment** of an expected result is the one at the highest position.
+- **Assessments have their own order.** Each gets an append sequence on the goal set, and may name the assessment it
+  `supersedes`. Its Campaign and control-log position are kept as evidence only, since log positions are per
+  Campaign and can't be compared across Campaigns.
+- **The latest assessment** of an expected result, in a Campaign, is the highest append sequence not superseded.
 - **An assessment reads `stale`** when, after it, an increment serving that expected result was accepted, or a
   revision changed that expected result. The console shows it as stale, never as current.
-- **Two assessments at the same position that disagree** both read `conflicting`, with their authors. Nothing
-  resolves them automatically. The owner's own assessment, or the crew's next one, supersedes both by position.
+- **Two current assessments that disagree** (neither supersedes the other, both after the last acceptance serving
+  that result) both read `conflicting`, with their authors. Nothing resolves them automatically. A new assessment
+  naming both in `supersedes` ends the conflict.
 - **An assessment of an expected result a later revision removed** is kept in history and drops out of the
   current view.
 
@@ -316,7 +337,7 @@ What the crew does with them, in Buzz and in its harness, is the crew's.
 
 | # | question | recommendation |
 |---|---|---|
-| Q41 | **the crew's authority over the order** (to be ruled before slice 1 is built, the 2.6 plan's D15): may the supervisor identity reorder the backlog, split an item, or promote a candidate without the owner? | **promote and split, yes, within a Campaign the owner started, each recorded with its reason; reorder, no.** The order is where the owner steers |
+| Q41 | **the crew's authority over the order** (to be ruled before slice 1 is built, the 2.6 plan's D15): may the supervisor identity reorder the backlog, split an item, or promote a candidate without the owner? | **promote and split, yes, within a Campaign the owner started, each recorded with its reason; reorder, no.** **A promoted candidate is appended at the end of the backlog;** putting it anywhere else is a reorder, the owner's. A split's items take the split item's place, which changes no other item's priority. The order is where the owner steers |
 | Q42 | **`requirements` beside `goals`:** keep both sources for a Campaign? | **keep both.** The sample applications' Campaigns read PRDs, and their yardstick is built on them. A product Campaign names one or the other |
 | Q43 | **where the crew's assessment lives:** a SquadOps record (§5.7), or only the crew's signed closing interpretation in Buzz, as today? | **a SquadOps record,** with the signed statement as its `source_ref`. The owner then reads the goal, the backlog and whether each expected result is met in one place, and a framework finding is linked to the result it blocked |
 | Q44 | **one goal set per Project, or several** (one per Campaign theme)? | **one active,** with revisions. Two goal sets on one Project would compete for the same tree |
