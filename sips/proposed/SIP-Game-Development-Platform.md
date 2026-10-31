@@ -230,8 +230,18 @@ operations:
     result: unity-test-results@1
 ```
 
-- **Registration** is the manifest plus code that implements each declared operation's result reader
-  against a narrow, versioned SPI (Capability-Backed Agents §21: "packs ship code against a narrow SPI").
+- **Each operation maps, in full, to code the plugin supplies** (the second outside review, 2026-10-31):
+
+  | operation + argument schema | → versioned provider | → required worker capability | → result schema and reader |
+  |---|---|---|---|
+  | `run_editmode_tests {source: revision, test_filter?}` | `unity-testrunner@0.1.0`, the plugin's executor for the operation | `unity.editor.batchmode` | `unity-test-results@1`, read by the plugin's reader |
+
+  The **provider** is the plugin's executable side: the engine-specific command construction, staging and
+  output collection for one operation on one worker platform. **Core schedules, enforces policy and runs the
+  provider on the matched worker. It never constructs an engine command itself,** so engine logic can't
+  migrate into core. The provider's version is pinned in the execution evidence beside the reader's.
+- **Registration** is the manifest plus that code (providers and result readers), against a narrow,
+  versioned SPI (Capability-Backed Agents §21: "packs ship code against a narrow SPI").
   A `requires_spi` mismatch refuses the plugin at preflight. It never loads with a warning.
 - **An adapter directory is not the mechanism.** Discovery, the manifest, the SPI and the pin are.
 - **Compatibility is checked at preflight**: the Project's engine version against the plugin's range, and each
@@ -265,8 +275,9 @@ declared and its checks read not executed. This draft records no cell as proven.
   per-test outcomes, so a run that collected nothing reads not executed. *The exact flags and the results
   format are verified on the worker before the reader is written.*
 - **Scene, prefab and asset metadata are preserved:** `.unity`, `.prefab` and `.asset` files, and each asset's
-  `.meta` file with its GUID. A change that drops or regenerates a `.meta` is a failed check, since references
-  break silently.
+  `.meta` file with its GUID (narrowed on the second outside review). **Allowed:** an intentional deletion or
+  move of an asset together with its `.meta`, and a valid new `.meta` for a new asset. **A failed check:** a
+  surviving asset whose `.meta` is missing, or whose GUID changed. References break silently on either.
 - **The worker is chosen by capability.** The Unity editor isn't assumed to run on the Spark: licensing, the
   editor build for the platform, and GPU needs decide it, and an operation is scheduled on a worker that
   declares the editor version and build target it needs.
@@ -317,9 +328,29 @@ composition, and this SIP adds no role.
 - **"The squad can build and improve a playable game"** (the companion): a tailored squad takes a small game
   increment from design to accepted source, with an actual player scenario and independent QA evidence.
 
+**The dependency order** (the second outside review):
+**F1** (the companion's foundation, proven with a fixture provider: registration, binding, invocation and
+the result-provider contract, no worker) → **M0** (real remote-worker execution) → **R-1** (Roblox engine
+integration) → the companion's Roblox pack and composition (F2–F4) → **F5** (the playable-game demonstration)
+→ **U-1** (Unity, the generalization). F1 needs no worker, so neither waits on the other.
+
 **One milestone per engine, each standing alone.** Roblox first. Godot and Unity follow, and Unity is the
 check that the plugin contract generalizes. **No cross-engine benchmark is a prerequisite** for the first
 useful Roblox squad. GameBench-01 on several engines (Appendix A) becomes a later, optional milestone.
+
+## R2.11 The rulings (2026-10-31)
+
+Ruled by the owner's outside reviewer, under the owner's delegation ("I'll have the reviewer answer the open
+questions"):
+- **Q37, where the Game Project Contract lives:** Project metadata by default, with no mandatory onboarding
+  edits (R2.8). An optional copy in the repository declares its relationship to the record, export or
+  authority. The game's goals stay in the Project's goal records.
+- **Q38, the worker registry:** one generic, host-owned registry. Plugins declare requirements, and core
+  matches and schedules workers. Health uses the canonical states, and *busy* is a concurrency lease (R2.2).
+- **Q39, vocabulary:** *Game Project Contract*, *asset register*, *game quality*, *squad delivery* and
+  *game checks* are adopted. The qualified term *plugin manifest* is kept for installable package metadata.
+  The body's older terms (`game_project.yaml` as a requirement, *quality gates*, *game outcome*) are
+  replaced when this SIP is accepted.
 
 ---
 
