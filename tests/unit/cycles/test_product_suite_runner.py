@@ -247,11 +247,23 @@ async def test_a_file_the_product_gives_no_way_to_read_is_not_judged_and_runs_no
     assert sandbox.commands == []
 
 
-async def test_the_workspace_is_released_when_the_run_raises():
+async def test_a_sandbox_failure_leaves_the_agents_result_and_releases_the_workspace():
+    """#2845: the spike's round 2 failed its run on a sandbox refusal inside the judgement. Bug
+    caught: a judgement that can't run failing the run instead of leaving the agent's result."""
     sandbox = _Sandbox(raises=True)
-    with pytest.raises(RuntimeError):
-        await _judge(_failed(_TESTS_PASS_RED), sandbox)
+    assert await _judge(_failed(_TESTS_PASS_RED), sandbox) is None
     assert sandbox.released == ["suite-run_1-t_qa", "suite-run_1-t_qa"]
+
+
+def test_the_suite_workspace_id_is_one_the_sandbox_accepts(tmp_path):
+    """#2845, against the real workspace store's check: the spike's id carried the task id's ``.``
+    (``task-run_4af68354-m001-qa.test``) and the sandbox refused it."""
+    from squadops.execution.product_suite import suite_workspace_prefix
+    from squadops.sandbox.workspace import WorkspaceStore
+
+    workspace_id = suite_workspace_prefix("run_4af68354f83c", "task-run_4af68354-m001-qa.test")
+    WorkspaceStore(tmp_path)._cycle_dir(workspace_id)  # raises WorkspaceStoreError if refused
+    assert workspace_id == "suite-run_4af68354f83c-task-run_4af68354-m001-qa-test"
 
 
 def _envelope(inputs) -> TaskEnvelope:

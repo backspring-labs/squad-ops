@@ -22,6 +22,7 @@ from __future__ import annotations
 
 import dataclasses
 import logging
+import re
 from collections.abc import Callable, Mapping
 from typing import Any
 
@@ -49,8 +50,9 @@ ENVIRONMENT_SENSITIVE = frozenset({"acceptance:module_imports", "acceptance:comm
 
 
 def suite_workspace_prefix(run_id: str, task_id: str) -> str:
-    """The workspace one task's re-judged suite seeds, apart from acceptance's (``acc-``)."""
-    return f"suite-{run_id}-{task_id}"
+    """The workspace one task's re-judged suite seeds, apart from acceptance's (``acc-``), in the
+    sandbox's id alphabet (``[A-Za-z0-9_-]``): a task id carries its task type's ``.`` (#2845)."""
+    return re.sub(r"[^A-Za-z0-9_-]", "-", f"suite-{run_id}-{task_id}")
 
 
 def _failing(row: Any) -> bool:
@@ -291,14 +293,22 @@ async def judge_on_product_runner(
     tests = emitted_tests(inputs, result.outputs or {})
     if configuration is None or not tests:
         return None
-    runs = await run_on_product_runner(
-        sandbox=sandbox,
-        profile=profile,
-        setup=RunnerSetup.of(configuration.commands),
-        tree=suite_run_tree(inputs),
-        tests=tests,
-        workspace_id=suite_workspace_prefix(run_id, task_id),
-    )
+    try:
+        runs = await run_on_product_runner(
+            sandbox=sandbox,
+            profile=profile,
+            setup=RunnerSetup.of(configuration.commands),
+            tree=suite_run_tree(inputs),
+            tests=tests,
+            workspace_id=suite_workspace_prefix(run_id, task_id),
+        )
+    except Exception:
+        # #2845: a judgement that can't run leaves the agent's result for the correction loop, as
+        # every other case it can't judge does. It never fails the run.
+        logger.warning(
+            "product suite %s: not re-judged: the sandbox run failed", task_id, exc_info=True
+        )
+        return None
     logger.info(
         "product suite %s: runs=%s",
         task_id,
