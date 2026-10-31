@@ -1228,3 +1228,12 @@ sips:
   approver: null
   created_at: '2026-10-09T00:00:00Z'
   updated_at: '2026-10-09T14:35:13.751261Z'
+- sip_uid: '17922784453538440'
+  sip_number: null
+  title: Game Development Platform Capability
+  path: sips/proposed/SIP-Game-Development-Platform.md
+  status: proposed
+  author: Framework Committee
+  approver: null
+  created_at: '2026-10-16T00:00:00Z'
+  updated_at: null
