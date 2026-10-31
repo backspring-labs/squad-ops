@@ -388,11 +388,12 @@ def test_parks_in_a_row_stop_at_the_limit_through_the_counters_the_decision_read
         (_ACC, dict(repair_cycles=1), (16, PendingAction.ABANDON_AND_PROPOSE, _GO, None)),
         # The build failed its own checks too, and a repair can fix those: row 12 as before.
         (_REJ, {}, (12, PendingAction.REPAIR, _GO, None)),
-        # Counted as unaccepted at its own decision, as row 13's is (#2294): one before and this
-        # one reach the builders' limit of two.
-        (_ACC, dict(unaccepted_increments=1), (4, CampaignOutcome.FAILURE, None, None)),
+        # #2849 (§24ct): counted toward no unaccepted limit. The 2.6 spike's unattended run ended
+        # at row 4 on one of these and one other; the work built and verified, the criteria were
+        # the fault, and the next proposal is told which.
+        (_ACC, dict(unaccepted_increments=1), (16, PendingAction.ABANDON_AND_PROPOSE, _GO, None)),
     ],
-    ids=["repairs-remain", "repairs-spent", "its-own-checks-failed", "counts-as-unaccepted"],
+    ids=["repairs-remain", "repairs-spent", "its-own-checks-failed", "counts-toward-no-limit"],
 )
 def test_a_rejection_only_for_already_met_criteria_is_abandoned_for_a_new_proposal(
     cycle_verdict, count_overrides, expected

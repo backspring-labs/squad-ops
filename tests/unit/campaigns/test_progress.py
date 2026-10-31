@@ -693,10 +693,10 @@ def test_the_counters_are_read_from_the_campaigns_own_records():
     inheriting the last one's spent repairs), or rejections in a row that an accepted
     proposal should have broken."""
 
-    def decided(ending, action=None):
+    def decided(ending, action=None, row=6):
         entry = MagicMock()
         entry.operation, entry.outcome = ControlOperation.DECIDE, "applied"
-        entry.binding = {"row": 6, "ending": ending, "action": action, "guard": "proceed"}
+        entry.binding = {"row": row, "ending": ending, "action": action, "guard": "proceed"}
         return entry
 
     started = MagicMock()
@@ -705,6 +705,8 @@ def test_the_counters_are_read_from_the_campaigns_own_records():
         started,
         decided("rejected_at_gate"),
         decided("assessed", action="abandon_and_propose"),
+        # #2849 (§24ct): row 16's abandonment (criteria already met) counts toward no limit.
+        decided("assessed", action="abandon_and_propose", row=16),
         decided("rejected_at_gate"),
     ]
     launched = [

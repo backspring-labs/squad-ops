@@ -5635,3 +5635,31 @@ escalated on `no_open_question` alone (`esc_799f0daa8743` and two more), each wi
 **Who ruled it.** The owner's go on 2026-10-31 for the four fixes before an unattended spike ("yes"), #2796 among them.
 The issue's own question (whether a product's plan gate should instead stay the supervisor's by rule) is answered by
 this design. The owner can reverse it.
+
+### 24ct. An already-met criterion beside discriminating ones is kept as a preservation check, and row 16's abandonment counts toward no unaccepted limit (2026-10-31, §8.2, §10 rows 4 and 16, §24bq; #2849; the implementer's change, on the owner's "yes" to it)
+
+**What changed.**
+1. **§8.2's acceptance.** A new criterion whose test passes on the accepted tree (`no_baseline_failure`) no longer
+   rejects an increment when another new criterion discriminates **and** its own test passed on the candidate too.
+   It is kept as a **preservation check**: frozen like the others, so the behaviour it describes is guarded from
+   then on, and reported in the evaluation's `preserved`. When no new criterion discriminates, nothing is kept: the
+   increment is rejected, and row 16 tells the next proposal which criteria were already met (§24bq, unchanged).
+   An already-met criterion that **fails** on the candidate is still unmet. That is a regression, not a
+   preservation check.
+2. **Row 4's count.** Row 16's abandonment no longer counts toward `max_unaccepted_increments`, at its own decision
+   or from the log. The work built and verified, and the criteria were the fault. `max_cycles`, the token budget
+   and the elapsed limit still bound a squad that keeps proposing met criteria. Rows 13, 15 and 18 count as
+   before.
+
+**The evidence.** The 2.6 plan's §0 spike, unattended run `cmp_cf75c37569da` on `prj-shelfnote`, 2026-10-31,
+ended `failure` at row 4 with 4 of 6 items accepted. One count was item 1's first proposal (row 16). The other was
+item 5, whose T17–T20 discriminated while T21 read `no_baseline_failure`. Tests: `test_acceptance.py`'s three
+cases (kept beside a discriminating one, broken on the candidate, none discriminates), `test_continuation.py`'s
+row 16 now counting toward no limit, and `test_progress.py`'s counter skipping a row-16 abandonment.
+
+**Who ruled it.** The owner's "yes" (2026-10-31) to the supervisor's recommendation: drop or keep a
+non-discriminating criterion rather than reject an increment whose others discriminate, and don't count an
+already-met abandonment.
+
+**Not built here:** the earlier check, each criterion's test run against the head as soon as it exists (the 2.6
+plan's D9). It would save the cycle row 16 spends.
