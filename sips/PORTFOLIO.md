@@ -83,7 +83,7 @@ Class: **live** (wanted, not built), **partly absorbed** (some built or owned el
 | Verification Yield | partly absorbed | ledger 2026-10-04: #1960 (2.1), #1965 (crew, 2.1 window), #1966 (the A/B in 2.4.0, the 2.4 plan's D6) | done 2026-10-04 |
 | Test-First Verification | partly absorbed | greenfield gate #1978 (2.6) | ruled |
 | Project Goals and Backlog (`SIP-Project-Goals-Backlog`; the owner's direction, drafted 2026-10-30) | live | proposed as 2.6.0's headline by the 2.6 plan's draft (PR #2832); unplaced until that plan is adopted and this SIP accepted | Q41–Q44 |
-| Game Development Capability Packs and Squad Composition (`SIP-Game-Capability-Packs`; the owner's outside review, filed 2026-10-31) | live | unplaced; its foundation (F1) waits for Q45 | Q45–Q48 |
+| Game Development Capability Packs and Squad Composition (`SIP-Game-Capability-Packs`; the owner's outside review, filed 2026-10-31) | live | unplaced; Q45 ruled (F1 may precede 3.x), placement is the owner's | Q45–Q48 ruled |
 | Campaign Self-Improvement and Test Bay (`SIP-Campaign-Self-Improvement-and-Test-Bay-Requirements`) | partly absorbed | its own 10-01 note supersedes its targets | Q6 |
 | Capability-Backed Agents | **deferred to 3.x**; premise to correct (#400/#401) | 3.x | ruled |
 | Agent Embodiment Runtime | **deferred to 3.x** | 3.x | ruled |
@@ -222,9 +222,9 @@ check found three questions, each with one recommendation.
 | Q38 | the draft's remote worker registry (FR-05: identity, capabilities, health) beside the Edge Deployment Profile's `EdgeNodeRegistryPort` (deferred to 3.x, Q8), and cluster 12's "Edge owns remote nodes if kept" | one registry of remote execution resources, the draft's; Edge, if revived at 3.0, registers its nodes there. Worker health in the canonical status vocabulary (`online`, `degraded`, `recovering`, `offline`; the precedent the 2026-10-04 ruling set for Edge), with *busy* a lease on the worker's concurrency | the draft's intake check; cluster 12 |
 | Q39 | the draft's vocabulary: two *manifests* (SIP-0103 owns the word; Q32's precedent), *game outcome* and *squad outcome* (cluster 2; Q3 keeps SIP-0108's *outcome*), and *quality gates* (a Cycle's gate is a decided workload gate) | in its first revision: the *Game Project Contract* (its own §5.2 name) and an *asset register*; *game quality* and *squad delivery*, read through SIP-0108's scorecard dimensions; the *game checks* | the draft's intake check |
 
-### Open 2026-10-31: Game Development Capability Packs and Squad Composition
+### Ruled 2026-10-31: Game Development Capability Packs and Squad Composition
 
-Raised by the draft's intake. Q45 is a conflict: both documents name it until the owner rules.
+Ruled the same day by the owner's outside reviewer, under the owner's delegation ("I'll have the reviewer answer the open questions"), as recommended below with the refinements recorded in the SIP's §9: Q45's exception places nothing in a release; Q46's shared loader runs no engine operation in the console; Q47's replay tests use the intended runtime models; Q48's designer needs capability-level routing.
 
 | # | decision | recommendation | recorded in |
 |---|---|---|---|

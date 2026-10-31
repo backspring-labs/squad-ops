@@ -50,7 +50,7 @@ with its boundary (portfolio cluster 17, Q45–Q48):
 
 | part | status | where |
 |---|---|---|
-| F1: the foundation (§4): discovery, versioned contracts, explicit bindings, scoped context loading, mediated tools, native runner and result providers, preflight at creation and at the plan gate, the Campaign snapshot | **unplaced**, deliberately: waits for Q45 | — |
+| F1: the foundation (§4): discovery, versioned contracts, explicit bindings, scoped context loading, mediated tools, native runner and result providers, preflight at creation and at the plan gate, the Campaign snapshot | **unplaced**, deliberately: Q45 ruled that it may precede 3.x; placement is the owner's | — |
 | F2: the reusable game-development pack (§5's capabilities, engine-neutral) | **unplaced**, deliberately | — |
 | F3: the Roblox pack (Roblox-specific capabilities and skills, on the game SIP's R-1 plugin) | **unplaced**, deliberately | — |
 | F4: the Roblox Game Dev Squad composition, and squad profiles that reference it (§3, §6) | **unplaced**, deliberately | — |
@@ -69,10 +69,10 @@ place:
 
 | part | what it is | where it lives |
 |---|---|---|
-| roster and models | which identities, which roles, which models | the squad profile (existing), extended with optional specialists |
+| roster and models | which identities, which roles, which models | the squad profile (existing), which references the composition |
 | reusable game-development capabilities | what each role does on any game | the **game-development pack** |
 | engine-specific capabilities | what each role does on a Roblox game | the **Roblox pack** (and later Unity's, Godot's) |
-| engine and tool providers, with permissions | the operations a role may invoke, on which workers | the game SIP's engine plugin; the composition grants the permissions |
+| engine and tool providers, with permissions | the operations a role may invoke, on which workers | the game SIP's engine plugin; the composition requests, bounded by existing authority (§3a) |
 | the game itself | the brief, goals, source, assets and acceptance criteria | the **Project** (SIP-0112, Project Goals and Backlog) |
 
 A selectable **Roblox Game Dev Squad** is a named, versioned composition of those parts. A pack holds
@@ -91,22 +91,49 @@ of it a game squad needs, so a first Roblox squad doesn't wait for the whole umb
 
 ## 3. The composition
 
+**One direction of ownership** (the second outside review): **the squad profile supplies identities and
+models, and references a composition. The composition supplies capability requirements and bindings.** A
+composition never imports a profile.
+
 ```yaml
+# config/squad-profiles.yaml (existing): identities and models, and the composition it uses
+roblox-game-dev-squad:
+  agents: [lead, strat, dev, qa, builder, data]   # with their models, as today
+  composition: roblox-game-dev@1
+
+# the composition: what the roles can do, and nothing about who they are
 composition: roblox-game-dev
 version: 1
-roster:
-  from_profile: full            # the existing roles and their models
-  optional_specialists: []      # e.g. [game-designer]: a roster choice, never a pack's
-packs:
-  - game-dev@1                  # reusable game capabilities
-  - roblox@1                    # Roblox-specific capabilities and skills
-providers:
-  - squadops-engine-roblox@0.x  # the game SIP's plugin
-permissions:                    # which role may invoke which operation (§5)
+packs: [game-dev@1, roblox@1]
+providers: [squadops-engine-roblox@0.1]
+bindings:                       # capability → role; each named, none implied
+  strategy.design_increment:   {role: strat, from: game-dev@1}
+  development.implement:       {role: dev,   from: game-dev@1, augmented_by: roblox@1}
+  qa.play_scenario:            {role: qa,    from: roblox@1}
+  builder.build_place:         {role: builder, from: roblox@1}
+requested_operations:           # what each role asks to invoke (§3a bounds it)
   qa:      [run_studio_script, play_scenario, capture]
   builder: [build_place]
   dev:     [run_studio_script]
 ```
+
+- **Augment or replace, declared per binding, never by load order.** `augmented_by` adds an engine pack's
+  skills and checks to a generic capability. A binding naming only an engine pack replaces it. Two packs
+  claiming one capability without a declared relationship are refused at preflight.
+- **A specialist is routed by capability, not by role.** Today a profile may not enable two agents for one
+  role (`src/squadops/cycles/profile_utils.py`). An optional designer is therefore bound to named capabilities
+  (`strategy.design_increment` with `{agent: designer}`), with a declared handoff to strategy. That routing
+  is part of F1 (§4), and until it exists, the first demonstration uses strategy alone (Q48).
+
+### 3a. The authority ceiling
+
+A composition **requests** operations, and never authorizes beyond what already exists. **A role's effective
+permission is the intersection** of what its capability requests, what the composition grants, and the
+existing authority: the approved roster and runtime, and the Project's policy (its publishing governance,
+SIP-0112). Installing a pack or writing a composition can't, on its own, authorize publishing, unrestricted
+scripts or source changes outside the change request's footprint. **The lead produces acceptance and
+publication recommendations.** The recorded ruling and the authorization stay with the existing controls: the
+Campaign's gates and the Project's publishing approval.
 
 - **Resolved at Campaign creation** from declared configuration, never inferred from the objective
   (Capability-Backed Agents §27b). The resolved composition (every pack, plugin and skill version) is pinned
@@ -153,7 +180,7 @@ Every capability declares the same eight things. The table gives each role's; th
 | **QA** | logic tests, integration tests, actual gameplay tests through a play scenario; device and multiplayer checks where applicable; whether the evidence suffices | the tests, the scenario runs and their evidence, and a sufficiency statement naming what was not executed | executed results read per test; a gameplay claim only from a play session | lead (acceptance), dev (defects) |
 | **builder** | asset import, compilation, assembly, packaging; a reproducible runnable artifact | the place or player build, its build report and hashes | the plugin's build operation; the artifact reproduces from the same revision | QA (the build under test) |
 | **data** | playtest telemetry, performance, balance and delivery measurements | a measurement report on the increment | measurements read from executed runs, never estimated | lead, strategy (the next increment) |
-| **lead** | feasibility, scope, handoff review, acceptance, repair coordination, publication decisions | rulings, with reasons | the gate's existing rules | the Campaign |
+| **lead** | feasibility, scope, handoff review, repair coordination, and acceptance and publication **recommendations** | recommendations, with reasons; the rulings stay with the existing controls (§3a) | the gate's existing rules | the Campaign |
 
 **An optional specialist** (a game designer, for example) is a roster choice in the composition. It takes the
 strategy role's design capability, and the strategy role keeps scope and goals. No pack names an identity.
@@ -172,11 +199,26 @@ content. A request profile (SIP-0114's workflow) is chosen independently. A Robl
 3. **build:** builder's place artifact;
 4. **an actual player scenario:** QA drives a play session on the worker and reads the criterion's assertions
    from it;
-5. **a defect and its repair:** a scenario that fails, its defect routed, the repair, the scenario passing;
+5. **a defect and its repair, on the same verifier:** the scenario fails as an executed behavioural failure,
+   its defect is routed, the repair lands, and **the same scenario, unchanged, passes**;
 6. **accepted source:** the Campaign's gate and the product's runner accept it, onto the campaign branch.
 
+**What each run records** (the second outside review): the approved scenario's and assertions' digest, the
+tested source revision and the build's identity. A pass after the repair counts only if the scenario digest
+is the one that failed. A verifier changed to pass is a new verifier, not a repair.
+
 **Independent QA evidence:** the play session's evidence is produced by QA's operation, on the worker, and
-read by the plugin's result reader. Never by the role that wrote the code.
+read by the plugin's result reader. Never by the role that wrote the code. **QA execution is not held-out
+evaluation.** The public gameplay scenarios reach QA. A private evaluator scenario and its expectations
+(SIP-0113's held-out suite) stay isolated from every role and are read only by the evaluator.
+
+**The second increment re-runs the first's frozen checks** (SIP-0109's accumulated acceptance), so "without
+breaking the first" is executed, not assumed.
+
+**The dependency order:** F1, proven with a **fixture provider** (registration, binding, invocation and the
+result-provider contract, with no worker), then the game SIP's M0 (real remote-worker execution), then its
+R-1 (Roblox integration), then F2–F4 (the packs and the composition), then F5 (this demonstration), then F6
+(Unity).
 
 **Then Unity (F6),** as the next provider, to show the pack and plugin contracts hold for an engine with a
 different test model.
@@ -186,15 +228,18 @@ different test model.
 | statement | whose | verified by |
 |---|---|---|
 | **engine integration works** | the game SIP (R2.10) | per engine: the plugin loads and pins, operations run on a matched worker, results read per test, unexecuted modes read not executed, editor changes return as revisions |
-| **the squad can build and improve a playable game** | this SIP | §7's demonstration read live: each handoff's artifact present, the player scenario executed, a defect repaired, the source accepted. Then a second increment on the same game, accepted without breaking the first |
+| **the squad can build and improve a playable game** | this SIP | §7's demonstration read live: each handoff's artifact present, the player scenario executed, a defect repaired with the same verifier passing, the source accepted. Then a second increment on the same game, accepted with the first increment's frozen checks re-run and passing |
 
 Neither implies the other. An engine can integrate cleanly while the squad can't yet build a game on it.
 
-## 9. Open questions for the owner
+## 9. The rulings (2026-10-31)
 
-| # | question | recommendation |
+Ruled by the owner's outside reviewer, under the owner's delegation ("I'll have the reviewer answer the open
+questions"):
+
+| # | question | ruled |
 |---|---|---|
-| Q45 | **Capability-Backed Agents' 3.x deferral:** may this SIP's foundation (§4, F1) land before 3.x? | **yes, F1 only,** recorded in Capability-Backed Agents as a numbered amendment. The umbrella's rest stays in 3.x |
-| Q46 | **Switchboard as the loader** for packs and engine plugins, as for the console's plugins | **yes:** one plugin mechanism, per Capability-Backed Agents §21 |
-| Q47 | **who authors a pack's skills** | **a frontier model drafts, the owner approves, and each is replay-tested before release,** as lessons are (the owner's earlier ruling on lesson authorship) |
-| Q48 | **an optional specialist identity** (a game designer): a new roster identity, or a role variant | **a new roster identity, optional,** bound to the strategy role's design capability, with its own memory and accountability (Capability-Backed Agents' identity layer) |
+| Q45 | Capability-Backed Agents' 3.x deferral: may F1 land first? | **yes, F1 only,** through an explicit recorded amendment in Capability-Backed Agents. Duties, memory authority, console management and the rest of the umbrella stay deferred. **This scope exception doesn't place the work in a release** |
+| Q46 | Switchboard as the loader | **yes:** its discovery and loading, with SquadOps-owned contracts and the runtime SPI. Sharing the loader doesn't mean engine operations run inside the console |
+| Q47 | who authors a pack's skills | **a frontier model drafts, the owner approves, and each is replay-tested before its first release:** on representative tasks, on prerequisite failures, and for honest evidence, with the intended runtime models, plus engine-backed tests where they apply. Model-written prose alone is not release evidence |
+| Q48 | an optional game-designer specialist | **an optional, separate roster identity, with no new mandatory framework role.** The first demonstration uses strategy. A designer is enabled only with explicit capability-level routing and a design-to-strategy handoff (§3), and strategy keeps scope and the proposal |
