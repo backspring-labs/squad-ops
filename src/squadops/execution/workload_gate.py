@@ -619,7 +619,7 @@ class WorkloadGate:
 
     async def _ruled_change_request(self, cycle: Cycle) -> bool:
         """#2796: whether ``cycle`` is a repository-backed increment whose approved change request
-        is on record, the design its plan gate reads in place of a manifest (SIP-0109 §24cq)."""
+        is on record, the design its plan gate reads in place of a manifest (SIP-0109 §24cs)."""
         basis = increment_basis(cycle.resolved_config())
         if basis is None or basis.has_manifest:
             return False

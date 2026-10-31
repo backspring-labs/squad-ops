@@ -111,7 +111,7 @@ def plan_review_tier(
     repository-backed increment, ``placed`` are its criterion test files the framework placed,
     the only ones of a product's tests that are the framework's (SIP-0109 §24cj).
 
-    ``design_is_the_change_request`` (#2796, SIP-0109 §24cq): a repository-backed increment has no
+    ``design_is_the_change_request`` (#2796, SIP-0109 §24cs): a repository-backed increment has no
     interface manifest; its design is its approved change request, which the supervisor ruled at
     the increment gate, and which carries no open question. The scope and the framing are still
     read, so a plan that strays from that request still escalates."""
