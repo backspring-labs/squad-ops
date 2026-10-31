@@ -100,7 +100,7 @@ from squadops.execution.correction_ids import correction_task_id
 from squadops.execution.correction_repair import OWNERSHIP_DROPPED_KEY, CorrectionRepair
 from squadops.execution.execution_errors import _ExecutionError
 from squadops.stacks.scaffold import error_seam_instructions, model_surface_instructions
-from squadops.tasks.models import TaskEnvelope, TaskResultStatus
+from squadops.tasks.models import TaskEnvelope, TaskResult, TaskResultStatus
 from squadops.tasks.task_types import TaskType
 
 if TYPE_CHECKING:
@@ -415,7 +415,11 @@ class CorrectionRunner:
         store_artifact: Callable[..., Awaitable[ArtifactRef]],
         failure_recall: FailurePatternRecallPort,
         correction_repair: CorrectionRepair | None = None,
+        judge_suite: Callable[..., Awaitable[TaskResult | None]] | None = None,
     ) -> None:
+        # #2818: a product's repaired suite is judged on the product's runner too, as the
+        # ordinary outcome is (``product_suite``); the executor hands in its judgement.
+        self._judge_suite = judge_suite
         self._cycle_registry = cycle_registry
         self._artifact_vault = artifact_vault
         self._event_bus = event_bus
@@ -1805,7 +1809,7 @@ class CorrectionRunner:
             metadata={"role": "qa", "retest": True},
         )
 
-        return await self._dispatch_protocol_step(
+        result = await self._dispatch_protocol_step(
             retest_envelope,
             run_id,
             cycle,
@@ -1817,3 +1821,8 @@ class CorrectionRunner:
             plan_delta_refs=plan_delta_refs,
             budget_guard=budget_guard,
         )
+        if result is not None and self._judge_suite is not None:
+            judged = await self._judge_suite(result, retest_envelope, cycle, run_id)
+            if judged is not None:
+                return judged
+        return result
