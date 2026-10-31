@@ -1808,7 +1808,7 @@ checks:
       print(repair_not_applied_in_round([entry], 1), disposition_for(Vocabulary.FAILURE_CLASSIFICATION, "slot_subject_dropped").attribution.value)
     expect: "True producer_output_failure"
   - id: "2637"
-    what: the sandbox's scenario runner names the evaluator's -7 and refuses a scored page without the finer reading, rather than reading it as zero (SIP-0113 §10y)
+    what: the sandbox's scenario runner names the evaluator's tag (-8 since GHSA-g3hv-75wg-m249's minimatch pin) and refuses a scored page without -7's finer reading, rather than reading it as zero (SIP-0113 §10y)
     container: squadops-sandbox-service
     code: |
       from squadops.sandbox.environment import EVALUATOR_IMAGE
@@ -1821,7 +1821,7 @@ checks:
       except ValueError as e:
           refused = "refused" if "-7" in str(e) else f"refused otherwise: {e}"
       print(EVALUATOR_IMAGE.rsplit("-", 1)[-1], refused)
-    expect: "7 refused"
+    expect: "8 refused"
   - id: "2637-runtime"
     what: the runtime compares failing ids as introduced and resolved, and the proposal is shown only the measures it was shown before -7 (SIP-0113 §10y)
     container: squadops-runtime-api
