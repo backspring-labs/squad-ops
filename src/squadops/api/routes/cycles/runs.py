@@ -18,7 +18,8 @@ from squadops.api.cycle_schemas import (
     RunResumeRequest,
     TaskInstructionDTO,
 )
-from squadops.api.middleware.auth import require_scopes
+from squadops.api.errors import http_error
+from squadops.api.middleware.auth import holds_scopes, require_scopes
 from squadops.api.paging import Page, page
 from squadops.api.routes.cycles.mapping import compute_workload_progress, run_to_response
 from squadops.api.runtime.deps import (
@@ -54,6 +55,7 @@ from squadops.cycles.models import (
     validate_workload_type,
 )
 from squadops.events.types import EventType
+from squadops.memory.observations import PLAN_REVIEW_GATE
 from squadops.memory.pinning import cycle_binding
 from squadops.memory.records import RecordRefused, Source, SourceKind, TaskTarget
 from squadops.memory.reference_binding import bound_for_cycle
@@ -229,9 +231,32 @@ async def cancel_run(
 async def _gate_scopes(request: Request, gate_name: str) -> Identity | None:
     """The increment gate is the campaign supervisor's (``campaigns:supervise``); every other
     gate is a cycle write. One route, so a campaign's ruling goes through the existing gate path
-    (SIP-0109 §9.2) and an operator's cycle writes never reach it."""
-    scope = Scope.CAMPAIGNS_SUPERVISE if gate_name == INCREMENT_RULING_GATE else Scope.CYCLES_WRITE
-    return await require_scopes(scope)(request)
+    (SIP-0109 §9.2) and an operator's cycle writes never reach it.
+
+    #2837: the plan gate is a cycle write, or the campaign supervisor's on a cycle a campaign
+    launched, as the runbook says the supervisor answers plan gates. Which cycle it is is read in
+    the route (``_supervisor_answers_a_campaign_plan_gate``), since the scope check can't see it."""
+    if gate_name == INCREMENT_RULING_GATE:
+        return await require_scopes(Scope.CAMPAIGNS_SUPERVISE)(request)
+    if gate_name == PLAN_REVIEW_GATE and not holds_scopes(request, Scope.CYCLES_WRITE):
+        return await require_scopes(Scope.CAMPAIGNS_SUPERVISE)(request)
+    return await require_scopes(Scope.CYCLES_WRITE)(request)
+
+
+async def _supervisor_answers_a_campaign_plan_gate(
+    request: Request, registry, cycle_id: str
+) -> None:
+    """#2837: a caller ruling the plan gate on ``campaigns:supervise`` alone may do so only on a
+    cycle a campaign launched. An operator's own cycle stays a cycle write."""
+    if holds_scopes(request, Scope.CYCLES_WRITE):
+        return
+    cycle = await registry.get_cycle(cycle_id)
+    if getattr(cycle, "campaign_id", None) is None:
+        raise http_error(
+            403,
+            "FORBIDDEN",
+            "the plan gate of a cycle no campaign launched is a cycle write (cycles:write)",
+        )
 
 
 #: The decisions a ruling's task instructions may go with: an approval launches the work they direct.
@@ -389,6 +414,8 @@ async def gate_decision(
 ) -> RunResponse:
 
     registry = get_cycle_registry(request)
+    if gate_name == PLAN_REVIEW_GATE:
+        await _supervisor_answers_a_campaign_plan_gate(request, registry, cycle_id)
 
     if gate_name == INCREMENT_RULING_GATE:
         if not await _rule_increment(request, registry, cycle_id, run_id, body, identity):
