@@ -28,6 +28,8 @@ from typing import Any
 from squadops.campaigns.runner_acceptance import RunnerSetup, single_file_argv
 from squadops.capabilities.handlers.source_repository import source_backed
 from squadops.capabilities.qa_run_tree import suite_run_tree
+from squadops.cycles.verification_integrity import ResultStatus
+from squadops.cycles.verification_normalize import row_is_blocking_failure
 from squadops.tasks.models import TaskResult, TaskResultStatus
 from squadops.tasks.task_types import authors_qa_suite
 
@@ -39,6 +41,11 @@ PRODUCT_RUNNER = "product_runner"
 PRODUCT_SUITE_KEY = "product_runner_suite"
 _TESTS_PASS = "tests_pass"
 _SUCCESS = "success"
+#: #2838: typed checks the qa agent executes in its own image, which fail there for the same reason
+#: the suite does when the product's dependencies are missing (2.5.1 spike, ``cmp_76242b27df5b``:
+#: ``acceptance:module_imports`` failed beside ``tests_pass`` on a module the image lacked). A pass on
+#: the product's runner doesn't credit them; it records them as not executed in a valid environment.
+ENVIRONMENT_SENSITIVE = frozenset({"acceptance:module_imports", "acceptance:command_exit_zero"})
 
 
 def suite_workspace_prefix(run_id: str, task_id: str) -> str:
@@ -46,17 +53,39 @@ def suite_workspace_prefix(run_id: str, task_id: str) -> str:
     return f"suite-{run_id}-{task_id}"
 
 
-def rejudgeable(task_type: str, inputs: Mapping[str, Any], result: TaskResult) -> bool:
-    """Whether a failed result is a product's ``qa.test`` whose only failing check is
-    ``tests_pass``: the one case the product's runner can decide differently. Any other failing
-    check (a probe, an authenticity check, a missing file) is the agent's to report, and stands."""
-    if result.status == TaskResultStatus.SUCCEEDED or not authors_qa_suite(task_type):
-        return False
+def _failing(row: Any) -> bool:
+    """A row the loop would act on: the system's one predicate, and never a skipped row, which is
+    not executed rather than failed (SIP-0096), whatever its ``passed`` reads (#2838)."""
+    return (
+        isinstance(row, Mapping)
+        and row.get("status") != ResultStatus.SKIPPED
+        and row_is_blocking_failure(row)
+    )
+
+
+def why_not_rejudged(task_type: str, inputs: Mapping[str, Any], result: TaskResult) -> str | None:
+    """Why the product's runner can't decide this result, or ``None`` when it can: a product's
+    ``qa.test`` whose ``tests_pass`` failed, beside nothing but checks that fail in the qa image for
+    the same reason (``ENVIRONMENT_SENSITIVE``). Any other failing check (a probe, an authenticity
+    check, a missing file) is the agent's to report, and stands."""
+    if result.status == TaskResultStatus.SUCCEEDED:
+        return "the task succeeded"
+    if not authors_qa_suite(task_type):
+        return f"{task_type} doesn't author the qa suite"
     if not source_backed(inputs):
-        return False
+        return "a sample application's run"
     checks = ((result.outputs or {}).get("validation_result") or {}).get("checks") or []
-    failing = [c for c in checks if isinstance(c, Mapping) and not c.get("passed")]
-    return len(failing) == 1 and failing[0].get("check") == _TESTS_PASS
+    failing = [str(c.get("check")) for c in checks if _failing(c)]
+    if _TESTS_PASS not in failing:
+        return f"tests_pass didn't fail (failing: {failing})"
+    others = [c for c in failing if c != _TESTS_PASS and c not in ENVIRONMENT_SENSITIVE]
+    if others:
+        return f"other checks failed: {others}"
+    return None
+
+
+def rejudgeable(task_type: str, inputs: Mapping[str, Any], result: TaskResult) -> bool:
+    return why_not_rejudged(task_type, inputs, result) is None
 
 
 def emitted_tests(inputs: Mapping[str, Any], outputs: Mapping[str, Any]) -> dict[str, str]:
@@ -179,7 +208,14 @@ def judged_passed(result: TaskResult, runs: list[SuiteRun]) -> TaskResult:
     vr = dict(outputs.get("validation_result") or {})
     checks = []
     for row in vr.get("checks") or []:
-        if isinstance(row, Mapping) and row.get("check") == _TESTS_PASS:
+        if isinstance(row, Mapping) and row.get("check") in ENVIRONMENT_SENSITIVE and _failing(row):
+            row = {
+                "check": row["check"],
+                "status": ResultStatus.SKIPPED,
+                "reason": "agent_environment: the suite passed on the product's runner",
+                "agent_reading": dict(row),
+            }
+        elif isinstance(row, Mapping) and row.get("check") == _TESTS_PASS:
             row = {
                 "check": _TESTS_PASS,
                 "passed": True,
@@ -238,7 +274,12 @@ async def judge_on_product_runner(
     """The result judged passed on the product's runner, or ``None`` when the agent's result
     stands: not a product's ``qa.test`` failing only ``tests_pass``, no sandbox, no profile or
     configuration at the pin, a test no runner holds, or a run that didn't pass."""
-    if sandbox is None or not rejudgeable(task_type, inputs, result):
+    if result.status == TaskResultStatus.SUCCEEDED or not authors_qa_suite(task_type):
+        return None
+    why = "no sandbox" if sandbox is None else why_not_rejudged(task_type, inputs, result)
+    if why is not None:
+        # #2838: a product's failed suite the runner didn't re-judge says why, in the log.
+        logger.info("product suite %s: not re-judged: %s", task_id, why)
         return None
     context = getattr(cycle, "source_context", None)
     profile = await read_profile(cycle)

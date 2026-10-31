@@ -66,6 +66,9 @@ def _failed(*rows: dict[str, Any], tests=("tests/test_t1.py",)) -> TaskResult:
 
 _TESTS_PASS_RED = {"check": "tests_pass", "passed": False, "exit_code": 1, "runner": "pytest"}
 _OTHER_GREEN = {"check": "no_stub_fallback_tests", "passed": True}
+_AUTHENTICITY_RED = {"check": "no_stub_fallback_tests", "passed": False}
+_SKIPPED_TYPED = {"check": "acceptance:function_defined", "status": "skipped", "passed": False}
+_IMPORTS_RED = {"check": "acceptance:module_imports", "status": "failed", "passed": False}
 
 
 def _reading(passed: int, collected: int) -> dict[str, Any]:
@@ -165,7 +168,10 @@ async def _judge(result, sandbox, *, profile=None, task_type="qa.test", inputs=_
     [
         ("qa.test", _INPUTS, (_TESTS_PASS_RED, _OTHER_GREEN), True),
         # Another failing check is the agent's to report: the product's runner can't clear it.
-        ("qa.test", _INPUTS, (_TESTS_PASS_RED, {"check": "no_stub_fallback_tests"}), False),
+        ("qa.test", _INPUTS, (_TESTS_PASS_RED, _AUTHENTICITY_RED), False),
+        # #2838, the spike's shape: a skipped typed row reads ``passed: False`` and isn't a failure,
+        # and the import check fails in the qa image for the suite's own reason.
+        ("qa.test", _INPUTS, (_TESTS_PASS_RED, _SKIPPED_TYPED, _IMPORTS_RED), True),
         # A sample application's suite already runs where its stack's toolchain lives.
         ("qa.test", {"artifact_contents": {}}, (_TESTS_PASS_RED,), False),
         ("development.develop", _INPUTS, (_TESTS_PASS_RED,), False),
@@ -351,3 +357,27 @@ async def test_a_repaired_suites_retest_is_judged_on_the_products_runner():
     assert result.status == TaskResultStatus.SUCCEEDED
     assert result.outputs["test_result"]["tests_passed"] is True
     assert executor._sandbox.commands[0]["command"] == ("pytest", "-q", "tests/test_t1.py")
+
+
+async def test_the_import_check_that_failed_in_the_qa_image_is_recorded_not_executed_not_passed():
+    """#2838: the spike's ``acceptance:module_imports`` failed in the qa image beside ``tests_pass``.
+    A pass on the product's runner neither credits it nor leaves it failing: it reads not executed
+    in a valid environment, with the agent's row kept."""
+    result = _failed(_TESTS_PASS_RED, _SKIPPED_TYPED, _IMPORTS_RED)
+    judged = await _judge(result, _Sandbox())
+
+    assert judged is not None and judged.status == TaskResultStatus.SUCCEEDED
+    rows = {r["check"]: r for r in judged.outputs["validation_result"]["checks"]}
+    assert rows["acceptance:module_imports"]["status"] == "skipped"
+    assert "passed" not in rows["acceptance:module_imports"]
+    assert rows["acceptance:module_imports"]["agent_reading"] == _IMPORTS_RED
+    statuses = {r.check_id: r.status for r in normalize_task_checks(judged.outputs)}
+    assert statuses["tests_pass"] == "passed"
+    assert statuses.get("acceptance:module_imports") != "failed"
+
+
+async def test_a_product_suite_not_rejudged_says_why_in_the_log(caplog):
+    """#2838: the spike's miss left no line saying why; now the reason is logged."""
+    caplog.set_level("INFO", logger="squadops.execution.product_suite")
+    assert await _judge(_failed(_TESTS_PASS_RED, _AUTHENTICITY_RED), _Sandbox()) is None
+    assert "not re-judged: other checks failed: ['no_stub_fallback_tests']" in caplog.text
