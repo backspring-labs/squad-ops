@@ -2,6 +2,7 @@
 sip_uid: '17922784453538440'
 sip_number: null
 title: "Game Development Platform Capability"
+revision: 2
 status: "proposed"
 author: "Framework Committee"
 approver: null
@@ -10,16 +11,17 @@ updated_at: "2026-10-16T00:00:00Z"
 original_filename: "SIP-Game-Development-Platform.md"
 ---
 # SIP-XXX — Game Development Platform Capability
-## Godot, Roblox, and Remote Tool Execution
+## Engine integration plugins (Roblox, Godot, Unity) and Remote Tool Execution
 
 **Status:** Proposed (the owner's draft, filed 2026-10-17)  
 **Target Version:** TBD  
 **Author:** Framework Committee  
 **Roles Impacted:** Lead, Strategy, Dev, QA, Data  
 **Date:** 2026-10-16  
-**Document Revision:** 1 — the owner's draft, filed as written, with the intake check and delivery ledger below  
+**Document Revision:** 2 (2026-10-31) — the owner's outside review applied: engine integration as versioned plugins, Unity as a third provider, the remote-execution contract apart from game operations, per-adapter verification modes, editor changes through the revision boundary, greenfield blueprints apart from existing repositories, one delivery milestone per engine, and tailored squads (§R2, which governs where the body below differs). Revision 1: the owner's draft, filed as written  
 **Related SIPs:** SIP-0112 (Project Lifecycle Management, accepted 2026-10-17: its FR-17 is what this SIP builds on); SIP-0070 (Pulse Checks); SIP-0071 (Builder Role); SIP-0072 (stack development profiles); SIP-0086 (Build Convergence Loop); SIP-0096 (Verification Evidence Integrity); SIP-0103 (owns the word *manifest*); SIP-0105 (stack blueprints); SIP-0108 (Cycle Evaluation Scorecard); SIP-0113 (Outcome Evaluation, accepted 2026-10-17); Edge Deployment Profile (proposed, deferred to 3.x)  
-**Scope:** SquadOps framework capability; no new agent role required
+**Companion:** Game Development Capability Packs and Squad Composition (`sips/proposed/SIP-Game-Capability-Packs.md`): what a game squad is composed of. This SIP is how engines are integrated; that one is how a squad uses them.  
+**Scope:** SquadOps framework capability; no new agent role required; tailored squad configurations of the existing roles are supported (§R2.9)
 
 ## Intake check
 
@@ -106,12 +108,21 @@ in the portfolio's §4).
     scorecard dimensions.
   - *gate*: FR-12's QG-1 to QG-9 are checks, and a Cycle's gate is a decided workload gate (`Gate`,
     `GateDecision`). They become the *game checks*.
+- **Revision 2's intake (2026-10-31):**
+  - **The companion, *Game Development Capability Packs and Squad Composition*,** filed beside this revision:
+    this SIP integrates engines, and it composes the squad that uses them. Both register through its plugin
+    foundation, so there is one extension mechanism.
+  - **Capability-Backed Agents** (proposed, deferred to 3.x, portfolio cluster 8): R2.3's manifest, SPI and
+    pinning take its §21 taxonomy and pack mechanics as the starting point. The companion reconciles its
+    deferral (its Q45).
+  - **SIP-0102:** R2.7 returns editor changes as workspace patches, so the sandbox keeps the live tree.
+  - **Project Goals and Backlog** (proposed): a game's goals and backlog are the Project's, as any product's.
 - **Sources Appendix D cites:** the IDEA above, now `docs/ideas/IDEA_Cycle_Orchestrator_Pulses_and_Surges.md`
   (non-normative, Q33); the testing, task-logging and documentation-traceability protocols, kept as
   `docs/ideas/Testing protocol.txt`, `docs/ideas/Task logging and metrics.txt` and
   `docs/ideas/Doc traceability.txt`; the repository's SIP template, `sips/TEMPLATE.md`.
 
-## Delivery ledger (current as of 2026-10-17)
+## Delivery ledger (current as of 2026-10-31)
 
 One row per part that ships separately, from §9.5's slices. Statuses: *shipped* (the release, the PR,
 and the issue it closed), *placed* (the release and the open issue tracking it, labelled `sip:NNNN` once
@@ -121,13 +132,194 @@ numbered), *unplaced* (said deliberately), *dropped* (by the numbered amendment 
 
 | part | status | where |
 |---|---|---|
-| Slice A: the game contract, engine-neutral results, Godot bootstrap, test and export | **unplaced** | — |
-| Slice B: the Rojo project and build, and the Studio-required capability declaration | **unplaced** | — |
-| Slice C: the remote execution port, worker registration, preflight, secure script execution and artifact return | **unplaced** | — |
-| Slice D: game QA contracts, the defect and repair loop, evidence | **unplaced** | — |
-| Slice E: GameBench-01 on both engines, performance measurement, governed publishing | **unplaced** | — |
+| Slices A–E of revision 1 (§9.5) | **dropped** by Revision 2 (R2.10): restructured into the milestones below. None was placed | — |
+| M0: the remote-execution contract and worker registry (R2.2), on the companion's plugin foundation | **unplaced**, deliberately: awaits acceptance and placement | — |
+| R-1: Roblox integration works: the plugin, Rojo build, the Studio worker, its modes proven or declared not executed, editor changes as revisions (R2.4, R2.6, R2.7) | **unplaced**, deliberately: the first engine | — |
+| G-1: Godot integration works | **unplaced**, deliberately | — |
+| U-1: Unity integration works: EditMode, PlayMode and player tests apart, results read per test, metadata kept, a worker matched by capability (R2.5); the check that the plugin contract generalizes | **unplaced**, deliberately: after R-1 | — |
+| B-1: GameBench-01 on more than one engine, and governed publishing | **unplaced**, deliberately: later and optional, never a prerequisite for R-1 (R2.10) | — |
 
-**What closes this SIP:** slices A–E shipped, or dropped by a numbered amendment.
+**What closes this SIP:** M0 and R-1 shipped, then G-1 and U-1 shipped or dropped by a numbered amendment. B-1
+is optional. "The squad can build and improve a playable game" is the companion's to close (R2.10).
+
+---
+
+# R2. Revision 2 (2026-10-31): engine integration plugins
+
+**What prompted it.** The owner's outside review of this draft asked for engine integration as versioned
+plugins, Unity beside Roblox and Godot, the reusable remote-execution contract apart from game operations,
+per-adapter verification modes, editor changes returned through the revision boundary, greenfield
+blueprints apart from existing repositories, one delivery milestone per engine, and tailored squads. **Where
+the body (§1–§12) differs, this section governs.** The body is kept as the owner's draft, edited only where
+it contradicted this section (§1, §4, §9.5, §10, §11).
+
+**The boundary with the companion proposal.** This SIP is how an engine is integrated: the plugin, its
+operations, its workers and its evidence. *Game Development Capability Packs and Squad Composition*
+(`SIP-Game-Capability-Packs.md`) is how a squad uses it: which roles, which capabilities, which skills, and
+the Project's own game content. Both register through one plugin foundation, defined there (its §4), so
+there is one extension mechanism, not two.
+
+## R2.1 What core owns, and what a plugin owns
+
+| SquadOps core (no engine knowledge) | an engine integration plugin (versioned) |
+|---|---|
+| Cycle and Campaign orchestration, gates, the correction loop | the Game Project Contract's engine section and its schema version |
+| plugin discovery, binding and pinning (the companion's foundation) | the engine adapter: the typed operations of R2.3 |
+| permissions: which role may invoke which operation | scaffolding: the greenfield blueprint for its engine (R2.8) |
+| worker registry, capability matching and scheduling (R2.2) | engine-specific checks and their result readers |
+| source revisions, the live tree (SIP-0102), artifacts (the vault), verification (SIP-0096) | the verification modes it supports (R2.4), with worker requirements |
+| evidence aggregation and the run's verdict | compatibility: engine versions, worker platforms, other plugins |
+
+A plugin never orchestrates, never decides a gate and never writes a revision. It declares operations and
+reads results. Core runs them.
+
+## R2.2 The remote-execution contract, apart from game operations
+
+The reusable part is engine-free:
+- **A worker** registers its identity, platform, installed tools with versions, and capabilities (named,
+  versioned strings such as `unity.editor.batchmode@6000.0`), and reports health in the canonical vocabulary
+  (`online`, `degraded`, `recovering`, `offline`). *Busy* is a lease on its concurrency, not a health state
+  (Q38's recommendation).
+- **An operation** is a typed request: the operation name a plugin declared, its inputs by artifact
+  reference (never a live tree), a timeout and an idempotency key. It returns a typed result, its evidence
+  by artifact reference, and the worker and tool versions it ran with.
+- **Scheduling** matches an operation's declared requirement to a worker that holds it, leases the worker,
+  and reports `blocked_unverified` with the reason when none can (asleep, offline, missing the capability).
+- **Inputs, outputs and verdicts reuse what exists.** Inputs are staged from the artifact vault, outputs are
+  stored in it, and results enter SIP-0096's verification as executed-passed, executed-failed or not executed.
+  The live tree stays the sandbox's (SIP-0102). **No parallel artifact, sandbox or verification path.**
+
+Game operations (`build_place`, `run_editmode_tests`, `play_scenario`, …) are what a plugin declares on top
+of it. Nothing game-specific is in the contract.
+
+## R2.3 How a plugin registers, declares and exposes
+
+A plugin is an installable package discovered by the companion's foundation (Switchboard, the host-owned
+loader the console already uses; Capability-Backed Agents §21). Its manifest is **data the host validates
+without executing plugin code**:
+
+```yaml
+plugin: squadops-engine-unity
+version: 0.1.0
+requires_spi: "1"
+provides:
+  engine: unity
+  contract_schema: game-project-contract/unity@1
+  blueprints: [unity-urp-3d-starter@1]
+compatibility:
+  engine_versions: [">=6000.0,<6001"]
+  worker_platforms: [macos, windows, linux]   # each per operation below
+depends_on: []
+operations:
+  - name: run_editmode_tests
+    mode: editor
+    requires: [unity.editor.batchmode]
+    inputs: {source: revision, test_filter: string?}
+    result: unity-test-results@1        # read by the plugin's result reader
+  - name: run_playmode_tests
+    mode: runtime_play
+    requires: [unity.editor.batchmode]
+    result: unity-test-results@1
+  - name: build_player
+    mode: static_build
+    requires: [unity.editor.batchmode, unity.build_target.<target>]
+    result: unity-build-report@1
+  - name: run_player_tests
+    mode: runtime_play
+    requires: [unity.player.<target>]
+    result: unity-test-results@1
+```
+
+- **Registration** is the manifest plus code that implements each declared operation's result reader
+  against a narrow, versioned SPI (Capability-Backed Agents §21: "packs ship code against a narrow SPI").
+  A `requires_spi` mismatch refuses the plugin at preflight. It never loads with a warning.
+- **An adapter directory is not the mechanism.** Discovery, the manifest, the SPI and the pin are.
+- **Compatibility is checked at preflight**: the Project's engine version against the plugin's range, and each
+  operation's requirement against a registered worker. A gap is a blocking or disclosed gap, as SIP-0112 H.4
+  names a product's.
+- **The bound plugin versions are pinned** in the Cycle's and the Campaign's snapshot, so evidence names the
+  `plugin@version` that produced it.
+
+## R2.4 Verification modes, per adapter
+
+Each operation declares one mode. A check the adapter can't run, or didn't, reads **not executed**
+(SIP-0096), never passed.
+
+| mode | what it can show | Roblox | Godot | Unity |
+|---|---|---|---|---|
+| static / build | the project builds and its static checks hold | Rojo build of the place; Luau analysis | `--headless` import and export | batchmode compile; player build |
+| editor | scripts and objects as the editor sees them | Studio `RunScript` (FR-10) | headless editor scripts | EditMode tests |
+| runtime / play | the game running, driven by a scenario | Studio play controls and input simulation through Studio MCP (R2.6) | headless run with scripted input | PlayMode tests in the editor; tests in a built player |
+| multiplayer | several clients and a server | Studio's local server test (to be proven on the worker) | per project | per project |
+| graphical capture | what a player would see | Studio MCP capture (R2.6) | a rendering run (needs a GPU or software renderer) | built-player capture |
+
+**Every cell is a claim to prove on the configured worker before it's relied on.** Until it is, the mode is
+declared and its checks read not executed. This draft records no cell as proven.
+
+## R2.5 Unity
+
+- **Three kinds of test, never merged:** EditMode tests (in the editor, no play loop), PlayMode tests (in the
+  editor's play mode) and tests in a built player. Each is its own operation and its own evidence.
+- **Results are read from the test run's own results file,** not from the exit code. Unity's test runner is
+  run in batchmode with its test platform and a results path, and the plugin's reader parses that file into
+  per-test outcomes, so a run that collected nothing reads not executed. *The exact flags and the results
+  format are verified on the worker before the reader is written.*
+- **Scene, prefab and asset metadata are preserved:** `.unity`, `.prefab` and `.asset` files, and each asset's
+  `.meta` file with its GUID. A change that drops or regenerates a `.meta` is a failed check, since references
+  break silently.
+- **The worker is chosen by capability.** The Unity editor isn't assumed to run on the Spark: licensing, the
+  editor build for the platform, and GPU needs decide it, and an operation is scheduled on a worker that
+  declares the editor version and build target it needs.
+
+## R2.6 Roblox: the tool inventory, updated
+
+FR-04 and FR-10 stand, with Studio MCP's current tools added as operations, **each validated on the
+configured worker before any check relies on it**:
+- **play controls:** start and stop a play session (play solo; a local server with clients, if available);
+- **input simulation:** drive a character or UI with scripted input inside a play session;
+- **capture:** screenshots of a play session, as evidence.
+
+They are the runtime/play, multiplayer and capture modes of R2.4. MCP inspection is still never presented as
+gameplay unless a play session ran and its scenario's assertions were read (FR-10's rule). *Which of these
+the installed Studio MCP exposes, and under which names, is unverified here.* The worker's registration
+records what it actually offers.
+
+## R2.7 Editor-created changes return through the revision boundary
+
+A change made in an editor (a Studio edit, a Unity scene or prefab saved, a Godot resource) never commits
+itself. The worker returns the changed files as artifacts: Rojo-synced sources, serialized scenes and
+prefabs, `.meta` files, resources. Core applies them as a workspace patch, a new revision of the live tree
+(SIP-0102 `apply_workspace_patch`). They then go through the same acceptance as any change: the squad's
+checks, the product's runner and the Campaign's gate. A change the worker can't return as files is not a
+change SquadOps made.
+
+## R2.8 Greenfield blueprints, and existing game repositories
+
+- **A greenfield game** is created from an engine plugin's blueprint (SIP-0105's model). It may carry its Game
+  Project Contract in its repository as product content.
+- **An existing game keeps its conventions.** It is registered as SIP-0112 registers any product, with no
+  mandatory onboarding edits. Its derived profile is read from its tree (SIP-0112 H.4), and its Game Project
+  Contract is SquadOps Project metadata. This is Q37's recommendation, now the design.
+
+## R2.9 Tailored squads
+
+The body's "not … a separate game-specific squad" is replaced. **A tailored squad configuration of the
+existing roles is supported:** a roster, models, capability packs and tool permissions composed for game
+work. An optional specialist, such as a game designer, is a roster choice. The companion proposal defines the
+composition, and this SIP adds no role.
+
+## R2.10 Delivery: one milestone per engine, and two definitions of done
+
+**Two things, verified separately:**
+- **"Engine integration works"** (this SIP): the plugin loads and pins, its operations run on a matched worker,
+  its results are read per test into SIP-0096's evidence, its unexecuted modes read not executed, and editor
+  changes come back as revisions.
+- **"The squad can build and improve a playable game"** (the companion): a tailored squad takes a small game
+  increment from design to accepted source, with an actual player scenario and independent QA evidence.
+
+**One milestone per engine, each standing alone.** Roblox first. Godot and Unity follow, and Unity is the
+check that the plugin contract generalizes. **No cross-engine benchmark is a prerequisite** for the first
+useful Roblox squad. GameBench-01 on several engines (Appendix A) becomes a later, optional milestone.
 
 ---
 
@@ -135,7 +327,7 @@ numbered), *unplaced* (said deliberately), *dropped* (by the numbered amendment 
 
 Enable SquadOps squads to autonomously design, implement, validate, package, and iteratively improve playable games, initially targeting **Godot 4.x (GDScript)** and **Roblox (Luau)**.
 
-This SIP is a *platform capability*, not an implementation plan for one game or a separate game-specific squad. It adds:
+This SIP is a *platform capability*, not an implementation plan for one game. Tailored squad configurations of the existing roles are supported (R2.9; the companion proposal composes them). It adds:
 
 1. A target-neutral Game Project Contract.
 2. Godot and Roblox target adapters.
@@ -197,7 +389,7 @@ This SIP adopts the current SIP authoring standard: architectural intent and con
 
 ## Explicit boundaries
 
-- No new Game Developer agent role; existing roles are extended by capabilities and context.
+- No new Game Developer agent role; existing roles are extended by capabilities and context, and composed into tailored squads (R2.9).
 - No change to Cycle/Pulse/Surge/task coordination semantics.
 - No assumption that Roblox Studio can run on Spark/Linux.
 - No assertion that Studio GUI/player simulation can always run unattended in a login-free environment.
@@ -627,6 +819,9 @@ Adapt names and placement to actual `squadops`/`continuum`/`switchboard` reposit
 
 These are capability increments, **not** hardcoded Campaign or Pulse stages. A Campaign can continue through as many Cycles as outcomes require.
 
+**Superseded by Revision 2:** the slices are now one milestone per engine, on a shared remote-execution
+contract (R2.10 and the delivery ledger).
+
 # 10. Executive Summary — What Must Be Built
 
 1. Game Project Contract, design brief, and asset manifest schema.
@@ -638,11 +833,15 @@ These are capability increments, **not** hardcoded Campaign or Pulse stages. A C
 7. Worker discovery/capabilities/preflight, operation lifecycle, timeout/cancellation, artifacts, and audit.
 8. Strict distinction between Studio CLI, MCP, and real playtesting evidence.
 9. Game-specific QA gates and structured repair outcomes.
-10. GameBench-01 implemented and verified separately on Godot and Roblox.
+10. GameBench-01 on more than one engine, as a later optional milestone, never a prerequisite for the first Roblox squad (R2.10).
 11. Comparative game quality and squad autonomy/efficiency scorecards.
 12. Documentation for operating the MacBook worker and extending to future targets/workers.
 
 # 11. Definition of Done
+
+**Revision 2:** the checklist below is split by R2.10 into "engine integration works" (this SIP, per engine)
+and "the squad can build and improve a playable game" (the companion). The engine milestones are independent;
+where an item below names both engines together, read it per engine.
 
 ## Capability and architecture
 - [ ] Game project schema and design artifacts validate.
@@ -676,7 +875,7 @@ These are capability increments, **not** hardcoded Campaign or Pulse stages. A C
 - [ ] Mandatory game gates produce PASS/FAIL/UNVERIFIED with evidence.
 - [ ] Failure findings can generate traceable repair tasks.
 - [ ] Publishing is independently gated and secrets remain outside source control.
-- [ ] GameBench-01 succeeds on both Godot and Roblox for objectively testable scoped criteria.
+- [ ] GameBench-01, when its optional milestone is taken, succeeds per engine on objectively testable scoped criteria.
 - [ ] Engine limitations and manual interventions are reported rather than hidden.
 - [ ] Benchmark dashboard/report distinguishes game outcome from squad outcome and isolates remote wait time.
 
