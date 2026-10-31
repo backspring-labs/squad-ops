@@ -5612,3 +5612,26 @@ the new one, each with the index.
 
 **Who ruled.** The supervisor placed #2795's fix in 2.5 under the owner's 2.5 grants. The issue proposed rendering the
 appendix by role; the asset's wording and the selection seam are the implementer's, for the supervisor's review.
+
+### 24cs. A repository-backed increment's plan gate reads its approved change request as its design (2026-10-31, §24bj, §24bv point 5, §24cj; #2796; the implementer's fix, under the owner's go for the 2.6 spike's fixes)
+
+**What changed.** §24bj's tier read "no open question" from the cycle's interface manifest, and a cycle with no manifest
+failed it: "the tier can establish nothing about its design". A repository-backed product's increment never has one
+(§24bv point 5: its change request carries no manifest delta). So **every** product plan gate escalated, and an
+unattended product Campaign needed a person at each one. Now, on a repository-backed increment whose approved change
+request is on record, the tier reads that request as the design. The supervisor ruled it at the increment gate, and
+it carries no open question, so `no_open_question` holds. **The tier's other conditions are unchanged:** the plan's
+footprint must lie inside the objective's scope (with §24cj's placed criterion files the framework's), and the
+framing must have run once. A plan that strays from the request still escalates.
+
+**Not changed:** a cycle with neither a manifest nor a ruled change request still fails `no_open_question`. A
+sample application's plan gate reads its manifest as before.
+
+**The evidence.** The 2.6 plan's §0 spike, `cmp_76242b27df5b` on `prj-shelfnote`, 2026-10-31: all three plan gates
+escalated on `no_open_question` alone (`esc_799f0daa8743` and two more), each with `questions: []`. Tests:
+`test_plan_review_tier.py`'s product cases, and `test_plan_gate_product_tier.py`, entering at
+`WorkloadGate._plan_review_tier`, which fails without the change.
+
+**Who ruled it.** The owner's go on 2026-10-31 for the four fixes before an unattended spike ("yes"), #2796 among them.
+The issue's own question (whether a product's plan gate should instead stay the supervisor's by rule) is answered by
+this design. The owner can reverse it.

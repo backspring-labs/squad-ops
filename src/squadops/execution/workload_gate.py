@@ -611,8 +611,22 @@ class WorkloadGate:
             refused_framing_runs=refused,
             answered_on_record=carried,
             placed=await self._placed_criterion_files(run_cycle),
+            design_is_the_change_request=(
+                manifest is None and await self._ruled_change_request(run_cycle)
+            ),
         )
         return _TierReading(verdict, decisions)
+
+    async def _ruled_change_request(self, cycle: Cycle) -> bool:
+        """#2796: whether ``cycle`` is a repository-backed increment whose approved change request
+        is on record, the design its plan gate reads in place of a manifest (SIP-0109 §24cs)."""
+        basis = increment_basis(cycle.resolved_config())
+        if basis is None or basis.has_manifest:
+            return False
+        try:
+            return await approved_change_request(self._artifact_vault, cycle) is not None
+        except ValueError:
+            return False
 
     async def _placed_criterion_files(self, cycle: Cycle) -> tuple[str, ...]:
         """SIP-0109 §24cj: on a repository-backed increment, the criterion test files the

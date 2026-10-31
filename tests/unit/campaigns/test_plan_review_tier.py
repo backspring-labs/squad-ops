@@ -213,3 +213,34 @@ def test_on_a_product_only_the_criterion_files_the_framework_placed_are_the_fram
     [scope] = [c for c in verdict.checks if c.condition is TierCondition.INSIDE_SCOPE]
     assert scope.held is held
     assert ("checks/check_report.py" in scope.reading) is (not held)
+
+
+@pytest.mark.parametrize(
+    ("design_is_the_change_request", "footprint", "failed"),
+    [
+        # #2796: a product increment's design is its ruled change request; the plan in scope holds.
+        (True, ("tally/report.py", "checks/check_criterion_R1.py"), ()),
+        # The plan straying from the request is still the tier's to escalate, on scope alone.
+        (True, ("tally/report.py", "ops/deploy.sh"), (TierCondition.INSIDE_SCOPE,)),
+        # A cycle with no manifest and no ruled change request still establishes nothing.
+        (False, ("tally/report.py",), (TierCondition.NO_OPEN_QUESTION,)),
+    ],
+    ids=["product-in-scope", "product-out-of-scope", "no-manifest-no-request"],
+)
+def test_a_product_increments_design_is_its_ruled_change_request(
+    design_is_the_change_request, footprint, failed
+):
+    """#2796. Bug caught: every plan gate of a repository-backed product's increment escalated on
+    no_open_question, since a product has no manifest (the 2.6 spike: 3 of 3), so an unattended
+    product Campaign needed a person at each one; or the fix waving an out-of-scope plan through."""
+    verdict = _verdict(
+        open_questions=None,
+        footprint=footprint,
+        allowed_scope=("tally/**",),
+        stack="",
+        placed=("checks/check_criterion_R1.py",),
+        design_is_the_change_request=design_is_the_change_request,
+    )
+
+    assert tuple(c.condition for c in verdict.failed) == failed
+    assert verdict.approves is (failed == ())
