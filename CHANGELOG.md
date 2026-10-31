@@ -5,6 +5,15 @@ All notable changes to SquadOps are recorded here. Format loosely follows
 
 ## [Unreleased]
 
+### Security
+
+- **`pyasn1` 0.6.4 → 0.6.5** in the agent image's lock (`CVE-2026-119194` to `CVE-2026-119197`), and in
+  `ci-constraints.txt`.
+- **The evaluator image's `minimatch` 10.2.6 → 11.0.1** (`GHSA-g3hv-75wg-m249`), pinned by `overrides` under
+  eslint 10.12 and typescript-eslint 8.71. The evaluator's tag moves to **`-8`**. The delivered-lint runner's
+  output on a fixture tree is byte-identical under both versions, and Lighthouse, axe, the driver and the
+  Chromium pin are `-7`'s, so `-8`'s quality series start fresh as every tag's do.
+
 ## [2.5.0] — 2026-10-30
 
 **The 2.5 line: an odd minor, a stabilization release, feature-free by rule. It finishes what 2.4 shipped apart: a
